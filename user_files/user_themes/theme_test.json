@@ -1,0 +1,62 @@
+{
+    "name": "Theme test",
+    "mode": "dark",
+    "colors": {
+        "light": {
+            "--accent-color": "#007aff",
+            "--fg": "#212121",
+            "--icon-color": "#333333",
+            "--fg-subtle": "#757575",
+            "--border": "#e0e0e0",
+            "--highlight-bg": "#eeeeee",
+            "--highlight-background": "#DDDDDD",
+            "--canvas-inset": "#ffffff",
+            "--button-primary-bg": "#007aff",
+            "--button-primary-gradient-start": "#0088ff",
+            "--button-primary-gradient-end": "#0065c7",
+            "--new-count-bubble-bg": "#a3c5e8",
+            "--new-count-bubble-fg": "#13375b",
+            "--learn-count-bubble-bg": "#e8a3a3",
+            "--learn-count-bubble-fg": "#731717",
+            "--review-count-bubble-bg": "#a3e8b8",
+            "--review-count-bubble-fg": "#1b7a38",
+            "--heatmap-color": "#45ae5a",
+            "--heatmap-color-zero": "#f8fafa"
+        },
+        "dark": {
+            "--accent-color": "#ca9ee6",
+            "--fg": "#c6d0f5",
+            "--icon-color": "#949cbb",
+            "--fg-subtle": "#b5bfe2",
+            "--border": "#737994",
+            "--highlight-bg": "#414559",
+            "--highlight-background": "#51576d",
+            "--canvas-inset": "#292c3c",
+            "--button-primary-bg": "#8caaee",
+            "--button-primary-gradient-start": "#99d1db",
+            "--button-primary-gradient-end": "#85c1dc",
+            "--new-count-bubble-bg": "#68a0d9",
+            "--new-count-bubble-fg": "#ffffff",
+            "--learn-count-bubble-bg": "#d96868",
+            "--learn-count-bubble-fg": "#ffffff",
+            "--review-count-bubble-bg": "#68d98a",
+            "--review-count-bubble-fg": "#ffffff",
+            "--heatmap-color": "#be3032",
+            "--heatmap-color-zero": "#3a3a3a"
+        }
+    },
+    "preview": [
+        "#000000",
+        "#c6d0f5",
+        "#ca9ee6",
+        "#8caaee",
+        "#414559",
+        "#b5bfe2",
+        "#737994",
+        "#949cbb"
+    ],
+    "backgrounds": {
+        "light": "#f3f3f3",
+        "dark": "#2c2c2c"
+    }
+}
