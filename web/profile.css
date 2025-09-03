@@ -1,0 +1,226 @@
+/* --- General Profile Window Styles --- */
+body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+.profile-container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* --- Header --- */
+.profile-header {
+    position: relative;
+    height: 180px;
+    border-radius: 16px;
+    background-color: var(--accent-color);
+    background-size: cover;
+    background-position: center;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-end;
+    padding: 15px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.profile-header::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 50%);
+    z-index: 1;
+}
+
+.profile-header-content {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    position: relative;
+    z-index: 2;
+}
+
+.profile-pic-large, .profile-pic-placeholder-large {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    box-sizing: border-box;
+}
+
+.profile-pic-large {
+    object-fit: cover;
+}
+
+.profile-pic-placeholder-large {
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.profile-name-large {
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+}
+
+
+/* --- Navigation Tabs (MODIFIED) --- */
+nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+    /* Removed the bottom border for a cleaner look with pill buttons */
+}
+
+.nav-button {
+    background: none;
+    border: var(--accent-color);
+    color: var(--fg-subtle);
+    font-size: 16px;
+    padding: 8px 20px; /* Adjusted padding */
+    cursor: pointer;
+    border-radius: 9999px; /* This creates the pill shape */
+    border-width: 2px;
+    transition: color 0.2s, background-color 0.2s;
+    font-weight: 500;
+}
+
+.nav-button:not(.active):hover {
+    background: none;
+    padding: 8px 20px; /* Adjusted padding */
+    border-color: var(--accent-color);
+    border-style: dashed; 
+    border-width: 2px;
+}
+
+.nav-button.active {
+    background: none;
+    border-color: var(--accent-color);
+    padding: 8px 20px; /* Adjusted padding */
+    border-width: 2px;
+}
+
+
+/* --- Page Content --- */
+h2.section-title {
+    font-size: 18px;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+    margin-top: 30px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+}
+
+.empty-section {
+    color: var(--fg-subtle);
+    text-align: center;
+    padding: 40px;
+}
+
+/* Theme Page: Color List */
+.color-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.color-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--canvas-inset);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.color-info span {
+    display: block;
+}
+.color-info .color-name {
+    font-weight: 500;
+}
+.color-info .color-code {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--fg-subtle);
+}
+
+/* Theme Page: Background Previews */
+.background-previews {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.preview-card {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.preview-image {
+    width: 100%;
+    height: 120px;
+    background-color: var(--highlight-bg);
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-subtle);
+}
+
+.preview-info {
+    padding: 10px;
+    font-weight: 500;
+}
+
+/* Stats Page */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+}
+.stat-card {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
+.stat-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+}
+.stat-card p {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 500;
+}
+

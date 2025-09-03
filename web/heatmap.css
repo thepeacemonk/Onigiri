@@ -1,0 +1,301 @@
+/*
+    Onigiri Heatmap Stylesheet
+*/
+
+#onigiri-heatmap-container,
+#onigiri-profile-heatmap-container {
+    padding: 15px;
+    margin-top: 10px;
+    border-radius: 12px;
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.onigiri-heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 0 5px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.onigiri-heatmap-header .header-left,
+.onigiri-heatmap-header .header-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.onigiri-heatmap-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.streak-counter {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--fg-subtle);
+    background-color: var(--highlight-bg);
+    padding: 4px 8px;
+    border-radius: 8px;
+}
+
+.heatmap-filters {
+    display: flex;
+    background-color: var(--highlight-bg);
+    border-radius: 8px;
+    padding: 3px;
+}
+
+.filter-btn {
+    border: none;
+    background-color: transparent;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--fg-subtle);
+    transition: all 0.2s ease;
+}
+
+.filter-btn.active {
+    background-color: var(--canvas-inset);
+    color: var(--fg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.heatmap-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-btn {
+    border: none;
+    border-color: transparent;
+    background-color: var(--highlight-bg);
+    color: var(--fg);
+    border-radius: 8px;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+.nav-btn:hover {
+    background-color: var(--highlight-bg);
+    border: none;
+    border-color: transparent;
+}
+
+.nav-title {
+    font-weight: 500;
+    color: var(--fg);
+    background-color: var(--highlight-bg);
+    padding: 4px 15px;
+    border-radius: 8px;
+}
+
+/* --- Base Grid and Cells --- */
+.heatmap-day-cell {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    position: relative;
+    --heatmap-intensity: 0; /* JS will set this value per-cell */
+}
+
+/* THIS IS THE NEW COLORING LOGIC */
+.heatmap-day-cell .day-shape {
+    width: 100%;
+    height: 100%;
+    transition: transform 0.1s ease-out;
+    background-color: var(--heatmap-color-zero);
+    position: relative;
+    overflow: hidden; /* Important for containing the pseudo-element */
+}
+
+.heatmap-day-cell .day-shape::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--heatmap-color);
+    opacity: var(--heatmap-intensity); /* Use the intensity variable set by JS */
+    transition: opacity 0.2s;
+}
+
+.heatmap-day-cell:hover .day-shape {
+    transform: scale(1.2);
+}
+
+/* Tooltip */
+.heatmap-day-cell::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--fg);
+    color: var(--bg);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 10;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    pointer-events: none;
+}
+
+.heatmap-day-cell:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* --- Year View Specifics --- */
+.heatmap-grid.year-view {
+    display: grid;
+    grid-template-areas:
+        "empty months"
+        "weekdays cells";
+    grid-template-columns: auto 1fr;
+    gap: 5px 3px;
+}
+
+.year-view[data-months-hidden="true"] {
+    grid-template-areas: "weekdays cells";
+}
+
+.year-view[data-weekdays-hidden="true"] {
+    grid-template-areas: "empty months"
+                         "empty cells";
+    grid-template-columns: 0 1fr;
+}
+
+.year-view[data-months-hidden="true"][data-weekdays-hidden="true"] {
+    grid-template-areas: "cells";
+    grid-template-columns: 1fr;
+}
+
+.year-view .heatmap-months {
+    grid-area: months;
+    display: grid;
+    grid-template-columns: repeat(53, 1fr);
+    font-size: 10px;
+    color: var(--fg-subtle);
+    padding-left: 2px;
+}
+.year-view[data-months-hidden="true"] .heatmap-months {
+    display: none;
+}
+
+
+.year-view .month-label {
+    grid-column: span 4;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.year-view .heatmap-weekdays {
+    grid-area: weekdays;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    font-size: 10px;
+    color: var(--fg-subtle);
+    padding-right: 5px;
+    text-align: right;
+}
+
+.year-view[data-weekdays-hidden="true"] .heatmap-weekdays {
+    display: none;
+}
+
+.year-view .heatmap-cells {
+    grid-area: cells;
+    display: grid;
+    /* 7 rows for days of the week */
+    grid-template-rows: repeat(7, 1fr);
+    /* Let the columns flow automatically */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 3px;
+}
+
+
+/* --- Month View Specifics --- */
+.heatmap-grid.month-view {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 8px;
+    width: fit-content; /* Let the container size to its content */
+    max-width: 100%;    /* Prevent overflow */
+    margin: 0 auto;     /* Center the container */
+}
+.month-view .month-weekdays-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-subtle);
+}
+.month-view[data-weekdays-hidden="true"] .month-weekdays-header {
+    display: none;
+}
+
+.month-view .month-cells-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 30px); /* Use fixed size for cells */
+    grid-auto-rows: 30px; /* Make cells square */
+    gap: 4px;
+}
+
+/* --- Week View Specifics --- */
+.heatmap-grid.week-view {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 5px;
+    width: fit-content; /* Let the container size to its content */
+    max-width: 100%;    /* Prevent overflow */
+    margin: 0 auto;     /* Center the container */
+}
+.week-view[data-header-hidden="true"] .week-days-header {
+    display: none;
+}
+.week-view .week-days-header {
+    display: grid;
+    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
+    gap: 4px; /* Add gap to align with cells */
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-subtle);
+}
+.week-view .weekday-label {
+    font-weight: 500;
+}
+.week-view .day-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+}
+.week-view .week-cells-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
+    gap: 4px;
+}

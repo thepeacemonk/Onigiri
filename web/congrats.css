@@ -1,0 +1,148 @@
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--bg);
+}
+
+.congrats-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 500px;
+    width: 90%;
+}
+
+/* --- ADD THIS ENTIRE CSS BLOCK --- */
+/* Header styles copied from overview.css */
+.overview-header {
+    position: absolute;
+    width: 100%;
+    top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+/* --- END OF ADDED BLOCK --- */
+
+/* Re-using profile bar styles from menu.css, but making it a bit wider */
+.profile-bar {
+    width: 100%;
+    max-width: 350px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 6px;
+    border-radius: 50px;
+    background-color: var(--highlight-bg);
+    transition: background-color 0.2s;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    z-index: 2; /* Make sure the profile bar sits on top of the card */
+}
+
+.profile-bar > * {
+    position: relative;
+    z-index: 2;
+}
+
+.profile-pic {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.profile-pic-placeholder {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    margin-right: 12px;
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.profile-name {
+    font-size: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--fg);
+}
+
+.profile-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0,0,0,0.4);
+    border-radius: 50px;
+    z-index: 1;
+    display: none;
+}
+.profile-bar.with-image-bg::after {
+    display: block;
+}
+.profile-bar.with-image-bg .profile-name {
+    color: white;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+}
+
+.congrats-card {
+    background-color: var(--canvas-inset);
+    color: var(--fg);
+    border-radius: 20px;
+    padding: 40px;
+    padding-bottom: 25px; /* Less padding at the bottom */
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border);
+    margin-top: -20px; /* Pull the card up */
+}
+
+.congrats-card h1 {
+    margin: 0;
+    font-size: 1.5em;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* --- Bottom Action Buttons --- */
+.congrats-bottom-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px; /* Space between card and buttons */
+}
+
+/* Steal the button style from overview.css */
+.overview-button {
+    background-color: var(--highlight-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.overview-button:hover {
+    background-color: var(--canvas-inset);
+    border-color: var(--fg-subtle);
+}
