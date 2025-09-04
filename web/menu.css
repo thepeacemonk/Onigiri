@@ -248,6 +248,7 @@ a.deck {
     display: flex;
     align-items: center;
     padding-right: 12px;
+    margin-left: 8px; 
     padding: 6px;
     width: 100%;
     background-color: inherit !important;
@@ -262,8 +263,9 @@ a.deck::before {
 span.collapse, a.collapse {
     display: inline-block;
     flex-shrink: 0;
-    font-size: 0 !important;
-    background-image: none !important;
+    width: 16px;
+    height: 16px;
+    margin-bottom: 5px;
 }
 td.opts {
     width: 24px;
