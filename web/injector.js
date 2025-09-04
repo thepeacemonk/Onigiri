@@ -25,10 +25,19 @@
 
     // --- Main Logic ---
     document.addEventListener('DOMContentLoaded', () => {
+        // --- Skeleton Loader Reveal ---
+        const sidebar = document.querySelector('.sidebar-left.skeleton-loading');
+        if (sidebar) {
+            // Use a short timeout to ensure styles are applied before removing the class
+            setTimeout(() => {
+                sidebar.classList.remove('skeleton-loading');
+            }, 150); // A small delay like 150ms feels good
+        }
+
         // --- Sidebar Resize Logic ---
         const handle = document.querySelector('.resize-handle');
-        const sidebar = document.querySelector('.sidebar-left');
-        if (handle && sidebar) {
+        const sidebarEl = document.querySelector('.sidebar-left');
+        if (handle && sidebarEl) {
             let isResizing = false;
             handle.addEventListener('mousedown', () => { isResizing = true; document.body.style.userSelect = 'none'; document.body.style.cursor = 'col-resize'; });
             document.addEventListener('mousemove', (e) => {
@@ -36,13 +45,13 @@
                 let newWidth = e.clientX;
                 if (newWidth < 200) newWidth = 200;
                 if (newWidth > 500) newWidth = 500;
-                sidebar.style.width = `${newWidth}px`;
+                sidebarEl.style.width = `${newWidth}px`;
             });
             document.addEventListener('mouseup', () => {
                 if (isResizing) {
                     isResizing = false;
                     document.body.style.removeProperty('user-select'); document.body.style.removeProperty('cursor');
-                    const finalWidth = parseInt(sidebar.style.width, 10);
+                    const finalWidth = parseInt(sidebarEl.style.width, 10);
                     if (typeof pycmd === 'function') { pycmd(`saveSidebarWidth:${finalWidth}`); }
                 }
             });
