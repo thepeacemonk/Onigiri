@@ -14,6 +14,10 @@ from .config import DEFAULTS
 from .constants import COLOR_LABELS
 from . import menu_buttons, settings, heatmap
 
+# --- Toolbar Patching ---
+_toolbar_patched = False
+_original_MainWebView_eventFilter = None
+
 
 def _hex_to_rgba(hex_str: str, alpha: float) -> str:
 	"""Converts a hex color string to an rgba string."""
@@ -874,6 +878,40 @@ def generate_profile_bar_fix_css():
 }
 </style>
 """
+
+def generate_icon_size_css():
+    """
+    Generates CSS to control the size of various icons based on user settings.
+    """
+    # These keys correspond to the settings in the "Icons" tab.
+    icon_configs = {
+        "deck_folder": {
+            "selector": "a.deck::before",
+            "default": 18,
+        },
+        "action_button": {
+            "selector": ".menu-item .icon, .add-button-dashed .icon",
+            "default": 16,
+        },
+        "collapse": {
+            "selector": "a.collapse, span.collapse",
+            "default": 16,
+        },
+        "options_gear": {
+            "selector": "td.opts a",
+            "default": 16,
+        },
+    }
+
+    css_rules = []
+    for key, config in icon_configs.items():
+        config_key = f"modern_menu_icon_size_{key}"
+        size = mw.col.conf.get(config_key, config["default"])
+        selector = config["selector"]
+        css_rules.append(f"{selector} {{ width: {size}px; height: {size}px; }}")
+
+    return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
+
 def generate_icon_css(addon_package, conf):
     other_icon_selectors = {
         "options": "td.opts a", "folder": "tr.deck:has(.collapse) a.deck::before",
@@ -909,18 +947,20 @@ def generate_icon_css(addon_package, conf):
 
     return f"""
 <style id="modern-menu-icon-styles">
-    /* Hide the original '+' or '-' text from the link. */
+    /* --- START: Corrected Collapse Icon Rules --- */
+
+    /* 1. Hide the original '+' or '-' text from the link. */
     a.collapse {{
         font-size: 0 !important;
     }}
 
-    /* Create the icon using a pseudo-element on the link. */
+    /* 2. Create the icon using a pseudo-element on the link. */
     a.collapse::before {{
         content: '';
         display: inline-block;
         width: 100%;
         height: 100%;
-        transition: background-color 0.1s ease;
+        background-color: var(--icon-color, #888888);
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
@@ -929,20 +969,17 @@ def generate_icon_css(addon_package, conf):
         -webkit-mask-position: center;
     }}
 
-    /* Apply the correct SVG icon and background color only when the state class is present. */
+    /* 3. Apply the correct SVG icon based on the state. */
     a.collapse.state-closed::before {{
         mask-image: {closed_icon_url};
         -webkit-mask-image: {closed_icon_url};
-        background-color: var(--icon-color, #888888);
-        
     }}
     a.collapse.state-open::before {{
         mask-image: {open_icon_url};
         -webkit-mask-image: {open_icon_url};
-        /* START FIX: Apply background color here */
-        background-color: var(--icon-color, #888888);
-        /* END FIX */
     }}
+    /* --- END: Corrected Collapse Icon Rules --- */
+
 
     /* General rules for other icons (Unchanged) */
     {other_selectors_str} {{
@@ -957,38 +994,6 @@ def generate_icon_css(addon_package, conf):
     }}
     /* Individual mask images for other icons (Unchanged) */
     {''.join(css_rules)}
-</style>
-"""
-
-
-def generate_icon_size_css():
-	deck_folder_size = mw.col.conf.get("modern_menu_icon_size_deck_folder", 20)
-	action_size = mw.col.conf.get("modern_menu_icon_size_action_button", 14)
-	collapse_size = mw.col.conf.get("modern_menu_icon_size_collapse", 12)
-	options_size = mw.col.conf.get("modern_menu_icon_size_options_gear", 16)
-
-	return f"""
-<style id="modern-menu-icon-size-styles">
-a.deck::before {{
-	width: {deck_folder_size}px;
-	height: {deck_folder_size}px;
-}}
-.menu-item .icon, .add-button-dashed .icon {{
-	width: {action_size}px;
-	height: {action_size}px;
-}}
-a.collapse {{
-	width: {collapse_size}px;
-	height: {collapse_size}px;
-}}
-span.collapse {{
-	width: {collapse_size}px;
-	height: {collapse_size}px;
-}}
-td.opts a {{
-	width: {options_size}px;
-	height: {options_size}px;
-}}
 </style>
 """
 
@@ -1029,156 +1034,242 @@ def generate_dynamic_css(conf):
 </style>
 """
 
-custom_body_template = """
-<div class="container modern-main-menu">
-	<div class="sidebar-left" style="{sidebar_style}">
-		{content_box}
-		<h2>{welcome_message}</h2>
-		{profile_bar}
-		<div class="add-button-dashed" id="add-btn" onclick="pycmd('add')">
-			<i class="icon"></i>
-			<span>Add</span>
-		</div>
-		<div class="menu-item" id="browser-btn" onclick="pycmd('browse')">
-			<i class="icon"></i>
-			<span>Browser</span>
-		</div>
-		<div class="menu-item" id="stats-btn" onclick="pycmd('stats')">
-			<i class="icon"></i>
-			<span>Stats</span>
-		</div>
-		<div class="menu-item" id="sync-btn" onclick="pycmd('sync')">
-			<i class="icon"></i>
-			<span>Sync</span>
-		</div>
-		<div class="menu-item" id="onigiri-settings-btn" onclick="pycmd('openOnigiriSettings')">
-			<i class="icon"></i>
-			<span>Settings</span>
-		</div>
-		
-		<details class="menu-group">
-			<summary class="menu-item">
-				<i class="icon"></i>
-				<span>More</span>
-			</summary>
-			<div class="menu-group-items">
-				<div class="menu-item" id="get-shared-btn" onclick="pycmd('shared')">
-					<i class="icon"></i>
-					<span>Get Shared</span>
-				</div>
-				<div class="menu-item" id="create-deck-btn" onclick="pycmd('create')">
-					<i class="icon"></i>
-					<span>Create Deck</span>
-				</div>
-				<div class="menu-item" id="import-file-btn" onclick="pycmd('import')">
-					<i class="icon"></i>
-					<span>Import File</span>
-				</div>
-			</div>
-		</details>
-		
-		<h2>DECKS</h2>
-		<div id="deck-list-container">
-			<table class="deck-table">
-				<tbody>
-					%(tree)s
-				</tbody>
-			</table>
-		</div>
-	</div>
-	<div class="resize-handle"></div>
-	<div class="main-content">
-		<div class="injected-stats-block">
-			%(stats)s
-		</div>
-	</div>
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', function() {{
-    if (typeof anki !== 'undefined' && anki.setupDeckBrowser) {{
-        anki.setupDeckBrowser();
+def generate_icon_css(addon_package, conf):
+    other_icon_selectors = {
+        "options": "td.opts a", "folder": "tr.deck:has(.collapse) a.deck::before",
+        "book": "tr.deck:not(:has(.collapse)) a.deck::before", "add": "#add-btn .icon",
+        "browse": "#browser-btn .icon", "stats": "#stats-btn .icon", "sync": "#sync-btn .icon",
+        "settings": "#onigiri-settings-btn .icon", "more": "summary.menu-item .icon",
+        "get_shared": "#get-shared-btn .icon", "create_deck": "#create-deck-btn .icon",
+        "import_file": "#import-file-btn .icon",
+    }
+    
+    css_rules = []
+    for key, selector in other_icon_selectors.items():
+        filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
+        url = ""
+        if filename:
+            url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
+        else:
+            url = f"url('/_addons/{addon_package}/user_files/icons/system_icons/{key}.svg')"
+        
+        css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
+
+    # --- Get URLs for collapse icons ---
+    closed_icon_file = mw.col.conf.get("modern_menu_icon_collapse_closed", "")
+    open_icon_file = mw.col.conf.get("modern_menu_icon_collapse_open", "")
+
+    closed_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{closed_icon_file}')" if closed_icon_file \
+        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_closed.svg')"
+
+    open_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{open_icon_file}')" if open_icon_file \
+        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_open.svg')"
+        
+    other_selectors_str = ", ".join(other_icon_selectors.values())
+
+    return f"""
+<style id="modern-menu-icon-styles">
+    /* Hide the original '+' or '-' text from the link. */
+    a.collapse {{
+        font-size: 0 !important;
     }}
-}});
-</script>
+
+    /* Create the icon using a pseudo-element on the link. */
+    a.collapse::before {{
+        content: '';
+        display: inline-block;
+        width: 100%;
+        height: 100%;
+        /* START FIX: Set background to transparent by default to prevent flash */
+        background-color: transparent;
+        transition: background-color 0.1s ease;
+        /* END FIX */
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+    }}
+
+    /* Apply the correct SVG icon and background color only when the state class is present. */
+    a.collapse.state-closed::before {{
+        mask-image: {closed_icon_url};
+        -webkit-mask-image: {closed_icon_url};
+        /* START FIX: Apply background color here */
+        background-color: var(--icon-color, #888888);
+        /* END FIX */
+    }}
+    a.collapse.state-open::before {{
+        mask-image: {open_icon_url};
+        -webkit-mask-image: {open_icon_url};
+        /* START FIX: Apply background color here */
+        background-color: var(--icon-color, #888888);
+        /* END FIX */
+    }}
+
+    /* General rules for other icons (Unchanged) */
+    {other_selectors_str} {{
+        background-color: var(--icon-color, #888888);
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        display: inline-block;
+    }}
+    /* Individual mask images for other icons (Unchanged) */
+    {''.join(css_rules)}
+</style>
 """
 
 def prepend_custom_stats(deck_browser, content):
-	conf = config.get_config()
-	addon_package = mw.addonManager.addonFromModule(__name__)
+    # FIX: Define the HTML template directly inside the function
+    custom_body_template = """
+    <div class="container modern-main-menu">
+        <div class="sidebar-left" style="{sidebar_style}">
+            {content_box}
+            <h2>{welcome_message}</h2>
+            {profile_bar}
+            <div class="add-button-dashed" id="add-btn" onclick="pycmd('add')">
+                <i class="icon"></i>
+                <span>Add</span>
+            </div>
+            <div class="menu-item" id="browser-btn" onclick="pycmd('browse')">
+                <i class="icon"></i>
+                <span>Browser</span>
+            </div>
+            <div class="menu-item" id="stats-btn" onclick="pycmd('stats')">
+                <i class="icon"></i>
+                <span>Stats</span>
+            </div>
+            <div class="menu-item" id="sync-btn" onclick="pycmd('sync')">
+                <i class="icon"></i>
+                <span>Sync</span>
+            </div>
+            <div class="menu-item" id="onigiri-settings-btn" onclick="pycmd('openOnigiriSettings')">
+                <i class="icon"></i>
+                <span>Settings</span>
+            </div>
+            
+            <details class="menu-group">
+                <summary class="menu-item">
+                    <i class="icon"></i>
+                    <span>More</span>
+                </summary>
+                <div class="menu-group-items">
+                    <div class="menu-item" id="get-shared-btn" onclick="pycmd('shared')">
+                        <i class="icon"></i>
+                        <span>Get Shared</span>
+                    </div>
+                    <div class="menu-item" id="create-deck-btn" onclick="pycmd('create')">
+                        <i class="icon"></i>
+                        <span>Create Deck</span>
+                    </div>
+                    <div class="menu-item" id="import-file-btn" onclick="pycmd('import')">
+                        <i class="icon"></i>
+                        <span>Import File</span>
+                    </div>
+                </div>
+            </details>
+            
+            <h2>DECKS</h2>
+            <div id="deck-list-container">
+                <table class="deck-table">
+                    <tbody>
+                        %(tree)s
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="resize-handle"></div>
+        <div class="main-content">
+            <div class="injected-stats-block">
+                %(stats)s
+            </div>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {{
+        if (typeof anki !== 'undefined' && anki.setupDeckBrowser) {{
+            anki.setupDeckBrowser();
+        }}
+    }});
+    </script>
+    """
 
-	user_name = conf.get("userName", "USER") 
-	profile_pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
-	if profile_pic_filename:
-		profile_pic_url = f"/_addons/{addon_package}/user_files/profile/{profile_pic_filename}"
-		profile_pic_html = f'<img src="{profile_pic_url}" class="profile-pic">'
-	else:
-		profile_pic_html = f'<div class="profile-pic-placeholder"><span>{user_name[0] if user_name else "U"}</span></div>'
+    conf = config.get_config()
+    addon_package = mw.addonManager.addonFromModule(__name__)
 
-	profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
-	profile_bg_image = mw.col.conf.get("modern_menu_profile_bg_image", "")
-	bg_style_str = ""
-	bg_class_str = ""
+    user_name = conf.get("userName", "USER") 
+    profile_pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
+    if profile_pic_filename:
+        profile_pic_url = f"/_addons/{addon_package}/user_files/profile/{profile_pic_filename}"
+        profile_pic_html = f'<img src="{profile_pic_url}" class="profile-pic">'
+    else:
+        profile_pic_html = f'<div class="profile-pic-placeholder"><span>{user_name[0] if user_name else "U"}</span></div>'
 
-	if profile_bg_mode == "image" and profile_bg_image:
-		bg_image_url = f"/_addons/{addon_package}/user_files/profile_bg/{profile_bg_image}"
-		bg_style_str = f"background-image: url('{bg_image_url}'); background-size: cover; background-position: center;"
-		bg_class_str = "with-image-bg"
-	elif profile_bg_mode == "custom":
-		bg_style_str = "background-color: var(--profile-bg-custom-color);"
-	else:
-		bg_style_str = "background-color: var(--accent-color);"
+    profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+    profile_bg_image = mw.col.conf.get("modern_menu_profile_bg_image", "")
+    bg_style_str = ""
+    bg_class_str = ""
 
-	profile_bar_html = f"""
+    if profile_bg_mode == "image" and profile_bg_image:
+        bg_image_url = f"/_addons/{addon_package}/user_files/profile_bg/{profile_bg_image}"
+        bg_style_str = f"background-image: url('{bg_image_url}'); background-size: cover; background-position: center;"
+        bg_class_str = "with-image-bg"
+    elif profile_bg_mode == "custom":
+        bg_style_str = "background-color: var(--profile-bg-custom-color);"
+    else:
+        bg_style_str = "background-color: var(--accent-color);"
+
+    profile_bar_html = f"""
 	<div class="profile-bar {bg_class_str}" style="{bg_style_str}" onclick="pycmd('showUserProfile')">
 		{profile_pic_html}
 		<span class="profile-name">{user_name}</span>
 	</div>
 	"""
 
-	welcome_message = ""
-	if not conf.get("hideWelcomeMessage", False):
-		welcome_message = f"WELCOME {user_name.upper()}!"
+    welcome_message = ""
+    if not conf.get("hideWelcomeMessage", False):
+        welcome_message = f"WELCOME {user_name.upper()}!"
 
-	content_box_html = ""
-	sidebar_mode = mw.col.conf.get("modern_menu_sidebar_bg_mode", "main")
-	box_enabled = mw.col.conf.get("modern_menu_sidebar_content_box_enabled", False)
-	if sidebar_mode == 'custom' and box_enabled:
-		content_box_html = '<div class="sidebar-content-box"></div>'
+    content_box_html = ""
+    sidebar_mode = mw.col.conf.get("modern_menu_sidebar_bg_mode", "main")
+    box_enabled = mw.col.conf.get("modern_menu_sidebar_content_box_enabled", False)
+    if sidebar_mode == 'custom' and box_enabled:
+        content_box_html = '<div class="sidebar-content-box"></div>'
 
-	saved_width = mw.col.conf.get("modern_menu_sidebar_width", 260)
-	sidebar_style = f"width: {saved_width}px;"
-	
-	DeckBrowser._body = custom_body_template.format(
-		content_box=content_box_html,
-		welcome_message=welcome_message,
-		sidebar_style=sidebar_style,
-		profile_bar=profile_bar_html
-	)
+    saved_width = mw.col.conf.get("modern_menu_sidebar_width", 260)
+    sidebar_style = f"width: {saved_width}px;"
+    
+    DeckBrowser._body = custom_body_template.format(
+        content_box=content_box_html,
+        welcome_message=welcome_message,
+        sidebar_style=sidebar_style,
+        profile_bar=profile_bar_html
+    )
 
-	# --- Heatmap Injection ---
-	heatmap_html = ""
-	if conf.get("showHeatmapOnMain", True):
-		heatmap_html = "<div id='onigiri-heatmap-container'></div>"
+    # --- Heatmap Injection ---
+    heatmap_html = ""
+    if conf.get("showHeatmapOnMain", True):
+        heatmap_html = "<div id='onigiri-heatmap-container'></div>"
 
-	# --- Stats Grid ---
-	cards_today, time_today_seconds = deck_browser.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (deck_browser.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
-	time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
-	cards_today = cards_today if cards_today is not None else 0
-	time_today_minutes = time_today_seconds / 60
-	seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
-	stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
-	title_html = f'<h1 style="text-align: left;">{stats_title}</h1>' if stats_title else ""
-	stats_grid_html = f"""<div class="stats-grid"><div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div><div class="stat-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div><div class="stat-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div></div>"""
-	
-	# Combine stats and heatmap
-	my_stats_html = title_html + stats_grid_html + heatmap_html
+    # --- Stats Grid ---
+    cards_today, time_today_seconds = deck_browser.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (deck_browser.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+    time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
+    cards_today = cards_today if cards_today is not None else 0
+    time_today_minutes = time_today_seconds / 60
+    seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
+    stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
+    title_html = f'<h1 style="text-align: left;">{stats_title}</h1>' if stats_title else ""
+    stats_grid_html = f"""<div class="stats-grid"><div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div><div class="stat-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div><div class="stat-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div></div>"""
+    
+    # Combine stats and heatmap
+    my_stats_html = title_html + stats_grid_html + heatmap_html
 
-	content.stats = my_stats_html + content.stats
-
-
-# --- Toolbar Patching ---
-_toolbar_patched = False
-_original_MainWebView_eventFilter = None
+    content.stats = my_stats_html + content.stats
 
 
 def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -> bool:
