@@ -357,3 +357,53 @@ tr.deck.drag-over-nest {
 .review-count, td.count {
     display: none !important;
 }
+
+/* --- Sidebar Skeleton Loader Styles --- */
+
+/* Base for skeleton items: hide text, remove bg, prevent interaction */
+.sidebar-left.skeleton-loading .profile-bar,
+.sidebar-left.skeleton-loading .add-button-dashed,
+.sidebar-left.skeleton-loading .menu-item {
+    color: transparent !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    pointer-events: none; /* Important: disable clicks during loading anim */
+    position: relative; /* Needed for the pseudo-element */
+    overflow: hidden; /* Keep the pulse inside the element's bounds */
+}
+
+/* The pulsing placeholder pseudo-element */
+.sidebar-left.skeleton-loading .profile-bar::before,
+.sidebar-left.skeleton-loading .add-button-dashed::before,
+.sidebar-left.skeleton-loading .menu-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--highlight-bg);
+    border-radius: 8px; /* Match element's radius */
+    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    z-index: 1;
+}
+
+/* Special radius for profile bar */
+.sidebar-left.skeleton-loading .profile-bar::before {
+    border-radius: 50px;
+}
+
+/* Hide the actual content (icons, text, profile pic) underneath the skeleton */
+.sidebar-left.skeleton-loading .profile-bar > *,
+.sidebar-left.skeleton-loading .add-button-dashed > *,
+.sidebar-left.skeleton-loading .menu-item > * {
+    visibility: hidden;
+}
+
+/* Keyframes for the pulsing animation */
+@keyframes skeleton-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
