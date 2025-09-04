@@ -874,70 +874,89 @@ def generate_profile_bar_fix_css():
 }
 </style>
 """
-
 def generate_icon_css(addon_package, conf):
-	"""
-	Generates CSS for all icons using the robust mask-image technique.
-	This allows any single-color user-provided SVG to be colored dynamically.
-	"""
+    other_icon_selectors = {
+        "options": "td.opts a", "folder": "tr.deck:has(.collapse) a.deck::before",
+        "book": "tr.deck:not(:has(.collapse)) a.deck::before", "add": "#add-btn .icon",
+        "browse": "#browser-btn .icon", "stats": "#stats-btn .icon", "sync": "#sync-btn .icon",
+        "settings": "#onigiri-settings-btn .icon", "more": "summary.menu-item .icon", 
+        "get_shared": "#get-shared-btn .icon", "create_deck": "#create-deck-btn .icon", 
+        "import_file": "#import-file-btn .icon",
+    }
+    
+    css_rules = []
+    for key, selector in other_icon_selectors.items():
+        filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
+        url = ""
+        if filename:
+            url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
+        else:
+            url = f"url('/_addons/{addon_package}/user_files/icons/system_icons/{key}.svg')"
+        
+        css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
 
-	DEFAULTS = {
-		"collapse_closed": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='12' y1='5' x2='12' y2='19'/%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3C/svg%3E",
-		"collapse_open": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E",
-		"options": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Ccircle cx='12' cy='6' r='2'/%3E%3Ccircle cx='12' cy='12' r='2'/%3E%3Ccircle cx='12' cy='18' r='2'/%3E%3C/svg%3E",
-		"book": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3C/svg%3E",
-		"folder": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 2 7 12 12 22 7 12 2'/%3E%3Cpolyline points='2 17 12 22 22 17'/%3E%3Cpolyline points='2 12 12 17 22 12'/%3E%3C/svg%3E",
-		"add": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='12' y1='5' x2='12' y2='19'/%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3C/svg%3E",
-		"browse": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='8' y1='6' x2='21' y2='6'/%3E%3Cline x1='8' y1='12' x2='21' y2='12'/%3E%3Cline x1='8' y1='18' x2='21' y2='18'/%3E%3Cline x1='3' y1='6' x2='3.01' y2='6'/%3E%3Cline x1='3' y1='12' x2='3.01' y2='12'/%3E%3Cline x1='3' y1='18' x2='3.01' y2='18'/%3E%3C/svg%3E",
-		"stats": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20V10M18 20V4M6 20V16'/%3E%3C/svg%3E",
-		"sync": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='23 4 23 10 17 10'/%3E%3Cpolyline points='1 20 1 14 7 14'/%3E%3Cpath d='M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15'/%3E%3C/svg%3E",
-		"settings": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.51-.38-1.06-.7-1.66-.94l-.37-2.65A.5.5 0 0 0 14.1 2h-4.2a.5.5 0 0 0-.49.42l-.37 2.65c-.6.24-1.15.56-1.66.94l-2.39-.96a.5.5 0 0 0-.6.22l-1.92 3.32a.5.5 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.51.38 1.06.7 1.66.94l.37 2.65A.5.5 0 0 0 9.9 22h4.2a.5.5 0 0 0 .49-.42l.37-2.65c.6-.24 1.15-.56 1.66-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E",
-		"more": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='1'/%3E%3Ccircle cx='19' cy='12' r='1'/%3E%3Ccircle cx='5' cy='12' r='1'/%3E%3C/svg%3E",
-		"get_shared": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 17l4 4 4-4'/%3E%3Cpath d='M12 12v9'/%3E%3Cpath d='M20.88 18.09A5 5 0 0018 9h-1.26A8 8 0 103 16.29'/%3E%3C/svg%3E",
-		"create_deck": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/%3E%3Cline x1='12' y1='11' x2='12' y2='17'/%3E%3Cline x1='9' y1='14' x2='15' y2='14'/%3E%3C/svg%3E",
-		"import_file": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='1 1 22 22' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='7 10 12 15 17 10'/%3E%3Cline x1='12' y1='15' x2='12' y2='3'/%3E%3C/svg%3E",
-	}
+    # --- Get URLs for collapse icons ---
+    closed_icon_file = mw.col.conf.get("modern_menu_icon_collapse_closed", "")
+    open_icon_file = mw.col.conf.get("modern_menu_icon_collapse_open", "")
 
-	css_rules = []
+    closed_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{closed_icon_file}')" if closed_icon_file \
+        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_closed.svg')"
 
-	icon_selectors = {
-		"collapse_closed": "a.collapse.state-closed", "collapse_open": "a.collapse.state-open",
-		"options": "td.opts a", "folder": "tr.deck:has(a.collapse) a.deck::before",
-		"book": "tr.deck:not(:has(a.collapse)) a.deck::before", "add": "#add-btn .icon",
-		"browse": "#browser-btn .icon", "stats": "#stats-btn .icon", "sync": "#sync-btn .icon",
-		"settings": "#onigiri-settings-btn .icon",
-		"more": "summary.menu-item .icon", "get_shared": "#get-shared-btn .icon",
-		"create_deck": "#create-deck-btn .icon", "import_file": "#import-file-btn .icon",
-	}
+    open_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{open_icon_file}')" if open_icon_file \
+        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_open.svg')"
+        
+    other_selectors_str = ", ".join(other_icon_selectors.values())
 
-	for key, selector in icon_selectors.items():
-		filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
-
-		if filename:
-			url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
-		else:
-			url = f"url(\"{DEFAULTS.get(key, '')}\")"
-
-		css_rules.append(f"""
-{selector} {{
-	mask-image: {url};
-	-webkit-mask-image: {url};
-}}""")
-
-	all_selectors = ", ".join(icon_selectors.values())
-
-	return f"""
+    return f"""
 <style id="modern-menu-icon-styles">
-{all_selectors} {{
-	background: var(--icon-color);
-	mask-size: contain;
-	mask-repeat: no-repeat;
-	mask-position: center;
-	-webkit-mask-size: contain;
-	-webkit-mask-repeat: no-repeat;
-	-webkit-mask-position: center;
-}}
-{''.join(css_rules)}
+    /* Hide the original '+' or '-' text from the link. */
+    a.collapse {{
+        font-size: 0 !important;
+    }}
+
+    /* Create the icon using a pseudo-element on the link. */
+    a.collapse::before {{
+        content: '';
+        display: inline-block;
+        width: 100%;
+        height: 100%;
+        transition: background-color 0.1s ease;
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+    }}
+
+    /* Apply the correct SVG icon and background color only when the state class is present. */
+    a.collapse.state-closed::before {{
+        mask-image: {closed_icon_url};
+        -webkit-mask-image: {closed_icon_url};
+        background-color: var(--icon-color, #888888);
+        
+    }}
+    a.collapse.state-open::before {{
+        mask-image: {open_icon_url};
+        -webkit-mask-image: {open_icon_url};
+        /* START FIX: Apply background color here */
+        background-color: var(--icon-color, #888888);
+        /* END FIX */
+    }}
+
+    /* General rules for other icons (Unchanged) */
+    {other_selectors_str} {{
+        background-color: var(--icon-color, #888888);
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        display: inline-block;
+    }}
+    /* Individual mask images for other icons (Unchanged) */
+    {''.join(css_rules)}
 </style>
 """
 
@@ -1219,8 +1238,79 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
         mw.toolbar.web.setVisible(True)
         mw.bottomWeb.setVisible(True)
 
+def _onigiri_render_deck_node(self, node, ctx) -> str:
+    """
+    A patched version of DeckBrowser._render_deck_node that creates the
+    HTML structure Onigiri's CSS and JS expect (e.g., td.collapse-cell).
+    """
+    if node.collapsed:
+        prefix = "+"
+    else:
+        prefix = "-"
+
+    due = node.review_count + node.learn_count
+
+    def indent():
+        return "&nbsp;" * 6 * (node.level - 1)
+
+    klass = "deck current" if node.deck_id == ctx.current_deck_id else "deck"
+    
+    # Begin row
+    buf = f"<tr class='{klass}' id='{node.deck_id}'>"
+
+    # --- Onigiri Fix Start ---
+    # Group indentation and collapse icon together in a span
+    if node.children:
+        collapse_link = f"<a class=collapse href=# onclick='return pycmd(\"collapse:{node.deck_id}\")'>{prefix}</a>"
+    else:
+        collapse_link = "<span class=collapse></span>"
+    
+    deck_prefix = f"<span class='deck-prefix'>{indent()}{collapse_link}</span>"
+
+    extraclass = "filtered" if node.filtered else ""
+    buf += f"""
+    <td class=decktd colspan=5>
+        {deck_prefix}
+        <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
+            {node.name}
+        </a>
+    </td>
+    """
+    # --- Onigiri Fix End ---
+
+    # Due counts (unchanged from original)
+    def nonzeroColour(cnt, klass):
+        if not cnt:
+            klass = "zero-count"
+        return f'<span class="{klass}">{cnt}</span>'
+
+    buf += f"""
+    <td align=right>{nonzeroColour(due, "review-count")}</td>
+    <td align=right>{nonzeroColour(node.new_count, "new-count")}</td>
+    """
+
+    # Options gear (unchanged from original)
+    buf += f"""
+    <td align=center class=opts>
+      <a onclick='return pycmd("opts:{node.deck_id}");'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr>"""
+    
+    # Render children if not collapsed
+    if not node.collapsed:
+        for child in node.children:
+            buf += self._render_deck_node(child, ctx) # type: ignore
+            
+    return buf
+
 def apply_patches():
 	global _toolbar_patched, _original_MainWebView_eventFilter
+
+	# This new line is the crucial part of the fix.
+	# It replaces Anki's deck row renderer with our custom one.
+	DeckBrowser._render_deck_node = _onigiri_render_deck_node
 
 	if not _toolbar_patched:
 		# Patch event filter to prevent hover-to-show on specific screens
