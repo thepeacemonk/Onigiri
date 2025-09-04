@@ -266,6 +266,7 @@ span.collapse, a.collapse {
     width: 16px;
     height: 16px;
     margin-bottom: 5px;
+    margin-right: 8px; /* <-- Add this line */
 }
 td.opts {
     width: 24px;
