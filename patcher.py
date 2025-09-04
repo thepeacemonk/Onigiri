@@ -1128,7 +1128,7 @@ def prepend_custom_stats(deck_browser, content):
     # FIX: Define the HTML template directly inside the function
     custom_body_template = """
     <div class="container modern-main-menu">
-        <div class="sidebar-left" style="{sidebar_style}">
+        <div class="sidebar-left skeleton-loading" style="{sidebar_style}">
             {content_box}
             <h2>{welcome_message}</h2>
             {profile_bar}
@@ -1251,10 +1251,29 @@ def prepend_custom_stats(deck_browser, content):
         profile_bar=profile_bar_html
     )
 
-    # --- Heatmap Injection ---
+    # --- SKELETON LOADER CHANGE START ---
     heatmap_html = ""
     if conf.get("showHeatmapOnMain", True):
-        heatmap_html = "<div id='onigiri-heatmap-container'></div>"
+        skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
+        
+        heatmap_html = f"""
+        <div id='onigiri-heatmap-container'>
+            <div class="heatmap-header-skeleton">
+                <div class="header-left-skeleton">
+                    <div class="skeleton-title"></div>
+                    <div class="skeleton-nav"></div>
+                </div>
+                <div class="header-right-skeleton">
+                    <div class="skeleton-streak"></div>
+                    <div class="skeleton-filters"></div>
+                </div>
+            </div>
+            <div class="heatmap-grid-skeleton">
+                {skeleton_cells}
+            </div>
+        </div>
+        """
+    # --- SKELETON LOADER CHANGE END ---
 
     # --- Stats Grid ---
     cards_today, time_today_seconds = deck_browser.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (deck_browser.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
@@ -1417,3 +1436,4 @@ def apply_patches():
 		_toolbar_patched = True
 	
 	patch_overview()
+
