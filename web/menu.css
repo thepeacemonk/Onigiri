@@ -25,7 +25,7 @@ body {
     min-width: 0px;
     max-width: 700px;
     z-index: 2;
-    transition: min-width 0.3s ease, width 0.3s ease;
+    transition: min-width 0.8s ease, width 0.8s ease;
     overflow: hidden;
 }
 .sidebar-left h2 {
@@ -35,18 +35,44 @@ body {
     margin-top: 30px;
     margin-bottom: 15px;
 }
+
+/* --- New Resize Handle Styles --- */
 .resize-handle {
-    width: 5px;
+    width: 15px; /* Increased width for a larger hover target */
     cursor: col-resize;
-    background-color: transparent;
-    transition: background-color 0.2s;
     flex-shrink: 0;
     z-index: 2;
     position: relative;
+    display: flex;
+    justify-content: center;
+    /* Default vertical position for the indicator, controlled by JS */
+    --handle-top: 50%; 
 }
-.resize-handle:hover {
-    background-color: var(--border);
+
+/* The rounded indicator */
+.resize-handle-indicator {
+    position: absolute;
+    top: var(--handle-top);
+    left: 50%;
+    width: 4px;
+    height: 32px;
+    background-color: var(--border); /* Default color is same as the line */
+    border-radius: 4px;
+    box-shadow: none; /* No shadow in default state */
+    opacity: 1; /* Always visible */
+    transform: translate(-50%, -50%) scale(1);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, top 0.05s ease, transform 0.2s ease; /* Fast 'top' transition for precision */
+    pointer-events: none; /* Prevents interference with parent's mouse events */
 }
+
+/* Change color and add shadow on hover or while actively resizing */
+.resize-handle:hover .resize-handle-indicator,
+.resize-handle.is-resizing .resize-handle-indicator {
+    background-color: #007aff; /* Blue color on interaction */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transform: translate(-50%, -50%) scale(1.5);
+}
+
 
 /* Profile Bar Styles */
 .profile-bar {
