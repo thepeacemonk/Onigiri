@@ -1436,4 +1436,3 @@ def apply_patches():
 		_toolbar_patched = True
 	
 	patch_overview()
-
