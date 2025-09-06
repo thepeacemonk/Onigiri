@@ -307,6 +307,7 @@ def _get_stats_html():
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
     
     # 2. Generate the HTML for the stats grid.
+    stats_grid_parts = [] 
     if not conf.get("hideStudiedStat", False):
         stats_grid_parts.append(f"""<div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div>""")
     if not conf.get("hideTimeStat", False):
@@ -498,7 +499,8 @@ def patch_overview():
 	conf = config.get_config()
 	show_toolbar_replacements = conf.get("hideNativeHeaderAndBottomBar", False)
 	ultra_hide = conf.get("ultraHide", False)
-
+    
+    
 	def new_table(self) -> str:
 		counts = list(self.mw.col.sched.counts())
 		
