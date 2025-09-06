@@ -14,7 +14,7 @@ body {
     text-align: center;
     width: 100%;
     /* MODIFIED: Increased top padding to make space for the absolutely positioned header */
-    padding: 120px 20px 20px 20px;
+    padding: 0px 20px 20px 20px;
 }
 
 /* New header for buttons */
