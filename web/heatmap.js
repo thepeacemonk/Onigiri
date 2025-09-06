@@ -22,12 +22,16 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         let maxReviews = 0;
         for (const dayNumStr in rawData) {
             const dayNum = parseInt(dayNumStr, 10);
+            // This creates a date object at midnight UTC for the given day number.
+            // Python has already calculated the correct "Anki day" (with rollover),
+            // so we don't need to do any extra timezone math here.
             const date = new Date(dayNum * 86400 * 1000);
-            const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-            const correctedDate = new Date(date.getTime() + userTimezoneOffset);
 
+            // .toISOString() correctly gives us the UTC date string (e.g., '2025-09-05')
+            // which we use as a key.
+            const dateKey = date.toISOString().slice(0, 10);
+            
             const count = rawData[dayNumStr];
-            const dateKey = correctedDate.toISOString().slice(0, 10);
             reviewsByDay.set(dateKey, count);
             if (count > maxReviews) {
                 maxReviews = count;
