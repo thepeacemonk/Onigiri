@@ -62,13 +62,23 @@
     cursor: pointer;
     font-weight: 500;
     color: var(--fg-subtle);
-    transition: all 0.2s ease;
+    /* transition removed */
+}
+
+.filter-btn:hover {
+    background: transparent !important; /* This overrides the gradient */
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--fg-subtle);
+    opacity: 1;
 }
 
 .filter-btn.active {
     background-color: var(--canvas-inset);
     color: var(--fg);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .heatmap-nav {
@@ -91,12 +101,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease;
+    /* transition removed */
 }
+
 .nav-btn:hover {
-    background-color: var(--highlight-bg);
+    background: var(--highlight-bg) !important; /* This overrides the gradient */
+    font-size: 15px;
+    font-weight: bold;
     border: none;
-    border-color: transparent;
+    opacity: 1;
 }
 
 .nav-title {
@@ -119,7 +132,6 @@
 .heatmap-day-cell .day-shape {
     width: 100%;
     height: 100%;
-    transition: transform 0.1s ease-out;
     background-color: var(--heatmap-color-zero);
     position: relative;
     overflow: hidden; /* Important for containing the pseudo-element */
@@ -134,11 +146,6 @@
     bottom: 0;
     background-color: var(--heatmap-color);
     opacity: var(--heatmap-intensity); /* Use the intensity variable set by JS */
-    transition: opacity 0.2s;
-}
-
-.heatmap-day-cell:hover .day-shape {
-    transform: scale(1.2);
 }
 
 /* Tooltip */
@@ -157,7 +164,6 @@
     z-index: 10;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.2s, visibility 0.2s;
     pointer-events: none;
 }
 
@@ -375,4 +381,3 @@
     }
 }
 /* --- SKELETON LOADER STYLES END --- */
-
