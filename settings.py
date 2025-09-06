@@ -372,6 +372,8 @@ class SettingsDialog(QDialog):
     def create_general_tab(self):
         page = QWidget(); layout = QVBoxLayout(page)
         
+        # Customize Names
+
         user_section = SectionGroup("User Settings", self)
         form_layout = QFormLayout(); form_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.name_input = QLineEdit(self.current_config.get("userName", DEFAULTS["userName"])); form_layout.addRow("User Name:", self.name_input)
@@ -380,23 +382,52 @@ class SettingsDialog(QDialog):
         user_section.add_layout(form_layout)
         
         display_section = SectionGroup("Display Options", self)
+        
+        # Hide Welcome, Profile, Studied Today Text
 
-        self.show_heatmap_on_main_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
-        self.show_heatmap_on_main_checkbox.setChecked(self.current_config.get("showHeatmapOnMain", True))
-        display_section.add_widget(self._create_toggle_row(self.show_heatmap_on_main_checkbox, "Show heatmap on main screen"))
-
-        self.hide_studied_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_studied_checkbox.setChecked(self.current_config.get("hideStudiedToday", False)); display_section.add_widget(self._create_toggle_row(self.hide_studied_checkbox, "Hide 'Studied Today' text on main screen"))
-        self.hide_stats_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_stats_checkbox.setChecked(self.current_config.get("hideTodaysStats", False)); display_section.add_widget(self._create_toggle_row(self.hide_stats_checkbox, "Hide 'Today's Stats' grid on main screen"))
         self.hide_welcome_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_welcome_checkbox.setChecked(self.current_config.get("hideWelcomeMessage", False)); display_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, "Hide 'Welcome' message"))
         self.hide_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_profile_bar_checkbox.setChecked(self.current_config.get("hideProfileBar", False)); display_section.add_widget(self._create_toggle_row(self.hide_profile_bar_checkbox, "Hide profile bar"))
-        self.hide_native_header_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_native_header_checkbox.setChecked(self.current_config.get("hideNativeHeaderAndBottomBar", False)); display_section.add_widget(self._create_toggle_row(self.hide_native_header_checkbox, "Hide mode"))
+        self.hide_studied_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_studied_checkbox.setChecked(self.current_config.get("hideStudiedToday", False)); display_section.add_widget(self._create_toggle_row(self.hide_studied_checkbox, "Hide 'Studied Today' text on main screen"))
+
+        # Hide Heatmap
         
+        self.hide_heatmap_on_main_checkbox = AnimatedToggleButton(accent_color=self.accent_color)    
+        self.hide_heatmap_on_main_checkbox.setChecked(self.current_config.get("hideHeatmapOnMain", False))
+        display_section.add_widget(self._create_toggle_row(self.hide_heatmap_on_main_checkbox, "Hide heatmap on main screen"))
+        
+        # Hide Today's Stats 
+        self.hide_stats_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_stats_checkbox.setChecked(self.current_config.get("hideTodaysStats", False)); display_section.add_widget(self._create_toggle_row(self.hide_stats_checkbox, "Hide 'Today's Stats' grid on main screen"))
+        self.hide_stats_checkbox.toggled.connect(self._on_hide_all_stats_toggled)
+
+        # 'Studied' card toggle
+        self.hide_studied_stat_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_studied_stat_checkbox.setChecked(self.current_config.get("hideStudiedStat", False))
+        display_section.add_widget(self._create_toggle_row(self.hide_studied_stat_checkbox, "Hide 'Studied' card", "padding-left: 20px;"))
+
+        # 'Time' card toggle
+        self.hide_time_stat_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_time_stat_checkbox.setChecked(self.current_config.get("hideTimeStat", False))
+        display_section.add_widget(self._create_toggle_row(self.hide_time_stat_checkbox, "Hide 'Time' card", "padding-left: 20px;"))
+
+        # 'Pace' card toggle
+        self.hide_pace_stat_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_pace_stat_checkbox.setChecked(self.current_config.get("hidePaceStat", False))
+        display_section.add_widget(self._create_toggle_row(self.hide_pace_stat_checkbox, "Hide 'Pace' card", "padding-left: 20px;"))
+
+        # 'Retention' card toggle
+        self.hide_retention_stat_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_retention_stat_checkbox.setChecked(self.current_config.get("hideRetentionStat", False))
+        display_section.add_widget(self._create_toggle_row(self.hide_retention_stat_checkbox, "Hide 'Retention' card", "padding-left: 20px;"))
+
+        # Hide modes
+        
+        self.hide_native_header_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_native_header_checkbox.setChecked(self.current_config.get("hideNativeHeaderAndBottomBar", False)); display_section.add_widget(self._create_toggle_row(self.hide_native_header_checkbox, "Hide mode"))
         desc_label = QLabel("Hides top and bottom toolbar completely on the main screen, on overview you have a modern toolbar and in reviewer you use Anki's native toolbar"); desc_label.setStyleSheet("font-size: 11px; color: #888; padding-left: 20px;"); display_section.add_widget(desc_label)
-        self.ultra_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.ultra_hide_checkbox.setChecked(self.current_config.get("ultraHide", False)); self.ultra_hide_checkbox.setToolTip("Hides the modern toolbar on overview and the native toolbar on reviewer."); display_section.add_widget(self._create_toggle_row(self.ultra_hide_checkbox, "Ultra hide mode", "padding-left: 20px;"))
+        self.ultra_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.ultra_hide_checkbox.setChecked(self.current_config.get("UltraHide", False)); self.ultra_hide_checkbox.setToolTip("Hides the modern toolbar on overview and the native toolbar on reviewer."); display_section.add_widget(self._create_toggle_row(self.ultra_hide_checkbox, "Ultra hide mode", "padding-left: 20px;"))
         ultra_desc_label = QLabel("Hides the modern toolbar on the overview screen and the native toolbar on the reviewer screen, an absolute immersive experiense. You will need to use keyboard shortcuts to navigate, be advised!"); ultra_desc_label.setWordWrap(True); ultra_desc_label.setStyleSheet("font-size: 11px; color: #888; padding-left: 40px;"); display_section.add_widget(ultra_desc_label)
         
         self.hide_native_header_checkbox.toggled.connect(self.ultra_hide_checkbox.setEnabled); self.ultra_hide_checkbox.setEnabled(self.hide_native_header_checkbox.isChecked())
-        
+
         congrats_section = SectionGroup("Congrats Page Options", self)
         congrats_form_layout = QFormLayout()
         self.show_congrats_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
@@ -873,13 +904,30 @@ class SettingsDialog(QDialog):
         return page
 
     def _populate_color_section(self, layout, mode):
+        local_color_labels = COLOR_LABELS.copy()
+        local_color_labels["--star-color"] = {
+            "label": "Star Color",
+            "tooltip": "Color for the filled stars in the Retention stat card."
+        }
+        local_color_labels["--empty-star-color"] = {
+            "label": "Empty Star Color",
+            "tooltip": "Color for the empty stars in the Retention stat card."
+        }
+        
+        local_defaults = {
+            "--star-color": "#FFD700",
+            "--empty-star-color": "#e0e0e0" if mode == 'light' else '#4a4a4a'
+        }
+
         colors = self.current_config.get("colors", {}).get(mode, {})
-        for name, label_info in COLOR_LABELS.items():
-            # Add "--bg" to the list of keys to skip
+        for name, label_info in local_color_labels.items():
             if name in ["--accent-color", "--bg"]: 
                 continue
-            if name in DEFAULTS["colors"][mode]:
-                value = colors.get(name, DEFAULTS["colors"][mode][name])
+
+            default_value = DEFAULTS["colors"][mode].get(name, local_defaults.get(name))
+            
+            if default_value is not None:
+                value = colors.get(name, default_value)
                 pill_widget = self._create_color_pill(name, value, mode, label_info)
                 layout.addWidget(pill_widget)
         layout.addStretch()
@@ -1173,7 +1221,7 @@ class SettingsDialog(QDialog):
         deck_icons_group, deck_icons_layout_content = self._create_inner_group("Deck")
         deck_icons_layout = QGridLayout(); deck_icons_layout.setSpacing(15)
         deck_icons_layout_content.addLayout(deck_icons_layout)
-        deck_icons_to_configure = {"folder": "Deck List: Folder Icon", "book": "Deck List: Deck Icon", "options": "Deck List: Options Icon", "collapse_closed": "Deck List: Collapsed Icon (+)", "collapse_open": "Deck List: Expanded Icon (⌄)"}
+        deck_icons_to_configure = {"folder": "Deck List: Folder Icon", "deck_child": "Deck List: Child Deck Icon", "options": "Deck List: Options Icon", "collapse_closed": "Deck List: Collapsed Icon (+)", "collapse_open": "Deck List: Expanded Icon (⌄)"}
         row, col, num_cols = 0, 0, 3
         for key, label_text in deck_icons_to_configure.items():
             card = QWidget(); card_layout = QVBoxLayout(card); card_layout.setContentsMargins(0,0,0,0); card_layout.setSpacing(5)
@@ -1198,6 +1246,16 @@ class SettingsDialog(QDialog):
             if col >= num_cols: col = 0; row += 1
         assignment_section.add_widget(action_buttons_group)
         
+        stats_icons_group, stats_icons_layout_content = self._create_inner_group("Stats Icons")
+        stats_icons_layout = QGridLayout()
+        stats_icons_layout.setSpacing(15)
+        stats_icons_layout_content.addLayout(stats_icons_layout)
+        card = QWidget(); card_layout = QVBoxLayout(card); card_layout.setContentsMargins(0,0,0,0); card_layout.setSpacing(5)
+        label = QLabel("Retention Star"); label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        control_widget = self._create_icon_control_widget("retention_star"); self.icon_assignment_widgets.append(control_widget)
+        card_layout.addWidget(label); card_layout.addWidget(control_widget); stats_icons_layout.addWidget(card, 0, 0)
+        assignment_section.add_widget(stats_icons_group)
+
         reset_icons_button = QPushButton("Reset All Assignments to Default"); reset_icons_button.clicked.connect(self.reset_icons_to_default)
         reset_button_layout = QHBoxLayout(); reset_button_layout.addStretch(); reset_button_layout.addWidget(reset_icons_button); assignment_section.add_layout(reset_button_layout)
         layout.addWidget(assignment_section)
@@ -1535,7 +1593,8 @@ class SettingsDialog(QDialog):
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f: svg_xml = f.read()
         if not svg_xml:
-            data_uri = ICON_DEFAULTS.get(key, ""); 
+            default_key = 'star' if key == 'retention_star' else key
+            data_uri = ICON_DEFAULTS.get(default_key, ""); 
             if data_uri.startswith("data:image/svg+xml,"): encoded_svg = data_uri.split(",", 1)[1]; svg_xml = urllib.parse.unquote(encoded_svg)
         if not svg_xml: preview_label.setPixmap(QPixmap()); return
         if 'stroke="currentColor"' in svg_xml: colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{icon_color}"')
@@ -1645,7 +1704,7 @@ class SettingsDialog(QDialog):
                     if name == "--accent-color": target_accent_input.setText(value)
                     elif name in target_widgets: target_widgets[name].setText(value)
         
-        if "backgrounds" in theme_data and self.tabs_loaded.get(3):
+        if "backgrounds" in theme_data and self.tabs_loaded.get(3): # Index for Background page
              backgrounds = theme_data["backgrounds"]
              self.color_radio.setChecked(True)
              self.bg_light_color_input.setText(backgrounds.get("light", DEFAULTS["colors"]["light"]["--bg"]))
@@ -1794,18 +1853,32 @@ class SettingsDialog(QDialog):
     def toggle_sidebar_bg_type_options(self): is_color=self.sidebar_bg_type_color_radio.isChecked();is_image=self.sidebar_bg_type_image_radio.isChecked();is_image_color=self.sidebar_bg_type_image_color_radio.isChecked();self.sidebar_color_group.setVisible(is_color or is_image_color);self.sidebar_image_group.setVisible(is_image or is_image_color);self.sidebar_bg_opacity_label.setVisible(is_image_color);self.sidebar_bg_opacity_spinbox.setVisible(is_image_color)
     def toggle_profile_page_bg_options(self): is_gradient = self.profile_page_bg_gradient_radio.isChecked(); self.profile_page_color_group.setVisible(not is_gradient); self.profile_page_gradient_group.setVisible(is_gradient)
 
+    def _on_hide_all_stats_toggled(self, checked):
+        """Toggles the individual stat card checkboxes when the main one is toggled."""
+        self.hide_studied_stat_checkbox.setChecked(checked)
+        self.hide_time_stat_checkbox.setChecked(checked)
+        self.hide_pace_stat_checkbox.setChecked(checked)
+        self.hide_retention_stat_checkbox.setChecked(checked)
+
+
     def _save_general_settings(self):
         self.current_config.update({
             "userName": self.name_input.text(),
             "hideStudiedToday": self.hide_studied_checkbox.isChecked(),
             "hideTodaysStats": self.hide_stats_checkbox.isChecked(),
+            # --- Study Stats  ---
+            "hideStudiedStat": self.hide_studied_stat_checkbox.isChecked(),
+            "hideTimeStat": self.hide_time_stat_checkbox.isChecked(),
+            "hidePaceStat": self.hide_pace_stat_checkbox.isChecked(),
+            "hideRetentionStat": self.hide_retention_stat_checkbox.isChecked(),
+            # -----------------------
             "hideWelcomeMessage": self.hide_welcome_checkbox.isChecked(),
             "hideProfileBar": self.hide_profile_bar_checkbox.isChecked(),
             "hideNativeHeaderAndBottomBar": self.hide_native_header_checkbox.isChecked(),
             "ultraHide": self.ultra_hide_checkbox.isChecked(),
             "showCongratsProfileBar": self.show_congrats_profile_bar_checkbox.isChecked(),
             "congratsMessage": self.congrats_message_input.text(),
-            "showHeatmapOnMain": self.show_heatmap_on_main_checkbox.isChecked(),
+            "hideHeatmapOnMain": self.hide_heatmap_on_main_checkbox.isChecked(),
         })
         mw.col.conf["modern_menu_userName"] = self.name_input.text()
         mw.col.conf["modern_menu_statsTitle"] = self.stats_title_input.text()
