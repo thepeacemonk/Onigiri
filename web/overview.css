@@ -1,139 +1,225 @@
-/* Main container to center content vertically and horizontally */
+/* --- General Profile Window Styles --- */
 body {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-}
-
-.overview-center-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    width: 100%;
-    /* MODIFIED: Increased top padding to make space for the absolutely positioned header */
-    padding: 0px 20px 20px 20px;
-}
-
-/* New header for buttons */
-.overview-header {
-    position: absolute; /* Take the header out of the normal document flow */
-    width: 100%;      /* Make it span the full width to allow centering */
-    top: 10px;        /* Adjust this value to move the buttons higher or lower */
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    /* margin-bottom is no longer needed */
-}
-
-.overview-button {
-    background-color: var(--highlight-bg);
+    background-color: var(--bg);
     color: var(--fg);
-    border: 1px solid var(--border);
-    padding: 8px 18px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 500;
-    transition: background-color 0.2s, border-color 0.2s;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
 }
 
-.overview-bottom-actions {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 10px;
+.profile-container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 20px;
 }
 
-.overview-button:hover {
-    background-color: var(--canvas-inset);
-    border-color: var(--fg-subtle);
-}
-
-
-/* Title styling */
-.overview-title {
-    font-size: 2.8em; /* Bigger title */
-    font-weight: 600;
-    margin-bottom: 40px; /* Space between title and stats */
-}
-
-/* Container for stats and button */
-.overview-container {
-    width: 100%;
-    max-width: 350px; /* Set max width here instead of on the parent */
-    margin-bottom: 25px; /* Add some space below the study button */
-}
-
-/* Stats box styling */
-.stats-container {
-    background-color: var(--canvas-inset);
-    border-radius: 12px; /* Rounded borders */
-    padding: 15px 25px;
+/* --- Header --- */
+.profile-header {
+    position: relative;
+    height: 180px;
+    border-radius: 16px;
+    background-color: var(--accent-color);
+    background-size: cover;
+    background-position: center;
     margin-bottom: 20px;
-}
-
-.stats-row {
     display: flex;
-    justify-content: space-between;
+    align-items: flex-end;
+    padding: 15px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.profile-header::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 50%);
+    z-index: 1;
+}
+
+.profile-header-content {
+    display: flex;
     align-items: center;
-    font-size: 1.1em;
-    padding: 14px 0;
+    gap: 15px;
+    position: relative;
+    z-index: 2;
 }
 
-/* Add separators between rows, but not after the last one */
-.stats-row:not(:last-child) {
-    border-bottom: 1px solid var(--border);
+.profile-pic-large, .profile-pic-placeholder-large {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    box-sizing: border-box;
 }
 
-/* Styling for the colored number bubbles */
-.new-count-bubble,
-.learn-count-bubble,
-.review-count-bubble {
+.profile-pic-large {
+    object-fit: cover;
+}
+
+.profile-pic-placeholder-large {
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.profile-name-large {
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+}
+
+
+/* --- Navigation Tabs --- */
+nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+    justify-content: center; /* This line was added to center the buttons */
+}
+
+.nav-button {
+    background: none;
+    border: var(--accent-color);
+    color: var(--fg-subtle);
     font-weight: 500;
-    padding: 4px 12px;
-    border-radius: 16px; /* Rounded borders for the bubble */
-    min-width: 30px;
+    font: 16px, var(--text);
+    padding: 8px 20px; /* Adjusted padding */
+    cursor: pointer;
+    border-radius: 9999px; /* This creates the pill shape */
+    border-width: 2px;
+    box-shadow: none; /* This line was added to ensure no shadow effect is present */
+}
+
+.nav-button:hover {
+    background: none !important;
+    border-style: none !important;
+    border-color: none !important;
+    box-shadow: none !important;
+}
+
+.nav-button:focus {
+    outline: none;
+    box-shadow: none !important;
+    border-style: none !important;
+    font-weight: 800; 
+    color: var(--fg -1)!important;
+}
+
+
+/* --- Page Content --- */
+h2.section-title {
+    font-size: 18px;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+    margin-top: 30px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+}
+
+.empty-section {
+    color: var(--fg-subtle);
+    text-align: center;
+    padding: 40px;
+}
+
+/* Theme Page: Color List */
+.color-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.color-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--canvas-inset);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.color-info span {
+    display: block;
+}
+.color-info .color-name {
+    font-weight: 500;
+}
+.color-info .color-code {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--fg-subtle);
+}
+
+/* Theme Page: Background Previews */
+.background-previews {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.preview-card {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.preview-image {
+    width: 100%;
+    height: 120px;
+    background-color: var(--highlight-bg);
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-subtle);
+}
+
+.preview-info {
+    padding: 10px;
+    font-weight: 500;
+}
+
+/* Stats Page */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+}
+.stat-card {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
     text-align: center;
 }
-
-/* Set bubble colors using CSS variables from the config */
-.new-count-bubble {
-    background-color: var(--new-count-bubble-bg);
-    color: var(--new-count-bubble-fg);
-}
-
-.learn-count-bubble {
-    background-color: var(--learn-count-bubble-bg);
-    color: var(--learn-count-bubble-fg);
-}
-
-.review-count-bubble {
-    background-color: var(--review-count-bubble-bg);
-    color: var(--review-count-bubble-fg);
-}
-
-
-/* Study Now button styling */
-.add-button-dashed {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
-    border: 2px dashed var(--border);
+.stat-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    text-transform: uppercase;
     color: var(--fg-subtle);
-    font-size: 1.1em;
-    font-weight: 500;
-    width: 100%; /* Match width of the container */
-    box-sizing: border-box; /* Important for width calculation */
-    background: transparent;
 }
-
-.add-button-dashed:hover {
-    background-color: var(--highlight-bg);
-    border-color: var(--fg-subtle);
+.stat-card p {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 500;
 }
