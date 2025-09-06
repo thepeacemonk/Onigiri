@@ -420,13 +420,14 @@ class SettingsDialog(QDialog):
         display_section.add_widget(self._create_toggle_row(self.hide_retention_stat_checkbox, "Hide 'Retention' card", "padding-left: 20px;"))
 
         # Hide modes
-        
         self.hide_native_header_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.hide_native_header_checkbox.setChecked(self.current_config.get("hideNativeHeaderAndBottomBar", False)); display_section.add_widget(self._create_toggle_row(self.hide_native_header_checkbox, "Hide mode"))
         desc_label = QLabel("Hides top and bottom toolbar completely on the main screen, on overview you have a modern toolbar and in reviewer you use Anki's native toolbar"); desc_label.setStyleSheet("font-size: 11px; color: #888; padding-left: 20px;"); display_section.add_widget(desc_label)
-        self.ultra_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.ultra_hide_checkbox.setChecked(self.current_config.get("UltraHide", False)); self.ultra_hide_checkbox.setToolTip("Hides the modern toolbar on overview and the native toolbar on reviewer."); display_section.add_widget(self._create_toggle_row(self.ultra_hide_checkbox, "Ultra hide mode", "padding-left: 20px;"))
+        self.ultra_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color); self.ultra_hide_checkbox.setChecked(self.current_config.get("ultraHide", False)); self.ultra_hide_checkbox.setToolTip("Hides the modern toolbar on overview and the native toolbar on reviewer."); display_section.add_widget(self._create_toggle_row(self.ultra_hide_checkbox, "Ultra hide mode", "padding-left: 20px;"))
         ultra_desc_label = QLabel("Hides the modern toolbar on the overview screen and the native toolbar on the reviewer screen, an absolute immersive experiense. You will need to use keyboard shortcuts to navigate, be advised!"); ultra_desc_label.setWordWrap(True); ultra_desc_label.setStyleSheet("font-size: 11px; color: #888; padding-left: 40px;"); display_section.add_widget(ultra_desc_label)
         
         self.hide_native_header_checkbox.toggled.connect(self.ultra_hide_checkbox.setEnabled); self.ultra_hide_checkbox.setEnabled(self.hide_native_header_checkbox.isChecked())
+
+        # Congrats page
 
         congrats_section = SectionGroup("Congrats Page Options", self)
         congrats_form_layout = QFormLayout()
