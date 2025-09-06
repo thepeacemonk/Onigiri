@@ -86,4 +86,3 @@ def get_heatmap_and_config():
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
     }
     return heatmap_data, heatmap_config
-
