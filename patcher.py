@@ -298,15 +298,35 @@ def _get_stats_html():
     conf = config.get_config()
     show_heatmap = conf.get("showHeatmapOnProfile", True)
 
+    # --- START: Code copied from the main page ---
+    # 1. Calculate today's stats from the database. Note: "deck_browser.mw" was changed to just "mw".
+    cards_today, time_today_seconds = mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+    time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
+    cards_today = cards_today if cards_today is not None else 0
+    time_today_minutes = time_today_seconds / 60
+    seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
+    
+    # 2. Generate the HTML for the stats grid.
+    if not conf.get("hideStudiedStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div>""")
+    if not conf.get("hideTimeStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div>""")
+    if not conf.get("hidePaceStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div>""")
+
+    stats_grid_html = f"""<div class="stats-grid">{''.join(stats_grid_parts)}</div>""" if stats_grid_parts else ""
+    # --- END: Code copied from the main page ---
+
     heatmap_html = ""
     if show_heatmap:
         heatmap_html = "<div id='onigiri-profile-heatmap-container'></div>"
 
+    # 3. Add the new "stats_grid_html" above the heatmap wrapper.
+    # The outer div has been removed as the copied HTML provides its own "stats-grid" container.
     return f"""
-    <div class="stats-grid">
-        <div id="onigiri-profile-heatmap-wrapper">
-            {heatmap_html}
-        </div>
+    {stats_grid_html}
+    <div id="onigiri-profile-heatmap-wrapper" style="margin-top: 20px;">
+        {heatmap_html}
     </div>
     """
 
@@ -583,7 +603,7 @@ def patch_congrats_page():
                 <a href="#" onclick="pycmd('stats'); return false;" class="overview-button">Stats</a>
                 <a href="#" onclick="pycmd('sync'); return false;" class="overview-button">Sync</a>
             </div>
-        """
+            """
 
         # 1. Build Profile Bar HTML (if enabled)
         profile_bar_html = ""
@@ -913,23 +933,25 @@ def generate_icon_size_css():
     return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
 
 def generate_icon_css(addon_package, conf):
-    other_icon_selectors = {
-        "options": "td.opts a", "folder": "tr.deck:has(.collapse) a.deck::before",
-        "book": "tr.deck:not(:has(.collapse)) a.deck::before", "add": "#add-btn .icon",
+    all_icon_selectors = {
+        "options": "td.opts a", "folder": "tr.deck:has(a.collapse) a.deck::before",
+        "deck_child": "tr.deck:has(span.collapse) a.deck::before", "add": "#add-btn .icon",
         "browse": "#browser-btn .icon", "stats": "#stats-btn .icon", "sync": "#sync-btn .icon",
-        "settings": "#onigiri-settings-btn .icon", "more": "summary.menu-item .icon", 
-        "get_shared": "#get-shared-btn .icon", "create_deck": "#create-deck-btn .icon", 
+        "settings": "#onigiri-settings-btn .icon", "more": "summary.menu-item .icon",
+        "get_shared": "#get-shared-btn .icon", "create_deck": "#create-deck-btn .icon",
         "import_file": "#import-file-btn .icon",
+        "retention_star": ".star",
     }
     
     css_rules = []
-    for key, selector in other_icon_selectors.items():
+    for key, selector in all_icon_selectors.items():
         filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
         url = ""
         if filename:
             url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
         else:
-            url = f"url('/_addons/{addon_package}/user_files/icons/system_icons/{key}.svg')"
+            system_icon_name = 'star' if key == 'retention_star' else key
+            url = f"url('/_addons/{addon_package}/user_files/icons/system_icons/{system_icon_name}.svg')"
         
         css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
 
@@ -943,24 +965,27 @@ def generate_icon_css(addon_package, conf):
     open_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{open_icon_file}')" if open_icon_file \
         else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_open.svg')"
         
-    other_selectors_str = ", ".join(other_icon_selectors.values())
+    # Create a list of selectors for the background color, EXCLUDING the star
+    bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k != "retention_star"}
+    bg_selectors_str = ", ".join(bg_color_selectors.values())
 
     return f"""
 <style id="modern-menu-icon-styles">
-    /* --- START: Corrected Collapse Icon Rules --- */
-
-    /* 1. Hide the original '+' or '-' text from the link. */
+    /* Hide the original '+' or '-' text from the link. */
     a.collapse {{
         font-size: 0 !important;
     }}
 
-    /* 2. Create the icon using a pseudo-element on the link. */
+    /* Create the icon using a pseudo-element on the link. */
     a.collapse::before {{
         content: '';
         display: inline-block;
         width: 100%;
         height: 100%;
-        background-color: var(--icon-color, #888888);
+        /* START FIX: Set background to transparent by default to prevent flash */
+        background-color: transparent;
+        transition: background-color 0.1s ease;
+        /* END FIX */
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
@@ -969,20 +994,23 @@ def generate_icon_css(addon_package, conf):
         -webkit-mask-position: center;
     }}
 
-    /* 3. Apply the correct SVG icon based on the state. */
+    /* Apply the correct SVG icon and background color only when the state class is present. */
     a.collapse.state-closed::before {{
         mask-image: {closed_icon_url};
         -webkit-mask-image: {closed_icon_url};
+        background-color: var(--icon-color, #888888);
+        /* END FIX */
     }}
     a.collapse.state-open::before {{
         mask-image: {open_icon_url};
         -webkit-mask-image: {open_icon_url};
+        /* START FIX: Apply background color here */
+        background-color: var(--icon-color, #888888);
+        /* END FIX */
     }}
-    /* --- END: Corrected Collapse Icon Rules --- */
-
 
     /* General rules for other icons (Unchanged) */
-    {other_selectors_str} {{
+    {bg_selectors_str} {{
         background-color: var(--icon-color, #888888);
         mask-size: contain;
         mask-repeat: no-repeat;
@@ -1031,96 +1059,6 @@ def generate_dynamic_css(conf):
 <style id="modern-menu-dynamic-styles">
 :root {{ {light_rules} }}
 .night-mode {{ {dark_rules} }}
-</style>
-"""
-
-def generate_icon_css(addon_package, conf):
-    other_icon_selectors = {
-        "options": "td.opts a", "folder": "tr.deck:has(.collapse) a.deck::before",
-        "book": "tr.deck:not(:has(.collapse)) a.deck::before", "add": "#add-btn .icon",
-        "browse": "#browser-btn .icon", "stats": "#stats-btn .icon", "sync": "#sync-btn .icon",
-        "settings": "#onigiri-settings-btn .icon", "more": "summary.menu-item .icon",
-        "get_shared": "#get-shared-btn .icon", "create_deck": "#create-deck-btn .icon",
-        "import_file": "#import-file-btn .icon",
-    }
-    
-    css_rules = []
-    for key, selector in other_icon_selectors.items():
-        filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
-        url = ""
-        if filename:
-            url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
-        else:
-            url = f"url('/_addons/{addon_package}/user_files/icons/system_icons/{key}.svg')"
-        
-        css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
-
-    # --- Get URLs for collapse icons ---
-    closed_icon_file = mw.col.conf.get("modern_menu_icon_collapse_closed", "")
-    open_icon_file = mw.col.conf.get("modern_menu_icon_collapse_open", "")
-
-    closed_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{closed_icon_file}')" if closed_icon_file \
-        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_closed.svg')"
-
-    open_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{open_icon_file}')" if open_icon_file \
-        else f"url('/_addons/{addon_package}/user_files/icons/system_icons/collapse_open.svg')"
-        
-    other_selectors_str = ", ".join(other_icon_selectors.values())
-
-    return f"""
-<style id="modern-menu-icon-styles">
-    /* Hide the original '+' or '-' text from the link. */
-    a.collapse {{
-        font-size: 0 !important;
-    }}
-
-    /* Create the icon using a pseudo-element on the link. */
-    a.collapse::before {{
-        content: '';
-        display: inline-block;
-        width: 100%;
-        height: 100%;
-        /* START FIX: Set background to transparent by default to prevent flash */
-        background-color: transparent;
-        transition: background-color 0.1s ease;
-        /* END FIX */
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-    }}
-
-    /* Apply the correct SVG icon and background color only when the state class is present. */
-    a.collapse.state-closed::before {{
-        mask-image: {closed_icon_url};
-        -webkit-mask-image: {closed_icon_url};
-        /* START FIX: Apply background color here */
-        background-color: var(--icon-color, #888888);
-        /* END FIX */
-    }}
-    a.collapse.state-open::before {{
-        mask-image: {open_icon_url};
-        -webkit-mask-image: {open_icon_url};
-        /* START FIX: Apply background color here */
-        background-color: var(--icon-color, #888888);
-        /* END FIX */
-    }}
-
-    /* General rules for other icons (Unchanged) */
-    {other_selectors_str} {{
-        background-color: var(--icon-color, #888888);
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-        display: inline-block;
-    }}
-    /* Individual mask images for other icons (Unchanged) */
-    {''.join(css_rules)}
 </style>
 """
 
@@ -1253,7 +1191,7 @@ def prepend_custom_stats(deck_browser, content):
 
     # --- SKELETON LOADER CHANGE START ---
     heatmap_html = ""
-    if conf.get("showHeatmapOnMain", True):
+    if not conf.get("hideHeatmapOnMain", False):
         skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
         
         heatmap_html = f"""
@@ -1281,10 +1219,47 @@ def prepend_custom_stats(deck_browser, content):
     cards_today = cards_today if cards_today is not None else 0
     time_today_minutes = time_today_seconds / 60
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
+
+    # --- Retention Calculation ---
+    total_reviews, correct_reviews = deck_browser.mw.col.db.first(
+        "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
+        (deck_browser.mw.col.sched.dayCutoff - 86400) * 1000
+    ) or (0, 0)
+    total_reviews = total_reviews or 0
+    correct_reviews = correct_reviews or 0
+    retention_percentage = (correct_reviews / total_reviews * 100) if total_reviews > 0 else 0
+
+    if retention_percentage >= 90: stars = 5
+    elif retention_percentage >= 70: stars = 4
+    elif retention_percentage >= 50: stars = 3
+    elif retention_percentage >= 30: stars = 2
+    elif total_reviews > 0: stars = 1
+    else: stars = 0
+    
+    star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
+
+    retention_stat_html = f"""
+    <div class="stat-card retention-card">
+        <h3>Retention</h3>
+        <p>{retention_percentage:.0f}%</p>
+        <div class="star-rating">{star_html}</div>
+    </div>
+    """
+
     stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
     title_html = f'<h1 style="text-align: left;">{stats_title}</h1>' if stats_title else ""
-    stats_grid_html = f"""<div class="stats-grid"><div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div><div class="stat-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div><div class="stat-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div></div>"""
-    
+    stats_grid_parts = []
+    if not conf.get("hideStudiedStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Studied</h3><p>{cards_today} cards</p></div>""")
+    if not conf.get("hideTimeStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div>""")
+    if not conf.get("hidePaceStat", False):
+        stats_grid_parts.append(f"""<div class="stat-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div>""")
+    if not conf.get("hideRetentionStat", False):
+        stats_grid_parts.append(retention_stat_html)
+
+    # Only render the grid if there's at least one card to show
+    stats_grid_html = f"""<div class="stats-grid">{''.join(stats_grid_parts)}</div>""" if stats_grid_parts else ""
     # Combine stats and heatmap
     my_stats_html = title_html + stats_grid_html + heatmap_html
 
@@ -1364,9 +1339,16 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         return "&nbsp;" * 6 * (node.level - 1)
 
     klass = "deck current" if node.deck_id == ctx.current_deck_id else "deck"
+
+    # --- MODIFICATION START ---
+    # Add a specific class for folders (has children) vs decks (no children)
+    deck_type_class = "is-folder" if node.children else "is-deck"
+    # Begin row
+    buf = f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}'>"
+    # --- MODIFICATION END ---
     
     # Begin row
-    buf = f"<tr class='{klass}' id='{node.deck_id}'>"
+    
 
     # --- Onigiri Fix Start ---
     # Group indentation and collapse icon together in a span
@@ -1415,6 +1397,28 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
             
     return buf
 
+# --- ADD THIS ENTIRE NEW FUNCTION ---
+def _render_main_page_heatmap(deck_browser):
+    """
+    Fetches heatmap data and calls the JS render function after the deck browser has loaded.
+    """
+    conf = config.get_config()
+    # Only run if the heatmap is supposed to be visible
+    if not conf.get("hideHeatmapOnMain", False):
+        try:
+            # Get the data and config from heatmap.py
+            heatmap_data, heatmap_config = heatmap.get_heatmap_and_config()
+            
+            # Call the JavaScript render function
+            deck_browser.web.eval(f"""
+                if (typeof OnigiriHeatmap !== 'undefined' && document.getElementById('onigiri-heatmap-container')) {{
+                    OnigiriHeatmap.render('onigiri-heatmap-container', {json.dumps(heatmap_data)}, {json.dumps(heatmap_config)});
+                }}
+            """)
+        except Exception as e:
+            print(f"Onigiri heatmap failed to render: {e}")
+# ------------------------------------
+
 def apply_patches():
 	global _toolbar_patched, _original_MainWebView_eventFilter
 
@@ -1433,6 +1437,10 @@ def apply_patches():
 		# Run once on startup to set the initial state correctly
 		mw.progress.single_shot(0, lambda: _update_toolbar_visibility(mw.state, "startup"))
 
-		_toolbar_patched = True
+		_toolbar_patched = True 
+    
+    # --- ADD THIS LINE ---
+	gui_hooks.deck_browser_did_render.append(_render_main_page_heatmap)
+	# ---------------------
 	
 	patch_overview()
