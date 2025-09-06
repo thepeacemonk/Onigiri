@@ -22,11 +22,12 @@ body {
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border);
-    min-width: 0px;
-    max-width: 700px;
+    min-width: 100px;
+    max-width: 800px;
     z-index: 2;
-    transition: min-width 0.8s ease, width 0.8s ease;
+    transition: none !important;
     overflow: hidden;
+    box-sizing: border-box;
 }
 .sidebar-left h2 {
     font-size: 14px;
@@ -54,8 +55,8 @@ body {
     position: absolute;
     top: var(--handle-top);
     left: 50%;
-    width: 4px;
-    height: 32px;
+    width: 2px;
+    height: 28px;
     background-color: var(--border); /* Default color is same as the line */
     border-radius: 4px;
     box-shadow: none; /* No shadow in default state */
@@ -68,8 +69,9 @@ body {
 /* Change color and add shadow on hover or while actively resizing */
 .resize-handle:hover .resize-handle-indicator,
 .resize-handle.is-resizing .resize-handle-indicator {
-    background-color: #007aff; /* Blue color on interaction */
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    background-color: var(--accent-color); 
+    width: 4px;
+    box-shadow: none; /* No shadow in default state */
     transform: translate(-50%, -50%) scale(1.5);
 }
 
@@ -83,7 +85,7 @@ body {
     margin-bottom: 20px;
     background-color: var(--highlight-bg);
     transition: background-color 0.2s;
-    position: relative; /* For the ::after overlay */
+    position: relative; 
     overflow: hidden; /* To keep background within border-radius */
     cursor: pointer; /* --- ADD THIS LINE --- */
 }
@@ -97,8 +99,9 @@ body {
     height: 38px;
     border-radius: 50%;
     object-fit: cover;
-    margin-right: 12px;
     flex-shrink: 0;
+    margin-left: 0px;
+    margin-right: 12px;
 }
 .profile-pic-placeholder {
     width: 38px;
@@ -283,16 +286,22 @@ a.deck::before {
     content: '';
     display: inline-block;
     padding-right: 12px;
-    flex-shrink: 0;
     opacity: 0.7;
+    flex-shrink: 0;
+    
 }
+
+a.deck.filtered::before {
+    background-color: var(--icon-color-filtered) !important;
+}
+
 span.collapse, a.collapse {
     display: inline-block;
     flex-shrink: 0;
     width: 16px;
     height: 16px;
-    margin-bottom: 5px;
-    margin-right: 8px; /* <-- Add this line */
+    margin-right: 8px; 
+    opacity: 0.7; 
 }
 td.opts {
     width: 24px;
@@ -331,6 +340,10 @@ tr.deck.drag-over-nest {
     background-color: var(--highlight-bg) !important;
     border-color: var(--fg-subtle) !important;
 }
+.deck-prefix {
+    display: flex;
+    align-items: center;
+}
 
 /* --- Main Content Area & Stats --- */
 .main-content {
@@ -351,7 +364,7 @@ tr.deck.drag-over-nest {
 }
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 20px;
     margin-top: 10px;
     margin-bottom: 20px;
@@ -362,6 +375,14 @@ tr.deck.drag-over-nest {
     border-radius: 12px;
     padding: 20px;
 }
+
+.stat-card:not(.retention-card) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+}
+
 .stat-card h3 {
     margin: 0 0 8px 0;
     font-size: 14px;
@@ -376,6 +397,37 @@ tr.deck.drag-over-nest {
 .injected-stats-block h1 {
     text-align: left !important;
 }
+
+/* --- Retention Stat Specific Styles --- */
+.retention-card p {
+    font-size: 22px; /* Slightly smaller to make room for stars */
+    margin-bottom: 8px;
+}
+
+.star-rating {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+}
+
+.star {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-color: var(--star-color, #FFD700); /* Gold color as default */
+    /* The mask-image is set dynamically by patcher.py */
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+}
+
+.star.empty {
+    background-color: var(--empty-star-color);
+}
+
 
 /* --- Hide Native Anki UI Elements --- */
 .deck-list-header, th[colspan="5"], th.count, th.optscol,
@@ -422,6 +474,10 @@ tr.deck.drag-over-nest {
 .sidebar-left.skeleton-loading .add-button-dashed > *,
 .sidebar-left.skeleton-loading .menu-item > * {
     visibility: hidden;
+}
+
+.sidebar-left.is-resizing {
+    transition: none !important;
 }
 
 /* Keyframes for the pulsing animation */
