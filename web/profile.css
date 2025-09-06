@@ -77,40 +77,40 @@ body {
 }
 
 
-/* --- Navigation Tabs (MODIFIED) --- */
+/* --- Navigation Tabs --- */
 nav {
     display: flex;
     gap: 10px;
     margin-bottom: 25px;
-    /* Removed the bottom border for a cleaner look with pill buttons */
+    justify-content: center; /* This line was added to center the buttons */
 }
 
 .nav-button {
     background: none;
     border: var(--accent-color);
     color: var(--fg-subtle);
-    font-size: 16px;
+    font-weight: 500;
+    font: 16px, var(--text);
     padding: 8px 20px; /* Adjusted padding */
     cursor: pointer;
     border-radius: 9999px; /* This creates the pill shape */
     border-width: 2px;
-    transition: color 0.2s, background-color 0.2s;
-    font-weight: 500;
+    box-shadow: none; /* This line was added to ensure no shadow effect is present */
 }
 
-.nav-button:not(.active):hover {
-    background: none;
-    padding: 8px 20px; /* Adjusted padding */
-    border-color: var(--accent-color);
-    border-style: dashed; 
-    border-width: 2px;
+.nav-button:hover {
+    background: none !important;
+    border-style: none !important;
+    border-color: none !important;
+    box-shadow: none !important;
 }
 
-.nav-button.active {
-    background: none;
-    border-color: var(--accent-color);
-    padding: 8px 20px; /* Adjusted padding */
-    border-width: 2px;
+.nav-button:focus {
+    outline: none;
+    box-shadow: none !important;
+    border-style: none !important;
+    font-weight: 800; 
+    color: var(--fg -1)!important;
 }
 
 
@@ -223,4 +223,3 @@ h2.section-title {
     font-size: 28px;
     font-weight: 500;
 }
-
