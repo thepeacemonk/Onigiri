@@ -8,6 +8,7 @@ COLOR_LABELS = {
     "--bg": {"label": "Background", "tooltip": "The main background color of the interface."},
     "--fg": {"label": "Text", "tooltip": "The primary color for text."},
     "--icon-color": {"label": "Icon", "tooltip": "The color of most icons in the interface."},
+    "--icon-color-filtered": {"label": "Filtered Deck Icon", "tooltip": "The color of the icon for filtered decks in the deck list."},
     "--fg-subtle": {"label": "Subtle Text", "tooltip": "A less prominent text color, used for secondary information."},
     "--border": {"label": "Border", "tooltip": "Color for borders and separators between elements."},
     "--highlight-bg": {"label": "Hover Highlight", "tooltip": "Background color when hovering over items like decks in the list."},
