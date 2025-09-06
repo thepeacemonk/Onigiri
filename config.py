@@ -6,6 +6,10 @@ DEFAULTS = {
     "userName": "USER",
     "hideStudiedToday": False,
     "hideTodaysStats": False,
+    "hideStudiedStat": False,
+    "hideTimeStat": False,
+    "hidePaceStat": False,
+    "hideRetentionStat": False,
     "statsTitle": "Today's Stats",
     "studyNowText": "Study Now",
     "hideProfileBar": False,
@@ -15,7 +19,7 @@ DEFAULTS = {
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
-    "showHeatmapOnMain": True,
+    "hideHeatmapOnMain": False,
     "heatmapShape": "square.svg",
     "heatmapShowStreak": True,
     "heatmapShowMonths": True,
@@ -24,6 +28,7 @@ DEFAULTS = {
     "colors": {
         "light": {
             "--accent-color": "#007aff",
+            "--icon-color-filtered": "#007AFF",
             "--bg": "#f3f3f3",
             "--fg": "#212121",
             "--icon-color": "#333333",
@@ -43,9 +48,12 @@ DEFAULTS = {
             "--review-count-bubble-fg": "#1b7a38",
             "--heatmap-color": "#007aff",
             "--heatmap-color-zero": "#f0f0f0",
+            "--star-color": "#FFD700",
+            "--empty-star-color": "#e0e0e0",
         },
         "dark": {
             "--accent-color": "#0a84ff",
+            "--icon-color-filtered": "#0A84FF", 
             "--bg": "#2c2c2c",
             "--fg": "#e0e0e0",
             "--icon-color": "#E0E0E0",
@@ -65,6 +73,8 @@ DEFAULTS = {
             "--review-count-bubble-fg": "#1b7a38",
             "--heatmap-color": "#0a84ff",
             "--heatmap-color-zero": "#3a3a3a",
+            "--star-color": "#FFD700",
+            "--empty-star-color": "#4a4a4a",
         }
     }
 }
