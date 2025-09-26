@@ -4,7 +4,7 @@
 </h3>
 
 <h6 align="center">
-  <a href="https://catppuccin.com/pronunciation.mp3">/ˌkætpʊˈtʃiːn/</a>
+  <a href="https://catppuccin.com/pronunciation.mp3">/ˌəʊnɪˈɡɪri/</a>
 </h6>
 
 <h6 align="center">
