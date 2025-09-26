@@ -30,8 +30,10 @@
 
 &nbsp;
 
-<p align="center">
-Catppuccin is a community-driven pastel theme that aims to be the middle ground between low and high-contrast themes. It consists of 4 soothing warm flavors with 26 eye-candy colors each, perfect for coding, designing, and much more! In addition, this repository tracks the development of the actual color palette, <a href="https://github.com/catppuccin/catppuccin/tree/main/docs"><b>the project's documentation</b></a>, organization-wide assets, resources and code samples for maintainers/developers.
+<p align="justify">
+Ongiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional japanese recipee rich in carbohidrates, which are essential to provide energy, so you can study your Anki cards! 
+
+This is the intention of Onigiri, to give you the proper motivation to study your cards with a beautiful new layout to Anki (暗記), an extra carbohydrate to give you that boost to study.
 </p>
 
 <p align="center">
