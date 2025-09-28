@@ -1,6 +1,6 @@
 <h3 align="center">
   <img width="357" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8"/> <br>
-	Onigiri
+	Onigiri (Early Bird)
 </h3>
 
 <h6 align="center">
@@ -17,6 +17,7 @@
 Ongiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional japanese recipee rich in carbohidrates, which are essential to provide energy, so you can study your Anki cards! 
 
 This is the intention of Onigiri, to give you the proper motivation to study your cards with a beautiful new layout to Anki (暗記), an extra carbohydrate to give you that boost to study. 
+
 </p>
 
 ### Philosophy
@@ -34,26 +35,36 @@ I know, Anki works, but Onigiri helps it feel great to use. By refreshing the in
 
 ### How to download? 
 
-Onigiri is currently at beta tests, it was only tested so far on Mac and on Windows using Parallels, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
+Onigiri is currently at Early Bird version, it was only tested so far on Mac, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
 
 1. Visit Onigiri's [official GitHub page](https://github.com/thepeacemonk/Onigiri)
 2. Go to "Releases" and download the most recent version of Onigiri, it will always be a `.ankiaddon` file.
 3. Download it and click on the file to open, it will re-direct you to Anki.
 4. With the add-on installed, restart Anki and see the magic happen.
 
+&nbsp;
+
+### Potential bugs 
+If you have any issues while using Onigiri, please don't hesitate to post an [issue](https://github.com/thepeacemonk/Onigiri/issues), let's make this add-on as smooth as possible. Here are some potential bugs:
+
+- I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background.
+- I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.
+- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting. 
+
 ### 📜 License
 
+This project is licensed under the `GNU Affero General Public License v3.0 (AGPL-3.0)`. In short: you’re free to use, study, and modify this code—but if you run it as a service or distribute modified versions, you must make your source available under the same license.
+
+I’ve put a lot of time into designing and maintaining this work. Please respect the license and my effort:
+- Don’t copy parts of this project into closed-source or commercial products.
+- If you build on it, credit the original and keep your changes open.
+- If you find value here, consider contributing back or supporting the project.
 
 &nbsp;
 
 ### ❤️ Gratitude
 
-Thanks to the following tools developing this project is possible:
-
-- [coolors.co](https://coolors.co/): A tool for creating and collecting color palettes.
-- [InkScape](https://inkscape.org/): Free and open-source vector graphics editor.
-- [colors_converter.asp](https://www.w3schools.com/colors/colors_converter.asp): Color format converter.
-- [mdigi.tools](https://mdigi.tools/): Web based digital tools.
+Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! 
 
 &nbsp;
 
