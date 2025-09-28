@@ -20,7 +20,7 @@ This is the intention of Onigiri, to give you the proper motivation to study you
 
 </p>
 
-### Philosophy
+### 📝 Philosophy
 
 - **Anki is democratic**: Anki is a tool that is used by everyone, from every corner of the world, every user should have the right to adapt it to their own needs, with the colors and aspects that they want. Onigiri helps Anki become an even more democratic and user-friendly experience. 
 - **Great design can motivate**: Motivation can bring more productivity and motivation for students to study, to visit the app more often and be drawn to it. Research has prooved that a well-structured and user-friendly design can, in fact, [cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
@@ -28,12 +28,12 @@ This is the intention of Onigiri, to give you the proper motivation to study you
 - **Consistency with flexibility**: Users can change the look and feel without breaking core Anki paradigms—cards, reviews, intervals—so muscle memory still works.
 &nbsp;
 
-### Why Onigiri? 
+### 🧐 Why Onigiri? 
 
 You may wonder "But Anki works good already, why should I change?". 
 I know, Anki works, but Onigiri helps it feel great to use. By refreshing the interface with calm defaults, readable typography, and gentle cues, Onigiri lowers friction and raise motivation – so you show up to your cards more often, with more energy.
 
-### How to download? 
+### 💭 How to download? 
 
 Onigiri is currently at Early Bird version, it was only tested so far on Mac, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
 
@@ -44,7 +44,7 @@ Onigiri is currently at Early Bird version, it was only tested so far on Mac, wi
 
 &nbsp;
 
-### Potential bugs 
+### 🐞 Potential bugs 
 If you have any issues while using Onigiri, please don't hesitate to post an [issue](https://github.com/thepeacemonk/Onigiri/issues), let's make this add-on as smooth as possible. Here are some potential bugs:
 
 - I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background.
@@ -62,20 +62,22 @@ I’ve put a lot of time into designing and maintaining this work. Please respec
 
 &nbsp;
 
-### ❤️ Gratitude
+### Credits and Acknowledgments
+The following projects and resources informed the design and development of this add-on:
+
+- Color palettes and themes: [Catppuccin](https://github.com/catppuccin), [Dracula](https://draculatheme.com/), [Rosé Pine](https://rosepinetheme.com/palette/), [Nord](https://www.nordtheme.com/docs/colors-and-palettes), [Solarized](https://ethanschoonover.com/solarized/), [Antinote themes](https://antinote.io/).
+- Visual and thematic inspiration: [Mochi Cards](https://mochi.cards/)
+- Add-on precedents by Shige: [Enhance main window](https://ankiweb.net/shared/info/911023479), [Rearrange home addons](https://ankiweb.net/shared/info/1797615099), [Anki Re-design](https://ankiweb.net/shared/info/1959668791) (all by Shige)
+- Functional and UI guidance: Inspired by [Review Heatmap](https://ankiweb.net/shared/info/1771074083) (by Glutanamite) and [Modern Material Theme](https://ankiweb.net/shared/info/1321246682).
+
+&nbsp;
+### 🫶 Gratitude
 
 Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! 
 
-&nbsp;
+### 💞 Support my work
 
-<p align="center">
-	<img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/footers/gray0_ctp_on_line.svg?sanitize=true" />
-</p>
+I’m actively shipping updates and new features. If my add-ons helped your studies or workflow, consider supporting my work. Your contribution keeps the project maintained and free for everyone.
 
-<p align="center">
-	Copyright &copy; 2021-present <a href="https://github.com/catppuccin" target="_blank">Catppuccin Org</a>
-</p>
+<h1 align: center> <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="peacemonk" data-color="#3fb3f5" data-emoji="🍙"  data-font="Poppins" data-text="Buy me a onigiri" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#FFDD00" ></script> </h1>
 
-<p align="center">
-	<a href="https://github.com/catppuccin/catppuccin/blob/main/LICENSE"><img src="https://img.shields.io/static/v1.svg?style=for-the-badge&label=License&message=MIT&logoColor=d9e0ee&colorA=363a4f&colorB=b7bdf8"/></a>
-</p>
