@@ -7,18 +7,8 @@
   <a href="https://catppuccin.com/pronunciation.mp3">/ˌəʊnɪˈɡɪri/</a>
 </h6>
 
-<h6 align="center">
-  <a href="https://github.com/catppuccin/catppuccin#-palette">Palette</a>
-  ·
-  <a href="https://github.com/catppuccin/catppuccin#-ports-and-more">Ports</a>
-  ·
-  <a href="https://github.com/catppuccin/catppuccin#-showcase">Showcase</a>
-  ·
-  <a href="https://github.com/catppuccin/catppuccin/tree/main/docs">Docs</a>
-</h6>
-
 <p align="center">
-  <img src="https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/palette/macchiato.png" width="400" />
+  <img width="401" height="6" alt="divider" src="https://github.com/user-attachments/assets/8bda919e-95a0-4988-83b5-0149787ddd3b" />
 </p>
 
 <p align="center">
