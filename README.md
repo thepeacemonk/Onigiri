@@ -45,11 +45,12 @@ Onigiri is currently at Early Bird version, it was only tested so far on Mac, wi
 &nbsp;
 
 ### 🐞 Potential bugs 
-If you have any issues while using Onigiri, please don't hesitate to post an [issue](https://github.com/thepeacemonk/Onigiri/issues), let's make this add-on as smooth as possible. Here are some potential bugs:
+If you have any issues while using Onigiri, please don't hesitate to post an [issue](https://github.com/thepeacemonk/Onigiri/issues), let's make this add-on as smooth as possible. Those are some potential bugs you might find, I'm working to solve them:
 
 - I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background.
 - I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.
-- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting. 
+- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting.
+- This add-on interacts badly with some other add-ons, such as Shige's Leaderboard (that doesn't display, since it has a conflicting function with Onigiri) and The KING of Button Add-ons (some colors, backgrounds or alignment of the buttons can look different than planned). 
 
 ### 📜 License
 
