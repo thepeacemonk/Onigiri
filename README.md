@@ -49,7 +49,7 @@ If you have any issues while using Onigiri, please don't hesitate to post an [is
 
 - I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background, this is due to the interaction of CSS functions of the add-on and the card.
 - I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.
-- I noticed some considerable CPU usage with the add-on enabled, there are several reasons for that to happen, but since the changes I did were granular and very specific, I might have targeted elements wrong. 
+- I noticed some considerable CPU usage with the add-on enabled while I was using the main menu, Anki comes back to normal use while on Overview and Reviewer due to their simpler strucutre. So, until I find the issue for this, **do not leave anki open when you finish studying!**
 - Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting.
 - This add-on interacts badly with some other add-ons, such as Shige's Leaderboard (that doesn't display, since it has a conflicting function with Onigiri) and The KING of Button Add-ons (some colors, backgrounds or alignment of the buttons can look different than planned). 
 
