@@ -44,14 +44,13 @@ Onigiri is currently at Early Bird version, it was only tested so far on Mac, wi
 
 &nbsp;
 
-### 🐞 Early bird bugs
+### 🐞 Early bird issues
 If you have any issues while using Onigiri, please don't hesitate to post an [issue](https://github.com/thepeacemonk/Onigiri/issues), let's make this add-on as smooth as possible. Those are some potential bugs you might find, I'm working to solve them:
 
 - I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background, this is due to the interaction of CSS functions of the add-on and the card.
-- I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.
-- I noticed some considerable CPU usage whenever I used GIFs throughout the add-on, so, for now, avoid using GIFs.
-- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting.
-- This add-on interacts badly with some other add-ons, such as Shige's Leaderboard (that doesn't display, since it has a conflicting function with Onigiri) and The KING of Button Add-ons (some colors, backgrounds or alignment of the buttons can look different than planned). 
+- I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting.
+- This add-on interacts badly with some other add-ons, such as Shige's Leaderboard (that doesn't display, since it has a conflicting function with Onigiri) and The KING of Button Add-ons (some colors, backgrounds or alignment of the buttons can look different than planned).
+- (Common issue): As any add-on that deals with animated backgrounds in .gif and .webp formats, you will notice that Anki uses a high percentage of CPU, so do not worry, this is not a bug, this is a strucutral problem of Anki and that is expected, those two formats are processed on the CPU and since its rendering constantly, it takes a higher CPU percentage. 
 
 ### 📜 License
 
