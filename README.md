@@ -50,7 +50,10 @@ If you have any issues while using Onigiri, please don't hesitate to post an [is
 - I had, throughout development, some issues when it came to card formatting on Reviewer while using an image background, this is due to the interaction of CSS functions of the add-on and the card.
 - I noticed some lagging on the deck container on main menu, this is probably due to the rendering of the deck view and still something I'm working on.- Some settings require you to restart Anki, so if you clicked "Save" and nothing happen, you likely found a setting that requires restarting.
 - This add-on interacts badly with some other add-ons, such as Shige's Leaderboard (that doesn't display, since it has a conflicting function with Onigiri) and The KING of Button Add-ons (some colors, backgrounds or alignment of the buttons can look different than planned).
-- (Common issue): As any add-on that deals with animated backgrounds in .gif and .webp formats, you will notice that Anki uses a high percentage of CPU, so do not worry, this is not a bug, this is a strucutral problem of Anki and that is expected, those two formats are processed on the CPU and since its rendering constantly, it takes a higher CPU percentage. 
+
+# 🫥 Common issues you might find
+- As any add-on that deals with animated backgrounds in .gif and .webp formats, you will notice that Anki uses a high percentage of CPU, so do not worry, this is not a bug, this is a strucutral problem of Anki and that is expected, those two formats are processed on the CPU and since its rendering constantly, it takes a higher CPU percentage.
+- As soon as you download it, your current widgets might appear in a random order, you can re-order them by going to Settings -> Menu -> Main menu ans scrolling to "External Widgets
 
 ### 📜 License
 
