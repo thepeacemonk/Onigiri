@@ -7,8 +7,6 @@
   <img width="400" height="22" alt="Onigiri divider" src="https://github.com/user-attachments/assets/77958660-41fd-4a43-85df-6c17cda02958" />
 </p>
 
-&nbsp;
-
 <p align="justify">
 Ongiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional japanese recipee rich in carbohidrates, which are essential to provide energy, so you can study your Anki cards! 
 
