@@ -56,8 +56,6 @@ I’ve put a lot of time into designing and maintaining this work. Please respec
 - If you build on it, credit the original and keep your changes open.
 - If you find value here, consider contributing back or supporting the project.
 
-&nbsp;
-
 ### Credits and Acknowledgments
 The following projects and resources informed the design and development of this add-on:
 
