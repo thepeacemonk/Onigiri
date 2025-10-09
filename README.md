@@ -3,10 +3,6 @@
 	Onigiri (Early Bird)
 </h3>
 
-<h6 align="center">
-  <a href="https://catppuccin.com/pronunciation.mp3">/ˌəʊnɪˈɡɪri/</a>
-</h6>
-
 <p align="center">
   <img width="400" height="22" alt="Onigiri divider" src="https://github.com/user-attachments/assets/77958660-41fd-4a43-85df-6c17cda02958" />
 </p>
