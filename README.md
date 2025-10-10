@@ -1,5 +1,5 @@
 <h3 align="center">
-  <img width="357" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8"/> <br>
+  <img width="360" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8"/> <br>
 	Onigiri (Beta)
 </h3>
 
