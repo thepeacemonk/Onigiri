@@ -74,12 +74,16 @@ Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) co
 I’m actively shipping updates and new features. If my add-ons helped your studies or workflow, consider supporting my work. Your contribution keeps the project maintained and free for everyone.
 
 <a href="https://www.buymeacoffee.com/peacemonk">
-
-### Some previews of what Onigiri can do
-
-
-  <img width="385" height="75" alt="Buy me an onigiri" src="https://github.com/user-attachments/assets/2c993906-ccb5-4a75-9235-9b63a8d62252" />
-
+<img width="385" height="75" alt="Buy me an onigiri" src="https://github.com/user-attachments/assets/2c993906-ccb5-4a75-9235-9b63a8d62252" />
 </a>
 
+### 📷 Some previews of what Onigiri can do
 
+<h1 align="center">
+<img width="80%" height="auto" alt="1" src="https://github.com/user-attachments/assets/fcd6bd9d-a63f-440b-bf56-98ee150c6dba" />
+<img width="80%" height="auto" alt="2" src="https://github.com/user-attachments/assets/81d0fe80-f9be-479f-a8fa-cfac7e7cbdff" />
+<img width="80%" height="auto" alt="3" src="https://github.com/user-attachments/assets/aaf487eb-3b4f-4d60-bfa8-a096c0e20d8c" />
+<img width="80%" height="auto" alt="4" src="https://github.com/user-attachments/assets/fe632381-b624-4374-bd03-d02b53209ca0" />
+<img width="80%" height="auto" alt="5" src="https://github.com/user-attachments/assets/83e7aa58-a243-40c4-bd75-beb1f697146b" />
+<img width="80%" height="auto" alt="6" src="https://github.com/user-attachments/assets/b79ebf13-375b-483c-a900-86437e446373" />
+</h1>
