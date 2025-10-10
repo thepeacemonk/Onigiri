@@ -64,7 +64,6 @@ The following projects and resources informed the design and development of this
 - Add-on precedents by Shige: [Enhance main window](https://ankiweb.net/shared/info/911023479), [Rearrange home addons](https://ankiweb.net/shared/info/1797615099), [Anki Re-design](https://ankiweb.net/shared/info/1959668791) (all by Shige)
 - Functional and UI guidance: Inspired by [Review Heatmap](https://ankiweb.net/shared/info/1771074083) (by Glutanamite) and [Modern Material Theme](https://ankiweb.net/shared/info/1321246682).
 
-&nbsp;
 ### 🫶 Gratitude
 
 Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! 
