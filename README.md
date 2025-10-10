@@ -1,6 +1,6 @@
 <h3 align="center">
   <img width="357" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8"/> <br>
-	Onigiri (Early Bird)
+	Onigiri (Beta)
 </h3>
 
 <p align="center">
@@ -29,7 +29,7 @@ I know, Anki works, but Onigiri helps it feel great to use. By refreshing the in
 
 ### 💭 How to download? 
 
-Onigiri is currently at Early Bird version, it was only tested so far on Mac, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
+Onigiri is currently at Beta version, it was only tested so far on Mac, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
 
 1. Visit Onigiri's [official GitHub page](https://github.com/thepeacemonk/Onigiri)
 2. Go to "Releases" and download the most recent version of Onigiri, it will always be a `.ankiaddon` file.
@@ -74,6 +74,9 @@ Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) co
 I’m actively shipping updates and new features. If my add-ons helped your studies or workflow, consider supporting my work. Your contribution keeps the project maintained and free for everyone.
 
 <a href="https://www.buymeacoffee.com/peacemonk">
+
+### Some previews of what Onigiri can do
+
 
   <img width="385" height="75" alt="Buy me an onigiri" src="https://github.com/user-attachments/assets/2c993906-ccb5-4a75-9235-9b63a8d62252" />
 
