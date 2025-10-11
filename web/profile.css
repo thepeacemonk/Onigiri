@@ -1,125 +1,152 @@
-/* --- General Profile Window Styles --- */
+/* --- General & Body Styling --- */
 body {
-    background-color: var(--bg);
+    background-color: #d9d9d9; /* Light grey background from example */
     color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
 }
+.night-mode body {
+    background-color: #1f1f1f; /* Dark grey for night mode */
+}
 
-.profile-container {
+
+/* --- Main Layout Containers --- */
+.onigiri-profile-page {
     max-width: 700px;
     margin: 0 auto;
-    padding: 20px;
+    /* Add padding to the top, left, and right */
+    padding: 16px 16px 30px 16px;
+    position: relative;
+    text-align: center;
 }
 
-/* --- Header --- */
-.profile-header {
-    position: relative;
+.profile-header-banner {
     height: 180px;
-    border-radius: 16px;
-    background-color: var(--accent-color);
     background-size: cover;
     background-position: center;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: flex-end;
-    padding: 15px;
-    box-sizing: border-box;
-    overflow: hidden;
+    border-radius: 30px;
+    background-color: var(--accent-color); /* Fallback */
 }
 
-.profile-header::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 50%);
-    z-index: 1;
+.profile-content-wrapper {
+    text-align: center;
+    margin-top: 20px; /* Add some space above the main content */
 }
 
-.profile-header-content {
-    display: flex;
+/* --- Profile Pill --- */
+.controls-spacer {
+    width: 20px; /* Adjust this value to get the exact distance you want */
+}
+
+.profile-pill {
+    display: inline-flex;
     align-items: center;
-    gap: 15px;
-    position: relative;
-    z-index: 2;
-}
-
-.profile-pic-large, .profile-pic-placeholder-large {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    border: 3px solid rgba(255, 255, 255, 0.9);
-    box-sizing: border-box;
-}
-
-.profile-pic-large {
-    object-fit: cover;
-}
-
-.profile-pic-placeholder-large {
+    gap: 12px;
     background-color: var(--accent-color);
     color: white;
+    padding: 8px 24px 8px 8px;
+    border-radius: 9999px;
+}
+
+.profile-pic-pill, .profile-pic-placeholder-pill {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.profile-pic-placeholder-pill {
+    background-color: rgba(0,0,0,0.2);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 32px;
+    font-size: 28px;
     font-weight: bold;
 }
 
-.profile-name-large {
-    font-size: 28px;
-    font-weight: bold;
-    color: white;
-    text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+.profile-name-pill {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.profile-card {
+    background-color: var(--bg); /* Use the main background color (white/dark grey) */
+    border-radius: 30px;       /* This creates the rounded corners for the whole card */
+    overflow: hidden;          /* IMPORTANT: This clips the children to the rounded shape */
+    position: relative;        /* This is the anchor for the share button */
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
 }
 
 
 /* --- Navigation Tabs --- */
-nav {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 25px;
-    justify-content: center; /* This line was added to center the buttons */
-}
 
 .nav-button {
-    background: none;
-    border: var(--accent-color);
-    color: var(--fg-subtle);
-    font-weight: 500;
-    font: 16px, var(--text);
-    padding: 8px 20px; /* Adjusted padding */
+    background-color: var(--button-bg);
+    color: var(--button-fg);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 9999px;
     cursor: pointer;
-    border-radius: 9999px; /* This creates the pill shape */
-    border-width: 2px;
-    box-shadow: none; /* This line was added to ensure no shadow effect is present */
+    font-weight: 600;
+    transition: background-color 0.2s, box-shadow 0.2s;
 }
+
 
 .nav-button:hover {
-    background: none !important;
-    border-style: none !important;
-    border-color: none !important;
-    box-shadow: none !important;
-}
-
-.nav-button:focus {
-    outline: none;
-    box-shadow: none !important;
-    border-style: none !important;
-    font-weight: 800; 
-    color: var(--fg -1)!important;
+    border-color: var(--accent-color);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 
-/* --- Page Content --- */
+.nav-button.active {
+    background-color: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+.nav-button.active:hover {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    filter: brightness(0.9);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.profile-controls {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 3.5px; /* This creates equal spacing between all items */
+    padding: 0 4px;
+    margin-top: -25px;
+    position: relative;
+    z-index: 10;
+}
+
+
+.profile-controls > * {
+    margin: 0 !important;
+}
+
+/* --- Main Content Area --- */
+main {
+    background-color: #FFFFFF;
+    border-radius: 20px;
+    padding: 20px;
+    text-align: left;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+.night-mode main {
+    background-color: #1e1e1e;
+}
+
 h2.section-title {
     font-size: 18px;
     text-transform: uppercase;
     color: var(--fg-subtle);
-    margin-top: 30px;
+    margin-top: 20px;
     margin-bottom: 15px;
     border-bottom: 1px solid var(--border);
     padding-bottom: 8px;
@@ -131,7 +158,6 @@ h2.section-title {
     padding: 40px;
 }
 
-/* Theme Page: Color List */
 .color-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -168,10 +194,9 @@ h2.section-title {
     color: var(--fg-subtle);
 }
 
-/* Theme Page: Background Previews */
 .background-previews {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 20px;
 }
 
@@ -199,11 +224,10 @@ h2.section-title {
     font-weight: 500;
 }
 
-/* Stats Page */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 20px;
+    gap: 15px;
 }
 .stat-card {
     background-color: var(--canvas-inset);
@@ -222,4 +246,111 @@ h2.section-title {
     margin: 0;
     font-size: 28px;
     font-weight: 500;
+}
+
+/* --- Export Button Styling --- */
+main {
+    /* Add position relative to act as an anchor for the absolute button */
+    position: relative;
+    background-color: #FFFFFF;
+    border-radius: 20px;
+    padding: 20px;
+    text-align: left;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+
+/* --- New Page Export Button --- */
+.page-export-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background-color: rgba(255, 255, 255);
+    color: #374151;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 8px 16px;
+    border-radius: 9999px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: all 0.2s ease-in-out;
+}
+
+.page-export-button:hover {
+    background-color: var(--button-hover-bg);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+
+.page-export-button svg {
+    fill: currentColor;
+}
+
+/* --- Image Export Overlay Styling (Updated) --- */
+.image-export-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.overlay-content {
+    background-color: var(--bg);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    text-align: center;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+}
+
+.overlay-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    display: block; /* Helps with spacing */
+}
+
+.overlay-buttons {
+    display: flex;
+    gap: 15px; /* Adds space between buttons */
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.overlay-button {
+    display: inline-block;
+    border: none;
+    padding: 10px 30px;
+    border-radius: 9999px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: none; /* For the <a> tag */
+    transition: transform 0.1s ease;
+}
+
+.overlay-button:hover {
+    transform: scale(1.05);
+}
+
+.overlay-button.copy { /* Renamed from .download to .copy */
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.overlay-button.close {
+    background-color: #e0e0e0;
+    color: #333;
 }
