@@ -1,0 +1,29 @@
+{
+    "onigiriWidgetOrder": [
+        "title",
+        "stats",
+        "heatmap"
+    ],
+    "externalWidgetLayout": {
+        "Sticky.add_sticky_to_deck_browser": {
+            "grid_position": 2,
+            "row_span": 1,
+            "column_span": 1
+        },
+        "Watch.add_clock_to_deck_browser": {
+            "grid_position": 3,
+            "row_span": 1,
+            "column_span": 1
+        },
+        "Globe.add_weather_to_deck_browser": {
+            "grid_position": 6,
+            "row_span": 1,
+            "column_span": 1
+        },
+        "BatteryStatus.add_battery_widget": {
+            "grid_position": 7,
+            "row_span": 1,
+            "column_span": 1
+        }
+    }
+}
