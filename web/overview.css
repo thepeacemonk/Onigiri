@@ -1,0 +1,144 @@
+/* Main container to center content vertically and horizontally */
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.overview-center-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+    /* MODIFIED: Increased top padding to make space for the absolutely positioned header */
+    padding: 0px 20px 20px 20px;
+}
+
+/* New header for buttons */
+.overview-header {
+    position: absolute; /* Take the header out of the normal document flow */
+    width: 100%;      /* Make it span the full width to allow centering */
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    
+}
+
+.overview-button {
+    background-color: var(--highlight-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.overview-bottom-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.overview-button:hover {
+    background-color: var(--canvas-inset);
+    border-color: var(--fg-subtle);
+}
+
+
+/* Title styling */
+.overview-title {
+    font-family: var(--font-subtle);
+    font-size: 2em; /* Bigger title */
+    font-weight: 600;
+    margin-bottom: 20px; /* Space between title and stats */
+}
+
+/* Container for stats and button */
+.overview-container {
+    width: 100%;
+    max-width: 350px; /* Set max width here instead of on the parent */
+    margin-bottom: 25px; /* Add some space below the study button */
+    margin-right: 0px !important; 
+    margin-left: 0px !important; 
+    align-items: center;
+}
+
+/* Stats box styling */
+.stats-container {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 12px; /* Rounded borders */
+    padding: 15px 25px;
+    margin-bottom: 20px;
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.1em;
+    padding: 14px 0;
+}
+
+/* Add separators between rows, but not after the last one */
+.stats-row:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+}
+
+/* Styling for the colored number bubbles */
+.new-count-bubble,
+.learn-count-bubble,
+.review-count-bubble {
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 16px; /* Rounded borders for the bubble */
+    min-width: 30px;
+    text-align: center;
+}
+
+/* Set bubble colors using CSS variables from the config */
+.new-count-bubble {
+    background-color: var(--new-count-bubble-bg);
+    color: var(--new-count-bubble-fg);
+}
+
+.learn-count-bubble {
+    background-color: var(--learn-count-bubble-bg);
+    color: var(--learn-count-bubble-fg);
+}
+
+.review-count-bubble {
+    background-color: var(--review-count-bubble-bg);
+    color: var(--review-count-bubble-fg);
+}
+
+
+/* Study Now button styling */
+.add-button-dashed {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+    border: 2px dashed var(--border);
+    color: var(--fg-subtle);
+    font-size: 1.1em;
+    font-weight: 500;
+    width: 100%;
+    box-sizing: border-box; 
+    background: transparent;
+    margin: 0px;
+}
+
+.add-button-dashed:hover {
+    background-color: var(--highlight-bg);
+    border-color: var(--fg-subtle);
+}

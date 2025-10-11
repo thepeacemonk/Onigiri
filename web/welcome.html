@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        /* --- Base Styles & Font --- */
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        /* --- New Bubble Animation --- */
+
+        :root {
+            /* Adapted color palette */
+            --color-bg1: #123034;
+            --color-bg2: #0F2327;
+            --color1: 46, 176, 194; /* #2EB0C2 */
+            --color2: 96, 152, 176; /* #6098B0 */
+            --color3: 40, 120, 150;
+            --circle-size: 80%;
+            --blending: screen; /* 'screen' or 'hard-light' works well */
+        }
+
+        @keyframes moveInCircle {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(180deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes moveVertical {
+            0% { transform: translateY(-50%); }
+            50% { transform: translateY(50%); }
+            100% { transform: translateY(-50%); }
+        }
+
+        @keyframes moveHorizontal {
+            0% { transform: translateX(-50%) translateY(-10%); }
+            50% { transform: translateX(50%) translateY(10%); }
+            100% { transform: translateX(-50%) translateY(-10%); }
+        }
+
+        .gradient-bg {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            overflow: hidden;
+            background: linear-gradient(40deg, var(--color-bg1), var(--color-bg2));
+            top: 0;
+            left: 0;
+        }
+
+        .gradient-bg svg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .gradients-container {
+            filter: url(#goo) blur(40px);
+            width: 100%;
+            height: 100%;
+        }
+
+        .g1, .g2, .g3 {
+            position: absolute;
+            mix-blend-mode: var(--blending);
+            width: var(--circle-size);
+            height: var(--circle-size);
+            top: calc(50% - var(--circle-size) / 2);
+            left: calc(50% - var(--circle-size) / 2);
+            opacity: 1;
+        }
+
+        .g1 {
+            background: radial-gradient(circle at center, rgba(var(--color1), 0.8) 0, rgba(var(--color1), 0) 50%) no-repeat;
+            transform-origin: center center;
+            animation: moveVertical 20s ease infinite;
+        }
+
+        .g2 {
+            background: radial-gradient(circle at center, rgba(var(--color2), 0.8) 0, rgba(var(--color2), 0) 50%) no-repeat;
+            transform-origin: calc(50% - 400px);
+            animation: moveInCircle 15s reverse infinite;
+        }
+
+        .g3 {
+            background: radial-gradient(circle at center, rgba(var(--color3), 0.8) 0, rgba(var(--color3), 0) 50%) no-repeat;
+            transform-origin: calc(50% + 400px);
+            animation: moveInCircle 25s linear infinite;
+        }
+
+
+        /* --- Content Styles --- */
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            box-sizing: border-box;
+            color: #ffffff;
+        }
+
+        .content-wrapper img {
+            max-width: 200px;
+            margin-bottom: 20px;
+        }
+
+        .content-wrapper h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+        }
+
+        .content-wrapper p {
+            font-size: 14px;
+            color: #e0e0e0;
+            margin-bottom: 25px;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+        }
+
+        .button-container {
+            display: flex;
+            gap: 15px;
+        }
+
+        .link-button {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.2s ease;
+        }
+
+        .link-button:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg">
+        <svg xmlns="http://www.w3.org/2000/svg" version="1.1">
+            <defs>
+                <filter id="goo">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+                    <feBlend in="SourceGraphic" in2="goo" />
+                </filter>
+            </defs>
+        </svg>
+        <div class="gradients-container">
+            <div class="g1"></div>
+            <div class="g2"></div>
+            <div class="g3"></div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+        <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri Logo">
+        <h1>Welcome to Onigiri!</h1>
+        <p>Before you start, explore the Settings to customize your experience!</p>
+        <div class="button-container">
+            <a href="#" onclick="pycmd('open_link:https://github.com/thepeacemonk/Onigiri'); return false;" class="link-button">Onigiri GitHub</a>
+            <a href="#" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk'); return false;" class="link-button">Buy me an onigiri!</a>
+        </div>
+    </div>
+</body>
+</html>
