@@ -68,16 +68,6 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 <img width="30%" height="auto" alt="Buy me an onigiri" src="https://github.com/user-attachments/assets/2c993906-ccb5-4a75-9235-9b63a8d62252" />
 </a>
 
-### Credits and Acknowledgments
-The following projects and resources informed the design and development of this add-on:
-
-- Color palettes and themes: [Catppuccin](https://github.com/catppuccin), [Dracula](https://draculatheme.com/), [Rosé Pine](https://rosepinetheme.com/palette/), [Nord](https://www.nordtheme.com/docs/colors-and-palettes), [Solarized](https://ethanschoonover.com/solarized/), [Antinote themes](https://antinote.io/).
-- Visual and thematic inspiration: [Mochi Cards](https://mochi.cards/)
-- Add-on precedents by Shige: [Enhance main window](https://ankiweb.net/shared/info/911023479), [Rearrange home addons](https://ankiweb.net/shared/info/1797615099), [Anki Re-design](https://ankiweb.net/shared/info/1959668791) (all by Shige)
-- Functional and UI guidance: Inspired by [Review Heatmap](https://ankiweb.net/shared/info/1771074083) (by Glutanamite) and [Modern Material Theme](https://ankiweb.net/shared/info/1321246682).
-- This addon uses [html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1 by Niklas von Hertzen, distributed under the MIT License.
-
-
 ### 📷 Some previews of what Onigiri can do
 
 <h1 align="center">
@@ -88,3 +78,12 @@ The following projects and resources informed the design and development of this
 <img width="80%" height="auto" alt="5" src="https://github.com/user-attachments/assets/83e7aa58-a243-40c4-bd75-beb1f697146b" />
 <img width="80%" height="auto" alt="6" src="https://github.com/user-attachments/assets/b79ebf13-375b-483c-a900-86437e446373" />
 </h1>
+
+### Credits and Acknowledgments
+The following projects and resources informed the design and development of this add-on:
+
+- Color palettes and themes: [Catppuccin](https://github.com/catppuccin), [Dracula](https://draculatheme.com/), [Rosé Pine](https://rosepinetheme.com/palette/), [Nord](https://www.nordtheme.com/docs/colors-and-palettes), [Solarized](https://ethanschoonover.com/solarized/), [Antinote themes](https://antinote.io/).
+- Visual and thematic inspiration: [Mochi Cards](https://mochi.cards/)
+- Add-on precedents by Shige: [Enhance main window](https://ankiweb.net/shared/info/911023479), [Rearrange home addons](https://ankiweb.net/shared/info/1797615099), [Anki Re-design](https://ankiweb.net/shared/info/1959668791) (all by Shige)
+- Functional and UI guidance: Inspired by [Review Heatmap](https://ankiweb.net/shared/info/1771074083) (by Glutanamite) and [Modern Material Theme](https://ankiweb.net/shared/info/1321246682).
+- This addon uses [html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1 by Niklas von Hertzen, distributed under the MIT License.
