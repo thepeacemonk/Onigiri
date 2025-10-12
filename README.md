@@ -17,7 +17,7 @@ Onigiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), 
 ### 📝 Philosophy
 
 - **Anki is democratic**: Anki is a tool used by people everywhere. Every user should have the right to adapt it to their needs, with the colors and aspects they want. Onigiri helps make Anki even more democratic and user-friendly.
-- **Great design can motivate**: Motivation can lead to greater productivity and encourage students to study and visit the app more often. Research has proved that a well-structured and user-friendly design can, in fact,[cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
+- **Great design can motivate**: Motivation can lead to greater productivity and encourage students to study and visit the app more often. Research has proved that a well-structured and user-friendly design can, in fact, [cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
 - **Calm defaults, powerful options**: The base experience stays simple. Advanced controls are discoverable, not overwhelming — letting users grow into complexity at their pace
 - **Consistency with flexibility**: Users can change the look and feel without breaking core Anki paradigms—cards, reviews, intervals—allowing muscle memory to remain effective.
   
