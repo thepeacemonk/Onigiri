@@ -8,31 +8,32 @@
 </p>
 
 <p align="justify">
-Onigiri is an experimental add-on that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, transforming how Anki looks completely, a way to keep you motivated to study your cards everyday. This add-on is in early beta stages and was only extensively tested on MacOS, if you experiment this add-on in other platforms, know that you will be a pioneer.
+Onigiri is an experimental add-on that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, completely transforming how Anki looks. It's designed to keep you motivated to study your cards every day. This add-on is in early beta; so far, it has only been extensively tested on macOS. If you try this add-on on other platforms, know that you will be a pioneer.
 
-Ongiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional Japanese recipe rich in carbohydrates, which are essential to provide energy, so you can study your Anki cards!  This is the intention of Onigiri, to give you the proper motivation to study your cards with a beautiful new layout to Anki (暗記), an extra carbohydrate to give you that boost to study. 
+Onigiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional Japanese recipe rich in carbohydrates, which are essential for providing energy—so you can study your Anki cards! This is the intention of Onigiri: to give you the proper motivation to study with a beautiful new layout for Anki (暗記)—an extra carbohydrate to give you that boost!
 
 </p>
 
 ### 📝 Philosophy
 
-- **Anki is democratic**: Anki is a tool that is used by everyone, from every corner of the world, every user should have the right to adapt it to their own needs, with the colors and aspects that they want. Onigiri helps Anki become an even more democratic and user-friendly experience. 
-- **Great design can motivate**: Motivation can bring more productivity and motivation for students to study, to visit the app more often and be drawn to it. Research has prooved that a well-structured and user-friendly design can, in fact, [cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
-- **Calm defaults, powerful options**: The base experience stays simple. Advanced controls are discoverable, not overwhelming—letting users grow into complexity at their pace.
-- **Consistency with flexibility**: Users can change the look and feel without breaking core Anki paradigms—cards, reviews, intervals—so muscle memory still works.
+- **Anki is democratic**: Anki is a tool used by people everywhere. Every user should have the right to adapt it to their needs, with the colors and aspects they want. Onigiri helps make Anki even more democratic and user-friendly.
+- **Great design can motivate**: Motivation can lead to greater productivity and encourage students to study and visit the app more often. Research has proved that a well-structured and user-friendly design can, in fact,[cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
+- **Calm defaults, powerful options**: The base experience stays simple. Advanced controls are discoverable, not overwhelming — letting users grow into complexity at their pace
+- **Consistency with flexibility**: Users can change the look and feel without breaking core Anki paradigms—cards, reviews, intervals—allowing muscle memory to remain effective.
+  
 &nbsp;
 
 ### 🧐 Why Onigiri? 
 
-You may wonder "But Anki works good already, why should I change?". 
-I know, Anki works, but Onigiri helps it feel great to use. By refreshing the interface with calm defaults, readable typography, and gentle cues, Onigiri lowers friction and raise motivation – so you show up to your cards more often, with more energy.
+You may wonder, "But Anki works well already, why should I change?"
+I know—Anki works—but Onigiri helps it feel great to use. By refreshing the interface with calm defaults, readable typography, and gentle cues, Onigiri lowers friction and raises motivation—so you show up to your cards more often, with more energy.
 
 ### 💭 How to download? 
 
 Onigiri is currently at Beta version, it was only tested so far on Mac, with no major bugs registered. Here is how you can have the Early Birds version of Onigiri. 
 
 1. Visit Onigiri's [official GitHub page](https://github.com/thepeacemonk/Onigiri)
-2. Go to "Releases" and download the most recent version of Onigiri, it will always be a `.ankiaddon` file.
+2. Go to "Releases" and download the most recent version of Onigiri—it will always be a .ankiaddon file.
 3. Download it and click on the file to open, it will re-direct you to Anki.
 4. With the add-on installed, restart Anki and see the magic happen.
 
