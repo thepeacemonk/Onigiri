@@ -22,7 +22,7 @@ from PyQt6.QtCore import QUrl, QPropertyAnimation, QEasingCurve
 from aqt import mw
 from aqt import mw, gui_hooks   
 from aqt.theme import theme_manager
-
+from typing import Union
 from . import config
 from .config import DEFAULTS
 from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS
@@ -2963,7 +2963,7 @@ class SettingsDialog(QDialog):
         self.toggle_sidebar_bg_type_options()
         return widget
 
-    def _get_svg_icon(self, path: str) -> QIcon | None:
+    def _get_svg_icon(self, path: str) -> Union[QIcon, None]:
         if not os.path.exists(path):
             return None
         
@@ -2988,7 +2988,7 @@ class SettingsDialog(QDialog):
             print(f"Onigiri: Error rendering SVG icon at {path}: {e}")
             return None
     
-    def _create_delete_icon(self) -> QIcon | None:
+    def _create_delete_icon(self) -> Union[QIcon, None]:
         """Loads and colors the xmark.svg icon for the delete button."""
         icon_path = os.path.join(self.addon_path, "user_files", "icons", "system_icons", "xmark.svg")
         if not os.path.exists(icon_path):
