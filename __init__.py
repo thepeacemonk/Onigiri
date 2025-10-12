@@ -59,6 +59,9 @@ def inject_menu_files(web_content, context):
         top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
 
+        # FIX: Escape backticks for JS template literal to avoid f-string syntax error in Python < 3.12
+        escaped_top_bar_html = top_bar_html.replace("`", "\\`")
+
         # Injector script to add both background div and top bar div
         js_injector = f"""
         <script>
@@ -71,7 +74,7 @@ def inject_menu_files(web_content, context):
                 }}
 
                 // Add top bar HTML
-                const topBarHtml = `{top_bar_html.replace("`", "\\`")}`;
+                const topBarHtml = `{escaped_top_bar_html}`;
                 if (topBarHtml.trim() && !document.getElementById('onigiri-reviewer-header')) {{
                     document.body.insertAdjacentHTML('afterbegin', topBarHtml);
                 }}
