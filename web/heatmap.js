@@ -16,20 +16,23 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         targetDate: new Date(),
     };
 
+    
     // --- DATA PREPARATION ---
     function prepareData(rawData) {
         const reviewsByDay = new Map();
         let maxReviews = 0;
         for (const dayNumStr in rawData) {
             const dayNum = parseInt(dayNumStr, 10);
-            // This creates a date object at midnight UTC for the given day number.
-            // Python has already calculated the correct "Anki day" (with rollover),
-            // so we don't need to do any extra timezone math here.
-            const date = new Date(dayNum * 86400 * 1000);
-
-            // .toISOString() correctly gives us the UTC date string (e.g., '2025-09-05')
-            // which we use as a key.
-            const dateKey = date.toISOString().slice(0, 10);
+            // Create a date directly from the day number (days since Unix epoch)
+            // Use UTC methods to avoid timezone conversion issues
+            const date = new Date(0); // Start at Unix epoch
+            date.setUTCDate(dayNum + 1); // Add days (setUTCDate handles year/month overflow)
+            
+            // Get the date string in YYYY-MM-DD format using UTC methods
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const dateKey = `${year}-${month}-${day}`;
             
             const count = rawData[dayNumStr];
             reviewsByDay.set(dateKey, count);
