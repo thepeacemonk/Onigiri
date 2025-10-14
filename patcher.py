@@ -7,6 +7,7 @@ from aqt import mw, gui_hooks, dialogs
 from aqt import mw, gui_hooks, dialogs
 from aqt.deckbrowser import DeckBrowser
 from aqt.overview import Overview
+from aqt.reviewer import Reviewer
 from aqt.qt import QUrl, QEvent, QObject, QDialog, QVBoxLayout, QDesktopServices
 from aqt.utils import tr
 from aqt.toolbar import TopWebView, BottomWebView
@@ -610,6 +611,25 @@ def on_webview_js_message(handled, message, context):
         if cmd == "sync":
             mw.onSync()
             return (True, None)
+    # --- ADD THIS ENTIRE BLOCK ---
+    elif isinstance(context, Reviewer):
+        cmd = message
+        if cmd == "decks":
+            mw.moveToState("deckBrowser")
+            return (True, None)
+        if cmd == "add":
+            mw.onAddCard()
+            return (True, None)
+        if cmd == "browse":
+            mw.onBrowse()
+            return (True, None)
+        if cmd == "stats":
+            mw.onStats()
+            return (True, None)
+        if cmd == "sync":
+            mw.onSync()
+            return (True, None)
+    # --- END OF NEW BLOCK ---
 
     return handled
 
@@ -1200,7 +1220,7 @@ def generate_reviewer_top_bar_html_and_css():
     html = """
     <div id="onigiri-reviewer-header">
         <div class="onigiri-reviewer-header-buttons">
-            <a href="#" onclick="pycmd('deckBrowser'); return false;" class="onigiri-reviewer-button">Decks</a>
+            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
             <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
             <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
             <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
@@ -1698,6 +1718,8 @@ def render_custom_main_screen(deck_browser, content):
     """
     The new hook function that builds the entire main screen layout based on user settings.
     """
+    # Ensure hooks from other add-ons are captured just-in-time
+    take_control_of_deck_browser_hook()
     conf = config.get_config()
     addon_package = mw.addonManager.addonFromModule(__name__)
 
