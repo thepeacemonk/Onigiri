@@ -109,12 +109,11 @@ def maybe_show_welcome_popup():
         welcome_dialog.show_welcome_dialog()
 
 def initial_setup():
-    patcher.take_control_of_deck_browser_hook()
     patcher.apply_patches()
     patcher.patch_overview()
     patcher.patch_congrats_page()
     menu_buttons.setup_onigiri_menu(addon_path)
-    maybe_show_welcome_popup() # ADDED
+    maybe_show_welcome_popup()
 
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
     conf = config.get_config()
@@ -126,6 +125,15 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
             deck_browser.web.eval(js)
         except Exception as e:
             print(f"Onigiri heatmap failed to render: {e}")
+            
+# --- NEW FUNCTION AND HOOK ---
+def on_deck_browser_will_show(deck_browser: DeckBrowser):
+    """
+    Ensures that Onigiri takes control of external hooks at the last possible moment,
+    right before the deck browser is displayed for the first time. This guarantees
+    that other add-ons have had time to register their hooks.
+    """
+    patcher.take_control_of_deck_browser_hook()
 
 gui_hooks.main_window_did_init.append(initial_setup)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
