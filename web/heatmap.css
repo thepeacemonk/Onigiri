@@ -1,409 +1,296 @@
 /*
-    Onigiri Heatmap Stylesheet
+    Onigiri Heatmap Renderer
+    This script is responsible for drawing the heatmap graph based on review data,
+    with different views for Year, Month, and Week.
 */
 
-#onigiri-heatmap-container,
-#onigiri-profile-heatmap-container {
-    padding: 15px;
-    border-radius: 25px;
-    background-color: var(--canvas-inset);
-    border: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-}
+// Ensure the OnigiriHeatmap object exists
+window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
-.onigiri-heatmap-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    padding: 0 5px;
-    flex-wrap: wrap;
-    gap: 10px;
-}
+(function (exports) {
+    "use strict";
 
-.onigiri-heatmap-header .header-left,
-.onigiri-heatmap-header .header-right {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    flex-wrap: wrap;
-}
+    // --- STATE MANAGEMENT & CACHE ---
+    let state = {
+        view: 'year', // 'year', 'month', 'week'
+        targetDate: new Date(),
+    };
 
-.onigiri-heatmap-header h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--fg);
-}
-
-.streak-counter {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--fg-subtle);
-    background-color: var(--heatmap-color-zero);
-    padding: 4px 8px;
-    border-radius: 8px;
-}
-
-.heatmap-filters {
-    display: flex;
-    background-color: var(--heatmap-color-zero);
-    border-radius: 8px;
-    padding: 3px;
-}
-
-.filter-btn {
-    border: none;
-    background-color: transparent;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font: var(--font-main);
-    font-weight: 500;
-    color: var(--fg-subtle);
-    box-shadow: none !important;
-}
-
-.filter-btn:hover {
-    background: transparent !important; /* This overrides the gradient */
-    border: none;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    color: var(--fg-subtle);
-    opacity: 1;
-}
-
-.filter-btn.active {
-    background-color: var(--canvas-inset);
-    color: var(--fg);
-    box-shadow: none !important;
-}
-
-.heatmap-nav {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.nav-btn {
-    border: none;
-    border-color: transparent;
-    background-color: var(--heatmap-color-zero);
-    color: var(--fg);
-    border-radius: 8px;
-    width: 15px;
-    height: 15px;
-    cursor: pointer;
-    font-size: 15px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* transition removed */
-}
-
-.nav-btn:hover {
-    background: var(--heatmap-color-zero) !important; /* This overrides the gradient */
-    font-size: 15px;
-    font-weight: bold;
-    border: none;
-    opacity: 1;
-}
-
-.nav-title {
-    font-weight: 500;
-    color: var(--fg);
-    background-color: var(--heatmap-color-zero);
-    padding: 4px 15px;
-    border-radius: 8px;
-}
-
-/* --- Base Grid and Cells --- */
-.heatmap-day-cell {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    position: relative;
-    --heatmap-intensity: 0; /* JS will set this value per-cell */
-}
-
-/* THIS IS THE NEW COLORING LOGIC */
-.heatmap-day-cell .day-shape {
-    width: 100%;
-    height: 100%;
-    background-color: var(--heatmap-color-zero);
-    position: relative;
-    overflow: hidden; /* Important for containing the pseudo-element */
-}
-
-.heatmap-day-cell .day-shape::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--heatmap-color);
-    opacity: var(--heatmap-intensity); /* Use the intensity variable set by JS */
-}
-
-/* Tooltip */
-.heatmap-day-cell::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: 120%;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: var(--fg);
-    color: var(--bg);
-    padding: 5px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    white-space: nowrap;
-    z-index: 10;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-
-/* --- START: Tooltip Repositioning Fix --- */
-/*
-  The following rules prevent the tooltip from being clipped when the
-  heatmap cell is near the left or right edge of the container.
-*/
-
-/* For cells in the first two columns of Year view, align tooltip to the left. */
-.year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
-    left: 0;
-    transform: translateX(0);
-}
-
-/*
-  For cells in the last two columns of Year view, align tooltip to the right.
-  The grid has up to 371 cells (53 columns * 7 rows).
-  The last two columns start around child index 358 (371 - 14).
-*/
-.year-view .heatmap-cells .heatmap-day-cell:nth-child(n + 316)::after {
-    left: auto;
-    right: 0;
-    transform: translateX(0);
-}
-/* --- END: Tooltip Repositioning Fix --- */
-
-.heatmap-day-cell:hover::after {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* --- Year View Specifics --- */
-.heatmap-grid.year-view {
-    display: grid;
-    grid-template-areas:
-        "empty months"
-        "weekdays cells";
-    grid-template-columns: auto 1fr;
-    gap: 5px 3px;
-}
-
-.year-view[data-months-hidden="true"] {
-    grid-template-areas: "weekdays cells";
-}
-
-.year-view[data-weekdays-hidden="true"] {
-    grid-template-areas: "empty months"
-                         "empty cells";
-    grid-template-columns: 0 1fr;
-}
-
-.year-view[data-months-hidden="true"][data-weekdays-hidden="true"] {
-    grid-template-areas: "cells";
-    grid-template-columns: 1fr;
-}
-
-.year-view .heatmap-months {
-    grid-area: months;
-    display: grid;
-    grid-template-columns: repeat(53, 1fr);
-    font-size: 10px;
-    color: var(--fg-subtle);
-    padding-left: 2px;
-}
-.year-view[data-months-hidden="true"] .heatmap-months {
-    display: none;
-}
-
-
-.year-view .month-label {
-    grid-column: span 4;
-    text-align: left;
-    white-space: nowrap;
-}
-
-.year-view .heatmap-weekdays {
-    grid-area: weekdays;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-    font-size: 10px;
-    color: var(--fg-subtle);
-    padding-right: 5px;
-    text-align: right;
-}
-
-.year-view[data-weekdays-hidden="true"] .heatmap-weekdays {
-    display: none;
-}
-
-.year-view .heatmap-cells {
-    grid-area: cells;
-    display: grid;
-    /* 7 rows for days of the week */
-    grid-template-rows: repeat(7, 1fr);
-    /* Let the columns flow automatically */
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    gap: 3px;
-}
-
-
-/* --- Month View Specifics --- */
-.heatmap-grid.month-view {
-    display: grid;
-    grid-template-rows: auto 1fr;
-    gap: 8px;
-    width: fit-content; /* Let the container size to its content */
-    max-width: 100%;    /* Prevent overflow */
-    margin: 0 auto;     /* Center the container */
-}
-.month-view .month-weekdays-header {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    text-align: center;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--fg-subtle);
-}
-.month-view[data-weekdays-hidden="true"] .month-weekdays-header {
-    display: none;
-}
-
-.month-view .month-cells-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 30px); /* Use fixed size for cells */
-    grid-auto-rows: 30px; /* Make cells square */
-    gap: 4px;
-}
-
-/* --- Week View Specifics --- */
-.heatmap-grid.week-view {
-    display: grid;
-    grid-template-rows: auto 1fr;
-    gap: 5px;
-    width: fit-content; /* Let the container size to its content */
-    max-width: 100%;    /* Prevent overflow */
-    margin: 0 auto;     /* Center the container */
-}
-.week-view[data-header-hidden="true"] .week-days-header {
-    display: none;
-}
-.week-view .week-days-header {
-    display: grid;
-    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
-    gap: 4px; /* Add gap to align with cells */
-    text-align: center;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--fg-subtle);
-}
-.week-view .weekday-label {
-    font-weight: 500;
-}
-.week-view .day-label {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--fg);
-}
-.week-view .week-cells-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
-    gap: 4px;
-}
-
-/* --- SKELETON LOADER STYLES START --- */
-.heatmap-grid-skeleton {
-    display: grid;
-    grid-template-rows: repeat(7, 1fr);
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    gap: 3px;
-    opacity: 0.5;
-}
-
-.skeleton-cell {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    background-color: var(--highlight-bg);
-    border-radius: 3px;
-    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.heatmap-header-skeleton {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    padding: 0 5px;
-    gap: 10px;
-    opacity: 0.5;
-}
-
-.header-left-skeleton, .header-right-skeleton {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.skeleton-title {
-    width: 60px;
-    height: 20px;
-    background-color: var(--highlight-bg);
-    border-radius: 6px;
-    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.skeleton-nav {
-    width: 120px;
-    height: 24px;
-    background-color: var(--highlight-bg);
-    border-radius: 6px;
-    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.skeleton-streak {
-    width: 90px;
-    height: 24px;
-    background-color: var(--highlight-bg);
-    border-radius: 6px;
-    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.skeleton-filters {
-    width: 180px;
-    height: 28px;
-    background-color: var(--highlight-bg);
-    border-radius: 6px;
-    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes skeleton-pulse {
-    0%, 100% {
-        opacity: 1;
+    
+    // --- DATA PREPARATION ---
+    function prepareData(rawData) {
+        const reviewsByDay = new Map();
+        let maxReviews = 0;
+        for (const dayNumStr in rawData) {
+            const dayNum = parseInt(dayNumStr, 10);
+            // Create a date directly from the day number (days since Unix epoch)
+            // Use UTC methods to avoid timezone conversion issues
+            const date = new Date(0); // Start at Unix epoch
+            date.setUTCDate(dayNum + 1); // Add days (setUTCDate handles year/month overflow)
+            
+            // Get the date string in YYYY-MM-DD format using UTC methods
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
+            const dateKey = `${year}-${month}-${day}`;
+            
+            const count = rawData[dayNumStr];
+            reviewsByDay.set(dateKey, count);
+            if (count > maxReviews) {
+                maxReviews = count;
+            }
+        }
+        return { reviewsByDay, maxReviews };
     }
-    50% {
-        opacity: 0.4;
+
+    // This function calculates a 0-1 intensity factor based on specific card count thresholds.
+    function createIntensityScale() {
+        return (count) => {
+            if (count >= 300) return 1.0;  // 100%
+            
+            if (count >= 100) return 0.6;  // 60% 
+            
+            if (count >= 1) return 0.3;    // 30% 
+            return 0; // 0% for 0
+        };
     }
-}
-/* --- SKELETON LOADER STYLES END --- */
+
+    // --- VIEW RENDERERS ---
+
+    function drawYearView(gridContainer, preparedData, intensityScale, config) {
+        gridContainer.className = 'heatmap-grid year-view';
+        gridContainer.dataset.monthsHidden = !config.heatmapShowMonths;
+        gridContainer.dataset.weekdaysHidden = !config.heatmapShowWeekdays;
+
+        const target = state.targetDate;
+        const year = target.getFullYear();
+        const firstDayOfYear = new Date(year, 0, 1);
+
+        let html = `
+            <div class="heatmap-months"></div>
+            <div class="heatmap-weekdays"><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div><div>S</div></div>
+            <div class="heatmap-cells"></div>
+        `;
+        gridContainer.innerHTML = html;
+
+        const cellsContainer = gridContainer.querySelector('.heatmap-cells');
+        const monthsContainer = gridContainer.querySelector('.heatmap-months');
+        let currentMonth = -1;
+
+        for (let i = 0; i < 371; i++) {
+            const dayOfWeek = (firstDayOfYear.getDay() + 6) % 7;
+            const date = new Date(firstDayOfYear);
+            date.setDate(firstDayOfYear.getDate() - dayOfWeek + i);
+
+            if (date.getFullYear() !== year) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'heatmap-day-cell empty';
+                cellsContainer.appendChild(emptyCell);
+                continue;
+            }
+
+            if (date.getDate() === 1 && date.getMonth() !== currentMonth) {
+                currentMonth = date.getMonth();
+                const monthLabel = document.createElement('div');
+                monthLabel.className = 'month-label';
+                monthLabel.textContent = date.toLocaleString('default', { month: 'short' });
+                monthLabel.style.gridColumn = Math.floor(i / 7) + 1;
+                monthsContainer.appendChild(monthLabel);
+            }
+
+            const dateKey = date.toISOString().slice(0, 10);
+            const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
+            const cell = createCell(date, reviewCount, intensityScale, config);
+            cellsContainer.appendChild(cell);
+        }
+    }
+
+    function drawMonthView(gridContainer, preparedData, intensityScale, config) {
+        gridContainer.className = 'heatmap-grid month-view';
+        gridContainer.dataset.weekdaysHidden = !config.heatmapShowWeekdays;
+        const target = state.targetDate;
+        const year = target.getFullYear();
+        const month = target.getMonth();
+        const firstDayOfMonth = new Date(year, month, 1);
+
+        let html = `
+            <div class="month-weekdays-header"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+            <div class="month-cells-grid"></div>
+        `;
+        gridContainer.innerHTML = html;
+        const cellsContainer = gridContainer.querySelector('.month-cells-grid');
+
+        const firstDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
+        for (let i = 0; i < firstDayOfWeek; i++) {
+            const emptyCell = document.createElement('div');
+            emptyCell.className = 'heatmap-day-cell empty';
+            cellsContainer.appendChild(emptyCell);
+        }
+
+        const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+        for (let i = 1; i <= lastDayOfMonth; i++) {
+            const date = new Date(year, month, i);
+            const dateKey = date.toISOString().slice(0, 10);
+            const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
+            const cell = createCell(date, reviewCount, intensityScale, config);
+            cellsContainer.appendChild(cell);
+        }
+    }
+
+    function drawWeekView(gridContainer, preparedData, intensityScale, config) {
+        gridContainer.className = 'heatmap-grid week-view';
+        gridContainer.dataset.headerHidden = !config.heatmapShowWeekHeader;
+        const target = state.targetDate;
+        const startDate = new Date(target);
+        const startDayOfWeek = (target.getDay() + 6) % 7;
+        startDate.setDate(startDate.getDate() - startDayOfWeek);
+
+        let html = `
+            <div class="week-days-header"></div>
+            <div class="week-cells-grid"></div>
+        `;
+        gridContainer.innerHTML = html;
+
+        const headerContainer = gridContainer.querySelector('.week-days-header');
+        const cellsContainer = gridContainer.querySelector('.week-cells-grid');
+
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+
+            const header = document.createElement('div');
+            header.innerHTML = `
+                <div class="weekday-label">${date.toLocaleString('default', { weekday: 'short' })}</div>
+                <div class="day-label">${date.getDate()}</div>
+            `;
+            headerContainer.appendChild(header);
+
+            const dateKey = date.toISOString().slice(0, 10);
+            const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
+            const cell = createCell(date, reviewCount, intensityScale, config);
+            cellsContainer.appendChild(cell);
+        }
+    }
+
+    function createCell(date, reviewCount, intensityScale, config) {
+        const cell = document.createElement('div');
+        cell.className = 'heatmap-day-cell';
+        cell.dataset.reviewCount = reviewCount;
+        
+        // Set the intensity as a CSS custom property. CSS will handle the rest.
+        const intensity = intensityScale(reviewCount);
+        cell.style.setProperty('--heatmap-intensity', intensity.toFixed(3));
+
+        const shapeDiv = document.createElement('div');
+        shapeDiv.className = 'day-shape';
+
+        // The SVG mask logic remains unchanged.
+        if (config.heatmapSvgContent) {
+            const encodedSvg = encodeURIComponent(config.heatmapSvgContent);
+            const dataUri = `url("data:image/svg+xml,${encodedSvg}")`;
+            shapeDiv.style.webkitMaskImage = dataUri;
+            shapeDiv.style.maskImage = dataUri;
+            shapeDiv.style.webkitMaskSize = 'contain';
+            shapeDiv.style.maskSize = 'contain';
+            shapeDiv.style.webkitMaskRepeat = 'no-repeat';
+            shapeDiv.style.maskRepeat = 'no-repeat';
+            shapeDiv.style.webkitMaskPosition = 'center';
+            shapeDiv.style.maskPosition = 'center';
+        }
+        cell.appendChild(shapeDiv);
+
+        const tooltipText = `${reviewCount} reviews on ${date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+        cell.setAttribute('data-tooltip', tooltipText);
+        return cell;
+    }
+
+    // --- MAIN RENDER FUNCTION ---
+    exports.render = function (containerId, data, config) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const preparedData = prepareData(data.calendar);
+        const intensityScale = createIntensityScale();
+
+        function draw() {
+            const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} day streak</div>` : '';
+
+            let navHTML = '';
+            if (state.view === 'year') {
+                navHTML = `
+                    <button class="nav-btn" data-nav="-1">◄</button>
+                    <span class="nav-title">${state.targetDate.getFullYear()}</span>
+                    <button class="nav-btn" data-nav="1">►</button>
+                `;
+            } else if (state.view === 'month') {
+                navHTML = `
+                    <button class="nav-btn" data-nav="-1">◄</button>
+                    <span class="nav-title">${state.targetDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                    <button class="nav-btn" data-nav="1">►</button>
+                `;
+            } else if (state.view === 'week') {
+                const startOfWeek = new Date(state.targetDate);
+                startOfWeek.setDate(startOfWeek.getDate() - (startOfWeek.getDay() + 6) % 7);
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                navHTML = `
+                    <button class="nav-btn" data-nav="-7">◄</button>
+                    <span class="nav-title">${startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <button class="nav-btn" data-nav="7">►</button>
+                `;
+            }
+
+            container.innerHTML = `
+                <div class="onigiri-heatmap-header">
+                    <div class="header-left">
+                        <h3>Activity</h3>
+                        <div class="heatmap-nav">${navHTML}</div>
+                    </div>
+                    <div class="header-right">
+                        ${streakHTML}
+                        <div class="heatmap-filters">
+                            <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">Year</button>
+                            <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">Month</button>
+                            <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">Week</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="heatmap-grid"></div>
+            `;
+
+            const gridContainer = container.querySelector('.heatmap-grid');
+            if (state.view === 'year') {
+                drawYearView(gridContainer, preparedData, intensityScale, config);
+            } else if (state.view === 'month') {
+                drawMonthView(gridContainer, preparedData, intensityScale, config);
+            } else if (state.view === 'week') {
+                drawWeekView(gridContainer, preparedData, intensityScale, config);
+            }
+
+            container.querySelector('.heatmap-filters').addEventListener('click', (e) => {
+                if (e.target.classList.contains('filter-btn')) {
+                    state.view = e.target.dataset.view;
+                    state.targetDate = new Date();
+                    draw();
+                }
+            });
+
+            container.querySelector('.heatmap-nav').addEventListener('click', (e) => {
+                if (e.target.classList.contains('nav-btn')) {
+                    const navAmount = parseInt(e.target.dataset.nav, 10);
+                    if (state.view === 'year') {
+                        state.targetDate.setFullYear(state.targetDate.getFullYear() + navAmount);
+                    } else if (state.view === 'month') {
+                        state.targetDate.setMonth(state.targetDate.getMonth() + navAmount);
+                    } else if (state.view === 'week') {
+                        state.targetDate.setDate(state.targetDate.getDate() + navAmount);
+                    }
+                    draw();
+                }
+            });
+        }
+
+        draw();
+    };
+
+})(window.OnigiriHeatmap);
