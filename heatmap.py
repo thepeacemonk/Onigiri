@@ -19,21 +19,21 @@ def get_heatmap_data():
     rollover_seconds = rollover_hour * 3600
 
     # More efficient query that aggregates counts in the database
-    query = f"""
+    query = """
         SELECT
-            (id / 1000 - {rollover_seconds}) / 86400,
-            count(*)
+            CAST(((id / 1000) - ?) / 86400 AS INT) AS day,
+            COUNT(*)
         FROM
             revlog
         GROUP BY
-            (id / 1000 - {rollover_seconds}) / 86400
+            day
     """
-    
+
     # Use mw.col.db.all() to get all rows from the result
-    query_result = mw.col.db.all(query)
+    query_result = mw.col.db.all(query, rollover_seconds)
 
     # Convert the list of [day, count] pairs into a dictionary
-    reviews_by_day = {day: count for day, count in query_result}
+    reviews_by_day = {int(day): count for day, count in query_result}
     
     # Use a set for fast checking of days with reviews
     review_days_epoch = set(reviews_by_day.keys())
