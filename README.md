@@ -13,6 +13,8 @@ Onigiri is an experimental add-on that replaces the standard Anki interface with
 
 Onigiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional Japanese recipe rich in carbohydrates, which are essential for providing energy—so you can study your Anki cards! This is the intention of Onigiri: to give you the proper motivation to study with a beautiful new layout for Anki (暗記)—an extra carbohydrate to give you that boost!
 
+Join the [discord](https://discord.com/invite/ZU9VZHMk3u) today to receive updated news on Onigiri and previews of future updates.
+
 </p>
 
 ### 📝 Philosophy
