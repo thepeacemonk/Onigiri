@@ -21,7 +21,7 @@ Steps to reproduce the behavior:
 If applicable, add screenshots to help explain your problem.
 
 **Operator System model**
-Inform here your OS model: Windows, LinuxOS, macOS, etc. 
+Inform here your OS model: Windows, Linux, macOS, etc. 
 
 **Debug message**
 If you have a debug pop-up message, copy it here.
