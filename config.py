@@ -8,7 +8,8 @@ DEFAULTS = {
     "studyNowText": "Study Now",
     "hideProfileBar": False,
     "hideWelcomeMessage": False,
-    "hideNativeHeaderAndBottomBar": False,
+    "hideDeckCounts": False,
+    "hideNativeHeaderAndBottomBar": True,
     "proHide": False,
     "maxHide": False, 
     "sidebarCollapsed": False,
@@ -31,7 +32,18 @@ DEFAULTS = {
     "archive": []
     },
     "externalWidgetLayout": {}, # Default: no external widgets configured
-    # --- NEW: Reviewer Bottom Bar Settings ---
+    # --- NEW: Reviewer Background Settings ---
+    "onigiri_reviewer_bg_mode": "main", # "main", "color", "image_color"
+    "onigiri_reviewer_bg_main_blur": 0, # Blur when using main background
+    "onigiri_reviewer_bg_main_opacity": 100, # Opacity when using main background
+    "onigiri_reviewer_bg_light_color": "#FFFFFF",
+    "onigiri_reviewer_bg_dark_color": "#2C2C2C",
+    "onigiri_reviewer_bg_image_light": "",
+    "onigiri_reviewer_bg_image_dark": "",
+    "onigiri_reviewer_bg_image_mode": "single", # "single" or "separate"
+    "onigiri_reviewer_bg_blur": 0,
+    "onigiri_reviewer_bg_opacity": 100,
+    # --- Reviewer Bottom Bar Settings ---
     "onigiri_reviewer_bottom_bar_bg_mode": "main", # "main", "color", "image", "image_color"
     "onigiri_reviewer_bottom_bar_bg_light_color": "#FFFFFF",
     "onigiri_reviewer_bottom_bar_bg_dark_color": "#2C2C2C",
@@ -147,4 +159,3 @@ def write_config(config):
     Saves the provided configuration dictionary to Anki's settings.
     """
     mw.addonManager.writeConfig(get_config_id(), config)
-
