@@ -618,8 +618,7 @@ class SettingsDialog(QDialog):
         light_bg = mw.col.conf.get("modern_menu_bg_color_light")
         dark_bg = mw.col.conf.get("modern_menu_bg_color_dark")
 
-        # --- ADD THESE TWO LINES ---
-        self.reviewer_top_bar_mode = mw.col.conf.get("onigiri_reviewer_top_bar_bg_mode", "main")
+        # --- ADD THIS LINE ---
         self.reviewer_bottom_bar_mode = mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_mode", "main")
         # --- END OF ADDITION ---
 
@@ -658,6 +657,9 @@ class SettingsDialog(QDialog):
 
         self.hide_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_profile_bar_checkbox.setChecked(self.current_config.get("hideProfileBar", False))
+
+        self.hide_deck_counts_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_deck_counts_checkbox.setChecked(self.current_config.get("hideDeckCounts", False))
 
         self.study_now_input = QLineEdit(mw.col.conf.get("modern_menu_studyNowText", DEFAULTS["studyNowText"]))
         self.show_congrats_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
@@ -752,6 +754,17 @@ class SettingsDialog(QDialog):
         self.study_zone_toggle_widget = SidebarToggleButton("Study zone", study_zone_items)
         self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.study_zone_toggle_widget)
+
+        # Connect toggle buttons to enable accordion behavior
+        self.home_toggle_widget.toggle_button.toggled.connect(
+            lambda checked: self._on_section_toggled(self.home_toggle_widget, checked)
+        )
+        self.menu_toggle_widget.toggle_button.toggled.connect(
+            lambda checked: self._on_section_toggled(self.menu_toggle_widget, checked)
+        )
+        self.study_zone_toggle_widget.toggle_button.toggled.connect(
+            lambda checked: self._on_section_toggled(self.study_zone_toggle_widget, checked)
+        )
 
         self.donate_button = QPushButton("Donate")
         self.donate_button.clicked.connect(self._open_donate_link)
@@ -1052,6 +1065,18 @@ class SettingsDialog(QDialog):
             self.tabs_loaded[stack_index] = True
         
         self.content_stack.setCurrentIndex(stack_index)
+    
+    def _on_section_toggled(self, toggled_widget, checked):
+        """Handle accordion behavior: close other sections when one is opened."""
+        if not checked:
+            # If the section is being closed, don't do anything special
+            return
+        
+        # Close all other sections when this one is opened
+        all_toggles = [self.home_toggle_widget, self.menu_toggle_widget, self.study_zone_toggle_widget]
+        for toggle in all_toggles:
+            if toggle is not toggled_widget and toggle.is_open:
+                toggle.deselect_all()
         
     def _create_inner_group(self, title):
         container = QFrame()
@@ -1164,7 +1189,7 @@ class SettingsDialog(QDialog):
 
             /* <<< START NEW CODE >>> */
             QFrame#hideModeCard {{
-                background-color: {input_bg};
+                background-color: {sidebar_bg};
                 border: 1px solid {border};
                 border-radius: 16px;
                 padding: 20px;
@@ -2103,12 +2128,12 @@ class SettingsDialog(QDialog):
         heatmap_color_modes_layout = QHBoxLayout()
         light_heatmap_group, light_heatmap_layout = self._create_inner_group("Light Mode")
         light_heatmap_layout.setSpacing(5)
-        self._populate_pills_for_keys(light_heatmap_layout, "light", ["--heatmap-color", "--heatmap-color-zero"])
+        self._populate_pills_for_keys(light_heatmap_layout, "light", ["--heatmap-color"])
         heatmap_color_modes_layout.addWidget(light_heatmap_group)
 
         dark_heatmap_group, dark_heatmap_layout = self._create_inner_group("Dark Mode")
         dark_heatmap_layout.setSpacing(5)
-        self._populate_pills_for_keys(dark_heatmap_layout, "dark", ["--heatmap-color", "--heatmap-color-zero"])
+        self._populate_pills_for_keys(dark_heatmap_layout, "dark", ["--heatmap-color"])
         heatmap_color_modes_layout.addWidget(dark_heatmap_group)
         heatmap_section.add_layout(heatmap_color_modes_layout)
 
@@ -2169,32 +2194,96 @@ class SettingsDialog(QDialog):
         
         return container
     
-    def _create_hide_mode_card(self, title, description, toggle_widget):
+    def _create_hide_mode_card(self, title, toggle_widget, items):
+        """
+        Create a hide mode card with sections showing what gets hidden.
+        
+        Args:
+            title: The mode title (Hide, Pro, or Max)
+            toggle_widget: The toggle button widget
+            items: List of tuples (section_name, item_list) where item_list is a list of feature strings
+        """
         card = QFrame()
         card.setObjectName("hideModeCard")
-        card.setFixedWidth(200)
+        card.setFixedWidth(200)  # Back to original width
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(card)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
+        layout.setContentsMargins(8, 15, 8, 20)  # Extra bottom margin to prevent clipping
 
+        # Title
         title_label = QLabel(title)
         title_label.setObjectName("hideModeTitleLabel")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
 
-        desc_label = QLabel(description)
-        desc_label.setObjectName("hideModeDescLabel")
-        desc_label.setWordWrap(True)
-        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc_label.setMinimumHeight(150) # Ensure cards have the same height
+        # Separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setStyleSheet("QFrame { background-color: rgba(128, 128, 128, 0.3); max-height: 1px; }")
+        layout.addWidget(separator)
+        layout.addSpacing(1)  # More space after separator for rounded corners
 
+        # Content area for items (no scroll area to avoid scrollbars)
+        content_widget = QWidget()
+        content_widget.setStyleSheet("QWidget { background: transparent; }")
+        content_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setSpacing(7)  # More spacing between items for rounded corners
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Add items - no section headers for minimal design
+        for section_name, item_list in items:
+            # Just add the items directly in rounded boxes
+            for item in item_list:
+                # Create a frame for the rounded box that fills width
+                item_box = QFrame()
+                item_box.setObjectName("hideModeItemBox")
+                
+                # Style the box with custom background colors
+                if theme_manager.night_mode:
+                    item_box.setStyleSheet("""
+                        QFrame#hideModeItemBox {
+                            background-color: #2c2c2c;
+                            border-radius: 10px;
+                            padding: 12px 10px;
+                            min-height: 20px;
+                        }
+                    """)
+                else:
+                    item_box.setStyleSheet("""
+                        QFrame#hideModeItemBox {
+                            background-color: #f2f2f2;
+                            border-radius: 10px;
+                            padding: 12px 10px;
+                            min-height: 20px;
+                        }
+                    """)
+                
+                box_layout = QHBoxLayout(item_box)
+                box_layout.setContentsMargins(0, 0, 0, 0)
+                
+                item_label = QLabel(item)
+                item_label.setWordWrap(True)
+                if theme_manager.night_mode:
+                    item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
+                else:
+                    item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
+                box_layout.addWidget(item_label)
+                
+                content_layout.addWidget(item_box)
+
+        content_layout.addStretch()
+        layout.addWidget(content_widget)
+
+        # Toggle button at bottom
+        layout.addStretch()
         toggle_layout = QHBoxLayout()
         toggle_layout.addStretch()
         toggle_layout.addWidget(toggle_widget)
         toggle_layout.addStretch()
-
-        layout.addWidget(title_label)
-        layout.addWidget(desc_label)
-        layout.addStretch()
         layout.addLayout(toggle_layout)
 
         return card
@@ -2203,19 +2292,62 @@ class SettingsDialog(QDialog):
     def create_hide_modes_page(self):
         page, layout = self._create_scrollable_page()
         
+        # Add title at the top
+        title = QLabel("Hide Modes")
+        title.setObjectName("hideModePageTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        if theme_manager.night_mode:
+            title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; color: #e0e0e0; background-color: #2c2c2c; padding: 0 5px;")
+        else:
+            title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; color: #212121; background-color: #f3f3f3; padding: 0 5px;")
+        layout.addWidget(title)
+
+        # Add description at the top
+        description = QLabel(
+            "Choose how much of the interface you want to hide for a more immersive experience. "
+            "Each mode builds upon the previous one, hiding progressively more elements."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("font-size: 12px; color: #666; margin-bottom: 8px; padding: 10px;")
+        layout.addWidget(description)
+        
         cards_container = QWidget()
         cards_layout = QHBoxLayout(cards_container)
         cards_layout.setSpacing(20)
         cards_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        desc1 = "Replaces the top toolbar for a modern/customizable one and hides the bottom toolbar on main menu and Overviewer. Better navigation, less imersive."
-        card1 = self._create_hide_mode_card("Hide", desc1, self.hide_native_header_checkbox)
+        # Define what each mode hides - simplified flat structure
+        # Hide mode - Basic hiding
+        hide_items = [
+            ("", [
+                "Native top toolbar (Main Menu)",
+                "Native bottom toolbar (Main Menu & Overview)"
+            ])
+        ]
 
-        desc2 = "Hides the modern toolbar on the overview screen and the native toolbar on the reviewer screen, a more immersive experience. You will need to use keyboard shortcuts on Overview and partially on Reviewer."
-        card2 = self._create_hide_mode_card("Pro", desc2, self.pro_hide_checkbox)
-        
-        desc3 = "Hides everything from Pro and the bottom toolbar on the reviewer screen, an absolute imersive experience. You will need to use keyboard shortcuts to navigate everywhere, be advised!"
-        card3 = self._create_hide_mode_card("Max", desc3, self.max_hide_checkbox)
+        # Pro mode - Includes everything from Hide + more
+        pro_items = [
+            ("", [
+                "Everything in Hide",
+                "Modern toolbar (Overview)",
+                "Native top toolbar (Reviewer)",
+                "⚠ Requires keyboard shortcuts"
+            ])
+        ]
+
+        # Max mode - Includes everything from Pro + even more
+        max_items = [
+            ("", [
+                "Everything in Pro.",
+                "Bottom toolbar (Reviewer)",
+                "No buttons are displayed",
+                "⚠ Requires keyboard shortcuts"
+            ])
+        ]
+
+        card1 = self._create_hide_mode_card("Hide", self.hide_native_header_checkbox, hide_items)
+        card2 = self._create_hide_mode_card("Pro", self.pro_hide_checkbox, pro_items)
+        card3 = self._create_hide_mode_card("Max", self.max_hide_checkbox, max_items)
 
         cards_layout.addWidget(card1)
         cards_layout.addWidget(card2)
@@ -2318,6 +2450,7 @@ class SettingsDialog(QDialog):
         
         sidebar_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, "Hide 'Welcome' message"))
         sidebar_section.add_widget(self._create_toggle_row(self.hide_profile_bar_checkbox, "Hide Profile bar"))
+        sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, "Hide Deck Counts"))
 
         layout.addWidget(sidebar_section)
 
@@ -2650,14 +2783,6 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.color_group)
 
         self.image_group, image_options_layout = self._create_inner_group("Main Image Options")
-        image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single"); image_mode_layout = QHBoxLayout()
-        self.bg_image_mode_single_radio = QRadioButton("Single Image for Both Modes"); self.bg_image_mode_separate_radio = QRadioButton("Separate Images for Light & Dark Mode")
-        self.bg_image_mode_single_radio.setChecked(image_mode == "single"); self.bg_image_mode_separate_radio.setChecked(image_mode == "separate")
-        image_mode_layout.addWidget(self.bg_image_mode_single_radio); image_mode_layout.addWidget(self.bg_image_mode_separate_radio); image_options_layout.addLayout(image_mode_layout)
-        
-        self.galleries["main_single"] = {}
-        self.single_image_container = self._create_image_gallery_group("main_single", "user_files/main_bg", "modern_menu_background_image", is_sub_group=True, image_files_cache=cached_user_files)
-        image_options_layout.addWidget(self.single_image_container)
         
         self.separate_images_container = QWidget()
         sep_layout = QHBoxLayout(self.separate_images_container)
@@ -2737,8 +2862,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(sidebar_group)
 
         self.color_radio.toggled.connect(self.toggle_background_options); self.accent_radio.toggled.connect(self.toggle_background_options); self.image_color_radio.toggled.connect(self.toggle_background_options)
-        self.bg_image_mode_single_radio.toggled.connect(self.toggle_background_image_mode); self.sidebar_bg_main_radio.toggled.connect(self.toggle_sidebar_background_options)
-        self.toggle_background_options(); self.toggle_background_image_mode(); self.toggle_sidebar_background_options()
+        self.sidebar_bg_main_radio.toggled.connect(self.toggle_sidebar_background_options)
+        self.toggle_background_options(); self.toggle_sidebar_background_options()
         
         # --- RESET BUTTONS ---
         reset_buttons_layout = QHBoxLayout()
@@ -3088,7 +3213,7 @@ class SettingsDialog(QDialog):
             }}
         """
 
-        icons_path = os.path.join(self.addon_path, "user_files", "heatmap_icons", "heatmap_system_icons")
+        icons_path = os.path.join(self.addon_path, "system_files", "heatmap_system_icons")
         self.shape_buttons = []
         
         if os.path.isdir(icons_path):
@@ -3123,132 +3248,76 @@ class SettingsDialog(QDialog):
             
         return widget
 
-    def create_reviewer_top_bar_custom_options(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 10, 0, 0)
-
-        self.reviewer_top_bar_color_group = QWidget()
-        color_layout = QVBoxLayout(self.reviewer_top_bar_color_group)
-        color_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.reviewer_top_bar_light_color_row = self._create_color_picker_row(
-            "Color (Light Mode)", mw.col.conf.get("onigiri_reviewer_top_bar_bg_light_color", "#EEEEEE"), "reviewer_top_bar_light"
-        )
-        self.reviewer_top_bar_dark_color_row = self._create_color_picker_row(
-            "Color (Dark Mode)", mw.col.conf.get("onigiri_reviewer_top_bar_bg_dark_color", "#3C3C3C"), "reviewer_top_bar_dark"
-        )
-        color_layout.addLayout(self.reviewer_top_bar_light_color_row)
-        color_layout.addLayout(self.reviewer_top_bar_dark_color_row)
-        layout.addWidget(self.reviewer_top_bar_color_group)
-
-        self.galleries["reviewer_top_bar_bg"] = {}
-        self.reviewer_top_bar_image_group = self._create_image_gallery_group(
-            "reviewer_top_bar_bg", "user_files/reviewer_top_bar_bg", "onigiri_reviewer_top_bar_bg_image", is_sub_group=True
-        )
-        layout.addWidget(self.reviewer_top_bar_image_group)
-
-        effects_container = QWidget()
-        effects_layout = QHBoxLayout(effects_container)
-        effects_layout.setContentsMargins(0, 10, 0, 0)
-        self.reviewer_top_bar_blur_label = QLabel("Blur:")
-        self.reviewer_top_bar_blur_spinbox = QSpinBox()
-        self.reviewer_top_bar_blur_spinbox.setMinimum(0); self.reviewer_top_bar_blur_spinbox.setMaximum(100)
-        self.reviewer_top_bar_blur_spinbox.setSuffix(" %")
-        self.reviewer_top_bar_blur_spinbox.setValue(mw.col.conf.get("onigiri_reviewer_top_bar_bg_blur", 0))
-
-        self.reviewer_top_bar_intensity_label = QLabel("Effect Intensity:")
-        self.reviewer_top_bar_opacity_spinbox = QSpinBox()
-        self.reviewer_top_bar_opacity_spinbox.setMinimum(0); self.reviewer_top_bar_opacity_spinbox.setMaximum(100)
-        self.reviewer_top_bar_opacity_spinbox.setSuffix(" %")
-        self.reviewer_top_bar_opacity_spinbox.setValue(mw.col.conf.get("onigiri_reviewer_top_bar_bg_opacity", 100))
-
-        effects_layout.addWidget(self.reviewer_top_bar_blur_label)
-        effects_layout.addWidget(self.reviewer_top_bar_blur_spinbox)
-        effects_layout.addSpacing(20)
-        effects_layout.addWidget(self.reviewer_top_bar_intensity_label)
-        effects_layout.addWidget(self.reviewer_top_bar_opacity_spinbox)
-        effects_layout.addStretch()
-        layout.addWidget(effects_container)
-
-        if 'reviewer_top_bar_bg' in self.galleries:
-            self.galleries['reviewer_top_bar_bg']['effects_widget'] = effects_container
-
-        return widget
 
     def create_reviewer_tab(self):
         page, layout = self._create_scrollable_page()
 
-        # <<< TOP-BAR CODE >>>
-        top_bar_section = SectionGroup("Top Bar Background", self, description="These settings only affect the top bar's appearance when 'Hide' mode is enabled.")
-        layout.addWidget(top_bar_section)
-
-        top_mode_layout_content = top_bar_section.content_layout
-        top_mode_layout = QHBoxLayout()
-
-        top_bar_button_group = QButtonGroup(top_bar_section)
-
-        self.reviewer_top_bar_transparent_radio = QRadioButton("Transparent")
-        self.reviewer_top_bar_color_radio = QRadioButton("Solid Color")
-        self.reviewer_top_bar_image_color_radio = QRadioButton("Color + Image")
-
-        top_bar_button_group.addButton(self.reviewer_top_bar_transparent_radio)
-        top_bar_button_group.addButton(self.reviewer_top_bar_color_radio)
-        top_bar_button_group.addButton(self.reviewer_top_bar_image_color_radio)
-
-        self.reviewer_top_bar_transparent_radio.setChecked(self.reviewer_top_bar_mode == "transparent")
-        self.reviewer_top_bar_color_radio.setChecked(self.reviewer_top_bar_mode == "color")
-        self.reviewer_top_bar_image_color_radio.setChecked(self.reviewer_top_bar_mode == "image_color")
-
-        top_mode_layout.addWidget(self.reviewer_top_bar_transparent_radio)
-        top_mode_layout.addWidget(self.reviewer_top_bar_color_radio)
-        top_mode_layout.addWidget(self.reviewer_top_bar_image_color_radio)
-        top_mode_layout.addStretch()
-        top_mode_layout_content.addLayout(top_mode_layout)
-
-        self.reviewer_top_bar_match_main_group = QWidget()
-        top_match_main_layout = QVBoxLayout(self.reviewer_top_bar_match_main_group)
-        top_match_main_layout.setContentsMargins(0, 10, 0, 0)
-
-        top_match_effects_layout = QHBoxLayout()
-        top_blur_label = QLabel("Background Blur:")
-        self.reviewer_top_bar_match_main_blur_spinbox = QSpinBox()
-        self.reviewer_top_bar_match_main_blur_spinbox.setMinimum(0)
-        self.reviewer_top_bar_match_main_blur_spinbox.setMaximum(100)
-        self.reviewer_top_bar_match_main_blur_spinbox.setSuffix(" %")
-        self.reviewer_top_bar_match_main_blur_spinbox.setValue(mw.col.conf.get("onigiri_reviewer_top_bar_match_main_blur", 5))
-
-        top_opacity_label = QLabel("Bar Opacity:")
-        self.reviewer_top_bar_match_main_opacity_spinbox = QSpinBox()
-        self.reviewer_top_bar_match_main_opacity_spinbox.setMinimum(0)
-        self.reviewer_top_bar_match_main_opacity_spinbox.setMaximum(100)
-        self.reviewer_top_bar_match_main_opacity_spinbox.setSuffix(" %")
-        self.reviewer_top_bar_match_main_opacity_spinbox.setValue(mw.col.conf.get("onigiri_reviewer_top_bar_match_main_opacity", 90))
-
-        top_match_effects_layout.addWidget(top_blur_label)
-        top_match_effects_layout.addWidget(self.reviewer_top_bar_match_main_blur_spinbox)
-        top_match_effects_layout.addSpacing(20)
-        top_match_effects_layout.addWidget(top_opacity_label)
-        top_match_effects_layout.addWidget(self.reviewer_top_bar_match_main_opacity_spinbox)
-        top_match_effects_layout.addStretch()
-        top_match_main_layout.addLayout(top_match_effects_layout)
-        top_mode_layout_content.addWidget(self.reviewer_top_bar_match_main_group)
-
-        self.reviewer_top_bar_custom_group = self.create_reviewer_top_bar_custom_options()
-        top_mode_layout_content.addWidget(self.reviewer_top_bar_custom_group)
-
-        self.reviewer_top_bar_transparent_radio.toggled.connect(lambda checked: self._on_top_bar_mode_changed("transparent", checked))
-        self.reviewer_top_bar_color_radio.toggled.connect(lambda checked: self._on_top_bar_mode_changed("color", checked))
-        self.reviewer_top_bar_image_color_radio.toggled.connect(lambda checked: self._on_top_bar_mode_changed("image_color", checked))
-        self.reviewer_top_bar_transparent_radio.toggled.connect(self.toggle_reviewer_top_bar_options)
-        self.reviewer_top_bar_color_radio.toggled.connect(self.toggle_reviewer_top_bar_options)
-        self.reviewer_top_bar_image_color_radio.toggled.connect(self.toggle_reviewer_top_bar_options)
-        self.toggle_reviewer_top_bar_options()
-
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(divider)
+        # --- Reviewer Background Section ---
+        reviewer_bg_section = SectionGroup("Reviewer Background", self)
+        layout.addWidget(reviewer_bg_section)
+        
+        reviewer_bg_content = reviewer_bg_section.content_layout
+        
+        # Background mode radio buttons
+        reviewer_bg_mode_layout = QHBoxLayout()
+        reviewer_bg_button_group = QButtonGroup(reviewer_bg_section)
+        
+        self.reviewer_bg_main_radio = QRadioButton("Use Main Background")
+        self.reviewer_bg_color_radio = QRadioButton("Solid Color")
+        self.reviewer_bg_image_color_radio = QRadioButton("Color + Image")
+        
+        reviewer_bg_button_group.addButton(self.reviewer_bg_main_radio)
+        reviewer_bg_button_group.addButton(self.reviewer_bg_color_radio)
+        reviewer_bg_button_group.addButton(self.reviewer_bg_image_color_radio)
+        
+        conf = config.get_config()
+        reviewer_bg_mode = conf.get("onigiri_reviewer_bg_mode", "main")
+        self.reviewer_bg_main_radio.setChecked(reviewer_bg_mode == "main")
+        self.reviewer_bg_color_radio.setChecked(reviewer_bg_mode == "color")
+        self.reviewer_bg_image_color_radio.setChecked(reviewer_bg_mode == "image_color")
+        
+        reviewer_bg_mode_layout.addWidget(self.reviewer_bg_main_radio)
+        reviewer_bg_mode_layout.addWidget(self.reviewer_bg_color_radio)
+        reviewer_bg_mode_layout.addWidget(self.reviewer_bg_image_color_radio)
+        reviewer_bg_mode_layout.addStretch()
+        reviewer_bg_content.addLayout(reviewer_bg_mode_layout)
+        
+        # Main background options (blur and opacity when using main background)
+        self.reviewer_bg_main_group = QWidget()
+        main_effects_layout = QHBoxLayout(self.reviewer_bg_main_group)
+        main_effects_layout.setContentsMargins(0, 10, 0, 0)
+        
+        main_blur_label = QLabel("Background Blur:")
+        self.reviewer_bg_main_blur_spinbox = QSpinBox()
+        self.reviewer_bg_main_blur_spinbox.setMinimum(0)
+        self.reviewer_bg_main_blur_spinbox.setMaximum(100)
+        self.reviewer_bg_main_blur_spinbox.setSuffix(" %")
+        self.reviewer_bg_main_blur_spinbox.setValue(conf.get("onigiri_reviewer_bg_main_blur", 0))
+        
+        main_opacity_label = QLabel("Background Opacity:")
+        self.reviewer_bg_main_opacity_spinbox = QSpinBox()
+        self.reviewer_bg_main_opacity_spinbox.setMinimum(0)
+        self.reviewer_bg_main_opacity_spinbox.setMaximum(100)
+        self.reviewer_bg_main_opacity_spinbox.setSuffix(" %")
+        self.reviewer_bg_main_opacity_spinbox.setValue(conf.get("onigiri_reviewer_bg_main_opacity", 100))
+        
+        main_effects_layout.addWidget(main_blur_label)
+        main_effects_layout.addWidget(self.reviewer_bg_main_blur_spinbox)
+        main_effects_layout.addSpacing(20)
+        main_effects_layout.addWidget(main_opacity_label)
+        main_effects_layout.addWidget(self.reviewer_bg_main_opacity_spinbox)
+        main_effects_layout.addStretch()
+        reviewer_bg_content.addWidget(self.reviewer_bg_main_group)
+        
+        # Custom background options
+        self.reviewer_bg_custom_group = self._create_reviewer_bg_custom_options()
+        reviewer_bg_content.addWidget(self.reviewer_bg_custom_group)
+        
+        # Connect signals
+        self.reviewer_bg_main_radio.toggled.connect(self._toggle_reviewer_bg_options)
+        self.reviewer_bg_color_radio.toggled.connect(self._toggle_reviewer_bg_options)
+        self.reviewer_bg_image_color_radio.toggled.connect(self._toggle_reviewer_bg_options)
+        self._toggle_reviewer_bg_options()
 
         bottom_bar_section = SectionGroup("Bottom Bar Background", self)
         layout.addWidget(bottom_bar_section)
@@ -3349,6 +3418,21 @@ class SettingsDialog(QDialog):
         self.reviewer_bar_image_color_radio.toggled.connect(self.toggle_reviewer_bar_options)
         self.toggle_reviewer_bar_options()
 
+        # --- RESET BUTTONS ---
+        reset_buttons_layout = QHBoxLayout()
+        reset_buttons_layout.addStretch()
+
+        reset_reviewer_bg_button = QPushButton("Reset Reviewer Background to Default")
+        reset_reviewer_bg_button.clicked.connect(self.reset_reviewer_bg_to_default)
+        reset_buttons_layout.addWidget(reset_reviewer_bg_button)
+
+        reset_bottom_bar_button = QPushButton("Reset Bottom Bar to Default")
+        reset_bottom_bar_button.clicked.connect(self.reset_reviewer_bottom_bar_to_default)
+        reset_buttons_layout.addWidget(reset_bottom_bar_button)
+
+        layout.addLayout(reset_buttons_layout)
+        # --- END OF RESET BUTTONS ---
+
         layout.addStretch()
         return page
 
@@ -3405,35 +3489,104 @@ class SettingsDialog(QDialog):
 
         return widget
 
-    def toggle_reviewer_top_bar_options(self):
-        is_transparent = self.reviewer_top_bar_transparent_radio.isChecked()
-        is_color = self.reviewer_top_bar_color_radio.isChecked()
-        is_image_color = self.reviewer_top_bar_image_color_radio.isChecked()
-
-        # Hide the unused 'match main' group
-        self.reviewer_top_bar_match_main_group.setVisible(False)
+    def _create_reviewer_bg_custom_options(self):
+        """Create custom background options for the reviewer screen."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 10, 0, 0)
         
-        # The entire custom group is visible if any of our modes are selected
-        is_any_custom_mode = is_transparent or is_color or is_image_color
-        self.reviewer_top_bar_custom_group.setVisible(is_any_custom_mode)
+        # Color options
+        self.reviewer_bg_color_group = QWidget()
+        color_layout = QVBoxLayout(self.reviewer_bg_color_group)
+        color_layout.setContentsMargins(0, 0, 0, 0)
+        
+        conf = config.get_config()
+        self.reviewer_bg_light_color_row = self._create_color_picker_row(
+            "Color (Light Mode)", conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF"), "reviewer_bg_light"
+        )
+        self.reviewer_bg_dark_color_row = self._create_color_picker_row(
+            "Color (Dark Mode)", conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C"), "reviewer_bg_dark"
+        )
+        color_layout.addLayout(self.reviewer_bg_light_color_row)
+        color_layout.addLayout(self.reviewer_bg_dark_color_row)
+        layout.addWidget(self.reviewer_bg_color_group)
+        
+        # Image galleries (only for Color + Image mode)
+        self.reviewer_bg_image_group = QWidget()
+        image_layout = QVBoxLayout(self.reviewer_bg_image_group)
+        image_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # Separate images galleries
+        self.reviewer_bg_separate_container = QWidget()
+        sep_layout = QHBoxLayout(self.reviewer_bg_separate_container)
+        sep_layout.setContentsMargins(0, 10, 0, 0)
+        self.galleries["reviewer_bg_light"] = {}
+        sep_layout.addWidget(self._create_image_gallery_group(
+            "reviewer_bg_light", "user_files/reviewer_bg", "onigiri_reviewer_bg_image_light", 
+            title="Light Mode Background", is_sub_group=True
+        ))
+        self.galleries["reviewer_bg_dark"] = {}
+        sep_layout.addWidget(self._create_image_gallery_group(
+            "reviewer_bg_dark", "user_files/reviewer_bg", "onigiri_reviewer_bg_image_dark", 
+            title="Dark Mode Background", is_sub_group=True
+        ))
+        image_layout.addWidget(self.reviewer_bg_separate_container)
+        
+        layout.addWidget(self.reviewer_bg_image_group)
+        
+        # Effects (blur and opacity)
+        self.reviewer_bg_effects_container = QWidget()
+        effects_layout = QHBoxLayout(self.reviewer_bg_effects_container)
+        effects_layout.setContentsMargins(0, 10, 0, 0)
+        
+        self.reviewer_bg_blur_label = QLabel("Blur:")
+        self.reviewer_bg_blur_spinbox = QSpinBox()
+        self.reviewer_bg_blur_spinbox.setMinimum(0)
+        self.reviewer_bg_blur_spinbox.setMaximum(100)
+        self.reviewer_bg_blur_spinbox.setSuffix(" %")
+        self.reviewer_bg_blur_spinbox.setValue(conf.get("onigiri_reviewer_bg_blur", 0))
+        
+        self.reviewer_bg_opacity_label = QLabel("Opacity:")
+        self.reviewer_bg_opacity_spinbox = QSpinBox()
+        self.reviewer_bg_opacity_spinbox.setMinimum(0)
+        self.reviewer_bg_opacity_spinbox.setMaximum(100)
+        self.reviewer_bg_opacity_spinbox.setSuffix(" %")
+        self.reviewer_bg_opacity_spinbox.setValue(conf.get("onigiri_reviewer_bg_opacity", 100))
+        
+        effects_layout.addWidget(self.reviewer_bg_blur_label)
+        effects_layout.addWidget(self.reviewer_bg_blur_spinbox)
+        effects_layout.addSpacing(20)
+        effects_layout.addWidget(self.reviewer_bg_opacity_label)
+        effects_layout.addWidget(self.reviewer_bg_opacity_spinbox)
+        effects_layout.addStretch()
+        layout.addWidget(self.reviewer_bg_effects_container)
+        
+        # Initially hide image options (only show for Color + Image mode)
+        self.reviewer_bg_image_group.setVisible(False)
+        
+        return widget
+    
+    def _toggle_reviewer_bg_options(self):
+        """Toggle visibility of reviewer background options based on selected mode."""
+        is_main = self.reviewer_bg_main_radio.isChecked()
+        self.reviewer_bg_main_group.setVisible(is_main)
+        self.reviewer_bg_custom_group.setVisible(not is_main)
+        
+        # Control visibility of color and image options within custom group
+        if not is_main:
+            is_color = self.reviewer_bg_color_radio.isChecked()
+            is_image_color = self.reviewer_bg_image_color_radio.isChecked()
+            
+            # Show color options for both 'Solid Color' and 'Color + Image'
+            self.reviewer_bg_color_group.setVisible(is_color or is_image_color)
+            
+            # Show image options only for 'Color + Image'
+            self.reviewer_bg_image_group.setVisible(is_image_color)
+            
+            # Show effects (blur, opacity) only for 'Color + Image'
+            self.reviewer_bg_effects_container.setVisible(is_image_color)
+    
 
-        if not is_any_custom_mode:
-            return
-
-        # Control visibility of inner components based on the selected mode
-        self.reviewer_top_bar_color_group.setVisible(is_color or is_image_color)
-        self.reviewer_top_bar_image_group.setVisible(is_image_color)
-
-        # The effects container (blur, intensity) is now visible for all three modes
-        if 'reviewer_top_bar_bg' in self.galleries and (effects_widget := self.galleries['reviewer_top_bar_bg'].get('effects_widget')):
-            effects_widget.setVisible(True)
-            # Update the label to be more descriptive for the current mode
-            if is_image_color:
-                self.reviewer_top_bar_intensity_label.setText("Image Opacity:")
-                self.reviewer_top_bar_intensity_label.setToolTip("Controls the opacity of the background image.")
-            else:
-                self.reviewer_top_bar_intensity_label.setText("Bar Opacity:")
-                self.reviewer_top_bar_intensity_label.setToolTip("Controls the opacity of the color overlay.\nLower values make it more transparent.")
 
     def _create_scrollable_page(self):
         scroll = QScrollArea()
@@ -3458,10 +3611,6 @@ class SettingsDialog(QDialog):
         
         return page_container, content_layout
     
-    def _on_top_bar_mode_changed(self, mode, is_checked):
-        if is_checked:
-            self.reviewer_top_bar_mode = mode
-
     def _on_bottom_bar_mode_changed(self, mode, is_checked):
         if is_checked:
             self.reviewer_bottom_bar_mode = mode
@@ -3484,8 +3633,19 @@ class SettingsDialog(QDialog):
         if show_path:
             layout.addWidget(QLabel("Selected File:")); layout.addWidget(path_input)
 
+        # Determine which config source to use based on the config key pattern
+        if config_key and config_key.startswith("onigiri_reviewer_bg_image"):
+            # Reviewer background images are stored in the addon config
+            selected_image = self.current_config.get(config_key, "")
+        elif config_key:
+            # Other images are stored in Anki's collection config
+            selected_image = mw.col.conf.get(config_key, "")
+        else:
+            # Fallback for cases where config_key is empty
+            selected_image = ""
+
         gallery_data = {
-            'selected': mw.col.conf.get(config_key, "") if config_key else self.current_config.get(config_key, ""),
+            'selected': selected_image,
             'folder': folder, 'extensions': extensions,
             'grid_layout': grid_layout, 'labels': [], 'thread': None, 'worker': None,
             'path_input': path_input if show_path else None, 'delete_button': delete_button
@@ -3755,7 +3915,7 @@ class SettingsDialog(QDialog):
 
     def reset_background_to_default(self):
         self.color_radio.setChecked(True); self.bg_light_color_input.setText(DEFAULTS["colors"]["light"]["--bg"]); self.bg_dark_color_input.setText(DEFAULTS["colors"]["dark"]["--bg"])
-        for key in ['main_single', 'main_light', 'main_dark', 'sidebar_bg']:
+        for key in ['main_light', 'main_dark', 'sidebar_bg']:
             if key in self.galleries:
                 self.galleries[key]['selected'] = ""; 
                 if self.galleries[key].get('path_input'): self.galleries[key]['path_input'].setText("")
@@ -3789,6 +3949,62 @@ class SettingsDialog(QDialog):
         self.sidebar_bg_blur_spinbox.setValue(0)
         self.sidebar_bg_opacity_spinbox.setValue(100)
 
+    def reset_reviewer_bg_to_default(self):
+        """Reset reviewer background settings to defaults."""
+        # Set mode to "Use Main Background"
+        self.reviewer_bg_main_radio.setChecked(True)
+        
+        # Reset main background blur and opacity
+        self.reviewer_bg_main_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_main_blur"])
+        self.reviewer_bg_main_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_main_opacity"])
+        
+        # Reset colors to defaults
+        self.reviewer_bg_light_color_input.setText(DEFAULTS["onigiri_reviewer_bg_light_color"])
+        self.reviewer_bg_dark_color_input.setText(DEFAULTS["onigiri_reviewer_bg_dark_color"])
+        
+        # Clear all reviewer background images
+        for key in ['reviewer_bg_light', 'reviewer_bg_dark']:
+            if key in self.galleries:
+                self.galleries[key]['selected'] = ""
+                if self.galleries[key].get('path_input'):
+                    self.galleries[key]['path_input'].setText("")
+                self._refresh_gallery(key)
+        
+        # Reset blur and opacity for custom mode
+        self.reviewer_bg_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_blur"])
+        self.reviewer_bg_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_opacity"])
+        
+        QMessageBox.information(self, "Reviewer Background Reset", "The reviewer background settings have been reset to default values.\nPress 'Save' to apply the changes.")
+
+    def reset_reviewer_bottom_bar_to_default(self):
+        """Reset reviewer bottom bar background settings to defaults."""
+        # Set mode to "Match Main Background"
+        self.reviewer_bar_main_radio.setChecked(True)
+        
+        # Reset match main settings
+        self.reviewer_bar_match_main_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_match_main_blur"])
+        self.reviewer_bar_match_main_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_match_main_opacity"])
+        
+        # Reset custom colors
+        self.reviewer_bar_light_color_input.setText(DEFAULTS["onigiri_reviewer_bottom_bar_bg_light_color"])
+        self.reviewer_bar_dark_color_input.setText(DEFAULTS["onigiri_reviewer_bottom_bar_bg_dark_color"])
+        
+        # Clear bottom bar image
+        if 'reviewer_bar_bg' in self.galleries:
+            self.galleries['reviewer_bar_bg']['selected'] = ""
+            if self.galleries['reviewer_bar_bg'].get('path_input'):
+                self.galleries['reviewer_bar_bg']['path_input'].setText("")
+            self._refresh_gallery('reviewer_bar_bg')
+        
+        # Reset blur and opacity
+        self.reviewer_bar_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_bg_blur"])
+        self.reviewer_bar_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_bg_opacity"])
+        
+        # Reset offset
+        self.reviewer_bar_offset_spinbox.setValue(-3.25)
+        
+        QMessageBox.information(self, "Bottom Bar Reset", "The bottom bar background settings have been reset to default values.\nPress 'Save' to apply the changes.")
+
 
     def toggle_background_options(self): 
         is_color=self.color_radio.isChecked()
@@ -3797,7 +4013,6 @@ class SettingsDialog(QDialog):
         self.image_group.setVisible(is_image_color)
         self.bg_opacity_label.setVisible(is_image_color)
         self.bg_opacity_spinbox.setVisible(is_image_color)        
-    def toggle_background_image_mode(self): is_single = self.bg_image_mode_single_radio.isChecked(); self.single_image_container.setVisible(is_single); self.separate_images_container.setVisible(not is_single)
     def toggle_sidebar_background_options(self): 
         self.sidebar_main_options_group.setVisible(self.sidebar_bg_main_radio.isChecked())
         self.sidebar_custom_options_group.setVisible(self.sidebar_bg_custom_radio.isChecked())    
@@ -4236,7 +4451,8 @@ class SettingsDialog(QDialog):
     def _save_sidebar_settings(self):
         self.current_config["hideWelcomeMessage"] = self.hide_welcome_checkbox.isChecked()
         self.current_config["hideProfileBar"] = self.hide_profile_bar_checkbox.isChecked()
-
+        self.current_config["hideDeckCounts"] = self.hide_deck_counts_checkbox.isChecked()
+        
         for widget in self.action_button_icon_widgets:
             key = widget.property("icon_key")
             value = widget.property("icon_filename")
@@ -4370,10 +4586,9 @@ class SettingsDialog(QDialog):
         elif self.image_color_radio.isChecked(): mw.col.conf["modern_menu_background_mode"] = "image_color"
         else: mw.col.conf["modern_menu_background_mode"] = "color"
         
-        if self.bg_image_mode_separate_radio.isChecked(): mw.col.conf["modern_menu_background_image_mode"] = "separate"
-        else: mw.col.conf["modern_menu_background_image_mode"] = "single"
+        # Always use separate images for light and dark modes
+        mw.col.conf["modern_menu_background_image_mode"] = "separate"
         
-        if 'main_single' in self.galleries: mw.col.conf["modern_menu_background_image"] = self.galleries['main_single']['selected']
         if 'main_light' in self.galleries: mw.col.conf["modern_menu_background_image_light"] = self.galleries['main_light']['selected']
         if 'main_dark' in self.galleries: mw.col.conf["modern_menu_background_image_dark"] = self.galleries['main_dark']['selected']
         if 'sidebar_bg' in self.galleries: mw.col.conf["modern_menu_sidebar_bg_image"] = self.galleries['sidebar_bg']['selected']
@@ -4426,15 +4641,29 @@ class SettingsDialog(QDialog):
         mw.col.conf["modern_menu_sidebar_bg_transparency"] = self.sidebar_bg_transparency_spinbox.value()
 
     def _save_reviewer_settings(self):
-        # --- Top Bar ---
-        mw.col.conf["onigiri_reviewer_top_bar_bg_mode"] = self.reviewer_top_bar_mode
-        mw.col.conf["onigiri_reviewer_top_bar_bg_light_color"] = self.reviewer_top_bar_light_color_input.text()
-        mw.col.conf["onigiri_reviewer_top_bar_bg_dark_color"] = self.reviewer_top_bar_dark_color_input.text()
-        mw.col.conf["onigiri_reviewer_top_bar_bg_blur"] = self.reviewer_top_bar_blur_spinbox.value()
-        mw.col.conf["onigiri_reviewer_top_bar_bg_opacity"] = self.reviewer_top_bar_opacity_spinbox.value()
-        if 'reviewer_top_bar_bg' in self.galleries:
-            mw.col.conf["onigiri_reviewer_top_bar_bg_image"] = self.galleries['reviewer_top_bar_bg']['selected']
-
+        # --- Reviewer Background ---
+        if self.reviewer_bg_main_radio.isChecked():
+            self.current_config["onigiri_reviewer_bg_mode"] = "main"
+        elif self.reviewer_bg_color_radio.isChecked():
+            self.current_config["onigiri_reviewer_bg_mode"] = "color"
+        elif self.reviewer_bg_image_color_radio.isChecked():
+            self.current_config["onigiri_reviewer_bg_mode"] = "image_color"
+        
+        # Main background blur and opacity
+        self.current_config["onigiri_reviewer_bg_main_blur"] = self.reviewer_bg_main_blur_spinbox.value()
+        self.current_config["onigiri_reviewer_bg_main_opacity"] = self.reviewer_bg_main_opacity_spinbox.value()
+        
+        self.current_config["onigiri_reviewer_bg_light_color"] = self.reviewer_bg_light_color_input.text()
+        self.current_config["onigiri_reviewer_bg_dark_color"] = self.reviewer_bg_dark_color_input.text()
+        self.current_config["onigiri_reviewer_bg_blur"] = self.reviewer_bg_blur_spinbox.value()
+        self.current_config["onigiri_reviewer_bg_opacity"] = self.reviewer_bg_opacity_spinbox.value()
+        
+        # Image selections (always use separate images for light and dark modes)
+        if 'reviewer_bg_light' in self.galleries:
+            self.current_config["onigiri_reviewer_bg_image_light"] = self.galleries['reviewer_bg_light']['selected']
+        if 'reviewer_bg_dark' in self.galleries:
+            self.current_config["onigiri_reviewer_bg_image_dark"] = self.galleries['reviewer_bg_dark']['selected']
+        
         # --- Bottom Bar ---
         mw.col.conf["onigiri_reviewer_bottom_bar_bg_mode"] = self.reviewer_bottom_bar_mode
         mw.col.conf["onigiri_reviewer_bottom_bar_match_main_blur"] = self.reviewer_bar_match_main_blur_spinbox.value()
