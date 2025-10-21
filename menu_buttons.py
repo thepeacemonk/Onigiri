@@ -1,6 +1,8 @@
 # --- Onigiri ---
 # Handles the creation of the top-level Onigiri menu.
 
+import os
+import json
 from aqt import mw
 from . import welcome_dialog
 from aqt.qt import QAction, QMenu
@@ -11,6 +13,20 @@ from . import patcher
 
 # A module-level variable to hold the addon path, set once on setup.
 _addon_path = None
+
+def get_onigiri_version():
+    """Reads the version from manifest.json file."""
+    global _addon_path
+    if not _addon_path:
+        return "Unknown"
+
+    manifest_path = os.path.join(_addon_path, "manifest.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+            return manifest.get("version", "Unknown")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return "Unknown"
 
 def open_settings(page_index=0):
     """
@@ -59,6 +75,11 @@ def setup_onigiri_menu(addon_path):
     welcome_action.triggered.connect(welcome_dialog.show_welcome_dialog)
     onigiri_menu.addAction(welcome_action)
     # --- END: ADD THIS BLOCK ---
+
+    # Add version info at the bottom (disabled)
+    version_action = QAction(f"Version: {get_onigiri_version()}", mw)
+    version_action.setEnabled(False)  # Make it non-clickable
+    onigiri_menu.addAction(version_action)
 
     # Add the newly created menu to the main window's menubar
     mw.form.menubar.addMenu(onigiri_menu)
