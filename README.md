@@ -72,6 +72,10 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 <img width="30%" height="auto" alt="Buy me an onigiri" src="https://github.com/user-attachments/assets/2c993906-ccb5-4a75-9235-9b63a8d62252" />
 </a>
 
+### ⭐ GitHub Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=thepeacemonk/Onigiri&type=date&legend=top-left)](https://www.star-history.com/#thepeacemonk/Onigiri&type=date&legend=top-left)
+
 ### 📷 Some previews of what Onigiri can do
 
 <h1 align="center">
