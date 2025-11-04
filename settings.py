@@ -611,8 +611,8 @@ class SettingsDialog(QDialog):
         os.makedirs(self.user_themes_path, exist_ok=True)
         self.block_card_click = False
         self.setWindowTitle("Onigiri Settings")
-        self.setMinimumWidth(900)
-        self.setMinimumHeight(700)
+        self.setMinimumWidth(900) # No change here
+        self.setMinimumHeight(725)
         
         self.current_config = config.get_config()
         light_bg = mw.col.conf.get("modern_menu_bg_color_light")
@@ -659,7 +659,7 @@ class SettingsDialog(QDialog):
         self.hide_profile_bar_checkbox.setChecked(self.current_config.get("hideProfileBar", False))
 
         self.hide_deck_counts_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
-        self.hide_deck_counts_checkbox.setChecked(self.current_config.get("hideDeckCounts", False))
+        self.hide_deck_counts_checkbox.setChecked(self.current_config.get("hideDeckCounts", True))
 
         self.study_now_input = QLineEdit(mw.col.conf.get("modern_menu_studyNowText", DEFAULTS["studyNowText"]))
         self.show_congrats_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
@@ -715,6 +715,12 @@ class SettingsDialog(QDialog):
             "Overviews": self.create_overviews_page,
             "Reviewer": self.create_reviewer_tab,
             "Palette": self.create_colors_page,
+            # <<< START NEW CODE >>>
+            "Onigiri Games": self.create_under_construction_page,
+            "Achievements": self.create_under_construction_page,
+            "Restaurant": self.create_under_construction_page,
+            "Mochi Messages": self.create_under_construction_page,
+            # <<< END NEW CODE >>>
         }
         self.page_order = list(self.pages.keys())
 
@@ -755,6 +761,13 @@ class SettingsDialog(QDialog):
         self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.study_zone_toggle_widget)
 
+        # <<< START NEW CODE >>>
+        gamification_items = ["Onigiri Games", "Achievements", "Restaurant", "Mochi Messages"]
+        self.gamification_toggle_widget = SidebarToggleButton("Gamification", gamification_items)
+        self.gamification_toggle_widget.page_selected.connect(self.navigate_to_page)
+        sidebar_layout.addWidget(self.gamification_toggle_widget)
+        # <<< END NEW CODE >>>
+
         # Connect toggle buttons to enable accordion behavior
         self.home_toggle_widget.toggle_button.toggled.connect(
             lambda checked: self._on_section_toggled(self.home_toggle_widget, checked)
@@ -765,6 +778,11 @@ class SettingsDialog(QDialog):
         self.study_zone_toggle_widget.toggle_button.toggled.connect(
             lambda checked: self._on_section_toggled(self.study_zone_toggle_widget, checked)
         )
+        # <<< START NEW CODE >>>
+        self.gamification_toggle_widget.toggle_button.toggled.connect(
+            lambda checked: self._on_section_toggled(self.gamification_toggle_widget, checked)
+        )
+        # <<< END NEW CODE >>>
 
         self.donate_button = QPushButton("Donate")
         self.donate_button.clicked.connect(self._open_donate_link)
@@ -1001,6 +1019,7 @@ class SettingsDialog(QDialog):
             btn.setChecked(False)
             btn.blockSignals(False)
         self.home_toggle_widget.deselect_all()
+        self.gamification_toggle_widget.deselect_all() # <<< ADD THIS LINE
         self.menu_toggle_widget.deselect_all()
         self.study_zone_toggle_widget.deselect_all()
         
@@ -1026,6 +1045,7 @@ class SettingsDialog(QDialog):
             self.sidebar_buttons[page_name].setChecked(True)
             self.home_toggle_widget.deselect_all()
             self.menu_toggle_widget.deselect_all()
+            self.gamification_toggle_widget.deselect_all() # <<< ADD THIS LINE
             self.study_zone_toggle_widget.deselect_all()
         elif self.home_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
@@ -1033,6 +1053,7 @@ class SettingsDialog(QDialog):
                 btn.setChecked(False)
                 btn.blockSignals(False)
             self.menu_toggle_widget.deselect_all()
+            self.gamification_toggle_widget.deselect_all() # <<< ADD THIS LINE
             self.study_zone_toggle_widget.deselect_all()
         elif self.menu_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
@@ -1040,6 +1061,7 @@ class SettingsDialog(QDialog):
                 btn.setChecked(False)
                 btn.blockSignals(False)
             self.home_toggle_widget.deselect_all()
+            self.gamification_toggle_widget.deselect_all() # <<< ADD THIS LINE
             self.study_zone_toggle_widget.deselect_all()
         elif self.study_zone_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
@@ -1047,7 +1069,18 @@ class SettingsDialog(QDialog):
                 btn.setChecked(False)
                 btn.blockSignals(False)
             self.home_toggle_widget.deselect_all()
+            self.gamification_toggle_widget.deselect_all() # <<< ADD THIS LINE
             self.menu_toggle_widget.deselect_all()
+        # <<< START NEW CODE >>>
+        elif self.gamification_toggle_widget.select_page(page_name):
+            if btn := self.sidebar_button_group.checkedButton():
+                btn.blockSignals(True)
+                btn.setChecked(False)
+                btn.blockSignals(False)
+            self.home_toggle_widget.deselect_all()
+            self.menu_toggle_widget.deselect_all()
+            self.study_zone_toggle_widget.deselect_all()
+        # <<< END NEW CODE >>>
 
         if page_name not in self.page_order:
             return
@@ -1073,7 +1106,7 @@ class SettingsDialog(QDialog):
             return
         
         # Close all other sections when this one is opened
-        all_toggles = [self.home_toggle_widget, self.menu_toggle_widget, self.study_zone_toggle_widget]
+        all_toggles = [self.home_toggle_widget, self.menu_toggle_widget, self.study_zone_toggle_widget, self.gamification_toggle_widget]
         for toggle in all_toggles:
             if toggle is not toggled_widget and toggle.is_open:
                 toggle.deselect_all()
@@ -1553,7 +1586,7 @@ class SettingsDialog(QDialog):
 
             # This part handles items being reordered within the archive itself
             elif old_parent := widget.parent():
-                if old_layout := old_parent.layout():
+                if old_layout := old_parent.layout:
                     old_layout.removeWidget(widget)
             
             widget.row_span, widget.col_span = 1, 1
@@ -2450,7 +2483,7 @@ class SettingsDialog(QDialog):
         
         sidebar_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, "Hide 'Welcome' message"))
         sidebar_section.add_widget(self._create_toggle_row(self.hide_profile_bar_checkbox, "Hide Profile bar"))
-        sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, "Hide Deck Counts"))
+        sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, "Hide 0 counts on sidebar"))
 
         layout.addWidget(sidebar_section)
 
@@ -3345,42 +3378,6 @@ class SettingsDialog(QDialog):
         mode_layout.addStretch()
         mode_layout_content.addLayout(mode_layout)
 
-        offset_layout = QHBoxLayout()
-        offset_layout.setContentsMargins(0, 10, 0, 0)
-        offset_label = QLabel("Image Horizontal Offset:")
-        offset_label.setToolTip("Set a pixel offset for the background image's horizontal position.\nAccepts positive, negative, and decimal values.")
-
-        self.reviewer_bar_offset_spinbox = QDoubleSpinBox()
-        self.reviewer_bar_offset_spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.reviewer_bar_offset_spinbox.setRange(-500.0, 500.0)
-        self.reviewer_bar_offset_spinbox.setSingleStep(0.25)
-        self.reviewer_bar_offset_spinbox.setDecimals(2)
-        self.reviewer_bar_offset_spinbox.setSuffix(" px")
-
-        if theme_manager.night_mode:
-            border_color, bg_color = "#4a4a4a", "#3a3a3a"
-        else:
-            border_color, bg_color = "#e0e0e0", "#f5f5f5"
-
-        self.reviewer_bar_offset_spinbox.setStyleSheet(f"""
-            QDoubleSpinBox {{
-                background-color: {bg_color}; border: 1px solid {border_color};
-                border-radius: 8px; padding: 4px;
-            }}
-        """)
-
-        offset_val_str = mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_offset_x", "-3.25")
-        try:
-            offset_val = float(offset_val_str)
-        except (ValueError, TypeError):
-            offset_val = -3.25
-        self.reviewer_bar_offset_spinbox.setValue(offset_val)
-
-        offset_layout.addWidget(offset_label)
-        offset_layout.addWidget(self.reviewer_bar_offset_spinbox)
-        offset_layout.addStretch()
-        mode_layout_content.addLayout(offset_layout)
-
         self.reviewer_bar_match_main_group = QWidget()
         match_main_layout = QVBoxLayout(self.reviewer_bar_match_main_group)
         match_main_layout.setContentsMargins(0, 10, 0, 0)
@@ -3999,9 +3996,6 @@ class SettingsDialog(QDialog):
         # Reset blur and opacity
         self.reviewer_bar_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_bg_blur"])
         self.reviewer_bar_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bottom_bar_bg_opacity"])
-        
-        # Reset offset
-        self.reviewer_bar_offset_spinbox.setValue(-3.25)
         
         QMessageBox.information(self, "Bottom Bar Reset", "The bottom bar background settings have been reset to default values.\nPress 'Save' to apply the changes.")
 
@@ -4674,8 +4668,6 @@ class SettingsDialog(QDialog):
         mw.col.conf["onigiri_reviewer_bottom_bar_bg_opacity"] = self.reviewer_bar_opacity_spinbox.value()
         if 'reviewer_bar_bg' in self.galleries:
             mw.col.conf["onigiri_reviewer_bottom_bar_bg_image"] = self.galleries['reviewer_bar_bg']['selected']
-
-        mw.col.conf["onigiri_reviewer_bottom_bar_bg_offset_x"] = str(self.reviewer_bar_offset_spinbox.value())
 
     def save_settings(self):
         page_indices = {name: i for i, name in enumerate(self.page_order)}
