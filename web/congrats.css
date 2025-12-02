@@ -14,6 +14,7 @@ body {
     align-items: center;
     max-width: 500px;
     width: 90%;
+    padding: 0;
 }
 
 /* --- ADD THIS ENTIRE CSS BLOCK --- */
@@ -25,6 +26,7 @@ body {
     display: flex;
     justify-content: center;
     gap: 10px;
+    z-index: 1000;
 }
 /* --- END OF ADDED BLOCK --- */
 
@@ -42,7 +44,7 @@ body {
     position: relative;
     overflow: hidden;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 15px var(--shadow-md);
     z-index: 2; /* Make sure the profile bar sits on top of the card */
 }
 
@@ -88,7 +90,7 @@ body {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(0,0,0,0.4);
+    background-color: var(--overlay-light);
     border-radius: 50px;
     z-index: 1;
     display: none;
@@ -98,7 +100,7 @@ body {
 }
 .profile-bar.with-image-bg .profile-name {
     color: white;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+    text-shadow: 1px 1px 3px var(--text-shadow-light);
 }
 
 .congrats-card {
@@ -110,7 +112,7 @@ body {
     text-align: center;
     width: 100%;
     box-sizing: border-box;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 15px var(--shadow-md);
     border: 1px solid var(--border);
     margin-top: -20px; /* Pull the card up */
 }
@@ -132,14 +134,15 @@ body {
 
 /* Steal the button style from overview.css */
 .overview-button {
-    background-color: var(--highlight-bg);
+    background: var(--bg) !important;
     color: var(--fg);
     border: 1px solid var(--border);
-    padding: 8px 18px;
+    padding: 8px 6px;
     border-radius: 8px;
     text-decoration: none;
     font-weight: 500;
     transition: background-color 0.2s, border-color 0.2s;
+    opacity: 1 !important;
 }
 
 .overview-button:hover {

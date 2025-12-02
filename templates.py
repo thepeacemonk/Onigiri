@@ -6,7 +6,7 @@ custom_body_template = """
     body.deck-edit-mode #deck-list-container {
         border: 2px dashed var(--accent-color);
         border-radius: 15px;
-        background-color: rgba(128, 128, 128, 0.05);
+        background-color: var(--deck-edit-mode-bg);
     }
 
     body.deck-edit-mode .decktd a.deck {
@@ -22,7 +22,7 @@ custom_body_template = """
     }
 
     .deck-checkbox {
-        margin-right: 10px;
+        margin-right: 0px; /* MODIFIED */
         margin-left: 5px;
         width: 16px;
         height: 16px;
@@ -54,6 +54,39 @@ custom_body_template = """
     .context-menu-item:hover {
         background-color: var(--canvas-inset);
     }
+
+    /* --- NEW: Favorite Star Styles --- */
+    .favorite-star-icon {
+        display: none; /* Hidden by default */
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        background-color: var(--fg-faint);
+        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'%3E%3C/polygon%3E%3C/svg%3E");
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        cursor: pointer;
+        margin-left: 8px; /* Space from checkbox */
+        margin-right: 8px; /* Space from name */
+        transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+    body.deck-edit-mode .favorite-star-icon {
+        display: inline-block; /* Show in edit mode */
+    }
+    .favorite-star-icon:hover {
+        background-color: var(--accent-color);
+        transform: scale(1.1);
+    }
+    .favorite-star-icon.is-favorite {
+        background-color: var(--accent-color); /* Use theme accent color */
+        /* The mask (icon shape) remains the same */
+        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' stroke='%23FFD700' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'%3E%3C/polygon%3E%3C/svg%3E");
+    }
+    .favorite-star-icon.is-favorite:hover {
+        background-color: var(--accent-hover); /* Use theme accent hover color */
+    }
+    /* --- End Favorite Star Styles --- */
 
     /* --- Active State for Sidebar Toggle --- */
     .sidebar-toggle-btn.active {
@@ -144,48 +177,7 @@ custom_body_template = """
 
         <div class="sidebar-expanded-content">
             <h2>{welcome_message}</h2>
-            {profile_bar}
-            <div class="add-button-dashed action-add" onclick="pycmd('add')">
-                <i class="icon"></i>
-                <span>Add</span>
-            </div>
-            <div class="menu-item action-browse" onclick="pycmd('browse')">
-                <i class="icon"></i>
-                <span>Browser</span>
-            </div>
-            <div class="menu-item action-stats" onclick="pycmd('stats')">
-                <i class="icon"></i>
-                <span>Stats</span>
-            </div>
-            <div class="menu-item action-sync" onclick="pycmd('sync')">
-                <i class="icon"></i>
-                <span>Sync</span>
-            </div>
-            <div class="menu-item action-settings" onclick="pycmd('openOnigiriSettings')">
-                <i class="icon"></i>
-                <span>Settings</span>
-            </div>
-            
-            <details class="menu-group">
-                <summary class="menu-item action-more">
-                    <i class="icon"></i>
-                    <span>More</span>
-                </summary>
-                <div class="menu-group-items">
-                    <div class="menu-item action-get-shared" onclick="pycmd('shared')">
-                        <i class="icon"></i>
-                        <span>Get Shared</span>
-                    </div>
-                    <div class="menu-item action-create-deck" onclick="pycmd('create')">
-                        <i class="icon"></i>
-                        <span>Create Deck</span>
-                    </div>
-                    <div class="menu-item action-import-file" onclick="pycmd('import')">
-                        <i class="icon"></i>
-                        <span>Import File</span>
-                    </div>
-                </div>
-            </details>
+            {sidebar_buttons}
             
             <div id="deck-list-header">
                 <h2>DECKS</h2>
@@ -250,18 +242,6 @@ custom_body_template = """
     }
 })();
 
-const OnigiriEngine = {
-    updateDeckTree: function(html) {
-        const tbody = document.querySelector('#decktree > tbody');
-        if (tbody) {
-            tbody.innerHTML = html;
-            if (OnigiriEditor.EDIT_MODE) {
-                OnigiriEditor.reapplyEditModeState();
-            }
-        }
-    }
-};
-
 const OnigiriEditor = {
     longPressTimer: null,
     EDIT_MODE: false,
@@ -277,10 +257,33 @@ const OnigiriEditor = {
         container.addEventListener('contextmenu', this.handleContextMenu.bind(this));
 
         document.getElementById('transfer-decks-btn').addEventListener('click', this.openTransferWindow.bind(this));
+
+        // --- NEW SELF-HEALING OBSERVER ---
+        // This watches for changes to the deck list (like after a collapse)
+        const deckTreeBody = document.querySelector('#decktree > tbody');
+        if (deckTreeBody) {
+            const observer = new MutationObserver((mutations) => {
+                if (this.EDIT_MODE) {
+                    // If we are in edit mode, re-scan for missing checkboxes
+                    // Use a short delay to let the DOM settle
+                    setTimeout(() => this.reapplyEditModeState(), 50);
+                }
+            });
+            // Watch for nodes being added or removed from the deck tree
+            observer.observe(deckTreeBody, { childList: true });
+        }
     },
 
     handleMouseDown: function(e) {
         if (e.button !== 0 || this.EDIT_MODE) return;
+        
+        // --- ADD THIS BLOCK ---
+        // Don't trigger long-press if clicking on a favorite star
+        if (e.target.classList.contains('favorite-star-icon')) {
+            return;
+        }
+        // --- END OF BLOCK ---
+
         const isScrollbar = e.currentTarget.scrollHeight > e.currentTarget.clientHeight && e.offsetX >= e.currentTarget.clientWidth;
         if (isScrollbar) return;
 
@@ -360,6 +363,34 @@ const OnigiriEditor = {
         if (this.SELECTED_DECKS.size === 0) return;
         const payload = Array.from(this.SELECTED_DECKS);
         pycmd(`onigiri_show_transfer_window:${JSON.stringify(payload)}`);
+    }
+};
+
+// Sync Status Manager
+const SyncStatusManager = {
+    setSyncStatus: function(status) {
+        const syncButton = document.querySelector('.action-sync');
+        if (!syncButton) return;
+        
+        // Remove existing sync status classes
+        syncButton.classList.remove('sync-needed');
+        
+        // Add sync-needed class if any sync is required
+        if (status === 'sync') {
+            syncButton.classList.add('sync-needed');
+        }
+        // If status is 'none', no class is added (indicator stays hidden)
+    }, 
+    // ADD THIS NEW FUNCTION:
+    setSyncing: function(isSyncing) {
+        const syncButton = document.querySelector('.action-sync');
+        if (syncButton) {
+            if (isSyncing) {
+                syncButton.classList.add('is-syncing');
+            } else {
+                syncButton.classList.remove('is-syncing');
+            }
+        }
     }
 };
 

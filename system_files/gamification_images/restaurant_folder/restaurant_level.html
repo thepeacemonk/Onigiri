@@ -1,0 +1,119 @@
+<div class="restaurant-level-page" data-enabled="__ENABLED__">
+    <div class="restaurant-level-container">
+        <header class="rl-header">
+            <div class="rl-hero-copy">
+                <h1>Restaurant Level</h1>
+                <p class="rl-subtitle">Serve knowledge daily to grow your restaurant!</p>
+            </div>
+            <div class="rl-progress-summary" role="presentation">
+                <div class="rl-level-chip">
+                    <span class="rl-level-label">Level</span>
+                    <span class="rl-level-value" data-bind="level">0</span>
+                </div>
+                <div class="rl-progress-bar" aria-hidden="true">
+                    <div class="rl-progress-fill" style="width: 0%"></div>
+                </div>
+                <p class="rl-progress-caption" data-bind="xp_detail">0 / 500 XP</p>
+            </div>
+        </header>
+
+        <section class="rl-card daily-special">
+            <div class="daily-special-header">
+                <h2>Daily Special</h2>
+                <div class="difficulty-badge" style="display: none;">
+                    <span class="difficulty-text">Common</span>
+                </div>
+                <div class="xp-reward" style="display: none;">
+                    <span class="xp-icon">✨</span>
+                    <span class="xp-amount">0</span> XP
+                </div>
+            </div>
+            <div class="daily-special-content">
+                <h3 class="sushi-name">Loading today's special...</h3>
+                <p class="sushi-description"></p>
+                <div class="challenge-progress">
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span class="cards-done">0</span> / <span class="cards-target">0</span> cards
+                        </div>
+                    </div>
+                    <div class="challenge-status-container">
+                        <p class="challenge-status">Start studying to complete today's challenge!</p>
+                        <div class="challenge-reward" style="display: none;">
+                            <span class="reward-text">Reward: </span>
+                            <span class="reward-xp">0 XP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="rl-card rl-stats" data-enabled="false">
+            <header class="rl-card-header">
+                <h2>Today's Ingredients</h2>
+                <div class="rl-card-header-right">
+                    <span class="rl-card-caption">Track how the kitchen is doing</span>
+                </div>
+            </header>
+            <div class="rl-stats-grid">
+                <article class="rl-stat" data-id="reviews">
+                    <span class="rl-stat-value" data-bind="today_reviews">0</span>
+                    <span class="rl-stat-label">Reviews today</span>
+                </article>
+                <article class="rl-stat" data-id="countdown">
+                    <span class="rl-stat-value restaurant-countdown-time-value"
+                        id="restaurant-countdown-time">24:00:00</span>
+                    <span class="rl-stat-label">Restaurant closes in</span>
+                </article>
+            </div>
+        </section>
+
+        <!-- Completed Specials Section -->
+        <section class="rl-card completed-specials">
+            <div class="rl-card-header">
+                <h2>Completed Specials</h2>
+                <div class="rl-card-header-right">
+                    <span class="completed-count">0 completed</span>
+                </div>
+            </div>
+            <div class="completed-specials-list">
+                <!-- Filled dynamically by JavaScript -->
+            </div>
+        </section>
+
+        <!-- XP Earning Information Section -->
+        <section class="rl-card xp-earning-info">
+            <div class="rl-card-header">
+                <h2>✨ XP Earning Info</h2>
+            </div>
+            <div class="xp-earning-content">
+                <div class="xp-earning-item">
+                    <h3>Reviews</h3>
+                    <ul>
+                        <li>Any answer: <strong>5 XP</strong> per card</li>
+                        <li>First review of the day bonus: <strong>+10 XP</strong></li>
+                    </ul>
+                </div>
+
+                <div class="xp-earning-item">
+                    <h3>Daily Specials</h3>
+                    <ul>
+                        <li><span style="color: #4CAF50">Common:</span> <strong>10 XP</strong></li>
+                        <li><span style="color: #2196F3">Uncommon:</span> <strong>20 XP</strong></li>
+                        <li><span style="color: #9C27B0">Rare:</span> <strong>35 XP</strong></li>
+                        <li><span style="color: #FF9800">Epic:</span> <strong>50 XP</strong></li>
+                        <li><span style="color: #F44336">Legendary:</span> <strong>75 XP</strong></li>
+                        <li>Perfect streak (7 days): <strong>+50 XP</strong> bonus</li>
+                    </ul>
+                </div>
+
+                <div class="xp-note">
+                    <p>XP requirements increase as you level up. Keep studying to earn more rewards!</p>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>

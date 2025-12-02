@@ -3,13 +3,20 @@ import json
 from aqt import mw
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
+from . import onigiri_renderer
 
 def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     """
     Renders just the HTML for the deck tree's <tbody> content.
     This is a performance-focused function used for fast updates.
     """
-    tree_data = deck_browser.mw.col.sched.deck_due_tree()
+    # Use cached tree data if available, otherwise fetch fresh data
+    if hasattr(deck_browser, '_render_data') and deck_browser._render_data:
+        tree_data = deck_browser._render_data.tree
+    else:
+        tree_data = deck_browser.mw.col.sched.deck_due_tree()
+        deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
+    
     ctx = RenderDeckNodeContext(current_deck_id=deck_browser.mw.col.decks.get_current_id())
     # Note: _render_deck_node is patched by Onigiri in patcher.py
     return "".join(deck_browser._render_deck_node(child, ctx) for child in tree_data.children)
@@ -17,13 +24,18 @@ def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
 def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
     """
     Handles the collapse/expand action for a deck without a full page reload.
+    Re-renders the tree HTML and uses JS to preserve checkbox *state*.
     """
     try:
         did = int(deck_id)
         # Toggle the collapse state in Anki's backend
         mw.col.decks.collapse(did)
-        mw.col.decks.save() # Ensure the change is persisted
+        mw.col.decks.save()  # Ensure the change is persisted
 
+        # Refresh the tree data *after* collapse state has changed
+        tree_data = deck_browser.mw.col.sched.deck_due_tree()
+        deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
+        
         # Re-render only the deck tree
         new_tree_html = _render_deck_tree_html_only(deck_browser)
 
@@ -31,10 +43,46 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
         js_escaped_html = json.dumps(new_tree_html)
         
         # Send the new HTML to the frontend to be injected by JavaScript
-        deck_browser.web.eval(f"OnigiriEngine.updateDeckTree({js_escaped_html});")
+        # This preserves checkbox *state* (checked=true/false)
+        js = """
+        (function() {{
+            const container = document.getElementById('deck-list-container');
+            const scrollTop = container?.scrollTop || 0;
+            
+            // 1. Store the *state* (checked or not) of all existing checkboxes
+            const checkboxStateMap = new Map();
+            document.querySelectorAll('.deck-checkbox').forEach(cb => {{
+                const did = cb.dataset.did;
+                if (did) {{
+                    checkboxStateMap.set(did, cb.checked);
+                }}
+            }});
+            
+            // 2. Update the tree HTML
+            OnigiriEngine.updateDeckTree({new_tree_html});
+            
+            // 3. Re-apply the stored state to the *new* checkboxes
+            checkboxStateMap.forEach((isChecked, did) => {{
+                // Find the *new* checkbox element in the updated DOM
+                const newCheckbox = document.querySelector(`.deck-checkbox[data-did="${{did}}"]`);
+                if (newCheckbox) {{
+                    newCheckbox.checked = isChecked;
+                }}
+            }});
+            
+            // 4. Restore scroll position
+            if (container) {{
+                container.scrollTop = scrollTop;
+            }}
+        }})();
+        """.format(new_tree_html=js_escaped_html)
+        
+        deck_browser.web.eval(js)
 
-    except (ValueError, TypeError) as e:
-        print(f"Onigiri: Could not process deck collapse for deck_id '{deck_id}': {e}")
+    except Exception as e:
+        print(f"Onigiri: Error in on_deck_collapse for deck_id '{deck_id}': {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def on_decks_move(data_str: str) -> None:
@@ -64,18 +112,80 @@ def on_decks_move(data_str: str) -> None:
 
         source_dids = [DeckId(int(did)) for did in source_dids_str]
         target_did = DeckId(int(target_did_str))
+        # Corrected print statement
         print(f"Onigiri: converted to DeckIds - source_dids: {source_dids}, target_did: {target_did}")
 
         # Anki's reparent function handles invalid moves (e.g., moving a parent into its child)
         mw.col.decks.reparent(source_dids, target_did)
         print(f"Onigiri: Successfully called reparent")
 
-        # Refresh the main deck browser to show changes and reset the UI state
+        # Force a complete deck browser refresh to update all internal state
+        # This prevents stale deck IDs from persisting in the context menu
         if mw.deckBrowser:
-            mw.deckBrowser.refresh()
-            print(f"Onigiri: Successfully refreshed deck browser")
+            # Call show() which triggers a full re-render via _renderPage
+            mw.deckBrowser.show()
+            print(f"Onigiri: Successfully refreshed deck browser with full render")
         else:
             print(f"Onigiri: deckBrowser is None, cannot refresh")
 
     except (ValueError, TypeError, json.JSONDecodeError) as e:
         print(f"Onigiri: Could not process deck move request: {e}")
+
+def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
+    """
+    Handles a full refresh of the deck tree HTML while preserving
+    scroll and edit mode state. Used for favorite toggling.
+    Preserves existing checkbox *state* in the DOM by saving and restoring it.
+    """
+    try:
+        # Refresh the tree data
+        tree_data = deck_browser.mw.col.sched.deck_due_tree()
+        deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
+        
+        # Re-render only the deck tree
+        new_tree_html = _render_deck_tree_html_only(deck_browser)
+
+        # Escape the HTML for safe injection into a JavaScript string
+        js_escaped_html = json.dumps(new_tree_html)
+        
+        # Send the new HTML to the frontend to be injected by JavaScript
+        # This preserves checkbox *state* (checked=true/false)
+        js = """
+        (function() {{
+            const container = document.getElementById('deck-list-container');
+            const scrollTop = container?.scrollTop || 0;
+            
+            // 1. Store the *state* (checked or not) of all existing checkboxes
+            const checkboxStateMap = new Map();
+            document.querySelectorAll('.deck-checkbox').forEach(cb => {{
+                const did = cb.dataset.did;
+                if (did) {{
+                    checkboxStateMap.set(did, cb.checked);
+                }}
+            }});
+            
+            // 2. Update the tree HTML
+            OnigiriEngine.updateDeckTree({new_tree_html});
+            
+            // 3. Re-apply the stored state to the *new* checkboxes
+            checkboxStateMap.forEach((isChecked, did) => {{
+                // Find the *new* checkbox element in the updated DOM
+                const newCheckbox = document.querySelector(`.deck-checkbox[data-did="${{did}}"]`);
+                if (newCheckbox) {{
+                    newCheckbox.checked = isChecked;
+                }}
+            }});
+            
+            // 4. Restore scroll position
+            if (container) {{
+                container.scrollTop = scrollTop;
+            }}
+        }})();
+        """.format(new_tree_html=js_escaped_html)
+        
+        deck_browser.web.eval(js)
+
+    except Exception as e:
+        print(f"Onigiri: Error in refresh_deck_tree_state: {e}")
+        import traceback
+        traceback.print_exc()

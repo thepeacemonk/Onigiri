@@ -1,0 +1,512 @@
+:root {
+    --primary-color: #CFA13D;
+    --secondary-color: #8a6922;
+    --bg-color: #f4f6f8;
+    --card-bg: #ffffff;
+    --text-color: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --success-color: #2ecc71;
+    --accent-color: #5f27cd;
+}
+
+.night-mode {
+    --bg-color: #1e1e1e;
+    --card-bg: #2d2d2d;
+    --text-color: #ecf0f1;
+    --text-secondary: #bdc3c7;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    overflow-x: hidden;
+}
+
+.store-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.store-header {
+    background-image: url('../../../system_files/gamification_images/restaurant_folder/wooden_bg.png');
+    background-size: cover;
+    background-position: center;
+    border-radius: 20px;
+    padding: 30px;
+    color: white;
+    margin-bottom: 30px;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.title-group h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    font-weight: 800;
+}
+
+.store-subtitle {
+    margin: 5px 0 0;
+    opacity: 0.9;
+    font-size: 1.1rem;
+}
+
+.wallet-display {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    padding: 15px 25px;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    min-width: 180px;
+}
+
+.coin-balance-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.coin-icon {
+    font-size: 1.8rem;
+}
+
+.buy-coins-btn {
+    background: white !important;
+    color: #CFA13D;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    width: fit-content;
+    align-self: center;
+    white-space: nowrap;
+    line-height: 1.2;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+}
+
+.buy-coins-btn:hover {
+    background: white !important;
+    color: #CFA13D;
+    box-shadow: none;
+}
+
+/* Sparkle elements for the button */
+.buy-coins-btn-sparkle {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.18s ease-out, visibility 0.18s ease-out;
+    animation: sparkleTwinkle 1.2s ease-in-out infinite;
+    animation-play-state: paused;
+    filter: drop-shadow(0 0 6px rgba(207, 161, 61, 0.65));
+}
+
+.buy-coins-btn-sparkle::before,
+.buy-coins-btn-sparkle::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(207, 161, 61, 0.95);
+    border-radius: 999px;
+}
+
+.buy-coins-btn-sparkle::before {
+    width: 6px;
+    height: 18px;
+}
+
+.buy-coins-btn-sparkle::after {
+    width: 18px;
+    height: 6px;
+}
+
+.buy-coins-btn:hover .buy-coins-btn-sparkle {
+    animation-play-state: running;
+    opacity: 1;
+    visibility: visible;
+}
+
+.buy-coins-btn-sparkle--top {
+    top: -14px;
+    left: 50%;
+    animation-delay: 0s;
+}
+
+.buy-coins-btn-sparkle--left {
+    top: 50%;
+    left: -16px;
+    animation-delay: 0.15s;
+}
+
+.buy-coins-btn-sparkle--right {
+    top: 50%;
+    left: calc(100% + 16px);
+    animation-delay: 0.3s;
+}
+
+.buy-coins-btn-sparkle--bottom-left {
+    top: calc(100% + 6px);
+    left: calc(50% - 22px);
+    animation-delay: 0.45s;
+}
+
+.buy-coins-btn-sparkle--bottom-right {
+    top: calc(100% + 6px);
+    left: calc(50% + 22px);
+    animation-delay: 0.6s;
+}
+
+@keyframes sparkleTwinkle {
+    0% {
+        transform: translate(-50%, -50%) scale(0.3);
+        opacity: 0;
+    }
+
+    40% {
+        opacity: 1;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(0.85);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Navigation */
+.store-nav {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    padding-bottom: 10px;
+}
+
+.coin-icon {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
+.coin-icon-small {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+#coin-balance {
+    font-size: 20px;
+    font-weight: 700;
+    color: #CFA13D;
+}
+
+.nav-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 10px 20px;
+    border-radius: 10px;
+    transition: all 0.3s;
+}
+
+.nav-btn:hover {
+    color: var(--primary-color);
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.nav-btn.active {
+    color: var(--primary-color);
+    background: rgba(255, 159, 67, 0.1);
+}
+
+/* Grid */
+.items-grid {
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 25px;
+    animation: fadeIn 0.5s ease;
+}
+
+.items-grid.active {
+    display: grid;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Store Item */
+.store-item {
+    background: var(--card-bg);
+    border-radius: 20px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.store-item:hover {
+    transform: translateY(-5px);
+}
+
+.item-preview {
+    height: 150px;
+    background: #eee;
+    position: relative;
+    overflow: hidden;
+}
+
+.preview-color {
+    width: 100%;
+    height: 100%;
+    transition: transform 0.3s;
+}
+
+.preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    transition: transform 0.3s;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.item-preview:hover .preview-image {
+    transform: scale(1.1);
+}
+
+.item-preview:hover .preview-color {
+    transform: scale(1.05);
+}
+
+.item-info {
+    padding: 20px;
+    flex-grow: 1;
+}
+
+.item-name {
+    margin: 0 0 10px;
+    font-size: 1.2rem;
+    color: var(--text-color);
+}
+
+.item-price-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--primary-color);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.action-btn {
+    margin: 0 20px 20px;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+/* Button States */
+.action-btn.buy {
+    background: var(--primary-color);
+    color: white;
+}
+
+.action-btn.buy:hover {
+    background: #e67e22;
+}
+
+.action-btn.equip {
+    background: var(--accent-color);
+    color: white;
+}
+
+.action-btn.equip:hover {
+    background: #5e4ccf;
+}
+
+
+.action-btn.equipped {
+    background: var(--success-color);
+    color: white;
+    cursor: default;
+}
+
+.action-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.action-btn.unequip {
+    background: var(--text-secondary);
+    color: white;
+    cursor: pointer;
+}
+
+.action-btn.unequip:hover {
+    background: var(--text-color);
+}
+
+/* Custom Prompt Modal */
+.custom-prompt-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+}
+
+.custom-prompt-modal {
+    background: var(--card-bg);
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    min-width: 400px;
+    max-width: 500px;
+    overflow: hidden;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.custom-prompt-header {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    padding: 20px 25px;
+    color: white;
+}
+
+.custom-prompt-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.custom-prompt-body {
+    padding: 25px;
+}
+
+.custom-prompt-body p {
+    margin: 0 0 15px;
+    color: var(--text-color);
+    font-size: 1rem;
+}
+
+.custom-prompt-input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+.custom-prompt-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.custom-prompt-footer {
+    padding: 0 25px 25px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.custom-prompt-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.custom-prompt-btn-cancel {
+    background: var(--text-secondary);
+    color: white;
+}
+
+.custom-prompt-btn-cancel:hover {
+    background: var(--text-color);
+}
+
+.custom-prompt-btn-ok {
+    background: var(--primary-color);
+    color: white;
+}
+
+.custom-prompt-btn-ok:hover {
+    background: var(--secondary-color);
+}

@@ -10,6 +10,7 @@ from aqt.qt import QAction, QMenu
 # Import the necessary components from other add-on files
 from . import settings
 from . import patcher
+from .gamification.taiyaki_store import open_taiyaki_store
 
 # A module-level variable to hold the addon path, set once on setup.
 _addon_path = None
@@ -57,15 +58,31 @@ def setup_onigiri_menu(addon_path):
     # Create the top-level menu with the Onigiri icon
     onigiri_menu = QMenu("Onigiri", mw)
 
-    # Create the 'Profile' action (for viewing)
     profile_action = QAction("Profile", mw)
     profile_action.triggered.connect(open_profile)
     onigiri_menu.addAction(profile_action)
 
-    # Create the 'Add-on Settings' action (opens settings to General tab, index 0)
+    # Create Gamification submenu
+    gamification_menu = QMenu("Gamification", mw)
+    
+    achievements_action = QAction("Achievements", mw)
+    achievements_action.triggered.connect(patcher.open_achievements_dialog)
+    gamification_menu.addAction(achievements_action)
+
+    restaurant_action = QAction("Restaurant Level", mw)
+    restaurant_action.triggered.connect(patcher.open_restaurant_level_dialog)
+    gamification_menu.addAction(restaurant_action)
+
+    store_action = QAction("Mr. Taiyaki Store", mw)
+    store_action.triggered.connect(open_taiyaki_store)
+    gamification_menu.addAction(store_action)
+    
+    # Add the Gamification submenu to the main menu
+    onigiri_menu.addMenu(gamification_menu)
+
+    # Create the 'Settings' action (opens settings to General tab, index 0)
     settings_action = QAction("Onigiri Settings", mw)
-    settings_action.setShortcut("Ctrl+Shift+S") 
-    settings_action.triggered.connect(lambda: open_settings(0))
+    settings_action.triggered.connect(lambda _: open_settings(0))
     onigiri_menu.addAction(settings_action)
 
     onigiri_menu.addSeparator()

@@ -4,75 +4,95 @@
 
 #onigiri-heatmap-container,
 #onigiri-profile-heatmap-container {
-    padding: 15px;
-    border-radius: 25px;
+    padding-top: 5px;
+    padding-bottom: 15px;
+    padding-left: 15px;
+    padding-right: 15px;
+    border-radius: 15px;
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-    position: relative;
+
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
+/* --- Header Styles (Fixed Height & Single Line) --- */
 .onigiri-heatmap-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-    padding: 0 5px;
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-wrap: nowrap;
+    /* Force single line */
+    gap: 4px;
+    /* Tight gap to fit content */
+    width: 100%;
+    min-width: 0;
 }
+
 
 .onigiri-heatmap-header .header-left,
 .onigiri-heatmap-header .header-right {
     display: flex;
     align-items: center;
-    gap: 15px;
-    flex-wrap: wrap;
+    gap: 6px;
+    flex-wrap: nowrap;
+    /* Force single line */
+    flex-shrink: 0;
+    /* Prevent crushing */
 }
 
-.onigiri-heatmap-header h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--fg);
-}
-
+/* --- Streak Counter (Fixed Height) --- */
 .streak-counter {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--fg-subtle);
     background-color: var(--heatmap-color-zero);
-    padding: 4px 8px;
-    border-radius: 8px;
+    border-radius: 6px;
+
+    /* Fixed Height Logic */
+    height: 24px;
+    padding: 0 8px;
+    /* Horizontal padding only */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
 }
 
 .heatmap-filters {
     display: flex;
     background-color: var(--heatmap-color-zero);
     border-radius: 8px;
-    padding: 3px;
+    padding: 2px;
+    align-items: center;
 }
 
+/* --- Filter Buttons (Fixed Height) --- */
 .filter-btn {
     border: none;
     background-color: transparent;
-    padding: 4px 10px;
     border-radius: 6px;
     cursor: pointer;
     font: var(--font-main);
+    font-size: 12px;
     font-weight: 500;
     color: var(--fg-subtle);
     box-shadow: none !important;
+
+    /* Fixed Height Logic */
+    height: 24px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .filter-btn:hover {
-    background: transparent !important; /* This overrides the gradient */
     border: none;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    color: var(--fg-subtle);
+    color: var(--fg-subtle - 0.2);
     opacity: 1;
 }
 
@@ -82,10 +102,11 @@
     box-shadow: none !important;
 }
 
+/* --- Navigation (Fixed Height) --- */
 .heatmap-nav {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
 }
 
 .nav-btn {
@@ -94,31 +115,38 @@
     background-color: var(--heatmap-color-zero);
     color: var(--fg);
     border-radius: 8px;
-    width: 15px;
-    height: 15px;
+    width: 24px;
+    height: 24px;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 18px;
+    /* Arrow size */
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* transition removed */
+    padding: 0;
 }
 
 .nav-btn:hover {
-    background: var(--heatmap-color-zero) !important; /* This overrides the gradient */
-    font-size: 15px;
-    font-weight: bold;
-    border: none;
+    background: var(--heatmap-color-zero) !important;
     opacity: 1;
 }
 
 .nav-title {
+    font-size: 13px;
     font-weight: 500;
     color: var(--fg);
     background-color: var(--heatmap-color-zero);
-    padding: 4px 15px;
-    border-radius: 8px;
+    border-radius: 6px;
+
+    /* Fixed Height Logic */
+    height: 24px;
+    padding: 0 8px;
+    /* Horizontal padding only */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
 }
 
 /* --- Base Grid and Cells --- */
@@ -126,28 +154,117 @@
     width: 100%;
     aspect-ratio: 1 / 1;
     position: relative;
-    --heatmap-intensity: 0; /* JS will set this value per-cell */
+    margin: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* THIS IS THE NEW COLORING LOGIC */
 .heatmap-day-cell .day-shape {
     width: 100%;
     height: 100%;
-    background-color: var(--heatmap-color-zero);
     position: relative;
-    overflow: hidden; /* Important for containing the pseudo-element */
+    overflow: hidden;
 }
 
-.heatmap-day-cell .day-shape::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--heatmap-color);
-    opacity: var(--heatmap-intensity); /* Use the intensity variable set by JS */
+/* --- Past Activity Styling --- */
+/* --- Past Activity Styling --- */
+.heatmap-day-cell[data-level="0"] .day-shape {
+    background-color: var(--heatmap-level-0);
 }
+
+.light-mode .heatmap-day-cell[data-level="0"] .day-shape {
+    background-color: var(--heatmap-level-0) !important;
+}
+
+.night-mode .heatmap-day-cell[data-level="0"] .day-shape,
+.nightMode .heatmap-day-cell[data-level="0"] .day-shape,
+.night .heatmap-day-cell[data-level="0"] .day-shape {
+    background-color: var(--heatmap-level-0);
+}
+
+.heatmap-day-cell[data-level="1"] .day-shape {
+    background-color: var(--heatmap-level-1);
+}
+
+.heatmap-day-cell[data-level="2"] .day-shape {
+    background-color: var(--heatmap-level-2);
+}
+
+.heatmap-day-cell[data-level="3"] .day-shape {
+    background-color: var(--heatmap-level-3);
+}
+
+.heatmap-day-cell[data-level="4"] .day-shape {
+    background-color: var(--heatmap-level-4);
+}
+
+
+/* --- Future/Due Day Styling --- */
+/* Default Mode: Match past level 0 for consistency */
+.heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+    background-color: var(--heatmap-future-0);
+}
+
+/* Light Mode: Match past level 0 for consistency */
+.light-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+    background-color: var(--heatmap-future-0) !important;
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+    background-color: var(--heatmap-future-0);
+}
+
+.heatmap-day-cell.future-day[data-due-level="1"] .day-shape {
+    background-color: var(--heatmap-future-1);
+}
+
+.heatmap-day-cell.future-day[data-due-level="2"] .day-shape {
+    background-color: var(--heatmap-future-2);
+}
+
+.heatmap-day-cell.future-day[data-due-level="3"] .day-shape {
+    background-color: var(--heatmap-future-3);
+}
+
+.heatmap-day-cell.future-day[data-due-level="4"] .day-shape {
+    background-color: var(--heatmap-future-4);
+}
+
+
+/* Night Mode Overrides: Lighter shades for more due reviews */
+.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+    background-color: var(--heatmap-future-0);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="1"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="1"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="1"] .day-shape {
+    background-color: var(--heatmap-future-1);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="2"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="2"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="2"] .day-shape {
+    background-color: var(--heatmap-future-2);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="3"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="3"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="3"] .day-shape {
+    background-color: var(--heatmap-future-3);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape,
+.nightMode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape,
+.night .heatmap-day-cell.future-day[data-due-level="4"] .day-shape {
+    background-color: var(--heatmap-future-4);
+}
+
 
 /* Tooltip */
 .heatmap-day-cell::after {
@@ -156,47 +273,66 @@
     bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
-    background-color: var(--fg);
-    color: var(--bg);
+    /* Default to dark background, light text (Light Mode) */
+    background-color: #333;
+    color: #fff;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
-    white-space: nowrap;
+    white-space: pre;
     z-index: 10;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease, visibility 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
-/* --- START: Tooltip Repositioning Fix --- */
-/*
-  The following rules prevent the tooltip from being clipped when the
-  heatmap cell is near the left or right edge of the container.
-*/
+/* Dark Mode Overrides for Tooltip */
+.night .heatmap-day-cell::after,
+.nightMode .heatmap-day-cell::after,
+.night-mode .heatmap-day-cell::after {
+    /* Light background, dark text (Dark Mode) */
+    background-color: #eee;
+    color: #000;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
 
-/* For cells in the first two columns of Year view, align tooltip to the left. */
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
     left: 0;
     transform: translateX(0);
 }
 
-/*
-  For cells in the last two columns of Year view, align tooltip to the right.
-  The grid has up to 371 cells (53 columns * 7 rows).
-  The last two columns start around child index 358 (371 - 14).
-*/
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(n + 316)::after {
     left: auto;
     right: 0;
     transform: translateX(0);
 }
-/* --- END: Tooltip Repositioning Fix --- */
 
 .heatmap-day-cell:hover::after {
     opacity: 1;
     visibility: visible;
 }
+
+/* --- Today's Cell Styling --- */
+/* Glow animation for today's cell when hovering over container */
+@keyframes glow {
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 4px currentColor);
+    }
+
+    50% {
+        filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 12px currentColor);
+    }
+}
+
+#onigiri-heatmap-container:hover .heatmap-day-cell.today .day-shape,
+#onigiri-profile-heatmap-container:hover .heatmap-day-cell.today .day-shape {
+    animation: glow 3s ease-in-out;
+}
+
 
 /* --- Year View Specifics --- */
 .heatmap-grid.year-view {
@@ -214,7 +350,7 @@
 
 .year-view[data-weekdays-hidden="true"] {
     grid-template-areas: "empty months"
-                         "empty cells";
+        "empty cells";
     grid-template-columns: 0 1fr;
 }
 
@@ -227,10 +363,11 @@
     grid-area: months;
     display: grid;
     grid-template-columns: repeat(53, 1fr);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--fg-subtle);
     padding-left: 2px;
 }
+
 .year-view[data-months-hidden="true"] .heatmap-months {
     display: none;
 }
@@ -247,9 +384,9 @@
     display: flex;
     flex-direction: column;
     justify-content: space-around;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--fg-subtle);
-    padding-right: 5px;
+    padding-right: 4px;
     text-align: right;
 }
 
@@ -260,12 +397,10 @@
 .year-view .heatmap-cells {
     grid-area: cells;
     display: grid;
-    /* 7 rows for days of the week */
     grid-template-rows: repeat(7, 1fr);
-    /* Let the columns flow automatically */
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    gap: 3px;
+    gap: 0.5px;
 }
 
 
@@ -274,10 +409,11 @@
     display: grid;
     grid-template-rows: auto 1fr;
     gap: 8px;
-    width: fit-content; /* Let the container size to its content */
-    max-width: 100%;    /* Prevent overflow */
-    margin: 0 auto;     /* Center the container */
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
 }
+
 .month-view .month-weekdays-header {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -286,14 +422,15 @@
     font-weight: 500;
     color: var(--fg-subtle);
 }
+
 .month-view[data-weekdays-hidden="true"] .month-weekdays-header {
     display: none;
 }
 
 .month-view .month-cells-grid {
     display: grid;
-    grid-template-columns: repeat(7, 30px); /* Use fixed size for cells */
-    grid-auto-rows: 30px; /* Make cells square */
+    grid-template-columns: repeat(7, 30px);
+    grid-auto-rows: 30px;
     gap: 4px;
 }
 
@@ -302,33 +439,38 @@
     display: grid;
     grid-template-rows: auto 1fr;
     gap: 5px;
-    width: fit-content; /* Let the container size to its content */
-    max-width: 100%;    /* Prevent overflow */
-    margin: 0 auto;     /* Center the container */
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
 }
+
 .week-view[data-header-hidden="true"] .week-days-header {
     display: none;
 }
+
 .week-view .week-days-header {
     display: grid;
-    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
-    gap: 4px; /* Add gap to align with cells */
+    grid-template-columns: repeat(7, 40px);
+    gap: 4px;
     text-align: center;
     font-size: 11px;
     font-weight: 500;
     color: var(--fg-subtle);
 }
+
 .week-view .weekday-label {
     font-weight: 500;
 }
+
 .week-view .day-label {
     font-size: 14px;
     font-weight: 600;
     color: var(--fg);
 }
+
 .week-view .week-cells-grid {
     display: grid;
-    grid-template-columns: repeat(7, 40px); /* Use fixed size for cells */
+    grid-template-columns: repeat(7, 40px);
     gap: 4px;
 }
 
@@ -338,7 +480,7 @@
     grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    gap: 3px;
+    gap: 0px;
     opacity: 0.5;
 }
 
@@ -360,7 +502,8 @@
     opacity: 0.5;
 }
 
-.header-left-skeleton, .header-right-skeleton {
+.header-left-skeleton,
+.header-right-skeleton {
     display: flex;
     align-items: center;
     gap: 15px;
@@ -399,11 +542,13 @@
 }
 
 @keyframes skeleton-pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.4;
     }
 }
-/* --- SKELETON LOADER STYLES END --- */

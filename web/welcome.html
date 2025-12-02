@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <style>
         /* --- Base Styles & Font --- */
-        html, body {
+        html,
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 0;
@@ -17,29 +19,56 @@
             /* Adapted color palette */
             --color-bg1: #123034;
             --color-bg2: #0F2327;
-            --color1: 46, 176, 194; /* #2EB0C2 */
-            --color2: 96, 152, 176; /* #6098B0 */
+            --color1: 46, 176, 194;
+            /* #2EB0C2 */
+            --color2: 96, 152, 176;
+            /* #6098B0 */
             --color3: 40, 120, 150;
             --circle-size: 80%;
-            --blending: screen; /* 'screen' or 'hard-light' works well */
+            --blending: screen;
+            /* 'screen' or 'hard-light' works well */
         }
 
         @keyframes moveInCircle {
-            0% { transform: rotate(0deg); }
-            50% { transform: rotate(180deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            50% {
+                transform: rotate(180deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes moveVertical {
-            0% { transform: translateY(-50%); }
-            50% { transform: translateY(50%); }
-            100% { transform: translateY(-50%); }
+            0% {
+                transform: translateY(-50%);
+            }
+
+            50% {
+                transform: translateY(50%);
+            }
+
+            100% {
+                transform: translateY(-50%);
+            }
         }
 
         @keyframes moveHorizontal {
-            0% { transform: translateX(-50%) translateY(-10%); }
-            50% { transform: translateX(50%) translateY(10%); }
-            100% { transform: translateX(-50%) translateY(-10%); }
+            0% {
+                transform: translateX(-50%) translateY(-10%);
+            }
+
+            50% {
+                transform: translateX(50%) translateY(10%);
+            }
+
+            100% {
+                transform: translateX(-50%) translateY(-10%);
+            }
         }
 
         .gradient-bg {
@@ -66,7 +95,9 @@
             height: 100%;
         }
 
-        .g1, .g2, .g3 {
+        .g1,
+        .g2,
+        .g3 {
             position: absolute;
             mix-blend-mode: var(--blending);
             width: var(--circle-size);
@@ -79,19 +110,19 @@
         .g1 {
             background: radial-gradient(circle at center, rgba(var(--color1), 0.8) 0, rgba(var(--color1), 0) 50%) no-repeat;
             transform-origin: center center;
-            animation: moveVertical 20s ease infinite;
+            animation: moveVertical 15s ease infinite;
         }
 
         .g2 {
             background: radial-gradient(circle at center, rgba(var(--color2), 0.8) 0, rgba(var(--color2), 0) 50%) no-repeat;
             transform-origin: calc(50% - 400px);
-            animation: moveInCircle 15s reverse infinite;
+            animation: moveInCircle 12s reverse infinite;
         }
 
         .g3 {
             background: radial-gradient(circle at center, rgba(var(--color3), 0.8) 0, rgba(var(--color3), 0) 50%) no-repeat;
             transform-origin: calc(50% + 400px);
-            animation: moveInCircle 25s linear infinite;
+            animation: moveInCircle 20s linear infinite;
         }
 
 
@@ -108,6 +139,7 @@
             padding: 30px;
             box-sizing: border-box;
             color: #ffffff;
+            text-align: center;
         }
 
         .content-wrapper img {
@@ -119,26 +151,27 @@
             font-size: 24px;
             font-weight: 600;
             margin-bottom: 10px;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.2);
         }
 
         .content-wrapper p {
             font-size: 14px;
             color: #e0e0e0;
             margin-bottom: 25px;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.2);
         }
 
         .button-container {
             display: flex;
             gap: 15px;
+            flex-wrap: nowrap;
         }
 
         .link-button {
             background-color: rgba(255, 255, 255, 0.15);
             color: #ffffff;
             border: none;
-            padding: 10px 20px;
+            padding: 8px 20px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: 500;
@@ -147,18 +180,112 @@
             transition: background-color 0.2s ease;
         }
 
-        .link-button:hover {
-            background-color: rgba(255, 255, 255, 0.25);
+        .version-button {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 6px 16px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 10px;
+            animation: pulse 2s ease-in-out infinite;
+            white-space: nowrap;
+        }
+
+        .version-button::before {
+            content: "See what changed!";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #123034;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .version-button::after {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .version-button:hover {
+            background-color: #ffffff !important;
+            border-color: rgba(255, 255, 255, 0.8) !important;
+            transform: scale(1.05) !important;
+        }
+
+        .version-button:hover::before {
+            opacity: 1 !important;
+        }
+
+        .version-button:hover::after {
+            opacity: 0 !important;
+        }
+
+        /* Ensure consistent hover effect in dark mode - aggressive overrides */
+        body.night-mode .version-button:hover,
+        html.night-mode .version-button:hover,
+        .night-mode .version-button:hover,
+        .nightMode .version-button:hover {
+            background-color: #ffffff !important;
+            background-image: none !important;
+            border-color: rgba(255, 255, 255, 0.8) !important;
+            transform: scale(1.05) !important;
+            color: transparent !important;
+        }
+
+        body.night-mode .version-button:hover::before,
+        html.night-mode .version-button:hover::before,
+        .night-mode .version-button:hover::before,
+        .nightMode .version-button:hover::before {
+            color: #123034 !important;
+            opacity: 1 !important;
+        }
+
+        body.night-mode .version-button:hover::after,
+        html.night-mode .version-button:hover::after,
+        .night-mode .version-button:hover::after,
+        .nightMode .version-button:hover::after {
+            opacity: 0 !important;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+            }
+
+            50% {
+                transform: scale(1.02);
+                box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="gradient-bg">
         <svg xmlns="http://www.w3.org/2000/svg" version="1.1">
             <defs>
                 <filter id="goo">
                     <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo" />
+                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
+                        result="goo" />
                     <feBlend in="SourceGraphic" in2="goo" />
                 </filter>
             </defs>
@@ -173,11 +300,21 @@
     <div class="content-wrapper">
         <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri Logo">
         <h1>Welcome to Onigiri!</h1>
+        <button class="version-button"
+            onclick="window.open('https://github.com/thepeacemonk/Onigiri/releases/tag/v.1.0.5-beta', '_blank')">Version
+            1.0.5-beta</button>
         <p>Before you start, explore the Settings to customize your experience!</p>
         <div class="button-container">
-            <a href="#" onclick="pycmd('open_link:https://github.com/thepeacemonk/Onigiri'); return false;" class="link-button">Onigiri GitHub</a>
-            <a href="#" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk'); return false;" class="link-button">Buy me an onigiri!</a>
+            <a href="#" onclick="pycmd('open_link:https://github.com/thepeacemonk/Onigiri'); return false;"
+                class="link-button">GitHub</a>
+            <a href="#" onclick="pycmd('open_link:https://discord.gg/ZU9VZHMk3u'); return false;"
+                class="link-button">Discord</a>
+            <a href="#" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk'); return false;"
+                class="link-button">Donate</a>
+            <a href="#" onclick="pycmd('open_link:https://ankiweb.net/shared/review/1011095603'); return false;"
+                class="link-button">Upvote</a>
         </div>
     </div>
 </body>
+
 </html>
