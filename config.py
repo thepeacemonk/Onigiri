@@ -6,16 +6,75 @@ DEFAULTS = {
     "userName": "USER",
     "statsTitle": "Today's Stats",
     "studyNowText": "Study Now",
-    "hideProfileBar": False,
     "hideWelcomeMessage": False,
-    "hideDeckCounts": False,
+    "hideAllDeckCounts": False,
+    "hideDeckCounts": True,
     "hideNativeHeaderAndBottomBar": True,
     "proHide": False,
-    "maxHide": False, 
+    "maxHide": False,
+    "gamificationMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
+    "achievements": {
+        "enabled": False,
+        "earned": {},
+        "history": [],
+        "last_refresh": None,
+        "snapshot": {},
+        "custom_goals": {
+            "last_modified_at": None,
+            "daily": {
+                "enabled": False,
+                "target": 100,
+                "last_notified_day": None,
+                "completion_count": 0,
+            },
+            "weekly": {
+                "enabled": False,
+                "target": 700,
+                "last_notified_week": None,
+                "completion_count": 0,
+            },
+        },
+        # --- ADDED: focusDango nested inside achievements ---
+        "focusDango": {
+            "enabled": False,
+            "message": "Focus Dango wants you to focus!"
+        },
+        # --- END ADDITION ---
+    },
+    "restaurant_level": {
+        "enabled": False,
+        "name": "Restaurant Level",
+        "total_xp": 0,
+        "level": 0,
+        "notifications_enabled": True,
+        "show_profile_bar_progress": True,
+        "show_profile_page_progress": True,
+        "show_reviewer_header": True,
+    },
+    "daily_special": {
+        "enabled": True,
+        "current_progress": 0,
+        "target": 100,  # Default target of 100 reviews for the daily special
+        "last_updated": None,
+        "last_notified_milestone": 0
+    },
+    "mochi_messages": {
+        "enabled": False,
+        "cards_interval": 15,
+        "messages": [
+            "Mochi is rooting for you — keep going!",
+            "Great pace! Mochi loves your dedication.",
+            "Deep breath. Mochi knows you've got this!",
+            "Mochi is cheering for you! Keep it up!", 
+            "Wow, look at you go! A true review master.",
+            "Mochi is so proud of you! Keep it going!",
+            "Each review is a step closer to your goal. You've got this!",
+        ],
+    },
     "heatmapShape": "square.svg",
     "heatmapShowStreak": True,
     "heatmapShowMonths": True,
@@ -27,16 +86,32 @@ DEFAULTS = {
         "time": {"pos": 1, "row": 1, "col": 1},
         "pace": {"pos": 2, "row": 1, "col": 1},
         "retention": {"pos": 3, "row": 1, "col": 1},
-        "heatmap": {"pos": 4, "row": 2, "col": 4},
-         },
-    "archive": []
+        "heatmap": {"pos": 4, "row": 2, "col": 4}
+        },
+    "archive": ["favorites"] 
     },
-    "externalWidgetLayout": {}, # Default: no external widgets configured
+    "externalWidgetLayout": {}, 
+
+    # --- ADDED: Sidebar Button Layout ---
+    "sidebarButtonLayout": {
+        "visible": [
+            "profile",
+            "add",
+            "browse",
+            "stats",
+            "sync",
+            "settings",
+            "more"
+        ],
+        "archived": []
+    },
+
+
     # --- NEW: Reviewer Background Settings ---
     "onigiri_reviewer_bg_mode": "main", # "main", "color", "image_color"
     "onigiri_reviewer_bg_main_blur": 0, # Blur when using main background
     "onigiri_reviewer_bg_main_opacity": 100, # Opacity when using main background
-    "onigiri_reviewer_bg_light_color": "#FFFFFF",
+    "onigiri_reviewer_bg_light_color": "#f2f2f2",
     "onigiri_reviewer_bg_dark_color": "#2C2C2C",
     "onigiri_reviewer_bg_image_light": "",
     "onigiri_reviewer_bg_image_dark": "",
@@ -44,15 +119,35 @@ DEFAULTS = {
     "onigiri_reviewer_bg_blur": 0,
     "onigiri_reviewer_bg_opacity": 100,
     # --- Reviewer Bottom Bar Settings ---
-    "onigiri_reviewer_bottom_bar_bg_mode": "main", # "main", "color", "image", "image_color"
-    "onigiri_reviewer_bottom_bar_bg_light_color": "#FFFFFF",
+    "onigiri_reviewer_bottom_bar_bg_mode": "match_reviewer_bg", # "main", "color", "image", "image_color", "match_reviewer_bg"
+    "onigiri_reviewer_bottom_bar_bg_light_color": "#f2f2f2",
     "onigiri_reviewer_bottom_bar_bg_dark_color": "#2C2C2C",
     "onigiri_reviewer_bottom_bar_bg_image": "",
     "onigiri_reviewer_bottom_bar_bg_blur": 0,
     "onigiri_reviewer_bottom_bar_bg_opacity": 100,
-    "onigiri_reviewer_bottom_bar_match_main_blur": 5,
-    "onigiri_reviewer_bottom_bar_match_main_opacity": 90,
+    "onigiri_reviewer_bottom_bar_match_main_blur": 0,
+    "onigiri_reviewer_bottom_bar_match_main_opacity": 100,
+    "onigiri_reviewer_bottom_bar_match_reviewer_bg_blur": 0,
+    "onigiri_reviewer_bottom_bar_match_reviewer_bg_opacity": 100,
+    "restaurant_countdown_hour": 4,  # Default to 4 AM
+    "restaurant_countdown_minute": 0,  # Default to 0 minutes
+    
+    # --- NEW: Overviewer Background Settings ---
+    "onigiri_overview_bg_mode": "main", # "main", "color", "image_color"
+    "onigiri_overview_bg_main_blur": 0,
+    "onigiri_overview_bg_main_opacity": 100,
+    "onigiri_overview_bg_light_color": "#f2f2f2",
+    "onigiri_overview_bg_dark_color": "#2C2C2C",
+    "onigiri_overview_bg_image_light": "",
+    "onigiri_overview_bg_image_dark": "",
+    "onigiri_overview_bg_image": "",
+    "onigiri_overview_bg_image_mode": "single",
+    "onigiri_overview_bg_blur": 0,
+    "onigiri_overview_bg_opacity": 100,
+    "onigiri_overview_bg_color_theme_mode": "single",
+    "onigiri_overview_bg_image_theme_mode": "single",
     # -----------------------------------------
+    # --- REMOVED: Top-level focusDango was here ---
     "colors": {
         "light": {
             "--accent-color": "#007aff",
@@ -78,6 +173,28 @@ DEFAULTS = {
             "--star-color": "#FFD700",
             "--empty-star-color": "#e0e0e0",
             "--stats-fg": "#212121",
+            # Shadow and overlay colors
+            "--shadow-sm": "rgba(0, 0, 0, 0.1)",
+            "--shadow-md": "rgba(0, 0, 0, 0.1)",
+            "--shadow-lg": "rgba(0, 0, 0, 0.1)",
+            "--overlay-dark": "rgba(0, 0, 0, 0.4)",
+            "--overlay-light": "rgba(0, 0, 0, 0.4)",
+            # Profile page specific colors
+            "--profile-page-bg": "#d9d9d9",
+            "--profile-card-bg": "#FFFFFF",
+            "--profile-pill-placeholder-bg": "rgba(0, 0, 0, 0.2)",
+            "--profile-export-btn-bg": "rgba(255, 255, 255, 1)",
+            "--profile-export-btn-fg": "#374151",
+            "--profile-export-btn-border": "rgba(0, 0, 0, 0.1)",
+            "--overlay-close-btn-bg": "#e0e0e0",
+            "--overlay-close-btn-fg": "#333333",
+            # Deck list specific colors
+            "--deck-hover-bg": "rgba(128, 128, 128, 0.1)",
+            "--deck-dragging-bg": "#cde4f9",
+            "--deck-edit-mode-bg": "rgba(128, 128, 128, 0.05)",
+            # Text shadow colors
+            "--text-shadow-light": "rgba(0, 0, 0, 0.5)",
+            "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
         },
         "dark": {
             "--accent-color": "#0a84ff",
@@ -103,9 +220,32 @@ DEFAULTS = {
             "--star-color": "#FFD700",
             "--empty-star-color": "#4a4a4a",
             "--stats-fg": "#e0e0e0",
+            # Shadow and overlay colors
+            "--shadow-sm": "rgba(0, 0, 0, 0.1)",
+            "--shadow-md": "rgba(0, 0, 0, 0.15)",
+            "--shadow-lg": "rgba(0, 0, 0, 0.4)",
+            "--overlay-dark": "rgba(0, 0, 0, 0.7)",
+            "--overlay-light": "rgba(0, 0, 0, 0.4)",
+            # Profile page specific colors
+            "--profile-page-bg": "#1f1f1f",
+            "--profile-card-bg": "#1e1e1e",
+            "--profile-pill-placeholder-bg": "rgba(0, 0, 0, 0.2)",
+            "--profile-export-btn-bg": "rgba(255, 255, 255, 1)",
+            "--profile-export-btn-fg": "#374151",
+            "--profile-export-btn-border": "rgba(0, 0, 0, 0.1)",
+            "--overlay-close-btn-bg": "#e0e0e0",
+            "--overlay-close-btn-fg": "#333333",
+            # Deck list specific colors
+            "--deck-hover-bg": "rgba(128, 128, 128, 0.1)",
+            "--deck-dragging-bg": "#2c3e50",
+            "--deck-edit-mode-bg": "rgba(128, 128, 128, 0.05)",
+            # Text shadow colors
+            "--text-shadow-light": "rgba(0, 0, 0, 0.5)",
+            "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
         }
     }
 }
+
 
 # A unique ID for our add-on's configuration
 config_id = None
@@ -146,10 +286,42 @@ def get_config():
             else:
                 clean_config[key] = user_config[key]
     
+    # Compatibility migrations
+    custom_goals_conf = clean_config.get("achievements", {}).get("custom_goals", {})
+    if "last_modified_at" not in custom_goals_conf:
+        custom_goals_conf["last_modified_at"] = None
+        if "achievements" in clean_config:
+            clean_config["achievements"].setdefault("custom_goals", custom_goals_conf)
+
+    if "gamification" in user_config and "achievements" not in user_config:
+        clean_config["achievements"] = copy.deepcopy(user_config["gamification"])
+
     # Compatibility: Check for old profile page visibility settings and migrate them
     # This ensures users updating the addon don't lose their settings
     if "onigiri_profile_show_stats" in mw.col.conf:
         clean_config["showHeatmapOnProfile"] = mw.col.conf.get("onigiri_profile_show_stats", True)
+        
+    # Compatibility: Migrate restaurant_level and daily_special from achievements to top-level
+    if "achievements" in clean_config:
+        achievements_conf = clean_config["achievements"]
+        
+        # Migrate restaurant_level
+        if "restaurant_level" in achievements_conf:
+            # Only migrate if top-level doesn't exist or we want to preserve old data
+            # Since clean_config has defaults, we should overwrite with old data if it exists
+            clean_config["restaurant_level"] = achievements_conf["restaurant_level"]
+            del achievements_conf["restaurant_level"]
+            
+        # Migrate daily_special
+        if "daily_special" in achievements_conf:
+            clean_config["daily_special"] = achievements_conf["daily_special"]
+            del achievements_conf["daily_special"]
+
+    # FORCE CLEANUP: Remove taiyaki_coins from config if present
+    # It is now stored exclusively in gamification.json
+    if "restaurant_level" in clean_config:
+        if "taiyaki_coins" in clean_config["restaurant_level"]:
+            del clean_config["restaurant_level"]["taiyaki_coins"]
 
     return clean_config
 

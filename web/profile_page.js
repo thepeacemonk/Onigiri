@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     themeBtn.addEventListener('click', showThemePage);
     statsBtn.addEventListener('click', showStatsPage);
     showThemePage();
-    
+
     // --- NEW, SIMPLER EXPORT FUNCTION ---
     function exportFullPage() {
         // Target our new top-level container
@@ -48,6 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Error rendering image: " + error);
             });
     }
-    
+
     exportBtn.addEventListener('click', exportFullPage);
 });

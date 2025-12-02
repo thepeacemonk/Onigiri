@@ -9,6 +9,7 @@ body {
     height: 100vh;
     --border-subtle: transparent !important;
 }
+
 .container.modern-main-menu {
     display: flex;
     height: 100vh;
@@ -24,14 +25,18 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 350px;
-    max-width: 800px;
+    max-width: 700px;
     z-index: 2;
     transition: none !important;
     overflow: hidden;
     box-sizing: border-box;
     margin: 15px;
-    border-radius: 15px; 
+    border-radius: 15px;
+    /* NEW: positioning + smoother collapse transition */
+    position: relative;
+    transition: width 0.3s ease, padding 0.3s ease !important;
 }
+
 .sidebar-left h2 {
     font-size: 14px;
     text-transform: uppercase;
@@ -42,42 +47,38 @@ body {
 
 /* --- New Resize Handle Styles --- */
 .resize-handle {
-    width: 15px; /* Increased width for a larger hover target */
+    width: 15px;
     cursor: col-resize;
     flex-shrink: 0;
     z-index: 2;
     position: relative;
     display: flex;
     justify-content: center;
-    /* Default vertical position for the indicator, controlled by JS */
-    --handle-top: 50%; 
+    --handle-top: 50%;
 }
 
-/* The rounded indicator */
 .resize-handle-indicator {
     position: absolute;
     top: var(--handle-top);
     left: 50%;
     width: 2px;
     height: 28px;
-    background-color: var(--border); /* Default color is same as the line */
+    background-color: var(--border);
     border-radius: 4px;
-    box-shadow: none; /* No shadow in default state */
-    opacity: 1; /* Always visible */
+    box-shadow: none;
+    opacity: 1;
     transform: translate(-50%, -50%) scale(1);
-    transition: background-color 0.2s ease, box-shadow 0.2s ease, top 0.05s ease, transform 0.2s ease; /* Fast 'top' transition for precision */
-    pointer-events: none; /* Prevents interference with parent's mouse events */
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, top 0.05s ease, transform 0.2s ease;
+    pointer-events: none;
 }
 
-/* Change color and add shadow on hover or while actively resizing */
 .resize-handle:hover .resize-handle-indicator,
 .resize-handle.is-resizing .resize-handle-indicator {
-    background-color: var(--accent-color); 
+    background-color: var(--accent-color);
     width: 4px;
-    box-shadow: none; /* No shadow in default state */
+    box-shadow: none;
     transform: translate(-50%, -50%) scale(1.5);
 }
-
 
 /* Profile Bar Styles */
 .profile-bar {
@@ -88,15 +89,62 @@ body {
     margin-bottom: 20px;
     background-color: var(--highlight-bg);
     transition: background-color 0.2s;
-    position: relative; 
-    overflow: hidden; /* To keep background within border-radius */
-    cursor: pointer; /* --- ADD THIS LINE --- */
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
 }
-/* Make content appear above the overlay */
-.profile-bar > * {
+
+.profile-bar>* {
     position: relative;
     z-index: 2;
 }
+
+.profile-bar .restaurant-level-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(4px);
+    color: inherit;
+    font-size: 12px;
+    transition: background 0.2s ease;
+}
+
+.night-mode .profile-bar .restaurant-level-chip,
+.nightMode .profile-bar .restaurant-level-chip,
+.night .profile-bar .restaurant-level-chip {
+    background: rgba(0, 0, 0, 0.24);
+}
+
+.profile-bar .restaurant-level-chip .rl-chip-level {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.profile-bar .restaurant-level-chip .rl-chip-progress {
+    width: 72px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.25);
+    overflow: hidden;
+}
+
+.night-mode .profile-bar .restaurant-level-chip .rl-chip-progress,
+.nightMode .profile-bar .restaurant-level-chip .rl-chip-progress,
+.night .profile-bar .restaurant-level-chip .rl-chip-progress {
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.profile-bar .restaurant-level-chip .rl-chip-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ffb347, #ff6b6b);
+    border-radius: inherit;
+    transition: width 0.3s ease;
+}
+
 .profile-pic {
     width: 38px;
     height: 38px;
@@ -106,6 +154,7 @@ body {
     margin-left: 0px;
     margin-right: 12px;
 }
+
 .profile-pic-placeholder {
     width: 38px;
     height: 38px;
@@ -120,6 +169,7 @@ body {
     font-weight: bold;
     flex-shrink: 0;
 }
+
 .profile-name {
     font-size: 16px;
     font-weight: 500;
@@ -132,24 +182,29 @@ body {
 .profile-bar::after {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(0,0,0,0.4);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--overlay-light);
     border-radius: 50px;
     z-index: 1;
     display: none;
 }
+
 .profile-bar.with-image-bg::after {
     display: block;
 }
+
 .profile-bar.with-image-bg .profile-name {
     color: white;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-}
-.profile-bar.with-image-bg .profile-pic-placeholder {
-    border: 2px solid rgba(255, 255, 255, 0.8);
-    box-sizing: border-box;
+    text-shadow: 1px 1px 3px var(--text-shadow-light);
 }
 
+.profile-bar.with-image-bg .profile-pic-placeholder {
+    border: 2px solid var(--profile-pic-border);
+    box-sizing: border-box;
+}
 
 /* --- Action Buttons & Menu Items --- */
 .add-button-dashed {
@@ -165,10 +220,12 @@ body {
     color: var(--fg);
     font-size: 15px;
 }
+
 .add-button-dashed:hover {
     background-color: var(--highlight-bg);
     border-color: var(--fg);
 }
+
 .menu-item {
     display: flex;
     align-items: center;
@@ -181,27 +238,33 @@ body {
     font-size: 15px;
     overflow: hidden;
 }
+
 .menu-item:hover {
     background-color: var(--highlight-bg);
 }
-.menu-item .icon{
+
+.menu-item .icon {
     padding-right: 8px;
 }
+
 /* --- Collapsible "More" Menu --- */
 details.menu-group {
     border: none;
     padding: 0;
     margin: 0;
 }
-details.menu-group > summary.menu-item {
-    gap: 8px;
+
+details.menu-group>summary.menu-item {
+    gap: 0;
     padding: 8px 10px;
     list-style: none;
 }
-details.menu-group > summary.menu-item::-webkit-details-marker {
+
+details.menu-group>summary.menu-item::-webkit-details-marker {
     display: none;
 }
-details.menu-group > summary.menu-item::after {
+
+details.menu-group>summary.menu-item::after {
     content: '';
     display: inline-block;
     width: 16px;
@@ -213,15 +276,21 @@ details.menu-group > summary.menu-item::after {
     transform: rotate(-90deg);
     transition: transform 0.2s ease;
 }
-.night-mode details.menu-group > summary.menu-item::after {
+
+.night-mode details.menu-group>summary.menu-item::after,
+.nightMode details.menu-group>summary.menu-item::after,
+.night details.menu-group>summary.menu-item::after {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239e9e9e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
-details.menu-group[open] > summary.menu-item::after {
+
+details.menu-group[open]>summary.menu-item::after {
     transform: rotate(0deg);
 }
+
 .menu-group-items {
     padding-left: 20px;
 }
+
 .menu-group-items .menu-item {
     padding-top: 5px;
     padding-bottom: 5px;
@@ -229,13 +298,21 @@ details.menu-group[open] > summary.menu-item::after {
 
 /* --- Deck List Specific Styles --- */
 #deck-list-container {
-    overflow-y: auto;
+    overflow: hidden;
     flex-grow: 1;
+    min-height: 0;
+    contain: layout style paint;
+    scroll-behavior: auto;
 }
+
+/* Table baseline */
 #deck-list-container table.deck-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
+
+/* Row */
 tr.deck {
     display: flex;
     align-items: center;
@@ -245,31 +322,56 @@ tr.deck {
     border-radius: 8px;
     transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     cursor: pointer;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    will-change: transform;
+    transform: translateZ(0);
 }
+
+.deck-table tr.deck:not(:hover) {
+    will-change: auto;
+    transition: will-change 0.3s ease 0.5s;
+}
+
+.deck-table tr:not(.drag-hover) a.deck:hover {
+    background-color: var(--deck-hover-bg);
+}
+
 tr.deck.current {
     background-color: var(--canvas-inset);
 }
-.night-mode tr.deck.current {
+
+.night-mode tr.deck.current,
+.nightMode tr.deck.current,
+.night tr.deck.current {
     background-color: var(--highlight-bg);
 }
-tr.deck:hover {
+
+tr.deck:hover,
+tr.deck.is-hovered {
     background-color: var(--highlight-bg);
 }
-tr.deck td {
+
+/* Cell holding main content */
+tr.deck td.decktd {
+    flex-grow: 1;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    border: none;
-    padding: 0;
+    row-gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
 }
-td.collapse-cell {
+
+/* Collapse icon cell */
+tr.deck td.collapse-cell {
     width: 20px;
     flex-shrink: 0;
 }
-td.deck-cell {
-    flex-grow: 1;
-    min-width: 0;
-    background-color: transparent !important;
-}
+
+/* Deck name link */
 a.deck {
     font-size: 15px;
     white-space: nowrap;
@@ -277,75 +379,134 @@ a.deck {
     text-overflow: ellipsis;
     color: var(--fg) !important;
     text-decoration: none !important;
-    display: flex;
-    align-items: center;
     padding-right: 12px;
-    margin-left: 8px; 
+    margin-left: 8px;
     padding: 6px;
-    width: 100%;
+    flex-grow: 1;
     background-color: inherit !important;
+    min-width: 0;
+    max-width: 100%;
 }
+
 a.deck::before {
     content: '';
     display: inline-block;
-    padding-right: 12px;
     opacity: 0.7;
     flex-shrink: 0;
-    
+    margin-right: 8px;
+    vertical-align: middle;
 }
 
 a.deck.filtered::before {
     background-color: var(--icon-color-filtered) !important;
 }
 
-span.collapse, a.collapse {
+/* Collapse icons */
+span.collapse,
+a.collapse {
     display: inline-block;
     flex-shrink: 0;
     width: 16px;
     height: 16px;
-    margin-right: 8px; 
-    opacity: 0.7; 
+    margin-right: 8px;
+    opacity: 0.7;
 }
-td.opts {
-    width: 24px;
-    flex-shrink: 0;
-    justify-content: center;
+
+/* --- INLINE OPTS LAYOUT: NEW --- */
+
+/* Structure: decktd becomes flex row for real decks/folders */
+tr.deck.is-deck td.decktd,
+tr.deck.is-folder td.decktd {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* Keep name/info flexible and truncating */
+tr.deck.is-deck .deck-info,
+tr.deck.is-folder .deck-info {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+/* Counts at far right */
+tr.deck.is-deck .deck-counts,
+tr.deck.is-folder .deck-counts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
     margin-left: auto;
+    /* pushes right */
+    flex-shrink: 0;
 }
-td.opts a {
-    font-size: 0;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    background-image: none !important;
+
+/* Show .opts only when in edit mode */
+body.deck-edit-mode tr.deck td.opts {
+    display: flex !important;
 }
-td.opts img.gears {
+
+/* Hide .opts by default and remove legacy absolute positioning */
+td.opts {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    transform: none !important;
+    margin-left: 0 !important;
     display: none;
 }
-tr.deck:hover td.opts a {
-    opacity: 0.7;
+
+/* Style the contents of the .opts button */
+td.opts a {
+    font-size: 0;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+td.opts img.gears {
+    display: none;
 }
 
 /* --- Drag and Drop Styles --- */
 tr.deck.dragging {
     opacity: 0.5;
-    background-color: #cde4f9;
+    background-color: var(--deck-dragging-bg);
 }
-.night-mode tr.deck.dragging {
-    background-color: #2c3e50;
+
+.night-mode tr.deck.dragging,
+.nightMode tr.deck.dragging,
+.night tr.deck.dragging {
+    background-color: var(--deck-dragging-bg);
 }
+
 tr.deck.drag-over-before {
     box-shadow: 0 -2px 0 0 var(--fg-subtle);
 }
+
 tr.deck.drag-over-after {
     box-shadow: 0 2px 0 0 var(--fg-subtle);
 }
+
 tr.deck.drag-over-nest {
     background-color: var(--highlight-bg) !important;
     border-color: var(--fg-subtle) !important;
 }
+
 .deck-prefix {
     display: flex;
     align-items: center;
+    margin-right: -20px;
+    flex-shrink: 0;
 }
 
 /* --- Main Content Area & Stats --- */
@@ -360,11 +521,13 @@ tr.deck.drag-over-nest {
     text-align: center;
     z-index: 2;
 }
-.main-content > * {
+
+.main-content>* {
     width: 100%;
     box-sizing: border-box;
     max-width: 900px;
 }
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -376,12 +539,11 @@ tr.deck.drag-over-nest {
 .stat-card {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-    border-radius: 24px;
+    border-radius: 15px;
     padding: 20px;
     display: flex;
     flex-direction: column;
     text-align: center;
-    /* --- ADD THESE TWO LINES --- */
     min-height: 120px;
     box-sizing: border-box;
 }
@@ -392,11 +554,13 @@ tr.deck.drag-over-nest {
     text-transform: uppercase;
     color: var(--fg-subtle);
 }
+
 .stat-card p {
     margin: 0;
     font-size: 24px;
     font-weight: 500;
 }
+
 .injected-stats-block h1 {
     text-align: left !important;
     font-size: 2em !important;
@@ -404,15 +568,22 @@ tr.deck.drag-over-nest {
     color: var(--fg-subtle);
 }
 
-/* --- Retention Stat Specific Styles --- */
-.retention-card p {
-    font-size: 22px; /* Slightly smaller to make room for stars */
-    margin-bottom: 8px;
+/* Retention specific */
+.retention-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-/* --- ADD THIS NEW RULE --- */
-/* This makes the main number on the shorter cards grow to fill empty space,
-   centering it vertically and pushing the title to the top. */
+.retention-card p {
+    font-size: 22px;
+    margin-bottom: 8px;
+    margin-top: 0;
+}
+
+/* Fill main number space on non-retention cards */
 .stat-card:not(.retention-card) p {
     flex-grow: 1;
     display: flex;
@@ -420,6 +591,7 @@ tr.deck.drag-over-nest {
     justify-content: center;
 }
 
+/* Stars */
 .star-rating {
     display: flex;
     justify-content: center;
@@ -430,8 +602,7 @@ tr.deck.drag-over-nest {
     display: inline-block;
     width: 20px;
     height: 20px;
-    background-color: var(--star-color, #FFD700); /* Gold color as default */
-    /* The mask-image is set dynamically by patcher.py */
+    background-color: var(--star-color);
     mask-size: contain;
     mask-repeat: no-repeat;
     mask-position: center;
@@ -444,17 +615,21 @@ tr.deck.drag-over-nest {
     background-color: var(--empty-star-color);
 }
 
-
 /* --- Hide Native Anki UI Elements --- */
-.deck-list-header, th[colspan="5"], th.count, th.optscol,
-.top-level-drag-row, .zero-count, .new-count, .learn-count,
-.review-count, td.count {
+.deck-list-header,
+th[colspan="5"],
+th.count,
+th.optscol,
+.top-level-drag-row,
+.zero-count,
+.new-count,
+.learn-count,
+.review-count,
+td.count {
     display: none !important;
 }
 
 /* --- Sidebar Skeleton Loader Styles --- */
-
-/* Base for skeleton items: hide text, remove bg, prevent interaction */
 .sidebar-left.skeleton-loading .profile-bar,
 .sidebar-left.skeleton-loading .add-button-dashed,
 .sidebar-left.skeleton-loading .menu-item {
@@ -462,158 +637,588 @@ tr.deck.drag-over-nest {
     background-color: transparent !important;
     border-color: transparent !important;
     box-shadow: none !important;
-    pointer-events: none; /* Important: disable clicks during loading anim */
-    position: relative; /* Needed for the pseudo-element */
-    overflow: hidden; /* Keep the pulse inside the element's bounds */
+    pointer-events: none;
+    position: relative;
+    overflow: hidden;
 }
 
-/* The pulsing placeholder pseudo-element */
 .sidebar-left.skeleton-loading .profile-bar::before,
 .sidebar-left.skeleton-loading .add-button-dashed::before,
 .sidebar-left.skeleton-loading .menu-item::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background-color: var(--highlight-bg);
-    border-radius: 8px; /* Match element's radius */
+    border-radius: 8px;
     animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     z-index: 1;
 }
 
-/* Special radius for profile bar */
 .sidebar-left.skeleton-loading .profile-bar::before {
     border-radius: 50px;
 }
 
-/* Hide the actual content (icons, text, profile pic) underneath the skeleton */
-.sidebar-left.skeleton-loading .profile-bar > *,
-.sidebar-left.skeleton-loading .add-button-dashed > *,
-.sidebar-left.skeleton-loading .menu-item > * {
+.sidebar-left.skeleton-loading .profile-bar>*,
+.sidebar-left.skeleton-loading .add-button-dashed>*,
+.sidebar-left.skeleton-loading .menu-item>* {
     visibility: hidden;
 }
 
+/* Performance fix: Disable transitions during resize to prevent lag */
 .sidebar-left.is-resizing {
     transition: none !important;
+    transform: translateZ(0);
+    /* Force hardware acceleration */
 }
 
-/* Keyframes for the pulsing animation */
+/* Also disable any child element transitions during resize */
+.sidebar-left.is-resizing * {
+    transition: none !important;
+    animation: none !important;
+}
+
 @keyframes skeleton-pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.4;
     }
 }
 
-/* --- NEW STYLES FOR COLLAPSIBLE SIDEBAR --- */
+/* --- Top Bar Buttons (Toggle, Focus, Edit) --- */
 
-/* --- Tweak sidebar for positioning and animation --- */
-.sidebar-left {
-    /* This establishes a positioning context for the toggle button */
-    position: relative; 
-    /* Update transition to include padding for a smoother look */
-    transition: width 0.3s ease, padding 0.3s ease !important; 
-}
-
-
-/* --- NEW: Sidebar Toggle Button --- */
-.sidebar-toggle-btn {
+/* Shared Base Styles */
+.sidebar-toggle-btn,
+.deck-focus-btn,
+.deck-edit-btn {
     position: absolute;
-    top: 30px;
-    width: 12px;
-    height: 12px;
+    top: 15px;
+    width: 24px;
+    height: 24px;
     background-color: var(--highlight-bg);
     border: 1px solid var(--border);
-    border-radius: 50%;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     z-index: 10;
-    transition: transform 0.3s ease, background-color 0.2s ease;
 }
 
-.sidebar-left.sidebar-collapsed .sidebar-toggle-btn {
-    position: absolute;
-    top: 55px;
-    right: 42px;
+
+/* Individual Positioning (Expanded Sidebar) */
+.sidebar-toggle-btn {
+    left: 20px;
 }
-.sidebar-toggle-btn:hover {
+
+.deck-focus-btn {
+    left: 52px;
+}
+
+.deck-edit-btn {
+    left: 84px;
+}
+
+/* Shared Hover State */
+.sidebar-toggle-btn:hover,
+.deck-focus-btn:hover,
+.deck-edit-btn:hover {
     background-color: var(--canvas-inset);
 }
 
+/* Individual Active States */
+.deck-edit-btn.active,
+.sidebar-toggle-btn.active,
+.deck-focus-btn.active {
+    background-color: var(--icon-color);
+    border-color: var(--icon-color);
+}
+
+
+/* Icons within Buttons */
 .sidebar-toggle-btn svg {
     stroke: var(--fg-subtle);
     transition: transform 0.3s ease;
 }
 
+.deck-focus-btn .icon,
+.deck-edit-btn .icon {
+    margin-right: 0 !important;
+    background-color: var(--fg-subtle);
+    width: 16px;
+    height: 16px;
+}
 
-/* --- NEW: Collapsed State Logic --- */
+/* Icons in Active State Buttons */
+.deck-edit-btn.active .icon,
+.sidebar-left.deck-focus-mode .deck-focus-btn .icon {
+    background-color: white;
+}
 
-/* This class will be toggled by JavaScript */
+/* Style for the toggle button when the sidebar is collapsed (active) */
+.sidebar-left.sidebar-collapsed .sidebar-toggle-btn {
+    background-color: var(--icon-color);
+    border-color: var(--icon-color);
+}
+
+/* Rotate the icon and change its color in the active state */
+.sidebar-left.sidebar-collapsed .sidebar-toggle-btn svg {
+    transform: rotate(180deg);
+    stroke: white;
+}
+
+
 .sidebar-left.sidebar-collapsed {
-    width: 100px !important;      
-    min-width: 100px;             
-    max-width: 100px;            
-    padding: 25px 15px;
+    width: 100px !important;
+    min-width: 100px;
+}
+
+/* --- Collapsed State Logic --- */
+.sidebar-left.sidebar-collapsed {
+    width: 100px !important;
+    min-width: 100px;
+    max-width: 100px;
+    padding: 15px;
     overflow: hidden;
 }
 
-/* Rotate the arrow icon when collapsed */
-.sidebar-left.sidebar-collapsed .sidebar-toggle-btn svg {
-    transform: rotate(180deg);
+/* Individual Positioning (Collapsed Sidebar) */
+.sidebar-left.sidebar-collapsed .sidebar-toggle-btn {
+    top: 15px;
+    left: 20px;
 }
 
-/* Hide the normal sidebar content when collapsed */
+.sidebar-left.sidebar-collapsed .deck-focus-btn {
+    top: 55px;
+    left: 20px;
+}
+
+.sidebar-left.sidebar-collapsed .deck-focus-btn,
+.sidebar-left.sidebar-collapsed .deck-edit-btn {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+}
+
 .sidebar-left.sidebar-collapsed .sidebar-expanded-content {
     display: none;
 }
 
-/* Hide the placeholder content by default */
 .sidebar-collapsed-content {
     display: none;
-    width: 100%;
 }
 
-/* Show the placeholder content ONLY when collapsed */
 .sidebar-left.sidebar-collapsed .sidebar-collapsed-content {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 30px; /* Space between placeholder sections */
-    margin-top: 15px;
+    gap: 10px;
+    padding-top: 50px;
+    height: 100%;
+    box-sizing: border-box;
 }
 
-
-/* --- NEW: Collapsed Placeholders Styling --- */
-
-.collapsed-profile-placeholder {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
+.collapsed-placeholder {
+    width: 80%;
     background-color: var(--highlight-bg);
+    border-radius: 8px;
+    opacity: 0.7;
     flex-shrink: 0;
+}
+
+.welcome-placeholder {
+    height: 16px;
+    margin-bottom: 5px;
+}
+
+.collapsed-profile-item {
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    margin-bottom: 15px;
+    flex-shrink: 0;
+}
+
+.collapsed-profile-item:hover {
+    opacity: 0.8;
+}
+
+.collapsed-profile-pic,
+.collapsed-profile-pic-placeholder {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+
+.collapsed-profile-pic {
+    object-fit: cover;
+}
+
+.collapsed-profile-pic-placeholder {
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: bold;
 }
 
 .collapsed-actions-placeholder {
     display: flex;
     flex-direction: column;
+    gap: 5px;
+    width: 80%;
+}
+
+.action-placeholder {
+    height: 35px;
+    width: 100%;
+}
+
+.decks-placeholder {
+    margin-top: 15px;
+    flex-grow: 1;
+    width: 80%;
+    margin-bottom: 15px;
+    height: 125%;
+}
+
+/* --- FINAL FIX: Deck Focus Mode Logic --- */
+.sidebar-left.deck-focus-mode .sidebar-expanded-content .profile-bar,
+.sidebar-left.deck-focus-mode .sidebar-expanded-content .add-button-dashed,
+.sidebar-left.deck-focus-mode .sidebar-expanded-content .menu-item,
+.sidebar-left.deck-focus-mode .sidebar-expanded-content .menu-group,
+.sidebar-left.deck-focus-mode .sidebar-expanded-content h2:first-of-type {
+    display: none !important;
+}
+
+/* --- Deck Count Bubbles --- */
+.deck-counts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 10px;
+    flex-shrink: 0;
+    flex-grow: 1;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+tr.deck .new-count-bubble,
+tr.deck .review-count-bubble,
+tr.deck .learn-count-bubble {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+    line-height: 1.5;
+    max-width: 8ch;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.new-count-bubble {
+    background-color: var(--new-count-bubble-bg);
+    color: var(--new-count-bubble-fg);
+}
+
+.review-count-bubble {
+    background-color: var(--review-count-bubble-bg);
+    color: var(--review-count-bubble-fg);
+}
+
+.learn-count-bubble {
+    background-color: var(--learn-count-bubble-bg);
+    color: var(--learn-count-bubble-fg);
+}
+
+/* Zero count styling - more subtle appearance */
+tr.deck .new-count-bubble.zero,
+tr.deck .review-count-bubble.zero,
+tr.deck .learn-count-bubble.zero {
+    opacity: 0.6;
+    font-weight: 400;
+}
+
+/* --- Responsive tweaks for cramped layouts --- */
+@media (max-width: 420px) {
+
+    tr.deck.is-deck .deck-counts,
+    tr.deck.is-folder .deck-counts {
+        gap: 4px;
+    }
+}
+
+/* --- Performance Optimizations --- */
+#deck-list-container {
+    contain: layout style paint;
+    overflow: hidden;
+}
+
+/* --- Transfer Button Styles --- */
+.deck-transfer-btn {
+    position: absolute;
+    top: 15px;
+    left: 116px;
+    width: 24px;
+    height: 24px;
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 1px 3px var(--shadow-sm);
+    transition: all 0.2s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Visible only when in edit mode */
+body.deck-edit-mode .deck-transfer-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.deck-transfer-btn:hover {
+    background-color: var(--canvas-inset);
+}
+
+/* When no decks are selected (dimmed state) */
+body.deck-edit-mode .deck-transfer-btn:not(.has-selection) {
+    opacity: 0.5;
+    /* Keep pointer-events: auto so it can be clicked to show feedback */
+    pointer-events: auto;
+}
+
+/* When decks are selected (active/bolder state) */
+body.deck-edit-mode .deck-transfer-btn.has-selection {
+    background-color: var(--icon-color);
+    border-color: var(--icon-color);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.deck-edit-mode .deck-transfer-btn.has-selection:hover {
+    background-color: var(--icon-color);
+    opacity: 0.9;
+}
+
+/* Icon styling */
+.deck-transfer-btn .icon {
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    object-fit: contain;
+    flex-shrink: 0;
+    transition: filter 0.2s ease;
+}
+
+/* Change icon color when button is active */
+body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
+    filter: brightness(0) invert(1);
+}
+
+/* --- Sync Status Indicator --- */
+.sync-status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 12px;
+    margin-top: 3.5px;
+    flex-shrink: 0;
+    display: none;
+    /* Hidden by default when no sync is needed */
+}
+
+/* --- Sync Animation --- */
+@keyframes onigiri-sync-pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.50);
+        opacity: 0.7;
+    }
+}
+
+/* Apply the animation only to the indicator dot when syncing */
+.action-sync.is-syncing .sync-status-indicator {
+    display: block;
+    /* Ensure it's visible */
+    animation: onigiri-sync-pulse 1.3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background-color: var(--accent-color);
+    /* Ensure it has the accent color */
+}
+
+/* Sync needed - accent color circle */
+.action-sync.sync-needed .sync-status-indicator {
+    display: block;
+    background-color: var(--accent-color);
+    /* Accent color */
+}
+
+/* Located at: menu.css */
+/* Add these new styles at the end of the file */
+
+/* --- Onigiri Favorites Widget --- */
+.onigiri-favorites-widget {
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    padding: 20px;
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+    overflow-y: auto;
+    /* Add scrollbar when content exceeds max height */
+}
+
+.onigiri-favorites-widget h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+    text-align: left;
+}
+
+.favorites-placeholder {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--fg-subtle);
+    font-size: 13px;
+    padding-bottom: 10px;
+}
+
+.favorites-placeholder span {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.favorites-list {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    /* Ensure scrolling works within the list */
+    max-height: 100%;
+    /* Don't exceed parent's max height */
+    padding-right: 4px;
+    /* Prevent content from touching scrollbar */
+}
+
+.favorite-deck-link,
+.favorite-deck-slot-empty {
+    width: 100%;
+    height: 40px;
+    border-radius: 12px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.favorite-deck-link {
+    display: flex;
     align-items: center;
     gap: 12px;
+    padding: 0 12px;
+    background-color: var(--highlight-bg);
+    border: 1px solid transparent;
+    color: var(--fg) !important;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none !important;
+    transition: all 0.2s ease;
 }
 
-.collapsed-actions-placeholder div {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background-color: var(--highlight-bg);
+.fav-deck-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    background-color: var(--icon-color);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'%3E%3C/polygon%3E%3C/svg%3E");
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
 }
 
-.collapsed-decks-placeholder {
-    width: 100%;
-    height: 200px;
-    border-radius: 8px;
-    background-color: var(--highlight-bg);
-    margin-top: 10px;
+.favorite-deck-link:hover .fav-deck-icon {
+    background-color: var(--accent-color);
+    transform: scale(1.05);
+}
+
+.fav-deck-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.favorite-deck-link:hover .fav-deck-name {
+    color: var(--accent-color);
+}
+
+.favorite-deck-slot-empty {
+    background-color: transparent;
+    border: 2px dashed var(--border);
+    opacity: 0.5;
+}
+
+/* --- External Add-on Menu Styles --- */
+.action-external .icon::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background-color: var(--icon-color);
+    mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>') no-repeat center;
+    -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>') no-repeat center;
+    mask-size: contain;
+    -webkit-mask-size: contain;
+}
+
+.action-external-addon {
+    position: relative;
+}
+
+.action-external-addon .icon::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background-color: var(--icon-color);
+    mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>') no-repeat center;
+    -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>') no-repeat center;
+    mask-size: contain;
+    -webkit-mask-size: contain;
+}
+
+/* Hide external menu group when empty */
+#external-menu-group:has(#external-menu-items:empty) {
+    display: none;
 }

@@ -1,14 +1,17 @@
 /* --- General & Body Styling --- */
 body {
-    background-color: #d9d9d9; /* Light grey background from example */
+    background-color: var(--profile-page-bg);
     color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
 }
-.night-mode body {
-    background-color: #1f1f1f; /* Dark grey for night mode */
+
+.night-mode body,
+.nightMode body,
+.night body {
+    background-color: var(--profile-page-bg);
 }
 
 
@@ -27,17 +30,20 @@ body {
     background-size: cover;
     background-position: center;
     border-radius: 30px;
-    background-color: var(--accent-color); /* Fallback */
+    background-color: var(--accent-color);
+    /* Fallback */
 }
 
 .profile-content-wrapper {
     text-align: center;
-    margin-top: 20px; /* Add some space above the main content */
+    margin-top: 20px;
+    /* Add some space above the main content */
 }
 
 /* --- Profile Pill --- */
 .controls-spacer {
-    width: 20px; /* Adjust this value to get the exact distance you want */
+    width: 20px;
+    /* Adjust this value to get the exact distance you want */
 }
 
 .profile-pill {
@@ -50,7 +56,8 @@ body {
     border-radius: 9999px;
 }
 
-.profile-pic-pill, .profile-pic-placeholder-pill {
+.profile-pic-pill,
+.profile-pic-placeholder-pill {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -59,7 +66,7 @@ body {
 }
 
 .profile-pic-placeholder-pill {
-    background-color: rgba(0,0,0,0.2);
+    background-color: var(--profile-pill-placeholder-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -73,11 +80,11 @@ body {
 }
 
 .profile-card {
-    background-color: var(--bg); /* Use the main background color (white/dark grey) */
-    border-radius: 30px;       /* This creates the rounded corners for the whole card */
-    overflow: hidden;          /* IMPORTANT: This clips the children to the rounded shape */
-    position: relative;        /* This is the anchor for the share button */
-    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    background-color: var(--bg);
+    border-radius: 30px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 25px var(--shadow-md);
 }
 
 
@@ -97,7 +104,7 @@ body {
 
 .nav-button:hover {
     border-color: var(--accent-color);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px var(--shadow-sm);
 }
 
 
@@ -111,14 +118,15 @@ body {
     background: var(--accent-color);
     border-color: var(--accent-color);
     filter: brightness(0.9);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px var(--shadow-sm);
 }
 
 .profile-controls {
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    gap: 3.5px; /* This creates equal spacing between all items */
+    gap: 3.5px;
+    /* This creates equal spacing between all items */
     padding: 0 4px;
     margin-top: -25px;
     position: relative;
@@ -126,20 +134,21 @@ body {
 }
 
 
-.profile-controls > * {
+.profile-controls>* {
     margin: 0 !important;
 }
 
 /* --- Main Content Area --- */
 main {
-    background-color: #FFFFFF;
+    background-color: var(--profile-card-bg);
     border-radius: 20px;
     padding: 20px;
     text-align: left;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 10px var(--shadow-sm);
 }
+
 .night-mode main {
-    background-color: #1e1e1e;
+    background-color: var(--profile-card-bg);
 }
 
 h2.section-title {
@@ -185,9 +194,11 @@ h2.section-title {
 .color-info span {
     display: block;
 }
+
 .color-info .color-name {
     font-weight: 500;
 }
+
 .color-info .color-code {
     font-family: monospace;
     font-size: 13px;
@@ -229,19 +240,22 @@ h2.section-title {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 15px;
 }
+
 .stat-card {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 15px;
     padding: 20px;
     text-align: center;
 }
+
 .stat-card h3 {
     margin: 0 0 8px 0;
     font-size: 14px;
     text-transform: uppercase;
     color: var(--fg-subtle);
 }
+
 .stat-card p {
     margin: 0;
     font-size: 28px;
@@ -252,11 +266,11 @@ h2.section-title {
 main {
     /* Add position relative to act as an anchor for the absolute button */
     position: relative;
-    background-color: #FFFFFF;
+    background-color: var(--profile-card-bg);
     border-radius: 20px;
     padding: 20px;
     text-align: left;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 10px var(--shadow-sm);
 }
 
 /* --- New Page Export Button --- */
@@ -264,9 +278,9 @@ main {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background-color: rgba(255, 255, 255);
-    color: #374151;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    background-color: var(--profile-export-btn-bg);
+    color: var(--profile-export-btn-fg);
+    border: 1px solid var(--profile-export-btn-border);
     padding: 8px 16px;
     border-radius: 9999px;
     cursor: pointer;
@@ -274,13 +288,13 @@ main {
     font-weight: 600;
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px var(--shadow-sm);
     transition: all 0.2s ease-in-out;
 }
 
 .page-export-button:hover {
     background-color: var(--button-hover-bg);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 10px var(--shadow-sm);
 }
 
 
@@ -295,7 +309,7 @@ main {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: var(--overlay-dark);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -308,7 +322,7 @@ main {
     background-color: var(--bg);
     padding: 25px;
     border-radius: 12px;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    box-shadow: 0 5px 20px var(--shadow-lg);
     text-align: center;
     max-width: 90%;
     max-height: 90%;
@@ -319,12 +333,14 @@ main {
     max-width: 100%;
     border-radius: 8px;
     border: 1px solid var(--border);
-    display: block; /* Helps with spacing */
+    display: block;
+    /* Helps with spacing */
 }
 
 .overlay-buttons {
     display: flex;
-    gap: 15px; /* Adds space between buttons */
+    gap: 15px;
+    /* Adds space between buttons */
     justify-content: center;
     margin-top: 20px;
 }
@@ -337,7 +353,8 @@ main {
     font-size: 16px;
     font-weight: bold;
     cursor: pointer;
-    text-decoration: none; /* For the <a> tag */
+    text-decoration: none;
+    /* For the <a> tag */
     transition: transform 0.1s ease;
 }
 
@@ -345,12 +362,13 @@ main {
     transform: scale(1.05);
 }
 
-.overlay-button.copy { /* Renamed from .download to .copy */
+.overlay-button.copy {
+    /* Renamed from .download to .copy */
     background-color: var(--accent-color);
     color: white;
 }
 
 .overlay-button.close {
-    background-color: #e0e0e0;
-    color: #333;
+    background-color: var(--overlay-close-btn-bg);
+    color: var(--overlay-close-btn-fg);
 }

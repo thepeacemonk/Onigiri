@@ -1,0 +1,1321 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import os
+import time
+import re
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+
+from aqt import mw
+
+from .. import config
+
+
+XP_PER_REVIEW = 5
+XP_PER_ACHIEVEMENT = 10
+XP_PER_CUSTOM_GOAL = 20
+
+# Anti-cheat: Secret salt for coin verification (must match taiyaki_store.py)
+COIN_SALT = "taiyaki_onigiri_secret_2024_v1"
+
+
+def generate_coin_token(coins: int) -> str:
+    """Generate a security token for the coin value to prevent cheating."""
+    data = f"{coins}:{COIN_SALT}"
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def verify_coin_data(coins: int, token: str) -> bool:
+    """Verify that the coin value hasn't been tampered with."""
+    expected_token = generate_coin_token(coins)
+    return token == expected_token
+
+
+MOTIVATIONAL_PHRASES = (
+    "The next level awaits — make your restaurant legendary!",
+    "Keep the kitchen busy and the XP flowing!",
+    "Every serving of study brings new patrons to your restaurant.",
+    "Your crew is cheering — plate up more reviews!",
+    "Tonight's special: one more level up!",
+    "Customers are lining up; keep the knowledge coming!",
+)
+
+RESTAURANTS = {
+    "focus_dango": {"name": "Focus Dango", "price": 0, "theme": "#DC90B8", "image": "focus_dango_restaurant.png"},
+    "motivated_mochi": {"name": "Motivated Mochi", "price": 0, "theme": "#6EC170", "image": "mochi_msg_restaurant.png"},
+    "macha_delights": {"name": "Macha Delights", "price": 400, "theme": "#517C58", "image": "Macha Delights.png"},
+    "macaron_maison": {"name": "Macaron Maison", "price": 500, "theme": "#AFC3D6", "image": "Macaron Maison.png"},
+    "coffee_co": {"name": "Coffee & Co", "price": 600, "theme": "#98693A", "image": "CoffeeAndCake.png"},
+    "grocery_store": {"name": "Grocery Store", "price": 700, "theme": "#AD6131", "image": "Grocery Store.png"},
+    "bakery_heaven": {"name": "Bakery Heaven", "price": 800, "theme": "#CD9C57", "image": "Bakery.png"},
+    "awesome_boba": {"name": "Awesome Boba", "price": 850, "theme": "#CD8DCA", "image": "Awesome Boba.png"},
+    "awesome_shiny_boba": {"name": "Awesome Shiny Boba", "price": 1000, "theme": "#41A59D", "image": "Awesome Boba (Shiny).png"},
+    "santas_coffee": {"name": "Santa's Coffee", "price": 1025, "theme": "#CA4D44", "image": "Santa's Coffee.png"},
+}
+
+EVOLUTIONS = {
+    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None},
+    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None},
+    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None},
+    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None},
+    "onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76"},
+    "restaurant_evo_i": {"name": "Restaurant Evo I", "price": 700, "theme": "#D07A5F", "image": "Restaurant Evo I.png"},
+    "restaurant_evo_ii": {"name": "Restaurant Evo II", "price": 800, "theme": "#D07A5F", "image": "Restaurant Evo II.png"},
+    "restaurant_evo_iii": {"name": "Restaurant Evo III", "price": 900, "theme": "#D07A5F", "image": "Restaurant Evo III.png"},
+    "restaurant_evo_iv": {"name": "Restaurant Evo IV", "price": 1000, "theme": "#D07A5F", "image": "Restaurant Evo IV.png"},
+    "restaurant_evo_legendary": {"name": "Restaurant Evo Legendary", "price": 1500, "theme": "#445A78", "image": "Restaurant Evo Legendary.png"},
+    "restaurant_evo_garden": {"name": "Restaurant Garden Palace", "price": 3000, "theme": "#2F553D", "image": "Restaurant Evo Garden Palace.png"},
+}
+
+
+@dataclass(frozen=True)
+class LevelProgress:
+    enabled: bool
+    name: str
+    level: int
+    total_xp: int
+    xp_into_level: int
+    xp_to_next_level: int
+    notifications_enabled: bool
+    show_profile_bar_progress: bool
+    show_profile_page_progress: bool
+
+    @property
+    def progress_fraction(self) -> float:
+        if self.xp_to_next_level <= 0:
+            return 0.0
+        return max(0.0, min(1.0, self.xp_into_level / self.xp_to_next_level))
+
+
+class RestaurantLevelManager:
+    """Tracks the Restaurant Level system (XP, levels, and notifications)."""
+
+    def __init__(self) -> None:
+        self._addon_package: str | None = None
+        self._gamification_file: Optional[str] = None
+        # Caches
+        self._state_cache: Optional[Dict[str, Any]] = None
+        self._daily_target_cache: Dict[str, Any] = {}
+
+    def refresh_state(self) -> None:
+        """Force reload of gamification state from disk."""
+        self._state_cache = None
+        self._full_state_cache = None # Also clear full cache
+        self._get_gamification_state()
+
+    def _save_gamification_state(self) -> None:
+        """Write the current full state cache to disk."""
+        try:
+            if self._gamification_file is None:
+                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
+            
+            if hasattr(self, '_full_state_cache') and self._full_state_cache:
+                with open(self._gamification_file, 'w', encoding='utf-8') as f:
+                    json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error saving gamification state: {e}")
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def add_review_xp(self, xp_amount: int, count: int = 1) -> List[Dict[str, Any]]:
+        """Grant XP for completed reviews and update daily special progress."""
+        from aqt import mw
+        
+        xp_amount = max(0, int(xp_amount))
+        if xp_amount <= 0:
+            return []
+            
+        # Get notifications from _add_xp first
+        notifications = self._add_xp(xp_amount, reason="review", review_count=count)
+        
+        # If we have notifications, dispatch them using the achievement manager's method
+        # Notifications are returned and handled by the caller or displayed via other means if necessary
+        # We no longer dispatch via achievement_manager to avoid coupling
+        
+        return notifications
+
+    # handle_achievement_unlocks removed to decouple from achievements
+
+    def handle_custom_goal_completion(self, goal_key: str) -> List[Dict[str, Any]]:
+        """Grant XP when a custom goal is completed."""
+        return self._add_xp(XP_PER_CUSTOM_GOAL, reason=f"custom_goal:{goal_key}")
+
+    def handle_achievement_unlock(self, achievement_id: str) -> List[Dict[str, Any]]:
+        """Grant XP when an achievement is unlocked."""
+        # Gift 50 XP as requested
+        return self._add_xp(50, reason=f"achievement:{achievement_id}")
+
+    def reset_progress(self) -> None:
+        """Reset Restaurant Level progress back to level 0."""
+        from aqt import mw
+        
+        print("=== RESET PROGRESS CALLED ===")
+        conf, restaurant_conf = self._config_bundle()
+        
+        before_level = restaurant_conf.get('level')
+        before_xp = restaurant_conf.get('total_xp')
+        print(f"Before reset - Level: {before_level}, XP: {before_xp}")
+        
+        # Reset XP and level to 0
+        # We update gamification.json primarily now
+        
+        # Also reset in gamification.json
+        self._update_gamification_data({
+            "total_xp": 0,
+            "level": 0
+        })
+        print("Gamification data updated")
+        
+        # Write config (to clear out old values if they exist, or just save other settings)
+        # We don't update restaurant_conf in config anymore for level/xp
+        config.write_config(conf)
+        print("Config written to Anki")
+        
+        # Force Anki to mark the collection as modified so it saves
+        if mw and mw.col:
+            mw.col.setMod()
+            print("Collection marked as modified")
+        
+        # Also reset in gamification.json
+        self._update_gamification_data(restaurant_conf)
+        print("Gamification data updated")
+        
+        # Verify the reset worked
+        verify_state = self._get_gamification_state()
+        verify_level = verify_state.get('level')
+        verify_xp = verify_state.get('total_xp')
+        print(f"Verification - Level: {verify_level}, XP: {verify_xp}")
+        
+        print("=== RESET COMPLETE ===")
+
+    def reset_coins(self) -> None:
+        """Reset Taiyaki Coins to 0."""
+        # We use explicit_coins=0 to ensure it's set to 0 regardless of config
+        self._update_gamification_data({}, explicit_coins=0)
+        print("Coins reset to 0")
+
+    def reset_purchases(self) -> None:
+        """Reset owned items and current theme to default."""
+        self._update_gamification_data({
+            "owned_items": ["default"],
+            "current_theme_id": "default"
+        })
+        print("Purchases reset to default")
+
+
+
+    def set_enabled(self, enabled: bool) -> None:
+        self._update_state({"enabled": bool(enabled)})
+
+    def set_notifications_enabled(self, enabled: bool) -> None:
+        self._update_state({"notifications_enabled": bool(enabled)})
+
+    def set_profile_bar_visibility(self, show: bool) -> None:
+        self._update_state({"show_profile_bar_progress": bool(show)})
+
+    def set_profile_page_visibility(self, show: bool) -> None:
+        self._update_state({"show_profile_page_progress": bool(show)})
+
+    def set_restaurant_name(self, name: str) -> None:
+        """Set the custom name for the restaurant."""
+        self._update_gamification_data({"name": str(name)})
+
+    def get_progress(self) -> LevelProgress:
+        conf = config.get_config()
+        # Check top level first
+        # Check top level first
+        restaurant_conf = conf.get("restaurant_level", {})
+        
+        # Fallback to old location if not found at root
+        if not restaurant_conf and "achievements" in conf:
+            restaurant_conf = conf["achievements"].get("restaurant_level", {})
+        
+        # Read game state from gamification.json
+        game_state = self._get_gamification_state()
+        
+        # MIGRATION CHECK:
+        # If config has higher XP/Level than gamification.json, migrate it.
+        conf_xp = int(restaurant_conf.get("total_xp", 0))
+        json_xp = int(game_state.get("total_xp", 0))
+        
+        if conf_xp > json_xp:
+            # Migrate XP and Level
+            print(f"Migrating progress from config ({conf_xp}) to gamification.json ({json_xp})")
+            update_data = {
+                "total_xp": conf_xp,
+                "level": int(restaurant_conf.get("level", 0))
+            }
+            # Also migrate items if needed
+            conf_owned = restaurant_conf.get("owned_items", [])
+            json_owned = game_state.get("owned_items", ["default"])
+            merged_owned = list(set(conf_owned + json_owned))
+            if len(merged_owned) > len(json_owned):
+                 update_data["owned_items"] = merged_owned
+                 
+            # Migrate theme
+            conf_theme = restaurant_conf.get("current_theme_id", "default")
+            json_theme = game_state.get("current_theme_id", "default")
+            if conf_theme != "default" and json_theme == "default":
+                update_data["current_theme_id"] = conf_theme
+                
+            self._update_gamification_data(update_data)
+            
+            # Refresh state
+            game_state = self._get_gamification_state()
+        
+        # Fallback to config if gamification.json is empty (migration case)
+        # But prefer gamification.json if it has data
+        total_xp = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
+        level = int(game_state.get("level", restaurant_conf.get("level", 0)))
+        name = game_state.get("name", restaurant_conf.get("name", "Restaurant Level"))
+
+        # Recalculate level from XP to be safe
+        calc_level, xp_into_level, xp_to_next = self._collapse_xp(total_xp)
+        
+        # If calculated level differs from stored level, trust calculation (unless max level logic exists?)
+        # For now, let's trust the calculation based on total_xp
+        level = calc_level
+
+        return LevelProgress(
+            enabled=bool(restaurant_conf.get("enabled", False)),
+            name=name,
+            level=level,
+            total_xp=total_xp,
+            xp_into_level=xp_into_level,
+            xp_to_next_level=xp_to_next,
+            notifications_enabled=bool(restaurant_conf.get("notifications_enabled", True)),
+            show_profile_bar_progress=bool(restaurant_conf.get("show_profile_bar_progress", True)),
+            show_profile_page_progress=bool(restaurant_conf.get("show_profile_page_progress", True)),
+        )
+
+    def get_progress_payload(self) -> Dict[str, Any]:
+        progress = self.get_progress()
+        xp_to_next = max(progress.xp_to_next_level, 0)
+        xp_into_level = max(progress.xp_into_level, 0)
+        remaining = max(xp_to_next - xp_into_level, 0)
+        if xp_to_next <= 0:
+            percent = 1.0
+        else:
+            percent = min(1.0, xp_into_level / xp_to_next)
+
+        return {
+            "enabled": progress.enabled,
+            "name": progress.name,
+            "level": progress.level,
+            "totalXp": progress.total_xp,
+            "xpIntoLevel": xp_into_level,
+            "xpToNextLevel": xp_to_next,
+            "xpRemaining": remaining,
+            "progressFraction": percent,
+            "notificationsEnabled": progress.notifications_enabled,
+            "showProfileBar": progress.show_profile_bar_progress,
+            "showProfilePage": progress.show_profile_page_progress,
+            "phrase": self._get_motivational_phrase(progress.level),
+        }
+
+    def get_daily_special_status(self) -> Dict[str, Any]:
+        """Get daily special data, resetting it if it's a new day."""
+        conf = config.get_config()
+        # Get settings from config
+        daily_special_conf = conf.get("daily_special", {})
+        
+        # Fallback to old location
+        if not daily_special_conf and "achievements" in conf:
+            daily_special_conf = conf["achievements"].get("daily_special", {})
+            
+        # Get state from gamification.json
+        state = self._get_gamification_state()
+        daily_special_state = state.get("daily_special", {})
+        
+        # Merge config (settings) and state (progress)
+        daily_special = {
+            "enabled": daily_special_conf.get("enabled", False),
+            "target": daily_special_state.get("target", daily_special_conf.get("target", 100)),
+            "current_progress": daily_special_state.get("current_progress", 0),
+            "last_updated": daily_special_state.get("last_updated"),
+            "last_notified_milestone": daily_special_state.get("last_notified_milestone", 0),
+            "last_notified_percent": daily_special_state.get("last_notified_percent", 0)
+        }
+        
+        reset_occurred = self._check_and_reset_daily_special(daily_special)
+        sync_occurred = self._sync_daily_progress_with_db(daily_special)
+        
+        if reset_occurred or sync_occurred:
+            # Update state in gamification.json
+            self._update_gamification_daily_special(daily_special)
+            
+        return daily_special
+
+    def _check_and_reset_daily_special(self, daily_special: Dict[str, Any]) -> bool:
+        """Check if daily special needs reset and update it in-place. Returns True if reset occurred."""
+        if not daily_special.get("enabled", False):
+            return False
+            
+        today = datetime.now().strftime('%Y-%m-%d')
+        last_updated = daily_special.get("last_updated")
+        
+        target = daily_special.get("target", 100)
+        
+        needs_reset = False
+        
+        if last_updated != today:
+            daily_special["current_progress"] = 0
+            daily_special["last_updated"] = today
+            daily_special["last_notified_milestone"] = 0
+            daily_special["last_notified_percent"] = 0
+            needs_reset = True
+            
+        # Recalculate if reset happened OR if target is the default 100
+        if needs_reset or target == 100:
+            # Calculate new target based on today's sushi special
+            new_target = self._calculate_daily_target()
+            
+            # Fallback if calculation fails (e.g. JS file not found)
+            if not new_target:
+                # Generate a deterministic random target between 50 and 150 based on date
+                # This ensures variety even without the JS file
+                random.seed(today)
+                new_target = random.randint(50, 150)
+                
+            if new_target:
+                daily_special["target"] = new_target
+                needs_reset = True
+                
+        return needs_reset
+
+    def _sync_daily_progress_with_db(self, daily_special: Dict[str, Any]) -> bool:
+        """Syncs the daily special progress with the actual review count from the database."""
+        if not daily_special.get("enabled", False):
+            return False
+            
+        if not mw.col or not getattr(mw.col, "db", None):
+            return False
+            
+        try:
+            # Get reviews for today
+
+            # Use Anki's native stats to ensure consistency with the main window
+            # This handles FSRS optimization and other edge cases correctly
+            try:
+                # Try the modern API first (Anki 2.1.28+)
+                today_reviews = mw.col.stats().todayStats().studied
+            except AttributeError:
+                # Fallback for older versions or if stats() is not available
+                day_cutoff = mw.col.sched.dayCutoff
+                today_start = day_cutoff - 86400
+                
+                today_reviews = mw.col.db.scalar(
+                    "SELECT COUNT() FROM revlog WHERE id >= ?", 
+                    today_start * 1000
+                ) or 0
+            
+            current_progress = daily_special.get("current_progress", 0)
+            
+            if current_progress != today_reviews:
+                daily_special["current_progress"] = today_reviews
+                return True
+        except Exception as e:
+            print(f"Onigiri: Error syncing daily progress: {e}")
+            
+        return False
+
+    def _calculate_daily_target(self) -> Optional[int]:
+        """
+        Calculates the daily target matching the logic in sushi_dishes.js.
+        Reads the sushi dishes from the JS file to ensure consistency.
+        """
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check cache first
+        if self._daily_target_cache.get('date') == today:
+            return self._daily_target_cache.get('target')
+
+        try:
+            # Find the sushi_dishes.js file
+            addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            js_path = os.path.join(addon_path, "web", "gamification", "restaurant_level", "special_dishes.js")
+            
+            if not os.path.exists(js_path):
+                print(f"Onigiri: special_dishes.js not found at {js_path}")
+                return None
+                
+            # Read the JS file
+            with open(js_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            # Get current restaurant ID
+            restaurant_id = self.get_current_theme_id()
+            
+            # Handle evolution mapping (same as JS logic)
+            if restaurant_id and restaurant_id.startswith('restaurant_evo_'):
+                restaurant_id = 'default'
+            
+            # Find the array for the restaurant
+            # We look for "key": [ ... ]
+            start_marker = f'"{restaurant_id}": ['
+            start_idx = content.find(start_marker)
+            
+            # Fallback to default if not found
+            if start_idx == -1:
+                restaurant_id = 'default'
+                start_marker = f'"{restaurant_id}": ['
+                start_idx = content.find(start_marker)
+                
+            if start_idx == -1:
+                return None
+                
+            # Extract the array content
+            # Start reading from the '['
+            array_start = start_idx + len(start_marker) - 1 
+            
+            open_brackets = 0
+            array_content = ""
+            found_end = False
+            
+            for i in range(array_start, len(content)):
+                char = content[i]
+                if char == '[':
+                    open_brackets += 1
+                elif char == ']':
+                    open_brackets -= 1
+                    
+                if open_brackets == 0:
+                    array_content = content[array_start+1:i]
+                    found_end = True
+                    break
+            
+            if not found_end:
+                return None
+
+            # Parse the array content (list of objects)
+            dishes = []
+            current_obj = {}
+            
+            for line in array_content.split('\n'):
+                line = line.strip()
+                if line.startswith('{'):
+                    current_obj = {}
+                elif line.startswith('}'):
+                    if current_obj:
+                        dishes.append(current_obj)
+                elif ':' in line:
+                    key, val = line.split(':', 1)
+                    key = key.strip()
+                    val = val.strip().rstrip(',')
+                    # Handle numbers
+                    if val.isdigit():
+                        current_obj[key] = int(val)
+                    # Handle strings
+                    elif val.startswith('"') or val.startswith("'"):
+                        current_obj[key] = val[1:-1]
+            
+            if not dishes:
+                return None
+                
+            # Calculate day of year
+            now = datetime.now()
+            start_of_year = datetime(now.year, 1, 1)
+            day_of_year = (now - start_of_year).days + 1
+            
+            index = day_of_year % len(dishes)
+            special = dishes[index]
+            
+            min_cards = special.get('minCards', 10)
+            max_cards = special.get('maxCards', 100)
+            
+            # PRNG logic matching JS:
+            seed = day_of_year * 31 + index
+            random_val = ((seed * 9301 + 49297) % 233280) / 233280
+            
+            target = int(random_val * (max_cards - min_cards + 1)) + min_cards
+            
+            # Update cache
+            self._daily_target_cache = {
+                'date': today,
+                'target': target
+            }
+            
+            return target
+            
+        except Exception as e:
+            print(f"Onigiri: Error calculating daily target: {e}")
+            return None
+
+    def get_store_data(self) -> Dict[str, Any]:
+        """Get data for the store (coins, inventory, available items)."""
+        # Try to read from gamification.json first as it's the source of truth for coins
+        coins = 0
+        owned = ["default"]
+        current = "default"
+        
+        try:
+            state = self._get_gamification_state()
+            coins = int(state.get('taiyaki_coins', 0))
+            owned = state.get('owned_items', ["default"])
+            current = state.get('current_theme_id', "default")
+            
+            # Fallback to config if state is empty (migration)
+            if not state:
+                 conf = config.get_config()
+                 restaurant_conf = conf.get("restaurant_level", {})
+                 if not restaurant_conf:
+                    restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
+                 owned = restaurant_conf.get("owned_items", ["default"])
+                 current = restaurant_conf.get("current_theme_id", "default")
+                 
+        except Exception as e:
+            print(f"Error reading gamification.json: {e}")
+            coins = 0
+            owned = ["default"]
+            current = "default"
+        
+        # Ensure default is always owned
+        if "default" not in owned:
+            owned.append("default")
+            
+        return {
+            "coins": coins,
+            "owned_items": owned,
+            "current_theme_id": current,
+            "restaurants": RESTAURANTS,
+            "evolutions": EVOLUTIONS
+        }
+
+    def _get_gamification_state(self) -> Dict[str, Any]:
+        """Read current state from gamification.json (cached)."""
+        # Return cached state if available
+        if self._state_cache is not None:
+            return self._state_cache
+
+        try:
+            if self._gamification_file is None:
+                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
+            
+            if os.path.exists(self._gamification_file):
+                with open(self._gamification_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self._state_cache = data.get('restaurant_level', {})
+                    return self._state_cache
+        except Exception as e:
+            print(f"Error reading gamification state: {e}")
+        
+        # Initialize empty cache if file read fails or doesn't exist
+        self._state_cache = {}
+        return self._state_cache
+
+    def _get_coins_from_json(self) -> int:
+        """Read current coins from gamification.json."""
+        state = self._get_gamification_state()
+        return int(state.get('taiyaki_coins', 0))
+
+    def buy_item(self, item_id: str) -> Tuple[bool, str]:
+        """Buy an item from the store."""
+        conf, restaurant_conf = self._config_bundle()
+        
+        # Read current state from gamification.json (Source of Truth)
+        coins = self._get_coins_from_json()
+        owned = restaurant_conf.get("owned_items", [])
+        
+        if item_id in owned:
+            return False, "Item already owned."
+            
+        item = RESTAURANTS.get(item_id) or EVOLUTIONS.get(item_id)
+        if not item:
+            return False, "Item not found."
+            
+        price = item["price"]
+        if coins < price:
+            return False, "Not enough Taiyaki Coins."
+            
+        # Deduct coins
+        new_coins = coins - price
+        
+        # Sync to json with new coin value and owned items
+        # We no longer write owned items to config.json
+        
+        # Prepare update data
+        update_data = {
+            "owned_items": restaurant_conf.get("owned_items", []) # Use the list we just updated
+        }
+        if "owned_items" in restaurant_conf:
+             update_data["owned_items"] = restaurant_conf["owned_items"]
+        
+        # But wait, we shouldn't be using restaurant_conf for owned items anymore if we want to move away from config
+        # Let's reconstruct the owned list from the source of truth
+        
+        if item_id not in owned:
+            owned.append(item_id)
+            
+        self._update_gamification_data({"owned_items": owned}, explicit_coins=new_coins)
+        
+        return True, "Purchase successful!"
+
+    def equip_item(self, item_id: str) -> Tuple[bool, str]:
+        """Equip a restaurant theme."""
+        conf, restaurant_conf = self._config_bundle()
+        
+        owned = restaurant_conf.get("owned_items", ["default"])
+        
+        if item_id != "default" and item_id not in owned:
+            return False, "Item not owned."
+            
+        # Sync to json
+        # We no longer write current_theme_id to config.json
+        self._update_gamification_data({"current_theme_id": item_id})
+        
+        return True, "Theme equipped!"
+
+    def get_current_theme_color(self) -> Optional[str]:
+        """Get the hex color of the current theme."""
+        state = self._get_gamification_state()
+        current_id = state.get("current_theme_id", "default")
+        
+        if current_id == "default":
+            return "#D49083"
+            
+        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id)
+        if item:
+            return item["theme"]
+        return None
+
+    def get_current_theme_image(self) -> Optional[str]:
+        """Get the image filename of the current theme."""
+        state = self._get_gamification_state()
+        current_id = state.get("current_theme_id", "default")
+        
+        if current_id == "default":
+            return "restaurant_level.png"
+            
+        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id)
+        if item and "image" in item:
+            return item["image"]
+        return "restaurant_level.png"
+
+    def get_current_theme_id(self) -> str:
+        """Get the ID of the current theme."""
+        state = self._get_gamification_state()
+        return state.get("current_theme_id", "default")
+
+    def on_reviewer_did_answer(self, reviewer: Any, card: Any, ease: int) -> None:
+        """Hook handler for review completion."""
+        # Map ease to XP
+        # 1: Again -> 1 XP
+        # 2: Hard -> 3 XP
+        # 3: Good -> 5 XP
+        # 4: Easy -> 10 XP
+        xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
+        xp = xp_map.get(ease, 5)
+        print(f"Onigiri: Review completed. Ease: {ease}, XP to award: {xp}")
+        notifications = self.add_review_xp(xp, count=1)
+        self._dispatch_notifications(notifications)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _dispatch_notifications(self, notifications: List[Dict[str, Any]]) -> None:
+        if not notifications:
+            return
+            
+        from aqt import mw
+        
+        payload = json.dumps(notifications, ensure_ascii=False)
+        state = getattr(mw, "state", None)
+        webviews = []
+
+        reviewer = getattr(mw, "reviewer", None)
+        overview = getattr(mw, "overview", None)
+        deck_browser = getattr(mw, "deckBrowser", None)
+
+        if state == "review" and reviewer and getattr(reviewer, "web", None):
+            webviews.append(reviewer.web)
+        elif state == "overview" and overview and getattr(overview, "web", None):
+            webviews.append(overview.web)
+        elif state == "deckBrowser" and deck_browser and getattr(deck_browser, "web", None):
+            webviews.append(deck_browser.web)
+
+        # Fallbacks if state-based lookup failed
+        for web in [reviewer and getattr(reviewer, "web", None), overview and getattr(overview, "web", None), deck_browser and getattr(deck_browser, "web", None)]:
+            if web and web not in webviews:
+                webviews.append(web)
+
+        script = (
+            "if (window.OnigiriNotifications) {"
+            f"const items = {payload};"
+            "items.forEach(item => window.OnigiriNotifications.show(item));"
+            "}"
+        )
+
+        for web in webviews:
+            if not web:
+                continue
+            try:
+                web.eval(script)
+                break
+            except Exception:
+                continue
+
+    def _is_kitchen_closed(self, timestamp: Optional[float] = None) -> bool:
+        """Check if the kitchen is closed based on the current time and configured closing time.
+        
+        Args:
+            timestamp: Optional Unix timestamp to check. If None, uses current time.
+            
+        Returns:
+            bool: True if the kitchen is closed (past the configured closing time), False otherwise.
+        """
+        from aqt import mw
+        
+        # Get the current time or use the provided timestamp
+        now = time.localtime(timestamp if timestamp is not None else time.time())
+        
+        # Get the configured closing time (default to 4:00 AM)
+        # Use Anki's native rollover setting
+        close_hour = int(mw.col.conf.get("rollover", 4))
+        close_minute = 0
+        
+        # Create a time object for the kitchen close time
+        close_time = now.tm_hour * 60 + now.tm_min
+        close_time_threshold = close_hour * 60 + close_minute
+        
+        # Kitchen is closed if current time is after the close time
+        return close_time >= close_time_threshold
+
+    def _handle_daily_special_completion(self, daily_special: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Handle completion of a daily special and update gamification data.
+        
+        Returns:
+            List of notifications to display
+        """
+        if not daily_special or not daily_special.get("enabled", False):
+            return []
+            
+        try:
+            from .gamification import get_gamification_manager
+            gamification = get_gamification_manager()
+            
+            now = time.time()
+            today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
+            special_id = f"daily_{today}"
+            special_name = f"Daily Special - {today}"
+            special_desc = "Complete your daily review goal"
+            
+            # Calculate difficulty based on target
+            target = daily_special.get("target", 100)
+            if target <= 50:
+                difficulty = "Common"
+            elif target <= 100:
+                difficulty = "Uncommon"
+            else:
+                difficulty = "Rare"
+                
+            # Calculate XP - 5 XP per card with a bonus for difficulty
+            xp_earned = target * 5
+            if difficulty == "Uncommon":
+                xp_earned = int(xp_earned * 1.5)
+            elif difficulty == "Rare":
+                xp_earned = xp_earned * 2
+                
+            # Update gamification data
+            gamification.add_daily_special(
+                special_id=special_id,
+                name=special_name,
+                description=special_desc,
+                difficulty=difficulty,
+                target_cards=target,
+                completed=True,
+                cards_completed=target,
+                xp_earned=xp_earned
+            )
+            
+            # Award XP and get notifications
+            notifications = self._add_xp(xp_earned, reason="daily_special")
+            
+            # Add a specific notification for daily special completion
+            notifications.append({
+                'id': special_id,
+                'name': f'Completed Daily Special! +{xp_earned} XP',
+                'description': f"You reached your target of {target} cards.",
+                'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
+                'iconAlt': "Daily Special Trophy",
+                'type': 'xp',
+                'amount': xp_earned,
+                'reason': 'daily_special',
+                'special': {
+                    'id': special_id,
+                    'name': special_name,
+                    'difficulty': difficulty,
+                    'target': target,
+                    'xp_earned': xp_earned
+                }
+            })
+            
+            return notifications
+            
+        except Exception as e:
+            print(f"Error updating gamification data for daily special: {e}")
+            return [{
+                'id': 'daily_special_error',
+                'name': 'Error',
+                'description': f'Error processing daily special: {str(e)}',
+                'type': 'error'
+            }]
+
+    def _update_gamification_data(self, restaurant_conf: Dict[str, Any], explicit_coins: Optional[int] = None) -> None:
+        """Update the gamification.json with restaurant data and sync cache."""
+        try:
+            if self._gamification_file is None:
+                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
+            
+            # Ensure cache is initialized (and contains FULL data now)
+            if self._state_cache is None:
+                self._get_gamification_state()
+
+            # Prepare the data to update
+            # We work on the cache directly for speed
+            # _state_cache now holds the 'restaurant_level' dict, but we need the full dict for writing
+            # Let's assume we have a _full_state_cache as well or change _state_cache to be the full dict?
+            # Changing _state_cache to be full dict might break other things.
+            # Let's add _full_state_cache.
+            
+            if not hasattr(self, '_full_state_cache') or self._full_state_cache is None:
+                 # Load full state if missing
+                if os.path.exists(self._gamification_file):
+                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
+                        self._full_state_cache = json.load(f)
+                else:
+                    self._full_state_cache = {}
+            
+            # Ensure restaurant_level exists in full cache
+            if 'restaurant_level' not in self._full_state_cache:
+                self._full_state_cache['restaurant_level'] = {}
+                
+            data = self._full_state_cache['restaurant_level']
+            
+            # Determine coin value: explicit > existing in cache > config > 0
+            if explicit_coins is not None:
+                coins = explicit_coins
+            else:
+                existing_coins = int(data.get('taiyaki_coins', 0))
+                coins = restaurant_conf.get('taiyaki_coins', existing_coins)
+            
+            # Generate security token for anti-cheat
+            security_token = generate_coin_token(coins)
+            
+            # Update fields
+            data['taiyaki_coins'] = coins
+            data['_security_token'] = security_token
+            data['last_updated'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+            
+            if 'level' in restaurant_conf:
+                data['level'] = restaurant_conf['level']
+            if 'total_xp' in restaurant_conf:
+                data['total_xp'] = restaurant_conf['total_xp']
+            if 'owned_items' in restaurant_conf:
+                data['owned_items'] = restaurant_conf['owned_items']
+            if 'current_theme_id' in restaurant_conf:
+                data['current_theme_id'] = restaurant_conf['current_theme_id']
+            if 'name' in restaurant_conf:
+                data['name'] = restaurant_conf['name']
+                
+            # Update caches
+            self._state_cache = data
+            self._full_state_cache['restaurant_level'] = data
+            
+            # DEFERRED WRITE: We don't write to disk here anymore to prevent lag during reviews.
+            # The caller (e.g., _add_xp) should call _save_gamification_state() when appropriate,
+            # or we can rely on a periodic save / sync hook.
+            # For now, to be safe but faster, we will NOT write here.
+                
+        except Exception as e:
+            print(f"Error updating gamification data: {e}")
+
+    def _update_gamification_level(self, level: int, total_xp: int) -> None:
+        """Legacy method, now delegates to _update_gamification_data."""
+        # We need to fetch the full config to update properly
+        conf, _, restaurant_conf = self._config_bundle()
+        # Ensure the passed values are used
+        restaurant_conf['level'] = level
+        restaurant_conf['total_xp'] = total_xp
+        self._update_gamification_data(restaurant_conf)
+
+    def _update_gamification_daily_special(self, daily_special: Dict[str, Any]) -> None:
+        """Update daily special state in gamification.json."""
+        # We only want to save the state fields, not the config fields
+        state_to_save = {
+            "target": daily_special.get("target"),
+            "current_progress": daily_special.get("current_progress"),
+            "last_updated": daily_special.get("last_updated"),
+            "last_notified_milestone": daily_special.get("last_notified_milestone"),
+            "last_notified_percent": daily_special.get("last_notified_percent")
+        }
+        
+        try:
+            if self._gamification_file is None:
+                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
+            
+            if self._state_cache is None:
+                self._get_gamification_state()
+                
+            # Initialize full cache if needed
+            if not hasattr(self, '_full_state_cache') or self._full_state_cache is None:
+                 # Load full state if missing
+                if os.path.exists(self._gamification_file):
+                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
+                        self._full_state_cache = json.load(f)
+                else:
+                    self._full_state_cache = {}
+
+            # Ensure restaurant_level exists in full cache
+            if 'restaurant_level' not in self._full_state_cache:
+                self._full_state_cache['restaurant_level'] = {}
+
+            # Update cache
+            self._state_cache['daily_special'] = state_to_save
+            self._full_state_cache['restaurant_level'] = self._state_cache
+            
+            # DEFERRED WRITE: See _update_gamification_data
+                
+        except Exception as e:
+            print(f"Error updating daily special data: {e}")
+
+    def _add_xp(self, amount: int, *, reason: str, review_count: int = 0) -> List[Dict[str, Any]]:
+        if amount <= 0:
+            return []
+
+        conf, restaurant_conf = self._config_bundle()
+        if not restaurant_conf.get("enabled", False):
+            print("Onigiri: Restaurant Level disabled in config, not awarding XP.")
+            return []
+
+        # Read current state from gamification.json (source of truth for XP/level)
+        game_state = self._get_gamification_state()
+        previous_level = int(game_state.get("level", restaurant_conf.get("level", 0)))
+        previous_total = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
+        new_total = previous_total + amount
+
+        level, xp_into_level, xp_to_next = self._collapse_xp(new_total)
+        
+        # Store previous values for notification checks
+        previous_xp_into_level = xp_into_level - amount
+        if previous_level < level:
+            previous_xp_into_level = self._xp_for_next(previous_level)
+        
+        # Check for level up notification
+        notifications = []
+        current_coins = self._get_coins_from_json() # Get current coins from JSON
+        new_coins = current_coins
+        
+        if level > previous_level:
+            notifications.extend(self._create_level_up_notification(level))
+            # Award Taiyaki Coins
+            coins_gained = (level - previous_level) * 10
+            new_coins = current_coins + coins_gained
+            
+            # Remove coins from config if present
+            if "taiyaki_coins" in restaurant_conf:
+                del restaurant_conf["taiyaki_coins"]
+                
+            notifications.append({
+                "id": "taiyaki_coins_gained",
+                "name": "Taiyaki Coins!",
+                "description": f"You earned {coins_gained} Taiyaki Coins!",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconAlt": "Taiyaki Coins",
+                "textColorLight": "#2c2c2c",
+                "textColorDark": "#ffffff",
+                "duration": 4000
+            })
+        
+        # Update the restaurant level and total XP in gamification.json
+        # We NO LONGER write this to config.json
+        
+        update_data = {
+            "total_xp": new_total,
+            "level": level,
+        }
+        
+        # Update gamification.json with the new level and xp AND coins
+        self._update_gamification_data(update_data, explicit_coins=new_coins)
+        print(f"Onigiri: XP awarded. New Total: {new_total}, Level: {level}")
+        
+        # Handle daily special progress and notifications
+        # Get settings from config
+        daily_special_conf = conf.get("daily_special", {})
+        if not daily_special_conf and "achievements" in conf:
+            daily_special_conf = conf["achievements"].get("daily_special", {})
+            
+        if daily_special_conf.get("enabled", False):
+            # Get state from gamification.json
+            daily_special_state = game_state.get("daily_special", {})
+            
+            # Construct daily special object
+            daily_special = {
+                "enabled": True,
+                "target": daily_special_state.get("target", daily_special_conf.get("target", 100)),
+                "current_progress": daily_special_state.get("current_progress", 0),
+                "last_updated": daily_special_state.get("last_updated"),
+                "last_notified_milestone": daily_special_state.get("last_notified_milestone", 0),
+                "last_notified_percent": daily_special_state.get("last_notified_percent", 0)
+            }
+            
+            # Ensure we're working with fresh daily stats
+            self._check_and_reset_daily_special(daily_special)
+
+            # If this is a daily special completion, we've already handled it
+            if reason == "daily_special":
+                pass  # We'll add the notification in _handle_daily_special_completion
+            elif reason == "review":
+                # For regular reviews, update progress
+                current = daily_special.get("current_progress", 0)
+                new_progress = current + review_count
+                target = daily_special.get("target", 100)
+                
+                # Check for daily special completion
+                if new_progress >= target and current < target:
+                    # Daily special completed - handle it
+                    special_notifications = self._handle_daily_special_completion(daily_special)
+                    notifications.extend(special_notifications)
+                
+                # Update progress
+                daily_special["current_progress"] = min(new_progress, target)
+                
+                # Check for progress milestones (25%, 50%, 75%)
+                progress_percent = (new_progress / target) * 100 if target > 0 else 0
+                last_notified = daily_special.get("last_notified_percent", 0)
+                
+                for milestone in [25, 50, 75]:
+                    if (last_notified < milestone <= progress_percent and 
+                        current < target and 
+                        new_progress < target):
+                        notifications.append({
+                            'id': f"daily_special_progress_{milestone}",
+                            'name': f'Daily Special: {milestone}% complete!',
+                            'description': f"You've reached {milestone}% of your daily goal ({new_progress}/{target}).",
+                            'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
+                            'iconAlt': "Daily Special Progress",
+                            'type': 'info',
+                            'progress': milestone,
+                            'current': new_progress,
+                            'target': target
+                        })
+                        daily_special["last_notified_percent"] = milestone
+                        break
+            
+            # Save the updated daily special state to gamification.json
+            self._update_gamification_daily_special(daily_special)
+        
+        # We NO LONGER write to config.json here!
+        # config.write_config(conf)
+        
+        # SAVE STATE ONCE at the end of the transaction
+        self._save_gamification_state()
+        
+        return notifications
+    
+    def _xp_for_next(self, level: int) -> int:
+        return 50 * (2 * level + 1)
+
+    def _collapse_xp(self, total_xp: int) -> Tuple[int, int, int]:
+        """Calculate level and XP progress based on total XP.
+        
+        Args:
+            total_xp: Total XP earned by the user
+            
+        Returns:
+            Tuple of (current_level, xp_into_level, xp_to_next_level)
+        """
+        level = 0
+        xp_needed = 0
+        
+        while True:
+            xp_for_next = self._xp_for_next(level)
+            if total_xp < xp_needed + xp_for_next:
+                return level, total_xp - xp_needed, xp_for_next
+            xp_needed += xp_for_next
+            level += 1
+
+    def _config_bundle(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        conf = config.get_config()
+        
+        # Get restaurant_level from root, fallback to defaults if missing
+        # We don't check achievements anymore as config.get_config handles migration
+        defaults = config.DEFAULTS.get("restaurant_level", {})
+        restaurant_conf = conf.get("restaurant_level")
+        
+        if restaurant_conf is None:
+            # If not in root, check achievements just in case (double safety)
+            if "achievements" in conf and "restaurant_level" in conf["achievements"]:
+                restaurant_conf = conf["achievements"]["restaurant_level"]
+            else:
+                restaurant_conf = copy.deepcopy(defaults)
+                conf["restaurant_level"] = restaurant_conf
+        
+        # Ensure defaults
+        for key, value in defaults.items():
+            if key not in restaurant_conf:
+                restaurant_conf[key] = copy.deepcopy(value)
+            
+        return conf, restaurant_conf
+
+    def _update_state(self, updates: Dict[str, Any]) -> None:
+        conf, restaurant_conf = self._config_bundle()
+        restaurant_conf.update(updates)
+        conf["restaurant_level"] = restaurant_conf
+        config.write_config(conf)
+
+    def _create_level_up_notification(self, new_level: int) -> List[Dict[str, Any]]:
+        """Create a notification for leveling up."""
+        # Get the current theme image
+        theme_image = self.get_current_theme_image()
+        if theme_image:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+        else:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+        
+        return [{
+            "id": "restaurant_level_up",
+            "name": f"Level {new_level} Unlocked!",
+            "description": f"Your restaurant has reached level {new_level}!",
+            "iconImage": icon_path,
+            "iconAlt": "Restaurant Level Up",
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 5000
+        }]
+
+    def _create_half_level_notification(self, level: int, xp_into_level: int, xp_to_next: int) -> List[Dict[str, Any]]:
+        """Create a notification for reaching 50% of the current level."""
+        # Get the current theme image
+        theme_image = self.get_current_theme_image()
+        if theme_image:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+        else:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+        
+        progress = (xp_into_level / xp_to_next) * 100
+        return [{
+            "id": "restaurant_level_progress",
+            "name": f"Level {level} Progress",
+            "description": f"You're {int(progress)}% to level {level + 1}!",
+            "iconImage": icon_path,
+            "iconAlt": "Level Progress",
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 4000
+        }]
+
+    def _create_daily_special_complete_notification(self) -> List[Dict[str, Any]]:
+        """Create a notification for completing the daily special."""
+        # Get the current theme image
+        theme_image = self.get_current_theme_image()
+        if theme_image:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+        else:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+        
+        return [{
+            "id": "daily_special_complete",
+            "name": "Daily Special Complete!",
+            "description": "You've completed today's special! Great job!",
+            "iconImage": icon_path,
+            "iconAlt": "Daily Special Complete",
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 5000
+        }]
+
+    def _create_daily_special_75_notification(self, target: int, progress: int) -> List[Dict[str, Any]]:
+        """Create a notification for reaching 75% of the daily special."""
+        # Get the current theme image
+        theme_image = self.get_current_theme_image()
+        if theme_image:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+        else:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+        
+        remaining = target - progress
+        return [{
+            "id": "daily_special_progress_75",
+            "name": "Daily Special Progress",
+            "description": f"You're 75% done! Just {remaining} more to go!",
+            "iconImage": icon_path,
+            "iconAlt": "Daily Special Progress",
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 4000
+        }]
+
+    def _create_daily_special_50_notification(self, target: int, progress: int) -> List[Dict[str, Any]]:
+        """Create a notification for reaching 50% of the daily special."""
+        # Get the current theme image
+        theme_image = self.get_current_theme_image()
+        if theme_image:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+        else:
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+        
+        remaining = target - progress
+        return [{
+            "id": "daily_special_progress_50",
+            "name": "Daily Special Progress",
+            "description": f"Halfway there! {remaining} more to complete today's special!",
+            "iconImage": icon_path,
+            "iconAlt": "Daily Special Progress",
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 4000
+        }]
+        
+    def _build_level_notifications(
+        self,
+        start_level: int,
+        end_level: int,
+        xp_into_level: int,
+        xp_to_next: int,
+        restaurant_conf: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Build notifications for level changes.
+        
+        This method is kept for backward compatibility but notifications are now
+        handled in _add_xp for better timing.
+        """
+        return []
+        
+    def _get_daily_special_notifications(self, daily_special: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get notifications for daily special progress.
+        
+        This method is kept for backward compatibility but notifications are now
+        handled in _add_xp for better timing.
+        """
+        return []
+
+    def _get_motivational_phrase(self, level: int) -> str:
+        if not MOTIVATIONAL_PHRASES:
+            return "Keep serving knowledge!"
+        index = level % len(MOTIVATIONAL_PHRASES)
+        return MOTIVATIONAL_PHRASES[index]
+        
+    @property
+    def _addon_prefix(self) -> str:
+        if not self._addon_package:
+            self._addon_package = mw.addonManager.addonFromModule(__name__)
+        return f"/_addons/{self._addon_package}"
+
+
+manager = RestaurantLevelManager()
+
+def register_hooks() -> None:
+    from aqt import gui_hooks
+    gui_hooks.reviewer_did_answer_card.append(manager.on_reviewer_did_answer)
+
+register_hooks()
