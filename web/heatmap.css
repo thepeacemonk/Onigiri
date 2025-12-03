@@ -252,24 +252,41 @@
 }
 
 
-/* Tooltip */
+/* Tooltip - MUST use hardcoded colors to prevent user font settings from affecting it */
 .heatmap-day-cell::after {
     content: attr(data-tooltip);
     position: absolute;
     bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
-    background-color: var(--fg);
-    color: var(--bg);
+    /* HARDCODED COLORS - DO NOT USE CSS VARIABLES */
+    background-color: #333 !important;
+    color: #fff !important;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
     white-space: pre;
-    z-index: 10;
+    z-index: 10000;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease, visibility 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    /* Prevent inheritance of unwanted styles */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+    font-weight: normal !important;
+    line-height: 1.4 !important;
+    text-align: center !important;
+    border: none !important;
+}
+
+/* Dark Mode - HARDCODED COLORS */
+.night .heatmap-day-cell::after,
+.nightMode .heatmap-day-cell::after,
+.night-mode .heatmap-day-cell::after {
+    background-color: #eee !important;
+    color: #000 !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
