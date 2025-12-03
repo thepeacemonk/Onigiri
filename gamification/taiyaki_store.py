@@ -430,6 +430,61 @@ class StoreItemCard(QWidget):
             """)
             layout.addWidget(special_note)
         
+        # Special note for Focus Dango
+        if self.item_id == "focus_dango":
+            special_note = QLabel("⚙️ Turn on \"Focus Dango\" on Settings")
+            special_note.setWordWrap(True)
+            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            special_note.setStyleSheet("""
+                QLabel {
+                    font-size: 13px;
+                    color: #DC90B8;
+                    background-color: rgba(220, 144, 184, 0.15);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    margin-top: 10px;
+                }
+            """)
+            layout.addWidget(special_note)
+        
+        # Special note for Motivated Mochi
+        if self.item_id == "motivated_mochi":
+            special_note = QLabel("⚙️ Turn on \"Mochi Messages\" on Settings")
+            special_note.setWordWrap(True)
+            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            special_note.setStyleSheet("""
+                QLabel {
+                    font-size: 13px;
+                    color: #6EC170;
+                    background-color: rgba(110, 193, 112, 0.15);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    margin-top: 10px;
+                }
+            """)
+            layout.addWidget(special_note)
+        
+        # Special note for locked evolutions
+        prerequisite_info = self.item_data.get('prerequisite_info')
+        if prerequisite_info:
+            locked_note = QLabel(f"{prerequisite_info}")
+            locked_note.setWordWrap(True)
+            locked_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            locked_note.setStyleSheet("""
+                QLabel {
+                    font-size: 13px;
+                    color: #FFB347;
+                    background-color: rgba(255, 179, 71, 0.15);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    margin-top: 10px;
+                }
+            """)
+            layout.addWidget(locked_note)
+        
         layout.addStretch()
         
         back.setLayout(layout)
@@ -745,6 +800,79 @@ class CoinRedemptionDialog(QDialog):
 
     def get_code(self):
         return self.input_field.text().strip()
+
+
+class CustomTooltip(QWidget):
+    """Custom tooltip widget that appears on hover"""
+    def __init__(self, text, is_night_mode, parent=None):
+        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        # Enable translucent background for custom painting
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Make tooltip transparent to mouse events so it doesn't interfere with clicking
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        
+        self.bg_color = "#623C1B" if is_night_mode else "#7D5524"
+        self.text = text
+        
+        # Auto-hide timer as a failsafe (hide after 5 seconds)
+        self.auto_hide_timer = QTimer()
+        self.auto_hide_timer.setSingleShot(True)
+        self.auto_hide_timer.timeout.connect(self.hide)
+        
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 8, 12, 8)
+        
+        label = QLabel(text)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("""
+            QLabel {
+                font-size: 13px;
+                color: #FFFFFF;
+                background: transparent;
+                font-weight: 500;
+            }
+        """)
+        label.setMaximumWidth(250)
+        
+        layout.addWidget(label)
+        self.setLayout(layout)
+    
+    def showEvent(self, event):
+        """Start auto-hide timer when shown"""
+        super().showEvent(event)
+        self.auto_hide_timer.start(5000)  # Auto-hide after 5 seconds
+    
+    def hideEvent(self, event):
+        """Stop timer when hidden"""
+        super().hideEvent(event)
+        self.auto_hide_timer.stop()
+    
+    def paintEvent(self, event):
+        """Custom paint event for smooth rounded corners"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        
+        # Draw rounded rectangle background with float precision for smoother curves
+        from aqt.qt import QPainterPath, QColor, QPen, QRectF
+        
+        # Use QRectF for floating point precision
+        rect = QRectF(1.5, 1.5, self.width() - 3, self.height() - 3)  # Inset by border width
+        path = QPainterPath()
+        path.addRoundedRect(rect, 15, 15)
+        
+        # Fill background
+        painter.fillPath(path, QColor(self.bg_color))
+        
+        # Draw border with antialiasing
+        pen = QPen(QColor(207, 161, 61, int(0.3 * 255)))
+        pen.setWidthF(2.0)  # Use float width
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPath(path)
 
 
 class CoinRainOverlay(QWidget):
@@ -1140,6 +1268,29 @@ class TaiyakiStoreWindow(QDialog):
                 "description": "The pinnacle of culinary prestige! This deluxe establishment radiates luxury and sophistication, offering a world-class dining experience that is truly second to none."
             }
         }
+        
+        # Evolution prerequisites: each evolution requires the previous one to be owned
+        self.evolution_prerequisites = {
+            "restaurant_evo_ii": "restaurant_evo_i",
+            "restaurant_evo_iii": "restaurant_evo_ii",
+            "restaurant_evo_iv": "restaurant_evo_iii",
+            "restaurant_evo_legendary": "restaurant_evo_iv",
+            "restaurant_evo_garden": "restaurant_evo_legendary"
+        }
+    
+    def check_evolution_unlocked(self, item_id):
+        """Check if an evolution item is unlocked (prerequisites met)"""
+        # If it's not an evolution item, it's always unlocked
+        if item_id not in self.evolutions:
+            return True
+        
+        # If there's no prerequisite, it's unlocked
+        if item_id not in self.evolution_prerequisites:
+            return True
+        
+        # Check if the prerequisite is owned
+        prerequisite = self.evolution_prerequisites[item_id]
+        return prerequisite in self.owned_items
     
     def setup_ui(self):
         """Create the main UI"""
@@ -1417,6 +1568,9 @@ class TaiyakiStoreWindow(QDialog):
             }
         """)
         self.restaurants_btn.clicked.connect(lambda: self.switch_tab(0))
+        # Install event filter for tooltip
+        self.restaurants_btn.installEventFilter(self)
+        self.restaurants_btn.setProperty("tooltip_text", "Different cozy themes for your Onigiri restaurant! ")
         
         # Evolutions button
         self.evolutions_btn = QPushButton("Evolutions")
@@ -1437,14 +1591,89 @@ class TaiyakiStoreWindow(QDialog):
             }}
         """)
         self.evolutions_btn.clicked.connect(lambda: self.switch_tab(1))
+        # Install event filter for tooltip
+        self.evolutions_btn.installEventFilter(self)
+        self.evolutions_btn.setProperty("tooltip_text", "Bigger and fancier versions of your restaurant!")
         
         layout.addStretch()
         layout.addWidget(self.restaurants_btn)
         layout.addWidget(self.evolutions_btn)
         layout.addStretch()
         
+        # Initialize tooltip tracking
+        self.current_tooltip = None
+        self.tooltip_timer = QTimer()
+        self.tooltip_timer.setSingleShot(True)
+        self.tooltip_timer.timeout.connect(self.show_tooltip)
+        self.pending_tooltip_widget = None
+        
+        # Install event filter on self to catch clicks and focus changes
+        self.installEventFilter(self)
+        
         nav.setLayout(layout)
         return nav
+    
+    def eventFilter(self, obj, event):
+        """Handle events for tooltip display"""
+        # Hide tooltip on any mouse click or if window loses focus
+        if obj == self:
+            if event.type() in [event.Type.MouseButtonPress, event.Type.MouseButtonRelease, 
+                               event.Type.WindowDeactivate, event.Type.FocusOut]:
+                self.hide_tooltip()
+        
+        # Only handle events for our navigation buttons
+        # Check that buttons exist before accessing them
+        buttons_to_check = []
+        if hasattr(self, 'restaurants_btn'):
+            buttons_to_check.append(self.restaurants_btn)
+        if hasattr(self, 'evolutions_btn'):
+            buttons_to_check.append(self.evolutions_btn)
+        
+        if obj in buttons_to_check:
+            if event.type() == event.Type.Enter:
+                # Mouse entered the button
+                self.pending_tooltip_widget = obj
+                self.tooltip_timer.start(500)  # 500ms delay before showing tooltip
+            elif event.type() == event.Type.Leave:
+                # Mouse left the button
+                self.tooltip_timer.stop()
+                self.pending_tooltip_widget = None
+                self.hide_tooltip()
+            elif event.type() in [event.Type.MouseButtonPress, event.Type.MouseButtonRelease]:
+                # Hide tooltip on button click
+                self.hide_tooltip()
+        
+        return super().eventFilter(obj, event)
+    
+    def show_tooltip(self):
+        """Show the custom tooltip"""
+        if self.pending_tooltip_widget is None:
+            return
+        
+        tooltip_text = self.pending_tooltip_widget.property("tooltip_text")
+        if not tooltip_text:
+            return
+        
+        # Hide any existing tooltip
+        self.hide_tooltip()
+        
+        # Create new tooltip
+        self.current_tooltip = CustomTooltip(tooltip_text, self.is_night_mode, self)
+        
+        # Position tooltip below the button
+        button_pos = self.pending_tooltip_widget.mapToGlobal(self.pending_tooltip_widget.rect().bottomLeft())
+        tooltip_x = button_pos.x() + (self.pending_tooltip_widget.width() - self.current_tooltip.sizeHint().width()) // 2
+        tooltip_y = button_pos.y() + 10  # 10px spacing from button
+        
+        self.current_tooltip.move(tooltip_x, tooltip_y)
+        self.current_tooltip.show()
+    
+    def hide_tooltip(self):
+        """Hide the current tooltip"""
+        if self.current_tooltip is not None:
+            self.current_tooltip.hide()
+            self.current_tooltip.deleteLater()
+            self.current_tooltip = None
     
     def switch_tab(self, index):
         """Switch between tabs"""
@@ -1536,8 +1765,23 @@ class TaiyakiStoreWindow(QDialog):
             is_owned = item_id in self.owned_items
             is_equipped = item_id == self.current_theme_id
             
+            # Check if this is an evolution with unmet prerequisites
+            is_unlocked = self.check_evolution_unlocked(item_id)
+            
+            # Create a copy of item_data to potentially modify
+            display_data = item_data.copy()
+            
+            # If the evolution is locked, override the price to show "Check info"
+            if not is_unlocked and not is_owned:
+                prerequisite = self.evolution_prerequisites.get(item_id)
+                if prerequisite:
+                    prerequisite_name = self.evolutions[prerequisite]['name']
+                    display_data['price'] = "Check info"
+                    # Store the prerequisite info for the back of the card
+                    display_data['prerequisite_info'] = f"Requires {prerequisite_name}"
+            
             # Pass self (the store window) to the card
-            card = StoreItemCard(item_id, item_data, is_owned, is_equipped, self.coins, self.addon_path, self)
+            card = StoreItemCard(item_id, display_data, is_owned, is_equipped, self.coins, self.addon_path, self)
             card.setFixedSize(280, 300)
             
             grid.addWidget(card, row, col)
@@ -1568,6 +1812,13 @@ class TaiyakiStoreWindow(QDialog):
         
         if item_id in self.owned_items:
             showInfo("You already own this!")
+            return
+        
+        # Check if evolution prerequisites are met
+        if not self.check_evolution_unlocked(item_id):
+            prerequisite = self.evolution_prerequisites.get(item_id)
+            prerequisite_name = self.evolutions[prerequisite]['name']
+            showInfo(f"This evolution is locked!\\n\\nYou must first purchase {prerequisite_name}.")
             return
         
         if self.coins >= price:

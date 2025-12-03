@@ -42,7 +42,9 @@ def inject_menu_files(web_content, context):
     is_top_toolbar = isinstance(context, Toolbar)
     is_bottom_toolbar = isinstance(context, BottomBar)
     is_reviewer_bottom_bar = type(context).__name__ == "ReviewerBottomBar"
-    if is_deck_browser or is_reviewer or is_overview:
+    # Inject global Onigiri CSS only for deck browser and overview, NOT reviewer
+    # Reviewer has its own dedicated CSS and doesn't need text-related global styles
+    if is_deck_browser or is_overview:
         web_content.head += patcher.generate_dynamic_css(conf)
     if is_deck_browser:
         css_path = os.path.join(addon_path, "web", "menu.css")

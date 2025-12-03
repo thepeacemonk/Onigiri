@@ -3077,6 +3077,8 @@ def generate_dynamic_css(conf):
 	if "--button-primary-bg" in dark_colors:
 		dark_colors["--button-primary-bg"] = dark_colors["--button-primary-bg"]
 
+	# Generate all CSS rules for :root (including text-related for Onigiri UI)
+	# Card isolation is handled separately in the CSS output
 	light_rules = "\n".join([f"    {key}: {value} !important;" for key, value in light_colors.items()])
 	dark_rules = "\n".join([f"    {key}: {value} !important;" for key, value in dark_colors.items()])
 	
@@ -3136,23 +3138,6 @@ def generate_dynamic_css(conf):
         {onigiri_ui_dark}
     }}
     
-    /* Explicitly reset card styles to prevent inheritance */
-    #qa, #qa *:not(#_flag, #_flag *), .card, .card *:not(#_flag, #_flag *) {{
-        --fg: inherit !important;
-        --fg-subtle: inherit !important;
-        --fg-faint: inherit !important;
-        --fg-on-accent: inherit !important;
-        --accent: inherit !important;
-        --accent-hover: inherit !important;
-        --accent-pressed: inherit !important;
-        --text-on-accent: inherit !important;
-        --text-on-accent-hover: inherit !important;
-        --text-on-accent-pressed: inherit !important;
-        --accent-light: inherit !important;
-        --accent-lighter: inherit !important;
-        --accent-dark: inherit !important;
-        --accent-darker: inherit !important;
-    }}
     </style>
     {glass_style_block}
     """
