@@ -8,9 +8,7 @@ body {
     overflow-x: hidden;
 }
 
-.night-mode body,
-.nightMode body,
-.night body {
+.night-mode body {
     background-color: var(--profile-page-bg);
 }
 

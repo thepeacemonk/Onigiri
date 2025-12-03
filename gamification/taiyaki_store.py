@@ -809,16 +809,15 @@ class CustomTooltip(QWidget):
         self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
         # Enable translucent background for custom painting
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        # Make tooltip transparent to mouse events so it doesn't interfere with clicking
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         
         self.bg_color = "#623C1B" if is_night_mode else "#7D5524"
         self.text = text
         
-        # Auto-hide timer as a failsafe (hide after 5 seconds)
-        self.auto_hide_timer = QTimer()
+        # Auto-hide timer to prevent tooltip from getting stuck
+        self.auto_hide_timer = QTimer(self)
         self.auto_hide_timer.setSingleShot(True)
         self.auto_hide_timer.timeout.connect(self.hide)
+        self.auto_hide_timer.start(5000)  # Auto-hide after 5 seconds
         
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 8, 12, 8)
@@ -838,16 +837,6 @@ class CustomTooltip(QWidget):
         
         layout.addWidget(label)
         self.setLayout(layout)
-    
-    def showEvent(self, event):
-        """Start auto-hide timer when shown"""
-        super().showEvent(event)
-        self.auto_hide_timer.start(5000)  # Auto-hide after 5 seconds
-    
-    def hideEvent(self, event):
-        """Stop timer when hidden"""
-        super().hideEvent(event)
-        self.auto_hide_timer.stop()
     
     def paintEvent(self, event):
         """Custom paint event for smooth rounded corners"""
@@ -873,6 +862,11 @@ class CustomTooltip(QWidget):
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.drawPath(path)
+    
+    def mousePressEvent(self, event):
+        """Close tooltip when clicked"""
+        self.hide()
+        event.accept()
 
 
 class CoinRainOverlay(QWidget):
@@ -1607,7 +1601,7 @@ class TaiyakiStoreWindow(QDialog):
         self.tooltip_timer.timeout.connect(self.show_tooltip)
         self.pending_tooltip_widget = None
         
-        # Install event filter on self to catch clicks and focus changes
+        # Install event filter on self to detect window events
         self.installEventFilter(self)
         
         nav.setLayout(layout)
@@ -1615,10 +1609,9 @@ class TaiyakiStoreWindow(QDialog):
     
     def eventFilter(self, obj, event):
         """Handle events for tooltip display"""
-        # Hide tooltip on any mouse click or if window loses focus
+        # Hide tooltip when window loses focus or is minimized
         if obj == self:
-            if event.type() in [event.Type.MouseButtonPress, event.Type.MouseButtonRelease, 
-                               event.Type.WindowDeactivate, event.Type.FocusOut]:
+            if event.type() in [event.Type.WindowDeactivate, event.Type.FocusOut, event.Type.Hide]:
                 self.hide_tooltip()
         
         # Only handle events for our navigation buttons
@@ -1638,9 +1631,6 @@ class TaiyakiStoreWindow(QDialog):
                 # Mouse left the button
                 self.tooltip_timer.stop()
                 self.pending_tooltip_widget = None
-                self.hide_tooltip()
-            elif event.type() in [event.Type.MouseButtonPress, event.Type.MouseButtonRelease]:
-                # Hide tooltip on button click
                 self.hide_tooltip()
         
         return super().eventFilter(obj, event)
@@ -1671,9 +1661,19 @@ class TaiyakiStoreWindow(QDialog):
     def hide_tooltip(self):
         """Hide the current tooltip"""
         if self.current_tooltip is not None:
-            self.current_tooltip.hide()
-            self.current_tooltip.deleteLater()
-            self.current_tooltip = None
+            try:
+                self.current_tooltip.hide()
+                self.current_tooltip.deleteLater()
+            except:
+                pass  # Ignore errors during cleanup
+            finally:
+                self.current_tooltip = None
+    
+    def closeEvent(self, event):
+        """Ensure tooltip is cleaned up when dialog closes"""
+        self.hide_tooltip()
+        self.tooltip_timer.stop()
+        super().closeEvent(event)
     
     def switch_tab(self, index):
         """Switch between tabs"""

@@ -708,9 +708,9 @@ def _get_stats_html():
     global _profile_stats_cache
     import time
     
-    # Cache removed to ensure real-time updates
-    # if time.time() - _profile_stats_cache["timestamp"] < _profile_stats_cache["timeout"] and _profile_stats_cache["html"]:
-    #     return _profile_stats_cache["html"]
+    # Return cached if valid
+    if time.time() - _profile_stats_cache["timestamp"] < _profile_stats_cache["timeout"] and _profile_stats_cache["html"]:
+        return _profile_stats_cache["html"]
 
     conf = config.get_config()
     show_heatmap = conf.get("showHeatmapOnProfile", True)
@@ -791,7 +791,7 @@ def _get_stats_html():
     </div>
     """
     
-    # Update cache (kept for structure but unused for blocking)
+    # Update cache
     _profile_stats_cache["html"] = html_content
     _profile_stats_cache["timestamp"] = time.time()
     
@@ -3077,8 +3077,6 @@ def generate_dynamic_css(conf):
 	if "--button-primary-bg" in dark_colors:
 		dark_colors["--button-primary-bg"] = dark_colors["--button-primary-bg"]
 
-	# Generate all CSS rules for :root (including text-related for Onigiri UI)
-	# Card isolation is handled separately in the CSS output
 	light_rules = "\n".join([f"    {key}: {value} !important;" for key, value in light_colors.items()])
 	dark_rules = "\n".join([f"    {key}: {value} !important;" for key, value in dark_colors.items()])
 	
@@ -3137,7 +3135,6 @@ def generate_dynamic_css(conf):
     .night-mode .onigiri-restaurant *:not(.card, .card *) {{
         {onigiri_ui_dark}
     }}
-    
     </style>
     {glass_style_block}
     """
