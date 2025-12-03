@@ -19,10 +19,8 @@ body {
 
 /* New header for buttons */
 .overview-header {
-    position: absolute;
-    /* Take the header out of the normal document flow */
-    width: 100%;
-    /* Make it span the full width to allow centering */
+    position: absolute; /* Take the header out of the normal document flow */
+    width: 100%;      /* Make it span the full width to allow centering */
     display: flex;
     justify-content: center;
     gap: 10px;
@@ -60,9 +58,7 @@ body {
 }
 
 /* Dark mode overrides */
-.nightMode .overview-button,
-.night-mode .overview-button,
-.night .overview-button {
+.nightMode .overview-button {
     --button-bg: var(--window-bg, #2a2a2a);
     --button-fg: var(--fg, #e0e0e0);
     --button-border: var(--border, #3a3a3a);
@@ -75,22 +71,18 @@ body {
 /* Title styling */
 .overview-title {
     font-family: var(--font-subtle);
-    font-size: 2em;
-    /* Bigger title */
+    font-size: 2em; /* Bigger title */
     font-weight: 600;
-    margin-bottom: 20px;
-    /* Space between title and stats */
+    margin-bottom: 20px; /* Space between title and stats */
 }
 
 /* Container for stats and button */
 .overview-container {
     width: 100%;
-    max-width: 350px;
-    /* Set max width here instead of on the parent */
-    margin-bottom: 25px;
-    /* Add some space below the study button */
-    margin-right: 0px !important;
-    margin-left: 0px !important;
+    max-width: 350px; /* Set max width here instead of on the parent */
+    margin-bottom: 25px; /* Add some space below the study button */
+    margin-right: 0px !important; 
+    margin-left: 0px !important; 
     align-items: center;
 }
 
@@ -98,8 +90,7 @@ body {
 .stats-container {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    /* Rounded borders */
+    border-radius: 12px; /* Rounded borders */
     padding: 15px 25px;
     margin-bottom: 20px;
 }
@@ -123,8 +114,7 @@ body {
 .review-count-bubble {
     font-weight: 500;
     padding: 4px 12px;
-    border-radius: 16px;
-    /* Rounded borders for the bubble */
+    border-radius: 16px; /* Rounded borders for the bubble */
     min-width: 30px;
     text-align: center;
 }
@@ -160,7 +150,7 @@ body {
     font-size: 1.1em;
     font-weight: 500;
     width: 100%;
-    box-sizing: border-box;
+    box-sizing: border-box; 
     background: transparent;
     margin: 0px;
 }

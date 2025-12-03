@@ -87,11 +87,7 @@ def _baseline_metrics() -> Dict[str, Any]:
     }
 
 
-def _compute_full_history_metrics() -> Dict[str, Any]:
-    """
-    Heavy operation: Scans the entire review log to compute historical metrics.
-    Should only be run on startup or explicit full refresh.
-    """
+def _compute_revlog_metrics() -> Dict[str, Any]:
     metrics: Dict[str, Any] = _baseline_metrics()
     if not mw.col or not getattr(mw.col, "db", None):
         return metrics
@@ -212,97 +208,9 @@ def _compute_full_history_metrics() -> Dict[str, Any]:
     return metrics
 
 
-def _compute_daily_metrics(base_metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Lightweight operation: Only computes today's metrics and updates the base metrics.
-    """
-    metrics = base_metrics.copy()
-    
-    if not mw.col or not getattr(mw.col, "db", None):
-        return metrics
-
-    # Get Anki's day cutoff
-    day_cutoff = mw.col.sched.dayCutoff
-    today_start = day_cutoff - 86400
-    
-    # Query for today's reviews ONLY
-    today_reviews = mw.col.db.scalar(
-        "SELECT COUNT() FROM revlog WHERE id >= ?", 
-        today_start * 1000
-    ) or 0
-    
-    metrics["today_review_count"] = today_reviews
-    
-    # Update max daily reviews if today is a new record
-    if today_reviews > metrics.get("max_daily_reviews", 0):
-        metrics["max_daily_reviews"] = today_reviews
-        
-    # Update total reviews (approximate by adding today's delta if needed, 
-    # but for safety we can just query total count which is fast)
-    total_reviews = mw.col.db.scalar("SELECT COUNT() FROM revlog") or 0
-    metrics["total_reviews"] = total_reviews
-    
-    # Update new cards count for today
-    rollover_hour = mw.col.conf.get("rollover", 4)
-    offset_seconds = rollover_hour * 3600
-    
-    # Count new cards introduced today (type 0 is learn, but we want first introduction. 
-    # Usually we check cards table for id/crt, but let's stick to simple revlog check for "New Recipe" achievement logic if possible,
-    # or just query the cards table efficiently.)
-    
-    # Actually, "New Recipe" and "Sous Chef" rely on "new cards".
-    # Let's query just the cards introduced today.
-    # We can use the same logic as _compute_collection_metrics but filtered for today.
-    
-    # For speed, we might skip complex new card queries in the partial update 
-    # unless the user is specifically grinding new cards.
-    # But "Sous Chef" (20 new cards in a day) is a daily goal.
-    
-    # Let's do a fast query for cards created/learned today.
-    # In Anki, "new" usually means cards that graduated or were introduced.
-    # The original logic used `cards` table grouping.
-    
-    today_date_str = datetime.fromtimestamp(today_start).strftime('%Y-%m-%d')
-    
-    # Fast query for new cards today
-    # We can check revlog for type=0 (Learn) and distinct CIDs today?
-    # Or just trust the collection stats?
-    
-    # Let's stick to the original logic's intent but optimized.
-    # The original logic grouped ALL cards by day. We just want today.
-    
-    # We will defer heavy "new card" calculation to the full refresh or accept a slight delay.
-    # For now, let's leave "new cards" as is from the base metrics, 
-    # or implement a fast check if we want to support "Sous Chef" in real-time.
-    
-    # Let's implement a fast check for "cards learned today"
-    learned_today = mw.col.db.scalar(
-        "SELECT COUNT(DISTINCT cid) FROM revlog WHERE id >= ? AND type = 0", 
-        today_start * 1000
-    ) or 0
-    
-    # Update max new cards if today is better
-    if learned_today > metrics.get("max_new_cards_day", 0):
-        metrics["max_new_cards_day"] = learned_today
-        
-    return metrics
-
-
-def _compute_collection_metrics(metrics: Dict[str, Any], partial: bool = False) -> None:
+def _compute_collection_metrics(metrics: Dict[str, Any]) -> None:
     if not mw.col or not getattr(mw.col, "db", None):
         return
-        
-    # In partial mode, we skip the heavy "new cards" calculation which scans the entire cards table.
-    # We only update lightweight metrics.
-    if partial:
-        # We can still quickly get the mature count if we want, or skip it too.
-        # COUNT() with a WHERE clause on an indexed column (ivl) is relatively fast, but 
-        # for maximum speed during reviews, we might want to skip it or only do it if really needed.
-        # Let's keep mature_cards as it's a single scalar query, but skip the GROUP BY.
-        mature_cards = mw.col.db.scalar("SELECT COUNT() FROM cards WHERE ivl >= 21") or 0
-        metrics["mature_cards"] = mature_cards
-        return
-
     rollover_hour = mw.col.conf.get("rollover", 4)
     offset_seconds = rollover_hour * 3600
 
@@ -329,18 +237,11 @@ def _compute_collection_metrics(metrics: Dict[str, Any], partial: bool = False) 
     })
 
 
-def compute_metrics(full: bool = True, base_metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def compute_metrics() -> Dict[str, Any]:
     if not mw.col or not getattr(mw.col, "db", None):
         return _baseline_metrics()
-        
-    if full:
-        metrics = _compute_full_history_metrics()
-    else:
-        # Use base metrics and update with daily stats
-        metrics = base_metrics.copy() if base_metrics else _baseline_metrics()
-        metrics = _compute_daily_metrics(metrics)
-        
-    _compute_collection_metrics(metrics, partial=not full)
+    metrics = _compute_revlog_metrics()
+    _compute_collection_metrics(metrics)
     return metrics
 
 
@@ -505,11 +406,6 @@ class AchievementManager:
         snapshot = copy.deepcopy(achievements_conf.get("snapshot", {}))
         self._snapshot: Dict[str, Any] = _ensure_goals(snapshot)
         self._pending_notifications: List[Dict[str, Any]] = []
-        
-        # Cache for metrics
-        self._metrics_cache: Optional[Dict[str, Any]] = None
-        self._last_full_refresh: float = 0
-        self._full_refresh_interval: float = 3600  # 1 hour auto-refresh for full stats
 
     @property
     def _config(self) -> Dict[str, Any]:
@@ -534,39 +430,15 @@ class AchievementManager:
     def is_enabled(self) -> bool:
         return bool(self._config.get("enabled", False))
 
-    def refresh(self, force: bool = False, partial: bool = False) -> Optional[Dict[str, Any]]:
+    def refresh(self, force: bool = False) -> Optional[Dict[str, Any]]:
         if not self.is_enabled() and not force:
             return None
         if not mw.col or not getattr(mw.col, "db", None):
             return None
-
-        # Determine if we need a full refresh
-        now = time.time()
-        needs_full = force or (self._metrics_cache is None) or (now - self._last_full_refresh > self._full_refresh_interval)
-        
-        if partial and not needs_full:
-            # Lightweight update
-            metrics = compute_metrics(full=False, base_metrics=self._metrics_cache)
-        else:
-            # Full update
-            metrics = compute_metrics(full=True)
-            self._metrics_cache = metrics
-            self._last_full_refresh = now
-
-        # Only fetch heatmap data on full refresh or if we don't have it yet.
-        # Heatmap calculation scans the entire revlog, which is too slow for partial updates.
-        heatmap_snapshot = {}
-        if not partial or needs_full:
-            heatmap_snapshot = heatmap.get_heatmap_data() if mw.col else {}
-            if heatmap_snapshot:
-                _apply_heatmap_counts(metrics, heatmap_snapshot)
-        elif self._snapshot and "heatmap" in self._snapshot:
-            # Preserve existing heatmap data during partial refresh
-            heatmap_snapshot = self._snapshot["heatmap"]
-            # We still want to update today's counts in metrics if possible, 
-            # but _compute_daily_metrics already does a fast query for that.
-            # So we don't need to re-apply heatmap counts here.
-
+        metrics = compute_metrics()
+        heatmap_snapshot = heatmap.get_heatmap_data() if mw.col else {}
+        if heatmap_snapshot:
+            _apply_heatmap_counts(metrics, heatmap_snapshot)
         achievements_conf = self._config
         history = achievements_conf.get("history", [])
         history_len_before = len(history)
@@ -603,12 +475,7 @@ class AchievementManager:
         })
         conf = config.get_config()
         conf["achievements"] = achievements_conf
-        
-        # Only write config if something changed (new entry or custom goal notification)
-        # or if it's a full refresh to save the baseline
-        if new_entries or custom_goal_notifications or not partial:
-            config.write_config(conf)
-            
+        config.write_config(conf)
         self._snapshot = achievements_conf["snapshot"]
         self._snapshot = achievements_conf["snapshot"]
         return self._snapshot
@@ -802,8 +669,7 @@ class AchievementManager:
 
     def on_reviewer_did_answer(self, *args, **kwargs) -> None:
         if self.is_enabled():
-            # Use partial refresh for speed during reviews
-            self.refresh(partial=True)
+            self.refresh()
             pending = self.pop_pending_notifications()
             self._dispatch_notifications(pending)
 

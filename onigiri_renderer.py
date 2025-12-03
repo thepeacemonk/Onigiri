@@ -118,9 +118,9 @@ def _get_onigiri_retention_html() -> str:
     global _retention_cache
     import time
     
-    # Cache removed to ensure real-time updates
-    # if time.time() - _retention_cache["timestamp"] < _retention_cache["timeout"] and _retention_cache["html"]:
-    #     return _retention_cache["html"]
+    # Return cached if valid
+    if time.time() - _retention_cache["timestamp"] < _retention_cache["timeout"] and _retention_cache["html"]:
+        return _retention_cache["html"]
 
     total_reviews, correct_reviews = mw.col.db.first(
         "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
@@ -149,7 +149,7 @@ def _get_onigiri_retention_html() -> str:
     </div>
     """
     
-    # Update cache (kept for structure but unused for blocking)
+    # Update cache
     _retention_cache["html"] = html_content
     _retention_cache["timestamp"] = time.time()
     
@@ -348,15 +348,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
          patcher._deck_browser_stats_cache = {"data": None, "timestamp": 0}
     
     import time
-    # Cache removed to ensure real-time updates
-    import time
-    # Cache removed to ensure real-time updates
-    # if time.time() - patcher._deck_browser_stats_cache["timestamp"] < 300 and patcher._deck_browser_stats_cache["data"]:
-    #     cards_today, time_today_seconds = patcher._deck_browser_stats_cache["data"]
-    # else:
-    cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (self.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
-    patcher._deck_browser_stats_cache["data"] = (cards_today, time_today_seconds)
-    patcher._deck_browser_stats_cache["timestamp"] = time.time()
+    if time.time() - patcher._deck_browser_stats_cache["timestamp"] < 300 and patcher._deck_browser_stats_cache["data"]:
+        cards_today, time_today_seconds = patcher._deck_browser_stats_cache["data"]
+    else:
+        cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (self.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+        patcher._deck_browser_stats_cache["data"] = (cards_today, time_today_seconds)
+        patcher._deck_browser_stats_cache["timestamp"] = time.time()
         
     time_today_seconds = time_today_seconds or 0
     cards_today = cards_today or 0

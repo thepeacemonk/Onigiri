@@ -105,34 +105,7 @@ class RestaurantLevelManager:
     def refresh_state(self) -> None:
         """Force reload of gamification state from disk."""
         self._state_cache = None
-        self._full_state_cache = None # Also clear full cache
         self._get_gamification_state()
-
-    def _save_gamification_state(self) -> None:
-        """Write the current restaurant_level state to disk while preserving other keys."""
-        try:
-            if self._gamification_file is None:
-                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
-            
-            # Read existing data to preserve other keys (achievements, daily_specials, etc.)
-            final_data = {}
-            if os.path.exists(self._gamification_file):
-                try:
-                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
-                        final_data = json.load(f)
-                except Exception as e:
-                    print(f"Error reading existing gamification data during save: {e}")
-            
-            # Update with the restaurant_level data from cache
-            if hasattr(self, '_full_state_cache') and self._full_state_cache:
-                final_data.update(self._full_state_cache)
-            
-            # Write the merged data back to file
-            with open(self._gamification_file, 'w', encoding='utf-8') as f:
-                json.dump(final_data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error saving gamification state: {e}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -943,10 +916,9 @@ class RestaurantLevelManager:
             self._state_cache = data
             self._full_state_cache['restaurant_level'] = data
             
-            # DEFERRED WRITE: We don't write to disk here anymore to prevent lag during reviews.
-            # The caller (e.g., _add_xp) should call _save_gamification_state() when appropriate,
-            # or we can rely on a periodic save / sync hook.
-            # For now, to be safe but faster, we will NOT write here.
+            # Write to disk WITHOUT reading first
+            with open(self._gamification_file, 'w', encoding='utf-8') as f:
+                json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
             print(f"Error updating gamification data: {e}")
@@ -996,7 +968,9 @@ class RestaurantLevelManager:
             self._state_cache['daily_special'] = state_to_save
             self._full_state_cache['restaurant_level'] = self._state_cache
             
-            # DEFERRED WRITE: See _update_gamification_data
+            # Write to disk WITHOUT reading first
+            with open(self._gamification_file, 'w', encoding='utf-8') as f:
+                json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
             print(f"Error updating daily special data: {e}")
@@ -1129,9 +1103,6 @@ class RestaurantLevelManager:
         
         # We NO LONGER write to config.json here!
         # config.write_config(conf)
-        
-        # SAVE STATE ONCE at the end of the transaction
-        self._save_gamification_state()
         
         return notifications
     

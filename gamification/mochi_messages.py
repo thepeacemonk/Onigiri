@@ -11,16 +11,14 @@ class MochiMessenger:
     def __init__(self) -> None:
         self._reviews_since_last: int = 0
         self._last_message: Optional[str] = None
-        self._config_cache: Optional[dict] = None
 
-    def _mochi_config(self) -> dict:
-        if self._config_cache is None:
-            conf = config.get_config()
-            mochi_conf = conf.get("mochi_messages", {})
-            if not isinstance(mochi_conf, dict):
-                mochi_conf = {}
-            self._config_cache = mochi_conf
-        return self._config_cache
+    @staticmethod
+    def _mochi_config() -> dict:
+        conf = config.get_config()
+        mochi_conf = conf.get("mochi_messages", {})
+        if not isinstance(mochi_conf, dict):
+            mochi_conf = {}
+        return mochi_conf
 
     def _is_enabled(self) -> bool:
         return bool(self._mochi_config().get("enabled", False))

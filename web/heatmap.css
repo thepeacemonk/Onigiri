@@ -177,9 +177,7 @@
     background-color: var(--heatmap-level-0) !important;
 }
 
-.night-mode .heatmap-day-cell[data-level="0"] .day-shape,
-.nightMode .heatmap-day-cell[data-level="0"] .day-shape,
-.night .heatmap-day-cell[data-level="0"] .day-shape {
+.night-mode .heatmap-day-cell[data-level="0"] .day-shape {
     background-color: var(--heatmap-level-0);
 }
 
@@ -211,9 +209,7 @@
     background-color: var(--heatmap-future-0) !important;
 }
 
-.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
     background-color: var(--heatmap-future-0);
 }
 
@@ -235,33 +231,23 @@
 
 
 /* Night Mode Overrides: Lighter shades for more due reviews */
-.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
     background-color: var(--heatmap-future-0);
 }
 
-.night-mode .heatmap-day-cell.future-day[data-due-level="1"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="1"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="1"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="1"] .day-shape {
     background-color: var(--heatmap-future-1);
 }
 
-.night-mode .heatmap-day-cell.future-day[data-due-level="2"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="2"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="2"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="2"] .day-shape {
     background-color: var(--heatmap-future-2);
 }
 
-.night-mode .heatmap-day-cell.future-day[data-due-level="3"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="3"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="3"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="3"] .day-shape {
     background-color: var(--heatmap-future-3);
 }
 
-.night-mode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape,
-.nightMode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape,
-.night .heatmap-day-cell.future-day[data-due-level="4"] .day-shape {
+.night-mode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape {
     background-color: var(--heatmap-future-4);
 }
 
@@ -273,34 +259,17 @@
     bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
-    /* Default to dark background, light text (Light Mode) */
-    background-color: #333 !important;
-    color: #fff !important;
+    background-color: var(--fg);
+    color: var(--bg);
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
     white-space: pre;
-    z-index: 10000;
+    z-index: 10;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease, visibility 0.2s ease;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    /* Ensure font properties don't inherit unwanted values */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    font-weight: normal;
-    line-height: 1.4;
-    text-align: center;
-}
-
-/* Dark Mode Overrides for Tooltip */
-.night .heatmap-day-cell::after,
-.nightMode .heatmap-day-cell::after,
-.night-mode .heatmap-day-cell::after {
-    /* Light background, dark text (Dark Mode) */
-    background-color: #eee !important;
-    color: #000 !important;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
