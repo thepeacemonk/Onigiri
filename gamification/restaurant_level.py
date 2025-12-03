@@ -109,15 +109,28 @@ class RestaurantLevelManager:
         self._get_gamification_state()
 
     def _save_gamification_state(self) -> None:
-        """Write the current full state cache to disk."""
+        """Write the current restaurant_level state to disk while preserving other keys."""
         try:
             if self._gamification_file is None:
                 addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
             
+            # Read existing data to preserve other keys (achievements, daily_specials, etc.)
+            final_data = {}
+            if os.path.exists(self._gamification_file):
+                try:
+                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
+                        final_data = json.load(f)
+                except Exception as e:
+                    print(f"Error reading existing gamification data during save: {e}")
+            
+            # Update with the restaurant_level data from cache
             if hasattr(self, '_full_state_cache') and self._full_state_cache:
-                with open(self._gamification_file, 'w', encoding='utf-8') as f:
-                    json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
+                final_data.update(self._full_state_cache)
+            
+            # Write the merged data back to file
+            with open(self._gamification_file, 'w', encoding='utf-8') as f:
+                json.dump(final_data, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving gamification state: {e}")
 

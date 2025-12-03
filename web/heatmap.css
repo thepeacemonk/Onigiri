@@ -274,18 +274,23 @@
     left: 50%;
     transform: translateX(-50%);
     /* Default to dark background, light text (Light Mode) */
-    background-color: #333;
-    color: #fff;
+    background-color: #333 !important;
+    color: #fff !important;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
     white-space: pre;
-    z-index: 10;
+    z-index: 10000;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease, visibility 0.2s ease;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    /* Ensure font properties don't inherit unwanted values */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-weight: normal;
+    line-height: 1.4;
+    text-align: center;
 }
 
 /* Dark Mode Overrides for Tooltip */
@@ -293,9 +298,9 @@
 .nightMode .heatmap-day-cell::after,
 .night-mode .heatmap-day-cell::after {
     /* Light background, dark text (Dark Mode) */
-    background-color: #eee;
-    color: #000;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    background-color: #eee !important;
+    color: #000 !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
