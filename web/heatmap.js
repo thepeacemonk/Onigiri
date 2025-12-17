@@ -254,6 +254,11 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         const preparedData = prepareData(data);
 
+        // Initialize view from config if available (defaulting to 'year' is handled by config.py/heatmap.py logic, but fallback here too)
+        if (config.heatmapDefaultView) {
+            state.view = config.heatmapDefaultView;
+        }
+
         function draw() {
             const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} day streak</div>` : '';
 

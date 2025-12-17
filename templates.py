@@ -258,6 +258,26 @@ const OnigiriEditor = {
 
         document.getElementById('transfer-decks-btn').addEventListener('click', this.openTransferWindow.bind(this));
 
+        // --- RESTORE EDIT MODE STATE FROM SESSIONSTORAGE ---
+        // This ensures edit mode persists across page refreshes (e.g., after deck operations)
+        try {
+            const savedEditMode = sessionStorage.getItem('onigiri_edit_mode');
+            const savedSelectedDecks = sessionStorage.getItem('onigiri_selected_decks');
+            
+            if (savedEditMode === 'true') {
+                // Restore selected decks first
+                if (savedSelectedDecks) {
+                    const deckIds = JSON.parse(savedSelectedDecks);
+                    this.SELECTED_DECKS = new Set(deckIds);
+                }
+                // Then enter edit mode (this will apply the checkboxes)
+                this.enterEditMode();
+            }
+        } catch (e) {
+            // If sessionStorage fails, just continue without restoring state
+            console.warn('Failed to restore edit mode state:', e);
+        }
+
         // --- NEW SELF-HEALING OBSERVER ---
         // This watches for changes to the deck list (like after a collapse)
         const deckTreeBody = document.querySelector('#decktree > tbody');
@@ -301,6 +321,13 @@ const OnigiriEditor = {
         this.EDIT_MODE = true;
         document.body.classList.add('deck-edit-mode');
         this.reapplyEditModeState();
+        
+        // Save edit mode state to sessionStorage
+        try {
+            sessionStorage.setItem('onigiri_edit_mode', 'true');
+        } catch (e) {
+            console.warn('Failed to save edit mode state:', e);
+        }
     },
 
     exitEditMode: function() {
@@ -309,6 +336,14 @@ const OnigiriEditor = {
         document.body.classList.remove('deck-edit-mode');
         document.querySelectorAll('.deck-checkbox').forEach(cb => cb.remove());
         this.SELECTED_DECKS.clear();
+        
+        // Clear edit mode state from sessionStorage
+        try {
+            sessionStorage.removeItem('onigiri_edit_mode');
+            sessionStorage.removeItem('onigiri_selected_decks');
+        } catch (e) {
+            console.warn('Failed to clear edit mode state:', e);
+        }
     },
 
     reapplyEditModeState: function() {
@@ -328,6 +363,14 @@ const OnigiriEditor = {
                     this.SELECTED_DECKS.add(e.target.dataset.did);
                 } else {
                     this.SELECTED_DECKS.delete(e.target.dataset.did);
+                }
+                
+                // Save selected decks to sessionStorage whenever selection changes
+                try {
+                    const deckIds = Array.from(this.SELECTED_DECKS);
+                    sessionStorage.setItem('onigiri_selected_decks', JSON.stringify(deckIds));
+                } catch (e) {
+                    console.warn('Failed to save selected decks:', e);
                 }
             };
 

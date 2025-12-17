@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        /* --- Base Styles & Font --- */
+        html,
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        /* --- Bubble Animation (Same as welcome.html) --- */
+
+        :root {
+            /* Adapted color palette */
+            --color-bg1: #123034;
+            --color-bg2: #0F2327;
+            --color1: 46, 176, 194;
+            /* #2EB0C2 */
+            --color2: 96, 152, 176;
+            /* #6098B0 */
+            --color3: 40, 120, 150;
+            --circle-size: 80%;
+            --blending: screen;
+        }
+
+        @keyframes moveInCircle {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            50% {
+                transform: rotate(180deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes moveVertical {
+            0% {
+                transform: translateY(-50%);
+            }
+
+            50% {
+                transform: translateY(50%);
+            }
+
+            100% {
+                transform: translateY(-50%);
+            }
+        }
+
+        .gradient-bg {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            overflow: hidden;
+            background: linear-gradient(40deg, var(--color-bg1), var(--color-bg2));
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .gradient-bg svg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .gradients-container {
+            filter: url(#goo) blur(40px);
+            width: 100%;
+            height: 100%;
+        }
+
+        .g1,
+        .g2,
+        .g3 {
+            position: absolute;
+            mix-blend-mode: var(--blending);
+            width: var(--circle-size);
+            height: var(--circle-size);
+            top: calc(50% - var(--circle-size) / 2);
+            left: calc(50% - var(--circle-size) / 2);
+            opacity: 1;
+        }
+
+        .g1 {
+            background: radial-gradient(circle at center, rgba(var(--color1), 0.8) 0, rgba(var(--color1), 0) 50%) no-repeat;
+            transform-origin: center center;
+            animation: moveVertical 15s ease infinite;
+        }
+
+        .g2 {
+            background: radial-gradient(circle at center, rgba(var(--color2), 0.8) 0, rgba(var(--color2), 0) 50%) no-repeat;
+            transform-origin: calc(50% - 400px);
+            animation: moveInCircle 12s reverse infinite;
+        }
+
+        .g3 {
+            background: radial-gradient(circle at center, rgba(var(--color3), 0.8) 0, rgba(var(--color3), 0) 50%) no-repeat;
+            transform-origin: calc(50% + 400px);
+            animation: moveInCircle 20s linear infinite;
+        }
+
+
+        /* --- Content Styles --- */
+        .content-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            /* Changed to flex-start for scrolling if needed */
+            padding: 30px;
+            box-sizing: border-box;
+            color: #ffffff;
+            text-align: center;
+            overflow-y: auto;
+            /* Allow scrolling for credits list */
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .content-wrapper::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .content-wrapper {
+            -ms-overflow-style: none;
+            /* IE and Edge */
+            scrollbar-width: none;
+            /* Firefox */
+        }
+
+        .content-wrapper img {
+            max-width: 150px;
+            margin-bottom: 20px;
+            margin-top: 10px;
+        }
+
+        .content-wrapper h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.2);
+            margin-top: 0;
+        }
+
+        .credits-list {
+            text-align: left;
+            max-width: 600px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #e0e0e0;
+        }
+
+        .credits-list ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .credits-list li {
+            margin-bottom: 12px;
+        }
+
+        .credits-list a {
+            color: #6098B0;
+            /* Matches --color2 but solid */
+            color: #4db6ac;
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(77, 182, 172, 0.5);
+            transition: all 0.2s;
+        }
+
+        .credits-list a:hover {
+            color: #80cbc4;
+            border-bottom-style: solid;
+        }
+
+        .close-button {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 30px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-bottom: 20px;
+        }
+
+        .close-button:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="gradient-bg">
+        <svg xmlns="http://www.w3.org/2000/svg" version="1.1">
+            <defs>
+                <filter id="goo">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
+                        result="goo" />
+                    <feBlend in="SourceGraphic" in2="goo" />
+                </filter>
+            </defs>
+        </svg>
+        <div class="gradients-container">
+            <div class="g1"></div>
+            <div class="g2"></div>
+            <div class="g3"></div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+        <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri Logo">
+        <h1>Credits and Acknowledgements</h1>
+
+        <div class="credits-list">
+            <p style="margin-top: 0;">The following projects and resources informed the design and development of this
+                add-on:</p>
+            <ul>
+                <li>Color palettes and themes:
+                    <a href="#"
+                        onclick="pycmd('open_link:https://github.com/catppuccin'); return false;">Catppuccin</a>,
+                    <a href="#" onclick="pycmd('open_link:https://draculatheme.com/'); return false;">Dracula</a>,
+                    <a href="#" onclick="pycmd('open_link:https://rosepinetheme.com/palette/'); return false;">Rosé
+                        Pine</a>,
+                    <a href="#"
+                        onclick="pycmd('open_link:https://www.nordtheme.com/docs/colors-and-palettes'); return false;">Nord</a>,
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ethanschoonover.com/solarized/'); return false;">Solarized</a>,
+                    <a href="#" onclick="pycmd('open_link:https://antinote.io/'); return false;">Antinote themes</a>.
+                </li>
+                <li>Visual and thematic inspiration:
+                    <a href="#" onclick="pycmd('open_link:https://mochi.cards/'); return false;">Mochi Cards</a>
+                </li>
+                <li>Add-on precedents by Shige:
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ankiweb.net/shared/info/911023479'); return false;">Enhance
+                        main window</a>,
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ankiweb.net/shared/info/1797615099'); return false;">Rearrange
+                        home addons</a>,
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ankiweb.net/shared/info/1959668791'); return false;">Anki
+                        Re-design</a> (all by Shige)
+                </li>
+                <li>Functional and UI guidance: Inspired by
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ankiweb.net/shared/info/1771074083'); return false;">Review
+                        Heatmap</a> (by Glutanamite) and
+                    <a href="#"
+                        onclick="pycmd('open_link:https://ankiweb.net/shared/info/1321246682'); return false;">Modern
+                        Material Theme</a>.
+                </li>
+                <li>This addon uses
+                    <a href="#"
+                        onclick="pycmd('open_link:https://github.com/niklasvh/html2canvas'); return false;">html2canvas</a>
+                    v1.4.1 by Niklas von Hertzen, distributed under the MIT License.
+                </li>
+            </ul>
+        </div>
+
+        <div class="credits-list">
+            <h1>Thank You</h1>
+            <ul>
+                <li>Thanks to the <b>Anki</b> and <a href="#"
+                        onclick="pycmd('open_link:https://github.com/h0tp-ftw/ankimon'); return false;">Ankimon</a>
+                    community for teaching me the essentials on coding and add-on development.</li>
+                <li>Thanks to <b>Ouranos</b>, <b>h0tp</b>, <b>Shige</b> and <b>Unlucky-Life</b> for the feedback and
+                    help
+                    throughout the process.</li>
+                <li>Thanks to my supporters on <a href="#"
+                        onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk'); return false;">Buy Me A
+                        Coffee</a> and <a href="#"
+                        onclick="pycmd('open_link:https://discord.gg/ZU9VZHMk3u'); return false;">Discord</a>.</li>
+            </ul>
+        </div>
+
+        <button class="close-button" onclick="pycmd('close');">Close</button>
+    </div>
+</body>
+
+</html>

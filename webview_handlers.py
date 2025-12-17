@@ -1,6 +1,7 @@
 from typing import Tuple, Any
 from aqt.deckbrowser import DeckBrowser
 from . import deck_tree_updater
+from . import create_deck_dialog
 from aqt import mw
 from aqt.utils import tooltip
 
@@ -8,6 +9,23 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
+    if cmd == "onigiri_create_deck":
+        try:
+             # tooltip("Debug: Opening Create Deck Dialog...")
+             if not hasattr(create_deck_dialog, 'CreateDeckDialog'):
+                 tooltip("Error: CreateDeckDialog class not found in module.")
+                 return (True, None)
+
+             dialog = create_deck_dialog.CreateDeckDialog(mw)
+             dialog.exec()
+             return (True, None) # Handled
+        except Exception as e:
+             import traceback
+             error_msg = f"Onigiri Error: {str(e)}\n{traceback.format_exc()}"
+             print(error_msg)
+             tooltip(f"Error showing create deck dialog: {e}")
+             return (True, None)
+
     if cmd.startswith("onigiri_collapse:"):
         try:
             deck_id = cmd.split(":", 1)[1]

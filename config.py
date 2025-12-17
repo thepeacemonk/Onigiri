@@ -12,11 +12,13 @@ DEFAULTS = {
     "hideNativeHeaderAndBottomBar": True,
     "proHide": False,
     "maxHide": False,
+    "flowMode": False,
     "gamificationMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
+    "hideRetentionStars": False,
     "achievements": {
         "enabled": False,
         "earned": {},
@@ -80,6 +82,7 @@ DEFAULTS = {
     "heatmapShowMonths": True,
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
+    "heatmapDefaultView": "year",
     "onigiriWidgetLayout": {
     "grid": {
         "studied": {"pos": 0, "row": 1, "col": 1},
@@ -118,6 +121,8 @@ DEFAULTS = {
     "onigiri_reviewer_bg_image_mode": "single", # "single" or "separate"
     "onigiri_reviewer_bg_blur": 0,
     "onigiri_reviewer_bg_opacity": 100,
+    # --- Reviewer Notification Position ---
+    "onigiri_reviewer_notification_position": "top-right", # top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
     # --- Reviewer Bottom Bar Settings ---
     "onigiri_reviewer_bottom_bar_bg_mode": "match_reviewer_bg", # "main", "color", "image", "image_color", "match_reviewer_bg"
     "onigiri_reviewer_bottom_bar_bg_light_color": "#f2f2f2",
@@ -137,6 +142,55 @@ DEFAULTS = {
     "onigiri_overview_bg_main_blur": 0,
     "onigiri_overview_bg_main_opacity": 100,
     "onigiri_overview_bg_light_color": "#f2f2f2",
+    # The following lines appear to be UI setup code and cannot be directly inserted into a dictionary.
+    # Assuming the intent was to add a default for 'onigiri_reviewer_btn_custom_enabled' if not already present.
+    # The other lines are likely from a different context (e.g., a settings dialog setup).
+    # "enable_label = QLabel("Enable Custom Buttons:")"
+    # "self.reviewer_btn_custom_enable_toggle = AnimatedToggleButton()"
+    # "self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", False))"
+    # "enable_layout.addWidget(enable_label)"
+    # "enable_layout.addWidget(self.reviewer_btn_custom_enable_toggle)ight": 60, # px (default height)
+    "onigiri_reviewer_btn_border_size": 0,
+    "onigiri_reviewer_btn_custom_enabled": True, # Global toggle (Default OFF)
+    "onigiri_reviewer_btn_radius": 12, # px
+    "onigiri_reviewer_btn_padding": 5, # px (affects size)
+    "onigiri_reviewer_btn_height": 40, # px (button height)
+    "onigiri_reviewer_bar_height": 60, # px (default height)
+    "onigiri_reviewer_btn_interval_color_light": "#555555",
+    "onigiri_reviewer_btn_interval_color_dark": "#dddddd",
+    "onigiri_reviewer_btn_border_color_light": "#DBDBDB",
+    "onigiri_reviewer_btn_border_color_dark": "#444444",
+    "onigiri_reviewer_btn_again_bg_light": "#ffb3b3",
+    "onigiri_reviewer_btn_again_text_light": "#4d0000",
+    "onigiri_reviewer_btn_again_bg_dark": "#ffcccb",
+    "onigiri_reviewer_btn_again_text_dark": "#4a0000",
+    "onigiri_reviewer_btn_hard_bg_light": "#ffe0b3",
+    "onigiri_reviewer_btn_hard_text_light": "#4d2600",
+    "onigiri_reviewer_btn_hard_bg_dark": "#ffd699",
+    "onigiri_reviewer_btn_hard_text_dark": "#4d1d00",
+    "onigiri_reviewer_btn_good_bg_light": "#b3ffb3",
+    "onigiri_reviewer_btn_good_text_light": "#004d00",
+    "onigiri_reviewer_btn_good_bg_dark": "#90ee90",
+    "onigiri_reviewer_btn_good_text_dark": "#004000",
+    "onigiri_reviewer_btn_easy_bg_light": "#b3d9ff",
+    "onigiri_reviewer_btn_easy_text_light": "#00264d",
+    "onigiri_reviewer_btn_easy_bg_dark": "#add8e6",
+    "onigiri_reviewer_btn_easy_text_dark": "#002952",
+    
+    # --- Other Bottom Bar Buttons (Show Answer, Edit, More, etc.) ---
+    "onigiri_reviewer_other_btn_bg_light": "#ffffff",
+    "onigiri_reviewer_other_btn_text_light": "#2c2c2c",
+    "onigiri_reviewer_other_btn_bg_dark": "#3a3a3a",
+    "onigiri_reviewer_other_btn_text_dark": "#e0e0e0",
+    "onigiri_reviewer_other_btn_hover_bg_light": "#2c2c2c",
+    "onigiri_reviewer_other_btn_hover_text_light": "#f0f0f0",
+    "onigiri_reviewer_other_btn_hover_bg_dark": "#e0e0e0",
+    "onigiri_reviewer_other_btn_hover_text_dark": "#3a3a3a",
+    
+    # --- Stat Text (.stattxt) Colors (intervals like "10m", "4d" and "+" signs) ---
+    "onigiri_reviewer_stattxt_color_light": "#666666",
+    "onigiri_reviewer_stattxt_color_dark": "#aaaaaa",
+
     "onigiri_overview_bg_dark_color": "#2C2C2C",
     "onigiri_overview_bg_image_light": "",
     "onigiri_overview_bg_image_dark": "",

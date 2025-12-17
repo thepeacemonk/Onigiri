@@ -62,7 +62,7 @@ BUTTON_HTML = {
                     <i class="icon"></i>
                     <span>Get Shared</span>
                 </div>
-                <div class="menu-item action-create-deck" onclick="pycmd('create')">
+                <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
                     <i class="icon"></i>
                     <span>Create Deck</span>
                 </div>
@@ -107,53 +107,55 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
 def _get_onigiri_stat_card_html(label: str, value: str, widget_id: str) -> str:
     return f"""<div class="stat-card {widget_id}-card"><h3>{label}</h3><p>{value}</p></div>"""
 
-# --- Caching for Retention Stats ---
-_retention_cache = {
-    "html": "",
-    "timestamp": 0,
-    "timeout": 300  # 5 minutes
-}
+# Global Cache for stats to prevent re-querying on every render frame
+_DASHBOARD_STATS_CACHE = {}
+_DASHBOARD_LAST_UPDATE = 0
+_DASHBOARD_CACHE_TTL = 3 # 3 seconds is enough to prevent spam during animations, but keeps it fresh
 
 def _get_onigiri_retention_html() -> str:
-    global _retention_cache
-    import time
+    # Use cached retention if available and fresh
+    global _DASHBOARD_STATS_CACHE, _DASHBOARD_LAST_UPDATE
+    now = __import__("time").time()
     
-    # Return cached if valid
-    if time.time() - _retention_cache["timestamp"] < _retention_cache["timeout"] and _retention_cache["html"]:
-        return _retention_cache["html"]
-
-    total_reviews, correct_reviews = mw.col.db.first(
-        "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
-        (mw.col.sched.dayCutoff - 86400) * 1000
-    ) or (0, 0)
-    total_reviews = total_reviews or 0
-    correct_reviews = correct_reviews or 0
-    retention_percentage = (correct_reviews / total_reviews * 100) if total_reviews > 0 else 0
+    if now - _DASHBOARD_LAST_UPDATE < _DASHBOARD_CACHE_TTL and "retention" in _DASHBOARD_STATS_CACHE:
+         retention_percentage = _DASHBOARD_STATS_CACHE["retention"]
+         total_reviews = _DASHBOARD_STATS_CACHE.get("total_reviews_retention", 0) # Fallback for stars check logic if needed
+    else:
+        total_reviews, correct_reviews = mw.col.db.first(
+            "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
+            (mw.col.sched.dayCutoff - 86400) * 1000
+        ) or (0, 0)
+        total_reviews = total_reviews or 0
+        correct_reviews = correct_reviews or 0
+        retention_percentage = (correct_reviews / total_reviews * 100) if total_reviews > 0 else 0
+        
+        # Update cache
+        _DASHBOARD_STATS_CACHE["retention"] = retention_percentage
+        _DASHBOARD_STATS_CACHE["total_reviews_retention"] = total_reviews
 
     if retention_percentage >= 90: stars = 5
     elif retention_percentage >= 70: stars = 4
     elif retention_percentage >= 50: stars = 3
     elif retention_percentage >= 30: stars = 2
-    elif total_reviews > 0: stars = 1
+    elif total_reviews > 0: stars = 1 # Use total_reviews from scope
     else: stars = 0
     
-    star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
+    conf = config.get_config()
+    if conf.get("hideRetentionStars", False):
+        star_rating_html = ""
+    else:
+        star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
+        star_rating_html = f'<div class="star-rating">{star_html}</div>'
 
-    html_content = f"""
+    return f"""
     <div class="stat-card retention-card">
         <h3>Retention</h3>
         <div class="retention-content">
             <p>{retention_percentage:.0f}%</p>
-            <div class="star-rating">{star_html}</div>
+            {star_rating_html}
         </div>
     </div>
     """
-    
-    # Update cache
-    _retention_cache["html"] = html_content
-    _retention_cache["timestamp"] = time.time()
-    
-    return html_content
 
 def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
@@ -280,6 +282,22 @@ def _get_onigiri_restaurant_level_html() -> str:
     addon_package = mw.addonManager.addonFromModule(__name__)
     image_path = f"/_addons/{addon_package}/system_files/gamification_images/restaurant_folder/{image_file}"
     
+    # Navigation buttons with inline SVGs (using currentColor for --fg-subtle inheritance)
+    shop_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="M24,10a.988.988,0,0,0-.024-.217l-1.3-5.868A4.968,4.968,0,0,0,17.792,0H6.208a4.968,4.968,0,0,0-4.88,3.915L.024,9.783A.988.988,0,0,0,0,10v1a3.984,3.984,0,0,0,1,2.643V19a5.006,5.006,0,0,0,5,5H18a5.006,5.006,0,0,0,5-5V13.643A3.984,3.984,0,0,0,24,11ZM2,10.109l1.28-5.76A2.982,2.982,0,0,1,6.208,2H7V5A1,1,0,0,0,9,5V2h6V5a1,1,0,0,0,2,0V2h.792A2.982,2.982,0,0,1,20.72,4.349L22,10.109V11a2,2,0,0,1-2,2H19a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H11a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H4a2,2,0,0,1-2-2ZM18,22H6a3,3,0,0,1-3-3V14.873A3.978,3.978,0,0,0,4,15H5a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,11,15h2a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,19,15h1a3.978,3.978,0,0,0,1-.127V19A3,3,0,0,1,18,22Z"/></svg>'''
+    
+    restaurant_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="m21 6.424v-2.424c1.654 0 3-1.346 3-3 0-.552-.447-1-1-1s-1 .448-1 1-.448 1-1 1h-19v-1c0-.552-.447-1-1-1s-1 .448-1 1v22c0 .552.447 1 1 1s1-.448 1-1v-19h5v2.424c-1.763.774-3 2.531-3 4.576v8c0 2.757 2.243 5 5 5h10c2.757 0 5-2.243 5-5v-8c0-2.045-1.237-3.802-3-4.576zm-12-2.424h10v2h-10zm13 15c0 1.654-1.346 3-3 3h-10c-1.654 0-3-1.346-3-3v-8c0-1.654 1.346-3 3-3h10c1.654 0 3 1.346 3 3zm-3-2c0-2.414-1.721-4.434-4-4.899v-.101c0-.552-.447-1-1-1s-1 .448-1 1v.101c-2.279.465-4 2.484-4 4.899-.553 0-1 .448-1 1s.447 1 1 1h10c.553 0 1-.448 1-1s-.447-1-1-1zm-5-3c1.654 0 3 1.346 3 3h-6c0-1.654 1.346-3 3-3z"/></svg>'''
+    
+    nav_buttons_html = f"""
+    <div class="rl-widget-nav-buttons">
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="Open Taiyaki Store">
+            {shop_svg}
+        </button>
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="Open Restaurant Level">
+            {restaurant_svg}
+        </button>
+    </div>
+    """
+    
     # Get Daily Special Data
     daily_special = restaurant_level.manager.get_daily_special_status()
     ds_enabled = daily_special.get("enabled", False)
@@ -296,7 +314,7 @@ def _get_onigiri_restaurant_level_html() -> str:
                 <div class="ds-text">{ds_progress} / {ds_target}</div>
             </div>
             <div class="ds-progress-bar">
-                <div class="ds-progress-fill" style="width: {percent}%"></div>
+                <div class="ds-progress-fill" style="width: {percent}%; background: {bar_color};"></div>
             </div>
         </div>
         """
@@ -304,13 +322,14 @@ def _get_onigiri_restaurant_level_html() -> str:
         ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
 
     return f"""
-    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}" onclick="this.classList.toggle('expanded-view')">
+    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}" onclick="this.classList.toggle('expanded-view')">
         <div class="restaurant-image-container">
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
         </div>
         <div class="restaurant-info">
             <div class="level-display">
+                {nav_buttons_html}
                 <span class="level-label">{name}</span>
                 <span class="level-value">{level}</span>
                 <div class="level-progress-container">
@@ -342,18 +361,21 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     onigiri_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
     onigiri_grid_html = ""
     
-    # --- Stats Caching ---
-    global _retention_cache # Reuse the same cache structure or create a new one? Let's create a new one for general stats
-    if not hasattr(patcher, "_deck_browser_stats_cache"):
-         patcher._deck_browser_stats_cache = {"data": None, "timestamp": 0}
+    # Check cache for main stats
+    global _DASHBOARD_STATS_CACHE, _DASHBOARD_LAST_UPDATE, _DASHBOARD_CACHE_TTL
+    now = __import__("time").time()
     
-    import time
-    if time.time() - patcher._deck_browser_stats_cache["timestamp"] < 300 and patcher._deck_browser_stats_cache["data"]:
-        cards_today, time_today_seconds = patcher._deck_browser_stats_cache["data"]
+    if now - _DASHBOARD_LAST_UPDATE < _DASHBOARD_CACHE_TTL and "cards_today" in _DASHBOARD_STATS_CACHE:
+        cards_today = _DASHBOARD_STATS_CACHE["cards_today"]
+        time_today_seconds = _DASHBOARD_STATS_CACHE["time_today_seconds"]
     else:
-        cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (self.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
-        patcher._deck_browser_stats_cache["data"] = (cards_today, time_today_seconds)
-        patcher._deck_browser_stats_cache["timestamp"] = time.time()
+        # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
+        cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", (self.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+        
+        # Update cache
+        _DASHBOARD_STATS_CACHE["cards_today"] = cards_today
+        _DASHBOARD_STATS_CACHE["time_today_seconds"] = time_today_seconds
+        _DASHBOARD_LAST_UPDATE = now
         
     time_today_seconds = time_today_seconds or 0
     cards_today = cards_today or 0
@@ -647,6 +669,61 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         /* Make snowflakes visible in expanded view too */
         .onigiri-restaurant-level-widget.expanded-view.with-snow .snowflake {{
             display: block;
+        }}
+        
+        /* Navigation buttons for Restaurant Level Widget */
+        .rl-widget-nav-buttons {{
+            display: flex;
+            gap: 0;
+            z-index: 20;
+            margin-bottom: 2px;
+            margin-left: 0; 
+            padding-left: 0;
+        }}
+        
+        .rl-nav-btn {{
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            margin-left: 0;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            transition: all 0.2s ease;
+            color: var(--fg-subtle, #757575);
+        }}
+        
+        .night .rl-nav-btn {{
+            background: transparent;
+            color: var(--fg-subtle, #9e9e9e);
+        }}
+        
+        .rl-nav-btn:hover {{
+            background: transparent;
+            color: var(--theme-color);
+            transform: none;
+            border: none;
+            box-shadow: none;
+            outline: none;
+        }}
+        
+        .night .rl-nav-btn:hover {{
+            background: transparent;
+            color: var(--theme-color);
+            border: none;
+        }}
+        
+        .rl-nav-icon {{
+            width: 16px;
+            height: 16px;
+        }}
+        
+        /* Style for expanded view - reduce button visibility */
+        .onigiri-restaurant-level-widget.expanded-view .rl-widget-nav-buttons {{
+            opacity: 0.5;
         }}
     </style>
     {title_html}

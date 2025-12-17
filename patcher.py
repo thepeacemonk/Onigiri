@@ -38,9 +38,7 @@ from . import config
 from . import onigiri_renderer
 from . import deck_tree_updater
 from .gamification import restaurant_level
-from .gamification.achievements import manager as achievement_manager
 from . import menu_buttons, settings, heatmap, fonts
-from .gamification import achievements, restaurant_level
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
 from . import deck_tree_updater
@@ -276,24 +274,10 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 # --- Profile Page Generation ---
 
 _profile_dialog = None
-_achievements_dialog = None
 _restaurant_dialog = None
 
 
-def _load_achievements_html(conf):
-    addon_path = os.path.dirname(__file__)
-    template_path = os.path.join(addon_path, "web", "gamification", "achievements", "achievements.html")
-    try:
-        with open(template_path, "r", encoding="utf-8") as template_file:
-            template = template_file.read()
-    except FileNotFoundError:
-        return "<body><div class='missing-template'>Achievements template missing.</div></body>"
-
-    enabled = conf.get("achievements", {}).get("enabled", False)
-    return template.replace("__ENABLED__", "true" if enabled else "false")
-
-
-def _load_restaurant_html(enabled: bool) -> str:
+def _load_restaurant_html(enabled: bool, addon_package: str) -> str:
     addon_path = os.path.dirname(__file__)
     template_path = os.path.join(addon_path, "system_files", "gamification_images", "restaurant_folder", "restaurant_level.html")
     try:
@@ -302,7 +286,7 @@ def _load_restaurant_html(enabled: bool) -> str:
     except FileNotFoundError:
         return "<body><div class='missing-template'>Restaurant Level template missing.</div></body>"
 
-    return template.replace("__ENABLED__", "true" if enabled else "false")
+    return template.replace("__ENABLED__", "true" if enabled else "false").replace("__ADDON_PACKAGE__", addon_package)
 
 
 def _load_mr_taiyaki_store_html() -> str:
@@ -313,58 +297,6 @@ def _load_mr_taiyaki_store_html() -> str:
             return template_file.read()
     except FileNotFoundError:
         return "<body><div class='missing-template'>Store template missing.</div></body>"
-
-
-class AchievementsDialog(QDialog):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setWindowTitle("Onigiri Achievements")
-        self.setMinimumSize(560, 620)
-        self.setMaximumWidth(720)
-
-        self.web = AnkiWebView(self)
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.web)
-        self.setLayout(layout)
-
-        conf = config.get_config()
-        addon_package = mw.addonManager.addonFromModule(__name__)
-
-        enabled = bool(conf.get("achievements", {}).get("enabled", False))
-        snapshot = None
-        try:
-            snapshot = achievements.manager.refresh(force=True)
-        except Exception:
-            snapshot = None
-        if not snapshot:
-            snapshot = achievements.manager.get_snapshot()
-
-        payload = {
-            "enabled": enabled,
-            "snapshot": snapshot,
-        }
-
-        data_script = f"<script>window.ONIGIRI_ACHIEVEMENTS = {json.dumps(payload, ensure_ascii=False)};</script>"
-        head_html = generate_dynamic_css(conf) + data_script
-
-        css_files = [
-            f"/_addons/{addon_package}/web/gamification/achievements/achievements.css",
-        ]
-        js_files = [
-            f"/_addons/{addon_package}/web/gamification/achievements/achievements.js",
-        ]
-
-        body_html = _load_achievements_html(conf)
-        self.web.stdHtml(body_html, css=css_files, js=js_files, head=head_html, context=self)
-
-
-def open_achievements_dialog():
-    global _achievements_dialog
-    if _achievements_dialog is not None:
-        _achievements_dialog.close()
-    _achievements_dialog = AchievementsDialog(mw)
-    _achievements_dialog.show()
 
 
 class RestaurantLevelDialog(QDialog):
@@ -391,31 +323,45 @@ class RestaurantLevelDialog(QDialog):
         addon_package = mw.addonManager.addonFromModule(__name__)
 
         progress = restaurant_level.manager.get_progress_payload()
-        try:
-            metrics = achievements.compute_metrics()
-        except Exception:
-            metrics = {}
+        
+        # Compute date labels directly instead of using achievements.compute_metrics()
+        from datetime import datetime, timedelta
+        today = datetime.now()
+        today_label = today.strftime("%b %d, %Y")  # e.g., "Dec 16, 2025"
+        
+        # Calculate week range (assuming week starts on Monday)
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        week_label = f"{week_start.strftime('%b %d')} – {week_end.strftime('%b %d')}"
+        
+        # Get week review count from database
+        week_reviews = 0
+        if mw.col and getattr(mw.col, "db", None):
+            day_cutoff = mw.col.sched.dayCutoff
+            week_start_ts = (day_cutoff - 86400 * 7) * 1000  # 7 days ago in ms
+            week_reviews = mw.col.db.scalar(
+                "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
+                week_start_ts
+            ) or 0
 
-        # Get today's review count using the same method as Anki's stats
+        # Get today's review count using direct database query
+        # This correctly counts only actual reviews from today, not deck resets or other operations
+        # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
         today_reviews = 0
 
-        if mw.col:
-            try:
-                today_reviews = mw.col.stats().todayStats().studied
-            except:
-                if getattr(mw.col, "db", None):
-                    day_cutoff = mw.col.sched.dayCutoff
-                    today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
-                    today_reviews = mw.col.db.scalar(
-                        "SELECT COUNT() FROM revlog WHERE id >= ?",
-                        today_start * 1000
-                    ) or 0
+        if mw.col and getattr(mw.col, "db", None):
+            day_cutoff = mw.col.sched.dayCutoff
+            today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
+            today_reviews = mw.col.db.scalar(
+                "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
+                today_start * 1000
+            ) or 0
         
         stats_payload = {
             "todayReviews": today_reviews,  # Today's review count from the database
-            "todayLabel": metrics.get("today_label") or "",
-            "weekReviews": int(metrics.get("current_week_review_count", 0) or 0),
-            "weekLabel": metrics.get("current_week_label") or "",
+            "todayLabel": today_label,
+            "weekReviews": week_reviews,
+            "weekLabel": week_label,
             "totalXp": int(progress.get("totalXp", 0) or 0),
         }
 
@@ -425,6 +371,49 @@ class RestaurantLevelDialog(QDialog):
         current_theme_color = restaurant_level.manager.get_current_theme_color()
         current_theme_image = restaurant_level.manager.get_current_theme_image()
         current_theme_id = restaurant_level.manager.get_current_theme_id()
+        
+        # Sync today's completed special to daily_specials if not already there
+        daily_special_status = restaurant_level.manager.get_daily_special_status()
+        if daily_special_status.get("enabled", False):
+            current_progress = daily_special_status.get("current_progress", 0)
+            target = daily_special_status.get("target", 100)
+            
+            if current_progress >= target:
+                # Today's special is completed - ensure it's in daily_specials
+                from datetime import datetime
+                today = datetime.now().strftime('%Y-%m-%d')
+                special_id = f"daily_{today}"
+                
+                gamification = get_gamification_manager()
+                existing = next((s for s in gamification.daily_specials if s.id == special_id), None)
+                
+                if not existing:
+                    # Calculate difficulty based on target
+                    if target <= 50:
+                        difficulty = "Common"
+                    elif target <= 100:
+                        difficulty = "Uncommon"
+                    else:
+                        difficulty = "Rare"
+                    
+                    # Calculate XP
+                    xp_earned = target * 5
+                    if difficulty == "Uncommon":
+                        xp_earned = int(xp_earned * 1.5)
+                    elif difficulty == "Rare":
+                        xp_earned = xp_earned * 2
+                    
+                    # Add today's completed special to the list
+                    gamification.add_daily_special(
+                        special_id=special_id,
+                        name=f"Daily Special - {today}",
+                        description="Complete your daily review goal",
+                        difficulty=difficulty,
+                        target_cards=target,
+                        completed=True,
+                        cards_completed=current_progress,
+                        xp_earned=xp_earned
+                    )
         
         payload = {
             "progress": progress,
@@ -437,7 +426,7 @@ class RestaurantLevelDialog(QDialog):
                 "restaurant_countdown_hour": mw.col.conf.get("rollover", 4),
                 "restaurant_countdown_minute": 0
             },
-            "daily_special": restaurant_level.manager.get_daily_special_status(),
+            "daily_special": daily_special_status,
             "completed_specials": [
                 {
                     "date": s.completed_date.split("T")[0] if s.completed_date else "",
@@ -464,7 +453,7 @@ class RestaurantLevelDialog(QDialog):
             f"/_addons/{addon_package}/web/gamification/restaurant_level/restaurant_level.js",
         ]
 
-        body_html = _load_restaurant_html(progress.get("enabled", False))
+        body_html = _load_restaurant_html(progress.get("enabled", False), addon_package)
         self.web.stdHtml(body_html, css=css_files, js=js_files, head=head_html, context=self)
 
 def open_restaurant_level_dialog():
@@ -715,25 +704,15 @@ def _get_stats_html():
     conf = config.get_config()
     show_heatmap = conf.get("showHeatmapOnProfile", True)
 
-    # 1. Calculate today's stats from the database
-    cards_today, time_today_seconds = mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+    # Calculate today's stats from the database directly
+    # This correctly counts only actual reviews from today, not deck resets or other operations
+    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
+    cards_today, time_today_seconds = mw.col.db.first(
+        "select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", 
+        (mw.col.sched.dayCutoff - 86400) * 1000
+    ) or (0, 0)
     time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
     cards_today = cards_today if cards_today is not None else 0
-    time_today_minutes = time_today_seconds / 60
-    # 1. Calculate today's stats using Anki's native API for consistency
-    try:
-        stats = mw.col.stats().todayStats()
-        cards_today = stats.studied
-        # time is in seconds in the stats object? No, it's usually a formatted string or similar in some contexts, 
-        # but todayStats() returns a CollectionStats object. 
-        # Actually, let's check what todayStats returns. It returns a CollectionStats object which has 'studied' and 'time'.
-        # 'time' is in seconds.
-        time_today_seconds = stats.time
-    except:
-        # Fallback
-        cards_today, time_today_seconds = mw.col.db.first("select count(), sum(time)/1000 from revlog where id > ?", (mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
-        time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
-        cards_today = cards_today if cards_today is not None else 0
 
     time_today_minutes = time_today_seconds / 60
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
@@ -1076,6 +1055,13 @@ def on_webview_js_message(handled, message, context):
         if cmd == "showUserProfile":
             open_profile()
             return (True, None)
+        if cmd == "openTaiyakiStore":
+            from .gamification.taiyaki_store import open_taiyaki_store
+            open_taiyaki_store()
+            return (True, None)
+        if cmd == "openRestaurantLevel":
+            open_restaurant_level_dialog()
+            return (True, None)
         if cmd == "showGamification":
             open_gamification_dialog()
             return (True, None)
@@ -1105,7 +1091,14 @@ def on_webview_js_message(handled, message, context):
             QDesktopServices.openUrl(QUrl("https://ankiweb.net/shared/decks"))
             return (True, None)
         if cmd == "create":
-            mw.deckBrowser._on_create()
+            # Fix for duplicate dialog: Use QInputDialog directly and create deck manually
+            # instead of calling _on_create() which was triggering the dialog twice
+            name, ok = QInputDialog.getText(mw, "Create Deck", "Name:")
+            if ok and name:
+                # Create the deck
+                mw.col.decks.id(name)
+                # Refresh the deck browser to show the new deck
+                mw.deckBrowser.refresh()
             return (True, None)
         if cmd.startswith("opts:"):
             try:
@@ -1224,7 +1217,8 @@ def patch_overview():
 	
 	conf = config.get_config()
 	show_toolbar_replacements = conf.get("hideNativeHeaderAndBottomBar", False)
-	pro_hide = conf.get("proHide", False)
+	max_hide = conf.get("maxHide", False)
+	flow_mode = conf.get("flowMode", False)
     
 	overview_style = mw.col.conf.get("onigiri_overview_style", "pro")
 	style_class = "mini-overview" if overview_style == "mini" else ""
@@ -1342,7 +1336,7 @@ def patch_overview():
 	Overview._table = new_table
 	
 	header_html = ""
-	if show_toolbar_replacements and not pro_hide:
+	if show_toolbar_replacements and not flow_mode:
 		header_html = """
     <div id="onigiri-overview-header" class="overview-header">
         <div class="onigiri-reviewer-header-buttons">
@@ -1512,10 +1506,10 @@ def patch_congrats_page():
 
         # Check for hide mode to determine if the header should be shown
         show_toolbar_replacements = conf.get("hideNativeHeaderAndBottomBar", False)
-        pro_hide = conf.get("proHide", False)
+        max_hide = conf.get("maxHide", False)
 
         header_html = ""
-        if show_toolbar_replacements and not pro_hide:
+        if show_toolbar_replacements and not max_hide:
             header_html = """
             <div class="overview-header">
                 <div class="onigiri-reviewer-header-buttons">
@@ -2175,7 +2169,7 @@ def generate_reviewer_top_bar_html_and_css():
     conf = config.get_config()
     is_base_hide_mode = (
         conf.get("hideNativeHeaderAndBottomBar", False)
-        and not conf.get("proHide", False)
+        and not conf.get("flowMode", False)
     )
     if not is_base_hide_mode:
         return "", ""
@@ -2980,46 +2974,34 @@ def generate_dynamic_css(conf):
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
 		canvas_inset = colors_dict.get("--canvas-inset", "#ffffff")
-		# Default to a greenish color if not set, though it should be set by theme
-		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8") 
+		# Get user-defined heatmap colors
+		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8")
+		heatmap_color_zero = colors_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
 		
-		# Past/Due Level 0
-		if is_night_mode:
-			# Night: color-mix(in srgb, var(--canvas-inset) 98%, white 2%)
-			l0 = _mix_colors(canvas_inset, "#ffffff", 0.98)
-		else:
-			# Day: color-mix(in srgb, var(--canvas-inset) 92%, black 8%)
-			l0 = _mix_colors(canvas_inset, "#000000", 0.92)
+		# Past/Due Level 0 - use the user-defined heatmap-color-zero
+		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		
-		colors_dict["--heatmap-level-0"] = l0
-		
-		# Levels 1-4 (Past)
+		# Levels 1-4 (Past) - blend from heatmap_color to canvas_inset
 		colors_dict["--heatmap-level-1"] = _mix_colors(heatmap_color, canvas_inset, 0.25)
 		colors_dict["--heatmap-level-2"] = _mix_colors(heatmap_color, canvas_inset, 0.50)
 		colors_dict["--heatmap-level-3"] = _mix_colors(heatmap_color, canvas_inset, 0.75)
 		colors_dict["--heatmap-level-4"] = heatmap_color
 		
-		# Future Levels 0-4
-		colors_dict["--heatmap-future-0"] = l0
+		# Future Levels 0-4 - use heatmap_color_zero as base with intensity variations
+		colors_dict["--heatmap-future-0"] = heatmap_color_zero
 		
 		if is_night_mode:
-			 # L1: canvas 80%, white 20%
-			 colors_dict["--heatmap-future-1"] = _mix_colors(canvas_inset, "#ffffff", 0.80)
-			 # L2: canvas 60%, white 40%
-			 colors_dict["--heatmap-future-2"] = _mix_colors(canvas_inset, "#ffffff", 0.60)
-			 # L3: canvas 40%, white 60%
-			 colors_dict["--heatmap-future-3"] = _mix_colors(canvas_inset, "#ffffff", 0.40)
-			 # L4: canvas 20%, white 80%
-			 colors_dict["--heatmap-future-4"] = _mix_colors(canvas_inset, "#ffffff", 0.20)
+			 # Dark mode: more reviews = lighter shade (mix with white)
+			 colors_dict["--heatmap-future-1"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.80)
+			 colors_dict["--heatmap-future-2"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.60)
+			 colors_dict["--heatmap-future-3"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.40)
+			 colors_dict["--heatmap-future-4"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.20)
 		else:
-			 # L1: canvas 88%, black 12%
-			 colors_dict["--heatmap-future-1"] = _mix_colors(canvas_inset, "#000000", 0.88)
-			 # L2: canvas 76%, black 24%
-			 colors_dict["--heatmap-future-2"] = _mix_colors(canvas_inset, "#000000", 0.76)
-			 # L3: canvas 64%, black 36%
-			 colors_dict["--heatmap-future-3"] = _mix_colors(canvas_inset, "#000000", 0.64)
-			 # L4: canvas 52%, black 48%
-			 colors_dict["--heatmap-future-4"] = _mix_colors(canvas_inset, "#000000", 0.52)
+			 # Light mode: more reviews = darker shade (mix with black)
+			 colors_dict["--heatmap-future-1"] = _mix_colors(heatmap_color_zero, "#000000", 0.88)
+			 colors_dict["--heatmap-future-2"] = _mix_colors(heatmap_color_zero, "#000000", 0.76)
+			 colors_dict["--heatmap-future-3"] = _mix_colors(heatmap_color_zero, "#000000", 0.64)
+			 colors_dict["--heatmap-future-4"] = _mix_colors(heatmap_color_zero, "#000000", 0.52)
 
 	_generate_heatmap_colors(light_colors, False)
 	_generate_heatmap_colors(dark_colors, True)
@@ -3116,8 +3098,6 @@ def generate_dynamic_css(conf):
     .modern-menu *:not(.card, .card *),
     .onigiri-profile-page,
     .onigiri-profile-page *:not(.card, .card *),
-    .onigiri-achievements,
-    .onigiri-achievements *:not(.card, .card *),
     .onigiri-restaurant,
     .onigiri-restaurant *:not(.card, .card *) {{
         {onigiri_ui_light}
@@ -3129,8 +3109,6 @@ def generate_dynamic_css(conf):
     .night-mode .modern-menu *:not(.card, .card *),
     .night-mode .onigiri-profile-page,
     .night-mode .onigiri-profile-page *:not(.card, .card *),
-    .night-mode .onigiri-achievements,
-    .night-mode .onigiri-achievements *:not(.card, .card *),
     .night-mode .onigiri-restaurant,
     .night-mode .onigiri-restaurant *:not(.card, .card *) {{
         {onigiri_ui_dark}
@@ -3415,7 +3393,9 @@ def apply_patches():
     patch_congrats_page()
     
     # Patch the webview to handle our custom messages
-    gui_hooks.webview_did_receive_js_message.append(on_webview_js_message)
+    # REMOVED: This hook is already registered in __init__.py line 292
+    # Keeping this line would cause double registration and duplicate dialogs
+    # gui_hooks.webview_did_receive_js_message.append(on_webview_js_message)
     
     # Add hook for toolbar visibility changes
     gui_hooks.state_did_change.append(_update_toolbar_visibility)
@@ -3423,3 +3403,259 @@ def apply_patches():
     # Mark the hook as registered and update toolbar state
     mw._onigiri_restaurant_hook_registered = True
     mw.progress.single_shot(0, lambda: _update_toolbar_visibility(mw.state, "startup"))
+
+def generate_reviewer_buttons_css(conf):
+    """
+    Generates CSS for the reviewer answer buttons based on user configuration.
+    """
+    css = []
+    
+    # Zen Mode: Hide the bottom bar (#outer) completely
+    max_hide = conf.get("maxHide", False)
+    if max_hide:
+        css.append("""
+        #outer {
+            display: none !important;
+        }
+        """)
+        # Return early since the bottom bar is hidden, no need for button styling
+        return "<style>" + "\\n".join(css) + "</style>"
+    
+    # Global Settings
+    border_color_light = conf.get("onigiri_reviewer_btn_border_color_light", "#DBDBDB")
+    border_color_dark = conf.get("onigiri_reviewer_btn_border_color_dark", "#444444")
+    
+    # New Settings
+    custom_enabled = conf.get("onigiri_reviewer_btn_custom_enabled", True)
+    radius = conf.get("onigiri_reviewer_btn_radius", 12)
+    padding = conf.get("onigiri_reviewer_btn_padding", 5)
+    btn_height = conf.get("onigiri_reviewer_btn_height", 40)
+    bar_height = conf.get("onigiri_reviewer_bar_height", 60)
+    
+    interval_color_light = conf.get("onigiri_reviewer_stattxt_color_light", "#666666")
+    interval_color_dark = conf.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa")
+
+    if custom_enabled:
+        # Base button style (Applied to all buttons: Show Answer, Edit, More, and Answer Buttons)
+        css.append(f"""
+        /* Bottom Bar Height */
+        #outer {{
+             height: {bar_height}px !important;
+             display: flex !important;
+             align-items: center !important;
+        }}
+        
+        /* Modernize ALL buttons in the bottom bar */
+        button {{
+            border: 2px solid transparent !important; /* Force transparent border */
+            border-radius: {radius}px !important; /* Customizable radius */
+            box-shadow: none !important; /* No shadow */
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; /* Smooth transition */
+            box-sizing: border-box !important;
+            cursor: pointer !important;
+            padding: {padding}px 15px !important; /* Customizable padding (size) */
+            margin: 0 5px !important; /* Spacing between buttons */
+            height: {btn_height}px !important; /* Customizable height */
+            min-height: {btn_height}px !important;
+        }}
+        
+        /* Hover effects for ease buttons only */
+        button[onclick*="ease"]:hover {{
+            transform: translateY(-2px);
+            box-shadow: none !important;
+        }}
+        
+        /* Other Buttons (Show Answer, Edit, More, etc.) - Explicit Colors with hover effects */
+        #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]) {{
+            background: {conf.get("onigiri_reviewer_other_btn_bg_light", "#f0f0f0")} !important;
+            background-color: {conf.get("onigiri_reviewer_other_btn_bg_light", "#f0f0f0")} !important;
+            background-image: none !important;
+            color: {conf.get("onigiri_reviewer_other_btn_text_light", "#2c2c2c")} !important;
+        }}
+        
+        #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):hover {{
+            background: {conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")} !important;
+            background-color: {conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")} !important;
+            background-image: none !important;
+            color: {conf.get("onigiri_reviewer_other_btn_hover_text_light", "#f0f0f0")} !important;
+            transform: translateY(-2px) !important;
+            box-shadow: none !important;
+        }}
+        
+        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]) {{
+            background: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
+            background-color: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
+            background-image: none !important;
+            color: {conf.get("onigiri_reviewer_other_btn_text_dark", "#e0e0e0")} !important;
+        }}
+        
+        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):hover {{
+            background: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
+            background-color: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
+            background-image: none !important;
+            color: {conf.get("onigiri_reviewer_other_btn_hover_text_dark", "#3a3a3a")} !important;
+            transform: translateY(-2px) !important;
+            box-shadow: none !important;
+        }}
+        
+        button:active {{
+            transform: translateY(0);
+            box-shadow: none !important;
+        }}
+        
+        .nightMode button {{
+            box-shadow: none !important;
+        }}
+        
+        .nightMode button:hover {{
+            box-shadow: none !important;
+        }}
+
+        /* Specific Answer Buttons Colors */
+        button[onclick*="ease"], button[data-cmd="ease"] {{
+            overflow: visible !important; /* Ensure content isn't clipped */
+            display: inline-flex !important; /* Align content nicely */
+            flex-direction: column !important; /* Stack text and interval if needed */
+            justify-content: center !important;
+            align-items: center !important;
+        }}
+
+        /* Fix missing interval numbers */
+        button[onclick*="ease"] table, button[onclick*="ease"] tr, button[onclick*="ease"] td,
+        button[data-cmd="ease"] table, button[data-cmd="ease"] tr, button[data-cmd="ease"] td {{
+            background: transparent !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: inherit !important;
+        }}
+        
+        
+        /* Stat Text (.stattxt and .nobold) - intervals and + signs */
+        .stattxt, .nobold {{
+            color: {interval_color_light} !important;
+            opacity: 0.9 !important;
+            font-weight: normal !important;
+            display: inline-block !important;
+            font-size: 0.9em !important;
+        }}
+        
+        .nightMode .stattxt, .nightMode .nobold {{
+             color: {interval_color_dark} !important;
+        }}
+        """)
+    
+        # Per-button settings
+        buttons = {
+            "1": "again",
+            "2": "hard",
+            "3": "good",
+            "4": "easy"
+        }
+        
+        defaults = {
+            "again": ("#ffb3b3", "#4d0000", "#ffcccb", "#4a0000"),
+            "hard": ("#ffe0b3", "#4d2600", "#ffd699", "#4d1d00"),
+            "good": ("#b3ffb3", "#004d00", "#90ee90", "#004000"),
+            "easy": ("#b3d9ff", "#00264d", "#add8e6", "#002952")
+        }
+        
+        for ease, key in buttons.items():
+            def_bg_l, def_txt_l, def_bg_d, def_txt_d = defaults[key]
+            
+            bg_light = conf.get(f"onigiri_reviewer_btn_{key}_bg_light", def_bg_l)
+            text_light = conf.get(f"onigiri_reviewer_btn_{key}_text_light", def_txt_l)
+            bg_dark = conf.get(f"onigiri_reviewer_btn_{key}_bg_dark", def_bg_d)
+            text_dark = conf.get(f"onigiri_reviewer_btn_{key}_text_dark", def_txt_d)
+            
+            css.append(f"""
+            #outer button[data-onigiri-ease="{ease}"],
+            #outer button[onclick*="ease{ease}"], 
+            #outer button[data-cmd="ease{ease}"], 
+            #outer #ease{ease} {{
+                background: {bg_light} !important;
+                background-color: {bg_light} !important;
+                background-image: none !important;
+                color: {text_light} !important;
+            }}
+            #outer button[data-onigiri-ease="{ease}"]:hover,
+            #outer button[onclick*="ease{ease}"]:hover, 
+            #outer button[data-cmd="ease{ease}"]:hover, 
+            #outer #ease{ease}:hover {{
+                background: {text_light} !important;
+                background-color: {text_light} !important;
+                background-image: none !important;
+                color: {bg_light} !important;
+                cursor: pointer !important;
+            }}
+
+            .nightMode #outer button[data-onigiri-ease="{ease}"],
+            .nightMode #outer button[onclick*="ease{ease}"], 
+            .nightMode #outer button[data-cmd="ease{ease}"], 
+            .nightMode #outer #ease{ease} {{
+                background: {bg_dark} !important;
+                background-color: {bg_dark} !important;
+                background-image: none !important;
+                color: {text_dark} !important;
+            }}
+            .nightMode #outer button[data-onigiri-ease="{ease}"]:hover,
+            .nightMode #outer button[onclick*="ease{ease}"]:hover, 
+            .nightMode #outer button[data-cmd="ease{ease}"]:hover, 
+            .nightMode #outer #ease{ease}:hover {{
+                background: {text_dark} !important;
+                background-color: {text_dark} !important;
+                background-image: none !important;
+                color: {bg_dark} !important;
+            }}
+            """)
+
+        # JS Injection for robust button detection
+        css.append("""
+        <script>
+        (function() {
+            function classifyButtons() {
+                const buttons = document.querySelectorAll('#outer button, button');
+                buttons.forEach(btn => {
+                    // Check if already processed
+                    if (btn.hasAttribute('data-onigiri-ease')) return;
+
+                    const onclick = btn.getAttribute('onclick') || '';
+                    const cmd = btn.getAttribute('data-cmd') || '';
+                    const id = btn.id || '';
+                    const text = btn.innerText.toLowerCase();
+
+                    let ease = null;
+                    
+                    // Heuristic 1: Standard IDs or Attributes
+                    if (onclick.includes('ease1') || cmd === 'ease1' || id === 'ease1') ease = "1";
+                    else if (onclick.includes('ease2') || cmd === 'ease2' || id === 'ease2') ease = "2";
+                    else if (onclick.includes('ease3') || cmd === 'ease3' || id === 'ease3') ease = "3";
+                    else if (onclick.includes('ease4') || cmd === 'ease4' || id === 'ease4') ease = "4";
+
+                    // Heuristic 2: Text Content (Fallback)
+                    if (!ease) {
+                        if (text.includes('again')) ease = "1";
+                        else if (text.includes('hard')) ease = "2";
+                        else if (text.includes('good')) ease = "3";
+                        else if (text.includes('easy')) ease = "4";
+                    }
+
+                    if (ease) {
+                        btn.setAttribute('data-onigiri-ease', ease);
+                    } else {
+                        btn.classList.add('onigiri-other-btn');
+                    }
+                });
+            }
+
+            // Run repeatedly to catch dynamic updates
+            setInterval(classifyButtons, 100);
+            
+            // Also run on mutation
+            const observer = new MutationObserver(classifyButtons);
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+        </script>
+        """)
+        
+    return "<style>" + "\\n".join(css) + "</style>"
