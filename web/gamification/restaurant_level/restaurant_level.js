@@ -89,12 +89,47 @@
 
     // Initialize the completed specials display
     function initCompletedSpecials() {
-        let history = [];
+        let allSpecials = [];
         if (window.ONIGIRI_RESTAURANT_LEVEL?.completed_specials) {
-            history = window.ONIGIRI_RESTAURANT_LEVEL.completed_specials;
+            allSpecials = window.ONIGIRI_RESTAURANT_LEVEL.completed_specials;
         } else {
-            history = JSON.parse(localStorage.getItem('onigiriCompletedSpecials') || '[]');
+            allSpecials = JSON.parse(localStorage.getItem('onigiriCompletedSpecials') || '[]');
         }
+
+        // Calculate 30 days ago date
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+        // Split into recent (last 30 days) and archived (older than 30 days)
+        const recentSpecials = [];
+        const archivedSpecials = [];
+
+        allSpecials.forEach(special => {
+            const specialDate = special.date || '';
+            if (specialDate >= thirtyDaysAgoStr) {
+                recentSpecials.push(special);
+            } else {
+                archivedSpecials.push(special);
+            }
+        });
+
+        // Sort recent specials by date in descending order (most recent first)
+        recentSpecials.sort((a, b) => {
+            const dateA = a.date || '';
+            const dateB = b.date || '';
+            return dateB.localeCompare(dateA); // descending order
+        });
+
+        // Initialize recent specials display (last 30 days only)
+        initRecentSpecials(recentSpecials);
+
+        // Initialize archived specials summary (ALL specials - all-time record)
+        initArchivedSpecialsSummary(allSpecials);
+    }
+
+    // Initialize recent specials timeline (last 30 days)
+    function initRecentSpecials(history) {
         const historyContainer = document.querySelector('.completed-specials-list');
         const countElement = document.querySelector('.completed-count');
 
@@ -106,7 +141,7 @@
         }
 
         if (history.length === 0) {
-            historyContainer.innerHTML = '<p class="no-history">No completed specials yet. Complete your first daily challenge to see it here!</p>';
+            historyContainer.innerHTML = '<p class="no-history">No completed specials in the last 30 days. Complete your daily challenge to see it here!</p>';
             return;
         }
 
@@ -149,6 +184,75 @@
         historyContainer.innerHTML = html;
     }
 
+    // Initialize archived specials summary (older than 30 days)
+    function initArchivedSpecialsSummary(archivedSpecials) {
+        const summaryContainer = document.querySelector('.archived-specials-summary');
+        const countElement = document.querySelector('.archived-count');
+
+        if (!summaryContainer) return;
+
+        // Count by rarity
+        const rarityCounts = {
+            'common': 0,
+            'uncommon': 0,
+            'rare': 0,
+            'epic': 0,
+            'legendary': 0
+        };
+
+        archivedSpecials.forEach(special => {
+            const difficulty = (special.difficulty || 'common').toLowerCase();
+            if (rarityCounts.hasOwnProperty(difficulty)) {
+                rarityCounts[difficulty]++;
+            } else {
+                rarityCounts['common']++;
+            }
+        });
+
+        const totalArchived = archivedSpecials.length;
+
+        // Update the count in the header
+        if (countElement) {
+            countElement.textContent = `${totalArchived} recipes`;
+        }
+
+        if (totalArchived === 0) {
+            summaryContainer.innerHTML = '<p class="no-history">Your all-time recipe collection will appear here when you complete specials.</p>';
+            return;
+        }
+
+        const rarityInfo = {
+            'common': { icon: '⭐', label: 'Common', color: '#4CAF50' },
+            'uncommon': { icon: '🌟', label: 'Uncommon', color: '#2196F3' },
+            'rare': { icon: '✨', label: 'Rare', color: '#9C27B0' },
+            'epic': { icon: '💫', label: 'Epic', color: '#FF9800' },
+            'legendary': { icon: '🔥', label: 'Legendary', color: '#F44336' }
+        };
+
+        const html = `
+            <div class="rarity-collection">
+                ${Object.entries(rarityInfo).map(([key, info]) => {
+            const count = rarityCounts[key];
+            return `
+                        <div class="rarity-item ${count > 0 ? 'has-items' : 'empty'}">
+                            <div class="rarity-icon" style="color: ${info.color}">${info.icon}</div>
+                            <div class="rarity-info">
+                                <span class="rarity-label" style="color: ${info.color}">${info.label}</span>
+                                <span class="rarity-count">${count} recipe${count !== 1 ? 's' : ''}</span>
+                            </div>
+                        </div>
+                    `;
+        }).join('')}
+            </div>
+            <div class="collection-total">
+                <span class="total-label">Total Recipes Collected:</span>
+                <span class="total-count">${totalArchived}</span>
+            </div>
+        `;
+
+        summaryContainer.innerHTML = html;
+    }
+
     // Reset the daily challenge for a new day
     function resetDailyChallenge() {
         dailyChallenge = {
@@ -182,8 +286,6 @@
             dailySpecialCard: document.querySelector('.daily-special'),
             difficultyBadge: document.querySelector('.difficulty-badge'),
             difficultyText: document.querySelector('.difficulty-text'),
-            xpReward: document.querySelector('.xp-amount'),
-            xpRewardContainer: document.querySelector('.xp-reward'),
             challengeReward: document.querySelector('.challenge-reward'),
             rewardXp: document.querySelector('.reward-xp')
         };
@@ -210,9 +312,10 @@
         elements.difficultyBadge.className = `difficulty-badge difficulty-${todaysSpecial.difficulty}`;
         elements.difficultyBadge.style.display = 'inline-flex';
 
-        // Update XP reward
-        elements.xpReward.textContent = todaysSpecial.xpReward;
-        elements.xpRewardContainer.style.display = 'inline-flex';
+        // Update Daily Special card background
+        const difficulties = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+        difficulties.forEach(diff => elements.dailySpecialCard.classList.remove(`difficulty-${diff}`));
+        elements.dailySpecialCard.classList.add(`difficulty-${todaysSpecial.difficulty}`);
 
         // Update reward display
         elements.rewardXp.textContent = `${todaysSpecial.xpReward} XP`;
@@ -488,12 +591,12 @@
 
             themeStyles += `
                 .restaurant-level-page .daily-special {
-                    background: var(--header-bg, ${themeColor}) !important;
-                    border-color: ${rgbaColorBorder} !important;
+                    /* background: var(--header-bg, ${themeColor}) !important; */
+                    /* border-color: ${rgbaColorBorder} !important; */
                 }
                 
                 .night-mode .restaurant-level-page .daily-special {
-                    background: var(--header-bg-dark, ${themeColor}) !important;
+                    /* background: var(--header-bg-dark, ${themeColor}) !important; */
                 }
                 
 
@@ -508,19 +611,29 @@
                     color: white !important;
                 }
                 
-                .restaurant-level-page .rl-progress-bar,
+                .restaurant-level-page .rl-progress-bar {
+                    background: ${rgbaColor} !important;
+                }
+                
+                /*
                 .restaurant-level-page .progress-bar {
                     background: ${rgbaColor} !important;
                 }
+                */
                 
-                .night-mode .restaurant-level-page .rl-progress-bar,
-                .night-mode .restaurant-level-page .progress-bar {
+                .night-mode .restaurant-level-page .rl-progress-bar {
                     background: ${rgbaColor} !important;
                 }
                 
+                /*
+                .night-mode .restaurant-level-page .progress-bar {
+                    background: ${rgbaColor} !important;
+                }
+                */
+                
                 .restaurant-level-page .progress-fill,
                 .restaurant-level-page .rl-progress-fill {
-                    background: ${themeColor} !important;
+                    /* background: ${themeColor} !important; */
                 }
             `;
         }

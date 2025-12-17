@@ -1,35 +1,39 @@
-// List of 400+ sushi dishes with descriptions
 const restaurantSpecials = {
     "default": [
         {
             name: "Uramaki",
             description: "A delicious roll with seaweed (nori) on the inside, surrounding the fillings.",
             minCards: 10,
-            maxCards: 150
+            maxCards: 150,
+            difficulty: "rare"
         },
         {
             name: "Nigiri Sake",
             description: "Fresh salmon slices over pressed rice, a classic favorite.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Temaki",
             description: "Hand-rolled cone of nori filled with rice and fresh ingredients.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Chirashi",
             description: "A colorful bowl of sushi rice topped with assorted sashimi.",
             minCards: 25,
-            maxCards: 150
+            maxCards: 150,
+            difficulty: "rare"
         },
         {
             name: "Inari",
             description: "Sweet tofu pouches filled with sushi rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Dragon Roll",
@@ -70,49 +74,57 @@ const restaurantSpecials = {
             name: "Nigiri Maguro",
             description: "Classic tuna slice over pressed sushi rice.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Nigiri Hamachi",
             description: "Yellowtail slice over pressed sushi rice.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Ebi",
             description: "Cooked shrimp over pressed sushi rice.",
             minCards: 10,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Nigiri Unagi",
             description: "Grilled freshwater eel with sauce over rice.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Tamago",
             description: "Sweet egg omelet over pressed sushi rice.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Nigiri Ika",
             description: "Squid slice over pressed sushi rice.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Nigiri Tako",
             description: "Octopus slice over pressed sushi rice.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Nigiri Saba",
             description: "Cured mackerel slice over pressed sushi rice.",
             minCards: 10,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Nigiri Hotate",
@@ -125,55 +137,64 @@ const restaurantSpecials = {
             name: "Nigiri Amaebi",
             description: "Sweet raw shrimp over pressed sushi rice.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Kani",
             description: "Crab stick (kanikama) over pressed sushi rice.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Nigiri Shime Saba",
             description: "Vinegar-cured mackerel on rice.",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Nigiri Aji",
             description: "Japanese horse mackerel on rice.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Nigiri Suzuki",
             description: "Japanese sea bass slice on rice.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Nigiri Tai",
             description: "Red snapper slice on pressed rice.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Engawa",
             description: "Fluke fin, often lightly seared, on rice.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Hirame",
             description: "Halibut slice over pressed sushi rice.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Kanpachi",
             description: "Amberjack slice over pressed sushi rice.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Buri",
@@ -207,7 +228,8 @@ const restaurantSpecials = {
             name: "Nigiri Aburi Sake",
             description: "Seared salmon slice on rice, often with mayo.",
             minCards: 20,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Aburi Toro",
@@ -220,19 +242,22 @@ const restaurantSpecials = {
             name: "Nigiri Aburi Hamachi",
             description: "Seared yellowtail slice on rice.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Aburi Ebi",
             description: "Seared shrimp with sauce on rice.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Nigiri Aburi Hotate",
             description: "Seared scallop with sauce on rice.",
             minCards: 25,
-            maxCards: 130
+            maxCards: 130,
+            difficulty: "uncommon"
         },
         {
             name: "Nigiri Wagyu",
@@ -252,43 +277,50 @@ const restaurantSpecials = {
             name: "Nigiri Avocado",
             description: "Avocado slice on pressed sushi rice.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Nigiri Shiitake",
             description: "Simmered shiitake mushroom on rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Nigiri Nasu",
             description: "Grilled or pickled eggplant on rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Nigiri Asparagus",
             description: "Blanched asparagus spear on rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Nigiri Zucchini",
             description: "Grilled zucchini slice on rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Nigiri Red Pepper",
             description: "Roasted red pepper slice on rice.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Nigiri Inari",
             description: "Simple Inari tofu pouch (variation of Inari).",
             minCards: 10,
-            maxCards: 40
+            maxCards: 40,
+            difficulty: "common"
         },
         {
             name: "Gunkan Ikura",
@@ -301,13 +333,15 @@ const restaurantSpecials = {
             name: "Gunkan Tobiko",
             description: "Flying fish roe 'battleship' maki.",
             minCards: 20,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Gunkan Masago",
             description: "Capelin roe 'battleship' maki.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Gunkan Uni",
@@ -320,55 +354,64 @@ const restaurantSpecials = {
             name: "Gunkan Negitoro",
             description: "Minced fatty tuna and scallion 'battleship' maki.",
             minCards: 25,
-            maxCards: 140
+            maxCards: 140,
+            difficulty: "rare"
         },
         {
             name: "Gunkan Kani Miso",
             description: "Crab brain/miso 'battleship' maki.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Gunkan Ankimo",
             description: "Monkfish liver 'battleship' maki.",
             minCards: 25,
-            maxCards: 130
+            maxCards: 130,
+            difficulty: "uncommon"
         },
         {
             name: "Gunkan Spicy Scallop",
             description: "Chopped scallop with spicy mayo gunkan.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Gunkan Spicy Tuna",
             description: "Spicy tuna mix 'battleship' maki.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Gunkan Corn Mayo",
             description: "Sweet corn with Japanese mayo gunkan.",
             minCards: 10,
-            maxCards: 50
+            maxCards: 50,
+            difficulty: "common"
         },
         {
             name: "Gunkan Wakame",
             description: "Seasoned seaweed salad 'battleship' maki.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Gunkan Natto",
             description: "Fermented soybean 'battleship' maki.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Gunkan Uzura",
             description: "Quail egg, often on tobiko or uni, 'battleship' maki.",
             minCards: 20,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Gunkan Shirako",
@@ -381,241 +424,281 @@ const restaurantSpecials = {
             name: "Gunkan Tarako",
             description: "Salted pollock roe 'battleship' maki.",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Maki Tekkamaki",
             description: "Simple tuna roll with nori on the outside.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Maki Kappamaki",
             description: "Simple cucumber roll with nori on the outside.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Sakemaki",
             description: "Simple salmon roll with nori on the outside.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Maki Oshinko",
             description: "Pickled daikon radish roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Kanpyo",
             description: "Dried gourd strips roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Avocado",
             description: "Simple avocado roll with nori on the outside.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Maki Negihama",
             description: "Yellowtail and scallion roll.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Maki Negitoro",
             description: "Fatty tuna and scallion roll.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Maki Ume Shiso",
             description: "Pickled plum paste and shiso leaf roll.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Maki Yamagobo",
             description: "Pickled burdock root roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Futomaki",
             description: "Thick 'fat' roll with multiple ingredients (egg, veg).",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Maki Ebi",
             description: "Cooked shrimp roll.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Maki Unagi",
             description: "Grilled eel and cucumber roll.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Maki Tamago",
             description: "Sweet egg omelet roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Shiitake",
             description: "Simmered shiitake mushroom roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Natto",
             description: "Fermented soybean roll.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Maki Asparagus",
             description: "Blanched asparagus roll.",
             minCards: 10,
-            maxCards: 60
+            maxCards: 60,
+            difficulty: "common"
         },
         {
             name: "Maki Sweet Potato",
             description: "Tempura sweet potato roll.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Maki Kani",
             description: "Crab stick (kanikama) roll.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Maki Spicy Tuna",
             description: "Spicy tuna mix roll (nori outside).",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Maki Spicy Salmon",
             description: "Spicy salmon mix roll (nori outside).",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Maki Spicy Yellowtail",
             description: "Spicy yellowtail mix roll (nori outside).",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Uramaki California",
             description: "Krab, avocado, cucumber, rice on outside.",
             minCards: 10,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Uramaki Spicy Tuna",
             description: "Spicy tuna mix, cucumber, rice on outside.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Uramaki Spicy Salmon",
             description: "Spicy salmon mix, cucumber/avocado, rice outside.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Uramaki Philadelphia",
             description: "Smoked salmon, cream cheese, avocado.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Eel Avocado",
             description: "Grilled eel and avocado, rice on outside.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Eel Cucumber",
             description: "Grilled eel and cucumber, rice on outside.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Shrimp Tempura",
             description: "Shrimp tempura, avocado, cucumber, spicy mayo.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Boston Roll",
             description: "Cooked shrimp, avocado, cucumber, lettuce.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Uramaki Alaskan Roll",
             description: "Smoked salmon, avocado, crab stick.",
             minCards: 15,
-            maxCards: 110
+            maxCards: 110,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Salmon Skin",
             description: "Crispy grilled salmon skin, cucumber, scallion.",
             minCards: 10,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Uramaki Avocado Cucumber",
             description: "Avocado and cucumber roll.",
             minCards: 10,
-            maxCards: 70
+            maxCards: 70,
+            difficulty: "common"
         },
         {
             name: "Uramaki Sweet Potato Tempura",
             description: "Tempura sweet potato roll with rice outside.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Uramaki Vegetable",
             description: "Assorted vegetables (avocado, cucumber, carrot).",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Uramaki Spicy Scallop",
             description: "Chopped scallop, spicy mayo, masago.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Jalapeno Popper Roll",
             description: "Jalapeno, cream cheese, crab, tempura fried.",
             minCards: 20,
-            maxCards: 130
+            maxCards: 130,
+            difficulty: "uncommon"
         },
         {
             name: "Uramaki Green Machine Roll",
             description: "Asparagus, avocado, cucumber, wrapped in soy paper.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Uramaki Red Phoenix Roll",
             description: "Shrimp tempura, cucumber, topped with spicy tuna.",
             minCards: 25,
-            maxCards: 140
+            maxCards: 140,
+            difficulty: "rare"
         },
     ],
     "macha_delights": [
@@ -623,19 +706,22 @@ const restaurantSpecials = {
             name: "Matcha Latte",
             description: "A smooth and creamy green tea latte.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Matcha Mochi",
             description: "Soft and chewy rice cake with matcha filling.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Matcha Cake",
             description: "Fluffy sponge cake infused with premium matcha.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Matcha Ice Cream",
@@ -671,25 +757,29 @@ const restaurantSpecials = {
             name: "Vanilla Macaron",
             description: "Classic vanilla bean macaron with white chocolate ganache.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Chocolate Macaron",
             description: "Rich dark chocolate ganache in a cocoa shell.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Raspberry Macaron",
             description: "Tangy raspberry jam filling in a pink shell.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Pistachio Macaron",
             description: "Nutty pistachio cream filling.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Salted Caramel Macaron",
@@ -718,25 +808,29 @@ const restaurantSpecials = {
             name: "Espresso",
             description: "A strong and concentrated shot of coffee.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Cappuccino",
             description: "Espresso with steamed milk and foam.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Latte Art",
             description: "A beautiful design poured into your latte.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Cold Brew",
             description: "Smooth coffee steeped for 12 hours.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Caramel Macchiato",
@@ -765,25 +859,29 @@ const restaurantSpecials = {
             name: "Fresh Apple",
             description: "Crisp and juicy red apple.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Banana Bunch",
             description: "Perfectly ripe bananas.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Carrot Bundle",
             description: "Fresh and crunchy organic carrots.",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Milk Carton",
             description: "Fresh dairy milk.",
             minCards: 15,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Artisan Bread",
@@ -812,25 +910,29 @@ const restaurantSpecials = {
             name: "Croissant",
             description: "Buttery and flaky French pastry.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Baguette",
             description: "Classic French bread with a crispy crust.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Pain au Chocolat",
             description: "Croissant dough filled with chocolate.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Danish Pastry",
             description: "Sweet pastry with fruit filling.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Sourdough Loaf",
@@ -859,19 +961,22 @@ const restaurantSpecials = {
             name: "Classic Milk Tea",
             description: "Black tea with milk and tapioca pearls.",
             minCards: 10,
-            maxCards: 90
+            maxCards: 90,
+            difficulty: "common"
         },
         {
             name: "Taro Milk Tea",
             description: "Sweet and creamy purple taro tea.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Thai Tea",
             description: "Spiced orange tea with condensed milk.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Brown Sugar Boba",
@@ -884,7 +989,8 @@ const restaurantSpecials = {
             name: "Fruit Tea",
             description: "Refreshing tea with fresh fruit slices.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Cheese Foam Tea",
@@ -906,25 +1012,29 @@ const restaurantSpecials = {
             name: "Hot Cocoa",
             description: "Rich hot chocolate with marshmallows.",
             minCards: 10,
-            maxCards: 80
+            maxCards: 80,
+            difficulty: "common"
         },
         {
             name: "Peppermint Mocha",
             description: "Coffee with chocolate and peppermint syrup.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Gingerbread Latte",
             description: "Spiced latte with gingerbread flavor.",
             minCards: 15,
-            maxCards: 100
+            maxCards: 100,
+            difficulty: "common"
         },
         {
             name: "Eggnog Latte",
             description: "Rich and creamy eggnog with espresso.",
             minCards: 20,
-            maxCards: 120
+            maxCards: 120,
+            difficulty: "uncommon"
         },
         {
             name: "Candy Cane Frappe",

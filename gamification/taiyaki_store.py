@@ -651,7 +651,7 @@ class CoinRedemptionDialog(QDialog):
         info_layout = QHBoxLayout()
         info_layout.setContentsMargins(15, 15, 15, 15)
         
-        info_label = QLabel("Remember: You get 10 coins at each level up")
+        info_label = QLabel("Remember: You get more coins the higher your level!")
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #FFFFFF; font-size: 15px; font-weight: 500;")
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

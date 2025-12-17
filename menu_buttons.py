@@ -11,6 +11,7 @@ from aqt.qt import QAction, QMenu
 from . import settings
 from . import patcher
 from .gamification.taiyaki_store import open_taiyaki_store
+from . import credits_dialog
 
 # A module-level variable to hold the addon path, set once on setup.
 _addon_path = None
@@ -64,10 +65,6 @@ def setup_onigiri_menu(addon_path):
 
     # Create Gamification submenu
     gamification_menu = QMenu("Gamification", mw)
-    
-    achievements_action = QAction("Achievements", mw)
-    achievements_action.triggered.connect(patcher.open_achievements_dialog)
-    gamification_menu.addAction(achievements_action)
 
     restaurant_action = QAction("Restaurant Level", mw)
     restaurant_action.triggered.connect(patcher.open_restaurant_level_dialog)
@@ -87,10 +84,14 @@ def setup_onigiri_menu(addon_path):
 
     onigiri_menu.addSeparator()
 
-    # --- START: ADD THIS BLOCK ---
+    # --- ADD THIS BLOCK ---
     welcome_action = QAction("Welcome Screen", mw)
     welcome_action.triggered.connect(welcome_dialog.show_welcome_dialog)
     onigiri_menu.addAction(welcome_action)
+
+    credits_action = QAction("Credits", mw)
+    credits_action.triggered.connect(credits_dialog.show_credits_dialog)
+    onigiri_menu.addAction(credits_action)
     # --- END: ADD THIS BLOCK ---
 
     # Add version info at the bottom (disabled)

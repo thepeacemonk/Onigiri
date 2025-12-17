@@ -19,14 +19,18 @@
 
         <section class="rl-card daily-special">
             <div class="daily-special-header">
-                <h2>Daily Special</h2>
+                <h2><img src="/_addons/__ADDON_PACKAGE__/system_files/gamification_images/onigiri_trophy.png"
+                        style="height: 1em; vertical-align: middle;" alt="Onigiri Trophy"> Daily Special</h2>
+                <div class="daily-special-header-right">
+                    <span class="rl-countdown-time" id="restaurant-countdown-time">24:00:00</span>
+                    <span class="rl-countdown-label">left</span>
+                </div>
+            </div>
+            <div class="daily-special-sub-header">
                 <div class="difficulty-badge" style="display: none;">
                     <span class="difficulty-text">Common</span>
                 </div>
-                <div class="xp-reward" style="display: none;">
-                    <span class="xp-icon">✨</span>
-                    <span class="xp-amount">0</span> XP
-                </div>
+
             </div>
             <div class="daily-special-content">
                 <h3 class="sushi-name">Loading today's special...</h3>
@@ -51,35 +55,30 @@
             </div>
         </section>
 
-        <section class="rl-card rl-stats" data-enabled="false">
-            <header class="rl-card-header">
-                <h2>Today's Ingredients</h2>
-                <div class="rl-card-header-right">
-                    <span class="rl-card-caption">Track how the kitchen is doing</span>
-                </div>
-            </header>
-            <div class="rl-stats-grid">
-                <article class="rl-stat" data-id="reviews">
-                    <span class="rl-stat-value" data-bind="today_reviews">0</span>
-                    <span class="rl-stat-label">Reviews today</span>
-                </article>
-                <article class="rl-stat" data-id="countdown">
-                    <span class="rl-stat-value restaurant-countdown-time-value"
-                        id="restaurant-countdown-time">24:00:00</span>
-                    <span class="rl-stat-label">Restaurant closes in</span>
-                </article>
-            </div>
-        </section>
-
-        <!-- Completed Specials Section -->
+        <!-- Completed Specials Section - Recent (Last 30 Days) -->
         <section class="rl-card completed-specials">
             <div class="rl-card-header">
-                <h2>Completed Specials</h2>
+                <h2>Recent Specials</h2>
                 <div class="rl-card-header-right">
                     <span class="completed-count">0 completed</span>
+                    <span class="recent-period">Last 30 days</span>
                 </div>
             </div>
             <div class="completed-specials-list">
+                <!-- Filled dynamically by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Archived Specials Summary (Older than 30 Days) -->
+        <section class="rl-card archived-specials">
+            <div class="rl-card-header">
+                <h2>Recipe Collection</h2>
+                <div class="rl-card-header-right">
+                    <span class="archived-count">0 recipes</span>
+                    <span class="recent-period">all time</span>
+                </div>
+            </div>
+            <div class="archived-specials-summary">
                 <!-- Filled dynamically by JavaScript -->
             </div>
         </section>

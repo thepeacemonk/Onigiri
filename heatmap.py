@@ -32,20 +32,22 @@ def get_heatmap_data():
     # --- 1. Fetch Past Reviews (excluding today) ---
     # Use STRFTIME with 'localtime' and the offset to correctly group reviews
     # by the local day, just like the reference add-on.
+    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
     query_past = """
         SELECT 
             STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day') as day_key,
             COUNT()
         FROM revlog
-        WHERE id < ? -- Only reviews *before* the start of today
+        WHERE type IN (0,1,2,3) AND id < ? -- Only actual reviews *before* the start of today
         GROUP BY day_key
     """
     reviews_by_day = dict(mw.col.db.all(query_past, offset_seconds, today_start_ms))
 
     # --- 2. Fetch Today's Review Count ---
     # Get a precise count for reviews *since* the start of today
+    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
     today_count = mw.col.db.scalar(
-        "SELECT COUNT() FROM revlog WHERE id >= ?",
+        "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
         today_start_ms
     ) or 0
     reviews_by_day[today_date_key] = today_count
@@ -76,9 +78,11 @@ def get_heatmap_data():
 
     # --- 4. Calculate Streak ---
     # We must use the same date logic for all review days
+    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
     all_review_days_query = """
         SELECT DISTINCT STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day')
         FROM revlog
+        WHERE type IN (0,1,2,3)
     """
     review_days_set = set(mw.col.db.list(all_review_days_query, offset_seconds))
     
@@ -135,5 +139,6 @@ def get_heatmap_and_config():
         "heatmapShowMonths": conf.get("heatmapShowMonths", DEFAULTS["heatmapShowMonths"]),
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
+        "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
     }
     return heatmap_data, heatmap_config

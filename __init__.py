@@ -11,7 +11,6 @@ from . import patcher
 from . import settings
 from . import config
 from . import menu_buttons
-from .gamification import achievements
 from .gamification import mochi_messages
 from .gamification import mod_transfer_window
 from . import welcome_dialog
@@ -32,6 +31,37 @@ web_assets_root = f"/_addons/{addon_package}/web"
 # Make addon_path available to other modules
 import sys
 sys.modules[__name__].addon_path = addon_path
+
+def generate_notification_position_css(conf):
+    """Generates CSS for notification positioning logic."""
+    pos = conf.get("onigiri_reviewer_notification_position", "top-right")
+    
+    css = ".onigiri-notification-stack { "
+    
+    # Defaults (resetting properties that might conflict)
+    css += "top: auto; bottom: auto; left: auto; right: auto; transform: none; "
+    
+    # Base top offset calculation: Header Offset + 20px padding
+    top_offset = "calc(var(--onigiri-reviewer-header-offset, 0px) + 5px)"
+    
+    if pos == "top-left":
+        css += f"top: {top_offset}; left: 20px; align-items: flex-start; flex-direction: column; "
+    elif pos == "top-center":
+        css += f"top: {top_offset}; left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column; "
+    elif pos == "top-right":
+        css += f"top: {top_offset}; right: 20px; align-items: flex-end; flex-direction: column; "
+    elif pos == "bottom-left":
+        css += "bottom: 20px; left: 20px; align-items: flex-start; flex-direction: column-reverse; "
+    elif pos == "bottom-center":
+        css += "bottom: 20px; left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; "
+    elif pos == "bottom-right":
+        css += "bottom: 20px; right: 20px; align-items: flex-end; flex-direction: column-reverse; "
+    else:
+        # Fallback to top-right
+        css += f"top: {top_offset}; right: 20px; align-items: flex-end; flex-direction: column; "
+        
+    css += "}"
+    return f"<style>{css}</style>"
 
 def inject_menu_files(web_content, context):
     conf = config.get_config()
@@ -72,7 +102,9 @@ def inject_menu_files(web_content, context):
         
     elif is_reviewer:
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+        web_content.head += generate_notification_position_css(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
+        web_content.head += patcher.generate_reviewer_buttons_css(conf)
         top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
         escaped_top_bar_html = top_bar_html.replace("`", "\\`")
@@ -145,6 +177,7 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     if is_reviewer_bottom_bar:
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
+        web_content.head += patcher.generate_reviewer_buttons_css(conf)
     elif (is_top_toolbar or is_bottom_toolbar):
         if not should_hide:
             web_content.head += patcher.generate_toolbar_background_css(addon_path)

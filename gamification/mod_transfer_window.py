@@ -232,7 +232,8 @@ def show_transfer_window(source_dids_json: str) -> None:
                 transition: background-color 0.2s;
             }}
             #save-btn:hover {{
-                background-color: var(--accent-color-hover);
+                background-color: var(--canvas-inset, #e0e0e0) !important;
+                color: var(--accent-color) !important;
             }}
             #save-btn:disabled {{
                 background-color: var(--fg-disabled);

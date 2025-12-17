@@ -12,13 +12,14 @@ from aqt.qt import (
     QGroupBox, QRadioButton, QFileDialog, QSpinBox, QPlainTextEdit, QFormLayout, QScrollArea,
     QGridLayout, QPixmap, Qt, QEvent, QPainter, QPainterPath, QMessageBox,
     QListWidget, QStackedWidget, QListWidgetItem, QFrame, QSizePolicy,
+    QComboBox,
     QIcon, QPen, QBrush, QInputDialog, QAbstractButton, QDoubleSpinBox,
     QButtonGroup, QAbstractSpinBox,
     QDrag, QMimeData, QPoint, 
     QMenu, QAction, QActionGroup,
     QListWidget, QListWidgetItem, QAbstractItemView
 )
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtCore import QUrl, QPropertyAnimation, QEasingCurve, QRegularExpression
 from PyQt6.QtGui import QDesktopServices, QLinearGradient, QRegularExpressionValidator, QMouseEvent, QRegion, QGuiApplication, QCursor
@@ -526,14 +527,251 @@ class ThemeCardWidget(QFrame):
         swatch_layout = QHBoxLayout()
         swatch_layout.setSpacing(6)
 
+        # 1. Colors
         preview_colors = theme_data['light']
+        color_count = 0
         for key in ["--accent-color", "--fg", "--fg-subtle", "--border", "--canvas-inset", "--bg"]:
             if key in preview_colors:
                 swatch_layout.addWidget(ColorSwatch(preview_colors[key]))
+                color_count += 1
+                if color_count >= 5: break # Limit to 5 colors
         swatch_layout.addStretch()
 
         main_layout.addLayout(top_layout)
         main_layout.addLayout(swatch_layout)
+
+        # --- Asset Previews (New) ---
+        assets = theme_data.get("assets", {})
+        if assets:
+            asset_layout = QHBoxLayout()
+            asset_layout.setSpacing(8)
+            
+            # Images
+            if "images" in assets:
+                unique_paths = set()
+                unique_images = []
+                for img_path in assets["images"].values():
+                    # Ensure path is valid before adding
+                    if img_path and os.path.exists(img_path) and img_path not in unique_paths:
+                        unique_paths.add(img_path)
+                        unique_images.append(img_path)
+                
+                for img_path in unique_images[:3]: 
+                    thumb = QLabel()
+                    thumb.setFixedSize(26, 26)
+                    thumb.setScaledContents(False) # We will scale manually
+                    thumb.setStyleSheet(f"border: none; background-color: transparent;")
+                    
+                    pix = QPixmap(img_path)
+                    if not pix.isNull():
+                         # Scale to target size keeping usage of create_rounded_pixmap
+                         # If we want 26x26
+                         scaled = pix.scaled(26, 26, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                         # Crop center 26x26
+                         x = (scaled.width() - 26) // 2
+                         y = (scaled.height() - 26) // 2
+                         cropped = scaled.copy(x, y, 26, 26)
+                         
+                         rounded = create_rounded_pixmap(cropped, 6)
+                         thumb.setPixmap(rounded)
+                         thumb.setToolTip(f"Image included: {os.path.basename(img_path)}")
+                         asset_layout.addWidget(thumb)
+
+            # Fonts - show configured fonts (from font_config) even if not portable files
+            font_config = assets.get("font_config", {})
+            fonts_dict = assets.get("fonts", {})
+            
+            # Combine both sources: portable files and configured selections
+            all_fonts_to_show = set()
+            if fonts_dict:
+                all_fonts_to_show.update(fonts_dict.keys())
+            if font_config:
+                all_fonts_to_show.update(font_config.values())
+            
+            if all_fonts_to_show:
+                # Import fonts module to access already-loaded fonts
+                from .fonts import get_all_fonts
+                all_available_fonts = get_all_fonts(os.path.dirname(__file__))
+                
+                font_count = 0
+                for font_key in list(all_fonts_to_show)[:2]:
+                    font_label = QLabel("Aa")
+                    font_label.setFixedSize(26, 26)
+                    font_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
+                    # Auto-detect theme mode
+                    bg_color = preview_colors.get('--bg', '#ffffff')
+                    try:
+                        bg_hex = bg_color.lstrip('#')
+                        r, g, b = int(bg_hex[0:2], 16), int(bg_hex[2:4], 16), int(bg_hex[4:6], 16)
+                        brightness = (r * 299 + g * 587 + b * 114) / 1000
+                        is_dark = brightness < 128
+                    except:
+                        is_dark = False
+                    
+                    if is_dark:
+                        border_col = '#aaaaaa'
+                        text_col = '#ffffff'
+                        bg_col = '#3a3a3a'
+                    else:
+                        border_col = '#cccccc'
+                        text_col = '#333333'
+                        bg_col = '#f5f5f5'
+                    
+                    # Load font the same way FontCardWidget does
+                    font_info = all_available_fonts.get(font_key)
+                    if font_info and font_info.get("file"):
+                        addon_path = os.path.dirname(__file__)
+                        # Handle user-uploaded fonts
+                        if font_info.get("user"):
+                            font_path = os.path.join(addon_path, "user_files", "fonts", font_info["file"])
+                        # Handle built-in system fonts
+                        else:
+                            font_path = os.path.join(addon_path, "system_files", "fonts", "system_fonts", font_info["file"])
+                        
+                        if os.path.exists(font_path):
+                            font_id = QFontDatabase.addApplicationFont(font_path)
+                            if font_id != -1:
+                                font_families = QFontDatabase.applicationFontFamilies(font_id)
+                                if font_families:
+                                    # Apply the font to the label
+                                    font_label.setFont(QFont(font_families[0], 13))
+                    
+                    # Set stylesheet (font is already set via setFont)
+                    font_label.setStyleSheet(
+                        f"border: 1px solid {border_col}; "
+                        f"border-radius: 6px; "
+                        f"color: {text_col}; "
+                        f"background-color: {bg_col}; "
+                        f"font-weight: bold;"
+                    )
+                    
+                    font_label.setToolTip(f"Font: {font_key}")
+                    asset_layout.addWidget(font_label)
+                    font_count += 1
+            
+            # Icons - show all configured icons including defaults
+            icons_dict = assets.get("icons", {})
+            icon_config = assets.get("icon_config", {})
+            
+            # Use icons_dict primarily, fall back to icon_config
+            icons_to_show = []
+            if icons_dict:
+                icons_to_show = list(icons_dict.items())[:2]
+            elif icon_config:
+                icons_to_show = list(icon_config.items())[:2]
+            
+            if icons_to_show:
+                for icon_key, icon_value in icons_to_show:
+                    # icon_value could be a filename or a path
+                    # Try to find the icon file
+                    possible_paths = [
+                        os.path.join(os.path.dirname(__file__), "user_files", "icons", os.path.basename(icon_value)),
+                        os.path.join(os.path.dirname(__file__), "user_files", "icons", icon_value),
+                    ]
+                    
+                    full_path = None
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            full_path = path
+                            break
+                    
+                    # If not found in user_files, check if it's a default icon
+                    if not full_path and icon_key in ICON_DEFAULTS:
+                        # Use default icon data
+                        default_svg_data = ICON_DEFAULTS[icon_key]
+                        
+                        thumb = QLabel()
+                        thumb.setFixedSize(26, 26)
+                        thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        thumb.setStyleSheet("background: transparent; border: none;")
+                        
+                        icon_color = preview_colors.get("--icon-color", preview_colors.get("--fg", "#888"))
+                        
+                        try:
+                            # Default icons are data URIs: "data:image/svg+xml,<svg>..."
+                            if default_svg_data.startswith("data:image/svg+xml,"):
+                                svg_xml = default_svg_data.replace("data:image/svg+xml,", "")
+                                import urllib.parse
+                                svg_xml = urllib.parse.unquote(svg_xml)
+                                
+                                # Color the SVG
+                                if 'stroke="currentColor"' in svg_xml:
+                                    colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{icon_color}"')
+                                elif 'fill="currentColor"' in svg_xml:
+                                    colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{icon_color}"')
+                                else:
+                                    colored_svg = svg_xml.replace('<svg', f'<svg fill="{icon_color}" stroke="{icon_color}"', 1)
+                                
+                                renderer = QSvgRenderer(colored_svg.encode('utf-8'))
+                                pixmap = QPixmap(26, 26)
+                                pixmap.fill(Qt.GlobalColor.transparent)
+                                painter = QPainter(pixmap)
+                                renderer.render(painter)
+                                painter.end()
+                                
+                                thumb.setPixmap(pixmap)
+                                thumb.setToolTip(f"Icon: {icon_key} (default)")
+                                asset_layout.addWidget(thumb)
+                        except Exception as e:
+                            print(f"Default icon preview error for {icon_key}: {e}")
+                        continue
+                    
+                    if full_path:
+                        thumb = QLabel()
+                        thumb.setFixedSize(26, 26)
+                        thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        thumb.setStyleSheet("background: transparent; border: none;")
+                        
+                        icon_color = preview_colors.get("--icon-color", preview_colors.get("--fg", "#888"))
+                        
+                        pixmap = QPixmap(26, 26)
+                        pixmap.fill(Qt.GlobalColor.transparent)
+                        
+                        loaded = False
+                        if full_path.lower().endswith(".svg"):
+                            try:
+                                with open(full_path, 'r', encoding='utf-8') as f: svg_xml = f.read()
+                                
+                                if 'stroke="currentColor"' in svg_xml:
+                                    colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{icon_color}"')
+                                elif 'fill="currentColor"' in svg_xml:
+                                    colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{icon_color}"')
+                                else:
+                                    colored_svg = svg_xml.replace('<svg', f'<svg fill="{icon_color}" stroke="{icon_color}"', 1)
+                                
+                                renderer = QSvgRenderer(colored_svg.encode('utf-8'))
+                                painter = QPainter(pixmap)
+                                renderer.render(painter)
+                                painter.end()
+                                loaded = True
+                            except Exception as e:
+                                print(f"Icon preview error: {e}")
+                        
+                        if not loaded:
+                            temp_pix = QPixmap(full_path)
+                            if not temp_pix.isNull():
+                                temp_pix = temp_pix.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                                painter = QPainter(pixmap)
+                                x = (26 - temp_pix.width()) // 2
+                                y = (26 - temp_pix.height()) // 2
+                                painter.drawPixmap(x, y, temp_pix)
+                                painter.end()
+                                loaded = True
+                        
+                        if loaded:
+                            thumb.setPixmap(pixmap)
+                            thumb.setToolTip(f"Icon: {icon_key}")
+                            asset_layout.addWidget(thumb)
+
+            asset_layout.addStretch()
+            if asset_layout.count() > 1: # Only add if we added widgets (stretch is 1)
+                div = QFrame()
+                div.setFrameShape(QFrame.Shape.HLine)
+                div.setFrameShadow(QFrame.Shadow.Sunken)
+                div.setStyleSheet("color: #ddd;")
+                main_layout.addWidget(div)
+                main_layout.addLayout(asset_layout)
 
     def _on_delete_clicked(self):
         # Stop the event from propagating to the mousePressEvent
@@ -1218,6 +1456,341 @@ class ModernColorPickerDialog(QDialog):
     def focusOutEvent(self, event):
         self.close()
 
+class IconPickerDialog(QDialog):
+    iconSelected = pyqtSignal(str)
+
+    def __init__(self, current_filename, addon_path, parent=None):
+        super().__init__(parent)
+        self.addon_path = addon_path
+        self.current_filename = current_filename
+        self.setWindowTitle("Select Icon")
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        self.setFixedSize(400, 500)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.container = QFrame()
+        self.container.setObjectName("IconPickerContainer")
+        if theme_manager.night_mode:
+             self.container.setStyleSheet("QFrame#IconPickerContainer { background-color: #2c2c2c; border-radius: 12px; border: 1px solid #4a4a4a; }")
+        else:
+             self.container.setStyleSheet("QFrame#IconPickerContainer { background-color: #ffffff; border-radius: 12px; border: 1px solid #e0e0e0; }")
+
+        container_layout = QVBoxLayout(self.container)
+        container_layout.setSpacing(15)
+        
+        # --- Header ---
+        header_layout = QHBoxLayout()
+        title_label = QLabel("Select Icon")
+        if theme_manager.night_mode:
+            title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #e0e0e0;")
+        else:
+            title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #212121;")
+            
+        close_btn = QPushButton()
+        close_btn.setFixedSize(24, 24)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.clicked.connect(self.close)
+        
+        # Load xmark.svg
+        xmark_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark.svg")
+        
+        if theme_manager.night_mode:
+            close_btn.setStyleSheet("""
+                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
+            """)
+            icon_color = "#e0e0e0"
+        else:
+            close_btn.setStyleSheet("""
+                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
+                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+            """)
+            icon_color = "#555555"
+
+        if os.path.exists(xmark_path):
+            self._render_svg_to_icon(xmark_path, close_btn, icon_color)
+        else:
+            close_btn.setText("x")
+            close_btn.setStyleSheet(close_btn.styleSheet() + f"color: {icon_color}; font-weight: bold; font-size: 16px;")
+
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(close_btn)
+        container_layout.addLayout(header_layout)
+        
+        # --- Search & Add ---
+        tools_layout = QHBoxLayout()
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search icons...")
+        self.search_input.textChanged.connect(self._filter_icons)
+        if theme_manager.night_mode:
+            self.search_input.setStyleSheet("QLineEdit { background-color: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 4px; color: #e0e0e0; } QLineEdit:focus { border-color: #777; }")
+        else:
+            self.search_input.setStyleSheet("QLineEdit { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 4px; color: #212121; } QLineEdit:focus { border-color: #aaa; }")
+            
+        add_btn = QPushButton("Add Icon")
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.clicked.connect(self._add_icon_from_file)
+        if theme_manager.night_mode:
+            add_btn.setStyleSheet("QPushButton { background-color: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 4px 10px; color: #e0e0e0; } QPushButton:hover { background-color: #4a4a4a; }")
+        else:
+            add_btn.setStyleSheet("QPushButton { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 4px 10px; color: #212121; } QPushButton:hover { background-color: #e0e0e0; }")
+            
+        tools_layout.addWidget(self.search_input)
+        tools_layout.addWidget(add_btn)
+
+        # Use Default Button
+        default_btn = QPushButton("Use Default")
+        default_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        default_btn.clicked.connect(lambda: (self.iconSelected.emit(""), self.close()))
+        if theme_manager.night_mode:
+            default_btn.setStyleSheet("QPushButton { background-color: transparent; border: 1px solid #555; border-radius: 6px; padding: 4px 10px; color: #e0e0e0; } QPushButton:hover { background-color: rgba(255, 255, 255, 0.05); }")
+        else:
+            default_btn.setStyleSheet("QPushButton { background-color: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 4px 10px; color: #212121; } QPushButton:hover { background-color: rgba(0, 0, 0, 0.02); }")
+        
+        tools_layout.addWidget(default_btn)
+        container_layout.addLayout(tools_layout)
+        
+        # --- Icon Grid ---
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget { background: transparent; }")
+        
+        self.grid_content = QWidget()
+        self.grid_layout = QGridLayout(self.grid_content)
+        self.grid_layout.setSpacing(10)
+        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        
+        scroll_area.setWidget(self.grid_content)
+        container_layout.addWidget(scroll_area)
+        
+        self.icons = [] # List of (filename, widget)
+        self._load_icons()
+        
+        layout.addWidget(self.container)
+
+    def _render_svg_to_icon(self, filepath, button, color_hex):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f: svg_xml = f.read()
+            if 'stroke="currentColor"' in svg_xml: colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{color_hex}"')
+            elif 'fill="currentColor"' in svg_xml: colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{color_hex}"')
+            else: colored_svg = svg_xml.replace('<svg', f'<svg fill="{color_hex}" stroke="{color_hex}"', 1)
+            
+            renderer = QSvgRenderer(colored_svg.encode('utf-8'))
+            pixmap = QPixmap(renderer.defaultSize())
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            
+            # Simple scaling if needed, but for icon button usually best to let QIcon handle or pre-scale
+            scaled = pixmap.scaled(12, 12, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            button.setIcon(QIcon(scaled))
+            button.setIconSize(QSize(12, 12))
+        except:
+             button.setText("x")
+
+    def _load_icons(self):
+        # Clear existing
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        self.icons = []
+
+        icons_dir = os.path.join(self.addon_path, "user_files/icons")
+        if not os.path.exists(icons_dir):
+            os.makedirs(icons_dir)
+            
+        files = sorted([f for f in os.listdir(icons_dir) if f.lower().endswith(".svg")])
+        
+        row, col = 0, 0
+        num_cols = 4
+        
+        for filename in files:
+            container = QWidget()
+            container.setFixedSize(70, 70)
+            container.setObjectName("IconItem")
+            
+            # Highlight if selected
+            is_selected = (filename == self.current_filename)
+            
+            # Style
+            bg_normal = "transparent"
+            bg_hover = "rgba(255,255,255,0.1)" if theme_manager.night_mode else "rgba(0,0,0,0.05)"
+            bg_selected = "rgba(255,255,255,0.2)" if theme_manager.night_mode else "rgba(0,0,0,0.1)"
+            border_selected = "#777" if theme_manager.night_mode else "#aaa"
+            
+            container.setStyleSheet(f"""
+                QWidget#IconItem {{
+                    background-color: {bg_selected if is_selected else bg_normal};
+                    border-radius: 8px;
+                    border: {("1px solid " + border_selected) if is_selected else "1px solid transparent"};
+                }}
+                QWidget#IconItem:hover {{
+                    background-color: {bg_hover};
+                    border: 1px solid {border_selected};
+                }}
+            """)
+            
+            # Image
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(5, 5, 5, 5)
+            
+            preview = QLabel()
+            preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            # Load SVG
+            filepath = os.path.join(icons_dir, filename)
+            # Render SVG
+            self._render_svg_to_label(filepath, preview)
+            
+            layout.addWidget(preview)
+            
+            # Clickable overlay for selection
+            btn = QPushButton(container)
+            btn.setStyleSheet("background: transparent; border: none;")
+            btn.setFixedSize(70, 70)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, f=filename: self._select_icon(f))
+            btn.move(0, 0)
+            
+            # Delete Button (Top Right)
+            del_btn = QPushButton(container)
+            del_btn.setFixedSize(20, 20)
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setToolTip("Delete Icon")
+            del_btn.move(45, 5) # Position top-right
+            
+            # Load xmark icon
+            xmark_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark.svg")
+            
+            # Style for delete button: No background, no hover effect as requested
+            btn_style = "QPushButton { background-color: transparent; border: none; }"
+            
+            if theme_manager.night_mode:
+                del_btn.setStyleSheet(btn_style)
+                icon_color = "#e0e0e0"
+            else:
+                del_btn.setStyleSheet(btn_style)
+                icon_color = "#555555"
+
+            if os.path.exists(xmark_path):
+                self._render_svg_to_icon(xmark_path, del_btn, icon_color)
+            else:
+                del_btn.setText("×")
+                del_btn.setStyleSheet(del_btn.styleSheet() + f"color: {icon_color}; font-weight: bold; padding-bottom: 2px;")
+
+            del_btn.clicked.connect(lambda _, f=filename: self._delete_icon_file(f))
+            del_btn.raise_() # Ensure it's on top of the selection buttton
+            
+            self.grid_layout.addWidget(container, row, col)
+            self.icons.append((filename, container))
+            
+            col += 1
+            if col >= num_cols:
+                col = 0
+                row += 1
+
+    def _delete_icon_file(self, filename):
+        confirm = QMessageBox.question(self, "Delete Icon", f"Are you sure you want to delete '{filename}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm == QMessageBox.StandardButton.Yes:
+            try:
+                os.remove(os.path.join(self.addon_path, "user_files/icons", filename))
+                self._load_icons() # Reload grid
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not delete file: {e}")
+
+    def _render_svg_to_label(self, filepath, label):
+        color = "#e0e0e0" if theme_manager.night_mode else "#212121"
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f: svg_xml = f.read()
+            if 'stroke="currentColor"' in svg_xml: colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{color}"')
+            elif 'fill="currentColor"' in svg_xml: colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{color}"')
+            else: colored_svg = svg_xml.replace('<svg', f'<svg fill="{color}" stroke="{color}"', 1)
+            
+            renderer = QSvgRenderer(colored_svg.encode('utf-8'))
+            pixmap = QPixmap(renderer.defaultSize())
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            label.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except:
+             label.setText("?")
+
+    def _filter_icons(self, text):
+        text = text.lower()
+        # Simple hide/show logic. Since it's a grid, hiding items leaves gaps in QGridLayout.
+        # We should probably clear and rebuild grid if we want to remove gaps, or use a FlowLayout.
+        # For simplicity/speed: Rebuild grid.
+        
+        # Clear grid
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+            
+        files = [f for f, _ in self.icons] # We are effectively just using self.icons as a cache of available files + widgets? 
+        # Re-read files probably easier or reuse logic.
+        
+        icons_dir = os.path.join(self.addon_path, "user_files/icons")
+        all_files = sorted([f for f in os.listdir(icons_dir) if f.lower().endswith(".svg")])
+        filtered_files = [f for f in all_files if text in f.lower()]
+        
+        row, col = 0, 0
+        num_cols = 4
+        
+        for filename in filtered_files:
+            container = QWidget()
+            container.setFixedSize(70, 70)
+            is_selected = (filename == self.current_filename)
+            
+            bg_normal = "transparent"
+            bg_hover = "rgba(255,255,255,0.1)" if theme_manager.night_mode else "rgba(0,0,0,0.05)"
+            bg_selected = "rgba(255,255,255,0.2)" if theme_manager.night_mode else "rgba(0,0,0,0.1)"
+            border_selected = "#777" if theme_manager.night_mode else "#aaa"
+            
+            container.setStyleSheet(f"QWidget {{ background-color: {bg_selected if is_selected else bg_normal}; border-radius: 8px; border: {('1px solid ' + border_selected) if is_selected else '1px solid transparent'}; }} QWidget:hover {{ background-color: {bg_hover}; border: 1px solid {border_selected}; }}")
+            
+            layout = QVBoxLayout(container); layout.setContentsMargins(5, 5, 5, 5)
+            preview = QLabel(); preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._render_svg_to_label(os.path.join(icons_dir, filename), preview)
+            layout.addWidget(preview)
+            
+            btn = QPushButton(container)
+            btn.setStyleSheet("background: transparent; border: none;")
+            btn.setFixedSize(70, 70); btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, f=filename: self._select_icon(f))
+            btn.move(0, 0)
+            
+            self.grid_layout.addWidget(container, row, col)
+            col += 1
+            if col >= num_cols: col = 0; row += 1
+
+    def _select_icon(self, filename):
+        self.iconSelected.emit(filename)
+        self.close()
+
+    def _add_icon_from_file(self):
+        icons_dir = os.path.join(self.addon_path, "user_files/icons")
+        filepath, _ = QFileDialog.getOpenFileName(self, "Select Icon", os.path.expanduser("~"), "SVG Files (*.svg)")
+        if filepath:
+            filename = os.path.basename(filepath)
+            dest_path = os.path.join(icons_dir, filename)
+            if not os.path.exists(dest_path) or not os.path.samefile(filepath, dest_path):
+                try: shutil.copy(filepath, dest_path)
+                except Exception as e: QMessageBox.warning(self, "Error", f"Could not copy icon: {e}"); return
+            
+            self._load_icons() # Reload grid
+            # self.search_input.setText("")
+
+    def focusOutEvent(self, event):
+        self.close()
+
 class SearchResultWidget(QPushButton):
     def __init__(self, title, subtitle, target_page, parent=None):
         super().__init__(parent)
@@ -1328,14 +1901,14 @@ class SettingsSearchPage(QWidget):
         sections = [
             ("Profile", "Manage your profile settings.", ["Profile"], 
              ["User Details", "Profile Picture", "Profile Bar Background"]),
-            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes"], 
-             ["Modes", "Gamification Mode", "Hide", "Pro", "Max", "Fonts", "Accent Color", "General Palette", "Boxes Color Effect", "Light Mode", "Dark Mode", "Official Themes", "Your Themes"]),
+            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"], 
+             ["Modes", "Gamification Mode", "Hide", "Pro", "Max", "Fonts", "Accent Color", "General Palette", "Boxes Color Effect", "Light Mode", "Dark Mode", "Official Themes", "Your Themes", "Gallery", "Colors Gallery", "Images Gallery"]),
             ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"], 
              ["Organize", "Main Background", "Heatmap", "Visibility", "Congratulations", "Sidebar Customization", "Organize Sidebar", "Sidebar Background", "Action Buttons", "Deck", "Icon Sizing"]),
             ("Study Pages", "Settings for Overviewer and Reviewer.", ["Overviewer", "Reviewer"], 
              ["Overviewer Background", "Overview Style", "Congratulations", "Reviewer Background", "Bottom Bar Background"]),
-            ("Gamification", "Manage games, achievements, and more.", ["Onigiri Games", "Achievements", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"], 
-             ["Onigiri Games", "Achievements Mode", "Restaurant Level", "Mochi Messages", "Focus Dango", "Achievements Tracking", "Custom Goals", "Notifications & Visibility", "Reset Progress", "Mr. Taiyaki Store", "Reset Coins", "Reset Purchases", "Settings", "Focus Dango Messages"])
+            ("Gamification", "Manage games and more.", ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"], 
+             ["Onigiri Games", "Restaurant Level", "Mochi Messages", "Focus Dango", "Custom Goals", "Notifications & Visibility", "Reset Progress", "Mr. Taiyaki Store", "Reset Coins", "Reset Purchases", "Settings", "Focus Dango Messages"])
         ]
 
         for title, desc, pages, settings in sections:
@@ -1494,7 +2067,7 @@ class SettingsDialog(QDialog):
             min_h = int(screen_height * 0.5)
             
             # Default: ~45% width, ~60% height (Smaller default as requested)
-            default_w = int(screen_width * 0.45)
+            default_w = int(screen_width * 0.55)
             default_h = int(screen_height * 0.6)
 
             # Ensure reasonable minimums (don't go too small on very small screens, 
@@ -1566,9 +2139,6 @@ class SettingsDialog(QDialog):
             self.accent_color = conf.get("colors", {}).get("dark", {}).get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
         else:
             self.accent_color = conf.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
-
-        self.achievements_mode_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.achievements_mode_toggle.setChecked(self.achievements_config.get("enabled", False))
 
         self.mochi_messages_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.mochi_messages_toggle.setChecked(bool(self.mochi_messages_config.get("enabled", False)))
@@ -1684,20 +2254,20 @@ class SettingsDialog(QDialog):
         self.hide_native_header_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_native_header_checkbox.setChecked(self.current_config.get("hideNativeHeaderAndBottomBar", True))
         
-        self.pro_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
-        self.pro_hide_checkbox.setChecked(self.current_config.get("proHide", False))
-        self.pro_hide_checkbox.setToolTip("Hides the modern toolbar on overview and the native toolbar on reviewer.")
-        
         self.max_hide_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.max_hide_checkbox.setChecked(self.current_config.get("maxHide", False))
         self.max_hide_checkbox.setToolTip("Hides the bottom toolbar on the reviewer screen for the most immersive experience.")
 
+        self.flow_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.flow_mode_checkbox.setChecked(self.current_config.get("flowMode", False))
+        self.flow_mode_checkbox.setToolTip("Enables 'Flow Mode' which hides the bottom toolbar on the reviewer screen until you hover over it.")
+
         self.gamification_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.gamification_mode_checkbox.setChecked(self.current_config.get("gamificationMode", False))
-        self.gamification_mode_checkbox.setToolTip("Enable mini-games like Achievements, Restaurant Level, Mochi Messages, and Focus Dango.")
+        self.gamification_mode_checkbox.setToolTip("Enable mini-games like Restaurant Level, Mochi Messages, and Focus Dango.")
 
         self.hide_native_header_checkbox.toggled.connect(self._on_hide_toggled)
-        self.pro_hide_checkbox.toggled.connect(self._on_pro_hide_toggled)
+        self.flow_mode_checkbox.toggled.connect(self._on_flow_toggled)
         self.max_hide_checkbox.toggled.connect(self._on_max_hide_toggled)
 
         self.stats_title_input = QLineEdit(mw.col.conf.get("modern_menu_statsTitle", DEFAULTS["statsTitle"]))
@@ -1728,13 +2298,15 @@ class SettingsDialog(QDialog):
         # This is the new wrapper that provides the margin/spacing
         # This is the wrapper that provides margin and has a fixed width
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(200) # Prevents the wrapper from expanding
+        sidebar_wrapper.setFixedWidth(215) # 185px sidebar + 15px left margin + 15px for scrollbar
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 0, 15) # Sets top/bottom margin
+        sidebar_wrapper_layout.setContentsMargins(15, 15, 15, 15) # 15px margins, right margin for scrollbar
 
         # This is the actual visible sidebar widget, which will be styled
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("sidebarContainer") # Name for the stylesheet
+        # Set max width to available space: 200px wrapper - 15px left margin = 185px
+        sidebar_widget.setMaximumWidth(185)
 
         # --- Search Button (Separated) ---
         self.search_button = QPushButton("Search")
@@ -1767,7 +2339,7 @@ class SettingsDialog(QDialog):
 
         # The sidebar's internal content (buttons, etc.) goes into this layout
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 20, 10, 10)
+        sidebar_layout.setContentsMargins(10, 20, 10, 10) # Balanced margins to center elements
         sidebar_layout.setSpacing(15)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -1793,11 +2365,11 @@ class SettingsDialog(QDialog):
             "Reviewer": self.create_reviewer_tab,
             "Onigiri Games": self.create_onigiri_games_page,
             "Restaurant Level": self.create_restaurant_level_page,
-            "Achievements": self.create_achievements_page,
             "Mochi Messages": self.create_mochi_messages_page,
             "Focus Dango": self.create_focus_dango_page,
             "Mr. Taiyaki Store": self.create_mr_taiyaki_store_page,
             "Palette": self.create_colors_page,
+            "Gallery": self.create_gallery_page,
         }
         self.page_order = list(self.pages.keys())
 
@@ -1828,7 +2400,7 @@ class SettingsDialog(QDialog):
         self.sidebar_button_group = QButtonGroup()
         self.sidebar_button_group.setExclusive(True)
 
-        general_items = ["Modes", "Fonts", "Palette", "Themes"]
+        general_items = ["Modes", "Fonts", "Palette", "Themes", "Gallery"]
         self.general_toggle_widget = SidebarToggleButton("General", general_items)
         self.general_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.general_toggle_widget)
@@ -1844,7 +2416,7 @@ class SettingsDialog(QDialog):
         sidebar_layout.addWidget(self.study_zone_toggle_widget)
 
         # Gamification section with all items
-        gamification_items = ["Onigiri Games", "Achievements", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"]
+        gamification_items = ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"]
         self.gamification_toggle_widget = SidebarToggleButton("Gamification", gamification_items)
         self.gamification_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.gamification_toggle_widget)
@@ -3669,6 +4241,79 @@ class SettingsDialog(QDialog):
         form_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form_layout.setContentsMargins(15, 0, 15, 10) # Add some padding
         form_layout.addRow("Custom Stats Title:", self.stats_title_input)
+    
+        # Heatmap Default View - Modern Segmented Control
+        self.heatmap_view_group = QButtonGroup(self)
+        self.heatmap_view_group.setExclusive(True)
+        
+        view_container = QWidget()
+        view_layout = QHBoxLayout(view_container)
+        view_layout.setContentsMargins(0, 0, 0, 0)
+        view_layout.setSpacing(10)
+        
+        current_view = self.current_config.get("heatmapDefaultView", "year")
+        
+        for view_option in ["Year", "Month", "Week"]:
+            btn = QPushButton(view_option)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(32)
+            btn.setProperty("view_mode", view_option.lower())
+            
+            # Modern styling mimicking a segmented control
+            # Note: We use dynamic properties or just check state in styling if needed, 
+            # but here we'll use a direct stylesheet for simplicity and consistency with the add-on's theme.
+            # Using specific object name to target with stylesheet if possible, or inline styles.
+            if theme_manager.night_mode:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: #3a3a3a;
+                        border: 1px solid #555;
+                        border-radius: 6px;
+                        color: #eee;
+                        padding: 0 15px;
+                        font-weight: normal;
+                    }}
+                    QPushButton:checked {{
+                        background-color: {self.accent_color};
+                        border: 1px solid {self.accent_color};
+                        color: white;
+                        font-weight: bold;
+                    }}
+                    QPushButton:hover:!checked {{
+                        background-color: #454545;
+                    }}
+                """)
+            else:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: #f5f5f5;
+                        border: 1px solid #dcdcdc;
+                        border-radius: 6px;
+                        color: #333;
+                        padding: 0 15px;
+                        font-weight: normal;
+                    }}
+                    QPushButton:checked {{
+                        background-color: {self.accent_color};
+                        border: 1px solid {self.accent_color};
+                        color: white;
+                        font-weight: bold;
+                    }}
+                    QPushButton:hover:!checked {{
+                        background-color: #e0e0e0;
+                    }}
+                """)
+            
+            if view_option.lower() == current_view:
+                btn.setChecked(True)
+                
+            self.heatmap_view_group.addButton(btn)
+            view_layout.addWidget(btn)
+            
+        view_layout.addStretch()
+        form_layout.addRow("Default View:", view_container)
+        
         organize_section.add_layout(form_layout)
         
         # Create and add the layout editor widget
@@ -3927,6 +4572,14 @@ class SettingsDialog(QDialog):
         heatmap_color_modes_layout.addWidget(dark_heatmap_group)
         heatmap_section.add_layout(heatmap_color_modes_layout)
 
+        # Reset Heatmap Colors button
+        reset_heatmap_layout = QHBoxLayout()
+        reset_heatmap_layout.addStretch()
+        reset_heatmap_button = QPushButton("Reset Heatmap Colors")
+        reset_heatmap_button.clicked.connect(self.reset_heatmap_colors_to_default)
+        reset_heatmap_layout.addWidget(reset_heatmap_button)
+        heatmap_section.add_layout(reset_heatmap_layout)
+
         layout.addWidget(heatmap_section)
 
         divider2 = QFrame()
@@ -3943,6 +4596,10 @@ class SettingsDialog(QDialog):
         if self.retention_star_widget is None:
             self.retention_star_widget = self._create_icon_control_widget("retention_star")
         star_icon_section.add_widget(self.retention_star_widget)
+
+        self.hide_retention_stars_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_retention_stars_check.setChecked(self.current_config.get("hideRetentionStars", False))
+        star_icon_section.add_widget(self._create_toggle_row(self.hide_retention_stars_check, "Hide stars on Retention widget"))
 
         star_color_modes_layout = QHBoxLayout()
         light_star_group, light_star_layout = self._create_inner_group("Light Mode")
@@ -4005,7 +4662,7 @@ class SettingsDialog(QDialog):
         """
         card = QFrame()
         card.setObjectName("hideModeCard")
-        card.setFixedWidth(200)  # Back to original width
+        # card.setFixedWidth(315)  # REMOVED fixed width to allow responsiveness
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(card)
@@ -4042,35 +4699,63 @@ class SettingsDialog(QDialog):
                 item_box = QFrame()
                 item_box.setObjectName("hideModeItemBox")
                 
+                is_warning = "Restart Anki" in item
+                
                 # Style the box with custom background colors
-                if theme_manager.night_mode:
-                    item_box.setStyleSheet("""
-                        QFrame#hideModeItemBox {
-                            background-color: #2c2c2c;
+                if is_warning:
+                    # Warning styling (Yellow)
+                    if theme_manager.night_mode:
+                        bg_color = "rgba(255, 235, 59, 0.15)" # Dark mode yellow tint
+                        text_color = "#fff9c4" # Light yellow text
+                    else:
+                        bg_color = "#fff9c4" # Light yellow bg
+                        text_color = "#665c00" # Dark yellow/brown text
+
+                    item_box.setStyleSheet(f"""
+                        QFrame#hideModeItemBox {{
+                            background-color: {bg_color};
                             border-radius: 10px;
                             padding: 12px 10px;
                             min-height: 20px;
-                        }
+                        }}
                     """)
                 else:
-                    item_box.setStyleSheet("""
-                        QFrame#hideModeItemBox {
-                            background-color: #f2f2f2;
-                            border-radius: 10px;
-                            padding: 12px 10px;
-                            min-height: 20px;
-                        }
-                    """)
+                    # Standard styling
+                    if theme_manager.night_mode:
+                        item_box.setStyleSheet("""
+                            QFrame#hideModeItemBox {
+                                background-color: #2c2c2c;
+                                border-radius: 10px;
+                                padding: 12px 10px;
+                                min-height: 20px;
+                            }
+                        """)
+                    else:
+                        item_box.setStyleSheet("""
+                            QFrame#hideModeItemBox {
+                                background-color: #f2f2f2;
+                                border-radius: 10px;
+                                padding: 12px 10px;
+                                min-height: 20px;
+                            }
+                        """)
                 
                 box_layout = QHBoxLayout(item_box)
                 box_layout.setContentsMargins(0, 0, 0, 0)
                 
                 item_label = QLabel(item)
                 item_label.setWordWrap(True)
-                if theme_manager.night_mode:
-                    item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
+                
+                if is_warning:
+                    item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item_label.setStyleSheet(f"font-size: 11px; color: {text_color}; background: transparent; font-weight: bold;")
                 else:
-                    item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
+                    item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    if theme_manager.night_mode:
+                        item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
+                    else:
+                        item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
+                        
                 box_layout.addWidget(item_label)
                 
                 content_layout.addWidget(item_box)
@@ -4126,31 +4811,12 @@ class SettingsDialog(QDialog):
 
         layout.addSpacing(12)
 
-        # Achievements card
-        achievements_card = self._create_onigiri_game_hero_card(
-            icon_filename="onigiri_trophy.png",
-            emoji_fallback="\U0001F3C6",
-            title="Achievements Mode",
-            subtitle="Unlock achievement badges while you study!",
-            background_light="achievements_bg.png",
-            background_dark="achievements_bg_night.png",
-        )
-
-        self._attach_hero_toggle_section(
-            achievements_card,
-            toggle_widget=self.achievements_mode_toggle,
-            helper_text="Toggle to start earning achievements from your Anki history.",
-        )
-
-        layout.addWidget(achievements_card)
-        layout.addSpacing(16)
-
         # Restaurant Level card
         restaurant_level_card = self._create_onigiri_game_hero_card(
             icon_filename="restaurant_folder/restaurant_level.png",
             emoji_fallback="\U0001F35F",
             title="Restaurant Level",
-            subtitle="Grow your restaurant by completing reviews and achievements!",
+            subtitle="Grow your restaurant by completing reviews!",
             background_light="restaurant_lvl_bg.png",
             background_dark="restaurant_lvl_bg_night.png",
         )
@@ -4259,7 +4925,6 @@ class SettingsDialog(QDialog):
         
         # List of all game toggles
         game_toggles = [
-            self.achievements_mode_toggle,
             self.restaurant_level_toggle,
             self.mochi_messages_toggle,  # Main mochi toggle
             self.mochi_toggle_games_page if hasattr(self, 'mochi_toggle_games_page') else None,
@@ -4503,65 +5168,6 @@ class SettingsDialog(QDialog):
         else:
             self.mochi_messages_editor.setStyleSheet("")
 
-    def create_achievements_page(self):
-        page, layout = self._create_scrollable_page()
-
-        info_section = SectionGroup(
-            "Achievements Tracking",
-            self,
-            border=False,
-            description="Achievements mode keeps score of your milestones and personal targets.",
-        )
-        info_label = QLabel(
-            "Enable Achievements mode from the Onigiri Games tab to start earning badges and goal notifications."
-        )
-        info_label.setWordWrap(True)
-        info_section.add_widget(info_label)
-        layout.addWidget(info_section)
-
-        goals_section = SectionGroup(
-            "Custom Goals",
-            self,
-            description="Choose the number of cards you'd like to finish and we'll celebrate when you reach it.",
-        )
-        goals_section.add_widget(
-            self._create_goal_setting_row(
-                "Daily Goal",
-                "Receive a notification as soon as your reviews today reach this number.",
-                self.daily_goal_spinbox,
-                self.daily_goal_toggle,
-            )
-        )
-        goals_section.add_widget(
-            self._create_goal_setting_row(
-                "Weekly Goal",
-                "Track progress across the current calendar week (Mon-Sun).",
-                self.weekly_goal_spinbox,
-                self.weekly_goal_toggle,
-            )
-        )
-        helper_label = QLabel("Goals refresh automatically after each review when Achievements mode is enabled.")
-        helper_label.setWordWrap(True)
-        helper_label.setStyleSheet("color: #6b6b6b; font-size: 11px;")
-        goals_section.add_widget(helper_label)
-
-        self.custom_goal_cooldown_label = QLabel()
-        self.custom_goal_cooldown_label.setWordWrap(True)
-        self.custom_goal_cooldown_label.setStyleSheet("color: #6b6b6b; font-size: 11px;")
-        goals_section.add_widget(self.custom_goal_cooldown_label)
-        self._refresh_custom_goal_cooldown_label()
-
-        layout.addWidget(goals_section)
-        layout.addStretch()
-
-        sections = {
-            "Achievements Tracking": info_section,
-            "Custom Goals": goals_section
-        }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
-
-        return page
-
     def create_mochi_messages_page(self):
         page, layout = self._create_scrollable_page()
 
@@ -4791,8 +5397,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(title)
 
         description = QLabel(
-            "Choose how much of the interface you want to hide for a more immersive experience."
-            "Each hide mode builds upon the previous one, hiding progressively more elements."
+            "Choose either Focus or Zen Mode to hide elements of the interface for a more immersive experience, "
+            "you can also enable Gamification Mode to track achievements and level up, making it fun to study."
         )
         description.setWordWrap(True)
         description.setStyleSheet("font-size: 12px; color: #666; margin-bottom: 8px; padding: 10px;")
@@ -4807,7 +5413,7 @@ class SettingsDialog(QDialog):
         gamification_container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         gamification_card = self._create_gamification_mode_card()
-        gamification_card.setMaximumWidth(650)  # 3 cards * 200px + 2 gaps * 20px = 660px
+        # gamification_card.setMaximumWidth(650)  # Removed max width constraint
         gamification_container_layout.addWidget(gamification_card)
         
         layout.addWidget(gamification_container)
@@ -4820,42 +5426,42 @@ class SettingsDialog(QDialog):
         cards_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Define what each mode hides - simplified flat structure
-        # Hide mode - Basic hiding
-        hide_items = [
+        # Focus mode - Basic hiding
+        focus_items = [
             ("", [
-                "Native top toolbar (Main Menu)",
-                "Native bottom toolbar (Main Menu & Overview)"
+                "Hide Anki's native bars",
+                "Replaces top bar for a modern one"
             ])
         ]
 
-        # Pro mode - Includes everything from Hide + more
-        pro_items = [
+        # Flow mode - Includes everything from Focus + hides onigiri header
+        flow_items = [
             ("", [
-                "Everything in Hide",
-                "Modern toolbar (Overview)",
-                "Native top toolbar (Reviewer)",
-                "⚠ Requires keyboard shortcuts"
+                "Everything in Focus",
+                "Hides Onigiri's modern top bar",
+                "Restart Anki when applying this mode"
             ])
         ]
 
-        # Max mode - Includes everything from Pro + even more
-        max_items = [
+        # Zen mode - Includes everything from Flow + even more
+        zen_items = [
             ("", [
-                "Everything in Pro.",
-                "Bottom toolbar (Reviewer)",
-                "No buttons are displayed",
-                "⚠ Requires keyboard shortcuts"
+                "Everything in Flow",
+                "Hides the bottom bar on Reviewer",
+                "(Button only navigation)",
+                "Restart Anki when applying this mode"
             ])
         ]
 
-        card1 = self._create_hide_mode_card("Hide", self.hide_native_header_checkbox, hide_items)
-        card2 = self._create_hide_mode_card("Pro", self.pro_hide_checkbox, pro_items)
-        card3 = self._create_hide_mode_card("Max", self.max_hide_checkbox, max_items)
+        card1 = self._create_hide_mode_card("Focus", self.hide_native_header_checkbox, focus_items)
+        card3 = self._create_hide_mode_card("Zen", self.max_hide_checkbox, zen_items)
+        card4 = self._create_hide_mode_card("Flow", self.flow_mode_checkbox, flow_items)
 
         cards_layout.addWidget(card1)
-        cards_layout.addWidget(card2)
+        cards_layout.addWidget(card4)
         cards_layout.addWidget(card3)
 
+        # cards_container.setMaximumWidth(650) # Removed max width constraint
         layout.addWidget(cards_container)
         
         layout.addStretch()
@@ -5734,6 +6340,265 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return page
     
+    def create_gallery_page(self):
+        """Create a Gallery page showing all applied colors and user images."""
+        page, layout = self._create_scrollable_page()
+        
+        # === COLORS GALLERY SECTION ===
+        colors_section = SectionGroup(
+            "Colors Gallery",
+            self,
+            description="All colors currently applied in the add-on, organized by section, to change them, visit the specific page."
+        )
+        
+        # Define color categories with their keys (from colors dict)
+        color_categories = {
+            "Palette": [
+                "--accent-color", "--bg", "--fg", "--fg-subtle", 
+                "--border", "--canvas-inset", "--icon-color"
+            ],
+            "Main Menu": [
+                "--heatmap-color", "--heatmap-color-zero", 
+                "--star-color", "--empty-star-color", "--highlight-bg"
+            ],
+            "Sidebar": [
+                "--deck-hover-bg", "--deck-dragging-bg", "--deck-edit-mode-bg"
+            ],
+            "Overviewer": [
+                "--button-primary-bg", "--button-primary-gradient-start", 
+                "--button-primary-gradient-end",
+                "--new-count-bubble-bg", "--new-count-bubble-fg",
+                "--learn-count-bubble-bg", "--learn-count-bubble-fg",
+                "--review-count-bubble-bg", "--review-count-bubble-fg"
+            ],
+        }
+        
+        # Answer button colors (stored in config, not colors dict)
+        answer_button_colors = {
+            "light": {
+                "Again BG": "onigiri_reviewer_btn_again_bg_light",
+                "Again Text": "onigiri_reviewer_btn_again_text_light",
+                "Hard BG": "onigiri_reviewer_btn_hard_bg_light",
+                "Hard Text": "onigiri_reviewer_btn_hard_text_light",
+                "Good BG": "onigiri_reviewer_btn_good_bg_light",
+                "Good Text": "onigiri_reviewer_btn_good_text_light",
+                "Easy BG": "onigiri_reviewer_btn_easy_bg_light",
+                "Easy Text": "onigiri_reviewer_btn_easy_text_light",
+            },
+            "dark": {
+                "Again BG": "onigiri_reviewer_btn_again_bg_dark",
+                "Again Text": "onigiri_reviewer_btn_again_text_dark",
+                "Hard BG": "onigiri_reviewer_btn_hard_bg_dark",
+                "Hard Text": "onigiri_reviewer_btn_hard_text_dark",
+                "Good BG": "onigiri_reviewer_btn_good_bg_dark",
+                "Good Text": "onigiri_reviewer_btn_good_text_dark",
+                "Easy BG": "onigiri_reviewer_btn_easy_bg_dark",
+                "Easy Text": "onigiri_reviewer_btn_easy_text_dark",
+            }
+        }
+        
+        # Get current colors based on theme mode
+        mode = "dark" if theme_manager.night_mode else "light"
+        current_colors = self.current_config.get("colors", {}).get(mode, {})
+        default_colors = DEFAULTS["colors"][mode]
+        
+        # Create a VERTICAL layout for Light and Dark mode sections (stacked for smaller windows)
+        modes_layout = QVBoxLayout()
+        modes_layout.setSpacing(15)
+        
+        # Determine label color based on current theme
+        label_color = "#ffffff" if theme_manager.night_mode else "#888"
+        
+        for display_mode, mode_name in [("light", "Light Mode"), ("dark", "Dark Mode")]:
+            mode_colors = self.current_config.get("colors", {}).get(display_mode, {})
+            mode_defaults = DEFAULTS["colors"][display_mode]
+            
+            mode_group, mode_layout = self._create_inner_group(mode_name)
+            
+            for category_name, color_keys in color_categories.items():
+                # Category title
+                cat_label = QLabel(category_name)
+                cat_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
+                mode_layout.addWidget(cat_label)
+                
+                # Create a layout for color swatches, aligned to the left
+                swatches_widget = QWidget()
+                swatches_layout = QHBoxLayout(swatches_widget)
+                swatches_layout.setContentsMargins(0, 0, 0, 5)
+                swatches_layout.setSpacing(6)
+                
+                for color_key in color_keys:
+                    color_value = mode_colors.get(color_key, mode_defaults.get(color_key, "#888888"))
+                    label_info = COLOR_LABELS.get(color_key, {"label": color_key.replace("--", "").replace("-", " ").title()})
+                    
+                    # Create swatch widget
+                    swatch_container = QWidget()
+                    swatch_container.setFixedSize(55, 50)
+                    swatch_container.setToolTip(f"{label_info['label']}\n{color_value}")
+                    swatch_v_layout = QVBoxLayout(swatch_container)
+                    swatch_v_layout.setContentsMargins(2, 2, 2, 2)
+                    swatch_v_layout.setSpacing(3)
+                    
+                    # Color circle
+                    swatch = ColorSwatch(color_value)
+                    swatch.setFixedSize(22, 22)
+                    swatch_v_layout.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
+                    
+                    # Color label (abbreviated) - larger font
+                    abbrev_label = label_info['label'][:7] + ".." if len(label_info['label']) > 9 else label_info['label']
+                    name_label = QLabel(abbrev_label)
+                    name_label.setStyleSheet(f"font-size: 10px; color: {label_color};")
+                    name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    swatch_v_layout.addWidget(name_label)
+                    
+                    swatches_layout.addWidget(swatch_container)
+                
+                swatches_layout.addStretch()  # Keep swatches aligned left
+                mode_layout.addWidget(swatches_widget)
+            
+            # Add Reviewer Answer Button Colors section
+            reviewer_label = QLabel("Reviewer")
+            reviewer_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
+            mode_layout.addWidget(reviewer_label)
+            
+            btn_swatches_widget = QWidget()
+            btn_swatches_layout = QHBoxLayout(btn_swatches_widget)
+            btn_swatches_layout.setContentsMargins(0, 0, 0, 5)
+            btn_swatches_layout.setSpacing(6)
+            
+            for label_name, config_key in answer_button_colors[display_mode].items():
+                color_value = self.current_config.get(config_key, DEFAULTS.get(config_key, "#888888"))
+                
+                swatch_container = QWidget()
+                swatch_container.setFixedSize(55, 50)
+                swatch_container.setToolTip(f"{label_name}\n{color_value}")
+                swatch_v_layout = QVBoxLayout(swatch_container)
+                swatch_v_layout.setContentsMargins(2, 2, 2, 2)
+                swatch_v_layout.setSpacing(3)
+                
+                swatch = ColorSwatch(color_value)
+                swatch.setFixedSize(22, 22)
+                swatch_v_layout.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
+                
+                name_label = QLabel(label_name)
+                name_label.setStyleSheet(f"font-size: 10px; color: {label_color};")
+                name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                swatch_v_layout.addWidget(name_label)
+                
+                btn_swatches_layout.addWidget(swatch_container)
+            
+            btn_swatches_layout.addStretch()  # Keep swatches aligned left
+            mode_layout.addWidget(btn_swatches_widget)
+            
+            modes_layout.addWidget(mode_group)
+        
+        colors_section.add_layout(modes_layout)
+        layout.addWidget(colors_section)
+        
+        # === IMAGES GALLERY SECTION ===
+        images_section = SectionGroup(
+            "Images Gallery",
+            self,
+            description="All images uploaded to the add-on, organized by location."
+        )
+        
+        # Define image directories
+        image_directories = [
+            ("Profile Pictures", "user_files/profile"),
+            ("Profile Backgrounds", "user_files/profile_bg"),
+            ("Main Menu Backgrounds", "user_files/main_bg"),
+            ("Sidebar Backgrounds", "user_files/sidebar_bg"),
+            ("Reviewer Backgrounds", "user_files/reviewer_bg"),
+            ("Reviewer Bar Backgrounds", "user_files/reviewer_bar_bg"),
+        ]
+        
+        extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+        
+        for title, folder_path in image_directories:
+            full_path = os.path.join(self.addon_path, folder_path)
+            
+            # Get image files
+            try:
+                if os.path.exists(full_path):
+                    image_files = sorted([f for f in os.listdir(full_path) if f.lower().endswith(extensions)])
+                else:
+                    image_files = []
+            except OSError:
+                image_files = []
+            
+            # Create subsection
+            subsection_group, subsection_layout = self._create_inner_group(f"{title} ({len(image_files)})")
+            
+            if image_files:
+                # Create a scroll area for thumbnails
+                scroll_area = QScrollArea()
+                scroll_area.setWidgetResizable(True)
+                scroll_area.setFixedHeight(80)  # Reduced height for smaller windows
+                scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+                
+                content_widget = QWidget()
+                grid_layout = QHBoxLayout(content_widget)
+                grid_layout.setSpacing(6)  # Reduced spacing
+                grid_layout.setContentsMargins(4, 4, 4, 4)
+                grid_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+                
+                for filename in image_files[:20]:  # Limit to 20 images per section
+                    img_path = os.path.join(full_path, filename)
+                    
+                    thumb_label = QLabel()
+                    thumb_label.setFixedSize(64, 48)  # Smaller thumbnails
+                    thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    thumb_label.setToolTip(filename)
+                    
+                    # Load and scale thumbnail
+                    pixmap = QPixmap(img_path)
+                    if not pixmap.isNull():
+                        scaled = pixmap.scaled(
+                            60, 44,  # Slightly smaller for padding
+                            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        # Center crop
+                        x = (scaled.width() - 60) // 2
+                        y = (scaled.height() - 44) // 2
+                        cropped = scaled.copy(x, y, 60, 44)
+                        rounded = create_rounded_pixmap(cropped, 6)
+                        thumb_label.setPixmap(rounded)
+                    else:
+                        thumb_label.setText("?")
+                        thumb_label.setStyleSheet("background: rgba(128,128,128,0.2); border-radius: 6px;")
+                    
+                    grid_layout.addWidget(thumb_label)
+                
+                if len(image_files) > 20:
+                    more_label = QLabel(f"+{len(image_files) - 20} more")
+                    more_label.setStyleSheet("color: #888; font-size: 11px;")
+                    grid_layout.addWidget(more_label)
+                
+                grid_layout.addStretch()
+                scroll_area.setWidget(content_widget)
+                subsection_layout.addWidget(scroll_area)
+            else:
+                no_files = QLabel("No images uploaded")
+                no_files.setStyleSheet("color: #888; font-style: italic; padding: 10px;")
+                subsection_layout.addWidget(no_files)
+            
+            images_section.add_widget(subsection_group)
+        
+        layout.addWidget(images_section)
+        layout.addStretch()
+        
+        # Add navigation buttons
+        sections_map = {
+            "Colors": colors_section,
+            "Images": images_section
+        }
+        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections_map)
+        
+        return page
+
 
     
     def _toggle_canvas_intensity_spinbox(self):
@@ -6260,6 +7125,412 @@ class SettingsDialog(QDialog):
         return widget
 
 
+    def create_reviewer_buttons_section(self):
+        section = SectionGroup("Answer Buttons", self)
+        layout = section.content_layout
+
+        # --- General Button Settings ---
+        general_group = QGroupBox("General Button settings")
+        general_layout = QVBoxLayout(general_group)
+        general_layout.setSpacing(10)
+
+        # Enable Toggle and other global settings
+        # Row 1: Enable & Radius
+        row1 = QHBoxLayout()
+        
+        enable_label = QLabel("Enable Custom Buttons:")
+        self.reviewer_btn_custom_enable_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", False))
+        row1.addWidget(enable_label)
+        row1.addWidget(self.reviewer_btn_custom_enable_toggle)
+        row1.addSpacing(20)
+        
+        radius_label = QLabel("Border Radius:")
+        self.reviewer_btn_radius_spin = QSpinBox()
+        self.reviewer_btn_radius_spin.setRange(0, 50)
+        self.reviewer_btn_radius_spin.setSuffix(" px")
+        self.reviewer_btn_radius_spin.setValue(self.current_config.get("onigiri_reviewer_btn_radius", 12))
+        row1.addWidget(radius_label)
+        row1.addWidget(self.reviewer_btn_radius_spin)
+        row1.addStretch()
+        general_layout.addLayout(row1)
+
+        # Row 2: Padding, Button Height, Bar Height
+        row2 = QHBoxLayout()
+        
+        padding_label = QLabel("Button Padding:")
+        self.reviewer_btn_padding_spin = QSpinBox()
+        self.reviewer_btn_padding_spin.setRange(0, 30)
+        self.reviewer_btn_padding_spin.setSuffix(" px")
+        self.reviewer_btn_padding_spin.setValue(self.current_config.get("onigiri_reviewer_btn_padding", 5))
+        row2.addWidget(padding_label)
+        row2.addWidget(self.reviewer_btn_padding_spin)
+        row2.addSpacing(20)
+
+        btn_height_label = QLabel("Min Height:")
+        self.reviewer_btn_height_spin = QSpinBox()
+        self.reviewer_btn_height_spin.setRange(20, 100)
+        self.reviewer_btn_height_spin.setSuffix(" px")
+        self.reviewer_btn_height_spin.setValue(self.current_config.get("onigiri_reviewer_btn_height", 40))
+        row2.addWidget(btn_height_label)
+        row2.addWidget(self.reviewer_btn_height_spin)
+        row2.addSpacing(20)
+
+        bar_height_label = QLabel("Bar Height:")
+        self.reviewer_bar_height_spin = QSpinBox()
+        self.reviewer_bar_height_spin.setRange(30, 200)
+        self.reviewer_bar_height_spin.setSuffix(" px")
+        self.reviewer_bar_height_spin.setValue(self.current_config.get("onigiri_reviewer_bar_height", 60))
+        row2.addWidget(bar_height_label)
+        row2.addWidget(self.reviewer_bar_height_spin)
+        row2.addStretch()
+        general_layout.addLayout(row2)
+
+        layout.addWidget(general_group)
+
+        # --- Two Column Layout for Light/Dark Mode ---
+        modes_layout = QHBoxLayout()
+        modes_layout.setSpacing(15)
+
+        self.preview_buttons = {"light": {}, "dark": {}}
+        
+        # Define button data for iteration
+        # (Label, key, default_bg, default_text)
+        # We'll split defaults for light/dark later
+        button_defs = [
+            ("Again", "again", 
+             ("#ffb3b3", "#4d0000"), ("#ffcccb", "#4a0000")), # (light_bg, light_text), (dark_bg, dark_text)
+            ("Hard", "hard", 
+             ("#ffe0b3", "#4d2600"), ("#ffd699", "#4d1d00")),
+            ("Good", "good", 
+             ("#b3ffb3", "#004d00"), ("#90ee90", "#004000")),
+            ("Easy", "easy", 
+             ("#b3d9ff", "#00264d"), ("#add8e6", "#002952")),
+            ("Show Answer", "other",
+             ("#ffffff", "#2c2c2c"), ("#3a3a3a", "#e0e0e0")) # Special handling for other
+        ]
+
+        # Mode loop to create columns
+        for mode_name, mode_key, bg_color in [("Light Mode", "light", "#FFFFFF"), ("Dark Mode", "dark", "#2C2C2C")]:
+            column_widget = QWidget()
+            column_widget.setObjectName(f"column_{mode_key}")
+            
+            # Determine text color based on background
+            text_col = "black" if mode_key == "light" else "white"
+            sub_text_col = "#555" if mode_key == "light" else "#ccc"
+            
+            column_widget.setStyleSheet(f"""
+                QWidget#column_{mode_key} {{
+                    background-color: {bg_color}; 
+                    border-radius: 10px;
+                }}
+                QLabel {{ color: {text_col}; }}
+                QGroupBox {{ color: {text_col}; font-weight: bold; }}
+                QGroupBox::title {{ color: {text_col}; }}
+                QCheckBox {{ color: {text_col}; }}
+                QRadioButton {{ color: {text_col}; }}
+                QLineEdit {{ color: {text_col}; background-color: {'#fff' if mode_key == 'light' else '#444'}; border: 1px solid {'#ccc' if mode_key == 'light' else '#555'}; border-radius: 4px; }}
+            """)
+            
+            col_layout = QVBoxLayout(column_widget)
+            col_layout.setContentsMargins(15, 15, 15, 15)
+            col_layout.setSpacing(15)
+            # Ensure columns don't shrink too much
+            column_widget.setMinimumWidth(350) 
+
+            # Header
+            header = QLabel(mode_name)
+            header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Force style again just in case, though the parent stylesheet should handle it
+            header.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {text_col};")
+            col_layout.addWidget(header)
+
+            # --- Preview Box for this mode ---
+            preview_frame = QFrame()
+            preview_frame.setStyleSheet(f"background-color: {bg_color}; border: 1px solid {'#444' if mode_key == 'dark' else '#ddd'}; border-radius: 8px;")
+            p_layout = QHBoxLayout(preview_frame)
+            p_layout.setContentsMargins(10, 10, 10, 10)
+            p_layout.addStretch() # Add stretch to center buttons
+            
+            # Create preview buttons
+            for label, key, light_defaults, dark_defaults in button_defs:
+                btn = QPushButton(label)
+                if key == "other":
+                     # Show Answer button usually auto-hides other buttons in real Anki, 
+                     # but here we show them all side-by-side or just show answer?
+                     # Mimicking the screenshot: All buttons visible.
+                     pass
+                
+                # Store for live updates
+                self.preview_buttons[mode_key][key] = btn
+                p_layout.addWidget(btn)
+            
+            p_layout.addStretch()
+            col_layout.addWidget(preview_frame)
+
+            # --- Settings List for this mode ---
+            # REMOVED QScrollArea to fix visibility issues
+            settings_content = QWidget()
+            settings_content.setStyleSheet("background: transparent;")
+            settings_layout = QVBoxLayout(settings_content)
+            settings_layout.setContentsMargins(0, 0, 0, 0)
+            settings_layout.setSpacing(10)
+
+            # Add Color Pickers for each button
+            for label, key, (l_bg, l_text), (d_bg, d_text) in button_defs:
+                # Group for the button
+                btn_group = QGroupBox(f"{label} Button")
+                btn_group.setStyleSheet(f"QGroupBox::title {{ color: {'#ddd' if mode_key == 'dark' else '#333'}; }}")
+                g_layout = QVBoxLayout(btn_group)
+                
+                # Determine keys and defaults based on mode
+                if mode_key == "light":
+                    bg_config_key = f"onigiri_reviewer_btn_{key}_bg_light" if key != "other" else "onigiri_reviewer_other_btn_bg_light"
+                    text_config_key = f"onigiri_reviewer_btn_{key}_text_light" if key != "other" else "onigiri_reviewer_other_btn_text_light"
+                    bg_default = l_bg
+                    text_default = l_text
+                    # Specific input names for connection later
+                    bg_input_name = f"btn_{key}_bg_light" if key != "other" else "other_btn_bg_light"
+                    text_input_name = f"btn_{key}_text_light" if key != "other" else "other_btn_text_light"
+                else: # dark
+                    bg_config_key = f"onigiri_reviewer_btn_{key}_bg_dark" if key != "other" else "onigiri_reviewer_other_btn_bg_dark"
+                    text_config_key = f"onigiri_reviewer_btn_{key}_text_dark" if key != "other" else "onigiri_reviewer_other_btn_text_dark"
+                    bg_default = d_bg
+                    text_default = d_text
+                    bg_input_name = f"btn_{key}_bg_dark" if key != "other" else "other_btn_bg_dark"
+                    text_input_name = f"btn_{key}_text_dark" if key != "other" else "other_btn_text_dark"
+
+                # Add rows
+                bg_row = self._create_color_picker_row(
+                    "Background", 
+                    self.current_config.get(bg_config_key, bg_default), 
+                    bg_input_name
+                )
+                text_row = self._create_color_picker_row(
+                    "Text", 
+                    self.current_config.get(text_config_key, text_default), 
+                    text_input_name
+                )
+                g_layout.addLayout(bg_row)
+                g_layout.addLayout(text_row)
+                
+                # Special case: Hover for "Other" button
+                if key == "other":
+                    hover_label = QLabel("Hover State")
+                    g_layout.addWidget(hover_label)
+                    
+                    if mode_key == "light":
+                        h_bg_key = "onigiri_reviewer_other_btn_hover_bg_light"
+                        h_txt_key = "onigiri_reviewer_other_btn_hover_text_light"
+                        h_bg_def, h_txt_def = "#2c2c2c", "#f0f0f0"
+                        h_bg_name, h_txt_name = "other_btn_hover_bg_light", "other_btn_hover_text_light"
+                    else:
+                        h_bg_key = "onigiri_reviewer_other_btn_hover_bg_dark"
+                        h_txt_key = "onigiri_reviewer_other_btn_hover_text_dark"
+                        h_bg_def, h_txt_def = "#e0e0e0", "#3a3a3a"
+                        h_bg_name, h_txt_name = "other_btn_hover_bg_dark", "other_btn_hover_text_dark"
+                        
+                    h_bg_row = self._create_color_picker_row(
+                        "Hover Bg", self.current_config.get(h_bg_key, h_bg_def), h_bg_name
+                    )
+                    h_txt_row = self._create_color_picker_row(
+                        "Hover Text", self.current_config.get(h_txt_key, h_txt_def), h_txt_name
+                    )
+                    g_layout.addLayout(h_bg_row)
+                    g_layout.addLayout(h_txt_row)
+
+                settings_layout.addWidget(btn_group)
+            
+            # Stat Text Color (One per mode)
+            stattxt_group = QGroupBox("Stat Text Color (.stattxt)")
+            stattxt_group.setStyleSheet(f"QGroupBox::title {{ color: {'#ddd' if mode_key == 'dark' else '#333'}; }}")
+            s_layout = QVBoxLayout(stattxt_group)
+            if mode_key == "light":
+                 stattxt_row = self._create_color_picker_row(
+                    "Color", self.current_config.get("onigiri_reviewer_stattxt_color_light", "#666666"), "stattxt_color_light"
+                 )
+            else:
+                 stattxt_row = self._create_color_picker_row(
+                    "Color", self.current_config.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa"), "stattxt_color_dark"
+                 )
+            s_layout.addLayout(stattxt_row)
+            settings_layout.addWidget(stattxt_group)
+
+            settings_layout.addStretch()
+            
+            col_layout.addWidget(settings_content) # Directly add widget to column layout
+            modes_layout.addWidget(column_widget)
+
+        layout.addLayout(modes_layout)
+
+        # Connect signals for preview updates
+        # We need to collect all inputs to connect them
+        all_inputs = [
+            self.reviewer_btn_radius_spin, self.reviewer_btn_padding_spin, self.reviewer_btn_height_spin
+        ]
+        
+        # Collect all dynamic inputs
+        # We need to find them via their attribute names we assigned in _create_color_picker_row
+        # Helper list of attributes to check
+        attr_to_check = []
+        for key in ["again", "hard", "good", "easy"]:
+            attr_to_check.extend([
+                f"btn_{key}_bg_light_color_input", f"btn_{key}_bg_dark_color_input",
+                f"btn_{key}_text_light_color_input", f"btn_{key}_text_dark_color_input"
+            ])
+        attr_to_check.extend([
+            "other_btn_bg_light_color_input", "other_btn_bg_dark_color_input",
+            "other_btn_text_light_color_input", "other_btn_text_dark_color_input",
+            "other_btn_hover_bg_light_color_input", "other_btn_hover_bg_dark_color_input",
+            "other_btn_hover_text_light_color_input", "other_btn_hover_text_dark_color_input",
+            "stattxt_color_light_color_input", "stattxt_color_dark_color_input"
+        ])
+
+        for attr in attr_to_check:
+            if hasattr(self, attr):
+                all_inputs.append(getattr(self, attr))
+
+        for widget in all_inputs:
+            if isinstance(widget, QSpinBox):
+                widget.valueChanged.connect(self._update_reviewer_button_previews)
+            elif isinstance(widget, QLineEdit):
+                # Using textChanged instead of editingFinished for live preview
+                widget.textChanged.connect(self._update_reviewer_button_previews)
+        
+        # Initial update
+        self._update_reviewer_button_previews()
+
+        # Reset Button (specific to this section)
+        reset_btn_layout = QHBoxLayout()
+        reset_btn = QPushButton("Reset Answer Buttons to Default")
+        reset_btn.clicked.connect(self.reset_reviewer_buttons_to_default)
+        reset_btn_layout.addWidget(reset_btn)
+        reset_btn_layout.addStretch()
+        layout.addLayout(reset_btn_layout)
+
+        return section
+
+    def _update_reviewer_button_previews(self):
+        if not hasattr(self, 'preview_buttons'):
+            return
+
+        radius = self.reviewer_btn_radius_spin.value()
+        padding = self.reviewer_btn_padding_spin.value()
+        height = self.reviewer_btn_height_spin.value()
+
+        buttons = ["again", "hard", "good", "easy"]
+        
+        for mode in ["light", "dark"]:
+            for key in buttons:
+                btn = self.preview_buttons[mode][key]
+                
+                # Get colors using getattr to avoid KeyError
+                if mode == "light":
+                    bg = getattr(self, f"btn_{key}_bg_light_color_input").text()
+                    text = getattr(self, f"btn_{key}_text_light_color_input").text()
+                else:
+                    bg = getattr(self, f"btn_{key}_bg_dark_color_input").text()
+                    text = getattr(self, f"btn_{key}_text_dark_color_input").text()
+                
+                if not self.reviewer_btn_custom_enable_toggle.isChecked():
+                     btn.setStyleSheet("")
+                     continue
+
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {bg} !important;
+                        color: {text};
+                        border-radius: {radius}px;
+                        padding: {padding}px;
+                        height: {height}px;
+                        border: none;
+                        font-weight: bold;
+                    }}
+                """)
+                
+            # Update "Other" button preview
+            other_btn = self.preview_buttons[mode]["other"]
+            if mode == "light":
+                bg = getattr(self, "other_btn_bg_light_color_input").text()
+                text = getattr(self, "other_btn_text_light_color_input").text()
+            else:
+                bg = getattr(self, "other_btn_bg_dark_color_input").text()
+                text = getattr(self, "other_btn_text_dark_color_input").text()
+                
+            other_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {bg} !important;
+                    color: {text};
+                    border-radius: {radius}px;
+                    padding: {padding}px;
+                    height: {height}px;
+                    border: none;
+                    font-weight: bold;
+                }}
+            """)
+
+    def reset_reviewer_buttons_to_default(self):
+        # Reset Global Settings
+        self.reviewer_btn_custom_enable_toggle.setChecked(True)
+        self.reviewer_btn_radius_spin.setValue(12)
+        self.reviewer_btn_padding_spin.setValue(5)
+        self.reviewer_btn_height_spin.setValue(40)
+        self.reviewer_bar_height_spin.setValue(60)
+
+        getattr(self, "stattxt_color_light_color_input").setText("#666666")
+        if hasattr(self, "stattxt_color_light_circular_button"): getattr(self, "stattxt_color_light_circular_button").setColor("#666666")
+        
+        getattr(self, "stattxt_color_dark_color_input").setText("#aaaaaa")
+        if hasattr(self, "stattxt_color_dark_circular_button"): getattr(self, "stattxt_color_dark_circular_button").setColor("#aaaaaa")
+        
+        # Reset Other Buttons
+        getattr(self, "other_btn_bg_light_color_input").setText("#ffffff")
+        if hasattr(self, "other_btn_bg_light_circular_button"): getattr(self, "other_btn_bg_light_circular_button").setColor("#ffffff")
+        
+        getattr(self, "other_btn_text_light_color_input").setText("#2c2c2c")
+        if hasattr(self, "other_btn_text_light_circular_button"): getattr(self, "other_btn_text_light_circular_button").setColor("#2c2c2c")
+        
+        getattr(self, "other_btn_bg_dark_color_input").setText("#3a3a3a")
+        if hasattr(self, "other_btn_bg_dark_circular_button"): getattr(self, "other_btn_bg_dark_circular_button").setColor("#3a3a3a")
+        
+        getattr(self, "other_btn_text_dark_color_input").setText("#e0e0e0")
+        if hasattr(self, "other_btn_text_dark_circular_button"): getattr(self, "other_btn_text_dark_circular_button").setColor("#e0e0e0")
+        
+        getattr(self, "other_btn_hover_bg_light_color_input").setText("#2c2c2c")
+        if hasattr(self, "other_btn_hover_bg_light_circular_button"): getattr(self, "other_btn_hover_bg_light_circular_button").setColor("#2c2c2c")
+        
+        getattr(self, "other_btn_hover_text_light_color_input").setText("#f0f0f0")
+        if hasattr(self, "other_btn_hover_text_light_circular_button"): getattr(self, "other_btn_hover_text_light_circular_button").setColor("#f0f0f0")
+        
+        getattr(self, "other_btn_hover_bg_dark_color_input").setText("#e0e0e0")
+        if hasattr(self, "other_btn_hover_bg_dark_circular_button"): getattr(self, "other_btn_hover_bg_dark_circular_button").setColor("#e0e0e0")
+        
+        getattr(self, "other_btn_hover_text_dark_color_input").setText("#3a3a3a")
+        if hasattr(self, "other_btn_hover_text_dark_circular_button"): getattr(self, "other_btn_hover_text_dark_circular_button").setColor("#3a3a3a")
+
+        # Reset Per Button Settings
+        defaults = [
+            ("again", "#ffb3b3", "#4d0000", "#ffcccb", "#4a0000"),
+            ("hard", "#ffe0b3", "#4d2600", "#ffd699", "#4d1d00"),
+            ("good", "#b3ffb3", "#004d00", "#90ee90", "#004000"),
+            ("easy", "#b3d9ff", "#00264d", "#add8e6", "#002952")
+        ]
+        
+        for key, def_bg_l, def_txt_l, def_bg_d, def_txt_d in defaults:
+            getattr(self, f"btn_{key}_bg_light_color_input").setText(def_bg_l)
+            if hasattr(self, f"btn_{key}_bg_light_circular_button"): getattr(self, f"btn_{key}_bg_light_circular_button").setColor(def_bg_l)
+            
+            getattr(self, f"btn_{key}_text_light_color_input").setText(def_txt_l)
+            if hasattr(self, f"btn_{key}_text_light_circular_button"): getattr(self, f"btn_{key}_text_light_circular_button").setColor(def_txt_l)
+            
+            getattr(self, f"btn_{key}_bg_dark_color_input").setText(def_bg_d)
+            if hasattr(self, f"btn_{key}_bg_dark_circular_button"): getattr(self, f"btn_{key}_bg_dark_circular_button").setColor(def_bg_d)
+            
+            getattr(self, f"btn_{key}_text_dark_color_input").setText(def_txt_d)
+            if hasattr(self, f"btn_{key}_text_dark_circular_button"): getattr(self, f"btn_{key}_text_dark_circular_button").setColor(def_txt_d)
+        
+        showInfo("Answer buttons have been reset to default values.")
+
     def create_reviewer_tab(self):
         page, layout = self._create_scrollable_page()
 
@@ -6332,6 +7603,14 @@ class SettingsDialog(QDialog):
 
         bottom_bar_section = SectionGroup("Bottom Bar Background", self)
         layout.addWidget(bottom_bar_section)
+
+        # --- Notification Position Section ---
+        notification_pos_section = self.create_notification_position_section()
+        layout.addWidget(notification_pos_section)
+
+        # --- Answer Buttons Section ---
+        reviewer_buttons_section = self.create_reviewer_buttons_section()
+        layout.addWidget(reviewer_buttons_section)
 
         mode_layout_content = bottom_bar_section.content_layout
         mode_layout = QHBoxLayout()
@@ -6446,9 +7725,11 @@ class SettingsDialog(QDialog):
 
         sections = {
             "Reviewer Background": reviewer_bg_section,
-            "Bottom Bar Background": bottom_bar_section
+            "Bottom Bar Background": bottom_bar_section,
+            "Notification Position": notification_pos_section,
+            "Answer Buttons": reviewer_buttons_section
         }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
+        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=2)
 
         return page
 
@@ -6504,6 +7785,157 @@ class SettingsDialog(QDialog):
             self.galleries['reviewer_bar_bg']['effects_widget'] = effects_container
 
         return widget
+
+    def create_notification_position_section(self):
+        section = SectionGroup("Reviewer Notification Widget Position", self)
+        
+        container = QWidget()
+        main_layout = QHBoxLayout(container)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(40)
+        
+        # --- Left Side: Selection Grid ---
+        grid_container = QWidget()
+        grid_layout = QGridLayout(grid_container)
+        grid_layout.setSpacing(10)
+        
+        positions = [
+            ("top-left", "↖", 0, 0),
+            ("top-center", "↑", 0, 1),
+            ("top-right", "↗", 0, 2),
+            ("bottom-left", "↙", 1, 0),
+            ("bottom-center", "↓", 1, 1),
+            ("bottom-right", "↘", 1, 2),
+        ]
+        
+        self.notification_pos_buttons = {}
+        current_pos = self.current_config.get("onigiri_reviewer_notification_position", "top-right")
+        
+        for pos_id, label, row, col in positions:
+            btn = QPushButton(label)
+            btn.setFixedSize(60, 45)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            
+            # Style for buttons
+            base_style = """
+                QPushButton {
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    background-color: transparent;
+                    font-size: 20px;
+                    color: #555;
+                }
+                QPushButton:hover {
+                    background-color: rgba(0,0,0,0.05);
+                }
+                QPushButton:checked {
+                    background-color: {self.accent_color.name()};
+                    color: white;
+                    border: 1px solid {self.accent_color.name()};
+                }
+            """
+            
+            if theme_manager.night_mode:
+                base_style = """
+                    QPushButton {
+                        border: 1px solid #555;
+                        border-radius: 8px;
+                        background-color: transparent;
+                        font-size: 20px;
+                        color: #ccc;
+                    }
+                    QPushButton:hover {
+                        background-color: rgba(255,255,255,0.05);
+                    }
+                    QPushButton:checked {
+                    background-color: {self.accent_color.name()};
+                    color: white;
+                    border: 1px solid {self.accent_color.name()};
+                }
+    }
+                """
+            
+            btn.setStyleSheet(base_style)
+            
+            if pos_id == current_pos:
+                btn.setChecked(True)
+                
+            btn.clicked.connect(lambda checked, pid=pos_id: self._update_notification_position(pid))
+            
+            self.notification_pos_buttons[pos_id] = btn
+            grid_layout.addWidget(btn, row, col)
+            
+        main_layout.addWidget(grid_container)
+        
+        # --- Right Side: Preview ---
+        self.notif_preview_widget = QWidget()
+        self.notif_preview_widget.setFixedSize(200, 120)
+        # Style the preview container (screen representation)
+        screen_border = "#ccc" if not theme_manager.night_mode else "#555"
+        screen_bg = "transparent"
+        self.notif_preview_widget.setStyleSheet(f"""
+            QWidget {{
+                border: 2px solid {screen_border};
+                border-radius: 12px;
+                background-color: {screen_bg};
+            }}
+        """)
+        
+        # The small notification rectangle
+        self.notif_rect = QLabel(self.notif_preview_widget)
+        self.notif_rect.setFixedSize(60, 30)
+        self.notif_rect.setStyleSheet(f"""
+            background-color: {self.accent_color};
+            border-radius: 4px;
+        """)
+        
+        self._position_preview_rect(current_pos)
+        
+        main_layout.addWidget(self.notif_preview_widget)
+        main_layout.addStretch()
+        
+        section.content_layout.addWidget(container)
+        return section
+
+    def _update_notification_position(self, pos_id):
+        # Update config
+        self.current_config["onigiri_reviewer_notification_position"] = pos_id
+        
+        # Update buttons state (ensure exclusive check)
+        for pid, btn in self.notification_pos_buttons.items():
+            if pid != pos_id:
+                btn.setChecked(False)
+            else:
+                btn.setChecked(True)
+                
+        # Update preview
+        self._position_preview_rect(pos_id)
+
+    def _position_preview_rect(self, pos_id):
+        # Calculate position for the preview rect within the 200x120 container
+        # Rect size: 60x30
+        # Padding/Margin assumed: 10px from edges
+        
+        container_w, container_h = 200, 120
+        rect_w, rect_h = 60, 30
+        margin = 10
+        
+        x, y = 0, 0
+        
+        if "left" in pos_id:
+            x = margin
+        elif "right" in pos_id:
+            x = container_w - rect_w - margin
+        else: # center
+            x = (container_w - rect_w) // 2
+            
+        if "top" in pos_id:
+            y = margin
+        elif "bottom" in pos_id:
+            y = container_h - rect_h - margin
+            
+        self.notif_rect.move(x, y)
 
     def _create_reviewer_bg_custom_options(self):
         """Create custom background options for the reviewer screen."""
@@ -6868,7 +8300,9 @@ class SettingsDialog(QDialog):
         }
         self.galleries[key].update(gallery_data)
 
-        self._populate_gallery_placeholders(key, image_files_cache)
+        # Defer gallery population to avoid blocking UI
+        self._defer_gallery_population(key)
+        
         layout.addLayout(button_row)
         self._update_delete_button_state(key)
         return group_container
@@ -6879,6 +8313,15 @@ class SettingsDialog(QDialog):
         grid_layout.setSpacing(10); grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         scroll_area.setWidget(content_widget)
         return scroll_area, grid_layout
+
+    def _defer_gallery_population(self, key):
+        """Populate gallery after a short delay to avoid blocking UI"""
+        QTimer.singleShot(100, lambda: self._populate_gallery_if_exists(key))
+    
+    def _populate_gallery_if_exists(self, key):
+        """Populate gallery if it exists in the galleries dict"""
+        if key in self.galleries:
+            self._populate_gallery_placeholders(key)
 
     def _on_thumbnail_ready(self, key, index, pixmap, filename):
         gallery = self.galleries.get(key)
@@ -7023,6 +8466,10 @@ class SettingsDialog(QDialog):
                     self._update_delete_button_state(key)
                     return True
 
+            if source.property("icon_key"):
+                self._change_icon(source)
+                return True
+
         if source.property("text_stack"):
             text_stack = source.property("text_stack")
             hex_widget = text_stack.widget(1)
@@ -7098,17 +8545,109 @@ class SettingsDialog(QDialog):
             delete_button.setEnabled(bool(gallery['selected']))
 
     def _create_icon_control_widget(self, key):
-        control_widget = QWidget(); layout = QHBoxLayout(control_widget); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(10)
-        preview_label = QLabel(); preview_label.setFixedSize(32, 32); preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        border_color = "#4a4a4a" if theme_manager.night_mode else "#e0e0e0"; preview_label.setStyleSheet(f"border: 1px solid {border_color}; border-radius: 4px;")
-        if theme_manager.night_mode: btn_bg, btn_border, fg = "#4a4a4a", "#5a5a5a", "#e0e0e0"
-        else: btn_bg, btn_border, fg = "#f0f0f0", "#c9c9c9", "#212121"
-        button_style = f"QPushButton {{ background-color: {btn_bg}; color: {fg}; border: 1px solid {btn_border}; padding: 5px 10px; border-radius: 4px; }} QPushButton:pressed {{ background-color: {btn_border}; }}"
-        change_button = QPushButton("Change"); change_button.setStyleSheet(button_style); change_button.clicked.connect(lambda: self._change_icon(control_widget))
-        delete_button = QPushButton("Delete"); delete_button.setStyleSheet(button_style); delete_button.clicked.connect(lambda: self._delete_icon(control_widget))
-        layout.addWidget(preview_label); layout.addWidget(change_button); layout.addWidget(delete_button); layout.addStretch()
-        control_widget.setProperty("icon_key", key); control_widget.setProperty("icon_filename", mw.col.conf.get(f"modern_menu_icon_{key}", "")); control_widget.setProperty("preview_label", preview_label)
-        self._update_icon_preview_for_widget(control_widget); return control_widget
+        # Modern Card-like widget for icon control
+        control_widget = QWidget()
+        control_widget.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Determine background and border colors based on theme
+        if theme_manager.night_mode:
+            bg_color = "rgba(255, 255, 255, 0.05)"
+            border_color = "rgba(255, 255, 255, 0.1)"
+            hover_color = "rgba(255, 255, 255, 0.1)"
+            text_color = "#e0e0e0"
+        else:
+            bg_color = "rgba(0, 0, 0, 0.03)"
+            border_color = "rgba(0, 0, 0, 0.1)"
+            hover_color = "rgba(0, 0, 0, 0.06)"
+            text_color = "#212121"
+
+        control_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QWidget:hover {{
+                background-color: {hover_color};
+                border-color: {text_color};
+            }}
+        """)
+        
+        layout = QHBoxLayout(control_widget)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(10)
+        
+        # Icon Preview
+        preview_label = QLabel()
+        preview_label.setFixedSize(32, 32)
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet("background: transparent; border: none;") # Reset style for label inside card
+        
+        # Info/Edit Text
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
+        name_label = QLabel(key.replace("_", " ").title())
+        name_label.setStyleSheet(f"background: transparent; border: none; font-weight: bold; color: {text_color}; font-size: 13px;")
+        
+        sub_label = QLabel("Click to change")
+        sub_label.setStyleSheet(f"background: transparent; border: none; color: {text_color}; opacity: 0.7; font-size: 10px;")
+        
+        text_layout.addWidget(name_label)
+        text_layout.addWidget(sub_label)
+        text_layout.addStretch()
+
+        # Delete Button (Small trash icon or X)
+        delete_btn = QPushButton()
+        delete_btn.setFixedSize(24, 24)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.setToolTip("Reset to Default")
+        
+        trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "delete.svg") # Assuming this exists or using X
+        
+        if theme_manager.night_mode:
+             delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 4px; } QPushButton:hover { background: rgba(255,0,0,0.2); }")
+             trash_color = "#ff6b6b"
+        else:
+             delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 4px; } QPushButton:hover { background: rgba(255,0,0,0.1); }")
+             trash_color = "#d32f2f"
+
+        if os.path.exists(trash_icon_path):
+            pixmap = QPixmap(trash_icon_path)
+            if not pixmap.isNull():
+                painter = QPainter(pixmap)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+                painter.fillRect(pixmap.rect(), QColor(trash_color))
+                painter.end()
+                delete_btn.setIcon(QIcon(pixmap))
+            else:
+                delete_btn.setText("âœ•")
+                delete_btn.setStyleSheet(delete_btn.styleSheet() + f"color: {trash_color}; font-weight: bold;")
+        else:
+            delete_btn.setText("âœ•")
+            delete_btn.setStyleSheet(delete_btn.styleSheet() + f"color: {trash_color}; font-weight: bold;")
+
+        delete_btn.clicked.connect(lambda: self._delete_icon(control_widget))
+
+        layout.addWidget(preview_label)
+        layout.addLayout(text_layout)
+        layout.addStretch()
+        layout.addWidget(delete_btn)
+        
+        # Properties
+        control_widget.setProperty("icon_key", key)
+        control_widget.setProperty("icon_filename", mw.col.conf.get(f"modern_menu_icon_{key}", ""))
+        control_widget.setProperty("preview_label", preview_label)
+        control_widget.setProperty("sub_label", sub_label) # To update text if needed
+        
+        # Make the whole widget clickable
+        # We can't connect signals to QWidget directly, so we install an eventFilter or perform a trick.
+        # But QWidget doesn't have clicked signal. 
+        # Easier: wrap content in a transparent QPushButton overlay or use mousePressEvent.
+        # Here we will use event filter in Settings class for simplicity as in original gallery:
+        control_widget.installEventFilter(self)
+        
+        self._update_icon_preview_for_widget(control_widget)
+        return control_widget
 
     def _update_icon_preview_for_widget(self, widget, size=24):
         key = widget.property("icon_key"); filename = widget.property("icon_filename"); preview_label = widget.property("preview_label")
@@ -7130,16 +8669,41 @@ class SettingsDialog(QDialog):
         preview_label.setPixmap(pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def _change_icon(self, widget):
-        icons_dir = os.path.join(self.addon_path, "user_files/icons"); filepath, _ = QFileDialog.getOpenFileName(self, "Select Icon", icons_dir, "SVG Files (*.svg)")
-        if filepath:
-            filename = os.path.basename(filepath); dest_path = os.path.join(icons_dir, filename)
-            if not os.path.abspath(filepath).startswith(os.path.abspath(icons_dir)):
-                try: shutil.copy(filepath, dest_path)
-                except Exception as e: QMessageBox.warning(self, "Error", f"Could not copy icon to library: {e}"); return
-            widget.setProperty("icon_filename", filename); self._update_icon_preview_for_widget(widget)
+        if not widget: return
+        
+        current_filename = widget.property("icon_filename")
+        
+        picker = IconPickerDialog(current_filename, self.addon_path, self)
+        
+        def on_selected(filename):
+            widget.setProperty("icon_filename", filename)
+            self._update_icon_preview_for_widget(widget)
             
-            if "icons" in self.galleries:
-                self._refresh_gallery("icons")
+            # If this is part of the icon assignment widgets, confirm update? 
+            # The original code just updated the property and waited for Save?
+            # Yes, mw.col.conf is read in _update_icon_preview... wait.
+            # _update_icon_preview uses: filename = widget.property("icon_filename")
+            # But the SAVE function needs to know.
+            # The properties are read back during save?
+            # Actually, `self._save_config` probably iterates widgets.
+            # Let's check how saving works later, but updating the property should be enough for now.
+            
+            # If we need to trigger immediate "apply" (like applying theme), we might need more.
+            # But for Settings Dialog, changes usually apply on "Save" or "Apply".
+            
+            # Update the config key immediately for preview purposes if needed?
+            # mw.col.conf[f"modern_menu_icon_{widget.property('icon_key')}"] = filename # This might be premature if user cancels settings.
+            # But `_update_icon_preview_for_widget` reads from widget property primarily.
+        
+        picker.iconSelected.connect(on_selected)
+        
+        # Center picker
+        parent_geo = self.geometry()
+        picker_geo = picker.geometry()
+        x = parent_geo.x() + (parent_geo.width() - picker_geo.width()) // 2
+        y = parent_geo.y() + (parent_geo.height() - picker_geo.height()) // 2
+        picker.move(x, y)
+        picker.exec()
 
     def _delete_icon(self, widget): widget.setProperty("icon_filename", ""); self._update_icon_preview_for_widget(widget)
     def reset_icons_to_default(self):
@@ -7245,6 +8809,21 @@ class SettingsDialog(QDialog):
                     widget.setText(default_value)
         
         QMessageBox.information(self, "Colors Reset", "The stats colors have been reset to their default values.\nPress 'Save' to apply the changes.")
+
+    def reset_heatmap_colors_to_default(self):
+        """Reset only the heatmap-related colors to their default values."""
+        heatmap_color_keys = ["--heatmap-color", "--heatmap-color-zero"]
+        default_colors = DEFAULTS["colors"]
+
+        for mode in ["light", "dark"]:
+            for key in heatmap_color_keys:
+                if key in self.color_widgets[mode] and key in default_colors[mode]:
+                    widget = self.color_widgets[mode][key]
+                    default_value = default_colors[mode][key]
+                    widget.setText(default_value)
+        
+        QMessageBox.information(self, "Heatmap Colors Reset", "The heatmap colors have been reset to their default values.\nPress 'Save' to apply the changes.")
+
 
     def reset_background_to_default(self):
         self.color_radio.setChecked(True)
@@ -7532,6 +9111,14 @@ class SettingsDialog(QDialog):
 
             should_animate_color_group = False
             
+            # Handle Accent Color radio button visibility
+            # Show only when "Solid Color" is selected
+            if hasattr(self, 'color_theme_accent_radio'):
+                self.color_theme_accent_radio.setVisible(is_color)
+                # If accent was selected but we're switching to Image/Slideshow, reset to "One theme color"
+                if not is_color and self.color_theme_accent_radio.isChecked():
+                    self.color_theme_single_radio.setChecked(True)
+            
             # Handle Color Group Visibility
             if hasattr(self, 'main_bg_color_group'):
                 should_be_visible = is_color or is_image or is_slideshow
@@ -7751,13 +9338,60 @@ class SettingsDialog(QDialog):
         return page
 
     def _apply_theme(self, theme_data: dict):
-        """Applies the selected theme's colors to the config and live UI."""
+        """Applies the selected theme's colors and assets to the config and live UI."""
         light_palette = theme_data.get("light", {})
         dark_palette = theme_data.get("dark", {})
+        assets = theme_data.get("assets", {})
 
         # 1. Update the internal config dictionary
         self.current_config["colors"]["light"].update(light_palette)
         self.current_config["colors"]["dark"].update(dark_palette)
+        
+        # 1b. Apply Assets (Images and Icons)
+        if "images" in assets:
+            for config_key, path in assets["images"].items():
+                if os.path.exists(path):
+                    # Config expects filenames relative to their folders for most keys
+                    # Theme data now holds absolute paths (for preview validation)
+                    # So we convert to basename for config application
+                    self.current_config[config_key] = os.path.basename(path)
+                    
+                    # For legacy keys in mw.col.conf, sync them too
+                    if config_key.startswith("modern_menu_"):
+                        mw.col.conf[config_key] = os.path.basename(path)
+                        
+                    # Also explicit sync for onigiri_ keys if needed? 
+                    # usually self.current_config syncs back on save, but we are applying LIVE.
+                    # _apply_theme usually updates widgets.
+                    # We should probably update the radio buttons / widgets too?
+                    # The original _apply_theme didn't do that for images.
+                    # But if we want instant feedback, we might need to.
+                    # However, simply setting config might trigger hooks if any?
+                    # For now, ensuring config is correct is step 1.
+                    
+        if "icons" in assets:
+            applied_icons = []
+            for icon_key, icon_value in assets["icons"].items():
+                # icon_value should be just the filename (from import)
+                # But use basename to be safe
+                filename = os.path.basename(icon_value) if icon_value else ""
+                if filename:
+                    conf_key = f"modern_menu_icon_{icon_key}"
+                    mw.col.conf[conf_key] = filename
+                    applied_icons.append(f"{icon_key}: {filename}")
+            
+            if applied_icons:
+                icon_msg = f"\n\nApplied {len(applied_icons)} custom icon(s):\n" + "\n".join(applied_icons[:5])
+            else:
+                icon_msg = ""
+        else:
+            icon_msg = ""
+
+        # 1c. Apply Fonts
+        if "font_config" in assets:
+            for type_key, font_key in assets["font_config"].items():
+                if type_key in ["main", "subtle"]:
+                    mw.col.conf[f"onigiri_font_{type_key}"] = font_key
 
         # 2. Update the UI widgets on other pages in real-time
         # This uses hasattr to avoid errors if a page hasn't been loaded yet
@@ -7780,8 +9414,27 @@ class SettingsDialog(QDialog):
             self.bg_light_color_input.setText(light_palette["--bg"])
         if hasattr(self, "bg_dark_color_input") and "--bg" in dark_palette:
             self.bg_dark_color_input.setText(dark_palette["--bg"])
+        
+        # Update Icon previews after applying icons
+        if "icons" in assets and hasattr(self, "icon_widgets"):
+            for icon_key in assets["icons"].keys():
+                if icon_key in self.icon_widgets:
+                    control_widget = self.icon_widgets[icon_key]
+                    preview_label = control_widget.property("preview_label")
+                    if preview_label:
+                        # Reload the icon preview
+                        conf_key = f"modern_menu_icon_{icon_key}"
+                        new_filename = mw.col.conf.get(conf_key, "")
+                        if new_filename:
+                            icon_path = os.path.join(self.addon_path, "user_files", "icons", new_filename)
+                            if os.path.exists(icon_path):
+                                # Update preview with new icon
+                                pixmap = QPixmap(icon_path)
+                                if not pixmap.isNull():
+                                    scaled = pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                                    preview_label.setPixmap(scaled)
             
-        showInfo("Theme applied! Press 'Save' to keep the changes.")
+        showInfo(f"Theme applied! Press 'Save' to keep the changes.{icon_msg}")
 
     def _load_themes(self):
         """Loads built-in and custom themes, returning them as separate dictionaries."""
@@ -7838,30 +9491,143 @@ class SettingsDialog(QDialog):
                 col = 0; row += 1
 
     def _import_theme(self):
-        """Opens a file dialog to import a theme from a JSON file."""
+        """Opens a file dialog to import a theme from a JSON or .onigiri file."""
         filepath, _ = QFileDialog.getOpenFileName(
             self, 
             "Import Theme", 
             "", 
-            "JSON Files (*.json)"
+            "Onigiri Theme Files (*.json *.onigiri);;JSON Files (*.json);;Onigiri Files (*.onigiri)"
         )
         if not filepath:
             return
 
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                theme_data = json.load(f)
+            filename = os.path.basename(filepath)
             
-            # Validate the theme file structure
-            if not isinstance(theme_data, dict) or "light" not in theme_data or "dark" not in theme_data:
-                QMessageBox.warning(self, "Import Error", "The selected file is not a valid Onigiri theme file.")
-                return
+            # Handle .json files (legacy)
+            if filename.lower().endswith(".json"):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    theme_data = json.load(f)
+                
+                # Validate
+                if not isinstance(theme_data, dict) or "light" not in theme_data or "dark" not in theme_data:
+                    QMessageBox.warning(self, "Import Error", "The selected file is not a valid Onigiri theme file.")
+                    return
 
-            # Copy the valid theme file to the user_themes folder
-            dest_filename = os.path.basename(filepath)
-            dest_path = os.path.join(self.user_themes_path, dest_filename)
-            shutil.copy(filepath, dest_path)
+                # Copy
+                dest_path = os.path.join(self.user_themes_path, filename)
+                shutil.copy(filepath, dest_path)
             
+            # Handle .onigiri files (zip)
+            elif filename.lower().endswith(".onigiri"):
+                import zipfile
+                if not zipfile.is_zipfile(filepath):
+                    QMessageBox.warning(self, "Import Error", "The selected file is not a valid zip archive.")
+                    return
+
+                with zipfile.ZipFile(filepath, 'r') as zf:
+                    # 1. Read theme.json
+                    try:
+                        with zf.open('theme.json') as f:
+                            theme_data = json.load(f)
+                    except KeyError:
+                        QMessageBox.warning(self, "Import Error", "The .onigiri file is missing 'theme.json'.")
+                        return
+
+                    # 2. Extract Assets
+                    # We will modify theme_data to point to the new extracted locations
+                    assets = theme_data.get("assets", {})
+                    theme_name = os.path.splitext(filename)[0] # e.g. "My_Theme"
+                    
+                    # Prepare directories
+                    images_dest_dir = os.path.join(self.addon_path, "user_files", "images", theme_name)
+                    fonts_dest_dir = os.path.join(self.addon_path, "user_files", "fonts")
+                    icons_dest_dir = os.path.join(self.addon_path, "user_files", "icons")
+                    
+                    os.makedirs(images_dest_dir, exist_ok=True)
+                    os.makedirs(fonts_dest_dir, exist_ok=True)
+                    os.makedirs(icons_dest_dir, exist_ok=True)
+
+                    # Extract Images
+                    if "images" in assets:
+                        for config_key, archive_path in assets["images"].items():
+                            try:
+                                # archive_path is like "images/main_bg/bg.png" or "images/filename.png"
+                                # We need to respect the subfolder if present
+                                parts = archive_path.split("/")
+                                if len(parts) >= 3 and parts[0] == "images":
+                                    # images/subfolder/filename
+                                    subfolder = parts[1]
+                                    filename = parts[-1]
+                                    dest_dir = os.path.join(self.addon_path, "user_files", subfolder)
+                                else:
+                                    # Fallback (old export or flat structure)
+                                    subfolder = "images" # Should we dump to images? 
+                                    # If legacy export didn't use subfolders, we might have issues.
+                                    # But we just implemented the "new" export. Let's assume theme_name/images separation if needed.
+                                    # But better to try to guess based on config_key? 
+                                    # No, let's just use a generic 'imported_assets' if unsure or stick to 'images/{ThemeName}' logic from before?
+                                    # The 'new' export I just wrote ALWAYS uses "images/subfolder/filename".
+                                    # So we rely on that.
+                                    # If not matching, we default to images/{ThemeName} from previous logic.
+                                    dest_dir = images_dest_dir # defined earlier as user_files/images/{theme_name}
+                                    filename = os.path.basename(archive_path)
+
+                                os.makedirs(dest_dir, exist_ok=True)
+                                target_path = os.path.join(dest_dir, filename)
+                                
+                                # Read from zip and write to target
+                                with zf.open(archive_path) as source, open(target_path, "wb") as target:
+                                    shutil.copyfileobj(source, target)
+                                
+                                # Update theme_data to point to absolute path
+                                # This allows ThemeCardWidget to finding the preview image immediately
+                                theme_data["assets"]["images"][config_key] = target_path
+                            except KeyError:
+                                print(f"Asset {archive_path} not found in zip.")
+
+                    # Extract Fonts
+                    if "fonts" in assets:
+                         for font_key, archive_path in assets["fonts"].items():
+                            try:
+                                asset_filename = os.path.basename(archive_path)
+                                target_path = os.path.join(fonts_dest_dir, asset_filename)
+                                with zf.open(archive_path) as source, open(target_path, "wb") as target:
+                                    shutil.copyfileobj(source, target)
+                                # We don't need to update reference in theme_data if it uses filename as key
+                                # But if we stored archive_path, we might? 
+                                # Export stored key -> archive_path.
+                                # Fonts.py loads all from user_files/fonts. 
+                                # So by just placing it there, it becomes available.
+                            except KeyError:
+                                pass
+
+                    # Extract Icons
+                    if "icons" in assets:
+                        for icon_key, archive_path in assets["icons"].items():
+                            try:
+                                asset_filename = os.path.basename(archive_path)
+                                target_path = os.path.join(icons_dest_dir, asset_filename)
+                                with zf.open(archive_path) as source, open(target_path, "wb") as target:
+                                    shutil.copyfileobj(source, target)
+                                
+                                # Update theme data with just the filename
+                                theme_data["assets"]["icons"][icon_key] = asset_filename
+                            except KeyError:
+                                pass
+                    
+                    # Preserve icon_config if it exists (for preview)
+                    # icon_config contains all icon selections (including defaults)
+                    # We don't need to modify it, just ensure it's in theme_data
+
+                    # 3. Save the modified theme.json to user_themes
+                    # We rename it to match the .onigiri filename
+                    json_filename = theme_name + ".json"
+                    json_dest_path = os.path.join(self.user_themes_path, json_filename)
+                    
+                    with open(json_dest_path, 'w', encoding='utf-8') as f:
+                        json.dump(theme_data, f, indent=4)
+
             # Refresh the grid to show the new theme
             _, user_themes = self._load_themes()
             self._populate_grid_with_themes(self.user_themes_grid_layout, user_themes)
@@ -7871,7 +9637,7 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Import Error", f"Could not import the theme file:\n{e}")
 
     def _export_current_theme(self):
-        """Gathers ALL current theme colors and saves them to a JSON file."""
+        """Gathers ALL current theme colors and assets, saving them to a .onigiri zip file."""
         name, ok = QInputDialog.getText(self, "Export Theme", "Enter a name for your theme:")
         if not ok or not name:
             return
@@ -7879,15 +9645,13 @@ class SettingsDialog(QDialog):
         light_palette = {}
         dark_palette = {}
 
-        # The new logic: Iterate through the canonical list of theme keys for both modes.
+        # 1. Gather Colors
         for mode, palette in [("light", light_palette), ("dark", dark_palette)]:
             for key in ALL_THEME_KEYS:
-                # Default to the value in the in-memory config.
-                # This is the safe fallback if the UI widget hasn't been created yet.
+                # Default to the value in the in-memory config
                 value = self.current_config["colors"][mode].get(key)
 
-                # If a UI widget for this key exists, use its value to capture last-minute edits.
-                # This checks both the general color pills and the special-cased inputs.
+                # Check UI widgets for latest values
                 if key == "--accent-color" and hasattr(self, f"{mode}_accent_color_input"):
                     value = getattr(self, f"{mode}_accent_color_input").text()
                 elif key == "--bg" and hasattr(self, f"bg_{mode}_color_input"):
@@ -7895,33 +9659,140 @@ class SettingsDialog(QDialog):
                 elif key in self.color_widgets.get(mode, {}):
                     value = self.color_widgets[mode][key].text()
                 
-                # Assign the definitive value to the palette.
                 if value is not None:
                     palette[key] = value
 
-        theme_data = {"light": light_palette, "dark": dark_palette}
+        theme_data = {
+            "light": light_palette, 
+            "dark": dark_palette,
+            "assets": {
+                "fonts": {}, # Map: local_filename -> archive_path
+                "images": {},
+                "icons": {},
+                "font_config": {}, # Store which font key is selected for main/subtle
+                "icon_config": {} # Store which icons are selected (even if defaults)
+            }
+        }
 
-        # --- The rest of the function remains the same ---
-        suggested_filename = name.lower().replace(" ", "_") + ".json"
+        # 2. Gather Assets
+        assets_to_zip = [] # List of tuples: (source_path, archive_name)
+
+        # Fonts
+        # Check active fonts in config
+        for font_type in ["main", "subtle"]:
+            font_key = mw.col.conf.get(f"onigiri_font_{font_type}")
+            if font_key:
+                # Save the configuration selection
+                theme_data["assets"]["font_config"][font_type] = font_key
+                
+                # If it's a user font, we assume the key is the filename (as per fonts.py: load_user_fonts)
+                # We check if it exists in user_files/fonts
+                font_path = os.path.join(self.addon_path, "user_files", "fonts", font_key)
+                if os.path.exists(font_path) and os.path.isfile(font_path):
+                    archive_path = f"fonts/{font_key}"
+                    # Avoid adding duplicates
+                    if not any(a[1] == archive_path for a in assets_to_zip):
+                        assets_to_zip.append((font_path, archive_path))
+                        # We list it in assets["fonts"] just to track what's included
+                        theme_data["assets"]["fonts"][font_key] = archive_path
+        
+        # Images
+        # Map config keys to their respective subfolders in user_files
+        image_key_map = {
+            "modern_menu_background_image": "main_bg",
+            "modern_menu_background_image_light": "main_bg",
+            "modern_menu_background_image_dark": "main_bg",
+            "onigiri_overview_bg_image": "main_bg",
+            "onigiri_overview_bg_image_light": "main_bg",
+            "onigiri_overview_bg_image_dark": "main_bg",
+            "modern_menu_profile_bg_image": "profile_bg",
+            "modern_menu_profile_picture": "profile",
+            "modern_menu_sidebar_bg_image": "sidebar_bg",
+            "onigiri_reviewer_bg_image": "reviewer_bg", 
+            "onigiri_reviewer_bg_image_light": "reviewer_bg",
+            "onigiri_reviewer_bg_image_dark": "reviewer_bg",
+            "onigiri_reviewer_bottom_bar_bg_image": "reviewer_bar_bg",
+        }
+        
+        active_images = {}
+        for key, subfolder in image_key_map.items():
+            # config often holds just the filename
+            # We try self.current_config first, then mw.col.conf
+            filename = self.current_config.get(key) or mw.col.conf.get(key)
+            
+            if filename and isinstance(filename, str):
+                # Construct possible full path
+                full_path = os.path.join(self.addon_path, "user_files", subfolder, filename)
+                
+                if os.path.exists(full_path) and os.path.isfile(full_path):
+                    archive_path = f"images/{subfolder}/{filename}"
+                    # Avoid duplicates
+                    if not any(a[1] == archive_path for a in assets_to_zip):
+                        assets_to_zip.append((full_path, archive_path))
+                        
+                    active_images[key] = archive_path # Store archive path in theme.json
+
+        theme_data["assets"]["images"] = active_images
+
+        # Icons
+        # Similar logic for icons. 
+        # We need to find which icons are customized. 
+        # `settings.py` creates icon widgets based on `modern_menu_icon_{key}` in `mw.col.conf`.
+        # Note: Icons seem to be stored in `mw.col.conf`, not `self.current_config` (which mimics the add-on config).
+        # We should check `mw.col.conf` for `modern_menu_icon_*`.
+        
+        active_icons = {}
+        icon_config = {}
+        
+        # Iterate over all possible icon keys (we can get them from ICON_DEFAULTS)
+        for icon_key in ICON_DEFAULTS.keys():
+            conf_key = f"modern_menu_icon_{icon_key}"
+            filename = mw.col.conf.get(conf_key, "")
+            
+            # Always save the configuration (even if it's empty/default)
+            # This allows preview to show defaults
+            icon_config[icon_key] = filename if filename else icon_key  # Use key for defaults
+            
+            if filename:
+                filepath = os.path.join(self.addon_path, "user_files/icons", filename)
+                if os.path.exists(filepath):
+                    archive_path = f"icons/{filename}"
+                    assets_to_zip.append((filepath, archive_path))
+                    active_icons[icon_key] = archive_path
+
+        theme_data["assets"]["icons"] = active_icons
+        theme_data["assets"]["icon_config"] = icon_config
+
+        # 3. Create Zip
+        suggested_filename = name.lower().replace(" ", "_") + ".onigiri"
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Theme As",
             os.path.join(self.user_themes_path, suggested_filename),
-            "JSON Files (*.json)"
+            "Onigiri Theme Files (*.onigiri)"
         )
 
         if not save_path:
             return
 
         try:
-            with open(save_path, 'w', encoding='utf-8') as f:
-                json.dump(theme_data, f, indent=4)
-            showInfo(f"Theme '{name}' exported successfully!")
+            import zipfile
+            with zipfile.ZipFile(save_path, 'w') as zf:
+                # Write theme.json
+                zf.writestr('theme.json', json.dumps(theme_data, indent=4))
+                
+                # Write assets
+                for source, dest in assets_to_zip:
+                    zf.write(source, dest)
+            
+            showInfo(f"Theme '{name}' exported successfully as .onigiri file!")
 
-            if os.path.dirname(save_path) == self.user_themes_path:
-                _, user_themes = self._load_themes()
-                self._populate_grid_with_themes(self.user_themes_grid_layout, user_themes)
-
+            # If saved in local themes folder, refresh? 
+            # (Currently .onigiri files might not appear until we implement the import/view logic)
+            # For now, standard JSON themes are loaded. 
+            # We might want to auto-extract it back to be usable immediately if saved locally?
+            # Or just leave it as an export file. The user said "Import, export".
+            
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Could not save the theme file:\n{e}")
 
@@ -7988,57 +9859,68 @@ class SettingsDialog(QDialog):
 
     # <<< START NEW CODE >>>
     def _on_hide_toggled(self, checked):
+        """Handle Focus mode toggle - Focus is the child/base level"""
         if not checked:
-            # Unchecking "Hide" unchecks "Pro" and "Max"
-            self.pro_hide_checkbox.blockSignals(True)
-            if self.pro_hide_checkbox.isChecked():
-                self.pro_hide_checkbox.setChecked(False)
-                self.pro_hide_checkbox._start_animation(False)
-            self.pro_hide_checkbox.blockSignals(False)
-
+            # When Focus is turned OFF, turn OFF both Flow and Zen
+            # Turn OFF Flow
+            self.flow_mode_checkbox.blockSignals(True)
+            if self.flow_mode_checkbox.isChecked():
+                self.flow_mode_checkbox.setChecked(False)
+                self.flow_mode_checkbox._start_animation(False)
+            self.flow_mode_checkbox.blockSignals(False)
+            
+            # Turn OFF Zen
             self.max_hide_checkbox.blockSignals(True)
             if self.max_hide_checkbox.isChecked():
                 self.max_hide_checkbox.setChecked(False)
                 self.max_hide_checkbox._start_animation(False)
             self.max_hide_checkbox.blockSignals(False)
-
-    def _on_pro_hide_toggled(self, checked):
-        if checked:
-            # Checking "Pro" checks "Hide"
-            self.hide_native_header_checkbox.blockSignals(True)
-            if not self.hide_native_header_checkbox.isChecked():
-                self.hide_native_header_checkbox.setChecked(True)
-                self.hide_native_header_checkbox._start_animation(True)
-            self.hide_native_header_checkbox.blockSignals(False)
-        else:
-            # Unchecking "Pro" unchecks "Max"
-            self.max_hide_checkbox.blockSignals(True)
-            if self.max_hide_checkbox.isChecked():
-                self.max_hide_checkbox.setChecked(False)
-                self.max_hide_checkbox._start_animation(False)
-            self.max_hide_checkbox.blockSignals(False)
+        # When Focus is turned ON, Flow and Zen remain as-is (no action needed)
 
     def _on_max_hide_toggled(self, checked):
+        """Handle Zen mode toggle - Zen is the parent/highest level"""
         if checked:
-            # Checking "Max" checks "Pro" and "Hide"
-            self.pro_hide_checkbox.blockSignals(True)
-            if not self.pro_hide_checkbox.isChecked():
-                self.pro_hide_checkbox.setChecked(True)
-                self.pro_hide_checkbox._start_animation(True)
-            self.pro_hide_checkbox.blockSignals(False)
+            # When Zen is turned ON, turn ON both Flow and Focus
+            # Turn ON Flow
+            self.flow_mode_checkbox.blockSignals(True)
+            if not self.flow_mode_checkbox.isChecked():
+                self.flow_mode_checkbox.setChecked(True)
+                self.flow_mode_checkbox._start_animation(True)
+            self.flow_mode_checkbox.blockSignals(False)
             
+            # Turn ON Focus
             self.hide_native_header_checkbox.blockSignals(True)
             if not self.hide_native_header_checkbox.isChecked():
                 self.hide_native_header_checkbox.setChecked(True)
                 self.hide_native_header_checkbox._start_animation(True)
             self.hide_native_header_checkbox.blockSignals(False)
+        # When Zen is turned OFF, Flow and Focus remain as-is (no action needed)
+
+    def _on_flow_toggled(self, checked):
+        """Handle Flow mode toggle - Flow is the middle level"""
+        if checked:
+            # When Flow is turned ON, turn ON Focus
+            self.hide_native_header_checkbox.blockSignals(True)
+            if not self.hide_native_header_checkbox.isChecked():
+                self.hide_native_header_checkbox.setChecked(True)
+                self.hide_native_header_checkbox._start_animation(True)
+            self.hide_native_header_checkbox.blockSignals(False)
+            # Zen remains as-is (no action needed)
+        else:
+            # When Flow is turned OFF, turn OFF Zen (but Focus stays as-is)
+            self.max_hide_checkbox.blockSignals(True)
+            if self.max_hide_checkbox.isChecked():
+                self.max_hide_checkbox.setChecked(False)
+                self.max_hide_checkbox._start_animation(False)
+            self.max_hide_checkbox.blockSignals(False)
     # <<< END NEW CODE >>>
 
     def _save_hide_modes_settings(self):
         self.current_config.update({
             "hideNativeHeaderAndBottomBar": self.hide_native_header_checkbox.isChecked(),
-            "proHide": self.pro_hide_checkbox.isChecked(),
+            # "proHide" removed from UI, but key might remain in config. No need to update it here.
             "maxHide": self.max_hide_checkbox.isChecked(),
+            "flowMode": self.flow_mode_checkbox.isChecked(),
             "gamificationMode": self.gamification_mode_checkbox.isChecked(),
         })
 
@@ -8126,8 +10008,8 @@ class SettingsDialog(QDialog):
             config_key = f"modern_menu_icon_{key}"
             if value:
                 mw.col.conf[config_key] = value
-            elif config_key in mw.col.conf:
-                del mw.col.conf[config_key]
+            else:
+                mw.col.conf[config_key] = ""
 
         for widget in self.icon_assignment_widgets:
             key = widget.property("icon_key")
@@ -8135,8 +10017,8 @@ class SettingsDialog(QDialog):
             config_key = f"modern_menu_icon_{key}"
             if value:
                 mw.col.conf[config_key] = value
-            elif config_key in mw.col.conf:
-                del mw.col.conf[config_key]
+            else:
+                mw.col.conf[config_key] = ""
 
         for key,widget in self.icon_size_widgets.items():
             mw.col.conf[f"modern_menu_icon_size_{key}"] = widget.value()
@@ -8187,6 +10069,12 @@ class SettingsDialog(QDialog):
     def _save_main_menu_settings(self):
         mw.col.conf["modern_menu_statsTitle"] = self.stats_title_input.text()
         
+        # Save Heatmap Default View
+        if hasattr(self, "heatmap_view_group"):
+            checked_btn = self.heatmap_view_group.checkedButton()
+            if checked_btn:
+                self.current_config["heatmapDefaultView"] = checked_btn.property("view_mode")
+        
         if hasattr(self, "selected_heatmap_shape"):
             self.current_config["heatmapShape"] = self.selected_heatmap_shape
         
@@ -8194,6 +10082,9 @@ class SettingsDialog(QDialog):
         self.current_config["heatmapShowMonths"] = self.heatmap_show_months_check.isChecked()
         self.current_config["heatmapShowWeekdays"] = self.heatmap_show_weekdays_check.isChecked()
         self.current_config["heatmapShowWeekHeader"] = self.heatmap_show_week_header_check.isChecked()
+        
+        if hasattr(self, "hide_retention_stars_check"):
+            self.current_config["hideRetentionStars"] = self.hide_retention_stars_check.isChecked()
 
         if hasattr(self, "retention_star_widget") and self.retention_star_widget:
             key = "retention_star"
@@ -8201,8 +10092,8 @@ class SettingsDialog(QDialog):
             config_key = f"modern_menu_icon_{key}"
             if value:
                 mw.col.conf[config_key] = value
-            elif config_key in mw.col.conf:
-                del mw.col.conf[config_key]
+            else:
+                mw.col.conf[config_key] = ""
 
         stats_color_keys = ["--star-color", "--empty-star-color", "--heatmap-color", "--heatmap-color-zero"]
         for mode in ["light", "dark"]:
@@ -8318,9 +10209,6 @@ class SettingsDialog(QDialog):
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_color1_color_input.text()
 
     def _save_achievements_settings(self):
-        enabled = self.achievements_mode_toggle.isChecked()
-        self.achievements_config["enabled"] = enabled
-        
         # Save restaurant_level to top-level config
         restaurant_conf = self.current_config.setdefault("restaurant_level", {})
         # Also ensure it's removed from achievements if present (cleanup)
@@ -8553,6 +10441,31 @@ class SettingsDialog(QDialog):
 
 
     def _save_reviewer_settings(self):
+        # Save Answer Buttons Settings
+        self.current_config["onigiri_reviewer_btn_custom_enabled"] = self.reviewer_btn_custom_enable_toggle.isChecked()
+        self.current_config["onigiri_reviewer_btn_radius"] = self.reviewer_btn_radius_spin.value()
+        self.current_config["onigiri_reviewer_btn_padding"] = self.reviewer_btn_padding_spin.value()
+        self.current_config["onigiri_reviewer_btn_height"] = self.reviewer_btn_height_spin.value()
+        self.current_config["onigiri_reviewer_bar_height"] = self.reviewer_bar_height_spin.value()
+        self.current_config["onigiri_reviewer_stattxt_color_light"] = getattr(self, "stattxt_color_light_color_input").text()
+        self.current_config["onigiri_reviewer_stattxt_color_dark"] = getattr(self, "stattxt_color_dark_color_input").text()
+        
+        # Save Other Buttons
+        self.current_config["onigiri_reviewer_other_btn_bg_light"] = getattr(self, "other_btn_bg_light_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_text_light"] = getattr(self, "other_btn_text_light_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_bg_dark"] = getattr(self, "other_btn_bg_dark_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_text_dark"] = getattr(self, "other_btn_text_dark_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_hover_bg_light"] = getattr(self, "other_btn_hover_bg_light_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_hover_text_light"] = getattr(self, "other_btn_hover_text_light_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_hover_bg_dark"] = getattr(self, "other_btn_hover_bg_dark_color_input").text()
+        self.current_config["onigiri_reviewer_other_btn_hover_text_dark"] = getattr(self, "other_btn_hover_text_dark_color_input").text()
+        
+        for key in ["again", "hard", "good", "easy"]:
+            self.current_config[f"onigiri_reviewer_btn_{key}_bg_light"] = getattr(self, f"btn_{key}_bg_light_color_input").text()
+            self.current_config[f"onigiri_reviewer_btn_{key}_bg_dark"] = getattr(self, f"btn_{key}_bg_dark_color_input").text()
+            self.current_config[f"onigiri_reviewer_btn_{key}_text_light"] = getattr(self, f"btn_{key}_text_light_color_input").text()
+            self.current_config[f"onigiri_reviewer_btn_{key}_text_dark"] = getattr(self, f"btn_{key}_text_dark_color_input").text()
+
         # --- Reviewer Background ---
         if self.reviewer_bg_main_radio.isChecked():
             self.current_config["onigiri_reviewer_bg_mode"] = "main"

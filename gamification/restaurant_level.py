@@ -142,12 +142,9 @@ class RestaurantLevelManager:
         """Reset Restaurant Level progress back to level 0."""
         from aqt import mw
         
-        print("=== RESET PROGRESS CALLED ===")
         conf, restaurant_conf = self._config_bundle()
         
-        before_level = restaurant_conf.get('level')
-        before_xp = restaurant_conf.get('total_xp')
-        print(f"Before reset - Level: {before_level}, XP: {before_xp}")
+
         
         # Reset XP and level to 0
         # We update gamification.json primarily now
@@ -157,35 +154,29 @@ class RestaurantLevelManager:
             "total_xp": 0,
             "level": 0
         })
-        print("Gamification data updated")
+
         
         # Write config (to clear out old values if they exist, or just save other settings)
         # We don't update restaurant_conf in config anymore for level/xp
         config.write_config(conf)
-        print("Config written to Anki")
+
         
         # Force Anki to mark the collection as modified so it saves
         if mw and mw.col:
             mw.col.setMod()
-            print("Collection marked as modified")
+            mw.col.setMod()
         
         # Also reset in gamification.json
         self._update_gamification_data(restaurant_conf)
-        print("Gamification data updated")
+
         
-        # Verify the reset worked
-        verify_state = self._get_gamification_state()
-        verify_level = verify_state.get('level')
-        verify_xp = verify_state.get('total_xp')
-        print(f"Verification - Level: {verify_level}, XP: {verify_xp}")
-        
-        print("=== RESET COMPLETE ===")
+
 
     def reset_coins(self) -> None:
         """Reset Taiyaki Coins to 0."""
         # We use explicit_coins=0 to ensure it's set to 0 regardless of config
         self._update_gamification_data({}, explicit_coins=0)
-        print("Coins reset to 0")
+
 
     def reset_purchases(self) -> None:
         """Reset owned items and current theme to default."""
@@ -193,7 +184,7 @@ class RestaurantLevelManager:
             "owned_items": ["default"],
             "current_theme_id": "default"
         })
-        print("Purchases reset to default")
+
 
 
 
@@ -233,7 +224,7 @@ class RestaurantLevelManager:
         
         if conf_xp > json_xp:
             # Migrate XP and Level
-            print(f"Migrating progress from config ({conf_xp}) to gamification.json ({json_xp})")
+            # Migrate XP and Level
             update_data = {
                 "total_xp": conf_xp,
                 "level": int(restaurant_conf.get("level", 0))
@@ -384,38 +375,47 @@ class RestaurantLevelManager:
         if not mw.col or not getattr(mw.col, "db", None):
             return False
             
-        try:
-            # Get reviews for today
 
-            # Use Anki's native stats to ensure consistency with the main window
-            # This handles FSRS optimization and other edge cases correctly
+        # Optimization: Check cache to avoid frequent DB hits
+        # Only check once every minute
+        now = time.time()
+        last_check = getattr(self, "_last_daily_sync_time", 0)
+        cached_count = getattr(self, "_cached_daily_count", -1)
+        
+        # If cache is fresh (less than 60s), allow skipping DB check if we have a value
+        if now - last_check < 60 and cached_count >= 0:
+             # But if current_progress is less than cached, we might want to update it
+             today_reviews = cached_count
+        else:
             try:
-                # Try the modern API first (Anki 2.1.28+)
-                today_reviews = mw.col.stats().todayStats().studied
-            except AttributeError:
-                # Fallback for older versions or if stats() is not available
+                # Get today's review count using direct database query
+                # This correctly counts only actual reviews from today, not deck resets or other operations
+                # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
                 day_cutoff = mw.col.sched.dayCutoff
-                today_start = day_cutoff - 86400
-                
+                today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
                 today_reviews = mw.col.db.scalar(
-                    "SELECT COUNT() FROM revlog WHERE id >= ?", 
+                    "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
                     today_start * 1000
                 ) or 0
-            
-            current_progress = daily_special.get("current_progress", 0)
-            
-            if current_progress != today_reviews:
-                daily_special["current_progress"] = today_reviews
-                return True
-        except Exception as e:
-            print(f"Onigiri: Error syncing daily progress: {e}")
+                
+                # Update cache
+                self._last_daily_sync_time = now
+                self._cached_daily_count = today_reviews
+            except Exception as e:
+                # print(f"Onigiri: Error syncing daily progress: {e}")
+                return False
+
+        current_progress = daily_special.get("current_progress", 0)
+        
+        if current_progress != today_reviews:
+            daily_special["current_progress"] = today_reviews
+            return True
             
         return False
 
     def _calculate_daily_target(self) -> Optional[int]:
         """
-        Calculates the daily target matching the logic in sushi_dishes.js.
-        Reads the sushi dishes from the JS file to ensure consistency.
+        Calculates the daily target using the centralized logic.
         """
         today = datetime.now().strftime('%Y-%m-%d')
         
@@ -423,116 +423,18 @@ class RestaurantLevelManager:
         if self._daily_target_cache.get('date') == today:
             return self._daily_target_cache.get('target')
 
-        try:
-            # Find the sushi_dishes.js file
-            addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            js_path = os.path.join(addon_path, "web", "gamification", "restaurant_level", "special_dishes.js")
-            
-            if not os.path.exists(js_path):
-                print(f"Onigiri: special_dishes.js not found at {js_path}")
-                return None
-                
-            # Read the JS file
-            with open(js_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            # Get current restaurant ID
-            restaurant_id = self.get_current_theme_id()
-            
-            # Handle evolution mapping (same as JS logic)
-            if restaurant_id and restaurant_id.startswith('restaurant_evo_'):
-                restaurant_id = 'default'
-            
-            # Find the array for the restaurant
-            # We look for "key": [ ... ]
-            start_marker = f'"{restaurant_id}": ['
-            start_idx = content.find(start_marker)
-            
-            # Fallback to default if not found
-            if start_idx == -1:
-                restaurant_id = 'default'
-                start_marker = f'"{restaurant_id}": ['
-                start_idx = content.find(start_marker)
-                
-            if start_idx == -1:
-                return None
-                
-            # Extract the array content
-            # Start reading from the '['
-            array_start = start_idx + len(start_marker) - 1 
-            
-            open_brackets = 0
-            array_content = ""
-            found_end = False
-            
-            for i in range(array_start, len(content)):
-                char = content[i]
-                if char == '[':
-                    open_brackets += 1
-                elif char == ']':
-                    open_brackets -= 1
-                    
-                if open_brackets == 0:
-                    array_content = content[array_start+1:i]
-                    found_end = True
-                    break
-            
-            if not found_end:
-                return None
-
-            # Parse the array content (list of objects)
-            dishes = []
-            current_obj = {}
-            
-            for line in array_content.split('\n'):
-                line = line.strip()
-                if line.startswith('{'):
-                    current_obj = {}
-                elif line.startswith('}'):
-                    if current_obj:
-                        dishes.append(current_obj)
-                elif ':' in line:
-                    key, val = line.split(':', 1)
-                    key = key.strip()
-                    val = val.strip().rstrip(',')
-                    # Handle numbers
-                    if val.isdigit():
-                        current_obj[key] = int(val)
-                    # Handle strings
-                    elif val.startswith('"') or val.startswith("'"):
-                        current_obj[key] = val[1:-1]
-            
-            if not dishes:
-                return None
-                
-            # Calculate day of year
-            now = datetime.now()
-            start_of_year = datetime(now.year, 1, 1)
-            day_of_year = (now - start_of_year).days + 1
-            
-            index = day_of_year % len(dishes)
-            special = dishes[index]
-            
-            min_cards = special.get('minCards', 10)
-            max_cards = special.get('maxCards', 100)
-            
-            # PRNG logic matching JS:
-            seed = day_of_year * 31 + index
-            random_val = ((seed * 9301 + 49297) % 233280) / 233280
-            
-            target = int(random_val * (max_cards - min_cards + 1)) + min_cards
+        special_data = self._get_daily_special_data()
+        if special_data:
+            target = special_data.get('target', 100)
             
             # Update cache
             self._daily_target_cache = {
                 'date': today,
                 'target': target
             }
-            
             return target
             
-        except Exception as e:
-            print(f"Onigiri: Error calculating daily target: {e}")
-            return None
+        return None
 
     def get_store_data(self) -> Dict[str, Any]:
         """Get data for the store (coins, inventory, available items)."""
@@ -697,9 +599,16 @@ class RestaurantLevelManager:
         # 2: Hard -> 3 XP
         # 3: Good -> 5 XP
         # 4: Easy -> 10 XP
+        # xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
+        # xp = xp_map.get(ease, 5)
+        # notifications = self.add_review_xp(xp, count=1)
+        # self._dispatch_notifications(notifications)
+        # OPTIMIZATION: Debounce or batch this?
+        # Actually, for reviews, immediate feedback is good. 
+        # But let's remove the print at least.
         xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
         xp = xp_map.get(ease, 5)
-        print(f"Onigiri: Review completed. Ease: {ease}, XP to award: {xp}")
+        # print(f"Onigiri: Review completed. Ease: {ease}, XP to award: {xp}")
         notifications = self.add_review_xp(xp, count=1)
         self._dispatch_notifications(notifications)
 
@@ -790,31 +699,61 @@ class RestaurantLevelManager:
             now = time.time()
             today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
             special_id = f"daily_{today}"
-            special_name = f"Daily Special - {today}"
-            special_desc = "Complete your daily review goal"
             
-            # Calculate difficulty based on target
-            target = daily_special.get("target", 100)
-            if target <= 50:
-                difficulty = "Common"
-            elif target <= 100:
-                difficulty = "Uncommon"
+            # Get the actual daily special data
+            special_data = self._get_daily_special_data()
+            
+            if special_data:
+                special_name = special_data.get("name")
+                special_desc = special_data.get("description")
+                difficulty = special_data.get("difficulty", "Common").lower() # Backend seems to case-insensitively store it, but let's check
+                # JS uses lowercase 'common', 'rare' in keys, but Titles in display.
+                # Let's Capitalize for display/storage if that's the pattern.
+                # Looking at original code: difficulty = "Common" (Capitalized)
+                difficulty = difficulty.capitalize() 
+                target = special_data.get("target", 100)
             else:
-                difficulty = "Rare"
+                # Fallback if something goes wrong
+                special_name = f"Daily Special - {today}"
+                special_desc = "Complete your daily review goal"
+                target = daily_special.get("target", 100)
+                if target <= 50:
+                    difficulty = "Common"
+                elif target <= 100:
+                    difficulty = "Uncommon"
+                else:
+                    difficulty = "Rare"
                 
             # Calculate XP - 5 XP per card with a bonus for difficulty
-            xp_earned = target * 5
-            if difficulty == "Uncommon":
-                xp_earned = int(xp_earned * 1.5)
-            elif difficulty == "Rare":
-                xp_earned = xp_earned * 2
+            # Use the XP reward from special_data if available, otherwise calculate
+            # JS logic: xp = target * 5 * multiplier. max(50, xp).
+            xp_earned = 0
+            
+            # Re-calculate based on verified difficulty to ensure server-side trust
+            base_xp = target * 5
+            multiplier = 1.0
+            
+            diff_lower = difficulty.lower()
+            if diff_lower == "common":
+                multiplier = 1.0
+            elif diff_lower == "uncommon":
+                multiplier = 1.2
+            elif diff_lower == "rare":
+                multiplier = 1.5
+            elif diff_lower == "epic":
+                multiplier = 2.0
+            elif diff_lower == "legendary":
+                multiplier = 2.5
                 
+            xp_earned = int(base_xp * multiplier)
+            xp_earned = max(50, xp_earned)
+
             # Update gamification data
             gamification.add_daily_special(
                 special_id=special_id,
                 name=special_name,
                 description=special_desc,
-                difficulty=difficulty,
+                difficulty=difficulty.lower(), # Store as lowercase in history for consistency with JS checks
                 target_cards=target,
                 completed=True,
                 cards_completed=target,
@@ -827,8 +766,8 @@ class RestaurantLevelManager:
             # Add a specific notification for daily special completion
             notifications.append({
                 'id': special_id,
-                'name': f'Completed Daily Special! +{xp_earned} XP',
-                'description': f"You reached your target of {target} cards.",
+                'name': f'Completed: {special_name}',
+                'description': f"You finished '{special_desc}' (+{xp_earned} XP)",
                 'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
                 'iconAlt': "Daily Special Trophy",
                 'type': 'xp',
@@ -853,6 +792,131 @@ class RestaurantLevelManager:
                 'description': f'Error processing daily special: {str(e)}',
                 'type': 'error'
             }]
+
+    def _get_daily_special_data(self) -> Optional[Dict[str, Any]]:
+        """
+        Parses the special_dishes.js file and replicates the logic to find today's special dish.
+        Returns a dictionary with name, description, target, difficulty, etc.
+        """
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check cache if we cached the full object? 
+        # _daily_target_cache only has 'target'. Let's expand it or just re-parse (it's fast enough)
+        
+        try:
+            # Find the sushi_dishes.js file
+            addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            js_path = os.path.join(addon_path, "web", "gamification", "restaurant_level", "special_dishes.js")
+            
+            if not os.path.exists(js_path):
+                return None
+                
+            # Read the JS file
+            with open(js_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            # Get current restaurant ID
+            restaurant_id = self.get_current_theme_id()
+            
+            # Handle evolution mapping (same as JS logic)
+            if restaurant_id and restaurant_id.startswith('restaurant_evo_'):
+                restaurant_id = 'default'
+            
+            # Find the array for the restaurant
+            start_marker = f'"{restaurant_id}": ['
+            start_idx = content.find(start_marker)
+            
+            # Fallback to default if not found
+            if start_idx == -1:
+                restaurant_id = 'default'
+                start_marker = f'"{restaurant_id}": ['
+                start_idx = content.find(start_marker)
+                
+            if start_idx == -1:
+                return None
+                
+            # Extract the array content
+            array_start = start_idx + len(start_marker) - 1 
+            
+            open_brackets = 0
+            array_content = ""
+            found_end = False
+            
+            for i in range(array_start, len(content)):
+                char = content[i]
+                if char == '[':
+                    open_brackets += 1
+                elif char == ']':
+                    open_brackets -= 1
+                    
+                if open_brackets == 0:
+                    array_content = content[array_start+1:i]
+                    found_end = True
+                    break
+            
+            if not found_end:
+                return None
+
+            # Parse the array content (simulated JS object parsing)
+            dishes = []
+            current_obj = {}
+            lines = array_content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('{'):
+                    current_obj = {}
+                elif line.startswith('}'):
+                    if current_obj:
+                        dishes.append(current_obj)
+                elif ':' in line:
+                    parts = line.split(':', 1)
+                    key = parts[0].strip()
+                    # Strip quotes from key names (e.g., "name" -> name)
+                    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
+                        key = key[1:-1]
+                    
+                    val = parts[1].strip().rstrip(',')
+                    
+                    # Clean up value quotes
+                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    elif val.isdigit():
+                        val = int(val)
+                        
+                    current_obj[key] = val
+            
+            if not dishes:
+                return None
+                
+            # Calculate day of year
+            now = datetime.now()
+            start_of_year = datetime(now.year, 1, 1)
+            day_of_year = (now - start_of_year).days + 1
+            
+            index = day_of_year % len(dishes)
+            special = dishes[index]
+            
+            min_cards = int(special.get('minCards', 10))
+            max_cards = int(special.get('maxCards', 100))
+            
+            # PRNG logic matching JS:
+            seed = day_of_year * 31 + index
+            random_val = ((seed * 9301 + 49297) % 233280) / 233280
+            
+            target = int(random_val * (max_cards - min_cards + 1)) + min_cards
+            
+            result = {
+                'name': special.get('name', 'Daily Special'),
+                'description': special.get('description', ''),
+                'difficulty': special.get('difficulty', 'common'),
+                'target': target
+            }
+            return result
+            
+        except Exception as e:
+            print(f"Onigiri: Error getting daily special data: {e}")
+            return None
 
     def _update_gamification_data(self, restaurant_conf: Dict[str, Any], explicit_coins: Optional[int] = None) -> None:
         """Update the gamification.json with restaurant data and sync cache."""
@@ -921,7 +985,8 @@ class RestaurantLevelManager:
                 json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
-            print(f"Error updating gamification data: {e}")
+
+            pass # print(f"Error updating gamification data: {e}")
 
     def _update_gamification_level(self, level: int, total_xp: int) -> None:
         """Legacy method, now delegates to _update_gamification_data."""
@@ -1005,7 +1070,9 @@ class RestaurantLevelManager:
         if level > previous_level:
             notifications.extend(self._create_level_up_notification(level))
             # Award Taiyaki Coins
-            coins_gained = (level - previous_level) * 10
+            coins_gained = 0
+            for lvl in range(previous_level + 1, level + 1):
+                coins_gained += lvl * 5
             new_coins = current_coins + coins_gained
             
             # Remove coins from config if present
@@ -1032,8 +1099,9 @@ class RestaurantLevelManager:
         }
         
         # Update gamification.json with the new level and xp AND coins
+
         self._update_gamification_data(update_data, explicit_coins=new_coins)
-        print(f"Onigiri: XP awarded. New Total: {new_total}, Level: {level}")
+        # print(f"Onigiri: XP awarded. New Total: {new_total}, Level: {level}")
         
         # Handle daily special progress and notifications
         # Get settings from config
