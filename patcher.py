@@ -3,6 +3,7 @@ import re
 import json
 import base64
 import html
+from anki.hooks import wrap
 from . import webview_handlers
 
 # Default configuration values
@@ -1499,7 +1500,7 @@ def patch_overview():
 def patch_congrats_page():
     """Replaces the default congratulations screen with a custom, stylable one."""
     
-    def new_show_finished_screen(self: Overview):
+    def new_show_finished_screen(self: Overview, _old):
         addon_path = os.path.dirname(__file__)
         conf = config.get_config()
         addon_package = mw.addonManager.addonFromModule(__name__)
@@ -1614,7 +1615,7 @@ def patch_congrats_page():
             }
         """)
 
-    Overview._show_finished_screen = new_show_finished_screen
+    Overview._show_finished_screen = wrap(Overview._show_finished_screen, new_show_finished_screen, "around")
 
 
 def generate_deck_browser_backgrounds(addon_path):
@@ -3390,7 +3391,8 @@ def apply_patches():
     patch_overview()
     
     # Patch the congrats page
-    patch_congrats_page()
+    # REMOVED: Called explicitly in __init__.py at top-level to ensure correct hook order
+    # patch_congrats_page()
     
     # Patch the webview to handle our custom messages
     # REMOVED: This hook is already registered in __init__.py line 292

@@ -266,17 +266,30 @@ def verify_coin_integrity():
 
 
 def initial_setup():
+    # Move UI patching to initial_setup so it happens after mw.col is initialized.
+    # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
-    patcher.patch_overview()
-    patcher.patch_congrats_page()
     menu_buttons.setup_onigiri_menu(addon_path)
-    maybe_show_welcome_popup()
-    
-    # Verify coin integrity on startup
+
+    # Verify coin integrity on startup (requires mw.col)
     verify_coin_integrity()
     
-    # Initialize the Shop Menu Item
+    # Initialize the Shop Menu Item (requires mw.col)
     setup_shop_menu()
+
+    # Show welcome popup if needed (requires mw.col)
+    maybe_show_welcome_popup()
+
+# --- INITIALIZATION ---
+
+# Move UI patching to top-level so it happens during module load.
+# This ensures Onigiri's hooks and wraps are established before other add-ons
+# might overwrite them, and prevents unstyled flashes.
+# NOTE: patch_congrats_page is safe to run here as it doesn't access mw.col immediately.
+patcher.patch_congrats_page()
+
+# Initialize renderer immediately
+DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
 
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
     conf = config.get_config()
@@ -313,11 +326,6 @@ def on_deck_browser_will_show(deck_browser: DeckBrowser):
     that other add-ons have had time to register their hooks.
     """
     patcher.take_control_of_deck_browser_hook()
-
-# CRITICAL FIX: Activate the Onigiri renderer immediately during module load,
-# before any hooks fire. This prevents the default Anki renderer from being used
-# on first load, which would show an unstyled/broken view.
-DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
 
 gui_hooks.main_window_did_init.append(initial_setup)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
