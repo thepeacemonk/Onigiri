@@ -1239,13 +1239,14 @@ def patch_overview():
             .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 14px; }
             .mini-overview .stats-row span:first-child { color: var(--fg-subtle); }
             .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; }
-            .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-size: 16px; border-radius: 9999px; }
+            .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-size: 16px; border-radius: 9999px; box-shadow: none !important; }
             .mini-overview .overview-bottom-actions { 
                 width: 280px; 
                 margin: 15px auto 0 auto; 
                 display: flex; 
                 justify-content: center; 
                 gap: 10px; 
+                text-align: center;
             }
             .mini-overview .overview-bottom-actions .overview-button { 
                 background: var(--button-bg, #f5f5f5) !important; 
@@ -1258,11 +1259,13 @@ def patch_overview():
                 font-weight: 500; 
                 transition: background-color 0.2s, border-color 0.2s, color 0.2s; 
                 opacity: 1 !important; 
+                box-shadow: none !important;
             }
             .mini-overview .overview-bottom-actions .overview-button:hover { 
                 background-color: var(--button-hover-bg, #e6e6e6) !important; 
                 border-color: var(--button-hover-border, #bfbfbf);
                 color: var(--button-hover-fg, #000);
+                box-shadow: none !important;
             }
             /* Dark mode overrides */
             .nightMode .mini-overview .overview-bottom-actions .overview-button {
@@ -1272,6 +1275,7 @@ def patch_overview():
                 --button-hover-bg: var(--window-bg, #333333);
                 --button-hover-border: var(--border, #4a4a4a);
                 --button-hover-fg: var(--fg, #ffffff);
+                box-shadow: none !important;
             }
         </style>
         """
