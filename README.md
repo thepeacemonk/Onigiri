@@ -6,6 +6,10 @@
 	Onigiri (Beta)
 </h3>
 
+<p align="center">
+  <img width="400" height="22" alt="Onigiri divider" src="https://github.com/user-attachments/assets/77958660-41fd-4a43-85df-6c17cda02958" />
+</p>
+
 Onigiri is an **experimental add-on** that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, transforming how Anki looks completely, a way to keep you motivated to study your cards everyday. 
 
 Onigiri (お握り), also known as omusubi (おむすび) or rice balls (🍙), is a traditional Japanese recipe rich in carbohydrates, which are essential to provide energy, so you can study your Anki cards! This is the intention of Onigiri, to give you the proper motivation to study your cards with a beautiful new layout to Anki (暗記), an extra carbohydrate to give you that boost to study. 
