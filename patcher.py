@@ -1512,9 +1512,10 @@ def patch_congrats_page():
         # Check for hide mode to determine if the header should be shown
         show_toolbar_replacements = conf.get("hideNativeHeaderAndBottomBar", False)
         max_hide = conf.get("maxHide", False)
+        flow_mode = conf.get("flowMode", False)
 
         header_html = ""
-        if show_toolbar_replacements and not max_hide:
+        if show_toolbar_replacements and not flow_mode:
             header_html = """
             <div class="overview-header">
                 <div class="onigiri-reviewer-header-buttons">
