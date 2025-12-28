@@ -123,7 +123,7 @@ def _get_onigiri_retention_html() -> str:
     else:
         total_reviews, correct_reviews = mw.col.db.first(
             "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
-            (mw.col.sched.dayCutoff - 86400) * 1000
+            (mw.col.sched.day_cutoff - 86400) * 1000
         ) or (0, 0)
         total_reviews = total_reviews or 0
         correct_reviews = correct_reviews or 0
@@ -370,7 +370,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         time_today_seconds = _DASHBOARD_STATS_CACHE["time_today_seconds"]
     else:
         # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
-        cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", (self.mw.col.sched.dayCutoff - 86400) * 1000) or (0, 0)
+        cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", (self.mw.col.sched.day_cutoff - 86400) * 1000) or (0, 0)
         
         # Update cache
         _DASHBOARD_STATS_CACHE["cards_today"] = cards_today
