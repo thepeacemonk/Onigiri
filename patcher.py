@@ -338,7 +338,7 @@ class RestaurantLevelDialog(QDialog):
         # Get week review count from database
         week_reviews = 0
         if mw.col and getattr(mw.col, "db", None):
-            day_cutoff = mw.col.sched.dayCutoff
+            day_cutoff = mw.col.sched.day_cutoff
             week_start_ts = (day_cutoff - 86400 * 7) * 1000  # 7 days ago in ms
             week_reviews = mw.col.db.scalar(
                 "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
@@ -351,7 +351,7 @@ class RestaurantLevelDialog(QDialog):
         today_reviews = 0
 
         if mw.col and getattr(mw.col, "db", None):
-            day_cutoff = mw.col.sched.dayCutoff
+            day_cutoff = mw.col.sched.day_cutoff
             today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
             today_reviews = mw.col.db.scalar(
                 "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
@@ -710,7 +710,7 @@ def _get_stats_html():
     # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
     cards_today, time_today_seconds = mw.col.db.first(
         "select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", 
-        (mw.col.sched.dayCutoff - 86400) * 1000
+        (mw.col.sched.day_cutoff - 86400) * 1000
     ) or (0, 0)
     time_today_seconds = time_today_seconds if time_today_seconds is not None else 0
     cards_today = cards_today if cards_today is not None else 0
@@ -721,7 +721,7 @@ def _get_stats_html():
     # --- START: New Retention Calculation ---
     total_reviews, correct_reviews = mw.col.db.first(
         "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
-        (mw.col.sched.dayCutoff - 86400) * 1000
+        (mw.col.sched.day_cutoff - 86400) * 1000
     ) or (0, 0)
     total_reviews = total_reviews or 0
     correct_reviews = correct_reviews or 0
@@ -867,7 +867,7 @@ def _generate_profile_html_body():
     if not theme_page_content:
         theme_page_content = '<p class="empty-section">Theme sections are hidden in settings.</p>'
 
-    if mw.col.conf.get("onigiri_profile_show_stats", True):
+    if conf.get("showHeatmapOnProfile", True):
         stats_page_content = _get_stats_html()
     else:
         stats_page_content = '<p class="empty-section">Stats section is hidden in settings.</p>'

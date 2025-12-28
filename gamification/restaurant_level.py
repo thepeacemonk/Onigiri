@@ -391,7 +391,7 @@ class RestaurantLevelManager:
                 # Get today's review count using direct database query
                 # This correctly counts only actual reviews from today, not deck resets or other operations
                 # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
-                day_cutoff = mw.col.sched.dayCutoff
+                day_cutoff = mw.col.sched.day_cutoff
                 today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
                 today_reviews = mw.col.db.scalar(
                     "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",

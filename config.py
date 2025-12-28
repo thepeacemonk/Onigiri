@@ -19,6 +19,7 @@ DEFAULTS = {
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
     "hideRetentionStars": False,
+    "showHeatmapOnProfile": True,
     "achievements": {
         "enabled": False,
         "earned": {},
@@ -352,8 +353,10 @@ def get_config():
 
     # Compatibility: Check for old profile page visibility settings and migrate them
     # This ensures users updating the addon don't lose their settings
-    if "onigiri_profile_show_stats" in mw.col.conf:
-        clean_config["showHeatmapOnProfile"] = mw.col.conf.get("onigiri_profile_show_stats", True)
+    # OPTIMIZATION: Check if key exists in user_config FIRST to avoid backend call
+    if "showHeatmapOnProfile" not in user_config:
+         if "onigiri_profile_show_stats" in mw.col.conf:
+            clean_config["showHeatmapOnProfile"] = mw.col.conf.get("onigiri_profile_show_stats", True)
         
     # Compatibility: Migrate restaurant_level and daily_special from achievements to top-level
     if "achievements" in clean_config:

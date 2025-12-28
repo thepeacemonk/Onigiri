@@ -20,7 +20,7 @@ def get_heatmap_data():
     offset_seconds = rollover_hour * 3600
 
     # Get Anki's dayCutoff (timestamp for start of *next* day in local time)
-    day_cutoff_seconds = mw.col.sched.dayCutoff
+    day_cutoff_seconds = mw.col.sched.day_cutoff
     
     # Calculate the timestamp for the *start of today*
     today_start_seconds = day_cutoff_seconds - 86400
