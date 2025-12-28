@@ -10,6 +10,7 @@ from aqt import mw
 from aqt.qt import *
 from aqt.utils import showInfo, tooltip
 import os
+import tempfile
 
 # SVG rendering imports
 try:
@@ -1960,29 +1961,53 @@ class TaiyakiStoreWindow(QDialog):
             showInfo(f"Error: {str(e)}")
     
     def _sync_to_gamification_json(self):
-        """Sync current store data to gamification.json"""
+        """Sync current store data to gamification.json using atomic write"""
         try:
             gamification_file = os.path.join(self.addon_path, 'user_files', 'gamification.json')
+            
+            # 1. Read existing data
+            data = {}
             if os.path.exists(gamification_file):
-                with open(gamification_file, 'r+', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if 'restaurant_level' not in data:
-                        data['restaurant_level'] = {}
-                    
-                    # Generate security token for anti-cheat
-                    security_token = generate_coin_token(self.coins)
-                    
-                    # Update the restaurant_level data
-                    data['restaurant_level']['taiyaki_coins'] = self.coins
-                    data['restaurant_level']['owned_items'] = self.owned_items
-                    data['restaurant_level']['current_theme_id'] = self.current_theme_id
-                    data['restaurant_level']['_security_token'] = security_token
-                    
-                    # Write back
-                    f.seek(0)
+                try:
+                    with open(gamification_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except json.JSONDecodeError:
+                    print("[ONIGIRI DEBUG] Corrupt gamification.json, starting fresh for sync")
+                    data = {}
+            
+            if 'restaurant_level' not in data:
+                data['restaurant_level'] = {}
+            
+            # 2. Update data
+            security_token = generate_coin_token(self.coins)
+            data['restaurant_level']['taiyaki_coins'] = self.coins
+            data['restaurant_level']['owned_items'] = self.owned_items
+            data['restaurant_level']['current_theme_id'] = self.current_theme_id
+            data['restaurant_level']['_security_token'] = security_token
+            
+            # 3. Write to temp file
+            directory = os.path.dirname(gamification_file)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+                
+            # Create temp file in same directory to ensure atomic move works
+            fd, tmp_path = tempfile.mkstemp(suffix='.tmp', dir=directory, text=True)
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.truncate()
-                    print(f"[ONIGIRI DEBUG] Synced to gamification.json: {self.coins} coins (token: {security_token[:16]}...)")
+                    f.flush()
+                    os.fsync(f.fileno()) # Ensure write hits disk
+                
+                # 4. Atomic rename
+                os.replace(tmp_path, gamification_file)
+                print(f"[ONIGIRI DEBUG] Atomic sync to gamification.json: {self.coins} coins (token: {security_token[:16]}...)")
+                
+            except Exception as e:
+                # Clean up temp file if something went wrong
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                raise e
+                
         except Exception as e:
             print(f"[ONIGIRI DEBUG] Error syncing to gamification.json: {e}")
     
