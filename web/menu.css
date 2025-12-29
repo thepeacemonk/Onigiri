@@ -402,6 +402,11 @@ a.collapse {
     height: 16px;
     margin-right: 8px;
     opacity: 0.7;
+    text-align: center;
+    line-height: 16px;
+    font-family: monospace; /* Ensure + and - are similar width/style */
+    font-weight: bold;
+    vertical-align: middle;
 }
 
 /* --- INLINE OPTS LAYOUT: NEW --- */
