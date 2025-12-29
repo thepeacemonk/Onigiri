@@ -236,7 +236,7 @@ class RestaurantLevelWidget(QWidget):
         
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 0, 15, 0)
         layout.setSpacing(20)
         
         # --- Top Section (Two Containers) ---
@@ -387,7 +387,7 @@ class RestaurantLevelWidget(QWidget):
         
         content = QWidget()
         self.specials_layout = QVBoxLayout(content)
-        self.specials_layout.setContentsMargins(0, 0, 0, 0)
+        self.specials_layout.setContentsMargins(10, 0, 15, 0)
         self.specials_layout.setSpacing(20) # Match page spacing
 
         # --- Daily Special Section ---
@@ -958,7 +958,10 @@ class RestaurantLevelWidget(QWidget):
         from aqt import mw
         import time
         now = time.localtime()
-        close_hour = int(mw.col.conf.get("rollover", 4))
+        if mw.col:
+            close_hour = int(mw.col.conf.get("rollover", 4))
+        else:
+            close_hour = 4
         
         now_ts = time.time()
         today_4am = time.mktime(time.struct_time((now.tm_year, now.tm_mon, now.tm_mday, close_hour, 0, 0, 0, 0, -1)))

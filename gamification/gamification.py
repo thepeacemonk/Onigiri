@@ -41,6 +41,13 @@ class RestaurantLevelData:
     level: int = 0
     total_xp: int = 0
     name: str = "Restaurant Level"
+    # Settings
+    enabled: Optional[bool] = None
+    notifications_enabled: Optional[bool] = None
+    show_profile_bar_progress: Optional[bool] = None
+    show_profile_page_progress: Optional[bool] = None
+    # Migration State
+    migrated: bool = False
     
     def __post_init__(self):
         if self.owned_items is None:
@@ -60,11 +67,28 @@ class GamificationData:
         """Get the path to the gamification.json file."""
         user_files = os.path.join(self.addon_path, 'user_files')
         os.makedirs(user_files, exist_ok=True)
-        return os.path.join(user_files, 'gamification.json')
+        
+        try:
+            from aqt import mw
+            profile_name = mw.pm.name
+        except:
+            profile_name = "default"
+            
+        return os.path.join(user_files, f'gamification_{profile_name}.json')
 
     def _load(self) -> None:
         """Load data from JSON file if it exists."""
         data_path = self._get_data_path()
+        
+        # Migration: Check for legacy file
+        legacy_path = os.path.join(os.path.dirname(data_path), 'gamification.json')
+        if os.path.exists(legacy_path) and not os.path.exists(data_path):
+            try:
+                os.rename(legacy_path, data_path)
+                print(f"Migrated gamification data to {data_path}")
+            except Exception as e:
+                print(f"Error migrating gamification data: {e}")
+
         if not os.path.exists(data_path):
             return
             
@@ -96,7 +120,12 @@ class GamificationData:
                 last_updated=r_data.get('last_updated', ""),
                 level=r_data.get('level', 0),
                 total_xp=r_data.get('total_xp', 0),
-                name=r_data.get('name', "Restaurant Level")
+                name=r_data.get('name', "Restaurant Level"),
+                enabled=r_data.get('enabled', None),
+                notifications_enabled=r_data.get('notifications_enabled', None),
+                show_profile_bar_progress=r_data.get('show_profile_bar_progress', None),
+                show_profile_page_progress=r_data.get('show_profile_page_progress', None),
+                migrated=r_data.get('migrated', False)
             )
             
             self.last_updated = data.get('last_updated', self.last_updated)
@@ -231,11 +260,21 @@ class GamificationData:
 # Singleton instance
 _gamification_data = None
 
+def _reset_gamification_data(*args):
+    """Reset the singleton instance when profile is loaded."""
+    global _gamification_data
+    _gamification_data = None
+
+try:
+    from aqt import gui_hooks
+    gui_hooks.profile_did_open.append(_reset_gamification_data)
+except:
+    pass
+
 def get_gamification_manager() -> GamificationData:
     """Get the singleton instance of GamificationData."""
     global _gamification_data
     if _gamification_data is None:
-        from aqt import mw
         # Calculate addon_path dynamically
         current_dir = os.path.dirname(os.path.abspath(__file__))
         addon_path = os.path.dirname(current_dir)

@@ -1,7 +1,19 @@
 import copy
+import json
+import os
 from aqt import mw
 
 # Default settings for the add-on
+DEFAULTS = {
+    # ... (content remains same, will be merged by tool if unreferenced, but I should be careful not to delete DEFAULTS content if I can help it. 
+    # Actually wait, replace_file_content replaces the WHOLE chunk. I need to keep DEFAULTS intact. 
+    # I will target the imports and the functions at the end, leaving DEFAULTS in the middle untouched if possible.
+    # Ah, I cannot "leave in the middle untouched" easily with one chunk if I want to wrap everything.
+    # I will use multiple chunks.)
+}
+
+# ... (I will use multi_replace to target specific areas)
+
 DEFAULTS = {
     "userName": "USER",
     "statsTitle": "Today's Stats",
@@ -302,6 +314,7 @@ DEFAULTS = {
 }
 
 
+
 # A unique ID for our add-on's configuration
 config_id = None
 def get_config_id():
@@ -310,38 +323,77 @@ def get_config_id():
         config_id = mw.addonManager.addonFromModule(__name__)
     return config_id
 
+def _get_settings_path() -> str:
+    """Get the path to the profile-specific settings file."""
+    try:
+        # Calculate addon_path dynamically
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        user_files = os.path.join(current_dir, 'user_files')
+        os.makedirs(user_files, exist_ok=True)
+        
+        # Determine profile name
+        if mw.col and mw.pm and mw.pm.name:
+            profile_name = mw.pm.name
+        else:
+            profile_name = "default"
+            
+        return os.path.join(user_files, f'settings_{profile_name}.json')
+    except Exception as e:
+        print(f"Error determining settings path: {e}")
+        return ""
 
 def get_config():
     """
-    Loads the add-on's configuration from Anki's settings,
-    providing defaults for any missing values and cleaning out obsolete keys.
+    Loads the add-on's configuration from the profile-specific JSON file,
+    falling back to Anki's shared config for migration or defaults.
     """
-    # mw.col might not be available during early startup.
-    if not mw.col:
-        return copy.deepcopy(DEFAULTS)
-
-    user_config = mw.addonManager.getConfig(get_config_id())
     # Start with a clean copy of the defaults
     clean_config = copy.deepcopy(DEFAULTS)
 
-    if not user_config:
-        return clean_config
 
-    # Iterate through the default keys to safely populate from the user's config
-    for key, default_value in DEFAULTS.items():
-        if key in user_config:
-            # Handle the nested 'colors' dictionary specifically
-            if key == "colors" and isinstance(default_value, dict):
-                for mode, default_mode_colors in default_value.items():
-                    if mode in user_config.get(key, {}) and isinstance(user_config[key][mode], dict):
-                        for sub_key, _ in default_mode_colors.items():
-                            if sub_key in user_config[key][mode]:
-                                clean_config[key][mode][sub_key] = user_config[key][mode][sub_key]
-            # Handle other top-level keys
-            else:
-                clean_config[key] = user_config[key]
     
-    # Compatibility migrations
+    # helper to merge dictionaries
+    def merge_config(target, source):
+        for key, value in source.items():
+            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                merge_config(target[key], value)
+            else:
+                target[key] = value
+
+    user_config = {}
+    settings_path = _get_settings_path()
+    
+    # Try to load from profile specific file
+    loaded_from_file = False
+    if settings_path and os.path.exists(settings_path):
+        try:
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                user_config = json.load(f)
+                loaded_from_file = True
+        except Exception as e:
+            print(f"Error loading settings from {settings_path}: {e}")
+    
+    # If not found (First run for this profile), try migration from legacy shared config
+    if not loaded_from_file and mw.col:
+        try:
+            legacy_config = mw.addonManager.getConfig(get_config_id())
+            if legacy_config:
+                print(f"Migrating legacy settings to {settings_path}")
+                user_config = legacy_config
+                # Save immediately to establish the new file
+                try:
+                    with open(settings_path, 'w', encoding='utf-8') as f:
+                        json.dump(user_config, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Error saving migrated settings: {e}")
+        except Exception as e:
+            print(f"Error reading legacy config: {e}")
+
+    # Merge user settings into defaults
+    if user_config:
+        merge_config(clean_config, user_config)
+    
+    # Compatibility migrations (logic preserved from original)
     custom_goals_conf = clean_config.get("achievements", {}).get("custom_goals", {})
     if "last_modified_at" not in custom_goals_conf:
         custom_goals_conf["last_modified_at"] = None
@@ -353,9 +405,8 @@ def get_config():
 
     # Compatibility: Check for old profile page visibility settings and migrate them
     # This ensures users updating the addon don't lose their settings
-    # OPTIMIZATION: Check if key exists in user_config FIRST to avoid backend call
     if "showHeatmapOnProfile" not in user_config:
-         if "onigiri_profile_show_stats" in mw.col.conf:
+         if mw.col and "onigiri_profile_show_stats" in mw.col.conf:
             clean_config["showHeatmapOnProfile"] = mw.col.conf.get("onigiri_profile_show_stats", True)
         
     # Compatibility: Migrate restaurant_level and daily_special from achievements to top-level
@@ -364,8 +415,6 @@ def get_config():
         
         # Migrate restaurant_level
         if "restaurant_level" in achievements_conf:
-            # Only migrate if top-level doesn't exist or we want to preserve old data
-            # Since clean_config has defaults, we should overwrite with old data if it exists
             clean_config["restaurant_level"] = achievements_conf["restaurant_level"]
             del achievements_conf["restaurant_level"]
             
@@ -385,6 +434,18 @@ def get_config():
 
 def write_config(config):
     """
-    Saves the provided configuration dictionary to Anki's settings.
+    Saves the provided configuration dictionary to the profile-specific JSON file.
     """
-    mw.addonManager.writeConfig(get_config_id(), config)
+    settings_path = _get_settings_path()
+    if settings_path:
+        try:
+            with open(settings_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error writing settings to {settings_path}: {e}")
+            
+    # Optional: We could also write to Anki's config as a backup, 
+    # but we want to simulate isolation, so maybe better not to, 
+    # or obscure it to avoid confusion in the Add-on Config dialog.
+    # For user clarity, let's NOT write to the shared config.
+    # mw.addonManager.writeConfig(get_config_id(), config)

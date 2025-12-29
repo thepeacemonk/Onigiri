@@ -11,6 +11,7 @@ from aqt.qt import *
 from aqt.utils import showInfo, tooltip
 import os
 import tempfile
+from .. import config
 
 # SVG rendering imports
 try:
@@ -1073,6 +1074,14 @@ class TaiyakiStoreWindow(QDialog):
         # Setup UI
         self.setup_ui()
         
+    def get_gamification_path(self):
+        """Get the profile-specific gamification file path."""
+        try:
+            profile_name = mw.pm.name if mw.pm.name else "default"
+        except:
+            profile_name = "default"
+        return os.path.join(self.addon_path, 'user_files', f'gamification_{profile_name}.json')
+
     def load_store_data(self):
         """Load store data from config"""
         # Try to read from gamification.json first as it's the source of truth
@@ -1082,7 +1091,7 @@ class TaiyakiStoreWindow(QDialog):
         security_token = None
         
         try:
-            gamification_file = os.path.join(self.addon_path, 'user_files', 'gamification.json')
+            gamification_file = self.get_gamification_path()
             if os.path.exists(gamification_file):
                 with open(gamification_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -1094,12 +1103,12 @@ class TaiyakiStoreWindow(QDialog):
         except Exception as e:
             print(f"[ONIGIRI DEBUG] Error reading gamification.json: {e}")
             # Fallback to config for items/theme ONLY, not coins
-            config = mw.addonManager.getConfig(self.addon_package)
+            conf = config.get_config()
             # Check top level first (new structure)
-            restaurant_data = config.get('restaurant_level', {})
+            restaurant_data = conf.get('restaurant_level', {})
             if not restaurant_data:
                 # Fallback to old structure
-                achievements = config.get('achievements', {})
+                achievements = conf.get('achievements', {})
                 restaurant_data = achievements.get('restaurant_level', {})
             # Coins are 0 if gamification.json fails - they are not in config anymore
             coins = 0 
@@ -1124,10 +1133,10 @@ class TaiyakiStoreWindow(QDialog):
             self.coins = coins
         
         # Check settings for special unlocks
-        config = mw.addonManager.getConfig(self.addon_package)
+        conf = config.get_config()
         
         # Focus Dango
-        focus_enabled = config.get('achievements', {}).get('focusDango', {}).get('enabled', False)
+        focus_enabled = conf.get('achievements', {}).get('focusDango', {}).get('enabled', False)
         if focus_enabled:
             if 'focus_dango' not in owned_items:
                 owned_items.append('focus_dango')
@@ -1135,7 +1144,7 @@ class TaiyakiStoreWindow(QDialog):
             owned_items.remove('focus_dango')
             
         # Mochi Messages
-        mochi_enabled = config.get('mochi_messages', {}).get('enabled', False)
+        mochi_enabled = conf.get('mochi_messages', {}).get('enabled', False)
         if mochi_enabled:
             if 'motivated_mochi' not in owned_items:
                 owned_items.append('motivated_mochi')
@@ -1828,12 +1837,12 @@ class TaiyakiStoreWindow(QDialog):
             self.owned_items.append(item_id)
             
             # Save items to config (but NOT coins)
-            config = mw.addonManager.getConfig(self.addon_package)
-            if 'restaurant_level' not in config:
-                config['restaurant_level'] = {}
+            conf = config.get_config()
+            if 'restaurant_level' not in conf:
+                conf['restaurant_level'] = {}
                 
-            config['restaurant_level']['owned_items'] = self.owned_items
-            mw.addonManager.writeConfig(self.addon_package, config)
+            conf['restaurant_level']['owned_items'] = self.owned_items
+            config.write_config(conf)
             
             # Sync to gamification.json
             self._sync_to_gamification_json()
@@ -1854,12 +1863,12 @@ class TaiyakiStoreWindow(QDialog):
         self.current_theme_id = item_id
         
         # Save to config
-        config = mw.addonManager.getConfig(self.addon_package)
-        if 'restaurant_level' not in config:
-            config['restaurant_level'] = {}
+        conf = config.get_config()
+        if 'restaurant_level' not in conf:
+            conf['restaurant_level'] = {}
             
-        config['restaurant_level']['current_theme_id'] = item_id
-        mw.addonManager.writeConfig(self.addon_package, config)
+        conf['restaurant_level']['current_theme_id'] = item_id
+        config.write_config(conf)
         
         # Sync to gamification.json
         self._sync_to_gamification_json()
@@ -1963,7 +1972,7 @@ class TaiyakiStoreWindow(QDialog):
     def _sync_to_gamification_json(self):
         """Sync current store data to gamification.json using atomic write"""
         try:
-            gamification_file = os.path.join(self.addon_path, 'user_files', 'gamification.json')
+            gamification_file = self.get_gamification_path()
             
             # 1. Read existing data
             data = {}
