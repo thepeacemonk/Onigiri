@@ -510,11 +510,18 @@ class RestaurantLevelManager:
 
         current_progress = daily_special.get("current_progress", 0)
         
+        updated = False
         if current_progress != today_reviews:
             daily_special["current_progress"] = today_reviews
-            return True
+            updated = True
             
-        return False
+        # Check for completion after sync (Always check if target met)
+        target = daily_special.get("target", 100)
+        if today_reviews >= target:
+            notifications = self._handle_daily_special_completion(daily_special)
+            self._dispatch_notifications(notifications)
+                
+        return updated
 
     def _calculate_daily_target(self) -> Optional[int]:
         """
@@ -799,6 +806,12 @@ class RestaurantLevelManager:
             now = time.time()
             today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
             special_id = f"daily_{today}"
+            
+            # Check if already completed to prevent double-awarding
+            existing = next((s for s in gamification.daily_specials if s.id == special_id and s.completed), None)
+            if existing:
+                return []
+
             
             # Get the actual daily special data
             special_data = self._get_daily_special_data()
@@ -1135,7 +1148,7 @@ class RestaurantLevelManager:
                 target = daily_special.get("target", 100)
                 
                 # Check for daily special completion
-                if new_progress >= target and current < target:
+                if new_progress >= target:
                     # Daily special completed - handle it
                     special_notifications = self._handle_daily_special_completion(daily_special)
                     notifications.extend(special_notifications)

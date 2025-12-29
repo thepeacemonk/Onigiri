@@ -295,8 +295,8 @@ class RestaurantLevelWidget(QWidget):
         self.xp_bar.setTextVisible(False)
         # Style will be set in refresh_data, but good to have base
         self.xp_bar.setStyleSheet(f"""
-            QProgressBar {{ border: none; background: {self.colors['progress_bg']}; border-radius: 8px; }}
-            QProgressBar::chunk {{ background: #1DE9B6; border-radius: 8px; }}
+            QProgressBar {{ border: 1px solid transparent; background: {self.colors['progress_bg']}; border-radius: 8px; text-align: center; }}
+            QProgressBar::chunk {{ background: #1DE9B6; border-radius: 7px; }}
         """)
         stats_layout.addWidget(self.xp_bar)
         
@@ -459,8 +459,8 @@ class RestaurantLevelWidget(QWidget):
         self.special_progress_bar.setFixedHeight(18)
         self.special_progress_bar.setTextVisible(False)
         self.special_progress_bar.setStyleSheet(f"""
-            QProgressBar {{ border: none; background: {self.colors['progress_bg']}; border-radius: 9px; }}
-            QProgressBar::chunk {{ background: #00C853; border-radius: 9px; }}
+            QProgressBar {{ border: 1px solid transparent; background: {self.colors['progress_bg']}; border-radius: 9px; text-align: center; }}
+            QProgressBar::chunk {{ background: #00C853; border-radius: 8px; }}
         """)
         special_layout.addWidget(self.special_progress_bar)
         
@@ -579,8 +579,8 @@ class RestaurantLevelWidget(QWidget):
         # For simplicity and safety, let's just color the chunk for now, or use a fixed light grey for BG
         
         self.xp_bar.setStyleSheet(f"""
-            QProgressBar {{ border: none; background: {self.colors['progress_bg']}; border-radius: 8px; }}
-            QProgressBar::chunk {{ background: {theme_color}; border-radius: 8px; }}
+            QProgressBar {{ border: 1px solid transparent; background: {self.colors['progress_bg']}; border-radius: 8px; text-align: center; }}
+            QProgressBar::chunk {{ background: {theme_color}; border-radius: 7px; }}
         """)
 
         if xp_to_next > 0:
@@ -695,7 +695,7 @@ class RestaurantLevelWidget(QWidget):
             self.update_badges(diff)
             
             self.special_progress_bar.setMaximum(target)
-            self.special_progress_bar.setValue(current)
+            self.special_progress_bar.setValue(min(current, target))
             self.progress_text.setText(f"{current}/{target} cards")
             
             needed = target - current
