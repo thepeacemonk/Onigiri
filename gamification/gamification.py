@@ -30,11 +30,29 @@ class DailySpecialData:
     cards_completed: int = 0
     xp_earned: int = 0
 
+@dataclass
+class RestaurantLevelData:
+    daily_special: Dict[str, Any]
+    taiyaki_coins: int = 0
+    owned_items: List[str] = None
+    current_theme_id: str = "default"
+    _security_token: str = ""
+    last_updated: str = ""
+    level: int = 0
+    total_xp: int = 0
+    name: str = "Restaurant Level"
+    
+    def __post_init__(self):
+        if self.owned_items is None:
+            self.owned_items = ["default"]
+
+
 class GamificationData:
     def __init__(self, addon_path: str):
         self.addon_path = addon_path
         self.achievements: Dict[str, AchievementData] = {}
         self.daily_specials: List[DailySpecialData] = []
+        self.restaurant_data: RestaurantLevelData = RestaurantLevelData(daily_special={})
         self.last_updated: str = datetime.now().isoformat()
         self._load()
 
@@ -66,13 +84,30 @@ class GamificationData:
                 for special in data.get('daily_specials', [])
             ]
             
+            # Load restaurant level data
+            r_data = data.get('restaurant_level', {})
+            # Ensure fallback defaults if file has partial data
+            self.restaurant_data = RestaurantLevelData(
+                daily_special=r_data.get('daily_special', {}),
+                taiyaki_coins=r_data.get('taiyaki_coins', 0),
+                owned_items=r_data.get('owned_items', ["default"]),
+                current_theme_id=r_data.get('current_theme_id', "default"),
+                _security_token=r_data.get('_security_token', ""),
+                last_updated=r_data.get('last_updated', ""),
+                level=r_data.get('level', 0),
+                total_xp=r_data.get('total_xp', 0),
+                name=r_data.get('name', "Restaurant Level")
+            )
+            
             self.last_updated = data.get('last_updated', self.last_updated)
             
         except Exception as e:
             print(f"Error loading gamification data: {e}")
             self.achievements = {}
             self.daily_specials = []
-
+    def reload(self) -> None:
+        """Reload data from disk."""
+        self._load()
     def save(self) -> None:
         """Save data to JSON file."""
         self.last_updated = datetime.now().isoformat()
@@ -81,13 +116,14 @@ class GamificationData:
         new_data = {
             'achievements': [asdict(ach) for ach in self.achievements.values()],
             'daily_specials': [asdict(special) for special in self.daily_specials],
+            'restaurant_level': asdict(self.restaurant_data),
             'last_updated': self.last_updated
         }
         
         data_path = self._get_data_path()
         final_data = {}
         
-        # Try to read existing data to preserve other keys (like restaurant_level)
+        # Try to read existing data to preserve other keys
         if os.path.exists(data_path):
             try:
                 with open(data_path, 'r', encoding='utf-8') as f:
@@ -172,15 +208,25 @@ class GamificationData:
                 xp_earned=xp_earned
             ))
             
-            # Keep only the most recent 100 specials to prevent the file from growing too large
-            if len(self.daily_specials) > 100:
-                self.daily_specials = sorted(
-                    self.daily_specials, 
-                    key=lambda x: x.completed_date or '',
-                    reverse=True
-                )[:100]
+
                 
         self.save()
+
+    def update_restaurant_data(self, updates: Dict[str, Any]) -> None:
+        """Update fields in restaurant data."""
+        for key, value in updates.items():
+            if hasattr(self.restaurant_data, key):
+                setattr(self.restaurant_data, key, value)
+            elif key == "daily_special_update": 
+                # Special handling for nested daily_special updates to avoid overwriting the whole dict
+                # Usage: updates={"daily_special_update": {"current_progress": 10}}
+                self.restaurant_data.daily_special.update(value)
+                
+        self.save()
+        
+    def get_restaurant_data(self) -> Dict[str, Any]:
+        """Return restaurant data as a dictionary."""
+        return asdict(self.restaurant_data)
 
 # Singleton instance
 _gamification_data = None

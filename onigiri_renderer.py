@@ -322,8 +322,8 @@ def _get_onigiri_restaurant_level_html() -> str:
         ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
 
     return f"""
-    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}" onclick="this.classList.toggle('expanded-view')">
-        <div class="restaurant-image-container">
+    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
+        <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
         </div>
@@ -473,7 +473,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 100%;
             width: 100%;
             border: 1px solid var(--border, #e0e0e0);
-            cursor: pointer;
+            /* cursor: pointer; removed - only image is clickable */
             transition: all 0.3s ease;
             position: relative;
         }}
@@ -498,13 +498,20 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             position: relative;
             transition: all 0.3s ease;
             box-sizing: border-box;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
         }}
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image-container {{
-            flex: 1;
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
+            height: 100%;
             background: transparent;
-            padding: 30px; /* Increased padding to make image smaller */
+            padding: 5px; /* Reduced padding to make image larger */
+            z-index: 10;
         }}
         
         .night .restaurant-image-container {{
