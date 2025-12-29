@@ -241,32 +241,19 @@ class RestaurantLevelManager:
         """Reset Restaurant Level progress back to level 0."""
         from aqt import mw
         
-        conf, restaurant_conf = self._config_bundle()
-        
-
-        
-        # Reset XP and level to 0
-        # We update gamification.json primarily now
-        
-        # Also reset in gamification.json
-        self._update_gamification_data({
+        # Reset XP and level in gamification.json (Source of Truth)
+        # Also ensure we mark as migrated so we don't re-import from legacy config
+        updates = {
             "total_xp": 0,
-            "level": 0
-        })
-
-        
-        # Write config (to clear out old values if they exist, or just save other settings)
-        # We don't update restaurant_conf in config anymore for level/xp
-        config.write_config(conf)
-
+            "level": 0,
+            "migrated": True
+        }
+        self._update_gamification_data(updates)
         
         # Force Anki to mark the collection as modified so it saves
         if mw and mw.col:
             mw.col.setMod()
             mw.col.setMod()
-        
-        # Also reset in gamification.json
-        self._update_gamification_data(restaurant_conf)
 
         
 
@@ -287,16 +274,16 @@ class RestaurantLevelManager:
 
 
     def set_enabled(self, enabled: bool) -> None:
-        self._update_state({"enabled": bool(enabled)})
+        self._update_gamification_data({"enabled": bool(enabled)})
 
     def set_notifications_enabled(self, enabled: bool) -> None:
-        self._update_state({"notifications_enabled": bool(enabled)})
+        self._update_gamification_data({"notifications_enabled": bool(enabled)})
 
     def set_profile_bar_visibility(self, show: bool) -> None:
-        self._update_state({"show_profile_bar_progress": bool(show)})
+        self._update_gamification_data({"show_profile_bar_progress": bool(show)})
 
     def set_profile_page_visibility(self, show: bool) -> None:
-        self._update_state({"show_profile_page_progress": bool(show)})
+        self._update_gamification_data({"show_profile_page_progress": bool(show)})
 
     def set_restaurant_name(self, name: str) -> None:
         """Set the custom name for the restaurant."""
@@ -304,7 +291,6 @@ class RestaurantLevelManager:
 
     def get_progress(self) -> LevelProgress:
         conf = config.get_config()
-        # Check top level first
         # Check top level first
         restaurant_conf = conf.get("restaurant_level", {})
         
@@ -315,58 +301,78 @@ class RestaurantLevelManager:
         # Read game state from gamification manager
         game_state = self._get_gamification_state()
         
-        # MIGRATION CHECK:
-        # If config has higher XP/Level than gamification.json, migrate it.
-        conf_xp = int(restaurant_conf.get("total_xp", 0))
-        json_xp = int(game_state.get("total_xp", 0))
+        # MIGRATION: Check settings and XP
+        updates = {}
         
-        if conf_xp > json_xp:
-            # Migrate XP and Level
-            update_data = {
-                "total_xp": conf_xp,
-                "level": int(restaurant_conf.get("level", 0))
-            }
-            # Also migrate items if needed
-            conf_owned = restaurant_conf.get("owned_items", [])
-            json_owned = game_state.get("owned_items", ["default"])
-            merged_owned = list(set(conf_owned + json_owned))
-            if len(merged_owned) > len(json_owned):
-                 update_data["owned_items"] = merged_owned
-                 
-            # Migrate theme
-            conf_theme = restaurant_conf.get("current_theme_id", "default")
-            json_theme = game_state.get("current_theme_id", "default")
-            if conf_theme != "default" and json_theme == "default":
-                update_data["current_theme_id"] = conf_theme
-                
-            self._update_gamification_data(update_data)
+        # 1. Settings Migration
+        # If setting is None (fresh load with new schema), migrate from config or default to True
+        def check_migrate(key, default):
+            val = game_state.get(key)
+            if val is None:
+                conf_val = restaurant_conf.get(key, default)
+                updates[key] = conf_val
+                return conf_val
+            return val
             
+        enabled = check_migrate("enabled", True)
+        notifications_enabled = check_migrate("notifications_enabled", True)
+        show_profile_bar_progress = check_migrate("show_profile_bar_progress", True)
+        show_profile_page_progress = check_migrate("show_profile_page_progress", True)
+
+        # 2. XP/Level Migration (Legacy check)
+        # Only run this once per profile
+        migrated = game_state.get("migrated", False)
+        
+        if not migrated:
+            # Mark as migrated so we don't check again (unless we fail to save?)
+            updates["migrated"] = True
+            
+            # If config has higher XP/Level than gamification.json, migrate it.
+            conf_xp = int(restaurant_conf.get("total_xp", 0))
+            json_xp = int(game_state.get("total_xp", 0))
+            
+            if conf_xp > json_xp:
+                updates["total_xp"] = conf_xp
+                updates["level"] = int(restaurant_conf.get("level", 0))
+                
+                # Also migrate items if needed
+                conf_owned = restaurant_conf.get("owned_items", [])
+                json_owned = game_state.get("owned_items", ["default"])
+                merged_owned = list(set(conf_owned + json_owned))
+                if len(merged_owned) > len(json_owned):
+                     updates["owned_items"] = merged_owned
+                     
+                # Migrate theme
+                conf_theme = restaurant_conf.get("current_theme_id", "default")
+                json_theme = game_state.get("current_theme_id", "default")
+                if conf_theme != "default" and json_theme == "default":
+                    updates["current_theme_id"] = conf_theme
+
+        # Apply migrations if any
+        if updates:
+            self._update_gamification_data(updates)
             # Refresh state
             game_state = self._get_gamification_state()
         
-        # Fallback to config if gamification.json is empty (migration case)
-        # But prefer gamification.json if it has data
+        # Fallback to config if gamification.json is empty (rare now due to defaults)
         total_xp = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
-        level = int(game_state.get("level", restaurant_conf.get("level", 0)))
+        # level = int(game_state.get("level", restaurant_conf.get("level", 0)))
         name = game_state.get("name", restaurant_conf.get("name", "Restaurant Level"))
 
         # Recalculate level from XP to be safe
         calc_level, xp_into_level, xp_to_next = self._collapse_xp(total_xp)
-        
-        # If calculated level differs from stored level, trust calculation (unless max level logic exists?)
-        # For now, let's trust the calculation based on total_xp
         level = calc_level
 
         return LevelProgress(
-            enabled=bool(restaurant_conf.get("enabled", False)),
+            enabled=bool(enabled),
             name=name,
             level=level,
             total_xp=total_xp,
             xp_into_level=xp_into_level,
             xp_to_next_level=xp_to_next,
-            notifications_enabled=bool(restaurant_conf.get("notifications_enabled", True)),
-            show_profile_bar_progress=bool(restaurant_conf.get("show_profile_bar_progress", True)),
-            show_profile_page_progress=bool(restaurant_conf.get("show_profile_page_progress", True)),
+            notifications_enabled=bool(notifications_enabled),
+            show_profile_bar_progress=bool(show_profile_bar_progress),
+            show_profile_page_progress=bool(show_profile_page_progress),
         )
 
     def get_progress_payload(self) -> Dict[str, Any]:
@@ -515,9 +521,11 @@ class RestaurantLevelManager:
         Calculates the daily target using the centralized logic.
         """
         today = datetime.now().strftime('%Y-%m-%d')
+        restaurant_id = self.get_current_theme_id()
         
-        # Check cache first
-        if self._daily_target_cache.get('date') == today:
+        # Check cache explicitly ensuring restaurant_id matches to support profile switching
+        if (self._daily_target_cache.get('date') == today and 
+            self._daily_target_cache.get('restaurant_id') == restaurant_id):
             return self._daily_target_cache.get('target')
 
         special_data = self._get_daily_special_data()
@@ -527,7 +535,8 @@ class RestaurantLevelManager:
             # Update cache
             self._daily_target_cache = {
                 'date': today,
-                'target': target
+                'target': target,
+                'restaurant_id': restaurant_id
             }
             return target
             
@@ -585,7 +594,15 @@ class RestaurantLevelManager:
     def _get_coins_from_json(self) -> int:
         """Read current coins from gamification.json."""
         state = self._get_gamification_state()
-        return int(state.get('taiyaki_coins', 0))
+        coins = int(state.get('taiyaki_coins', 0))
+        token = state.get('_security_token', "")
+        
+        if not verify_coin_data(coins, token):
+            # Tampering detected (or migration period) - reset to 0 to be safe
+            # This prevents "laundering" tempered coins via level up
+            return 0
+            
+        return coins
 
     def buy_item(self, item_id: str) -> Tuple[bool, str]:
         """Buy an item from the store."""
@@ -1003,6 +1020,11 @@ class RestaurantLevelManager:
 
     def _update_gamification_data(self, updates: Dict[str, Any]) -> None:
         """Update the gamification data via manager."""
+        # Fix: Automatically update security token if coins are changed
+        if "taiyaki_coins" in updates:
+            coins = updates["taiyaki_coins"]
+            updates["_security_token"] = generate_coin_token(coins)
+            
         self._gamification_manager.update_restaurant_data(updates)
 
     def _update_gamification_daily_special(self, daily_special: Dict[str, Any]) -> None:

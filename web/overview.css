@@ -19,8 +19,10 @@ body {
 
 /* New header for buttons */
 .overview-header {
-    position: absolute; /* Take the header out of the normal document flow */
-    width: 100%;      /* Make it span the full width to allow centering */
+    position: absolute;
+    /* Take the header out of the normal document flow */
+    width: 100%;
+    /* Make it span the full width to allow centering */
     display: flex;
     justify-content: center;
     gap: 10px;
@@ -37,6 +39,7 @@ body {
     font-weight: 500;
     transition: background-color 0.2s, border-color 0.2s, color 0.2s;
     opacity: 1 !important;
+    box-shadow: none !important;
 }
 
 /* Non-filtered deck buttons with smaller padding */
@@ -49,12 +52,14 @@ body {
     justify-content: center;
     gap: 10px;
     margin-top: 10px;
+    text-align: center;
 }
 
 .overview-button:hover {
     background-color: var(--button-hover-bg, #e6e6e6) !important;
     border-color: var(--button-hover-border, #bfbfbf);
     color: var(--button-hover-fg, #000);
+    box-shadow: none !important;
 }
 
 /* Dark mode overrides */
@@ -65,24 +70,29 @@ body {
     --button-hover-bg: var(--window-bg, #333333);
     --button-hover-border: var(--border, #4a4a4a);
     --button-hover-fg: var(--fg, #ffffff);
+    box-shadow: none !important;
 }
 
 
 /* Title styling */
 .overview-title {
     font-family: var(--font-subtle);
-    font-size: 2em; /* Bigger title */
+    font-size: 2em;
+    /* Bigger title */
     font-weight: 600;
-    margin-bottom: 20px; /* Space between title and stats */
+    margin-bottom: 20px;
+    /* Space between title and stats */
 }
 
 /* Container for stats and button */
 .overview-container {
     width: 100%;
-    max-width: 350px; /* Set max width here instead of on the parent */
-    margin-bottom: 25px; /* Add some space below the study button */
-    margin-right: 0px !important; 
-    margin-left: 0px !important; 
+    max-width: 350px;
+    /* Set max width here instead of on the parent */
+    margin-bottom: 25px;
+    /* Add some space below the study button */
+    margin-right: 0px !important;
+    margin-left: 0px !important;
     align-items: center;
 }
 
@@ -90,7 +100,8 @@ body {
 .stats-container {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-    border-radius: 12px; /* Rounded borders */
+    border-radius: 12px;
+    /* Rounded borders */
     padding: 15px 25px;
     margin-bottom: 20px;
 }
@@ -114,7 +125,8 @@ body {
 .review-count-bubble {
     font-weight: 500;
     padding: 4px 12px;
-    border-radius: 16px; /* Rounded borders for the bubble */
+    border-radius: 16px;
+    /* Rounded borders for the bubble */
     min-width: 30px;
     text-align: center;
 }
@@ -150,12 +162,14 @@ body {
     font-size: 1.1em;
     font-weight: 500;
     width: 100%;
-    box-sizing: border-box; 
+    box-sizing: border-box;
     background: transparent;
     margin: 0px;
+    box-shadow: none !important;
 }
 
 .add-button-dashed:hover {
     background-color: var(--highlight-bg);
     border-color: var(--fg-subtle);
+    box-shadow: none !important;
 }

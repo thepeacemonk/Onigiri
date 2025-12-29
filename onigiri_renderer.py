@@ -377,6 +377,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         _DASHBOARD_STATS_CACHE["time_today_seconds"] = time_today_seconds
         _DASHBOARD_LAST_UPDATE = now
         
+        # Invalidate retention cache so it re-calculates
+        if "retention" in _DASHBOARD_STATS_CACHE:
+            del _DASHBOARD_STATS_CACHE["retention"]
+        
     time_today_seconds = time_today_seconds or 0
     cards_today = cards_today or 0
     time_today_minutes = time_today_seconds / 60
