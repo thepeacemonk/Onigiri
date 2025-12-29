@@ -46,30 +46,126 @@ MOTIVATIONAL_PHRASES = (
 )
 
 RESTAURANTS = {
-    "focus_dango": {"name": "Focus Dango", "price": 0, "theme": "#DC90B8", "image": "focus_dango_restaurant.png"},
-    "motivated_mochi": {"name": "Motivated Mochi", "price": 0, "theme": "#6EC170", "image": "mochi_msg_restaurant.png"},
-    "macha_delights": {"name": "Macha Delights", "price": 400, "theme": "#517C58", "image": "Macha Delights.png"},
-    "macaron_maison": {"name": "Macaron Maison", "price": 500, "theme": "#AFC3D6", "image": "Macaron Maison.png"},
-    "coffee_co": {"name": "Coffee & Co", "price": 600, "theme": "#98693A", "image": "CoffeeAndCake.png"},
-    "grocery_store": {"name": "Grocery Store", "price": 700, "theme": "#AD6131", "image": "Grocery Store.png"},
-    "bakery_heaven": {"name": "Bakery Heaven", "price": 800, "theme": "#CD9C57", "image": "Bakery.png"},
-    "awesome_boba": {"name": "Awesome Boba", "price": 850, "theme": "#CD8DCA", "image": "Awesome Boba.png"},
-    "awesome_shiny_boba": {"name": "Awesome Shiny Boba", "price": 1000, "theme": "#41A59D", "image": "Awesome Boba (Shiny).png"},
-    "santas_coffee": {"name": "Santa's Coffee", "price": 1025, "theme": "#CA4D44", "image": "Santa's Coffee.png"},
+    "focus_dango": {
+        "name": "Focus Dango", 
+        "price": 0, 
+        "theme": "#DC90B8", 
+        "image": "focus_dango_restaurant.png",
+        "description": "A focused environment for deep work. Unlock this by enabling Focus Dango in settings."
+    },
+    "motivated_mochi": {
+        "name": "Motivated Mochi", 
+        "price": 0, 
+        "theme": "#6EC170", 
+        "image": "mochi_msg_restaurant.png",
+        "description": "Stay motivated with Mochi! Unlock this by enabling Mochi Messages in settings."
+    },
+    "macha_delights": {
+        "name": "Macha Delights", 
+        "price": 400, 
+        "theme": "#517C58", 
+        "image": "Macha Delights.png",
+        "description": "A serene tea house specializing in premium matcha creations. Perfect for those who appreciate the subtle, earthy flavors of green tea paired with delicate pastries."
+    },
+    "macaron_maison": {
+        "name": "Macaron Maison", 
+        "price": 500, 
+        "theme": "#AFC3D6", 
+        "image": "Macaron Maison.png",
+        "description": "An elegant French patisserie known for its colorful, delicate macarons. Each bite is a perfect balance of crispy shell and smooth, flavorful filling."
+    },
+    "coffee_co": {
+        "name": "Coffee & Co", 
+        "price": 600, 
+        "theme": "#98693A", 
+        "image": "CoffeeAndCake.png",
+        "description": "A cozy coffee shop where the aroma of freshly brewed coffee fills the air. Enjoy artisan coffee paired with homemade cakes and pastries."
+    },
+    "grocery_store": {
+        "name": "Grocery Store", 
+        "price": 700, 
+        "theme": "#AD6131", 
+        "image": "Grocery Store.png",
+        "description": "Your friendly neighborhood market stocked with fresh produce, pantry essentials, and daily necessities. A warm, welcoming place for all your shopping needs."
+    },
+    "bakery_heaven": {
+        "name": "Bakery Heaven", 
+        "price": 800, 
+        "theme": "#CD9C57", 
+        "image": "Bakery.png",
+        "description": "A traditional bakery where the scent of freshly baked bread greets you every morning. From crusty baguettes to soft croissants, every item is made with love."
+    },
+    "awesome_boba": {
+        "name": "Awesome Boba", 
+        "price": 850, 
+        "theme": "#CD8DCA", 
+        "image": "Awesome Boba.png",
+        "description": "A vibrant bubble tea shop offering creative flavors and toppings. Customize your drink with chewy tapioca pearls, fruit jellies, and more!"
+    },
+    "awesome_shiny_boba": {
+        "name": "Awesome Shiny Boba", 
+        "price": 1000, 
+        "theme": "#41A59D", 
+        "image": "Awesome Boba (Shiny).png",
+        "description": "The premium evolution of Awesome Boba! This exclusive location features rare ingredients and limited-edition flavors with a stunning aesthetic."
+    },
+    "santas_coffee": {
+        "name": "Santa's Coffee", 
+        "price": 1025, 
+        "theme": "#CA4D44", 
+        "image": "Santa's Coffee.png",
+        "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
+    },
 }
 
 EVOLUTIONS = {
-    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None},
-    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None},
-    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None},
-    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None},
-    "onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76"},
-    "restaurant_evo_i": {"name": "Restaurant Evo I", "price": 700, "theme": "#D07A5F", "image": "Restaurant Evo I.png"},
-    "restaurant_evo_ii": {"name": "Restaurant Evo II", "price": 800, "theme": "#D07A5F", "image": "Restaurant Evo II.png"},
-    "restaurant_evo_iii": {"name": "Restaurant Evo III", "price": 900, "theme": "#D07A5F", "image": "Restaurant Evo III.png"},
-    "restaurant_evo_iv": {"name": "Restaurant Evo IV", "price": 1000, "theme": "#D07A5F", "image": "Restaurant Evo IV.png"},
-    "restaurant_evo_legendary": {"name": "Restaurant Evo Legendary", "price": 1500, "theme": "#445A78", "image": "Restaurant Evo Legendary.png"},
-    "restaurant_evo_garden": {"name": "Restaurant Garden Palace", "price": 3000, "theme": "#2F553D", "image": "Restaurant Evo Garden Palace.png"},
+    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None, "description": "The upgrade is here!"},
+    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None, "description": "Even better!"},
+    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None, "description": "Superb!"},
+    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None, "description": "Masterpiece!"},
+    "prev_onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76", "description": "Heavenly!"},
+    "restaurant_evo_i": {
+        "name": "Restaurant Evo I", 
+        "price": 700, 
+        "theme": "#D07A5F", 
+        "image": "Restaurant Evo I.png",
+        "description": "The first evolution of your restaurant journey. A charming establishment that shows your dedication to growth and improvement."
+    },
+    "restaurant_evo_ii": {
+        "name": "Restaurant Evo II", 
+        "price": 800, 
+        "theme": "#D07A5F", 
+        "image": "Restaurant Evo II.png",
+        "description": "Your restaurant continues to evolve! Enhanced decor and expanded menu options attract more customers and showcase your progress."
+    },
+    "restaurant_evo_iii": {
+        "name": "Restaurant Evo III", 
+        "price": 900, 
+        "theme": "#D07A5F", 
+        "image": "Restaurant Evo III.png",
+        "description": "A significant milestone in your culinary journey. Your restaurant now features premium amenities and a reputation for excellence."
+    },
+    "restaurant_evo_iv": {
+        "name": "Restaurant Evo IV", 
+        "price": 1000, 
+        "theme": "#D07A5F", 
+        "image": "Restaurant Evo IV.png",
+        "description": "Near the peak of perfection! Your establishment has become a local landmark, known for its exceptional service and quality."
+    },
+    "restaurant_evo_legendary": {
+        "name": "Restaurant Evo Legendary", 
+        "price": 1500, 
+        "theme": "#445A78", 
+        "image": "Restaurant Evo Legendary.png",
+        "description": "The ultimate achievement! A legendary restaurant that stands as a testament to your dedication and hard work. Only the most committed reach this level."
+    },
+    "restaurant_evo_garden": {
+        "name": "Restaurant Garden Palace", 
+        "price": 3000, 
+        "theme": "#2F553D", 
+        "image": "Restaurant Evo Garden Palace.png",
+        "description": "The pinnacle of culinary prestige! This deluxe establishment radiates luxury and sophistication, offering a world-class dining experience that is truly second to none."
+    },
 }
 
 
@@ -97,15 +193,18 @@ class RestaurantLevelManager:
 
     def __init__(self) -> None:
         self._addon_package: str | None = None
-        self._gamification_file: Optional[str] = None
-        # Caches
-        self._state_cache: Optional[Dict[str, Any]] = None
         self._daily_target_cache: Dict[str, Any] = {}
+        
+    @property
+    def _gamification_manager(self):
+        from .gamification import get_gamification_manager
+        return get_gamification_manager()
 
     def refresh_state(self) -> None:
         """Force reload of gamification state from disk."""
-        self._state_cache = None
-        self._get_gamification_state()
+        # GamificationManager handles reloading if needed, but for now we assume it's up to date
+        # or we could add a reload method to it.
+        pass
 
     # ------------------------------------------------------------------
     # Public API
@@ -174,8 +273,7 @@ class RestaurantLevelManager:
 
     def reset_coins(self) -> None:
         """Reset Taiyaki Coins to 0."""
-        # We use explicit_coins=0 to ensure it's set to 0 regardless of config
-        self._update_gamification_data({}, explicit_coins=0)
+        self._update_gamification_data({"taiyaki_coins": 0})
 
 
     def reset_purchases(self) -> None:
@@ -214,7 +312,7 @@ class RestaurantLevelManager:
         if not restaurant_conf and "achievements" in conf:
             restaurant_conf = conf["achievements"].get("restaurant_level", {})
         
-        # Read game state from gamification.json
+        # Read game state from gamification manager
         game_state = self._get_gamification_state()
         
         # MIGRATION CHECK:
@@ -223,7 +321,6 @@ class RestaurantLevelManager:
         json_xp = int(game_state.get("total_xp", 0))
         
         if conf_xp > json_xp:
-            # Migrate XP and Level
             # Migrate XP and Level
             update_data = {
                 "total_xp": conf_xp,
@@ -476,28 +573,14 @@ class RestaurantLevelManager:
             "evolutions": EVOLUTIONS
         }
 
-    def _get_gamification_state(self) -> Dict[str, Any]:
-        """Read current state from gamification.json (cached)."""
-        # Return cached state if available
-        if self._state_cache is not None:
-            return self._state_cache
+    def refresh_state(self) -> None:
+        """Force a reload of the gamification state from disk."""
+        if self._gamification_manager:
+            self._gamification_manager.reload()
 
-        try:
-            if self._gamification_file is None:
-                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
-            
-            if os.path.exists(self._gamification_file):
-                with open(self._gamification_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self._state_cache = data.get('restaurant_level', {})
-                    return self._state_cache
-        except Exception as e:
-            print(f"Error reading gamification state: {e}")
-        
-        # Initialize empty cache if file read fails or doesn't exist
-        self._state_cache = {}
-        return self._state_cache
+    def _get_gamification_state(self) -> Dict[str, Any]:
+        """Read current state from GamificationManager."""
+        return self._gamification_manager.get_restaurant_data()
 
     def _get_coins_from_json(self) -> int:
         """Read current coins from gamification.json."""
@@ -542,7 +625,7 @@ class RestaurantLevelManager:
         if item_id not in owned:
             owned.append(item_id)
             
-        self._update_gamification_data({"owned_items": owned}, explicit_coins=new_coins)
+        self._update_gamification_data({"owned_items": owned, "taiyaki_coins": new_coins})
         
         return True, "Purchase successful!"
 
@@ -918,88 +1001,12 @@ class RestaurantLevelManager:
             print(f"Onigiri: Error getting daily special data: {e}")
             return None
 
-    def _update_gamification_data(self, restaurant_conf: Dict[str, Any], explicit_coins: Optional[int] = None) -> None:
-        """Update the gamification.json with restaurant data and sync cache."""
-        try:
-            if self._gamification_file is None:
-                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
-            
-            # Ensure cache is initialized (and contains FULL data now)
-            if self._state_cache is None:
-                self._get_gamification_state()
-
-            # Prepare the data to update
-            # We work on the cache directly for speed
-            # _state_cache now holds the 'restaurant_level' dict, but we need the full dict for writing
-            # Let's assume we have a _full_state_cache as well or change _state_cache to be the full dict?
-            # Changing _state_cache to be full dict might break other things.
-            # Let's add _full_state_cache.
-            
-            if not hasattr(self, '_full_state_cache') or self._full_state_cache is None:
-                 # Load full state if missing
-                if os.path.exists(self._gamification_file):
-                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
-                        self._full_state_cache = json.load(f)
-                else:
-                    self._full_state_cache = {}
-            
-            # Ensure restaurant_level exists in full cache
-            if 'restaurant_level' not in self._full_state_cache:
-                self._full_state_cache['restaurant_level'] = {}
-                
-            data = self._full_state_cache['restaurant_level']
-            
-            # Determine coin value: explicit > existing in cache > config > 0
-            if explicit_coins is not None:
-                coins = explicit_coins
-            else:
-                existing_coins = int(data.get('taiyaki_coins', 0))
-                coins = restaurant_conf.get('taiyaki_coins', existing_coins)
-            
-            # Generate security token for anti-cheat
-            security_token = generate_coin_token(coins)
-            
-            # Update fields
-            data['taiyaki_coins'] = coins
-            data['_security_token'] = security_token
-            data['last_updated'] = time.strftime('%Y-%m-%dT%H:%M:%S')
-            
-            if 'level' in restaurant_conf:
-                data['level'] = restaurant_conf['level']
-            if 'total_xp' in restaurant_conf:
-                data['total_xp'] = restaurant_conf['total_xp']
-            if 'owned_items' in restaurant_conf:
-                data['owned_items'] = restaurant_conf['owned_items']
-            if 'current_theme_id' in restaurant_conf:
-                data['current_theme_id'] = restaurant_conf['current_theme_id']
-            if 'name' in restaurant_conf:
-                data['name'] = restaurant_conf['name']
-                
-            # Update caches
-            self._state_cache = data
-            self._full_state_cache['restaurant_level'] = data
-            
-            # Write to disk WITHOUT reading first
-            with open(self._gamification_file, 'w', encoding='utf-8') as f:
-                json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
-                
-        except Exception as e:
-
-            pass # print(f"Error updating gamification data: {e}")
-
-    def _update_gamification_level(self, level: int, total_xp: int) -> None:
-        """Legacy method, now delegates to _update_gamification_data."""
-        # We need to fetch the full config to update properly
-        conf, _, restaurant_conf = self._config_bundle()
-        # Ensure the passed values are used
-        restaurant_conf['level'] = level
-        restaurant_conf['total_xp'] = total_xp
-        self._update_gamification_data(restaurant_conf)
+    def _update_gamification_data(self, updates: Dict[str, Any]) -> None:
+        """Update the gamification data via manager."""
+        self._gamification_manager.update_restaurant_data(updates)
 
     def _update_gamification_daily_special(self, daily_special: Dict[str, Any]) -> None:
-        """Update daily special state in gamification.json."""
-        # We only want to save the state fields, not the config fields
+        """Update daily special state via manager."""
         state_to_save = {
             "target": daily_special.get("target"),
             "current_progress": daily_special.get("current_progress"),
@@ -1007,38 +1014,7 @@ class RestaurantLevelManager:
             "last_notified_milestone": daily_special.get("last_notified_milestone"),
             "last_notified_percent": daily_special.get("last_notified_percent")
         }
-        
-        try:
-            if self._gamification_file is None:
-                addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                self._gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
-            
-            if self._state_cache is None:
-                self._get_gamification_state()
-                
-            # Initialize full cache if needed
-            if not hasattr(self, '_full_state_cache') or self._full_state_cache is None:
-                 # Load full state if missing
-                if os.path.exists(self._gamification_file):
-                    with open(self._gamification_file, 'r', encoding='utf-8') as f:
-                        self._full_state_cache = json.load(f)
-                else:
-                    self._full_state_cache = {}
-
-            # Ensure restaurant_level exists in full cache
-            if 'restaurant_level' not in self._full_state_cache:
-                self._full_state_cache['restaurant_level'] = {}
-
-            # Update cache
-            self._state_cache['daily_special'] = state_to_save
-            self._full_state_cache['restaurant_level'] = self._state_cache
-            
-            # Write to disk WITHOUT reading first
-            with open(self._gamification_file, 'w', encoding='utf-8') as f:
-                json.dump(self._full_state_cache, f, indent=2, ensure_ascii=False)
-                
-        except Exception as e:
-            print(f"Error updating daily special data: {e}")
+        self._gamification_manager.update_restaurant_data({"daily_special_update": state_to_save})
 
     def _add_xp(self, amount: int, *, reason: str, review_count: int = 0) -> List[Dict[str, Any]]:
         if amount <= 0:
@@ -1098,9 +1074,10 @@ class RestaurantLevelManager:
             "level": level,
         }
         
-        # Update gamification.json with the new level and xp AND coins
-
-        self._update_gamification_data(update_data, explicit_coins=new_coins)
+        if new_coins != current_coins:
+            update_data["taiyaki_coins"] = new_coins
+            
+        self._update_gamification_data(update_data)
         # print(f"Onigiri: XP awarded. New Total: {new_total}, Level: {level}")
         
         # Handle daily special progress and notifications

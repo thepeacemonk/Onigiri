@@ -45,6 +45,7 @@ from .fonts import get_all_fonts
 from . import deck_tree_updater
 from .gamification import focus_dango
 from .constants import COLOR_LABELS
+from .gamification.restaurant_level_ui import RestaurantLevelWidget
 
 # --- Toolbar Patching ---
 _managed_hooks = []
@@ -305,157 +306,20 @@ class RestaurantLevelDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Restaurant Level")
         
-        # --- THESE ARE THE MODIFIED LINES ---
         # Sets the default size when the window opens
         self.resize(900, 750) 
         
         # Set new min/max sizes to allow resizing
         self.setMinimumSize(600, 750)
         self.setMaximumWidth(800)
-        # --- END OF MODIFICATION ---
 
-        self.web = AnkiWebView(self)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.web)
+        
+        self.widget = RestaurantLevelWidget(self)
+        layout.addWidget(self.widget)
+        
         self.setLayout(layout)
-
-        conf = config.get_config()
-        addon_package = mw.addonManager.addonFromModule(__name__)
-
-        progress = restaurant_level.manager.get_progress_payload()
-        
-        # Compute date labels directly instead of using achievements.compute_metrics()
-        from datetime import datetime, timedelta
-        today = datetime.now()
-        today_label = today.strftime("%b %d, %Y")  # e.g., "Dec 16, 2025"
-        
-        # Calculate week range (assuming week starts on Monday)
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
-        week_label = f"{week_start.strftime('%b %d')} – {week_end.strftime('%b %d')}"
-        
-        # Get week review count from database
-        week_reviews = 0
-        if mw.col and getattr(mw.col, "db", None):
-            day_cutoff = mw.col.sched.day_cutoff
-            week_start_ts = (day_cutoff - 86400 * 7) * 1000  # 7 days ago in ms
-            week_reviews = mw.col.db.scalar(
-                "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
-                week_start_ts
-            ) or 0
-
-        # Get today's review count using direct database query
-        # This correctly counts only actual reviews from today, not deck resets or other operations
-        # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
-        today_reviews = 0
-
-        if mw.col and getattr(mw.col, "db", None):
-            day_cutoff = mw.col.sched.day_cutoff
-            today_start = day_cutoff - 86400  # 24 hours before cutoff (start of today)
-            today_reviews = mw.col.db.scalar(
-                "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ?",
-                today_start * 1000
-            ) or 0
-        
-        stats_payload = {
-            "todayReviews": today_reviews,  # Today's review count from the database
-            "todayLabel": today_label,
-            "weekReviews": week_reviews,
-            "weekLabel": week_label,
-            "totalXp": int(progress.get("totalXp", 0) or 0),
-        }
-
-        # Get the countdown configuration
-        conf = config.get_config()
-        
-        current_theme_color = restaurant_level.manager.get_current_theme_color()
-        current_theme_image = restaurant_level.manager.get_current_theme_image()
-        current_theme_id = restaurant_level.manager.get_current_theme_id()
-        
-        # Sync today's completed special to daily_specials if not already there
-        daily_special_status = restaurant_level.manager.get_daily_special_status()
-        if daily_special_status.get("enabled", False):
-            current_progress = daily_special_status.get("current_progress", 0)
-            target = daily_special_status.get("target", 100)
-            
-            if current_progress >= target:
-                # Today's special is completed - ensure it's in daily_specials
-                from datetime import datetime
-                today = datetime.now().strftime('%Y-%m-%d')
-                special_id = f"daily_{today}"
-                
-                gamification = get_gamification_manager()
-                existing = next((s for s in gamification.daily_specials if s.id == special_id), None)
-                
-                if not existing:
-                    # Calculate difficulty based on target
-                    if target <= 50:
-                        difficulty = "Common"
-                    elif target <= 100:
-                        difficulty = "Uncommon"
-                    else:
-                        difficulty = "Rare"
-                    
-                    # Calculate XP
-                    xp_earned = target * 5
-                    if difficulty == "Uncommon":
-                        xp_earned = int(xp_earned * 1.5)
-                    elif difficulty == "Rare":
-                        xp_earned = xp_earned * 2
-                    
-                    # Add today's completed special to the list
-                    gamification.add_daily_special(
-                        special_id=special_id,
-                        name=f"Daily Special - {today}",
-                        description="Complete your daily review goal",
-                        difficulty=difficulty,
-                        target_cards=target,
-                        completed=True,
-                        cards_completed=current_progress,
-                        xp_earned=xp_earned
-                    )
-        
-        payload = {
-            "progress": progress,
-            "stats": stats_payload,
-            "theme_color": current_theme_color,
-            "theme_image": current_theme_image,
-            "current_theme_id": current_theme_id,
-            "image_base_path": f"/_addons/{addon_package}/system_files/gamification_images/restaurant_folder/",
-            "config": {
-                "restaurant_countdown_hour": mw.col.conf.get("rollover", 4),
-                "restaurant_countdown_minute": 0
-            },
-            "daily_special": daily_special_status,
-            "completed_specials": [
-                {
-                    "date": s.completed_date.split("T")[0] if s.completed_date else "",
-                    "name": s.name,
-                    "description": s.description,
-                    "difficulty": s.difficulty.lower(),
-                    "cardsCompleted": s.cards_completed,
-                    "targetCards": s.target_cards,
-                    "xpEarned": s.xp_earned
-                }
-                for s in get_gamification_manager().daily_specials
-                if s.completed
-            ]
-        }
-
-        data_script = f"<script>window.ONIGIRI_RESTAURANT_LEVEL = {json.dumps(payload, ensure_ascii=False)};</script>"
-        head_html = generate_dynamic_css(conf) + data_script
-
-        css_files = [
-            f"/_addons/{addon_package}/web/gamification/restaurant_level/restaurant_level.css",
-        ]
-        js_files = [
-            f"/_addons/{addon_package}/web/gamification/restaurant_level/special_dishes.js",
-            f"/_addons/{addon_package}/web/gamification/restaurant_level/restaurant_level.js",
-        ]
-
-        body_html = _load_restaurant_html(progress.get("enabled", False), addon_package)
-        self.web.stdHtml(body_html, css=css_files, js=js_files, head=head_html, context=self)
 
 def open_restaurant_level_dialog():
     global _restaurant_dialog
