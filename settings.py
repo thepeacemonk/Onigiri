@@ -17,12 +17,12 @@ from aqt.qt import (
     QButtonGroup, QAbstractSpinBox,
     QDrag, QMimeData, QPoint, 
     QMenu, QAction, QActionGroup,
-    QListWidget, QListWidgetItem, QAbstractItemView
+    QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit
 )
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer, QDate, QLocale
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtCore import QUrl, QPropertyAnimation, QEasingCurve, QRegularExpression
-from PyQt6.QtGui import QDesktopServices, QLinearGradient, QRegularExpressionValidator, QMouseEvent, QRegion, QGuiApplication, QCursor
+from PyQt6.QtGui import QDesktopServices, QLinearGradient, QRegularExpressionValidator, QMouseEvent, QRegion, QGuiApplication, QCursor, QIntValidator
 
 from aqt import mw
 from aqt import mw, gui_hooks   
@@ -786,6 +786,87 @@ class ThemeCardWidget(QFrame):
             
         self.theme_selected.emit(self.theme_data)
         super().mousePressEvent(event)
+
+class BirthdayWidget(QWidget):
+    def __init__(self, accent_color="#007bff", parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        
+        self.accent_color = accent_color
+
+        # Common style for input fields
+        input_style = f"""
+            QLineEdit {{
+                padding: 8px 12px;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                background-color: white;
+                color: #333;
+                font-size: 13px;
+            }}
+            QLineEdit:hover {{
+                border-color: #b0b0b0;
+            }}
+            QLineEdit:focus {{
+                border-color: {accent_color};
+                background-color: white;
+            }}
+        """
+
+        # Day Input
+        self.day_input = QLineEdit()
+        self.day_input.setPlaceholderText("Day")
+        self.day_input.setValidator(QIntValidator(1, 31))
+        self.day_input.setFixedWidth(70)
+        self.day_input.setStyleSheet(input_style)
+        self.day_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Month Input
+        self.month_input = QLineEdit()
+        self.month_input.setPlaceholderText("Month")
+        self.month_input.setValidator(QIntValidator(1, 12))
+        self.month_input.setFixedWidth(70)
+        self.month_input.setStyleSheet(input_style)
+        self.month_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Year Input
+        self.year_input = QLineEdit()
+        self.year_input.setPlaceholderText("Year")
+        self.year_input.setValidator(QIntValidator(1900, 2100))
+        self.year_input.setFixedWidth(80)
+        self.year_input.setStyleSheet(input_style)
+        self.year_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        layout.addWidget(self.day_input)
+        layout.addWidget(self.month_input)
+        layout.addWidget(self.year_input)
+        layout.addStretch()
+
+    def setDate(self, date):
+        if not date.isValid():
+            return
+        
+        # Set Day
+        self.day_input.setText(str(date.day()))
+        
+        # Set Month
+        self.month_input.setText(str(date.month()))
+        
+        # Set Year
+        self.year_input.setText(str(date.year()))
+
+    def date(self):
+        try:
+            day = int(self.day_input.text()) if self.day_input.text() else 1
+            month = int(self.month_input.text()) if self.month_input.text() else 1
+            year = int(self.year_input.text()) if self.year_input.text() else 2000
+            
+            return QDate(year, month, day)
+        except:
+            return QDate.currentDate()
+
 
 class FontCardWidget(QPushButton):
     """A custom button widget to display and select a font."""
@@ -5526,7 +5607,7 @@ class SettingsDialog(QDialog):
             title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #212121; background: transparent;")
         center_layout.addWidget(title_label)
         
-        description_label = QLabel("Track achievements, level up your restaurant, get encouragement from Mochi, and stay focused with Dango.")
+        description_label = QLabel("Level up your restaurant, unlock new themes, enjoy Mochi's encouragements, and stay focused with Dango.")
         description_label.setObjectName("gamificationModeDescription")
         description_label.setWordWrap(True)
         if theme_manager.night_mode:
@@ -6145,6 +6226,25 @@ class SettingsDialog(QDialog):
         form_layout = QFormLayout()
         self.name_input = QLineEdit(self.current_config.get("userName", DEFAULTS["userName"]))
         form_layout.addRow("User Name:", self.name_input)
+        
+        # Birthday date picker
+        accent_color = mw.col.conf.get("modern_menu_accent_color", "#007bff")
+        self.birthday_input = BirthdayWidget(accent_color=accent_color)
+        birthday_str = self.current_config.get("userBirthday", "")
+        if birthday_str:
+            try:
+                birthday_date = QDate.fromString(birthday_str, "yyyy-MM-dd")
+                if birthday_date.isValid():
+                    self.birthday_input.setDate(birthday_date)
+                else:
+                    self.birthday_input.setDate(QDate(2000, 1, 1))
+            except:
+                self.birthday_input.setDate(QDate(2000, 1, 1))
+        else:
+            self.birthday_input.setDate(QDate(2000, 1, 1))
+
+        form_layout.addRow("Birthday:", self.birthday_input)
+        
         details_section.add_layout(form_layout)
         layout.addWidget(details_section)
 
@@ -10181,6 +10281,11 @@ class SettingsDialog(QDialog):
     def _save_profile_settings(self):
         self.current_config["userName"] = self.name_input.text()
         mw.col.conf["modern_menu_userName"] = self.name_input.text()
+        
+        # Save birthday in ISO format (YYYY-MM-DD)
+        if hasattr(self, 'birthday_input'):
+            birthday_date = self.birthday_input.date()
+            self.current_config["userBirthday"] = birthday_date.toString("yyyy-MM-dd")
 
         if 'profile_pic' in self.galleries:
             mw.col.conf["modern_menu_profile_picture"] = self.galleries['profile_pic']['selected']

@@ -6,7 +6,7 @@ from . import onigiri_renderer
 from aqt.reviewer import Reviewer
 from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
-from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction
+from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
 from . import patcher
 from . import settings
 from . import config
@@ -17,6 +17,7 @@ from . import welcome_dialog
 from . import deck_tree_updater
 from . import webview_handlers
 from .gamification import focus_dango
+from . import birthday_dialog
 
 # --- SHOP INTEGRATION IMPORT ---
 from .gamification.taiyaki_store import open_taiyaki_store
@@ -279,6 +280,10 @@ def initial_setup():
 
     # Show welcome popup if needed (requires mw.col)
     maybe_show_welcome_popup()
+
+    # Show birthday popup if it's the user's birthday (requires mw.col)
+    # Delay by 1s to ensure main window is fully rendered for screenshot blur
+    QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
 
 # --- INITIALIZATION ---
 

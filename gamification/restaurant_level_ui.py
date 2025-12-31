@@ -38,6 +38,62 @@ class RoundedFrame(QFrame):
             }}
         """)
 
+class PillProgressBar(QWidget):
+    """Custom pill-shaped progress bar with properly rounded corners on both sides."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = 0
+        self._maximum = 100
+        self._bg_color = QColor("#E0E0E0")
+        self._chunk_color = QColor("#1DE9B6")
+        self.setFixedHeight(16)
+    
+    def setValue(self, value):
+        self._value = max(0, min(value, self._maximum))
+        self.update()
+    
+    def setMaximum(self, maximum):
+        self._maximum = max(1, maximum)
+        self._value = min(self._value, self._maximum)
+        self.update()
+    
+    def value(self):
+        return self._value
+    
+    def maximum(self):
+        return self._maximum
+    
+    def setBackgroundColor(self, color):
+        self._bg_color = QColor(color)
+        self.update()
+    
+    def setChunkColor(self, color):
+        self._chunk_color = QColor(color)
+        self.update()
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        w = self.width()
+        h = self.height()
+        radius = h / 2  # Perfect pill shape
+        
+        # Draw background (full pill)
+        bg_path = QPainterPath()
+        bg_path.addRoundedRect(0, 0, w, h, radius, radius)
+        painter.fillPath(bg_path, self._bg_color)
+        
+        # Draw chunk (progress pill)
+        if self._value > 0 and self._maximum > 0:
+            progress_ratio = self._value / self._maximum
+            chunk_width = max(h, w * progress_ratio)  # Minimum width = height for pill shape
+            
+            chunk_path = QPainterPath()
+            chunk_path.addRoundedRect(0, 0, chunk_width, h, radius, radius)
+            painter.fillPath(chunk_path, self._chunk_color)
+
 class SnowOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -290,14 +346,9 @@ class RestaurantLevelWidget(QWidget):
         stats_layout.addWidget(self.xp_text)
         
         # XP Bar
-        self.xp_bar = QProgressBar()
-        self.xp_bar.setFixedHeight(16)
-        self.xp_bar.setTextVisible(False)
-        # Style will be set in refresh_data, but good to have base
-        self.xp_bar.setStyleSheet(f"""
-            QProgressBar {{ border: 1px solid transparent; background: {self.colors['progress_bg']}; border-radius: 8px; text-align: center; }}
-            QProgressBar::chunk {{ background: #1DE9B6; border-radius: 7px; }}
-        """)
+        self.xp_bar = PillProgressBar()
+        self.xp_bar.setBackgroundColor(self.colors['progress_bg'])
+        self.xp_bar.setChunkColor("#1DE9B6")
         stats_layout.addWidget(self.xp_bar)
         
         top_layout.addWidget(self.stats_card, stretch=3) # 60%ish width
@@ -479,16 +530,6 @@ class RestaurantLevelWidget(QWidget):
 
         self.specials_layout.addWidget(self.special_card)
 
-
-        # --- Recent Specials Section ---
-        recent_title = QLabel("Recent Specials")
-        recent_title.setStyleSheet(f"font-size: 20px; font-weight: bold; margin-top: 10px; color: {self.colors['text_main']};")
-        self.specials_layout.addWidget(recent_title)
-
-        self.recent_list = QVBoxLayout()
-        self.recent_list.setSpacing(10)
-        self.specials_layout.addLayout(self.recent_list)
-
         # --- Recipe Collection Section ---
         collection_title = QLabel("Recipe Collection")
         collection_title.setStyleSheet(f"font-size: 20px; font-weight: bold; margin-top: 10px; color: {self.colors['text_main']};")
@@ -535,8 +576,16 @@ class RestaurantLevelWidget(QWidget):
         # Legendary takes the whole bottom row
         self.legendary_count = create_recipe_card("Legendary", "#FFD600", 2, 0, colspan=2)
 
-
         self.specials_layout.addLayout(collection_grid)
+
+        # --- Specials Book Section (All Recipe History) ---
+        specials_book_title = QLabel("Specials Book")
+        specials_book_title.setStyleSheet(f"font-size: 20px; font-weight: bold; margin-top: 10px; color: {self.colors['text_main']};")
+        self.specials_layout.addWidget(specials_book_title)
+
+        self.recent_list = QVBoxLayout()
+        self.recent_list.setSpacing(10)
+        self.specials_layout.addLayout(self.recent_list)
 
         self.specials_layout.addStretch()
 
@@ -574,14 +623,9 @@ class RestaurantLevelWidget(QWidget):
         xp_to_next = progress.xp_to_next_level
         xp_into = progress.xp_into_level
         
-        # Calculate lighter color for XP bar background
-        # Simple manual lightening logic or just keep fixed background
-        # For simplicity and safety, let's just color the chunk for now, or use a fixed light grey for BG
-        
-        self.xp_bar.setStyleSheet(f"""
-            QProgressBar {{ border: 1px solid transparent; background: {self.colors['progress_bg']}; border-radius: 8px; text-align: center; }}
-            QProgressBar::chunk {{ background: {theme_color}; border-radius: 7px; }}
-        """)
+        # Update pill progress bar colors
+        self.xp_bar.setBackgroundColor(self.colors['progress_bg'])
+        self.xp_bar.setChunkColor(theme_color)
 
         if xp_to_next > 0:
             self.xp_bar.setMaximum(xp_to_next)
@@ -704,23 +748,16 @@ class RestaurantLevelWidget(QWidget):
             else:
                  self.footer_msg.setText(f"To prepare, study {needed} cards today before the restaurant closes.")
 
-        # 5. Update Recent List
+        # 5. Update Specials Book (all recipe history)
         while self.recent_list.count():
             child = self.recent_list.takeAt(0)
             if child.widget(): child.widget().deleteLater()
             
-        # Filter for previous 30 days
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        
+        # Include all completed specials (no date filtering)
         recents = []
         for s in self.gamification.daily_specials:
             if s.completed and s.completed_date:
-                try:
-                    completed_dt = datetime.fromisoformat(s.completed_date)
-                    if completed_dt >= thirty_days_ago:
-                        recents.append(s)
-                except ValueError:
-                    continue
+                recents.append(s)
 
         recents.sort(key=lambda x: x.completed_date or "", reverse=True)
         
