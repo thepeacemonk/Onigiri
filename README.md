@@ -47,6 +47,13 @@ I’ve put a lot of time into designing and maintaining this work. Please respec
 - If you build on it, credit the original and keep your changes open.
 - If you find value here, consider contributing back or supporting the project.
 
+## Notice
+
+Not affiliated with [Onigiri Anki](https://www.onigiri-anki.com/). No endorsement is expressed or implied.
+
+Onigiri (this add-on) is an independent Anki add‑on that customizes the app’s UI. By contrast, [Onigiri Anki](https://www.onigiri-anki.com/) provides a Japanese study deck for Anki. These are separate products and not affiliated in any way. 
+
+
 ### Credits and Acknowledgments
 The following projects and resources informed the design and development of this add-on:
 
@@ -71,7 +78,7 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 
 ### ⭐ GitHub Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=thepeacemonk/Onigiri&type=date&legend=top-left)](https://www.star-history.com/#thepeacemonk/Onigiri&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=thepeacemonk/Onigiri&type=date&logscale&legend=top-left)](https://www.star-history.com/#thepeacemonk/Onigiri&type=date&logscale&legend=top-left)
 
 ### 🍙 This is Onigiri
 
