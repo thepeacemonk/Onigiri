@@ -78,7 +78,7 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 
 ### ⭐ GitHub Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=thepeacemonk/Onigiri&type=date&legend=top-left)](https://www.star-history.com/#thepeacemonk/Onigiri&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=thepeacemonk/Onigiri&type=date&logscale&legend=top-left)](https://www.star-history.com/#thepeacemonk/Onigiri&type=date&logscale&legend=top-left)
 
 ### 🍙 This is Onigiri
 
