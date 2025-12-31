@@ -221,6 +221,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     """
     Generates the HTML for the Restaurant Level widget.
     """
+    # Invalidate cache to ensure fresh data when deck browser is rendered
+    restaurant_level.manager.invalidate_daily_cache()
+    
     # Get Restaurant Level Data
     rl_payload = restaurant_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):

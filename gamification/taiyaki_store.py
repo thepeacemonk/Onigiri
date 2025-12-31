@@ -1161,14 +1161,14 @@ class TaiyakiStoreWindow(QDialog):
                 "price": "Check info", 
                 "theme": "#DC90B8", 
                 "image": "focus_dango_restaurant.png",
-                "description": "A focused environment for deep work. Unlock this by enabling Focus Dango in settings."
+                "description": "A cozy pink haven where soft melodies and the gentle aroma of sweet dango help you find your flow. Perfect for deep study sessions!"
             },
             "motivated_mochi": {
                 "name": "Motivated Mochi", 
                 "price": "Check info", 
                 "theme": "#6EC170", 
                 "image": "mochi_msg_restaurant.png",
-                "description": "Stay motivated with Mochi! Unlock this by enabling Mochi Messages in settings."
+                "description": "A cheerful green café where adorable mochi friends cheer you on with every review! Their little motivational notes will keep your spirits high!"
             },
             "macha_delights": {
                 "name": "Macha Delights", 

@@ -30,6 +30,8 @@ DEFAULTS = {
     "showCongratsProfileBar": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
+    "userBirthday": "",  # Format: YYYY-MM-DD, empty = not set
+    "lastBirthdayShown": "",  # Year when birthday popup was last shown (e.g., "2025")
     "hideRetentionStars": False,
     "showHeatmapOnProfile": True,
     "achievements": {
@@ -135,7 +137,7 @@ DEFAULTS = {
     "onigiri_reviewer_bg_blur": 0,
     "onigiri_reviewer_bg_opacity": 100,
     # --- Reviewer Notification Position ---
-    "onigiri_reviewer_notification_position": "top-right", # top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+    "onigiri_reviewer_notification_position": "top-center", # top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
     # --- Reviewer Bottom Bar Settings ---
     "onigiri_reviewer_bottom_bar_bg_mode": "match_reviewer_bg", # "main", "color", "image", "image_color", "match_reviewer_bg"
     "onigiri_reviewer_bottom_bar_bg_light_color": "#f2f2f2",

@@ -51,14 +51,14 @@ RESTAURANTS = {
         "price": 0, 
         "theme": "#DC90B8", 
         "image": "focus_dango_restaurant.png",
-        "description": "A focused environment for deep work. Unlock this by enabling Focus Dango in settings."
+        "description": "A cozy pink haven where soft melodies and the gentle aroma of sweet dango help you find your flow. Perfect for deep study sessions!"
     },
     "motivated_mochi": {
         "name": "Motivated Mochi", 
         "price": 0, 
         "theme": "#6EC170", 
         "image": "mochi_msg_restaurant.png",
-        "description": "Stay motivated with Mochi! Unlock this by enabling Mochi Messages in settings."
+        "description": "A cheerful green café where adorable mochi friends cheer you on with every review! Their little motivational notes will keep your spirits high!"
     },
     "macha_delights": {
         "name": "Macha Delights", 
@@ -125,35 +125,35 @@ EVOLUTIONS = {
     "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None, "description": "Masterpiece!"},
     "prev_onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76", "description": "Heavenly!"},
     "restaurant_evo_i": {
-        "name": "Restaurant Evo I", 
+        "name": "Restaurant I Star", 
         "price": 700, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo I.png",
         "description": "The first evolution of your restaurant journey. A charming establishment that shows your dedication to growth and improvement."
     },
     "restaurant_evo_ii": {
-        "name": "Restaurant Evo II", 
+        "name": "Restaurant II Star", 
         "price": 800, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo II.png",
         "description": "Your restaurant continues to evolve! Enhanced decor and expanded menu options attract more customers and showcase your progress."
     },
     "restaurant_evo_iii": {
-        "name": "Restaurant Evo III", 
+        "name": "Restaurant III Star", 
         "price": 900, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo III.png",
         "description": "A significant milestone in your culinary journey. Your restaurant now features premium amenities and a reputation for excellence."
     },
     "restaurant_evo_iv": {
-        "name": "Restaurant Evo IV", 
+        "name": "Restaurant IV Star", 
         "price": 1000, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo IV.png",
         "description": "Near the peak of perfection! Your establishment has become a local landmark, known for its exceptional service and quality."
     },
     "restaurant_evo_legendary": {
-        "name": "Restaurant Evo Legendary", 
+        "name": "Restaurant Legendary", 
         "price": 1500, 
         "theme": "#445A78", 
         "image": "Restaurant Evo Legendary.png",
@@ -194,17 +194,24 @@ class RestaurantLevelManager:
     def __init__(self) -> None:
         self._addon_package: str | None = None
         self._daily_target_cache: Dict[str, Any] = {}
+        self._last_daily_sync_time: float = 0
+        self._cached_daily_count: int = -1
         
     @property
     def _gamification_manager(self):
         from .gamification import get_gamification_manager
         return get_gamification_manager()
 
+    def invalidate_daily_cache(self) -> None:
+        """Invalidate the daily progress cache to force fresh data retrieval."""
+        self._last_daily_sync_time = 0
+        self._cached_daily_count = -1
+
     def refresh_state(self) -> None:
         """Force reload of gamification state from disk."""
         # GamificationManager handles reloading if needed, but for now we assume it's up to date
         # or we could add a reload method to it.
-        pass
+        self.invalidate_daily_cache()  # Also invalidate cache when refreshing state
 
     # ------------------------------------------------------------------
     # Public API
@@ -433,12 +440,31 @@ class RestaurantLevelManager:
             
         return daily_special
 
+    def _get_anki_today_date(self) -> str:
+        """Get today's date string based on Anki's rollover time, not calendar midnight.
+        
+        This ensures consistency with Anki's review counting which respects the rollover hour.
+        """
+        if not mw.col or not hasattr(mw.col, 'sched'):
+            return datetime.now().strftime('%Y-%m-%d')
+        
+        try:
+            # day_cutoff is the Unix timestamp of when the current Anki day ends
+            # Subtracting 1 second gives us a time within the current Anki day
+            day_cutoff = mw.col.sched.day_cutoff
+            # Get a timestamp that's definitely within the current Anki day
+            current_anki_day = datetime.fromtimestamp(day_cutoff - 1)
+            return current_anki_day.strftime('%Y-%m-%d')
+        except Exception:
+            return datetime.now().strftime('%Y-%m-%d')
+
     def _check_and_reset_daily_special(self, daily_special: Dict[str, Any]) -> bool:
         """Check if daily special needs reset and update it in-place. Returns True if reset occurred."""
         if not daily_special.get("enabled", False):
             return False
             
-        today = datetime.now().strftime('%Y-%m-%d')
+        # Use Anki's day calculation to match the database query in _sync_daily_progress_with_db
+        today = self._get_anki_today_date()
         last_updated = daily_special.get("last_updated")
         
         target = daily_special.get("target", 100)
@@ -480,13 +506,13 @@ class RestaurantLevelManager:
             
 
         # Optimization: Check cache to avoid frequent DB hits
-        # Only check once every minute
+        # Only check once every 5 seconds for more responsive updates
         now = time.time()
         last_check = getattr(self, "_last_daily_sync_time", 0)
         cached_count = getattr(self, "_cached_daily_count", -1)
         
-        # If cache is fresh (less than 60s), allow skipping DB check if we have a value
-        if now - last_check < 60 and cached_count >= 0:
+        # If cache is fresh (less than 5s), allow skipping DB check if we have a value
+        if now - last_check < 5 and cached_count >= 0:
              # But if current_progress is less than cached, we might want to update it
              today_reviews = cached_count
         else:
@@ -527,7 +553,7 @@ class RestaurantLevelManager:
         """
         Calculates the daily target using the centralized logic.
         """
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._get_anki_today_date()
         restaurant_id = self.get_current_theme_id()
         
         # Check cache explicitly ensuring restaurant_id matches to support profile switching
@@ -613,11 +639,14 @@ class RestaurantLevelManager:
 
     def buy_item(self, item_id: str) -> Tuple[bool, str]:
         """Buy an item from the store."""
-        conf, restaurant_conf = self._config_bundle()
-        
-        # Read current state from gamification.json (Source of Truth)
+        # Read current state from gamification.json (Source of Truth for BOTH coins and items)
+        state = self._get_gamification_state()
         coins = self._get_coins_from_json()
-        owned = restaurant_conf.get("owned_items", [])
+        owned = state.get("owned_items", ["default"])
+        
+        # Ensure list is valid
+        if not isinstance(owned, list):
+            owned = ["default"]
         
         if item_id in owned:
             return False, "Item already owned."
@@ -633,37 +662,27 @@ class RestaurantLevelManager:
         # Deduct coins
         new_coins = coins - price
         
-        # Sync to json with new coin value and owned items
-        # We no longer write owned items to config.json
-        
-        # Prepare update data
-        update_data = {
-            "owned_items": restaurant_conf.get("owned_items", []) # Use the list we just updated
-        }
-        if "owned_items" in restaurant_conf:
-             update_data["owned_items"] = restaurant_conf["owned_items"]
-        
-        # But wait, we shouldn't be using restaurant_conf for owned items anymore if we want to move away from config
-        # Let's reconstruct the owned list from the source of truth
-        
-        if item_id not in owned:
-            owned.append(item_id)
+        # Add to owned
+        owned.append(item_id)
             
-        self._update_gamification_data({"owned_items": owned, "taiyaki_coins": new_coins})
+        # Update gamification.json directly
+        self._update_gamification_data({
+            "owned_items": owned, 
+            "taiyaki_coins": new_coins
+        })
         
         return True, "Purchase successful!"
 
     def equip_item(self, item_id: str) -> Tuple[bool, str]:
         """Equip a restaurant theme."""
-        conf, restaurant_conf = self._config_bundle()
-        
-        owned = restaurant_conf.get("owned_items", ["default"])
+        # Read owned items from Source of Truth
+        state = self._get_gamification_state()
+        owned = state.get("owned_items", ["default"])
         
         if item_id != "default" and item_id not in owned:
             return False, "Item not owned."
             
         # Sync to json
-        # We no longer write current_theme_id to config.json
         self._update_gamification_data({"current_theme_id": item_id})
         
         return True, "Theme equipped!"
@@ -803,8 +822,8 @@ class RestaurantLevelManager:
             from .gamification import get_gamification_manager
             gamification = get_gamification_manager()
             
-            now = time.time()
-            today = datetime.fromtimestamp(now).strftime('%Y-%m-%d')
+            # Use Anki's day calculation for consistency with _check_and_reset_daily_special
+            today = self._get_anki_today_date()
             special_id = f"daily_{today}"
             
             # Check if already completed to prevent double-awarding
@@ -911,7 +930,7 @@ class RestaurantLevelManager:
         Parses the special_dishes.js file and replicates the logic to find today's special dish.
         Returns a dictionary with name, description, target, difficulty, etc.
         """
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._get_anki_today_date()
         
         # Check cache if we cached the full object? 
         # _daily_target_cache only has 'target'. Let's expand it or just re-parse (it's fast enough)

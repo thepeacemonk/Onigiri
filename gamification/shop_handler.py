@@ -4,6 +4,7 @@ from aqt import mw
 from aqt.qt import *
 from aqt.utils import showInfo, tooltip
 from anki.hooks import addHook
+from .restaurant_level import manager as restaurant_manager
 
 
 
@@ -112,49 +113,30 @@ class StoreWindow(QDialog):
     # --- LOGIC HANDLERS ---
 
     def process_purchase(self, item_id):
-        config = mw.addonManager.getConfig(__name__)
-        coins = config.get('coin_balance', 0)
-        owned = config.get('owned_items', ['default'])
+        success, message = restaurant_manager.buy_item(item_id)
         
-        # Get Price (Logic: find item in either category)
-        data = self.get_store_data()
-        item = data['restaurants'].get(item_id) or data['evolutions'].get(item_id)
-        
-        if not item:
-            self.reply_to_js("onPurchaseResult", {"success": False, "message": "Item not found."})
-            return
-
-        price = item['price']
-
-        if item_id in owned:
-             self.reply_to_js("onPurchaseResult", {"success": False, "message": "You already own this!"})
-             return
-
-        if coins >= price:
-            # Success Transaction
-            new_balance = coins - price
-            owned.append(item_id)
-            
-            # Save
-            config['coin_balance'] = new_balance
-            config['owned_items'] = owned
-            mw.addonManager.writeConfig(__name__, config)
+        if success:
+            # Get updated balance
+            data = restaurant_manager.get_store_data()
+            new_balance = data.get("coins", 0)
             
             self.reply_to_js("onPurchaseResult", {
                 "success": True, 
                 "new_balance": new_balance,
                 "item_id": item_id,
-                "message": f"Successfully bought {item['name']}!"
+                "message": message
             })
         else:
-            self.reply_to_js("onPurchaseResult", {"success": False, "message": "Not enough coins."})
+            self.reply_to_js("onPurchaseResult", {"success": False, "message": message})
 
     def process_equip(self, item_id):
-        config = mw.addonManager.getConfig(__name__)
-        config['current_theme_id'] = item_id
-        mw.addonManager.writeConfig(__name__, config)
+        success, message = restaurant_manager.equip_item(item_id)
         
-        self.reply_to_js("onEquipResult", {"success": True, "item_id": item_id})
+        if success:
+             self.reply_to_js("onEquipResult", {"success": True, "item_id": item_id})
+        else:
+             # JS didn't expect error message but we can log it or just fail silently as before
+             pass
 
     def process_redemption(self, code):
         """
