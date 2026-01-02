@@ -20,7 +20,7 @@ Steps to reproduce the behavior:
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Operator System model**
+**Operating System model**
 Inform here your OS model: Windows, Linux, macOS, etc. 
 
 **Debug message**
