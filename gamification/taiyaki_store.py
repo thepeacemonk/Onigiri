@@ -1060,8 +1060,34 @@ class TaiyakiStoreWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Mr. Taiyaki Store")
-        self.resize(1050, 700)
-        self.setFixedWidth(1050)
+        
+        # Calculate adaptive window size based on screen geometry
+        try:
+            # Get the screen geometry where the parent window is located
+            if parent:
+                screen = parent.screen()
+            else:
+                screen = QApplication.primaryScreen()
+            
+            available_geometry = screen.availableGeometry()
+            screen_width = available_geometry.width()
+            screen_height = available_geometry.height()
+            
+            # Use 85% of available screen size, with maximum limits
+            target_width = min(int(screen_width * 0.85), 1050)
+            target_height = min(int(screen_height * 0.85), 700)
+            
+            # Ensure we don't go below minimum size
+            target_width = max(target_width, 600)
+            target_height = max(target_height, 500)
+            
+            self.resize(target_width, target_height)
+        except:
+            # Fallback to default size if screen detection fails
+            self.resize(1050, 700)
+        
+        # Allow resizing for smaller displays
+        self.setMinimumSize(600, 500)
         
         # Get addon path for images
         self.addon_package = mw.addonManager.addonFromModule(__name__)

@@ -266,11 +266,30 @@ def verify_coin_integrity():
         print(f"[ONIGIRI SECURITY] Error verifying coin integrity: {e}")
 
 
+def apply_full_hide_mode():
+    """Hide the menu bar on Windows and Linux if Full Hide Mode is enabled"""
+    import platform
+    conf = config.get_config()
+    full_hide = conf.get("fullHideMode", False)
+    
+    # Only hide menu bar on Windows and Linux, not macOS
+    system = platform.system()
+    if full_hide and system in ["Windows", "Linux"]:
+        if hasattr(mw, 'menuBar') and mw.menuBar():
+            mw.menuBar().hide()
+    else:
+        if hasattr(mw, 'menuBar') and mw.menuBar():
+            mw.menuBar().show()
+
+
 def initial_setup():
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
     menu_buttons.setup_onigiri_menu(addon_path)
+
+    # Apply Full Hide Mode (hide menu bar on Windows/Linux)
+    apply_full_hide_mode()
 
     # Verify coin integrity on startup (requires mw.col)
     verify_coin_integrity()

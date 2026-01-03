@@ -17,7 +17,7 @@ from aqt.qt import (
     QButtonGroup, QAbstractSpinBox,
     QDrag, QMimeData, QPoint, 
     QMenu, QAction, QActionGroup,
-    QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit
+    QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit, QLayout
 )
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer, QDate, QLocale
 from PyQt6.QtSvg import QSvgRenderer
@@ -37,12 +37,98 @@ from aqt.qt import QRectF
 from PyQt6.QtGui import QImage
 from aqt.utils import showInfo
 from PyQt6.QtGui import QFontDatabase, QFont
+from PyQt6.QtCore import QRect, QSize, QPoint
 from .fonts import FONTS, get_all_fonts
 
 THUMBNAIL_STYLE = "QLabel { border: 2px solid transparent; border-radius: 10px; } QLabel:hover { border: 2px solid #007bff; }"
 THUMBNAIL_STYLE_SELECTED = "QLabel { border: 2px solid #007bff; border-radius: 10px; }"
 
 CUSTOM_GOAL_COOLDOWN_SECONDS = 24 * 60 * 60
+
+class FlowLayout(QLayout):
+    """A responsive layout that arranges widgets horizontally when space permits, vertically otherwise."""
+    def __init__(self, parent=None, margin=0, spacing=-1):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self._item_list = []
+
+    def __del__(self):
+        item = self.takeAt(0)
+        while item:
+            item = self.takeAt(0)
+
+    def addItem(self, item):
+        self._item_list.append(item)
+
+    def count(self):
+        return len(self._item_list)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self._item_list):
+            return self._item_list[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self._item_list):
+            return self._item_list.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        height = self._do_layout(QRect(0, 0, width, 0), True)
+        return height
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._item_list:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect, test_only):
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+        spacing = self.spacing()
+
+        for item in self._item_list:
+            widget = item.widget()
+            if widget is None:
+                continue
+            
+            space_x = spacing
+            space_y = spacing
+            next_x = x + item.sizeHint().width() + space_x
+            
+            # If this item doesn't fit and we're not at the start of a line, move to next line
+            if next_x - space_x > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
 
 def create_circular_pixmap(source_image, size):
     """
@@ -2347,9 +2433,14 @@ class SettingsDialog(QDialog):
         self.gamification_mode_checkbox.setChecked(self.current_config.get("gamificationMode", False))
         self.gamification_mode_checkbox.setToolTip("Enable mini-games like Restaurant Level, Mochi Messages, and Focus Dango.")
 
+        self.full_hide_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.full_hide_mode_checkbox.setChecked(self.current_config.get("fullHideMode", False))
+        self.full_hide_mode_checkbox.setToolTip("Hides the top menu bar (File, Edit, View, Tools, Help) on Windows and Linux for the most immersive experience.")
+
         self.hide_native_header_checkbox.toggled.connect(self._on_hide_toggled)
         self.flow_mode_checkbox.toggled.connect(self._on_flow_toggled)
         self.max_hide_checkbox.toggled.connect(self._on_max_hide_toggled)
+        self.full_hide_mode_checkbox.toggled.connect(self._on_full_hide_toggled)
 
         self.stats_title_input = QLineEdit(mw.col.conf.get("modern_menu_statsTitle", DEFAULTS["statsTitle"]))
 
@@ -2724,8 +2815,9 @@ class SettingsDialog(QDialog):
     def create_fonts_page(self):
         page, layout = self._create_scrollable_page()
     
-        fonts_layout = QHBoxLayout()
-        fonts_layout.setSpacing(20)
+        fonts_container = QWidget()
+        fonts_layout = FlowLayout(fonts_container, spacing=20)
+        fonts_layout.setContentsMargins(0, 0, 0, 0)
         
         text_group = self._create_font_selector_group("Text", "main")
         subtle_group = self._create_font_selector_group("Titles", "subtle")
@@ -2733,7 +2825,7 @@ class SettingsDialog(QDialog):
         fonts_layout.addWidget(text_group)
         fonts_layout.addWidget(subtle_group)
         
-        layout.addLayout(fonts_layout)
+        layout.addWidget(fonts_container)
         layout.addStretch()
 
         sections = {}
@@ -4116,6 +4208,14 @@ class SettingsDialog(QDialog):
             else:
                 archived_ids = set(archive_config)
             
+            # --- FIXED: Remove archived items from grid_config ---
+            # The config.merge_config function might have re-inserted default grid positions 
+            # for items that the user moved to the archive.
+            for widget_id in archived_ids:
+                if widget_id in grid_config:
+                    del grid_config[widget_id]
+            # -----------------------------------------------------
+
             for widget_id, default_pos in DEFAULTS["grid"].items():
                 if widget_id not in grid_config and widget_id not in archived_ids:
                     grid_config[widget_id] = default_pos
@@ -4732,127 +4832,290 @@ class SettingsDialog(QDialog):
         
         return container
     
-    def _create_hide_mode_card(self, title, toggle_widget, items):
-        """
-        Create a hide mode card with sections showing what gets hidden.
-        
-        Args:
-            title: The mode title (Hide, Pro, or Max)
-            toggle_widget: The toggle button widget
-            items: List of tuples (section_name, item_list) where item_list is a list of feature strings
-        """
-        card = QFrame()
-        card.setObjectName("hideModeCard")
-        # card.setFixedWidth(315)  # REMOVED fixed width to allow responsiveness
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    class AdaptiveModeCard(QWidget):
+        """A mode card that can switch between vertical and horizontal layouts."""
+        def __init__(self, title, toggle_widget, items, addon_path, parent=None):
+            super().__init__(parent)
+            self.title = title
+            self.toggle_widget = toggle_widget
+            self.items = items
+            self.addon_path = addon_path
+            self.current_mode = "vertical"
+            
+            # Main layout that will hold either vertical or horizontal card
+            self.main_layout = QVBoxLayout(self)
+            self.main_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Create both layouts
+            self.vertical_card = self._create_vertical_layout()
+            self.horizontal_card = self._create_horizontal_layout()
+            
+            # Start with vertical by default
+            self.main_layout.addWidget(self.vertical_card)
+            self.horizontal_card.hide()
+            
+        def _create_vertical_layout(self):
+            """Create the vertical card layout (original style)."""
+            card = QFrame()
+            card.setObjectName("hideModeCard")
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            
+            # Darker background to match user preference
+            if theme_manager.night_mode:
+                card.setStyleSheet("""
+                    QFrame#hideModeCard {
+                        background-color: #1e1e1e;
+                        border-radius: 16px;
+                        padding: 8px;
+                    }
+                """)
+            else:
+                card.setStyleSheet("""
+                    QFrame#hideModeCard {
+                        background-color: #e8e8e8;
+                        border-radius: 16px;
+                        padding: 8px;
+                    }
+                """)
 
-        layout = QVBoxLayout(card)
-        layout.setSpacing(12)
-        layout.setContentsMargins(8, 15, 8, 20)  # Extra bottom margin to prevent clipping
+            layout = QVBoxLayout(card)
+            layout.setSpacing(12)
+            layout.setContentsMargins(8, 15, 8, 20)
 
-        # Title
-        title_label = QLabel(title)
-        title_label.setObjectName("hideModeTitleLabel")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
+            # Title
+            title_label = QLabel(self.title)
+            title_label.setObjectName("hideModeTitleLabel")
+            title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(title_label)
 
-        # Separator line
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("QFrame { background-color: rgba(128, 128, 128, 0.3); max-height: 1px; }")
-        layout.addWidget(separator)
-        layout.addSpacing(1)  # More space after separator for rounded corners
+            # Separator line
+            separator = QFrame()
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setFrameShadow(QFrame.Shadow.Sunken)
+            separator.setStyleSheet("QFrame { background-color: rgba(128, 128, 128, 0.3); max-height: 1px; }")
+            layout.addWidget(separator)
+            layout.addSpacing(1)
 
-        # Content area for items (no scroll area to avoid scrollbars)
-        content_widget = QWidget()
-        content_widget.setStyleSheet("QWidget { background: transparent; }")
-        content_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        content_layout = QVBoxLayout(content_widget)
-        content_layout.setSpacing(7)  # More spacing between items for rounded corners
-        content_layout.setContentsMargins(0, 0, 0, 0)
+            # Content area for items
+            content_widget = QWidget()
+            content_widget.setStyleSheet("QWidget { background: transparent; }")
+            content_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            content_layout = QVBoxLayout(content_widget)
+            content_layout.setSpacing(7)
+            content_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Add items - no section headers for minimal design
-        for section_name, item_list in items:
-            # Just add the items directly in rounded boxes
-            for item in item_list:
-                # Create a frame for the rounded box that fills width
-                item_box = QFrame()
-                item_box.setObjectName("hideModeItemBox")
-                
-                is_warning = "Restart Anki" in item
-                
-                # Style the box with custom background colors
-                if is_warning:
-                    # Warning styling (Yellow)
-                    if theme_manager.night_mode:
-                        bg_color = "rgba(255, 235, 59, 0.15)" # Dark mode yellow tint
-                        text_color = "#fff9c4" # Light yellow text
+            # Add items
+            for section_name, item_list in self.items:
+                for item in item_list:
+                    item_box = QFrame()
+                    item_box.setObjectName("hideModeItemBox")
+                    
+                    is_warning = "Restart Anki" in item or "Windows and Linux" in item
+                    
+                    if is_warning:
+                        if theme_manager.night_mode:
+                            bg_color = "rgba(255, 235, 59, 0.15)"
+                            text_color = "#fff9c4"
+                        else:
+                            bg_color = "#fff9c4"
+                            text_color = "#665c00"
+                        item_box.setStyleSheet(f"""
+                            QFrame#hideModeItemBox {{
+                                background-color: {bg_color};
+                                border-radius: 10px;
+                                padding: 12px 10px;
+                                min-height: 20px;
+                            }}
+                        """)
                     else:
-                        bg_color = "#fff9c4" # Light yellow bg
-                        text_color = "#665c00" # Dark yellow/brown text
+                        if theme_manager.night_mode:
+                            item_box.setStyleSheet("""
+                                QFrame#hideModeItemBox {
+                                    background-color: #2c2c2c;
+                                    border-radius: 10px;
+                                    padding: 12px 10px;
+                                    min-height: 20px;
+                                }
+                            """)
+                        else:
+                            item_box.setStyleSheet("""
+                                QFrame#hideModeItemBox {
+                                    background-color: #f2f2f2;
+                                    border-radius: 10px;
+                                    padding: 12px 10px;
+                                    min-height: 20px;
+                                }
+                            """)
+                    
+                    box_layout = QHBoxLayout(item_box)
+                    box_layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    item_label = QLabel(item)
+                    item_label.setWordWrap(True)
+                    
+                    if is_warning:
+                        item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        item_label.setStyleSheet(f"font-size: 11px; color: {text_color}; background: transparent; font-weight: bold;")
+                    else:
+                        item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                        if theme_manager.night_mode:
+                            item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
+                        else:
+                            item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
+                            
+                    box_layout.addWidget(item_label)
+                    content_layout.addWidget(item_box)
 
-                    item_box.setStyleSheet(f"""
-                        QFrame#hideModeItemBox {{
+            content_layout.addStretch()
+            layout.addWidget(content_widget)
+
+            # Toggle button at bottom using simple alignment
+            layout.addStretch()
+            layout.addWidget(self.toggle_widget, 0, Qt.AlignmentFlag.AlignHCenter)
+
+            return card
+            
+        def _create_horizontal_layout(self):
+            """Create the horizontal hero-style card layout."""
+            card = QFrame()
+            card.setObjectName("hideModeHeroCard")
+            card.setMinimumHeight(140)
+            
+            # Darker background to match user preference
+            if theme_manager.night_mode:
+                card.setStyleSheet("""
+                    QFrame#hideModeHeroCard {
+                        background-color: #1e1e1e;
+                        border-radius: 16px;
+                        padding: 20px;
+                    }
+                """)
+            else:
+                card.setStyleSheet("""
+                    QFrame#hideModeHeroCard {
+                        background-color: #e8e8e8;
+                        border-radius: 16px;
+                        padding: 20px;
+                    }
+                """)
+            
+            main_layout = QHBoxLayout(card)
+            main_layout.setSpacing(20)
+            main_layout.setContentsMargins(20, 20, 20, 20)
+            main_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # Align all items vertically
+            
+            # Left side - Title as large text (no icon for modes)
+            title_label = QLabel(self.title)
+            title_label.setObjectName("hideModeHeroTitle")
+            if theme_manager.night_mode:
+                title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #e0e0e0; background: transparent;")
+            else:
+                title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #212121; background: transparent;")
+            title_label.setMinimumWidth(80)
+            title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            main_layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignVCenter)
+            
+            # Center - Features with proper warning styling
+            center_widget = QWidget()
+            center_layout = QVBoxLayout(center_widget)
+            center_layout.setSpacing(6)
+            center_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Collect all features and check for warnings
+            all_features = []
+            for section_name, item_list in self.items:
+                all_features.extend(item_list)
+            
+            # Display features, with warnings in yellow containers
+            for feature in all_features:
+                is_warning = "Restart Anki" in feature or "Windows and Linux" in feature
+                
+                if is_warning:
+                    # Create compact yellow warning container
+                    warning_container = QWidget()
+                    warning_container_layout = QHBoxLayout(warning_container)
+                    warning_container_layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    warning_box = QFrame()
+                    warning_box.setObjectName("hideModeWarningBox")
+                    
+                    if theme_manager.night_mode:
+                        bg_color = "rgba(255, 235, 59, 0.15)"
+                        text_color = "#fff9c4"
+                    else:
+                        bg_color = "#fff9c4"
+                        text_color = "#665c00"
+                    
+                    warning_box.setStyleSheet(f"""
+                        QFrame#hideModeWarningBox {{
                             background-color: {bg_color};
-                            border-radius: 10px;
-                            padding: 12px 10px;
-                            min-height: 20px;
+                            border-radius: 6px;
+                            padding: 6px 12px;
                         }}
                     """)
+                    
+                    warning_layout = QHBoxLayout(warning_box)
+                    warning_layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    warning_label = QLabel(feature)
+                    warning_label.setWordWrap(True)
+                    warning_label.setStyleSheet(f"font-size: 10px; color: {text_color}; background: transparent; font-weight: bold;")
+                    warning_layout.addWidget(warning_label)
+                    
+                    # Add warning box to container and align left
+                    warning_container_layout.addWidget(warning_box)
+                    warning_container_layout.addStretch()
+                    
+                    center_layout.addWidget(warning_container)
                 else:
-                    # Standard styling
+                    # Regular feature text
+                    feature_label = QLabel(f"• {feature}")
+                    feature_label.setWordWrap(True)
                     if theme_manager.night_mode:
-                        item_box.setStyleSheet("""
-                            QFrame#hideModeItemBox {
-                                background-color: #2c2c2c;
-                                border-radius: 10px;
-                                padding: 12px 10px;
-                                min-height: 20px;
-                            }
-                        """)
+                        feature_label.setStyleSheet("font-size: 12px; color: #b5bdc7; background: transparent;")
                     else:
-                        item_box.setStyleSheet("""
-                            QFrame#hideModeItemBox {
-                                background-color: #f2f2f2;
-                                border-radius: 10px;
-                                padding: 12px 10px;
-                                min-height: 20px;
-                            }
-                        """)
+                        feature_label.setStyleSheet("font-size: 12px; color: #6b6b6b; background: transparent;")
+                    center_layout.addWidget(feature_label)
+            
+            center_layout.addStretch()
+            
+            main_layout.addWidget(center_widget, 1)
+            
+            # Right side - Toggle (aligned vertically with title)
+            # Add directly to main layout for proper vertical centering
+            main_layout.addWidget(self.toggle_widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            
+            return card
+            
+        def set_layout_mode(self, mode):
+            """Switch between vertical and horizontal layouts."""
+            if mode == self.current_mode:
+                return
                 
-                box_layout = QHBoxLayout(item_box)
-                box_layout.setContentsMargins(0, 0, 0, 0)
-                
-                item_label = QLabel(item)
-                item_label.setWordWrap(True)
-                
-                if is_warning:
-                    item_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    item_label.setStyleSheet(f"font-size: 11px; color: {text_color}; background: transparent; font-weight: bold;")
-                else:
-                    item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    if theme_manager.night_mode:
-                        item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
-                    else:
-                        item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
-                        
-                box_layout.addWidget(item_label)
-                
-                content_layout.addWidget(item_box)
+            self.current_mode = mode
+            
+            # Remove toggle from current parent before switching
+            if self.toggle_widget.parent():
+                self.toggle_widget.setParent(None)
+            
+            if mode == "horizontal":
+                self.vertical_card.hide()
+                if self.horizontal_card.parent() is None:
+                    self.main_layout.addWidget(self.horizontal_card)
+                self.horizontal_card.show()
+                # Re-add toggle to horizontal layout
+                self.horizontal_card.layout().addWidget(self.toggle_widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            else:  # vertical
+                self.horizontal_card.hide()
+                if self.vertical_card.parent() is None:
+                    self.main_layout.addWidget(self.vertical_card)
+                self.vertical_card.show()
+                # Re-add toggle to vertical layout
+                self.vertical_card.layout().addWidget(self.toggle_widget, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        content_layout.addStretch()
-        layout.addWidget(content_widget)
-
-        # Toggle button at bottom
-        layout.addStretch()
-        toggle_layout = QHBoxLayout()
-        toggle_layout.addStretch()
-        toggle_layout.addWidget(toggle_widget)
-        toggle_layout.addStretch()
-        layout.addLayout(toggle_layout)
-
-        return card
+    def _create_hide_mode_card(self, title, toggle_widget, items):
+        """Wrapper method for backwards compatibility - creates AdaptiveModeCard."""
+        return self.AdaptiveModeCard(title, toggle_widget, items, self.addon_path, self)
     # <<< END NEW CODE >>>
 
     def create_onigiri_games_page(self):
@@ -5465,6 +5728,96 @@ class SettingsDialog(QDialog):
             self.close()
 
 
+    class ResponsiveModeCardsContainer(QWidget):
+        """Container that switches mode cards between horizontal and vertical layouts based on width."""
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.mode_cards = []
+            self.current_layout_mode = "vertical"
+            self.threshold_width = 900  # Width below which cards switch to horizontal
+            
+            # Main layout
+            self.main_layout = QVBoxLayout(self)
+            self.main_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Create initial layout container with horizontal layout
+            self.layout_container = QWidget()
+            self.current_cards_layout = QHBoxLayout(self.layout_container)
+            self.current_cards_layout.setSpacing(20)
+            self.current_cards_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.addWidget(self.layout_container)
+            
+        def add_mode_card(self, card):
+            """Add a mode card to the container."""
+            self.mode_cards.append(card)
+            self.current_cards_layout.addWidget(card)
+            
+        def resizeEvent(self, event):
+            """Handle resize events to switch layouts."""
+            super().resizeEvent(event)
+            new_width = event.size().width()
+            
+            # Determine which mode we should be in
+            should_be_horizontal = new_width < self.threshold_width
+            
+            # Switch layouts if needed
+            if should_be_horizontal and self.current_layout_mode == "vertical":
+                self._switch_to_horizontal_mode()
+            elif not should_be_horizontal and self.current_layout_mode == "horizontal":
+                self._switch_to_vertical_mode()
+                
+        def _switch_to_horizontal_mode(self):
+            """Switch all cards to horizontal hero-style layout and stack them vertically."""
+            self.current_layout_mode = "horizontal"
+            
+            # Remove all cards from current layout
+            while self.current_cards_layout.count():
+                item = self.current_cards_layout.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+            
+            # Remove and delete old layout container
+            self.main_layout.removeWidget(self.layout_container)
+            self.layout_container.deleteLater()
+            
+            # Create new layout container with vertical layout
+            self.layout_container = QWidget()
+            self.current_cards_layout = QVBoxLayout(self.layout_container)
+            self.current_cards_layout.setSpacing(15)
+            self.current_cards_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.addWidget(self.layout_container)
+            
+            # Add cards back in vertical layout and switch card mode
+            for card in self.mode_cards:
+                card.set_layout_mode("horizontal")
+                self.current_cards_layout.addWidget(card)
+                
+        def _switch_to_vertical_mode(self):
+            """Switch all cards to vertical layout and arrange them horizontally."""
+            self.current_layout_mode = "vertical"
+            
+            # Remove all cards from current layout
+            while self.current_cards_layout.count():
+                item = self.current_cards_layout.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+            
+            # Remove and delete old layout container
+            self.main_layout.removeWidget(self.layout_container)
+            self.layout_container.deleteLater()
+            
+            # Create new layout container with horizontal layout
+            self.layout_container = QWidget()
+            self.current_cards_layout = QHBoxLayout(self.layout_container)
+            self.current_cards_layout.setSpacing(20)
+            self.current_cards_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.addWidget(self.layout_container)
+            
+            # Add cards back in horizontal layout and switch card mode
+            for card in self.mode_cards:
+                card.set_layout_mode("vertical")
+                self.current_cards_layout.addWidget(card)
+
     def create_hide_modes_page(self):
         page, layout = self._create_scrollable_page()
 
@@ -5500,11 +5853,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(gamification_container)
         layout.addSpacing(20)
         
-        cards_container = QWidget()
-        cards_layout = QHBoxLayout(cards_container)
-        cards_layout.setSpacing(20)
-        cards_layout.setContentsMargins(0, 0, 0, 0)
-        cards_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Create responsive container for mode cards
+        cards_container = self.ResponsiveModeCardsContainer(self)
 
         # Define what each mode hides - simplified flat structure
         # Focus mode - Basic hiding
@@ -5534,15 +5884,28 @@ class SettingsDialog(QDialog):
             ])
         ]
 
+        # Full mode - Hides the top menu bar (File, Edit, View, Tools, Help)
+        full_items = [
+            ("", [
+                "Hide the top menu bar",
+                "(File, Edit, View, Tools, Help)",
+                "Works on Windows and Linux only",
+                "Restart Anki when applying this mode"
+            ])
+        ]
+
+        # Create mode cards using AdaptiveModeCard
         card1 = self._create_hide_mode_card("Focus", self.hide_native_header_checkbox, focus_items)
-        card3 = self._create_hide_mode_card("Zen", self.max_hide_checkbox, zen_items)
         card4 = self._create_hide_mode_card("Flow", self.flow_mode_checkbox, flow_items)
+        card3 = self._create_hide_mode_card("Zen", self.max_hide_checkbox, zen_items)
+        card_full = self._create_hide_mode_card("Full", self.full_hide_mode_checkbox, full_items)
 
-        cards_layout.addWidget(card1)
-        cards_layout.addWidget(card4)
-        cards_layout.addWidget(card3)
+        # Add cards to responsive container
+        cards_container.add_mode_card(card1)
+        cards_container.add_mode_card(card4)
+        cards_container.add_mode_card(card3)
+        cards_container.add_mode_card(card_full)
 
-        # cards_container.setMaximumWidth(650) # Removed max width constraint
         layout.addWidget(cards_container)
         
         layout.addStretch()
@@ -10015,6 +10378,15 @@ class SettingsDialog(QDialog):
             self.max_hide_checkbox.blockSignals(False)
     # <<< END NEW CODE >>>
 
+    def _on_full_hide_toggled(self, checked):
+        """Handle Full Hide Mode toggle"""
+        if checked:
+            QMessageBox.information(
+                self,
+                "Restart Required",
+                "Please restart Anki for the Full Hide Mode to take effect."
+            )
+
     def _save_hide_modes_settings(self):
         self.current_config.update({
             "hideNativeHeaderAndBottomBar": self.hide_native_header_checkbox.isChecked(),
@@ -10022,6 +10394,7 @@ class SettingsDialog(QDialog):
             "maxHide": self.max_hide_checkbox.isChecked(),
             "flowMode": self.flow_mode_checkbox.isChecked(),
             "gamificationMode": self.gamification_mode_checkbox.isChecked(),
+            "fullHideMode": self.full_hide_mode_checkbox.isChecked(),
         })
 
     def _save_overviews_settings(self):

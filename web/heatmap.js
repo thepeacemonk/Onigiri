@@ -36,23 +36,39 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return { reviewsByDay, duesByDay, todayKey };
     }
 
-    // Classifies past review count into 5 levels (0-4)
+    // Classifies past review count into 12 levels (0-12)
     function getIntensityLevel(count) {
         if (count === 0) return 0;
-        if (count >= 1 && count <= 15) return 1;
-        if (count > 15 && count <= 50) return 2;
-        if (count > 50 && count <= 150) return 3;
-        if (count > 150) return 4;
+        if (count >= 1 && count <= 10) return 1;
+        if (count >= 11 && count <= 25) return 2;
+        if (count >= 26 && count <= 50) return 3;
+        if (count >= 51 && count <= 100) return 4;
+        if (count >= 101 && count <= 200) return 5;
+        if (count >= 201 && count <= 350) return 6;
+        if (count >= 351 && count <= 500) return 7;
+        if (count >= 501 && count <= 750) return 8;
+        if (count >= 751 && count <= 1000) return 9;
+        if (count >= 1001 && count <= 1500) return 10;
+        if (count >= 1501 && count <= 1999) return 11;
+        if (count >= 2000) return 12;
         return 0;
     }
 
-    // Classifies future due count into 5 levels (0-4)
+    // Classifies future due count into 12 levels (0-12)
     function getDueIntensityLevel(count) {
         if (count === 0) return 0;
-        if (count >= 1 && count <= 15) return 1;
-        if (count > 15 && count <= 50) return 2;
-        if (count > 50 && count <= 150) return 3;
-        if (count > 150) return 4;
+        if (count >= 1 && count <= 10) return 1;
+        if (count >= 11 && count <= 25) return 2;
+        if (count >= 26 && count <= 50) return 3;
+        if (count >= 51 && count <= 100) return 4;
+        if (count >= 101 && count <= 200) return 5;
+        if (count >= 201 && count <= 350) return 6;
+        if (count >= 351 && count <= 500) return 7;
+        if (count >= 501 && count <= 750) return 8;
+        if (count >= 751 && count <= 1000) return 9;
+        if (count >= 1001 && count <= 1500) return 10;
+        if (count >= 1501 && count <= 1999) return 11;
+        if (count >= 2000) return 12;
         return 0;
     }
 
@@ -265,15 +281,15 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             let navHTML = '';
             if (state.view === 'year') {
                 navHTML = `
-                    <button class="nav-btn" data-nav="-1">◄</button>
+                    <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
                     <span class="nav-title">${state.targetDate.getFullYear()}</span>
-                    <button class="nav-btn" data-nav="1">►</button>
+                    <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             } else if (state.view === 'month') {
                 navHTML = `
-                    <button class="nav-btn" data-nav="-1">◄</button>
+                    <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
                     <span class="nav-title">${state.targetDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
-                    <button class="nav-btn" data-nav="1">►</button>
+                    <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             } else if (state.view === 'week') {
                 const startOfWeek = new Date(state.targetDate);
@@ -281,9 +297,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 const endOfWeek = new Date(startOfWeek);
                 endOfWeek.setDate(startOfWeek.getDate() + 6);
                 navHTML = `
-                    <button class="nav-btn" data-nav="-7">◄</button>
+                    <button class="nav-btn" data-nav="-7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
                     <span class="nav-title">${startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                    <button class="nav-btn" data-nav="7">►</button>
+                    <button class="nav-btn" data-nav="7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             }
 
@@ -323,8 +339,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             });
 
             container.querySelector('.heatmap-nav').addEventListener('click', (e) => {
-                if (e.target.classList.contains('nav-btn')) {
-                    const navAmount = parseInt(e.target.dataset.nav, 10);
+                const navBtn = e.target.closest('.nav-btn');
+                if (navBtn) {
+                    const navAmount = parseInt(navBtn.dataset.nav, 10);
                     if (state.view === 'year') {
                         state.targetDate.setFullYear(state.targetDate.getFullYear() + navAmount);
                     } else if (state.view === 'month') {

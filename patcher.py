@@ -306,12 +306,33 @@ class RestaurantLevelDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Restaurant Level")
         
-        # Sets the default size when the window opens
-        self.resize(900, 750) 
+        # Calculate adaptive window size based on screen geometry
+        try:
+            # Get the screen geometry where the parent window is located
+            if parent:
+                screen = parent.screen()
+            else:
+                screen = QApplication.primaryScreen()
+            
+            available_geometry = screen.availableGeometry()
+            screen_width = available_geometry.width()
+            screen_height = available_geometry.height()
+            
+            # Use 85% of available screen size, with maximum limits
+            target_width = min(int(screen_width * 0.85), 900)
+            target_height = min(int(screen_height * 0.85), 750)
+            
+            # Ensure we don't go below minimum size
+            target_width = max(target_width, 600)
+            target_height = max(target_height, 500)
+            
+            self.resize(target_width, target_height)
+        except:
+            # Fallback to default size if screen detection fails
+            self.resize(900, 750)
         
-        # Set new min/max sizes to allow resizing
-        self.setMinimumSize(600, 750)
-        self.setMaximumWidth(800)
+        # Allow resizing for smaller displays (both horizontal and vertical)
+        self.setMinimumSize(600, 500)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -2850,28 +2871,41 @@ def generate_dynamic_css(conf):
 		
 		# Past/Due Level 0 - use the user-defined heatmap-color-zero
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
-		
-		# Levels 1-4 (Past) - blend from heatmap_color to canvas_inset
-		colors_dict["--heatmap-level-1"] = _mix_colors(heatmap_color, canvas_inset, 0.25)
-		colors_dict["--heatmap-level-2"] = _mix_colors(heatmap_color, canvas_inset, 0.50)
-		colors_dict["--heatmap-level-3"] = _mix_colors(heatmap_color, canvas_inset, 0.75)
-		colors_dict["--heatmap-level-4"] = heatmap_color
-		
-		# Future Levels 0-4 - use heatmap_color_zero as base with intensity variations
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
-		
-		if is_night_mode:
-			 # Dark mode: more reviews = lighter shade (mix with white)
-			 colors_dict["--heatmap-future-1"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.80)
-			 colors_dict["--heatmap-future-2"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.60)
-			 colors_dict["--heatmap-future-3"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.40)
-			 colors_dict["--heatmap-future-4"] = _mix_colors(heatmap_color_zero, "#ffffff", 0.20)
-		else:
-			 # Light mode: more reviews = darker shade (mix with black)
-			 colors_dict["--heatmap-future-1"] = _mix_colors(heatmap_color_zero, "#000000", 0.88)
-			 colors_dict["--heatmap-future-2"] = _mix_colors(heatmap_color_zero, "#000000", 0.76)
-			 colors_dict["--heatmap-future-3"] = _mix_colors(heatmap_color_zero, "#000000", 0.64)
-			 colors_dict["--heatmap-future-4"] = _mix_colors(heatmap_color_zero, "#000000", 0.52)
+
+		# LEVELS 1-12 Loop
+		for i in range(1, 13):
+			# --- Past Colors (blending from canvas_inset/zero -> heatmap_color) ---
+			# Level 12 receives 100% heatmap_color. 
+			# Level 1 receives a small amount of heatmap_color mixed into canvas_inset.
+			# Has been increased to 0.5 (square root) for stronger intensity on lower levels.
+			# New formula: ratio = (i / 12.0) ** 0.5
+			ratio = (i / 12.0) ** 0.5
+			colors_dict[f"--heatmap-level-{i}"] = _mix_colors(heatmap_color, canvas_inset, ratio)
+
+			# --- Future Colors (blending from heatmap_color_zero -> black/white) ---
+			# We want higher levels to be darker (light mode) or lighter (dark mode).
+			# Base color is heatmap_color_zero.
+			if is_night_mode:
+				# Dark mode: mix with white. 
+				# Level 1 starts with strong base (low mix of white).
+				# Level 12 ends with more white.
+				# Formula: Start around 0.93 ratio (mostly base) down to 0.1 ratio (mostly white)
+				# 0.93 - (i * 0.07):
+				# i=12 -> 0.93 - 0.84 = 0.09 (Very bright/white)
+				# i=1  -> 0.93 - 0.07 = 0.86 (Close to base gray)
+				future_ratio = 0.93 - (i * 0.07)
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(heatmap_color_zero, "#ffffff", future_ratio)
+			else:
+				# Light mode: mix with black.
+				# Level 1 starts with strong base.
+				# Level 12 ends with more black.
+				# Formula: Start around 0.96 ratio down to ~0.36
+				# 0.96 - (i * 0.05):
+				# i=12 -> 0.96 - 0.60 = 0.36 (Quite dark)
+				# i=1  -> 0.96 - 0.05 = 0.91 (Close to base gray)
+				future_ratio = 0.96 - (i * 0.05)
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(heatmap_color_zero, "#000000", future_ratio)
 
 	_generate_heatmap_colors(light_colors, False)
 	_generate_heatmap_colors(dark_colors, True)
