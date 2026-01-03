@@ -2,7 +2,7 @@
 name: "[Dev Version] Bug report"
 about: Bug report when using the dev version
 title: "[DEV BUG]"
-labels: bug, dev version
+labels: bug
 assignees: ''
 
 ---
@@ -20,7 +20,7 @@ Steps to reproduce the behavior:
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Operator System model**
+**Operating System model**
 Inform here your OS model: Windows, Linux, macOS, etc. 
 
 **Debug message**
