@@ -6,7 +6,7 @@ custom_body_template = """
     body.deck-edit-mode #deck-list-container {
         border: 2px dashed var(--accent-color);
         border-radius: 15px;
-        background-color: var(--deck-edit-mode-bg);
+        background-color: transparent !important; /* Changed from var(--deck-edit-mode-bg) to transparent */
     }
 
     body.deck-edit-mode .decktd a.deck {
@@ -160,6 +160,7 @@ custom_body_template = """
         flex-direction: column;
         height: 100%;
         overflow: hidden;
+        background-color: transparent !important; /* Ensure no background */
     }
 
     #deck-list-container {

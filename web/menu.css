@@ -297,6 +297,31 @@ details.menu-group[open]>summary.menu-item::after {
     min-height: 0;
     contain: layout style paint;
     scroll-behavior: auto;
+    background-color: transparent !important;
+    /* Made transparent per request */
+}
+
+/* --- Scrollbar Styling for Deck List --- */
+#deck-list-container::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+    /* Transparent track background */
+}
+
+#deck-list-container::-webkit-scrollbar-track {
+    background: transparent;
+    /* Transparent track */
+}
+
+#deck-list-container::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    /* Semi-transparent thumb for visibility */
+    border-radius: 4px;
+}
+
+#deck-list-container::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.4);
+    /* Darker on hover */
 }
 
 /* Table baseline */
@@ -304,6 +329,17 @@ details.menu-group[open]>summary.menu-item::after {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
+    background-color: transparent !important;
+    /* Ensure table has no background */
+    box-shadow: none !important;
+    /* Remove any shadow */
+}
+
+#deck-list-container table.deck-table tbody {
+    box-shadow: none !important;
+    /* Remove any shadow from tbody */
+    border: none !important;
+    /* Remove any border */
 }
 
 /* Row */
@@ -321,6 +357,8 @@ tr.deck {
     position: relative;
     will-change: transform;
     transform: translateZ(0);
+    box-shadow: none !important;
+    /* Remove any shadow */
 }
 
 .deck-table tr.deck:not(:hover) {
@@ -404,7 +442,8 @@ a.collapse {
     opacity: 0.7;
     text-align: center;
     line-height: 16px;
-    font-family: monospace; /* Ensure + and - are similar width/style */
+    font-family: monospace;
+    /* Ensure + and - are similar width/style */
     font-weight: bold;
     vertical-align: middle;
 }
@@ -515,6 +554,25 @@ tr.deck.drag-over-nest {
     gap: 20px;
     text-align: center;
     z-index: 2;
+}
+
+/* --- Scrollbar Styling for Main Content --- */
+.main-content::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.main-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+    background-color: transparent;
 }
 
 .main-content>* {

@@ -25,7 +25,8 @@ DEFAULTS = {
     "proHide": False,
     "maxHide": False,
     "flowMode": False,
-    "gamificationMode": False, 
+    "gamificationMode": False,
+    "fullHideMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
@@ -430,6 +431,28 @@ def get_config():
     if "restaurant_level" in clean_config:
         if "taiyaki_coins" in clean_config["restaurant_level"]:
             del clean_config["restaurant_level"]["taiyaki_coins"]
+
+    # --- NEW FIX: Enforce Archive Exclusivity ---
+    # Ensure items in 'archive' are NOT in 'grid'. The merge process might have
+    # kept default grid positions for items the user wanted to archive.
+    layout_conf = clean_config.get("onigiriWidgetLayout", {})
+    if "grid" in layout_conf and "archive" in layout_conf:
+        grid_conf = layout_conf["grid"]
+        archive_conf = layout_conf["archive"]
+        
+        # Get set of archived IDs
+        if isinstance(archive_conf, dict):
+            archived_ids = set(archive_conf.keys())
+        elif isinstance(archive_conf, list):
+            archived_ids = set(archive_conf)
+        else:
+            archived_ids = set()
+            
+        # Remove them from grid
+        for widget_id in archived_ids:
+            if widget_id in grid_conf:
+                del grid_conf[widget_id]
+    # --------------------------------------------
 
     return clean_config
 

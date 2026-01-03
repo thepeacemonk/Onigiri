@@ -118,19 +118,33 @@
     width: 24px;
     height: 24px;
     cursor: pointer;
-    font-size: 18px;
-    /* Arrow size */
-    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
+    outline: none;
+    box-shadow: none;
 }
 
-.nav-btn:hover {
-    background: var(--heatmap-color-zero) !important;
+.nav-btn:hover,
+.nav-btn:focus,
+.nav-btn:active {
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background-color: var(--heatmap-color-zero);
+    color: var(--fg);
     opacity: 1;
+    transform: none;
 }
+
+.nav-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--fg);
+    pointer-events: none;
+}
+
 
 .nav-title {
     font-size: 13px;
@@ -197,6 +211,38 @@
     background-color: var(--heatmap-level-4);
 }
 
+.heatmap-day-cell[data-level="5"] .day-shape {
+    background-color: var(--heatmap-level-5);
+}
+
+.heatmap-day-cell[data-level="6"] .day-shape {
+    background-color: var(--heatmap-level-6);
+}
+
+.heatmap-day-cell[data-level="7"] .day-shape {
+    background-color: var(--heatmap-level-7);
+}
+
+.heatmap-day-cell[data-level="8"] .day-shape {
+    background-color: var(--heatmap-level-8);
+}
+
+.heatmap-day-cell[data-level="9"] .day-shape {
+    background-color: var(--heatmap-level-9);
+}
+
+.heatmap-day-cell[data-level="10"] .day-shape {
+    background-color: var(--heatmap-level-10);
+}
+
+.heatmap-day-cell[data-level="11"] .day-shape {
+    background-color: var(--heatmap-level-11);
+}
+
+.heatmap-day-cell[data-level="12"] .day-shape {
+    background-color: var(--heatmap-level-12);
+}
+
 
 /* --- Future/Due Day Styling --- */
 /* Default Mode: Match past level 0 for consistency */
@@ -229,6 +275,38 @@
     background-color: var(--heatmap-future-4);
 }
 
+.heatmap-day-cell.future-day[data-due-level="5"] .day-shape {
+    background-color: var(--heatmap-future-5);
+}
+
+.heatmap-day-cell.future-day[data-due-level="6"] .day-shape {
+    background-color: var(--heatmap-future-6);
+}
+
+.heatmap-day-cell.future-day[data-due-level="7"] .day-shape {
+    background-color: var(--heatmap-future-7);
+}
+
+.heatmap-day-cell.future-day[data-due-level="8"] .day-shape {
+    background-color: var(--heatmap-future-8);
+}
+
+.heatmap-day-cell.future-day[data-due-level="9"] .day-shape {
+    background-color: var(--heatmap-future-9);
+}
+
+.heatmap-day-cell.future-day[data-due-level="10"] .day-shape {
+    background-color: var(--heatmap-future-10);
+}
+
+.heatmap-day-cell.future-day[data-due-level="11"] .day-shape {
+    background-color: var(--heatmap-future-11);
+}
+
+.heatmap-day-cell.future-day[data-due-level="12"] .day-shape {
+    background-color: var(--heatmap-future-12);
+}
+
 
 /* Night Mode Overrides: Lighter shades for more due reviews */
 .night-mode .heatmap-day-cell.future-day[data-due-level="0"] .day-shape {
@@ -249,6 +327,38 @@
 
 .night-mode .heatmap-day-cell.future-day[data-due-level="4"] .day-shape {
     background-color: var(--heatmap-future-4);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="5"] .day-shape {
+    background-color: var(--heatmap-future-5);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="6"] .day-shape {
+    background-color: var(--heatmap-future-6);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="7"] .day-shape {
+    background-color: var(--heatmap-future-7);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="8"] .day-shape {
+    background-color: var(--heatmap-future-8);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="9"] .day-shape {
+    background-color: var(--heatmap-future-9);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="10"] .day-shape {
+    background-color: var(--heatmap-future-10);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="11"] .day-shape {
+    background-color: var(--heatmap-future-11);
+}
+
+.night-mode .heatmap-day-cell.future-day[data-due-level="12"] .day-shape {
+    background-color: var(--heatmap-future-12);
 }
 
 
