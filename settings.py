@@ -31,7 +31,7 @@ from typing import Union
 from . import config
 from .gamification import restaurant_level
 from .config import DEFAULTS
-from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS
+from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
 from .themes import THEMES 
 from aqt.qt import QRectF
 from PyQt6.QtGui import QImage
@@ -9856,6 +9856,16 @@ class SettingsDialog(QDialog):
                 if type_key in ["main", "subtle"]:
                     mw.col.conf[f"onigiri_font_{type_key}"] = font_key
 
+        # 1c. Apply Fonts
+        if "font_config" in assets:
+            for type_key, font_key in assets["font_config"].items():
+                if type_key in ["main", "subtle"]:
+                    mw.col.conf[f"onigiri_font_{type_key}"] = font_key
+
+        # 1d. Apply Reviewer Settings
+        if "reviewer_settings" in theme_data:
+            self.current_config.update(theme_data["reviewer_settings"])
+
         # 2. Update the UI widgets on other pages in real-time
         # This uses hasattr to avoid errors if a page hasn't been loaded yet
         
@@ -10125,9 +10135,17 @@ class SettingsDialog(QDialog):
                 if value is not None:
                     palette[key] = value
 
+        # 1b. Gather Reviewer Settings
+        reviewer_settings = {}
+        for key in REVIEWER_THEME_KEYS:
+            value = self.current_config.get(key)
+            if value is not None:
+                reviewer_settings[key] = value
+
         theme_data = {
             "light": light_palette, 
             "dark": dark_palette,
+            "reviewer_settings": reviewer_settings,
             "assets": {
                 "fonts": {}, # Map: local_filename -> archive_path
                 "images": {},
