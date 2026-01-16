@@ -3146,8 +3146,8 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
         mw.toolbar.web.setVisible(True)
         mw.bottomWeb.setVisible(True)
 
-def on_reviewer_did_answer_card(reviewer, card, ease):
-    """Update the level progress container when a card is answered."""
+def update_reviewer_chip():
+    """Update the restaurant level chip in the reviewer. Can be called from anywhere."""
     try:
         from .gamification import restaurant_level
         
@@ -3212,6 +3212,11 @@ def on_reviewer_did_answer_card(reviewer, card, ease):
         print(f"Error updating level progress: {e}")
         import traceback
         traceback.print_exc()
+
+def on_reviewer_did_answer_card(reviewer, card, ease):
+    """Update the level progress container when a card is answered."""
+    update_reviewer_chip()
+
 
 
 def _onigiri_render_deck_node(self, node, ctx) -> str:
