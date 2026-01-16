@@ -1025,12 +1025,7 @@ def on_webview_js_message(handled, message, context):
     elif isinstance(context, Overview):
         cmd = message  # <-- This line must come FIRST
         
-        # Focus Dango check for exit commands from overview
-        exit_commands = ["add", "browse", "stats", "sync"]
-        if cmd in exit_commands and focus_dango.is_focus_dango_enabled():
-            if focus_dango.intercept_exit_attempt(cmd):
-                focus_dango.show_dango_dialog()
-                return (True, None)
+
         
         # Now handle the commands normally
         if cmd == "deckBrowser":
