@@ -527,7 +527,25 @@ class RestaurantLevelManager:
         
         updated = False
         if current_progress != today_reviews:
+            # Grant XP for synced reviews
+            if today_reviews > current_progress:
+                diff = today_reviews - current_progress
+                xp_to_award = diff * XP_PER_REVIEW
+                # Use reason='sync' to allow _add_xp to suppress notifications
+                notifications = self._add_xp(xp_to_award, reason="sync", review_count=diff)
+                self._dispatch_notifications(notifications)
+
             daily_special["current_progress"] = today_reviews
+            
+            # Silently update notified percent to avoid stale notifications
+            target = daily_special.get("target", 100)
+            if target > 0:
+                percent = (today_reviews / target) * 100
+                current_notified = daily_special.get("last_notified_percent", 0)
+                for m in [25, 50, 75]:
+                    if percent >= m and m > current_notified:
+                        daily_special["last_notified_percent"] = m
+            
             updated = True
             
         # Check for completion after sync (Always check if target met)
