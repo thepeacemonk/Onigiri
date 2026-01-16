@@ -876,6 +876,13 @@ class ThemeCardWidget(QFrame):
 class BirthdayWidget(QWidget):
     def __init__(self, accent_color="#007bff", parent=None):
         super().__init__(parent)
+        
+        # Resolve real accent color from theme to match accurately
+        current_theme = mw.col.conf.get("modern_menu_theme", "Tokyo Drift")
+        if current_theme in THEMES:
+            mode = "dark" if theme_manager.night_mode else "light"
+            accent_color = THEMES[current_theme][mode].get("--accent-color", accent_color)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
@@ -883,26 +890,40 @@ class BirthdayWidget(QWidget):
         self.accent_color = accent_color
 
         # Common style for input fields
+        if theme_manager.night_mode:
+            bg_color = "#3a3a3a"
+            text_color = "#e0e0e0"
+            border_color = "#555"
+            hover_border_color = "#777"
+        else:
+            bg_color = "white"
+            text_color = "#333"
+            border_color = "#e0e0e0"
+            hover_border_color = "#b0b0b0"
+
         input_style = f"""
             QLineEdit {{
-                padding: 8px 12px;
-                border: 1px solid #e0e0e0;
+                padding: 7px 11px;
+                border: 2px solid {border_color};
                 border-radius: 8px;
-                background-color: white;
-                color: #333;
+                background-color: {bg_color};
+                color: {text_color};
                 font-size: 13px;
+                selection-background-color: {accent_color};
+                outline: none;
             }}
             QLineEdit:hover {{
-                border-color: #b0b0b0;
+                border-color: {hover_border_color};
             }}
             QLineEdit:focus {{
-                border-color: {accent_color};
-                background-color: white;
+                border: 2px solid {accent_color};
+                background-color: {bg_color};
             }}
         """
 
         # Day Input
         self.day_input = QLineEdit()
+        self.day_input.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.day_input.setPlaceholderText("Day")
         self.day_input.setValidator(QIntValidator(1, 31))
         self.day_input.setFixedWidth(70)
@@ -911,6 +932,7 @@ class BirthdayWidget(QWidget):
         
         # Month Input
         self.month_input = QLineEdit()
+        self.month_input.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.month_input.setPlaceholderText("Month")
         self.month_input.setValidator(QIntValidator(1, 12))
         self.month_input.setFixedWidth(70)
@@ -919,6 +941,7 @@ class BirthdayWidget(QWidget):
 
         # Year Input
         self.year_input = QLineEdit()
+        self.year_input.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.year_input.setPlaceholderText("Year")
         self.year_input.setValidator(QIntValidator(1900, 2100))
         self.year_input.setFixedWidth(80)
@@ -945,13 +968,16 @@ class BirthdayWidget(QWidget):
 
     def date(self):
         try:
-            day = int(self.day_input.text()) if self.day_input.text() else 1
-            month = int(self.month_input.text()) if self.month_input.text() else 1
-            year = int(self.year_input.text()) if self.year_input.text() else 2000
+            if not self.day_input.text() or not self.month_input.text() or not self.year_input.text():
+                return QDate()
+            
+            day = int(self.day_input.text())
+            month = int(self.month_input.text())
+            year = int(self.year_input.text())
             
             return QDate(year, month, day)
         except:
-            return QDate.currentDate()
+            return QDate()
 
 
 class FontCardWidget(QPushButton):
@@ -1983,6 +2009,13 @@ class SearchResultWidget(QPushButton):
             hover_bg = "#e0e0e0"
             border_color = "#dddddd"
 
+        # Resolve real accent color from theme
+        current_theme = mw.col.conf.get("modern_menu_theme", "Tokyo Drift")
+        accent_color = "#007bff"
+        if current_theme in THEMES:
+            mode = "dark" if theme_manager.night_mode else "light"
+            accent_color = THEMES[current_theme][mode].get("--accent-color", accent_color)
+
         title_label = QLabel(title)
         title_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {text_color}; background: transparent;")
         layout.addWidget(title_label)
@@ -1996,12 +2029,12 @@ class SearchResultWidget(QPushButton):
             QPushButton {{
                 background-color: {bg_color};
                 border-radius: 12px;
-                border: 1px solid {border_color};
+                border: 2px solid {border_color};
                 text-align: left;
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
-                border: 1px solid #007bff;
+                border: 2px solid {accent_color};
             }}
         """)
 
@@ -2105,15 +2138,22 @@ class SettingsSearchPage(QWidget):
             hover_bg = "#e0e0e0"
             match_text_color = "#555555"
 
+        # Resolve real accent color from theme
+        current_theme = mw.col.conf.get("modern_menu_theme", "Tokyo Drift")
+        accent_color = "#007bff"
+        if current_theme in THEMES:
+            mode = "dark" if theme_manager.night_mode else "light"
+            accent_color = THEMES[current_theme][mode].get("--accent-color", accent_color)
+
         card.setStyleSheet(f"""
             QFrame#searchCard {{
                 background-color: {bg_color};
                 border-radius: 12px;
-                border: 1px solid transparent;
+                border: 2px solid transparent;
             }}
             QFrame#searchCard:hover {{
                 background-color: {hover_bg};
-                border: 1px solid #007bff;
+                border: 2px solid {accent_color};
             }}
         """)
 
@@ -7289,6 +7329,101 @@ class SettingsDialog(QDialog):
             border=False,
             description="Customize the deck list appearance."
         )
+
+        indentation_group, indentation_layout_content = self._create_inner_group("Decks Indentation")
+        
+        # --- Modern Button Group UI ---
+        # Main layout for the indentation section
+        indent_main_layout = QVBoxLayout()
+        indentation_layout_content.addLayout(indent_main_layout)
+        
+        # Create a container for the buttons
+        mode_btn_container = QWidget()
+        mode_btn_layout = QHBoxLayout(mode_btn_container)
+        mode_btn_layout.setContentsMargins(0, 0, 0, 0)
+        mode_btn_layout.setSpacing(10)
+        
+        self.indentation_mode_group = QButtonGroup(self)
+        self.indentation_mode_group.setExclusive(True)
+        
+        modes = [
+            ("default", "Default"),
+            ("smaller", "Smaller"),
+            ("bigger", "Bigger"),
+            ("custom", "Custom")
+        ]
+        
+        current_mode = self.current_config.get("deck_indentation_mode", "default")
+        
+        for key, label in modes:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("indent_mode", key)
+            
+            # Dynamic styling based on theme
+            if theme_manager.night_mode:
+                border_color = "#555555"
+                text_color = "#eeeeee"
+                hover_bg = "rgba(255, 255, 255, 0.1)"
+            else:
+                border_color = "#cccccc"
+                text_color = "#333333"
+                hover_bg = "rgba(0, 0, 0, 0.05)"
+
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    padding: 8px 15px;
+                    border: 1px solid {border_color};
+                    border-radius: 6px;
+                    background-color: transparent;
+                    color: {text_color};
+                }}
+                QPushButton:checked {{
+                    background-color: {self.accent_color};
+                    color: white;
+                    border-color: {self.accent_color};
+                }}
+                QPushButton:hover:!checked {{
+                    background-color: {hover_bg};
+                }}
+            """)
+            
+            if key == current_mode:
+                btn.setChecked(True)
+                
+            self.indentation_mode_group.addButton(btn)
+            mode_btn_layout.addWidget(btn)
+            
+        # Add the button row
+        indent_main_layout.addWidget(mode_btn_container)
+        
+        # Connect signal
+        self.indentation_mode_group.buttonClicked.connect(self._on_indentation_mode_btn_clicked)
+
+        # Custom Spinbox Row
+        self.indentation_custom_row_widget = QWidget()
+        custom_layout = QHBoxLayout(self.indentation_custom_row_widget)
+        custom_layout.setContentsMargins(5, 0, 0, 0)
+        custom_layout.setSpacing(10)
+        
+        custom_label = QLabel("Custom Indentation (px):")
+        self.indentation_custom_spin = QSpinBox()
+        self.indentation_custom_spin.setRange(0, 100)
+        self.indentation_custom_spin.setValue(self.current_config.get("deck_indentation_custom_px", 20))
+        self.indentation_custom_spin.setSuffix(" px")
+        self.indentation_custom_spin.setFixedWidth(120)
+        
+        custom_layout.addWidget(custom_label)
+        custom_layout.addWidget(self.indentation_custom_spin)
+        custom_layout.addStretch()
+        
+        indent_main_layout.addWidget(self.indentation_custom_row_widget)
+
+        # Initial visibility check
+        self._on_indentation_mode_btn_clicked(self.indentation_mode_group.checkedButton())
+
+        deck_section.add_widget(indentation_group)
         
         deck_icons_group, deck_icons_layout_content = self._create_inner_group("Deck Icons")
         deck_icons_layout = QGridLayout(); deck_icons_layout.setSpacing(15)
@@ -7302,14 +7437,32 @@ class SettingsDialog(QDialog):
             card_layout.addWidget(label); card_layout.addWidget(control_widget); deck_icons_layout.addWidget(card, row, col)
             col += 1
             if col >= num_cols: col = 0; row += 1
+        
         deck_section.add_widget(deck_icons_group)
 
-        sizing_section, sizing_layout_content = self._create_inner_group("Icon Sizing (in pixels)")
+        sizing_section, sizing_layout_content = self._create_inner_group("Deck Icon Settings")
         sizing_layout = QFormLayout(); sizing_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         sizing_layout_content.addLayout(sizing_layout)
-        icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons:", "action_button": "Action Button Icons:", "collapse": "Expand/Collapse Icons:", "options_gear": "Deck Options Gear Icon:"}
+        
+        # --- Add Hide Icon Toggles ---
+        # Note: Using mw.col.conf.get directly to ensure we load the saved state correctly
+        self.hide_folder_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_folder_cb.setChecked(mw.col.conf.get("modern_menu_hide_folder_icon", False))
+        self.hide_folder_cb.toggled.connect(self._update_deck_icon_state)
+        sizing_layout.addRow("Hide Folder Icon:", self.hide_folder_cb)
+        
+        self.hide_deck_child_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_deck_child_cb.setChecked(mw.col.conf.get("modern_menu_hide_deck_child_icon", False))
+        self.hide_deck_child_cb.toggled.connect(self._update_deck_icon_state)
+        sizing_layout.addRow("Hide Child Deck Icon:", self.hide_deck_child_cb)
+        
+        icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons (px):", "action_button": "Action Button Icons (px):", "collapse": "Expand/Collapse Icons (px):", "options_gear": "Deck Options Gear Icon (px):"}
         for key, label in icon_sizes_to_configure.items(): sizing_layout.addRow(label, self.create_icon_size_spinbox(key, DEFAULT_ICON_SIZES[key]))
         reset_sizes_button = QPushButton("Reset Sizes to Default"); reset_sizes_button.clicked.connect(self.reset_icon_sizes_to_default); sizing_layout.addRow(reset_sizes_button)
+        
+        # Initial State Update
+        self._update_deck_icon_state()
+        
         deck_section.add_widget(sizing_section)
 
         deck_color_modes_layout = QHBoxLayout()
@@ -7357,12 +7510,8 @@ class SettingsDialog(QDialog):
                 birthday_date = QDate.fromString(birthday_str, "yyyy-MM-dd")
                 if birthday_date.isValid():
                     self.birthday_input.setDate(birthday_date)
-                else:
-                    self.birthday_input.setDate(QDate(2000, 1, 1))
             except:
-                self.birthday_input.setDate(QDate(2000, 1, 1))
-        else:
-            self.birthday_input.setDate(QDate(2000, 1, 1))
+                pass
 
         form_layout.addRow("Birthday:", self.birthday_input)
         
@@ -11257,6 +11406,20 @@ class SettingsDialog(QDialog):
         self.current_config["hideDeckCounts"] = self.hide_deck_counts_checkbox.isChecked()
         self.current_config["hideAllDeckCounts"] = self.hide_all_deck_counts_checkbox.isChecked()
         
+        # Save Deck Indentation Settings
+        if hasattr(self, "indentation_mode_group"):
+             if btn := self.indentation_mode_group.checkedButton():
+                 self.current_config["deck_indentation_mode"] = btn.property("indent_mode")
+             
+        if hasattr(self, "indentation_custom_spin"):
+             self.current_config["deck_indentation_custom_px"] = self.indentation_custom_spin.value()
+        
+        # Save Hide Icon Toggles
+        if hasattr(self, "hide_folder_cb"):
+            mw.col.conf["modern_menu_hide_folder_icon"] = self.hide_folder_cb.isChecked()
+        if hasattr(self, "hide_deck_child_cb"):
+            mw.col.conf["modern_menu_hide_deck_child_icon"] = self.hide_deck_child_cb.isChecked()
+        
         for widget in self.action_button_icon_widgets:
             key = widget.property("icon_key")
             value = widget.property("icon_filename")
@@ -11441,7 +11604,10 @@ class SettingsDialog(QDialog):
         # Save birthday in ISO format (YYYY-MM-DD)
         if hasattr(self, 'birthday_input'):
             birthday_date = self.birthday_input.date()
-            self.current_config["userBirthday"] = birthday_date.toString("yyyy-MM-dd")
+            if birthday_date.isValid():
+                 self.current_config["userBirthday"] = birthday_date.toString("yyyy-MM-dd")
+            else:
+                 self.current_config["userBirthday"] = ""
 
         if 'profile_pic' in self.galleries:
             mw.col.conf["modern_menu_profile_picture"] = self.galleries['profile_pic']['selected']
@@ -11796,6 +11962,19 @@ class SettingsDialog(QDialog):
         """Saves the sidebar button layout from the editor."""
         if hasattr(self, 'sidebar_layout_editor'):
             self.current_config["sidebarButtonLayout"] = self.sidebar_layout_editor.get_layout_config()
+
+    def _on_indentation_mode_btn_clicked(self, button):
+        if not button: return
+        mode = button.property("indent_mode")
+        is_custom = (mode == "custom")
+        if hasattr(self, 'indentation_custom_row_widget'):
+            self.indentation_custom_row_widget.setVisible(is_custom)
+
+    def _update_deck_icon_state(self):
+        # Disable the deck_folder size spinbox if either hide toggle is ON
+        if "deck_folder" in self.icon_size_widgets:
+            should_disable = self.hide_folder_cb.isChecked() or self.hide_deck_child_cb.isChecked()
+            self.icon_size_widgets["deck_folder"].setEnabled(not should_disable)
 
     def save_settings(self):
         page_indices = {name: i for i, name in enumerate(self.page_order)}

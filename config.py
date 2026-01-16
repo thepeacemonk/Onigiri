@@ -32,7 +32,7 @@ DEFAULTS = {
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
     "userBirthday": "",  # Format: YYYY-MM-DD, empty = not set
-    "lastBirthdayShown": "",  # Year when birthday popup was last shown (e.g., "2025")
+    "lastBirthdayShown": "",  # Year when birthday popup was last shown 
     "hideRetentionStars": False,
     "showHeatmapOnProfile": True,
     "achievements": {
@@ -161,13 +161,11 @@ DEFAULTS = {
     # The following lines appear to be UI setup code and cannot be directly inserted into a dictionary.
     # Assuming the intent was to add a default for 'onigiri_reviewer_btn_custom_enabled' if not already present.
     # The other lines are likely from a different context (e.g., a settings dialog setup).
-    # "enable_label = QLabel("Enable Custom Buttons:")"
-    # "self.reviewer_btn_custom_enable_toggle = AnimatedToggleButton()"
-    # "self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", False))"
-    # "enable_layout.addWidget(enable_label)"
-    # "enable_layout.addWidget(self.reviewer_btn_custom_enable_toggle)ight": 60, # px (default height)
     "onigiri_reviewer_btn_border_size": 0,
     "onigiri_reviewer_btn_custom_enabled": True, # Global toggle (Default OFF)
+    "deck_indentation_mode": "default", # default, smaller, bigger, custom
+    "deck_indentation_custom_px": 20, # px per level
+    "onigiri_reviewer_btn_radius": 12, # px
     "onigiri_reviewer_btn_radius": 12, # px
     "onigiri_reviewer_btn_padding": 5, # px (affects size)
     "onigiri_reviewer_btn_height": 40, # px (button height)

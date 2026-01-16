@@ -2649,6 +2649,13 @@ def generate_icon_css(addon_package, conf):
     
     css_rules = []
     for key, selector in all_icon_selectors.items():
+        if key == "folder" and mw.col.conf.get("modern_menu_hide_folder_icon", False):
+            css_rules.append(f"{selector} {{ display: none !important; }}")
+            continue
+        if key == "deck_child" and mw.col.conf.get("modern_menu_hide_deck_child_icon", False):
+            css_rules.append(f"{selector} {{ display: none !important; }}")
+            continue
+
         filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
         url = ""
         if filename:
@@ -3249,7 +3256,25 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     # --- Counts HTML ---
 
     def indent():
-        return "&nbsp;" * 6 * (node.level - 1)
+        mode = conf.get("deck_indentation_mode", "default")
+        
+        if mode == "default":
+            return "&nbsp;" * 6 * (node.level - 1)
+            
+        custom_px = conf.get("deck_indentation_custom_px", 20)
+        step = 20
+        if mode == "smaller":
+            step = 10
+        elif mode == "bigger":
+            step = 40
+        elif mode == "custom":
+            step = int(custom_px)
+
+        px = step * (node.level - 1)
+        if px <= 0:
+            return ""
+            
+        return f"<span style='display:inline-block; width:{px}px;'></span>"
 
     klass = "deck current" if node.deck_id == ctx.current_deck_id else "deck"
     deck_type_class = "is-folder" if node.children else "is-deck"
