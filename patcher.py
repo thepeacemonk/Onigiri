@@ -1785,6 +1785,21 @@ def generate_reviewer_background_css(addon_path):
     reviewer_mode = conf.get("onigiri_reviewer_bg_mode", "main")
     addon_name = os.path.basename(addon_path)
     
+    # Hide scrollbar while preserving scroll functionality
+    scrollbar_css = """
+        /* Hide scrollbar to show background image */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        body.card, body {
+            margin: 0 !important;
+            overflow-y: auto !important;
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    """
+    
     if reviewer_mode == "main":
         # Use main background settings (like overview does)
         mode = mw.col.conf.get("modern_menu_background_mode", "color")
@@ -1813,6 +1828,7 @@ def generate_reviewer_background_css(addon_path):
                 body.card {{
                     isolation: isolate;
                 }}
+                {scrollbar_css}
             </style>"""
 
         image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
@@ -1845,6 +1861,7 @@ def generate_reviewer_background_css(addon_path):
             body.card {{
                 isolation: isolate;
             }}
+            {scrollbar_css}
         </style>"""
     
     else:  # image_color mode
@@ -1915,6 +1932,7 @@ def generate_reviewer_background_css(addon_path):
         body.card {{
             isolation: isolate;
         }}
+        {scrollbar_css}
     </style>
     """
 
@@ -2307,11 +2325,10 @@ def generate_reviewer_top_bar_html_and_css():
         }
 
         /* Create space for the header and ensure proper stacking */
-        body.card {
+        body.card, body {
             --onigiri-reviewer-header-offset: 65px;
             padding-top: var(--onigiri-reviewer-header-offset) !important;
             box-sizing: border-box !important;
-            min-height: 100vh !important;
         }
         
         /* Ensure card content stays below the header */
@@ -2909,51 +2926,35 @@ def generate_dynamic_css(conf):
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
 
-		# LEVELS 1-12 Loop
-		for i in range(1, 13):
+		# LEVELS 1-8 Loop
+		for i in range(1, 9):
 			# --- Past Colors ---
-			# The direction of color intensity should match the mode:
-			# - Dark mode: More reviews = lighter color (closer to white/lightest)
-			# - Light mode: More reviews = darker color (closer to darkest version)
-			ratio = (i / 12.0) ** 0.5  # Square root for stronger intensity on lower levels
+			# Use the user selected color as the maximum intensity (Level 8)
+			# Interpolate towards the canvas background (inset) for lower levels.
+			# This works for both Light Mode (White bg -> Blue) and Dark Mode (Dark bg -> Blue).
 			
-			if is_night_mode:
-				# Dark mode: blend from heatmap_color toward white for higher levels
-				# Level 1: mostly heatmap_color, Level 12: closer to white
-				# We mix heatmap_color with white, where ratio determines how much white
-				colors_dict[f"--heatmap-level-{i}"] = _mix_colors("#ffffff", heatmap_color, ratio)
-			else:
-				# Light mode: blend from canvas_inset toward a darker heatmap_color for higher levels
-				# We mix heatmap_color (darker) into canvas_inset (lighter)
-				# Then darken further for higher levels by mixing with a darker shade
-				base_mixed = _mix_colors(heatmap_color, canvas_inset, ratio)
-				# Apply additional darkening for higher levels
-				darken_ratio = ratio * 0.3  # Subtle darkening effect
-				colors_dict[f"--heatmap-level-{i}"] = _mix_colors("#000000", base_mixed, darken_ratio)
+			# Use a slightly non-linear ratio to make lower levels visible
+			ratio = (i / 8.0) ** 0.6
+			
+			# Determine the "faint" color limit.
+			# We don't want Level 1 to be invisible (ratio 0), so we scale ratio to be, say, 0.2 to 1.0
+			cleaned_ratio = 0.25 + (ratio * 0.75) 
+
+			# Mix: Target Color (weight: cleaned_ratio) <-> Empty Day Color (weight: 1-cleaned_ratio)
+			# We use heatmap_color_zero as the base to ensure a smooth transition from "Empty" to "Activity".
+			# This also avoids issues where canvas_inset might be transparent (glassmorphism).
+			colors_dict[f"--heatmap-level-{i}"] = _mix_colors(heatmap_color, heatmap_color_zero, cleaned_ratio)
 
 			# --- Future Colors (blending from heatmap_color_zero -> black/white) ---
-			# We want higher levels to be darker (light mode) or lighter (dark mode).
-			# Base color is heatmap_color_zero.
+			# Future days: Level 8 = Strongest Contrast. Level 1 = Faint.
 			if is_night_mode:
-				# Dark mode: mix with white. 
-				# Level 1 starts with strong base (low mix of white).
-				# Level 12 ends with more white.
-				# Formula: Start around 0.93 ratio (mostly base) down to 0.1 ratio (mostly white)
-				# 0.93 - (i * 0.07):
-				# i=12 -> 0.93 - 0.84 = 0.09 (Very bright/white)
-				# i=1  -> 0.93 - 0.07 = 0.86 (Close to base gray)
-				future_ratio = 0.93 - (i * 0.07)
-				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(heatmap_color_zero, "#ffffff", future_ratio)
+				# Dark mode: heatmap_color_zero (Gray) -> White
+				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% white
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#ffffff", heatmap_color_zero, future_ratio)
 			else:
-				# Light mode: mix with black.
-				# Level 1 starts with strong base.
-				# Level 12 ends with more black.
-				# Formula: Start around 0.96 ratio down to ~0.36
-				# 0.96 - (i * 0.05):
-				# i=12 -> 0.96 - 0.60 = 0.36 (Quite dark)
-				# i=1  -> 0.96 - 0.05 = 0.91 (Close to base gray)
-				future_ratio = 0.96 - (i * 0.05)
-				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(heatmap_color_zero, "#000000", future_ratio)
+				# Light mode: heatmap_color_zero (Gray) -> Black
+				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% black
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#000000", heatmap_color_zero, future_ratio)
 
 	_generate_heatmap_colors(light_colors, False)
 	_generate_heatmap_colors(dark_colors, True)

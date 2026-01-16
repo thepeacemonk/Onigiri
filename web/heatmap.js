@@ -31,45 +31,48 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         // Get today's date key from Python
         const todayKey = rawData.today_date_key;
 
+        // Get daily average for relative scaling
+        const dailyAverage = rawData.daily_average || 0;
+
         // No need to calculate offset or convert timestamps here.
 
-        return { reviewsByDay, duesByDay, todayKey };
+        return { reviewsByDay, duesByDay, todayKey, dailyAverage };
     }
 
-    // Classifies past review count into 12 levels (0-12)
-    function getIntensityLevel(count) {
+    // Classifies past review count into 8 levels (0-8) based on daily average
+    function getIntensityLevel(count, dailyAverage) {
         if (count === 0) return 0;
-        if (count >= 1 && count <= 10) return 1;
-        if (count >= 11 && count <= 25) return 2;
-        if (count >= 26 && count <= 50) return 3;
-        if (count >= 51 && count <= 100) return 4;
-        if (count >= 101 && count <= 200) return 5;
-        if (count >= 201 && count <= 350) return 6;
-        if (count >= 351 && count <= 500) return 7;
-        if (count >= 501 && count <= 750) return 8;
-        if (count >= 751 && count <= 1000) return 9;
-        if (count >= 1001 && count <= 1500) return 10;
-        if (count >= 1501 && count <= 1999) return 11;
-        if (count >= 2000) return 12;
-        return 0;
+
+        // Use a minimum average of 3 to avoid "1 review = max intensity" scenarios for new users
+        const avg = Math.max(dailyAverage, 5);
+
+        if (count < 0.4 * avg) return 1;
+        if (count < 0.7 * avg) return 2;
+        if (count < 1.0 * avg) return 3;
+        if (count < 1.3 * avg) return 4;
+        if (count < 1.6 * avg) return 5;
+        if (count < 2.0 * avg) return 6;
+        if (count < 2.5 * avg) return 7;
+
+        // >= 2.5 * avg
+        return 8;
     }
 
-    // Classifies future due count into 12 levels (0-12)
-    function getDueIntensityLevel(count) {
+    // Classifies future due count into 8 levels (0-8) based on daily average (same scale)
+    function getDueIntensityLevel(count, dailyAverage) {
         if (count === 0) return 0;
-        if (count >= 1 && count <= 10) return 1;
-        if (count >= 11 && count <= 25) return 2;
-        if (count >= 26 && count <= 50) return 3;
-        if (count >= 51 && count <= 100) return 4;
-        if (count >= 101 && count <= 200) return 5;
-        if (count >= 201 && count <= 350) return 6;
-        if (count >= 351 && count <= 500) return 7;
-        if (count >= 501 && count <= 750) return 8;
-        if (count >= 751 && count <= 1000) return 9;
-        if (count >= 1001 && count <= 1500) return 10;
-        if (count >= 1501 && count <= 1999) return 11;
-        if (count >= 2000) return 12;
-        return 0;
+
+        const avg = Math.max(dailyAverage, 5);
+
+        if (count < 0.4 * avg) return 1;
+        if (count < 0.7 * avg) return 2;
+        if (count < 1.0 * avg) return 3;
+        if (count < 1.3 * avg) return 4;
+        if (count < 1.6 * avg) return 5;
+        if (count < 2.0 * avg) return 6;
+        if (count < 2.5 * avg) return 7;
+
+        return 8;
     }
 
     // --- HELPER FUNCTION ---
@@ -134,7 +137,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             const dateKey = getLocalDateKey(date); // FIX: Use local date key
             const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
             const dueCount = preparedData.duesByDay.get(dateKey) || 0;
-            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey);
+            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey, preparedData.dailyAverage);
             cellsContainer.appendChild(cell);
         }
     }
@@ -167,7 +170,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             const dateKey = getLocalDateKey(date); // FIX: Use local date key
             const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
             const dueCount = preparedData.duesByDay.get(dateKey) || 0;
-            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey);
+            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey, preparedData.dailyAverage);
             cellsContainer.appendChild(cell);
         }
     }
@@ -203,12 +206,12 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             const dateKey = getLocalDateKey(date); // FIX: Use local date key
             const reviewCount = preparedData.reviewsByDay.get(dateKey) || 0;
             const dueCount = preparedData.duesByDay.get(dateKey) || 0;
-            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey);
+            const cell = createCell(date, reviewCount, dueCount, config, preparedData.todayKey, preparedData.dailyAverage);
             cellsContainer.appendChild(cell);
         }
     }
 
-    function createCell(date, reviewCount, dueCount, config, todayKey) {
+    function createCell(date, reviewCount, dueCount, config, todayKey, dailyAverage) {
         const cell = document.createElement('div');
         cell.className = 'heatmap-day-cell';
 
@@ -223,20 +226,20 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
             // Set review count and level for proper coloring
             cell.dataset.reviewCount = reviewCount;
-            cell.dataset.level = getIntensityLevel(reviewCount);
+            cell.dataset.level = getIntensityLevel(reviewCount, dailyAverage);
 
             // Build tooltip with reviews done today
             tooltipText = `${reviewCount} review${reviewCount !== 1 ? 's' : ''} done today`;
         } else if (dateKey < todayKey) {
             // --- PAST ---
             cell.dataset.reviewCount = reviewCount;
-            cell.dataset.level = getIntensityLevel(reviewCount);
+            cell.dataset.level = getIntensityLevel(reviewCount, dailyAverage);
             tooltipText = `${reviewCount} review${reviewCount !== 1 ? 's' : ''} on ${dateText}`;
         } else {
             // --- FUTURE ---
             cell.classList.add('future-day');
             cell.dataset.dueCount = dueCount;
-            cell.dataset.dueLevel = getDueIntensityLevel(dueCount);
+            cell.dataset.dueLevel = getDueIntensityLevel(dueCount, dailyAverage);
 
             const dueText = `${dueCount} review${dueCount !== 1 ? 's' : ''} due`;
             tooltipText = `${dueText} on ${dateText}`;
