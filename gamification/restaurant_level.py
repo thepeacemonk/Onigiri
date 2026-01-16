@@ -20,20 +20,7 @@ XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
 
-# Anti-cheat: Secret salt for coin verification (must match taiyaki_store.py)
-COIN_SALT = "taiyaki_onigiri_secret_2024_v1"
 
-
-def generate_coin_token(coins: int) -> str:
-    """Generate a security token for the coin value to prevent cheating."""
-    data = f"{coins}:{COIN_SALT}"
-    return hashlib.sha256(data.encode()).hexdigest()
-
-
-def verify_coin_data(coins: int, token: str) -> bool:
-    """Verify that the coin value hasn't been tampered with."""
-    expected_token = generate_coin_token(coins)
-    return token == expected_token
 
 
 MOTIVATIONAL_PHRASES = (
@@ -627,15 +614,7 @@ class RestaurantLevelManager:
     def _get_coins_from_json(self) -> int:
         """Read current coins from gamification.json."""
         state = self._get_gamification_state()
-        coins = int(state.get('taiyaki_coins', 0))
-        token = state.get('_security_token', "")
-        
-        if not verify_coin_data(coins, token):
-            # Tampering detected (or migration period) - reset to 0 to be safe
-            # This prevents "laundering" tempered coins via level up
-            return 0
-            
-        return coins
+        return int(state.get('taiyaki_coins', 0))
 
     def buy_item(self, item_id: str) -> Tuple[bool, str]:
         """Buy an item from the store."""
@@ -1054,8 +1033,8 @@ class RestaurantLevelManager:
         """Update the gamification data via manager."""
         # Fix: Automatically update security token if coins are changed
         if "taiyaki_coins" in updates:
-            coins = updates["taiyaki_coins"]
-            updates["_security_token"] = generate_coin_token(coins)
+            # We don't generate security token anymore
+            pass
             
         self._gamification_manager.update_restaurant_data(updates)
 
