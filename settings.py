@@ -11910,6 +11910,9 @@ class SettingsDialog(QDialog):
         mw.col.conf["onigiri_reviewer_bg_color_theme_mode"] = color_theme_mode
         mw.col.conf["onigiri_reviewer_bg_image_theme_mode"] = image_theme_mode
         
+        # Also save to addon config so patcher.py can read it
+        self.current_config["onigiri_reviewer_bg_image_mode"] = image_theme_mode
+        
         # Main background blur and opacity
         self.current_config["onigiri_reviewer_bg_main_blur"] = self.reviewer_bg_main_blur_spinbox.value()
         self.current_config["onigiri_reviewer_bg_main_opacity"] = self.reviewer_bg_main_opacity_spinbox.value()

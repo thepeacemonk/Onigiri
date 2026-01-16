@@ -1865,12 +1865,12 @@ def generate_reviewer_background_css(addon_path):
         blur_val = conf.get("onigiri_reviewer_bg_blur", 0)
         opacity_val = conf.get("onigiri_reviewer_bg_opacity", 100)
         
-        image_mode = conf.get("onigiri_reviewer_bg_image_mode", "single")
+        image_mode = mw.col.conf.get("onigiri_reviewer_bg_image_theme_mode", "single")
         if image_mode == "separate":
             light_img_file = conf.get("onigiri_reviewer_bg_image_light", "")
             dark_img_file = conf.get("onigiri_reviewer_bg_image_dark", "")
         else:
-            light_img_file = conf.get("onigiri_reviewer_bg_image_light", "")
+            light_img_file = conf.get("onigiri_reviewer_bg_image", "")
             dark_img_file = light_img_file
 
         light_img_url = f"/_addons/{addon_name}/user_files/reviewer_bg/{light_img_file}" if light_img_file else "none"
@@ -2514,7 +2514,18 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
         l_img_path = f"user_files/reviewer_bg/{l_img}" if l_img else ""
         d_img_path = f"user_files/reviewer_bg/{d_img}" if d_img else ""
         
-        return rev_mode, light_c, dark_c, l_img_path, d_img_path
+        # Determine the actual mode based on what's configured
+        # If rev_mode is "color", return "color"
+        # If rev_mode is "image_color", check if images exist to determine the actual mode
+        actual_mode = rev_mode
+        if rev_mode == "image_color":
+            # If images are configured, use "image_color", otherwise fall back to "color"
+            if l_img_path or d_img_path:
+                actual_mode = "image_color"
+            else:
+                actual_mode = "color"
+        
+        return actual_mode, light_c, dark_c, l_img_path, d_img_path
 
 
     if bar_mode == "main":
