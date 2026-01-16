@@ -2161,6 +2161,18 @@ def generate_reviewer_top_bar_html_and_css():
             -webkit-font-smoothing: antialiased;
             pointer-events: auto;
             z-index: 1000; /* Increased z-index */
+
+            /* ISOLATION FROM CARD TEMPLATES */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: 13px !important;
+            line-height: normal !important;
+            color: initial !important;
+            text-align: center !important;
+            text-transform: none !important;
+            white-space: normal !important;
+            letter-spacing: normal !important;
+            word-spacing: normal !important;
+            text-shadow: none !important;
         }
         
         /* Prevent content from going under the header */
@@ -2175,31 +2187,37 @@ def generate_reviewer_top_bar_html_and_css():
             gap: 10px;
         }
 
-        .onigiri-reviewer-button {
-            color: var(--fg);
-            background: rgba(247, 247, 247);
-            padding: 5px 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(128, 128, 128, 0.2);
-            font-size: 13px;
-            text-decoration: none;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
+        /* Target A tags specifically to override card template global a {} styles */
+        #onigiri-reviewer-header a.onigiri-reviewer-button,
+        #onigiri-overview-header a.onigiri-reviewer-button,
+        .overview-header a.onigiri-reviewer-button {
+            color: var(--fg) !important;
+            background: rgba(247, 247, 247) !important;
+            padding: 5px 12px !important;
+            border-radius: 8px !important;
+            border: 1px solid rgba(128, 128, 128, 0.2) !important;
+            font-size: 13px !important;
+            text-decoration: none !important;
+            font-style: normal !important;
+            font-weight: normal !important;
+            transition: background-color 0.2s ease, border-color 0.2s ease !important;
+            display: inline-block !important;
+            line-height: normal !important;
         }
 
-        .night_mode .onigiri-reviewer-button {
-            color: var(--fg);
-            background: rgba(42, 42, 42);
-            padding: 5px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-color: white;
-            text-decoration: none;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
+        .night_mode #onigiri-reviewer-header a.onigiri-reviewer-button,
+        .night_mode #onigiri-overview-header a.onigiri-reviewer-button,
+        .night_mode .overview-header a.onigiri-reviewer-button {
+            color: var(--fg) !important;
+            background: rgba(42, 42, 42) !important;
+            border: 1px solid rgba(128, 128, 128, 0.2) !important;
         }
 
-        .onigiri-reviewer-button:hover {
-            background: rgba(128, 128, 128, 0.25);
-            color: white;
+        #onigiri-reviewer-header a.onigiri-reviewer-button:hover,
+        #onigiri-overview-header a.onigiri-reviewer-button:hover,
+        .overview-header a.onigiri-reviewer-button:hover {
+            background: rgba(128, 128, 128, 0.25) !important;
+            color: var(--fg) !important;
         }
         
         /* Restaurant level progress bar styles */
@@ -2875,13 +2893,25 @@ def generate_dynamic_css(conf):
 
 		# LEVELS 1-12 Loop
 		for i in range(1, 13):
-			# --- Past Colors (blending from canvas_inset/zero -> heatmap_color) ---
-			# Level 12 receives 100% heatmap_color. 
-			# Level 1 receives a small amount of heatmap_color mixed into canvas_inset.
-			# Has been increased to 0.5 (square root) for stronger intensity on lower levels.
-			# New formula: ratio = (i / 12.0) ** 0.5
-			ratio = (i / 12.0) ** 0.5
-			colors_dict[f"--heatmap-level-{i}"] = _mix_colors(heatmap_color, canvas_inset, ratio)
+			# --- Past Colors ---
+			# The direction of color intensity should match the mode:
+			# - Dark mode: More reviews = lighter color (closer to white/lightest)
+			# - Light mode: More reviews = darker color (closer to darkest version)
+			ratio = (i / 12.0) ** 0.5  # Square root for stronger intensity on lower levels
+			
+			if is_night_mode:
+				# Dark mode: blend from heatmap_color toward white for higher levels
+				# Level 1: mostly heatmap_color, Level 12: closer to white
+				# We mix heatmap_color with white, where ratio determines how much white
+				colors_dict[f"--heatmap-level-{i}"] = _mix_colors("#ffffff", heatmap_color, ratio)
+			else:
+				# Light mode: blend from canvas_inset toward a darker heatmap_color for higher levels
+				# We mix heatmap_color (darker) into canvas_inset (lighter)
+				# Then darken further for higher levels by mixing with a darker shade
+				base_mixed = _mix_colors(heatmap_color, canvas_inset, ratio)
+				# Apply additional darkening for higher levels
+				darken_ratio = ratio * 0.3  # Subtle darkening effect
+				colors_dict[f"--heatmap-level-{i}"] = _mix_colors("#000000", base_mixed, darken_ratio)
 
 			# --- Future Colors (blending from heatmap_color_zero -> black/white) ---
 			# We want higher levels to be darker (light mode) or lighter (dark mode).

@@ -29,20 +29,7 @@ import random
 
 SHOP_API_URL = "https://script.google.com/macros/s/AKfycbwg5HMxT9FWQIbPIVRrI6u8k_JheZBRUWWI0q5Jcl-ecRrPB4L25FJDh65YFjv__i4k/exec"
 
-# Anti-cheat: Secret salt for coin verification
-COIN_SALT = "taiyaki_onigiri_secret_2024_v1"
 
-
-def generate_coin_token(coins: int) -> str:
-    """Generate a security token for the coin value to prevent cheating."""
-    data = f"{coins}:{COIN_SALT}"
-    return hashlib.sha256(data.encode()).hexdigest()
-
-
-def verify_coin_data(coins: int, token: str) -> bool:
-    """Verify that the coin value hasn't been tampered with."""
-    expected_token = generate_coin_token(coins)
-    return token == expected_token
 
 
 class StoreItemCard(QWidget):
@@ -1142,21 +1129,9 @@ class TaiyakiStoreWindow(QDialog):
             current_theme_id = restaurant_data.get('current_theme_id', 'default')
             security_token = None
         
-        # Anti-cheat: Verify the security token
-        if security_token is None:
-            # First time or old data - generate token
-            print("[ONIGIRI SECURITY] No security token found, generating new one")
-            self.coins = coins
-            self._sync_to_gamification_json()  # This will generate and save the token
-        elif not verify_coin_data(coins, security_token):
-            # Token mismatch - coins were manually edited!
-            print("[ONIGIRI SECURITY] ⚠️ TAMPERING DETECTED! Resetting coins to 0")
-            self.coins = 0
-            self._sync_to_gamification_json()  # Save with new token
-            showInfo("⚠️ Coin tampering detected!\n\nYour coins have been reset to 0.\nPlease earn coins legitimately through gameplay.")
-        else:
-            # Valid token - all good
-            self.coins = coins
+        
+        # Anti-cheat: Removed
+        self.coins = coins
         
         # Check settings for special unlocks
         conf = config.get_config()
@@ -2014,11 +1989,13 @@ class TaiyakiStoreWindow(QDialog):
                 data['restaurant_level'] = {}
             
             # 2. Update data
-            security_token = generate_coin_token(self.coins)
+            # 2. Update data
+            # security_token = generate_coin_token(self.coins) - REMOVED
             data['restaurant_level']['taiyaki_coins'] = self.coins
             data['restaurant_level']['owned_items'] = self.owned_items
             data['restaurant_level']['current_theme_id'] = self.current_theme_id
-            data['restaurant_level']['_security_token'] = security_token
+            if '_security_token' in data['restaurant_level']:
+                del data['restaurant_level']['_security_token']
             
             # 3. Write to temp file
             directory = os.path.dirname(gamification_file)

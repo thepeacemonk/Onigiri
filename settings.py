@@ -2323,9 +2323,8 @@ class SettingsDialog(QDialog):
 
         self.restaurant_bar_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_bar_toggle.setChecked(bool(restaurant_conf.get("show_profile_bar_progress", True)))
-
-        self.restaurant_profile_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.restaurant_profile_toggle.setChecked(bool(restaurant_conf.get("show_profile_page_progress", True)))
+        
+        # self.restaurant_profile_toggle moved to Profile Page settings
         
         self.restaurant_reviewer_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_reviewer_toggle.setChecked(bool(restaurant_conf.get("show_reviewer_header", True)))
@@ -3305,15 +3304,26 @@ class SettingsDialog(QDialog):
 
     class DraggableItem(QFrame):
         """A draggable QLabel that also stores its grid span and handles resizing."""
-        archive_requested = pyqtSignal(object) # ADD THIS LINE
+        archive_requested = pyqtSignal(object)
+        
+        # Constants for grid cell sizing
+        CELL_WIDTH = 120
+        CELL_HEIGHT = 60
+        CELL_SPACING = 10
 
         def __init__(self, text, widget_id, style_colors, parent=None):
             super().__init__(parent)
-            self.widget_id, self.col_span, self.row_span = widget_id, 1, 1
+
+
+            self.widget_id = widget_id
+            self._col_span = 1
+            self._row_span = 1
             self.display_name = text  # Store the display name
             self.grid_zone = None
-            self.setMinimumHeight(35)
             self.setObjectName("DraggableItem")
+            
+            # Initial size (will be updated when spans change)
+            self._update_size()
 
             layout = QHBoxLayout(self)
             layout.setContentsMargins(5, 0, 5, 0)
@@ -3321,14 +3331,14 @@ class SettingsDialog(QDialog):
             # Use a QStackedWidget to switch between label and line edit
             self.stack = QStackedWidget()
             self.label = QLabel(self.display_name)
-            self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.line_edit = QLineEdit(self.display_name)
-            self.line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.line_edit.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             self.stack.addWidget(self.label)
             self.stack.addWidget(self.line_edit)
             # FIX: Add stretch factor and alignment flag
-            layout.addWidget(self.stack, 1, Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self.stack, 1)
 
             # Finish editing when Enter is pressed or focus is lost
             self.line_edit.editingFinished.connect(self._finish_editing)
@@ -3345,6 +3355,7 @@ class SettingsDialog(QDialog):
                     font-weight: 500;
                     background-color: transparent;
                     border: none;
+                    padding-left: 5px; /* Add some padding for left alignment */
                 }}
                 QLineEdit {{
                     border: 1px solid {border};
@@ -3352,19 +3363,77 @@ class SettingsDialog(QDialog):
                 }}
             """)
 
-            self.setToolTip(f"ID: {self.widget_id}\nDouble-click to rename.\nRight-click to resize.")
+            # Set tooltip and truncated label logic
+            self._update_display()
+        
+        def resizeEvent(self, event):
+            self._update_display()
+            super().resizeEvent(event)
+
+        def _update_display(self):
+            """Updates the label and tooltip based on the current display_name."""
+            if not self.label: return
+
+            # Calculate available width (total width - margins/padding)
+            # 20px buffer: 10px margins (5+5) + 5px padding + safe buffer
+            available_width = self.width() - 25  
+            if available_width <= 0:
+                 # Fallback if width isn't ready yet (e.g. init)
+                 if self.property("isOnGrid"):
+                     available_width = (self.CELL_WIDTH * self._col_span) - 25
+                 else:
+                     available_width = 300 # Default/Archive width guess
+
+            metrics = self.label.fontMetrics()
+            elided = metrics.elidedText(self.display_name, Qt.TextElideMode.ElideRight, available_width)
+            
+            self.label.setText(elided)
+            self.setToolTip(f"{self.display_name}\nID: {self.widget_id}\nDouble-click to rename.")
+            
+        def _update_size(self):
+            """Update the widget's size based on its current spans.
+            Uses minimum size with Expanding policy so QGridLayout can stretch it."""
+            if self.property("isOnGrid"):
+                width = self.CELL_WIDTH * self._col_span + self.CELL_SPACING * (self._col_span - 1)
+                height = self.CELL_HEIGHT * self._row_span + self.CELL_SPACING * (self._row_span - 1)
+                self.setMinimumSize(width, height)
+                self.setMaximumSize(16777215, 16777215) # Reset max size
+                self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            else:
+                # Archived state: Compact size
+                self.setMinimumSize(0, 45)
+                self.setMaximumSize(16777215, 45) # Force fixed height
+                self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        
+        @property
+        def col_span(self):
+            return self._col_span
+        
+        @col_span.setter
+        def col_span(self, value):
+            self._col_span = value
+            self._update_size()
+        
+        @property
+        def row_span(self):
+            return self._row_span
+        
+        @row_span.setter
+        def row_span(self, value):
+            self._row_span = value
+            self._update_size()
 
         def set_display_name(self, name):
             """Updates the display name from outside the class."""
             self.display_name = name
-            self.label.setText(name)
             self.line_edit.setText(name)
+            self._update_display()
 
         def _finish_editing(self):
             """Called when user finishes renaming."""
             new_name = self.line_edit.text()
             self.display_name = new_name
-            self.label.setText(new_name)
+            self._update_display()
             self.stack.setCurrentIndex(0)  # Switch back to the label view
 
         def mouseDoubleClickEvent(self, event):
@@ -3393,9 +3462,20 @@ class SettingsDialog(QDialog):
             drag.setPixmap(self.grab())
             drag.setHotSpot(event.pos())
             
-            self.hide()
-            # --- FIX: If the drop is cancelled, show the widget again ---
-            if drag.exec(Qt.DropAction.MoveAction) == Qt.DropAction.IgnoreAction:
+            # Make the widget semi-transparent using opacity effect instead of hiding
+            # This maintains the widget's space in the layout
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            opacity_effect = QGraphicsOpacityEffect(self)
+            opacity_effect.setOpacity(0.3)
+            self.setGraphicsEffect(opacity_effect)
+            
+            result = drag.exec(Qt.DropAction.MoveAction)
+            
+            # Remove the opacity effect after drag
+            self.setGraphicsEffect(None)
+            
+            # If the drop was cancelled, make sure the widget is visible
+            if result == Qt.DropAction.IgnoreAction:
                 self.show()
         
         def contextMenuEvent(self, event):
@@ -3483,11 +3563,93 @@ class SettingsDialog(QDialog):
     class VerticalDropZone(DropZone):
         def __init__(self, parent=None):
             super().__init__(parent)
-            self.setMinimumHeight(40)
             self.layout = QVBoxLayout(self)
             self.layout.setContentsMargins(5, 5, 5, 5); self.layout.setSpacing(5); self.layout.addStretch()
+            self.layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+            
+            # Placeholder to open space during drag
+            self.drop_placeholder = QWidget()
+            self.drop_placeholder.setFixedHeight(45)
+            # Fully transparent
+            self.drop_placeholder.setStyleSheet("background-color: transparent;")
+            self.drop_placeholder.hide()
 
-        def _handle_drop(self, widget, event):
+        def update_drop_indicator(self, pos):
+            # Calculate where the placeholder should be
+            layout = self.layout
+            
+            # Get all widgets except placeholder and non-widgets (like stretch)
+            widgets = []
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() and item.widget() is not self.drop_placeholder:
+                    widgets.append(item.widget())
+            
+            target_index = len(widgets) # Default to end
+            
+            for i, widget in enumerate(widgets):
+                # If mouse is above the center of this widget
+                if pos.y() < widget.y() + widget.height() // 2:
+                    target_index = i
+                    break
+            
+            # Check if placeholder is already at the right spot
+            current_index = layout.indexOf(self.drop_placeholder)
+            
+            if current_index != target_index:
+                if current_index != -1:
+                    layout.removeWidget(self.drop_placeholder)
+                    # When we remove it, indices shift. But target_index was calculated
+                    # based on the "clean" list of widgets, so it represents the
+                    # intended insertion point among them.
+                
+                layout.insertWidget(target_index, self.drop_placeholder)
+                self.drop_placeholder.show()
+            
+            return target_index
+
+        def dragEnterEvent(self, event):
+            source_widget = event.source()
+            if self.is_item_allowed(source_widget):
+                 event.acceptProposedAction()
+                 self.update_drop_indicator(event.position().toPoint())
+            else:
+                 event.ignore()
+
+        def dragMoveEvent(self, event):
+            source_widget = event.source()
+            if self.is_item_allowed(source_widget):
+                 event.acceptProposedAction()
+                 self.update_drop_indicator(event.position().toPoint())
+            else:
+                 event.ignore()
+
+        def dragLeaveEvent(self, event):
+            self.drop_placeholder.hide()
+            self.layout.removeWidget(self.drop_placeholder)
+            event.accept()
+
+        def dropEvent(self, event):
+            # Find where the placeholder is, that's our drop spot
+            index = self.layout.indexOf(self.drop_placeholder)
+            
+            self.drop_placeholder.hide()
+            self.layout.removeWidget(self.drop_placeholder)
+            
+            # If placeholder wasn't there (fallback)
+            if index == -1:
+                 index = self.update_drop_indicator(event.position().toPoint())
+                 self.drop_placeholder.hide()
+                 self.layout.removeWidget(self.drop_placeholder)
+            
+            source_widget = event.source()
+            if self.is_item_allowed(source_widget):
+                 self._handle_drop(source_widget, event, insert_index=index)
+                 event.acceptProposedAction()
+            else:
+                 event.ignore()
+
+        def _handle_drop(self, widget, event, insert_index=-1):
             # If the widget came from a grid, tell the grid to release it
             if hasattr(widget, 'grid_zone') and widget.grid_zone:
                 # Get a reference to the grid's layout before we change the parent
@@ -3497,6 +3659,7 @@ class SettingsDialog(QDialog):
                 for shelf in widget.grid_zone.shelves.values():
                     if shelf.child_widget is widget:
                         shelf.child_widget = None
+                        shelf.show() # Make the shelf visible again
                 
                 # Explicitly remove the widget from the grid's layout
                 grid_layout.removeWidget(widget)
@@ -3510,7 +3673,22 @@ class SettingsDialog(QDialog):
             widget.setProperty("isOnGrid", False)
             widget.grid_zone = None
             widget.setParent(self)
-            self.layout.insertWidget(self.layout.count() - 1, widget)
+            widget._update_size() # Apply compact size
+            
+            if insert_index != -1:
+                # insertWidget(index, widget)
+                # Note: QVBoxLayout.insertWidget inserts at index. 
+                # Be careful about the stretch item at the end.
+                # If insert_index is larger than current count, it appends.
+                self.layout.insertWidget(insert_index, widget)
+            else:
+                # Insert before the stretch (which is at count-1 normally)
+                # But layout.count() includes the stretch.
+                # Usually we want to append to the list of widgets.
+                # The stretch is added at __init__.
+                # So inserting at count()-1 puts it before the stretch.
+                self.layout.insertWidget(self.layout.count() - 1, widget)
+                
             widget.show()
             
         def get_item_order(self):
@@ -3531,13 +3709,84 @@ class SettingsDialog(QDialog):
             self.main_editor = main_editor
             self.grid_layout = QGridLayout(self)
             self.grid_layout.setSpacing(10)
+            self.grid_layout.setContentsMargins(5, 5, 5, 5)
+            # Adapt size to content
+            self.grid_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.shelves = {}
             self.highlighted_shelf = None
-            for i in range(24):
+            self.row_count = 6
+            self.col_count = 4
+            
+            # Initialize grid
+            self.update_grid_rows(self.row_count)
+
+        def update_grid_rows(self, rows):
+            # Save unique existing widgets to restore them later
+            # Use a dict mapped by their primary (top-left) position to avoid duplicates
+            current_widgets = {}
+            processed_widgets = set()
+            
+            # Find all widgets currently on the grid
+            for pos, shelf in self.shelves.items():
+                widget = shelf.child_widget
+                if widget and widget not in processed_widgets:
+                    current_widgets[pos] = widget
+                    processed_widgets.add(widget)
+                    # Important: Hide widget before causing it to detach from layout
+                    # otherwise it might flash as a separate window
+                    widget.hide()
+            
+            # Detach widgets from shelves to avoid issues during shelf deletion
+            for shelf in self.shelves.values():
+                shelf.child_widget = None
+            
+            # Clear existing layout items (shelves and widgets)
+            for i in reversed(range(self.grid_layout.count())): 
+                item = self.grid_layout.itemAt(i)
+                if item.widget():
+                    # Hide and detach
+                    item.widget().hide()
+                    item.widget().setParent(None)
+            self.shelves = {}
+            
+            self.row_count = rows
+            
+            # Create shelves
+            for i in range(rows * self.col_count):
                 shelf = SettingsDialog.Shelf(self)
                 self.shelves[i] = shelf
-                row, col = divmod(i, 4)
+                row, col = divmod(i, self.col_count)
                 self.grid_layout.addWidget(shelf, row, col)
+            
+            # Set column sizing
+            for col in range(self.col_count):
+                self.grid_layout.setColumnMinimumWidth(col, 120)
+                self.grid_layout.setColumnStretch(col, 1)
+                
+            # Set row sizing
+            for row in range(rows):
+                self.grid_layout.setRowMinimumHeight(row, 60)
+                self.grid_layout.setRowStretch(row, 1)
+            
+            # Clear sizing for unused rows (up to a reasonable max)
+            for row in range(rows, 20):
+                self.grid_layout.setRowMinimumHeight(row, 0)
+                self.grid_layout.setRowStretch(row, 0)
+
+            # Restore widgets if they fit
+            for pos, widget in current_widgets.items():
+                if pos < rows * self.col_count:
+                    # Check if it fits in new grid (simplified check)
+                    row, col = divmod(pos, self.col_count)
+                    if row + widget.row_span <= rows:
+                        self.place_item(widget, pos, silent=True)
+                    else:
+                         widget.archive_requested.emit(widget) # Move to archive if it doesn't fit
+                else:
+                    widget.archive_requested.emit(widget) # Move to archive if pos is out of bounds
+
+
 
         def dragMoveEvent(self, event):
             # Check if the item is allowed before processing the move
@@ -3586,28 +3835,35 @@ class SettingsDialog(QDialog):
                             widget.row_span, widget.col_span = 2, 2
                         else: # It's a stat card
                             widget.row_span, widget.col_span = 1, 1
-                    else: # External add-on, default to 1x1
-                        widget.row_span, widget.col_span = 1, 1
+                    else: # External add-on
+                        # Default external widgets to 2 rows height as requested
+                        widget.row_span, widget.col_span = 2, 1
                 # <<< END NEW CODE >>>
                 self.place_item(widget, target_pos)
             else:
                 widget.show()
         
         def is_region_free(self, row, col, row_span, col_span, ignored_widget=None):
-            if col + col_span > 4 or row + row_span > 6: return False
+            if col + col_span > self.col_count or row + row_span > self.row_count: return False
             for r in range(row, row + row_span):
                 for c in range(col, col + col_span):
-                    pos = r * 4 + c
+                    pos = r * self.col_count + c
+                    if pos not in self.shelves: return False
                     if self.shelves[pos].child_widget and self.shelves[pos].child_widget is not ignored_widget: return False
             return True
 
         def place_item(self, item, pos, silent=False):
-            for shelf in self.shelves.values():
-                if shelf.child_widget is item: shelf.child_widget = None
-            row, col = divmod(pos, 4)
+            # First, uncover any shelves this item was previously covering
+            for shelf_pos, shelf in self.shelves.items():
+                if shelf.child_widget is item:
+                    shelf.child_widget = None
+                    shelf.show()  # Show the shelf again when item is removed
+                    
+            row, col = divmod(pos, self.col_count)
             if not self.is_region_free(row, col, item.row_span, item.col_span, ignored_widget=item):
-                for i in range(24):
-                    r, c = divmod(i, 4)
+                grid_size = self.row_count * self.col_count
+                for i in range(grid_size):
+                    r, c = divmod(i, self.col_count)
                     if self.is_region_free(r, c, item.row_span, item.col_span, ignored_widget=item):
                         row, col = r, c; break
                 else:
@@ -3618,39 +3874,61 @@ class SettingsDialog(QDialog):
             
             item.setProperty("isOnGrid", True); item.grid_zone = self
             item.setParent(self)
+            item._update_size() # Apply grid size
             self.grid_layout.addWidget(item, row, col, item.row_span, item.col_span)
+            
+            # Mark all covered shelves and hide them (except the first one which stays as anchor)
             for r in range(row, row + item.row_span):
-                for c in range(col, col + item.col_span): self.shelves[r * 4 + c].child_widget = item
+                for c in range(col, col + item.col_span):
+                    shelf_pos = r * self.col_count + c
+                    if shelf_pos in self.shelves:
+                        self.shelves[shelf_pos].child_widget = item
+                        # Hide covered shelves so they don't show through the spanning widget
+                        self.shelves[shelf_pos].hide()
+            
             item.show()
+            
+            # Force layout update to ensure geometry is correct
+            # This helps prevent floating window glitches or incorrect positioning
+            self.grid_layout.update()
+            
             return True
         
         def request_resize(self, item, new_row_span, new_col_span):
             new_pos = -1
-            for i in range(24):
-                r, c = divmod(i, 4)
+            # Use dynamic range based on grid size
+            grid_size = self.row_count * self.col_count
+            for i in range(grid_size):
+                r, c = divmod(i, self.col_count)
                 if self.is_region_free(r, c, new_row_span, new_col_span, ignored_widget=item):
                     new_pos = i; break
             if new_pos == -1:
                 QMessageBox.warning(self.window(), "Resize Error", f"No available {new_row_span}x{new_col_span} slot was found on the grid."); return
+            
+            # Show shelves that are about to be uncovered
             for shelf in self.shelves.values():
-                if shelf.child_widget is item: shelf.child_widget = None
-            new_row, new_col = divmod(new_pos, 4)
+                if shelf.child_widget is item: 
+                    shelf.child_widget = None
+                    shelf.show()
+                    
+            new_row, new_col = divmod(new_pos, self.col_count)
             conflicting_widgets = set()
             for r in range(new_row, new_row + new_row_span):
                 for c in range(new_col, new_col + new_col_span):
-                    if self.shelves[r * 4 + c].child_widget: conflicting_widgets.add(self.shelves[r * 4 + c].child_widget)
+                    pos = r * self.col_count + c
+                    if pos in self.shelves and self.shelves[pos].child_widget: 
+                        conflicting_widgets.add(self.shelves[pos].child_widget)
+            
             for conflicting_item in conflicting_widgets:
                 for shelf in self.shelves.values():
-                    if shelf.child_widget is conflicting_item: shelf.child_widget = None
-                # Clear its old position from the shelves
-                for shelf in self.shelves.values():
-                    if shelf.child_widget is conflicting_item:
+                    if shelf.child_widget is conflicting_item: 
                         shelf.child_widget = None
+                        shelf.show() # Show shelves for conflicting items too
 
-                # Find the first available 1x1 spot for it and place it there
+                # Find the first available spot for it and place it there
                 found_spot = False
-                for i in range(24):
-                    r, c = divmod(i, 4)
+                for i in range(grid_size):
+                    r, c = divmod(i, self.col_count)
                     # Use the item's own size for finding a new spot, default to 1x1 if needed
                     r_span = getattr(conflicting_item, 'row_span', 1)
                     c_span = getattr(conflicting_item, 'col_span', 1)
@@ -3660,14 +3938,18 @@ class SettingsDialog(QDialog):
                         break
                 if not found_spot:
                     # Fallback: if no space for its size is found, try to place as 1x1
-                    for i in range(24):
-                        r, c = divmod(i, 4)
+                    for i in range(grid_size):
+                        r, c = divmod(i, self.col_count)
                         if self.is_region_free(r, c, 1, 1):
                             conflicting_item.row_span = 1
                             conflicting_item.col_span = 1
                             self.place_item(conflicting_item, i)
                             break
-            item.row_span, item.col_span = new_row_span, new_col_span
+            
+            item.row_span, item.row_span = new_row_span, new_row_span # Wait, typo in original? No, item.row_span...
+            # The replacement content has a typo, let me fix it
+            item.row_span = new_row_span
+            item.col_span = new_col_span
             self.place_item(item, new_pos)
         
         # settings.py
@@ -3690,9 +3972,11 @@ class SettingsDialog(QDialog):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setObjectName("Shelf")
-            self.setMinimumSize(120, 45)
+            # Use minimum size but allow expansion to fill the grid cell
+            # This ensures it matches the size of widgets which also expand
+            self.setMinimumSize(120, 60)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self.child_widget = None
-            # The is_highlighted attribute is no longer needed here
 
         def set_highlight(self, highlighted):
             # --- FIX: Use setProperty to make the state visible to the stylesheet ---
@@ -3764,6 +4048,16 @@ class SettingsDialog(QDialog):
 
             custom_menu.move(self.mapToGlobal(event.pos()))
             custom_menu.show()
+    
+    class UnifiedGridDropZone(GridDropZone):
+        """A unified grid that accepts both Onigiri and External widgets."""
+        def __init__(self, main_editor, parent=None):
+            super().__init__(main_editor, parent)
+            # Row count is controlled by the parent GridDropZone (default 6)
+
+        def is_item_allowed(self, item):
+            # Accept both Onigiri and External draggable items
+            return isinstance(item, (SettingsDialog.OnigiriDraggableItem, SettingsDialog.DraggableItem))
     
     class OnigiriGridDropZone(GridDropZone):
         def __init__(self, main_editor, parent=None):
@@ -4401,6 +4695,471 @@ class SettingsDialog(QDialog):
             archive_config = self.archive_zone.get_archive_config()
             return {"grid": grid_config, "archive": archive_config}
 
+    class UnifiedLayoutEditor(QWidget):
+        """
+        A unified layout editor that combines both Onigiri widgets and External add-on widgets
+        in a single grid, with separate archive zones for each type.
+        """
+        
+        # Default layout configuration for Onigiri widgets
+        _ONIGIRI_DEFAULTS = {
+            "grid": {
+                "studied": {"pos": 0, "row": 1, "col": 1},
+                "time": {"pos": 1, "row": 1, "col": 1},
+                "pace": {"pos": 2, "row": 1, "col": 1},
+                "retention": {"pos": 3, "row": 1, "col": 1},
+                "heatmap": {"pos": 4, "row": 2, "col": 4},
+            },
+            "archive": ["favorites", "restaurant_level"]
+        }
+
+        # Default display names for Onigiri widgets
+        _WIDGET_DEFINITIONS = {
+            "studied": "Studied Card", "time": "Time Card", 
+            "pace": "Pace Card", "retention": "Retention Card", "heatmap": "Heatmap",
+            "favorites": "Favorites Widget",
+            "restaurant_level": "Restaurant Level"
+        }
+
+        def __init__(self, settings_dialog):
+            super().__init__()
+            self.settings_dialog = settings_dialog
+            main_layout = QVBoxLayout(self)
+            main_layout.setSpacing(15)
+
+            # --- Row Count Control ---
+            row_control_layout = QHBoxLayout()
+            row_label = QLabel("Grid Height (Rows):") # User friendly label
+            row_control_layout.addWidget(row_label)
+            self.row_spin = QSpinBox()
+            self.row_spin.setRange(1, 20)
+            # Get saved row count or default to 6
+            current_rows = self.settings_dialog.current_config.get("unifiedGridRows", 6)
+            self.row_spin.setValue(current_rows)
+            self.row_spin.valueChanged.connect(self._on_row_count_changed)
+            row_control_layout.addWidget(self.row_spin)
+            row_control_layout.addStretch()
+            main_layout.addLayout(row_control_layout)
+
+            # --- Unified Grid ---
+            grid_group = QGroupBox("Widget Grid")
+            grid_group.setObjectName("LayoutGroup")
+            self.grid_zone = SettingsDialog.UnifiedGridDropZone(self, grid_group)
+            
+            # Apply initial row count
+            if current_rows != 6:
+                self.grid_zone.update_grid_rows(current_rows)
+                
+            grid_group_layout = QVBoxLayout(grid_group)
+            grid_group_layout.addWidget(self.grid_zone)
+            main_layout.addWidget(grid_group)
+
+            # --- Archive Zones Container (side by side) ---
+            archives_container = QWidget()
+            archives_layout = QHBoxLayout(archives_container)
+            archives_layout.setContentsMargins(0, 0, 0, 0)
+            archives_layout.setSpacing(15)
+
+            # Scroll Area Stylesheet
+            scroll_style = """
+                QScrollArea { border: none; background: transparent; }
+                QScrollBar:vertical { background: transparent; width: 10px; margin: 0px; }
+                QScrollBar::handle:vertical { background: rgba(128, 128, 128, 0.5); min-height: 20px; border-radius: 5px; }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            """
+
+            # Archived Onigiri Widgets
+            onigiri_archive_group = QGroupBox("Archived Onigiri Widgets")
+            onigiri_archive_group.setObjectName("LayoutGroup")
+            
+            # Wrap in ScrollArea
+            self.onigiri_scroll = QScrollArea()
+            self.onigiri_scroll.setWidgetResizable(True)
+            self.onigiri_scroll.setFixedHeight(200)
+            self.onigiri_scroll.setStyleSheet(scroll_style)
+            
+            self.onigiri_archive_zone = SettingsDialog.OnigiriArchiveZone(onigiri_archive_group)
+            self.onigiri_scroll.setWidget(self.onigiri_archive_zone)
+            
+            onigiri_archive_layout = QVBoxLayout(onigiri_archive_group)
+            onigiri_archive_layout.addWidget(self.onigiri_scroll)
+            archives_layout.addWidget(onigiri_archive_group)
+
+            # Archived External Widgets
+            external_archive_group = QGroupBox("Archived External Widgets")
+            external_archive_group.setObjectName("LayoutGroup")
+            
+            # Wrap in ScrollArea
+            self.external_scroll = QScrollArea()
+            self.external_scroll.setWidgetResizable(True)
+            self.external_scroll.setFixedHeight(200)
+            self.external_scroll.setStyleSheet(scroll_style)
+            
+            self.external_archive_zone = SettingsDialog.ExternalArchiveZone(external_archive_group)
+            self.external_scroll.setWidget(self.external_archive_zone)
+
+            external_archive_layout = QVBoxLayout(external_archive_group)
+            external_archive_layout.addWidget(self.external_scroll)
+            archives_layout.addWidget(external_archive_group)
+
+            main_layout.addWidget(archives_container)
+            
+            # --- Reset Buttons ---
+            reset_buttons_layout = QHBoxLayout()
+            reset_buttons_layout.setSpacing(10)
+            
+            reset_names_btn = QPushButton("Reset Widget Names")
+            reset_names_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            reset_names_btn.clicked.connect(self.reset_widget_names)
+            reset_buttons_layout.addWidget(reset_names_btn)
+            
+            reset_layout_btn = QPushButton("Reset Layout to Default")
+            reset_layout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            reset_layout_btn.clicked.connect(self.reset_layout)
+            reset_buttons_layout.addWidget(reset_layout_btn)
+            
+            reset_buttons_layout.addStretch()
+            main_layout.addLayout(reset_buttons_layout)
+
+            # Push everything up
+            main_layout.addStretch()
+
+            self.all_onigiri_items = {}
+            self.all_external_items = {}
+            self._populate_widgets()
+        
+        def _on_row_count_changed(self, rows):
+            self.grid_zone.update_grid_rows(rows)
+
+        def _populate_widgets(self):
+            if theme_manager.night_mode:
+                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
+            else:
+                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
+            style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+
+            # --- Onigiri Widgets ---
+            # --- Onigiri Widgets ---
+            saved_onigiri_layout = self.settings_dialog.current_config.get("onigiriWidgetLayout", self._ONIGIRI_DEFAULTS)
+            
+            # Get grid and archive configs
+            saved_grid_config = saved_onigiri_layout.get("grid")
+            if isinstance(saved_grid_config, dict):
+                onigiri_grid_config = copy.deepcopy(saved_grid_config)
+            else:
+                onigiri_grid_config = copy.deepcopy(self._ONIGIRI_DEFAULTS["grid"])
+            
+            onigiri_archive_config = saved_onigiri_layout.get("archive")
+            if not isinstance(onigiri_archive_config, (list, dict)):
+                onigiri_archive_config = self._ONIGIRI_DEFAULTS["archive"]
+
+            # Get archived IDs
+            if isinstance(onigiri_archive_config, dict):
+                onigiri_archived_ids = set(onigiri_archive_config.keys())
+            else:
+                onigiri_archived_ids = set(onigiri_archive_config)
+            
+            # Remove archived items from grid config
+            for widget_id in onigiri_archived_ids:
+                if widget_id in onigiri_grid_config:
+                    del onigiri_grid_config[widget_id]
+
+            # Add missing widgets to grid
+            for widget_id, default_pos in self._ONIGIRI_DEFAULTS["grid"].items():
+                if widget_id not in onigiri_grid_config and widget_id not in onigiri_archived_ids:
+                    onigiri_grid_config[widget_id] = default_pos
+
+            placed_onigiri = set()
+
+            # Create all Onigiri items
+            for widget_id, text in self._WIDGET_DEFINITIONS.items():
+                item = SettingsDialog.OnigiriDraggableItem(text, widget_id, style_colors)
+                item.archive_requested.connect(self._archive_onigiri_item)
+                if widget_id == "restaurant_level":
+                    item.row_span = 2
+                    item.col_span = 2
+                self.all_onigiri_items[widget_id] = item
+
+            # Update display names from saved config
+            all_saved_onigiri = onigiri_grid_config.copy()
+            if isinstance(onigiri_archive_config, dict):
+                all_saved_onigiri.update(onigiri_archive_config)
+            elif isinstance(onigiri_archive_config, list):
+                for widget_id in onigiri_archive_config:
+                    all_saved_onigiri.setdefault(widget_id, {})
+
+            for widget_id, item in self.all_onigiri_items.items():
+                if saved_item_config := all_saved_onigiri.get(widget_id):
+                    if custom_name := saved_item_config.get("display_name"):
+                        item.set_display_name(custom_name)
+
+            # Place Onigiri items on unified grid
+            for widget_id, config in onigiri_grid_config.items():
+                if item := self.all_onigiri_items.get(widget_id):
+                    item.row_span = config.get("row", 1)
+                    item.col_span = config.get("col", 1)
+                    if self.grid_zone.place_item(item, config.get("pos", 0), silent=True):
+                        placed_onigiri.add(widget_id)
+
+            # Place Onigiri items in archive
+            archive_ids = []
+            if isinstance(onigiri_archive_config, list):
+                archive_ids = onigiri_archive_config
+            elif isinstance(onigiri_archive_config, dict):
+                archive_ids = onigiri_archive_config.keys()
+            
+            for widget_id in archive_ids:
+                if item := self.all_onigiri_items.get(widget_id):
+                    if widget_id not in placed_onigiri:
+                        self.onigiri_archive_zone.layout.insertWidget(self.onigiri_archive_zone.layout.count() - 1, item)
+                        placed_onigiri.add(widget_id)
+
+            # Place any unconfigured Onigiri items into archive
+            for widget_id, item in self.all_onigiri_items.items():
+                if widget_id not in placed_onigiri:
+                    self.onigiri_archive_zone.layout.insertWidget(self.onigiri_archive_zone.layout.count() - 1, item)
+
+            # --- External Widgets ---
+            saved_external_layout = self.settings_dialog.current_config.get("externalWidgetLayout", {})
+            if saved_external_layout and "grid" not in saved_external_layout:
+                external_grid_config = saved_external_layout
+                external_archive_config = {}
+            else:
+                external_grid_config = saved_external_layout.get("grid", {})
+                external_archive_config = saved_external_layout.get("archive", {})
+
+            external_hooks = self.settings_dialog._get_external_hooks()
+
+            # Create all external items
+            debug_shown = False
+            for hook_id in external_hooks:
+                # Try to get friendly name from addonManager
+                addon_id = hook_id.split('.')[0]
+                try:
+                    display_name = mw.addonManager.addonName(addon_id)
+                except:
+                    display_name = addon_id
+
+                item = SettingsDialog.DraggableItem(display_name or addon_id, hook_id, style_colors)
+                item.archive_requested.connect(self._archive_external_item)
+                self.all_external_items[hook_id] = item
+
+            # Combine grid and archive configs for display names
+            all_saved_external = {**external_grid_config, **external_archive_config}
+
+            for hook_id, item in self.all_external_items.items():
+                if saved_item_config := all_saved_external.get(hook_id):
+                    if custom_name := saved_item_config.get("display_name"):
+                        # If the custom name is just the package ID, assume it was the old default
+                        # and let the new friendly name take precedence.
+                        package_id = hook_id.split('.')[0]
+                        if custom_name != package_id:
+                            item.set_display_name(custom_name)
+
+            placed_external = set()
+            
+            # Place external items on unified grid
+            for hook_id, config in external_grid_config.items():
+                if hook_id in self.all_external_items:
+                    item = self.all_external_items[hook_id]
+                    item.row_span = config.get("row_span", 1)
+                    item.col_span = config.get("column_span", 1)
+                    if self.grid_zone.place_item(item, config.get("grid_position", 0), silent=True):
+                        placed_external.add(hook_id)
+            
+            # Place external items in archive
+            for hook_id in external_archive_config.keys():
+                if hook_id in self.all_external_items:
+                    item = self.all_external_items[hook_id]
+                    self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+                    placed_external.add(hook_id)
+
+            # Place any new/unplaced external add-ons in the archive
+            for hook_id in external_hooks:
+                if hook_id not in placed_external:
+                    item = self.all_external_items[hook_id]
+                    self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+
+        def _archive_onigiri_item(self, item):
+            """Moves an Onigiri item from the grid to the Onigiri archive zone."""
+            for shelf in self.grid_zone.shelves.values():
+                if shelf.child_widget is item:
+                    shelf.child_widget = None
+                    shelf.show() # Make the shelf visible again
+            self.onigiri_archive_zone.layout.insertWidget(self.onigiri_archive_zone.layout.count() - 1, item)
+            # Reset properties and visibility
+            item.setProperty("isOnGrid", False)
+            item.grid_zone = None
+            item._update_size() # Apply compact size
+            item.show()
+            
+            # Reset spans when archiving
+            if item.widget_id == "heatmap":
+                item.row_span, item.col_span = 2, 4
+            elif item.widget_id == "restaurant_level":
+                item.row_span, item.col_span = 2, 2
+            else:
+                item.row_span, item.col_span = 1, 1
+
+        def _archive_external_item(self, item):
+            """Moves an external item from the grid to the external archive zone."""
+            for shelf in self.grid_zone.shelves.values():
+                if shelf.child_widget is item:
+                    shelf.child_widget = None
+                    shelf.show() # Make the shelf visible again
+            self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+            item.setProperty("isOnGrid", False)
+            item.grid_zone = None
+            item._update_size() # Apply compact size
+            item.show()
+
+        def get_layout_config(self):
+            """Returns separate configs for Onigiri and External layouts."""
+            onigiri_grid_config = {}
+            external_grid_config = {}
+            processed_widgets = set()
+
+            for pos, shelf in self.grid_zone.shelves.items():
+                widget = shelf.child_widget
+                if widget and widget not in processed_widgets:
+                    # Check if it's an Onigiri widget
+                    if isinstance(widget, SettingsDialog.OnigiriDraggableItem):
+                        onigiri_grid_config[widget.widget_id] = {
+                            "pos": pos, "row": widget.row_span, "col": widget.col_span,
+                            "display_name": widget.display_name
+                        }
+                    else:
+                        # External widget
+                        external_grid_config[widget.widget_id] = {
+                            "grid_position": pos, "row_span": widget.row_span, "column_span": widget.col_span,
+                            "display_name": widget.display_name
+                        }
+                    processed_widgets.add(widget)
+
+            onigiri_archive_config = self.onigiri_archive_zone.get_archive_config()
+            external_archive_config = self.external_archive_zone.get_archive_config()
+            
+            return {
+                "onigiri": {"grid": onigiri_grid_config, "archive": onigiri_archive_config},
+                "external": {"grid": external_grid_config, "archive": external_archive_config}
+            }
+
+        def reset_widget_names(self):
+            """Resets all widget display names to their defaults."""
+            changes_made = False
+            
+            # Reset Onigiri widgets
+            for widget_id, default_name in self._WIDGET_DEFINITIONS.items():
+                if item := self.all_onigiri_items.get(widget_id):
+                    # Check if name is different to avoid unnecessary updates? 
+                    # Simpler to just reset.
+                    if item.display_name != default_name:
+                        item.set_display_name(default_name)
+                        changes_made = True
+            
+            # Reset External widgets
+            for hook_id, item in self.all_external_items.items():
+                default_name = hook_id.split('.')[0]
+                if item.display_name != default_name:
+                    item.set_display_name(default_name)
+                    changes_made = True
+                    
+            if changes_made:
+                showInfo("Widget names have been reset to defaults.")
+            else:
+                showInfo("Widget names are already at defaults.")
+
+        def reset_layout(self):
+            """
+            Resets everything to default:
+            - Grid height = 6 rows
+            - Onigiri widgets in default positions
+            - All external widgets archived
+            """
+            # 1. Reset Row Count
+            # Block signals to avoid triggering multiple layout updates
+            self.row_spin.blockSignals(True)
+            self.row_spin.setValue(6) 
+            self.row_spin.blockSignals(False)
+            
+            # Re-initialize grid with 6 rows (this clears current shelves)
+            self.grid_zone.row_count = 6
+            # We need to manually clear items because update_grid_rows tries to restore them
+            # So let's fully clear the grid first
+            
+            # Move all grid items to a temporary holding state (or just detach them)
+            grid_items = []
+            for shelf in self.grid_zone.shelves.values():
+                if widget := shelf.child_widget:
+                    grid_items.append(widget)
+                    shelf.child_widget = None
+                    widget.setParent(None)
+                    widget.grid_zone = None
+                    widget.setProperty("isOnGrid", False)
+            
+            # Also clear layouts of shelves, just in case
+            for i in reversed(range(self.grid_zone.grid_layout.count())): 
+                item = self.grid_zone.grid_layout.itemAt(i)
+                if item.widget():
+                    item.widget().setParent(None)
+            self.grid_zone.shelves = {}
+            
+            # Re-create shelves structure for 6 rows
+            self.grid_zone.update_grid_rows(6)
+
+            # 2. Reset Onigiri Widgets
+            placed_onigiri = set()
+            
+            # Place default items
+            for widget_id, config in self._ONIGIRI_DEFAULTS["grid"].items():
+                if item := self.all_onigiri_items.get(widget_id):
+                    item.row_span = config.get("row", 1)
+                    item.col_span = config.get("col", 1)
+                    
+                    # Ensure item is clean
+                    item.grid_zone = None
+                    item.setProperty("isOnGrid", False)
+                    
+                    if self.grid_zone.place_item(item, config.get("pos", 0), silent=True):
+                        placed_onigiri.add(widget_id)
+            
+            # Archive remaining Onigiri widgets
+            for widget_id, item in self.all_onigiri_items.items():
+                if widget_id not in placed_onigiri:
+                    # Move to archive if not already there
+                    current_archive_items = self.onigiri_archive_zone.get_item_order()
+                    # If it was on grid, it's now detached. If it was in archive, it might still be there.
+                    # Safest is to remove from wherever it is and add to archive
+                    if item.parent() == self.onigiri_archive_zone:
+                         # Already in archive zone, but maybe we want to reorder? 
+                         # Let's just ensure properties are correct
+                         pass
+                    else:
+                        # Add to archive layout
+                        self.onigiri_archive_zone.layout.insertWidget(self.onigiri_archive_zone.layout.count() - 1, item)
+                    
+                    item.setProperty("isOnGrid", False)
+                    item.grid_zone = None
+                    item._update_size() # Compact size
+                    item.show()
+
+            # 3. Archive ALL External Widgets
+            for hook_id, item in self.all_external_items.items():
+                # Move to archive if not already there
+                if item.parent() != self.external_archive_zone:
+                     self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+                
+                item.setProperty("isOnGrid", False)
+                item.grid_zone = None
+                item.row_span = 1
+                item.col_span = 1
+                item._update_size() # Compact size
+                item.show()
+
+            showInfo("Layout has been reset to defaults.")
+
+
+
     # =================================================================
     # END: Main Menu Layout Editor Widgets
     # =================================================================
@@ -4817,18 +5576,15 @@ class SettingsDialog(QDialog):
         return page
 
     def _create_organize_layout_widget(self):
-        # This widget will contain BOTH layout editors
+        # This widget contains the unified layout editor
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(0,0,0,0)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(20)
 
-        # This editor widget will be stored so we can retrieve its data on save.
-        self.onigiri_layout_editor = self.OnigiriLayoutEditor(self)
-        self.external_layout_editor = self.MainMenuLayoutEditor(self)
-        
-        layout.addWidget(self.onigiri_layout_editor)
-        layout.addWidget(self.external_layout_editor)
+        # Use the new unified layout editor
+        self.unified_layout_editor = self.UnifiedLayoutEditor(self)
+        layout.addWidget(self.unified_layout_editor)
         
         return container
     
@@ -5154,6 +5910,9 @@ class SettingsDialog(QDialog):
         self.gamification_warning_label.setVisible(not self.gamification_mode_checkbox.isChecked())
 
         layout.addSpacing(12)
+        
+        # Set custom color for Restaurant Level toggle
+        self.restaurant_level_toggle.accent_color = QColor("#B94632")
 
         # Restaurant Level card
         restaurant_level_card = self._create_onigiri_game_hero_card(
@@ -5163,12 +5922,12 @@ class SettingsDialog(QDialog):
             subtitle="Grow your restaurant by completing reviews!",
             background_light="restaurant_lvl_bg.png",
             background_dark="restaurant_lvl_bg_night.png",
+            text_color="#B94632",
         )
         
         self._attach_hero_toggle_section(
             restaurant_level_card,
             toggle_widget=self.restaurant_level_toggle,
-            helper_text="Earn XP and level up your restaurant with every review.",
         )
         
         layout.addWidget(restaurant_level_card)
@@ -5182,9 +5941,10 @@ class SettingsDialog(QDialog):
             subtitle="Let Mochi cheer you on during your review sessions.",
             background_light="mochi_messages_bg.png",
             background_dark="mochi_messages_bg_night.png",
+            text_color="#35421C",
         )
 
-        mochi_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        mochi_toggle = AnimatedToggleButton(accent_color="#35421C")
         mochi_toggle.setChecked(self.mochi_messages_toggle.isChecked())
 
         def handle_games_toggle(checked: bool) -> None:
@@ -5223,13 +5983,15 @@ class SettingsDialog(QDialog):
         self._attach_hero_toggle_section(
             mochi_card,
             toggle_widget=mochi_toggle,
-            helper_text="Enable Mochi's motivational pop-ups. Customize messages in Settings → Mochi Messages.",
         )
 
         layout.addWidget(mochi_card)
         layout.addSpacing(16)
 
         # Focus Dango card
+        # Set custom color for Focus Dango toggle
+        self.focus_dango_toggle.accent_color = QColor("#61252D")
+
         focus_dango_card = self._create_onigiri_game_hero_card(
             icon_filename="dango.png",
             emoji_fallback="\U0001F369",
@@ -5237,12 +5999,12 @@ class SettingsDialog(QDialog):
             subtitle="Dango-san will prevent you from leaving Reviewer before you're done!",
             background_light="dango_bg.png",
             background_dark="dango_bg_night.png",
+            text_color="#61252D",
         )
 
         self._attach_hero_toggle_section(
             focus_dango_card,
             toggle_widget=self.focus_dango_toggle,
-            helper_text="Enable to prevent exiting the reviewer. Customize in Settings \u2192 Gamification \u2192 Focus Dango.",
         )
 
         layout.addWidget(focus_dango_card)
@@ -5320,7 +6082,7 @@ class SettingsDialog(QDialog):
         settings_group, settings_layout = self._create_inner_group("Notifications & Visibility")
         settings_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, "Show level-up notifications"))
         settings_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, "Show progress on sidebar profile bar"))
-        settings_layout.addWidget(self._create_toggle_row(self.restaurant_profile_toggle, "Show progress on profile page"))
+        # Removed: settings_layout.addWidget(self._create_toggle_row(self.restaurant_profile_toggle, "Show progress on profile page"))
         settings_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, "Show level in reviewer header"))
 
 
@@ -5353,6 +6115,7 @@ class SettingsDialog(QDialog):
         subtitle: str,
         background_light: str,
         background_dark: str,
+        text_color: str,
     ) -> QWidget:
         hero_card = QFrame()
         hero_card.setObjectName("achievementsHeroCard")
@@ -5363,7 +6126,7 @@ class SettingsDialog(QDialog):
 
         hero_layout = QHBoxLayout(hero_card)
         hero_layout.setContentsMargins(24, 16, 24, 16)
-        hero_layout.setSpacing(20)
+        hero_layout.setSpacing(24)
         hero_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         icon_label = QLabel()
@@ -5379,7 +6142,7 @@ class SettingsDialog(QDialog):
         pixmap = QPixmap(icon_path)
         if not pixmap.isNull():
             icon_label.setPixmap(
-                pixmap.scaled(56, 56, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             )
         else:
             icon_label.setText(emoji_fallback)
@@ -5393,18 +6156,21 @@ class SettingsDialog(QDialog):
         title_label = QLabel(title)
         title_label.setObjectName("achievementsHeroTitle")
         title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_label.setStyleSheet(f"color: {text_color}; font-weight: bold;")
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setObjectName("achievementsHeroSubtitle")
         subtitle_label.setWordWrap(True)
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        subtitle_label.setStyleSheet(f"color: {text_color};")
 
         copy_container_layout.addWidget(title_label)
         copy_container_layout.addWidget(subtitle_label)
 
         hero_layout.addWidget(copy_container, 1, Qt.AlignmentFlag.AlignVCenter)
 
-        background_filename = background_dark if theme_manager.night_mode else background_light
+        # Always use background_light as requested, regardless of theme mode
+        background_filename = background_light
         # Check if the background is in gamification_images, otherwise use system_files
         gamification_bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", background_filename)
         if os.path.exists(gamification_bg_path):
@@ -5432,7 +6198,6 @@ class SettingsDialog(QDialog):
         hero_card: QWidget,
         *,
         toggle_widget: AnimatedToggleButton,
-        helper_text: str,
     ) -> None:
         toggle_container = QWidget(hero_card)
         toggle_container.setObjectName("achievementsHeroToggleArea")
@@ -5441,13 +6206,6 @@ class SettingsDialog(QDialog):
         toggle_layout.setSpacing(4)
 
         toggle_layout.addWidget(toggle_widget, alignment=Qt.AlignmentFlag.AlignRight)
-
-        helper_label = QLabel(helper_text, hero_card)
-        helper_label.setObjectName("achievementsHeroHelper")
-        helper_label.setWordWrap(True)
-        helper_label.setMaximumWidth(275)
-        helper_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        toggle_layout.addWidget(helper_label)
 
         hero_card.layout().addWidget(toggle_container, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
@@ -6697,6 +7455,12 @@ class SettingsDialog(QDialog):
         self.profile_show_theme_dark_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_theme_dark_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_dark", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_theme_dark_check, "Show 'Theme Colors (Dark)' Section"))
         self.profile_show_backgrounds_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_backgrounds_check.setChecked(mw.col.conf.get("onigiri_profile_show_backgrounds", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_backgrounds_check, "Show 'Background Images' Section"))
         self.profile_show_stats_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_stats_check.setChecked(mw.col.conf.get("onigiri_profile_show_stats", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_stats_check, "Show 'Daily Stats' Section"))
+        
+        # Restaurant Level visibility
+        self.profile_show_restaurant_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_restaurant_check.setChecked(restaurant_level.manager.get_progress().show_profile_page_progress)
+        visibility_section.add_widget(self._create_toggle_row(self.profile_show_restaurant_check, "Show 'Restaurant Level' Section"))
+
         layout.addWidget(visibility_section)
         
         layout.addStretch()
@@ -10662,12 +11426,13 @@ class SettingsDialog(QDialog):
         mw.col.conf["modern_menu_background_opacity"] = self.bg_opacity_spinbox.value()
 
     def _save_organize_settings(self):
-        """Saves the layout from both the Onigiri and External layout editors."""
-        if hasattr(self, 'onigiri_layout_editor'):
-            self.current_config['onigiriWidgetLayout'] = self.onigiri_layout_editor.get_layout_config()
-            
-        if hasattr(self, 'external_layout_editor'):
-            self.current_config['externalWidgetLayout'] = self.external_layout_editor.get_layout_config()
+        """Saves the layout from the unified layout editor."""
+        if hasattr(self, 'unified_layout_editor'):
+            layout_config = self.unified_layout_editor.get_layout_config()
+            self.current_config['onigiriWidgetLayout'] = layout_config['onigiri']
+            self.current_config['externalWidgetLayout'] = layout_config['external']
+            # Save the row count setting
+            self.current_config['unifiedGridRows'] = self.unified_layout_editor.row_spin.value()
 
     def _save_profile_settings(self):
         self.current_config["userName"] = self.name_input.text()
@@ -10699,10 +11464,12 @@ class SettingsDialog(QDialog):
             mw.col.conf["onigiri_profile_page_bg_light_color2"] = self.profile_page_light_gradient2_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_gradient1_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color2"] = self.profile_page_dark_gradient2_color_input.text()
-        else:
             mw.col.conf["onigiri_profile_page_bg_mode"] = "color"
             mw.col.conf["onigiri_profile_page_bg_light_color1"] = self.profile_page_light_color1_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_color1_color_input.text()
+            
+        # Save Restaurant Level visibility
+        restaurant_level.manager.set_profile_page_visibility(self.profile_show_restaurant_check.isChecked())
 
     def _save_achievements_settings(self):
         # Save restaurant_level to top-level config
@@ -10717,7 +11484,7 @@ class SettingsDialog(QDialog):
         restaurant_conf["enabled"] = restaurant_enabled
         restaurant_conf["notifications_enabled"] = self.restaurant_notifications_toggle.isChecked()
         restaurant_conf["show_profile_bar_progress"] = self.restaurant_bar_toggle.isChecked()
-        restaurant_conf["show_profile_page_progress"] = self.restaurant_profile_toggle.isChecked()
+        # show_profile_page_progress is now saved in _save_profile_settings
         restaurant_conf["show_reviewer_header"] = self.restaurant_reviewer_toggle.isChecked()
         
         # Save Focus Dango setting

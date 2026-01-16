@@ -410,7 +410,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
             onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
 
-    # --- Part 2: Build External Add-on Widgets Grid ---
+    # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
     external_layout = conf.get("externalWidgetLayout", {})
     grid_config = external_layout.get("grid", {})
@@ -435,16 +435,20 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             row_span = widget_config.get("row_span", 1)
             col_span = widget_config.get("column_span", 1)
             style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
+            # Add external widgets to the same grid as Onigiri widgets
             external_widgets_html += f'<div class="external-widget-container" style="{style}">{hook_html}</div>'
 
     # --- Part 3: Assemble the Final Stats Block ---
     stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
     title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
 
+    # Combine both Onigiri and External widgets into a single unified grid
+    unified_grid_html = onigiri_grid_html + external_widgets_html
+
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
     <style>
-        .onigiri-grid, .external-grid {{
+        .unified-grid {{
             display: grid;
             gap: 15px;
             /* grid-auto-rows ensures every '1 row' has a fixed minimum height (e.g. 110px) */
@@ -452,8 +456,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             grid-template-columns: repeat(4, 1fr);
             width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
         }}
-        .onigiri-grid {{ margin-bottom: 20px; }}
         
         /* Make the container expand to fill the grid area (rows/cols) */
         .onigiri-widget-container, .external-widget-container {{
@@ -461,6 +465,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 100%;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+            position: relative;
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
@@ -742,8 +748,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
     </style>
     {title_html}
-    <div class="onigiri-grid">{onigiri_grid_html}</div>
-    <div class="external-grid">{external_widgets_html}</div>
+    <div class="unified-grid">{unified_grid_html}</div>
     """
 
     # --- Part 4: Manually Build the Deck Tree HTML ---

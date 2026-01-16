@@ -36,7 +36,7 @@ class RestaurantLevelData:
     taiyaki_coins: int = 0
     owned_items: List[str] = None
     current_theme_id: str = "default"
-    _security_token: str = ""
+
     last_updated: str = ""
     level: int = 0
     total_xp: int = 0
@@ -116,7 +116,7 @@ class GamificationData:
                 taiyaki_coins=r_data.get('taiyaki_coins', 0),
                 owned_items=r_data.get('owned_items', ["default"]),
                 current_theme_id=r_data.get('current_theme_id', "default"),
-                _security_token=r_data.get('_security_token', ""),
+
                 last_updated=r_data.get('last_updated', ""),
                 level=r_data.get('level', 0),
                 total_xp=r_data.get('total_xp', 0),
