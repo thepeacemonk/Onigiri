@@ -2798,6 +2798,17 @@ def generate_font_css(addon_package):
             --font-subtle: {subtle_font_info['family']};
         }}
         
+        /* Apply fonts to specific elements */
+        #onigiri-reveal-btn {{
+            font-family: var(--font-main) !important;
+            box-shadow: none !important;
+            border: none !important;
+        }}
+        
+        #study, .mini-overview #study {{
+            font-family: var(--font-main) !important;
+        }}
+        
         body:not(.card) {{
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
         }}
