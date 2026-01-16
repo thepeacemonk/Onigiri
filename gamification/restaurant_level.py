@@ -183,6 +183,7 @@ class RestaurantLevelManager:
         self._daily_target_cache: Dict[str, Any] = {}
         self._last_daily_sync_time: float = 0
         self._cached_daily_count: int = -1
+        self._xp_history: List[int] = []
         
     @property
     def _gamification_manager(self):
@@ -207,9 +208,10 @@ class RestaurantLevelManager:
         """Grant XP for completed reviews and update daily special progress."""
         from aqt import mw
         
-        xp_amount = max(0, int(xp_amount))
-        if xp_amount <= 0:
+        xp_amount = int(xp_amount)
+        if xp_amount == 0:
             return []
+
             
         # Get notifications from _add_xp first
         notifications = self._add_xp(xp_amount, reason="review", review_count=count)
@@ -714,15 +716,50 @@ class RestaurantLevelManager:
         xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
         xp = xp_map.get(ease, 5)
         # print(f"Onigiri: Review completed. Ease: {ease}, XP to award: {xp}")
+        self._xp_history.append(xp)
         notifications = self.add_review_xp(xp, count=1)
         self._dispatch_notifications(notifications)
+
+    def on_state_did_undo(self, changes: Any = None) -> None:
+        """Hook handler for undoing a review (state_did_undo)."""
+        from aqt import mw
+        if mw.state != "review":
+            return
+            
+        if not self._xp_history:
+            return
+
+        xp_to_undo = self._xp_history.pop()
+        
+        # We pass -xp_to_undo. count=-1 ensures daily progress also subtracts 1.
+        notifications = self.add_review_xp(-xp_to_undo, count=-1)
+        self._dispatch_notifications(notifications)
+        
+        # Directly update the reviewer chip using patcher's function
+        try:
+            # Import patcher from parent package
+            from .. import patcher
+            if hasattr(patcher, 'update_reviewer_chip'):
+                patcher.update_reviewer_chip()
+        except Exception:
+            pass  # Silently fail if patcher not available
+
+
+    # Legacy/Fallback hook handler if needed, or alias for consistency
+    def on_reviewer_did_undo_answer(self, *args: Any) -> None:
+        self.on_state_did_undo()
+
+
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
     def _dispatch_notifications(self, notifications: List[Dict[str, Any]]) -> None:
-        if not notifications:
-            return
+        if notifications is None:
+             notifications = []
+        
+        # Always fetch latest progress to update UI, even if no notifications are present
+
             
         from aqt import mw
         
@@ -746,12 +783,93 @@ class RestaurantLevelManager:
             if web and web not in webviews:
                 webviews.append(web)
 
+        # Serialize data
+        payload = json.dumps(notifications, ensure_ascii=False)
+        
+        # Get latest progress data
+        progress = self.get_progress_payload()
+        progress_json = json.dumps(progress, ensure_ascii=False)
+
+        # Enhanced script to update both notifications AND the UI widgets
         script = (
-            "if (window.OnigiriNotifications) {"
-            f"const items = {payload};"
-            "items.forEach(item => window.OnigiriNotifications.show(item));"
-            "}"
+            f"const progress = {progress_json};"
+            "try {"
+                # 1. Dispatch Notifications
+                "if (window.OnigiriNotifications) {"
+                    f"const items = {payload};"
+                    "items.forEach(item => window.OnigiriNotifications.show(item));"
+                "}"
+                
+                # 2. Update Deck Browser Widget (Restaurant Level)
+                # Update Progress Bar
+                "const lpFill = document.querySelector('.level-progress-container .lp-fill');"
+                "if (lpFill) lpFill.style.width = (progress.progressFraction * 100) + '%';"
+                
+                # Update XP Text
+                "const lpText = document.querySelector('.level-progress-container .lp-text');"
+                "if (lpText) {"
+                    "if (progress.xpToNextLevel > 0) {"
+                        # Format numbers with commas
+                         "lpText.textContent = `${progress.xpIntoLevel.toLocaleString()} / ${progress.xpToNextLevel.toLocaleString()} XP`;"
+                    "} else {"
+                         "lpText.textContent = `${progress.totalXp.toLocaleString()} XP total`;"
+                    "}"
+                "}"
+                
+                # Update Level Number
+                "const levelVal = document.querySelector('.level-value');"
+                "if (levelVal) levelVal.textContent = progress.level;"
+                
+                # 3. Update Profile Page / Expanded View Elements
+                # Update Profile Bar Fill
+                "const prlFill = document.querySelector('.prl-progress-fill');"
+                "if (prlFill) prlFill.style.width = (progress.progressFraction * 100) + '%';"
+                
+                # Update Restaurant Name (if changed, though unlikely on undo)
+                "const nameHeader = document.querySelector('.rl-hero-copy h1');"
+                "if (nameHeader && progress.name) nameHeader.textContent = progress.name;"
+                
+                # Update XP Detail on Profile Page
+                "const xpDetail = document.querySelector('[data-bind=\"xp_detail\"]');"
+                "if (xpDetail) {"
+                     "if (progress.xpToNextLevel > 0) {"
+                        "xpDetail.textContent = `${progress.xpIntoLevel.toLocaleString()} / ${progress.xpToNextLevel.toLocaleString()} XP`;"
+                     "} else {"
+                        "xpDetail.textContent = `${progress.totalXp.toLocaleString()} XP total`;"
+                     "}"
+                "}"
+                
+                # Update Total XP on Profile Page
+                "const totalXp = document.querySelector('[data-bind=\"total_xp\"]');"
+                "if (totalXp) totalXp.textContent = progress.totalXp.toLocaleString();"
+                
+                # Update Level on Profile Page
+                "const levelBind = document.querySelector('[data-bind=\"level\"]');"
+                "if (levelBind) levelBind.textContent = progress.level;"
+
+                # 4. Update Reviewer Header Chip (Reviewer Top Bar)
+                # Update Progress Bar (Reviewer)
+                "const chipProgressBar = document.querySelector('.restaurant-level-chip .level-progress-bar');"
+                "if (chipProgressBar) chipProgressBar.style.width = (progress.progressFraction * 100) + '%';"
+                
+                # Update Level Text (Reviewer) - Format: "Lv. 5"
+                "const chipLevelText = document.querySelector('.restaurant-level-chip .level-text');"
+                "if (chipLevelText) chipLevelText.textContent = `Lv. ${progress.level}`;"
+                
+                # Update XP Text (Reviewer) - Format: "100/500 XP"
+                "const chipXpText = document.querySelector('.restaurant-level-chip .xp-text');"
+                "if (chipXpText) {"
+                    "if (progress.xpToNextLevel > 0) {"
+                         "chipXpText.textContent = `${progress.xpIntoLevel.toLocaleString()}/${progress.xpToNextLevel.toLocaleString()} XP`;"
+                    "} else {"
+                         "chipXpText.textContent = `${progress.totalXp.toLocaleString()} XP total`;"
+                    "}"
+                "}"
+
+            "} catch (e) { console.error('Onigiri UI Update Error:', e); }"
         )
+
+
 
         for web in webviews:
             if not web:
@@ -1050,8 +1168,9 @@ class RestaurantLevelManager:
         self._gamification_manager.update_restaurant_data({"daily_special_update": state_to_save})
 
     def _add_xp(self, amount: int, *, reason: str, review_count: int = 0) -> List[Dict[str, Any]]:
-        if amount <= 0:
+        if amount == 0:
             return []
+
 
         conf, restaurant_conf = self._config_bundle()
         if not restaurant_conf.get("enabled", False):
@@ -1098,6 +1217,26 @@ class RestaurantLevelManager:
                 "textColorDark": "#ffffff",
                 "duration": 4000
             })
+        elif level < previous_level:
+            # Handle Level Down (Undo)
+            coins_lost = 0
+            for lvl in range(previous_level, level, -1):
+                coins_lost += lvl * 5
+            
+            new_coins = current_coins - coins_lost
+            # We allow negative coins as "debt" if they spent it already
+            
+            notifications.append({
+                "id": "taiyaki_coins_lost",
+                "name": "Level Lost",
+                "description": f"Undoing review... {coins_lost} coins removed.",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconAlt": "Taiyaki Coins",
+                "textColorLight": "#2c2c2c",
+                "textColorDark": "#ffffff",
+                "duration": 3000
+            })
+
         
         # Update the restaurant level and total XP in gamification.json
         # We NO LONGER write this to config.json
@@ -1152,7 +1291,8 @@ class RestaurantLevelManager:
                     notifications.extend(special_notifications)
                 
                 # Update progress
-                daily_special["current_progress"] = min(new_progress, target)
+                daily_special["current_progress"] = max(0, min(new_progress, target))
+
                 
                 # Check for progress milestones (25%, 50%, 75%)
                 progress_percent = (new_progress / target) * 100 if target > 0 else 0
@@ -1379,5 +1519,14 @@ manager = RestaurantLevelManager()
 def register_hooks() -> None:
     from aqt import gui_hooks
     gui_hooks.reviewer_did_answer_card.append(manager.on_reviewer_did_answer)
+    
+    # reviewer_did_undo_answer was removed/not present in v3 scheduler or modern anki
+    # Use state_did_undo instead
+    if hasattr(gui_hooks, "state_did_undo"):
+        gui_hooks.state_did_undo.append(manager.on_state_did_undo)
+    elif hasattr(gui_hooks, "reviewer_did_undo_answer"):
+        gui_hooks.reviewer_did_undo_answer.append(manager.on_reviewer_did_undo_answer)
+
+
 
 register_hooks()
