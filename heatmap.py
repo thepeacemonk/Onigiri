@@ -103,12 +103,32 @@ def get_heatmap_data():
             else:
                 break  # Streak broken
 
+    # --- 5. Calculate Daily Average ---
+    # Total reviews / Days since first review
+    # We use the count of all reviews in history (no date limit)
+    total_reviews_all_time = mw.col.db.scalar("SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3)") or 0
+    
+    daily_average = 0
+    if total_reviews_all_time > 0:
+        # distinct days
+        first_review_ts = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
+        if first_review_ts:
+            # Calculate days elapsed
+            first_review_date = datetime.fromtimestamp(first_review_ts / 1000).date()
+            today_date = datetime.fromtimestamp(today_start_seconds).date()
+            days_elapsed = (today_date - first_review_date).days + 1
+            if days_elapsed < 1: 
+                days_elapsed = 1
+                
+            daily_average = total_reviews_all_time / days_elapsed
+
     return {
         "calendar": reviews_by_day, 
         "streak": streak, 
         "due_calendar": due_by_day,
         "today_date_key": today_date_key,
-        "rollover_hour": rollover_hour # Still useful for JS, though not for date math
+        "rollover_hour": rollover_hour, # Still useful for JS, though not for date math
+        "daily_average": daily_average
     }
 
 def get_heatmap_and_config():
