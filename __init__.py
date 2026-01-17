@@ -189,7 +189,15 @@ _on_webview_cmd = webview_handlers.handle_webview_cmd
 def maybe_show_welcome_popup():
     """Shows the welcome pop-up if it hasn't been disabled by the user."""
     conf = config.get_config()
-    if conf.get("showWelcomePopup", True):
+    
+    # Check if we should force show based on version
+    last_seen_version = conf.get("lastSeenWelcomeVersion", "")
+    current_version = welcome_dialog.CURRENT_WELCOME_VERSION
+    
+    # Force show if version doesn't match, OR if user hasn't opted out
+    should_show = (last_seen_version != current_version) or conf.get("showWelcomePopup", True)
+    
+    if should_show:
         welcome_dialog.show_welcome_dialog()
 
 # --- SHOP MENU SETUP ---
