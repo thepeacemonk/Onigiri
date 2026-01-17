@@ -1126,9 +1126,13 @@ class ColorMapWidget(QWidget):
         if self._hue == -1: hue_color = QColor(255, 255, 255)
         else: hue_color = QColor.fromHsvF(max(0, self._hue), 1.0, 1.0)
         
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 12, 12)
+        painter.setClipPath(path)
+        
         painter.setBrush(hue_color)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRect(self.rect())
+        painter.drawRoundedRect(self.rect(), 12, 12)
 
         sat_grad = QLinearGradient(0, 0, self.width(), 0)
         sat_grad.setColorAt(0, QColor(255, 255, 255, 255))
@@ -1139,6 +1143,7 @@ class ColorMapWidget(QWidget):
         val_grad.setColorAt(0, QColor(0, 0, 0, 0))
         val_grad.setColorAt(1, QColor(0, 0, 0, 255))
         painter.fillRect(self.rect(), val_grad)
+
 
         painter.setPen(QPen(Qt.GlobalColor.white, 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -1254,50 +1259,12 @@ class FavoriteColorButton(QWidget):
         self.on_remove = on_remove
         
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Long click to delete")
         
-        self.delete_btn = QPushButton(self)
-        self.delete_btn.setFixedSize(16, 16)
-        self.delete_btn.move(4, 4) 
-        self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.delete_btn.hide()
-        self.delete_btn.clicked.connect(self._handle_remove)
-        
-        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark.svg")
-        if os.path.exists(icon_path):
-            pixmap = QPixmap(icon_path)
-            if not pixmap.isNull():
-                painter = QPainter(pixmap)
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-                painter.fillRect(pixmap.rect(), QColor("white"))
-                painter.end()
-                self.delete_btn.setIcon(QIcon(pixmap))
-                self.delete_btn.setIconSize(QSize(18, 18))
-        else:
-            self.delete_btn.setText("x")
-            self.delete_btn.setStyleSheet("color: white; font-weight: bold; font-size: 10px; border: none; background: transparent;")
-        
-        if not self.delete_btn.text():
-            self.delete_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background-color: transparent;
-                    border: none;
-                }
-            """)
-        else:
-             self.delete_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: transparent;
-                    color: white; font-weight: bold; font-size: 15px;
-                }
-                QPushButton:hover {
-                    background-color: transparent;
-                    border: none;
-                }
-            """)
+        self._long_press_timer = QTimer(self)
+        self._long_press_timer.setSingleShot(True)
+        self._long_press_timer.setInterval(800) 
+        self._long_press_timer.timeout.connect(self._handle_long_press)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -1306,78 +1273,22 @@ class FavoriteColorButton(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(self.rect(), 12, 12)
 
-    def enterEvent(self, event):
-        self.delete_btn.show()
-
-    def leaveEvent(self, event):
-        self.delete_btn.hide()
-
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.on_select(self.color_hex)
+            self._long_press_timer.start()
 
-    def _handle_remove(self):
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._long_press_timer.isActive():
+                self._long_press_timer.stop()
+                self.on_select(self.color_hex)
+
+    def _handle_long_press(self):
         self.on_remove(self.color_hex)
 
-class ScreenColorPicker(QWidget):
-    colorSelected = pyqtSignal(QColor)
-    
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setCursor(Qt.CursorShape.CrossCursor)
-        self.setMouseTracking(True)  # CRITICAL: Enable mouse tracking for hover events
-        self._pixmap = None
-        self._screen_scale = 1.0
-        
-    def start(self):
-        # Capture the screen where the mouse currently is
-        cursor_pos = QCursor.pos()
-        screen = QGuiApplication.screenAt(cursor_pos)
-        if not screen:
-            screen = QGuiApplication.primaryScreen()
-            
-        if screen:
-            try:
-                # Grab the window content
-                # Note: On Linux Wayland, this may fail or return black due to security restrictions.
-                self._pixmap = screen.grabWindow(0)
-                
-                if self._pixmap.isNull():
-                    raise Exception("Captured pixmap is null")
-                    
-                self._screen_scale = screen.devicePixelRatio()
-                
-                # Set geometry to match the screen
-                self.setGeometry(screen.geometry())
-                self.show()
-                self.raise_()
-                self.activateWindow()
-            except Exception as e:
-                QMessageBox.warning(None, "Screen Capture Failed", 
-                    f"Could not capture screen content. This may be due to OS security restrictions (e.g., Wayland on Linux).\n\nError: {str(e)}")
-                self.close()
-            
-    def paintEvent(self, event):
-        if self._pixmap:
-            painter = QPainter(self)
-            painter.drawPixmap(0, 0, self._pixmap)
-            
-    def mousePressEvent(self, event):
-        if self._pixmap:
-            img = self._pixmap.toImage()
-            x = int(event.pos().x() * self._screen_scale)
-            y = int(event.pos().y() * self._screen_scale)
-            
-            if x >= 0 and y >= 0 and x < img.width() and y < img.height():
-                color = img.pixelColor(x, y)
-                self.colorSelected.emit(color)
-            self.close()
-            
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
-            self.close()
+
+
+
 
 class ModernColorPickerDialog(QDialog):
     colorSelected = pyqtSignal(QColor)
@@ -1385,10 +1296,12 @@ class ModernColorPickerDialog(QDialog):
     def __init__(self, initial_color=QColor("white"), parent=None, favorite_colors=None):
         super().__init__(parent)
         self.setWindowTitle("Select Color")
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._color = QColor(initial_color)
         self.favorite_colors = favorite_colors[:] if favorite_colors else []
+        self._drag_pos = None
+
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -1420,17 +1333,18 @@ class ModernColorPickerDialog(QDialog):
         if theme_manager.night_mode:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #d0d0d0;")
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
+                QPushButton { background-color: transparent; border: none; border-radius: 12px; min-width: 24px; min-height: 24px; }
                 QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
             """)
             icon_color = QColor("#ffffff")
         else:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333333;")
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
+                QPushButton { background-color: transparent; border: none; border-radius: 12px; min-width: 24px; min-height: 24px; }
                 QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
             """)
             icon_color = QColor("#555555")
+
             
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
@@ -1475,44 +1389,15 @@ class ModernColorPickerDialog(QDialog):
         self.hex_input = QLineEdit(self._color.name())
         self.hex_input.setFixedWidth(100)
         self.hex_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hex_input.textChanged.connect(self._on_hex_changed)
-        
-        # --- Eyedropper Button ---
-        self.eyedropper_btn = QPushButton()
-        self.eyedropper_btn.setFixedSize(24, 24)
-        self.eyedropper_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.eyedropper_btn.setToolTip("Pick color from screen")
-        self.eyedropper_btn.setFlat(True)
-        # Make button background transparent and remove borders
-        self.eyedropper_btn.setStyleSheet("""
-            QPushButton { background-color: transparent; border: none; }
-            QPushButton:hover { background-color: rgba(0, 0, 0, 0.1); }
-        """)
-        self.eyedropper_btn.clicked.connect(self.pick_screen_color)
-        
-        eyedropper_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "paintbrush.svg")
-        
-        # Use a neutral icon color that works for both themes
-        ed_icon_color = QColor("#555555") if not theme_manager.night_mode else QColor("#cccccc")
-        
-        if os.path.exists(eyedropper_icon_path):
-            pixmap = QPixmap(eyedropper_icon_path)
-            if not pixmap.isNull():
-                painter = QPainter(pixmap)
-                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-                painter.fillRect(pixmap.rect(), ed_icon_color)
-                painter.end()
-                self.eyedropper_btn.setIcon(QIcon(pixmap))
-                self.eyedropper_btn.setIconSize(QSize(16, 16))
-            else:
-                self.eyedropper_btn.setText("P")
+        if theme_manager.night_mode:
+            self.hex_input.setStyleSheet("QLineEdit { background-color: #333; color: #fff; border: 1px solid #555; border-radius: 12px; padding: 4px; }")
         else:
-            self.eyedropper_btn.setText("P")
-        # -------------------------
+            self.hex_input.setStyleSheet("QLineEdit { background-color: #fff; color: #000; border: 1px solid #ccc; border-radius: 12px; padding: 4px; }")
+        self.hex_input.textChanged.connect(self._on_hex_changed)
+
         
         input_layout.addWidget(self.preview_circle)
         input_layout.addWidget(self.hex_input)
-        input_layout.addWidget(self.eyedropper_btn)
         input_layout.addStretch()
         container_layout.addLayout(input_layout)
         
@@ -1534,16 +1419,17 @@ class ModernColorPickerDialog(QDialog):
         
         if theme_manager.night_mode:
             add_fav_btn.setStyleSheet("""
-                QPushButton { background-color: #3a3a3a; border: 1px solid #555; border-radius: 10px; }
+                QPushButton { background-color: #3a3a3a; border: 1px solid #555; border-radius: 10px; min-width: 20px; min-height: 20px; }
                 QPushButton:hover { background-color: #4a4a4a; }
             """)
             add_icon_color = QColor("#cccccc")
         else:
             add_fav_btn.setStyleSheet("""
-                QPushButton { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; }
+                QPushButton { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; min-width: 20px; min-height: 20px; }
                 QPushButton:hover { background-color: #e0e0e0; }
             """)
             add_icon_color = QColor("#555555")
+
             
         if os.path.exists(add_icon_path):
             pixmap = QPixmap(add_icon_path)
@@ -1573,10 +1459,7 @@ class ModernColorPickerDialog(QDialog):
         layout.addWidget(self.container)
         self.setColor(self._color)
 
-    def pick_screen_color(self):
-        self.screen_picker = ScreenColorPicker()
-        self.screen_picker.colorSelected.connect(self.setColor)
-        self.screen_picker.start()
+
 
     def refresh_favorites(self):
         # Clear grid
@@ -1646,8 +1529,21 @@ class ModernColorPickerDialog(QDialog):
         self.hex_input.blockSignals(False)
         self.colorSelected.emit(self._color)
 
-    def focusOutEvent(self, event):
-        self.close()
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and self._drag_pos:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
+
+
 
 class IconPickerDialog(QDialog):
     iconSelected = pyqtSignal(str)
@@ -2295,6 +2191,21 @@ class SettingsDialog(QDialog):
             self.resize(900, 700)
         
         self.current_config = config.get_config()
+
+        # --- RESTORE WINDOW SIZE ---
+        window_settings = self.current_config.get("window_settings", {})
+        if window_settings:
+            w = window_settings.get("width")
+            h = window_settings.get("height")
+            if w and h:
+                # Basic validation
+                w = max(self.minimumWidth(), w)
+                h = max(self.minimumHeight(), h)
+                if screen:
+                     w = min(w, screen.availableGeometry().width())
+                     h = min(h, screen.availableGeometry().height())
+                self.resize(w, h)
+        # ---------------------------
         self.custom_goal_cooldown_label = None
 
         achievements_conf = self.current_config.get("achievements")
@@ -2883,6 +2794,19 @@ class SettingsDialog(QDialog):
                 mw.col.conf["onigiri_font_subtle"] = card.font_key
                 break
     def closeEvent(self, event):
+        # --- SAVE WINDOW SIZE ---
+        try:
+            if not self.isMaximized() and not self.isFullScreen():
+                window_settings = {
+                    "width": self.width(),
+                    "height": self.height()
+                }
+                self.current_config["window_settings"] = window_settings
+                config.write_config(self.current_config)
+        except Exception as e:
+            print(f"Error saving window settings: {e}")
+        # ------------------------
+
         for gallery in self.galleries.values():
             if worker := gallery.get('worker'):
                 worker.cancel()
@@ -6038,8 +5962,8 @@ class SettingsDialog(QDialog):
             title="Focus Dango",
             subtitle="Dango-san will prevent you from leaving Reviewer before you're done!",
             background_light="dango_bg.png",
-            background_dark="dango_bg_night.png",
-            text_color="#61252D",
+            background_dark="dango_bg.png",
+            text_color="#f1aeca",
         )
 
         self._attach_hero_toggle_section(
@@ -6090,7 +6014,19 @@ class SettingsDialog(QDialog):
         
 
         
-        layout.addSpacing(10)
+        
+        # Restaurant Level Hero
+        restaurant_level_card = self._create_onigiri_game_hero_card(
+            icon_filename="restaurant_folder/restaurant_level.png",
+            emoji_fallback="\U0001F35F",
+            title="Restaurant Level",
+            subtitle="Grow your restaurant by completing reviews!",
+            background_light="restaurant_lvl_bg.png",
+            background_dark="restaurant_lvl_bg_night.png",
+            text_color="#B94632",
+        )
+        layout.addWidget(restaurant_level_card)
+        layout.addSpacing(16)
 
         # Restaurant Name Section
         name_group, name_layout = self._create_inner_group("Restaurant Name")
@@ -6315,7 +6251,7 @@ class SettingsDialog(QDialog):
 
         intro_section = SectionGroup(
             "Mochi Messages",
-            self,
+        self,
             border=False,
             description="Configure how often Mochi appears and what encouragements are shown.",
         )
@@ -6326,6 +6262,20 @@ class SettingsDialog(QDialog):
         info_label.setWordWrap(True)
         info_label.setStyleSheet(f"color: {info_color}; font-size: 11px;")
         intro_section.add_widget(info_label)
+        
+        # Mochi Messages Hero
+        mochi_card = self._create_onigiri_game_hero_card(
+            icon_filename="mochi_messenger.png",
+            emoji_fallback="\U0001F95F",
+            title="Mochi Messages",
+            subtitle="Let Mochi cheer you on during your review sessions.",
+            background_light="mochi_messages_bg.png",
+            background_dark="mochi_messages_bg_night.png",
+            text_color="#35421C",
+        )
+        layout.addWidget(mochi_card)
+        layout.addSpacing(16)
+        
         layout.addWidget(intro_section)
 
         settings_section = self._create_mochi_messages_settings_section()
@@ -6357,6 +6307,20 @@ class SettingsDialog(QDialog):
         info_label.setWordWrap(True)
         info_label.setStyleSheet(f"color: {info_color}; font-size: 11px;")
         intro_section.add_widget(info_label)
+
+        # Focus Dango Hero
+        focus_dango_card = self._create_onigiri_game_hero_card(
+            icon_filename="dango.png",
+            emoji_fallback="\U0001F369",
+            title="Focus Dango",
+            subtitle="Dango-san will prevent you from leaving Reviewer before you're done!",
+            background_light="dango_bg.png",
+            background_dark="dango_bg.png",
+            text_color="#f1aeca",
+        )
+        layout.addWidget(focus_dango_card)
+        layout.addSpacing(16)
+        
         layout.addWidget(intro_section)
 
         # --- Message Editor Section ---
@@ -6422,6 +6386,20 @@ class SettingsDialog(QDialog):
             description="Manage your Mr. Taiyaki Store settings.",
         )
         intro_section.content_area.hide()
+
+        # Mr. Taiyaki Store Hero
+        taiyaki_card = self._create_onigiri_game_hero_card(
+            icon_filename="mr_taiyaki.png",
+            emoji_fallback="\U0001F41F",
+            title="Mr. Taiyaki Store",
+            subtitle="Manage your Mr. Taiyaki Store settings.",
+            background_light="restaurant_folder/wooden_bg.png",
+            background_dark="restaurant_folder/wooden_bg.png",
+            text_color="#ffffff",
+        )
+        layout.addWidget(taiyaki_card)
+        layout.addSpacing(16)
+
         layout.addWidget(intro_section)
 
         # Reset Coins Group

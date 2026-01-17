@@ -211,7 +211,7 @@ def show_dango_dialog(on_confirm=None):
     addon_path = os.path.dirname(os.path.dirname(__file__))
     images_path = os.path.join(addon_path, "system_files", "gamification_images")
     
-    bg_filename = "dango_bg_night.png" if mw.pm.night_mode else "dango_bg.png"
+    bg_filename = "dango_bg.png"
     bg_path = os.path.join(images_path, bg_filename)
     
     if os.path.exists(bg_path):
@@ -244,7 +244,7 @@ def show_dango_dialog(on_confirm=None):
     message_label = QLabel(message)
     message_label.setWordWrap(True)
     message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    message_label.setStyleSheet("background-color: transparent; font-size: 14px;")
+    message_label.setStyleSheet("background-color: transparent; font-size: 14px; color: #f1aeca;")
     layout.addWidget(message_label)
     
     close_button = QPushButton("Click me!")
