@@ -16,6 +16,7 @@ from aqt import mw
 from .. import config
 
 
+
 XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
@@ -809,7 +810,9 @@ class RestaurantLevelManager:
         progress_json = json.dumps(progress, ensure_ascii=False)
 
         # Enhanced script to update both notifications AND the UI widgets
+        # WRAPPED IN IIFE TO PREVENT "Identifier has already been declared" ERRORS
         script = (
+            "(function() {"
             f"const progress = {progress_json};"
             "try {"
                 # 1. Dispatch Notifications
@@ -885,6 +888,7 @@ class RestaurantLevelManager:
                 "}"
 
             "} catch (e) { console.error('Onigiri UI Update Error:', e); }"
+            "})();"
         )
 
 

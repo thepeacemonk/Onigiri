@@ -3,6 +3,7 @@ from aqt import mw, utils
 from aqt.qt import QDialog, QVBoxLayout, QDialogButtonBox, QCheckBox, QHBoxLayout, QWidget
 from aqt.webview import AnkiWebView
 from . import config
+from . import settings
 
 class WelcomeDialog(QDialog):
     """
@@ -78,6 +79,15 @@ class WelcomeDialog(QDialog):
         conf["showWelcomePopup"] = not self.dont_show_again_checkbox.isChecked()
         config.write_config(conf)
         self.accept() # Close the dialog
+
+    def done(self, r):
+        super().done(r)
+        
+        # Open Settings when the welcome dialog is closed (via "Got it" or "X")
+        addon_path = os.path.dirname(__file__)
+        dialog = settings.SettingsDialog(mw, addon_path, initial_page_index=0)
+        if dialog.exec():
+            mw.reset()
 
     def accept(self):
         super().accept()
