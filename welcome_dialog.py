@@ -5,6 +5,8 @@ from aqt.webview import AnkiWebView
 from . import config
 from . import settings
 
+CURRENT_WELCOME_VERSION = "2026-01-17-update"
+
 class WelcomeDialog(QDialog):
     """
     A pop-up dialog that shows a welcome message to new users.
@@ -77,6 +79,7 @@ class WelcomeDialog(QDialog):
         # If the box is checked, showWelcomePopup should be False.
         # If it's unchecked, showWelcomePopup should be True.
         conf["showWelcomePopup"] = not self.dont_show_again_checkbox.isChecked()
+        conf["lastSeenWelcomeVersion"] = CURRENT_WELCOME_VERSION
         config.write_config(conf)
         self.accept() # Close the dialog
 
