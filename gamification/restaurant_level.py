@@ -99,10 +99,17 @@ RESTAURANTS = {
     },
     "santas_coffee": {
         "name": "Santa's Coffee", 
-        "price": 1025, 
+        "price": 1225, 
         "theme": "#CA4D44", 
         "image": "Santa's Coffee.png",
         "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
+    },
+    "lunar_new_year": {
+        "name": "Lunar New Year Feast", 
+        "price": 888, 
+        "theme": "#D22B2B", 
+        "image": "lunar_new_year_feast.png",
+        "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
     },
 }
 
