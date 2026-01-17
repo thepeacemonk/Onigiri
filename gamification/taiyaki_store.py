@@ -455,6 +455,27 @@ class StoreItemCard(QWidget):
             """)
             layout.addWidget(special_note)
         
+        # Special note for Lunar New Year Feast
+        if self.item_id == "lunar_new_year":
+            special_note = QLabel("🎉 Happy New Year! Thank you for being part of our community!")
+            special_note.setWordWrap(True)
+            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            special_note.setStyleSheet("""
+                QLabel {
+                    font-size: 13px;
+                    color: #FFD700;
+                    background-color: rgba(178, 34, 34, 0.3);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    margin-top: 10px;
+                    border: 1px solid #FFD700;
+                }
+            """)
+            layout.addWidget(special_note)
+
+        # Special note for Motivated Mochi
+        
         # Special note for locked evolutions
         prerequisite_info = self.item_data.get('prerequisite_info')
         if prerequisite_info:
@@ -1226,6 +1247,13 @@ class TaiyakiStoreWindow(QDialog):
                 "theme": "#CA4D44", 
                 "image": "Santa's Coffee.png",
                 "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
+            },
+            "lunar_new_year": {
+                "name": "Lunar New Year Feast", 
+                "price": 888, 
+                "theme": "#D22B2B", 
+                "image": "lunar_new_year_feast.png",
+                "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
             },
         }
         
