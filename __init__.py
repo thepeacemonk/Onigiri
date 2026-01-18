@@ -290,11 +290,23 @@ def apply_full_hide_mode():
             mw.menuBar().show()
 
 
-def initial_setup():
+def setup_global_hooks():
+    """
+    Sets up global hooks and initial patches that do NOT depend on a loaded profile.
+    This runs when the main window initializes.
+    """
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
     menu_buttons.setup_onigiri_menu(addon_path)
+
+def on_profile_did_open():
+    """
+    Runs when a profile is successfully loaded.
+    Logic that requires access to `mw.col` (collection/database/config) goes here.
+    """
+    # Now it is safe to patch overview since mw.col is available
+    patcher.patch_overview()
 
     # Apply Full Hide Mode (hide menu bar on Windows/Linux)
     apply_full_hide_mode()
@@ -359,7 +371,9 @@ def on_deck_browser_will_show(deck_browser: DeckBrowser):
     """
     patcher.take_control_of_deck_browser_hook()
 
-gui_hooks.main_window_did_init.append(initial_setup)
+# Hook Registration
+gui_hooks.main_window_did_init.append(setup_global_hooks)
+gui_hooks.profile_did_open.append(on_profile_did_open)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)

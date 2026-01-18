@@ -1788,7 +1788,6 @@ def generate_reviewer_background_css(addon_path):
         }
 
         body.card, body {
-            margin: 0 !important;
             overflow-y: auto !important;
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
@@ -1821,7 +1820,7 @@ def generate_reviewer_background_css(addon_path):
                 }}
 
                 body.card {{
-                    isolation: isolate;
+
                 }}
                 {scrollbar_css}
             </style>"""
@@ -1854,7 +1853,7 @@ def generate_reviewer_background_css(addon_path):
             }}
             
             body.card {{
-                isolation: isolate;
+
             }}
             {scrollbar_css}
         </style>"""
@@ -1925,7 +1924,7 @@ def generate_reviewer_background_css(addon_path):
         
         /* Prevent body::before from affecting card content rendering */
         body.card {{
-            isolation: isolate;
+
         }}
         {scrollbar_css}
     </style>
@@ -2188,12 +2187,7 @@ def generate_reviewer_top_bar_html_and_css():
             text-shadow: none !important;
         }
         
-        /* Prevent content from going under the header */
-        #qa {
-            padding-top: 20px; /* Height of header + some margin */
-            position: relative;
-            z-index: 1; /* Lower than header */
-        }
+
         
         .onigiri-reviewer-header-buttons {
             display: flex;
@@ -2323,25 +2317,10 @@ def generate_reviewer_top_bar_html_and_css():
         body.card, body {
             --onigiri-reviewer-header-offset: 65px;
             padding-top: var(--onigiri-reviewer-header-offset) !important;
-            box-sizing: border-box !important;
+
         }
         
-        /* Ensure card content stays below the header */
-        #qa {
-            position: relative !important;
-            z-index: 1 !important;
-            margin-top: 0 !important;
-            scroll-margin-top: var(--onigiri-reviewer-header-offset) !important;
-        }
 
-        #question,
-        #answer,
-        #typeans,
-        #typeans input,
-        #answer .card,
-        #question .card {
-            scroll-margin-top: var(--onigiri-reviewer-header-offset) !important;
-        }
     </style>
     """
 
@@ -3369,7 +3348,8 @@ def apply_patches():
     DeckBrowser._render_deck_node = _onigiri_render_deck_node
     
     # Patch the overview page
-    patch_overview()
+    # REMOVED: Called explicitly in __init__.py when profile is loaded to ensure mw.col exists
+    # patch_overview()
     
     # Patch the congrats page
     # REMOVED: Called explicitly in __init__.py at top-level to ensure correct hook order

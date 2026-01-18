@@ -241,14 +241,12 @@
 
         let isResizing = false;
         let startX, startWidth, animationFrameId = null, lastClientX = 0, lastWidth = 0;
-        let throttleTimer = null;
-
         const updateSidebarWidth = () => {
             const deltaX = lastClientX - startX;
             let newWidth = startWidth + deltaX;
             // Clamp width with early return to avoid unnecessary DOM updates
-            if (newWidth < 200) newWidth = 200;
-            if (newWidth > 750) newWidth = 750;
+            if (newWidth < 325) newWidth = 325;
+            if (newWidth > 800) newWidth = 800;
 
             // Use cached width comparison to avoid layout thrashing
             if (Math.abs(newWidth - lastWidth) > 0.5) {
@@ -256,16 +254,6 @@
                 lastWidth = newWidth;
             }
             animationFrameId = null;
-        };
-
-        const throttledUpdate = () => {
-            if (throttleTimer) return;
-            throttleTimer = setTimeout(() => {
-                if (isResizing && !animationFrameId) {
-                    animationFrameId = requestAnimationFrame(updateSidebarWidth);
-                }
-                throttleTimer = null;
-            }, 16); // ~60fps throttling
         };
 
         const mousemoveHandler = (e) => {
@@ -280,6 +268,7 @@
         };
 
         const mousedownHandler = (e) => {
+            if (e.button !== 0) return; // Only allow left click
             isResizing = true;
             startX = e.clientX;
             lastClientX = e.clientX;
@@ -294,13 +283,18 @@
         const documentMousemoveHandler = (e) => {
             if (!isResizing) return;
             lastClientX = e.clientX;
-            throttledUpdate();
+
+            if (!animationFrameId) {
+                animationFrameId = requestAnimationFrame(updateSidebarWidth);
+            }
         };
 
         const documentMouseupHandler = () => {
             if (isResizing) {
-                if (animationFrameId) cancelAnimationFrame(animationFrameId);
-                if (throttleTimer) clearTimeout(throttleTimer);
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
                 isResizing = false;
                 sidebarEl.classList.remove('is-resizing');
                 handle.classList.remove('is-resizing');

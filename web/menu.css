@@ -24,8 +24,8 @@ body {
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    min-width: 350px;
-    max-width: 700px;
+    min-width: 325px;
+    max-width: 800px;
     z-index: 2;
     transition: none !important;
     overflow: hidden;
