@@ -32,6 +32,19 @@ SHOP_API_URL = "https://script.google.com/macros/s/AKfycbwg5HMxT9FWQIbPIVRrI6u8k
 
 
 
+_COIN_SALT = "onigiri_secret_salt_2024"  # Simple salt for basic integrity
+
+def generate_coin_token(coins: int) -> str:
+    """Generate a security token for the coin amount."""
+    data = f"{coins}:{_COIN_SALT}"
+    return hashlib.sha256(data.encode()).hexdigest()
+
+def verify_coin_data(coins: int, token: str) -> bool:
+    """Verify that the coin amount matches the security token."""
+    expected = generate_coin_token(coins)
+    return token == expected
+
+
 class StoreItemCard(QWidget):
     """A single store item card widget with flip functionality"""
     

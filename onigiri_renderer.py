@@ -448,6 +448,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
     <style>
+        /* FIX: Reset margin for Evolution Graph to prevent squeezing */
+        .evolution-graph-main-wrapper {{
+            margin: 0 !important;
+            padding: 0 !important;
+        }}
+
         .unified-grid {{
             display: grid;
             gap: 15px;
