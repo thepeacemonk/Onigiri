@@ -543,7 +543,7 @@ class RestaurantLevelManager:
                 notifications = self._add_xp(xp_to_award, reason="sync", review_count=diff)
                 self._dispatch_notifications(notifications)
 
-            daily_special["current_progress"] = max(0, min(today_reviews, daily_special.get("target", 100)))
+            daily_special["current_progress"] = max(0, today_reviews)
             
             # Silently update notified percent to avoid stale notifications
             target = daily_special.get("target", 100)
@@ -1322,7 +1322,7 @@ class RestaurantLevelManager:
                     notifications.extend(special_notifications)
                 
                 # Update progress
-                daily_special["current_progress"] = max(0, min(new_progress, target))
+                daily_special["current_progress"] = max(0, new_progress)
 
                 
                 # Check for progress milestones (25%, 50%, 75%)

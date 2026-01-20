@@ -39,6 +39,13 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd.startswith("onigiri_toggle_favorite:"):
         try:
             deck_id = cmd.split(":", 1)[1] # Keep as string for consistency
+            
+            # Validate that the deck exists before toggling
+            deck = mw.col.decks.get(deck_id)
+            if not deck:
+                tooltip("Cannot favorite: Deck no longer exists.")
+                return (True, None)
+            
             favorites = mw.col.conf.get("onigiri_favorite_decks", [])
             
             if deck_id in favorites:
