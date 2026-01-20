@@ -1780,17 +1780,34 @@ def generate_reviewer_background_css(addon_path):
     reviewer_mode = conf.get("onigiri_reviewer_bg_mode", "main")
     addon_name = os.path.basename(addon_path)
     
-    # Hide scrollbar while preserving scroll functionality
+    # Show scrollbar with transparent background when needed
     scrollbar_css = """
-        /* Hide scrollbar to show background image */
+        /* Styled scrollbar with transparent background */
         ::-webkit-scrollbar {
-            display: none;
+            width: 10px;
         }
 
-        body.card, body {
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.5);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(128, 128, 128, 0.7);
+        }
+
+        html {
             overflow-y: auto !important;
-            -ms-overflow-style: none;  /* IE and Edge */
-            scrollbar-width: none;  /* Firefox */
+            scrollbar-width: thin;  /* Firefox */
+            scrollbar-color: rgba(128, 128, 128, 0.5) transparent;  /* Firefox */
+        }
+        
+        body {
+            overflow-y: visible !important;
         }
     """
     
