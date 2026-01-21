@@ -17,6 +17,14 @@ body {
     padding: 0px 20px 20px 20px;
 }
 
+/* Ensure external overview add-ons can expand normally */
+.overview-center-container .onigiri-external-overview-addon {
+    align-self: stretch;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 /* New header for buttons */
 .overview-header {
     position: absolute;
