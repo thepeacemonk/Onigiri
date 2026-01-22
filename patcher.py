@@ -1303,6 +1303,7 @@ def patch_overview():
                     };
                     
                     if (hasVisibleContent(child)) {
+                        child.classList.add('onigiri-external-overview-addon');
                         allExternalElements.push(child);
                         child.style.display = 'none'; // Hide initially
                     }
