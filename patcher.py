@@ -1303,6 +1303,7 @@ def patch_overview():
                     };
                     
                     if (hasVisibleContent(child)) {
+                        child.classList.add('onigiri-external-overview-addon');
                         allExternalElements.push(child);
                         child.style.display = 'none'; // Hide initially
                     }
@@ -3264,14 +3265,85 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
 
     # --- Counts HTML ---
     counts_html = ""
-    if not hide_all_deck_counts:
-        counts_html_parts = []
-        # Always display all counts, even if they're 0
-        counts_html_parts.append(f'<span class="new-count-bubble{" zero" if new_count == 0 else ""}">{new_count}</span>')
-        counts_html_parts.append(f'<span class="learn-count-bubble{" zero" if learn_count == 0 else ""}">{learn_count}</span>')
-        counts_html_parts.append(f'<span class="review-count-bubble{" zero" if review_count == 0 else ""}">{review_count}</span>')
+    
+    # Enhanced Deck Stats Logic
+    # Enhanced Deck Stats Logic
+    # 1. Try checking the instance directly (set by our new _render_deck_tree patch or deck_tree_updater)
+    enhanced_stats = getattr(self, "_onigiri_enhanced_stats", None)
+    
+    # 2. Fallback to _render_data if not found (legacy/redundancy)
+    if enhanced_stats is None and hasattr(self, "_render_data"):
+         enhanced_stats = getattr(self._render_data, "enhanced_stats", None)
 
-        counts_html = '<div class="deck-counts">' + ''.join(counts_html_parts) + '</div>'
+    show_enhanced = conf.get("enhancedDeckStats", False)
+    
+    # Debug Logging
+    # print(f"Onigiri Debug: Deck {node.deck_id} | Show: {show_enhanced} | Has Stats: {enhanced_stats is not None} | In Stats: {node.deck_id in enhanced_stats if enhanced_stats else False}")
+
+    
+    if not hide_all_deck_counts:
+        if show_enhanced and enhanced_stats and node.deck_id in enhanced_stats:
+            # --- ENHANCED MODE ---
+            stats = enhanced_stats[node.deck_id]
+            stats_list = conf.get("enhancedDeckStatsList", ["total", "new", "learn", "review", "buried", "suspended"])
+            show_bar = conf.get("enhancedDeckProportionBar", True)
+            
+            # 1. Stats Grid
+            grid_items = []
+            for key in stats_list:
+                val = stats.get(key, 0)
+                label = key.capitalize()
+                # Special styling for zero values? Maybe opacity.
+                zero_class = " zero" if val == 0 else ""
+                grid_items.append(f'<div class="stat-item {key}{zero_class}"><span class="stat-label">{label}</span><span class="stat-value">{val}</span></div>')
+            
+            stats_grid_html = f'<div class="enhanced-stats-grid">{"".join(grid_items)}</div>'
+            
+            # 2. Proportion Bar
+            bar_html = ""
+            if show_bar:
+                total = stats.get("total", 0)
+                if total > 0:
+                    # Calculate percentages
+                    p_new = (stats.get("new", 0) / total) * 100
+                    p_learn = (stats.get("learn", 0) / total) * 100
+                    p_review = (stats.get("review", 0) / total) * 100
+                    p_buried = (stats.get("buried", 0) / total) * 100
+                    p_suspended = (stats.get("suspended", 0) / total) * 100
+                    
+                    # Build bar segments
+                    segments = []
+                    if p_new > 0: segments.append(f'<div class="bar-segment new" style="width: {p_new}%;"></div>')
+                    if p_learn > 0: segments.append(f'<div class="bar-segment learn" style="width: {p_learn}%;"></div>')
+                    if p_review > 0: segments.append(f'<div class="bar-segment review" style="width: {p_review}%;"></div>')
+                    if p_buried > 0: segments.append(f'<div class="bar-segment buried" style="width: {p_buried}%;"></div>')
+                    if p_suspended > 0: segments.append(f'<div class="bar-segment suspended" style="width: {p_suspended}%;"></div>')
+                    
+                    bar_html = f'<div class="enhanced-proportion-bar">{"".join(segments)}</div>'
+                else:
+                    bar_html = '<div class="enhanced-proportion-bar empty"></div>'
+            
+            # Combine into a container that uses container queries
+            counts_html = f"""
+            <div class="enhanced-deck-info">
+                 <div class="standard-counts">
+                    <span class="new-count-bubble{' zero' if new_count == 0 else ''}">{new_count}</span>
+                    <span class="learn-count-bubble{' zero' if learn_count == 0 else ''}">{learn_count}</span>
+                    <span class="review-count-bubble{' zero' if review_count == 0 else ''}">{review_count}</span>
+                 </div>
+                 <div class="expanded-details">
+                    {stats_grid_html}
+                    {bar_html}
+                 </div>
+            </div>
+            """
+        else:
+            # --- STANDARD MODE ---
+            counts_html_parts = []
+            counts_html_parts.append(f'<span class="new-count-bubble{" zero" if new_count == 0 else ""}">{new_count}</span>')
+            counts_html_parts.append(f'<span class="learn-count-bubble{" zero" if learn_count == 0 else ""}">{learn_count}</span>')
+            counts_html_parts.append(f'<span class="review-count-bubble{" zero" if review_count == 0 else ""}">{review_count}</span>')
+            counts_html = '<div class="deck-counts">' + ''.join(counts_html_parts) + '</div>'
     # --- Counts HTML ---
 
     def indent():
@@ -3421,8 +3493,58 @@ def generate_reviewer_buttons_css(conf):
         /* Bottom Bar Height */
         #outer {{
              height: {bar_height}px !important;
-             display: flex !important;
-             align-items: center !important;
+             display: block !important;
+             width: 100% !important;
+        }}
+        
+        /* Flexbox-on-row approach for robust centering */
+        #outer > table {{
+            width: 100% !important;
+            height: 100% !important;
+            display: table !important; /* Keep table display but control rows */
+            border-collapse: collapse !important;
+        }}
+        
+        #outer > table > tbody {{
+            display: table-row-group !important;
+            width: 100% !important;
+        }}
+        
+        #outer > table tr {{
+            display: flex !important;
+            width: 100% !important;
+            height: 100% !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+        }}
+        
+        /* Left Cell (Edit) - Grows to fill space */
+        #outer > table td:first-child {{
+            display: flex !important;
+            flex: 1 !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+            padding-left: 10px !important;
+            width: auto !important; /* Override previous fixed width */
+        }}
+        
+        /* Right Cell (More) - Grows exactly as much as Left */
+        #outer > table td:last-child {{
+            display: flex !important;
+            flex: 1 !important;
+            justify-content: flex-end !important;
+            align-items: center !important;
+            padding-right: 10px !important;
+            width: auto !important; /* Override previous fixed width */
+        }}
+        
+        /* Middle Cell (Buttons) - Only takes needed space */
+        #outer > table td:nth-child(2) {{
+            display: flex !important;
+            flex: 0 0 auto !important; /* Don't grow or shrink */
+            justify-content: center !important;
+            align-items: center !important;
+            width: auto !important; /* Override previous fixed width */
         }}
         
         /* Modernize ALL buttons in the bottom bar */
@@ -3639,3 +3761,54 @@ def generate_reviewer_buttons_css(conf):
         """)
         
     return "<style>" + "\\n".join(css) + "</style>"
+def _onigiri_render_deck_tree(self, *args, **kwargs):
+    """
+    Patched version of DeckBrowser._render_deck_tree to pre-fetch enhanced stats.
+    """
+    try:
+        from . import config
+        conf = config.get_config()
+        if conf.get("enhancedDeckStats", False):
+            # Pre-fetch stats
+            try:
+                # Same query as in deck_tree_updater.py
+                rows = self.mw.col.db.all("select did, queue, count() from cards group by did, queue")
+                enhanced_stats = {}
+                for did, queue, count in rows:
+                    if did not in enhanced_stats:
+                        enhanced_stats[did] = {"total": 0, "buried": 0, "suspended": 0, "new": 0, "learn": 0, "review": 0}
+                    
+                    stats = enhanced_stats[did]
+                    stats["total"] += count
+                    
+                    if queue < 0:
+                        if queue == -1: stats["suspended"] += count
+                        elif queue == -2 or queue == -3: stats["buried"] += count
+                    elif queue == 0: stats["new"] += count
+                    elif queue == 1 or queue == 3: stats["learn"] += count
+                    elif queue == 2: stats["review"] += count
+                
+                # Attach to instance
+                self._onigiri_enhanced_stats = enhanced_stats
+                # print(f"Onigiri: Pre-fetched enhanced stats for {len(enhanced_stats)} decks")
+            except Exception as e:
+                print(f"Onigiri: Error pre-fetching enhanced stats: {e}")
+                self._onigiri_enhanced_stats = None
+        else:
+             self._onigiri_enhanced_stats = None
+
+    except Exception as e:
+        print(f"Onigiri: Error in _onigiri_render_deck_tree wrapper: {e}")
+
+    # Call original
+    return _old_render_deck_tree(self, *args, **kwargs)
+
+# Store original method
+from aqt.deckbrowser import DeckBrowser
+if not hasattr(DeckBrowser, '_onigiri_patched_render_tree'):
+    if hasattr(DeckBrowser, '_render_deck_tree'):
+        _old_render_deck_tree = DeckBrowser._render_deck_tree
+        DeckBrowser._render_deck_tree = _onigiri_render_deck_tree
+        DeckBrowser._onigiri_patched_render_tree = True
+    else:
+        print("Onigiri: Warning - DeckBrowser._render_deck_tree not found, enhanced stats patch optional skipped.")
