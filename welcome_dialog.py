@@ -5,7 +5,7 @@ from aqt.webview import AnkiWebView
 from . import config
 from . import settings
 
-CURRENT_WELCOME_VERSION = "1.0.8.2-beta"
+CURRENT_WELCOME_VERSION = "1.0.8.3-beta"
 
 class WelcomeDialog(QDialog):
     """
