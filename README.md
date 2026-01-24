@@ -51,7 +51,7 @@ I’ve put a lot of time into designing and maintaining this work. Please respec
 
 Not affiliated with [Onigiri Anki](https://www.onigiri-anki.com/). No endorsement is expressed or implied.
 
-Onigiri (this add-on) is an independent Anki add‑on that customizes the app’s UI. By contrast, [Onigiri Anki](https://www.onigiri-anki.com/) provides a Japanese study deck for Anki. These are separate products and not affiliated in any way. 
+Onigiri (this add-on) is an independent Anki add‑on that customizes the app’s UI. By contrast, [Onigiri Anki](https://www.onigiri-anki.com/) provides a Japanese study deck with their own system. These are separate products and not affiliated in any way. 
 
 
 ### Credits and Acknowledgments
