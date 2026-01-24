@@ -37,6 +37,7 @@
     background: var(--onigiri-notification-bg-light);
     color: var(--notification-text-light, var(--onigiri-notification-text-light));
     pointer-events: auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 body.night-mode .onigiri-notification-card,
@@ -99,6 +100,7 @@ html.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notifi
     font-weight: 600;
     line-height: 1.3;
     margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 .onigiri-notification-description {
@@ -106,4 +108,5 @@ html.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notifi
     line-height: 1.4;
     margin: 0;
     color: inherit;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
