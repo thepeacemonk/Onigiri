@@ -535,10 +535,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: row;
             background: var(--canvas-inset, #f5f5f5);
-            border-radius: 15px;
+            border-radius: 16px;
             overflow: hidden;
             height: 100%;
-            width: 100%;
+            width: 95%;
             border: 1px solid var(--border, #e0e0e0);
             /* cursor: pointer; removed - only image is clickable */
             transition: all 0.3s ease;
@@ -752,14 +752,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             z-index: 20;
             margin-bottom: 2px;
             margin-left: 0; 
-            padding-left: 0;
+            padding: 4px; /* Changed this */ 
         }}
         
         .rl-nav-btn {{
             width: 24px;
             height: 24px;
-            padding: 0;
-            margin-left: 0;
+            padding: 0px 4px;
+            margin-left: 25%;
             border: none;
             background: transparent;
             cursor: pointer;
