@@ -535,10 +535,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: row;
             background: var(--canvas-inset, #f5f5f5);
-            border-radius: 16px;
+            border-radius: 15px;
             overflow: hidden;
             height: 100%;
-            width: 95%;
             border: 1px solid var(--border, #e0e0e0);
             /* cursor: pointer; removed - only image is clickable */
             transition: all 0.3s ease;
