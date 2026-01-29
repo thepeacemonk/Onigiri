@@ -128,6 +128,14 @@ DEFAULTS = {
 
     # --- NEW: Reviewer Background Settings ---
     "onigiri_reviewer_bg_mode": "main", # "main", "color", "image_color"
+    # --- Fonts ---
+    "onigiri_font_main": "system",
+    "onigiri_font_subtle": "system",
+    "onigiri_font_small_title": "system",
+    "onigiri_font_size_main": 14,
+    "onigiri_font_size_subtle": 20,
+    "onigiri_font_size_small_title": 15,
+    # -------------
     "onigiri_reviewer_bg_main_blur": 0, # Blur when using main background
     "onigiri_reviewer_bg_main_opacity": 100, # Opacity when using main background
     "onigiri_reviewer_bg_light_color": "#f2f2f2",

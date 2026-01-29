@@ -47,6 +47,106 @@ from .gamification import focus_dango
 from .constants import COLOR_LABELS
 from .gamification.restaurant_level_ui import RestaurantLevelWidget
 
+# --- Menu Styling ---
+def apply_menu_styling():
+    """
+    Applies modern styling to QMenu widgets (context menus) using Qt Style Sheets.
+    This gives the 'Options' menu and others a rounded, modern look.
+    """
+    # 1. Determine which colors to use based on the current mode
+    # Safely check for night mode; default to False if PM not ready
+    night_mode = False
+    if mw.col:
+        # If collection is loaded, use its schedule/display preferences if applicable, 
+        # but mw.pm.night_mode() is the standard check.
+        night_mode = mw.pm.night_mode()
+    elif mw.pm:
+        night_mode = mw.pm.night_mode()
+
+    # 2. Define Colors
+    if night_mode:
+        bg_color = "#2c2c2c"
+        border_color = "#424242"
+        text_color = "#e0e0e0"
+        hover_bg = "#3c3c3c" # Highlight background
+        hover_text = "#ffffff"
+    else:
+        bg_color = "#ffffff"
+        border_color = "#d0d0d0"
+        text_color = "#000000"
+        hover_bg = "#e5f1fb" # Light blue-ish highlight
+        hover_text = "#000000"
+
+    # 3. Construct the QSS
+    new_style_block = f"""
+    /* ONIGIRI_MENU_START */
+    QMenu {{
+        background-color: {bg_color};
+        border: 1px solid {border_color};
+        border-radius: 12px;
+        padding: 5px;
+        color: {text_color};
+        font-family: -apple-system, sans-serif;
+    }}
+    QMenu::item {{
+        background-color: transparent;
+        padding: 6px 20px 6px 12px;
+        border-radius: 8px;
+        margin: 2px 4px;
+    }}
+    QMenu::item:selected {{
+        background-color: {hover_bg};
+        color: {hover_text};
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background-color: {border_color};
+        margin: 4px 10px;
+    }}
+    /* ONIGIRI_MENU_END */
+    """
+    
+    # 4. Inject the stylesheet safely (Replace if exists, Append if not)
+    app = QApplication.instance()
+    if app:
+        current_sheet = app.styleSheet()
+        
+        # Regex to find existing block
+        pattern = re.compile(r'/\* ONIGIRI_MENU_START \*/.*?/\* ONIGIRI_MENU_END \*/', re.DOTALL)
+        
+        if pattern.search(current_sheet):
+            # Replace existing block
+            updated_sheet = pattern.sub(new_style_block.strip(), current_sheet)
+        else:
+            # Append new block
+            updated_sheet = current_sheet + "\n" + new_style_block.strip()
+            
+        app.setStyleSheet(updated_sheet)
+
+def patch_qmenu():
+    """
+    Patches QMenu to enable translucent background, allowing for real rounded corners
+    without square artifacts on the window backdrop.
+    """
+    # We need to monkeypatch the __init__ method of QMenu
+    # to set the WA_TranslucentBackground attribute on every new menu instances.
+    
+    # Store reference to original init
+    if hasattr(QMenu, "_onigiri_patched"):
+        return
+
+    original_init = QMenu.__init__
+
+    def new_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        # Enable transparency for the window/widget background
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    # Apply the patch
+    QMenu.__init__ = new_init
+    QMenu._onigiri_patched = True
+
+
 # --- Toolbar Patching ---
 _managed_hooks = []
 _toolbar_patched = False
@@ -156,11 +256,9 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 				top: 50%; left: 50%;
 				width: 100vw; height: 100vh;
 				transform: translate(-50%, -50%) scale({scale});
-				-webkit-transform: translateZ(0);
 				background-size: cover; background-position: {background_position};
 				background-repeat: no-repeat; filter: blur({blur_px}px);
 				image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;
-				-webkit-backface-visibility: hidden; will-change: transform;
 				opacity: {opacity_float}; z-index: -1;
 				pointer-events: none;
 			"""
@@ -170,11 +268,9 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 				top: 50%; left: 50%;
 				width: 100%; height: 100%;
 				transform: translate(-50%, -50%) scale({scale});
-				-webkit-transform: translateZ(0);
 				background-size: cover; background-position: {background_position};
 				background-repeat: no-repeat; filter: blur({blur_px}px);
 				image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;
-				-webkit-backface-visibility: hidden; will-change: transform;
 				opacity: {opacity_float}; z-index: -1;
 			"""
 
@@ -2656,8 +2752,9 @@ def generate_icon_size_css():
 
 def generate_icon_css(addon_package, conf):
     all_icon_selectors = {
-        "options": "td.opts a", "folder": "tr.deck:has(a.collapse) a.deck::before",
-        "deck_child": "tr.deck:has(span.collapse) a.deck::before", "add": ".action-add .icon",
+        "options": "td.opts a", "folder": "tr.is-folder a.deck::before",
+        "deck": "tr.is-deck a.deck::before", "subdeck": "tr.is-subdeck a.deck::before",
+        "filtered_deck": "tr.is-filtered a.deck::before", "add": ".action-add .icon",
         "browse": ".action-browse .icon", "stats": ".action-stats .icon", "sync": ".action-sync .icon",
         "settings": ".action-settings .icon", "more": ".action-more .icon",
         "get_shared": ".action-get-shared .icon", "create_deck": ".action-create-deck .icon",
@@ -2667,37 +2764,170 @@ def generate_icon_css(addon_package, conf):
         "edit": ".deck-edit-btn .icon",
     }
     
+    addon_dir = os.path.dirname(__file__)
+
+    def get_data_uri(path):
+        if not path or not os.path.exists(path):
+            return ""
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+                b64 = base64.b64encode(data).decode("utf-8")
+                # Detect file type for correct MIME type
+                if path.lower().endswith(".png"):
+                    return f"url('data:image/png;base64,{b64}')"
+                else:
+                    # Default to SVG
+                    return f"url('data:image/svg+xml;base64,{b64}')"
+        except Exception as e:
+            print(f"Onigiri: Error loading icon {path}: {e}")
+            return ""
+
+    hide_defaults = mw.col.conf.get("modern_menu_hide_default_icons", False)
+
     css_rules = []
     for key, selector in all_icon_selectors.items():
+        # Check global hide default setting
+        if hide_defaults and key in ["folder", "subdeck", "deck", "filtered_deck"]:
+             # If "Hide Default" is ON, we hide the default icons.
+             # However, we must NOT 'continue' here because we still want the mask-image logic to be generated
+             # just in case a custom icon is NOT set for a specific deck, so it defaults to hidden.
+             # But WAIT: if we hide it with display:none, the mask-image doesn't matter.
+             # AND if we have a custom icon, the later loop creates a specific rule for that deck ID.
+             # That specific rule will override the mask-image/content.
+             # BUT does it override display:none? 
+             # Only if we explicitly add display:inline-block to the custom rule!
+             css_rules.append(f"{selector} {{ display: none !important; }}")
+             
+             # We still generate the default icon URL logic below so that if the user toggles it back, or if there's some weird state, it's there?
+             # Actually no, if display:none is set, it's hidden.
+             # We can skip the rest of the logic for this iteration if we want to save bytes, 
+             # OR we can just let it run. Let's just let it run but ensure display:none is applied.
+             # BUT we need to be careful not to conflict with the specific hide toggles.
+             pass
+
         if key == "folder" and mw.col.conf.get("modern_menu_hide_folder_icon", False):
             css_rules.append(f"{selector} {{ display: none !important; }}")
             continue
-        if key == "deck_child" and mw.col.conf.get("modern_menu_hide_deck_child_icon", False):
+        if key == "subdeck" and mw.col.conf.get("modern_menu_hide_subdeck_icon", False):
+            css_rules.append(f"{selector} {{ display: none !important; }}")
+            continue
+        if key == "deck" and mw.col.conf.get("modern_menu_hide_deck_icon", False):
+            css_rules.append(f"{selector} {{ display: none !important; }}")
+            continue
+        if key == "filtered_deck" and mw.col.conf.get("modern_menu_hide_filtered_deck_icon", False):
             css_rules.append(f"{selector} {{ display: none !important; }}")
             continue
 
         filename = mw.col.conf.get(f"modern_menu_icon_{key}", "")
         url = ""
         if filename:
-            url = f"url('/_addons/{addon_package}/user_files/icons/{filename}')"
-        else:
-            system_icon_name = 'star' if key == 'retention_star' else key
-            url = f"url('/_addons/{addon_package}/system_files/system_icons/{system_icon_name}.svg')"
+            path = os.path.join(addon_dir, "user_files", "icons", filename)
+            url = get_data_uri(path)
         
-        css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
+        if not url: # Fallback to system
+            system_icon_name = 'star' if key == 'retention_star' else key
+            path = os.path.join(addon_dir, "system_files", "system_icons", f"{system_icon_name}.svg")
+            url = get_data_uri(path)
+        
+        if url:
+            css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
+
+    # --- Custom Deck Icons ---
+    custom_deck_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
+    for did, data in custom_deck_icons.items():
+        icon_file = data.get("icon")
+        color = data.get("color")
+        
+        if icon_file:
+                # Check if it's likely an emoji (short string, no extension)
+                is_emoji = len(icon_file) <= 8 and "." not in icon_file
+
+                if is_emoji:
+                     # Emoji rendering style
+                    css_rules.append(f"""
+                    tr[data-did="{did}"] a.deck::before {{
+                        content: "{icon_file}" !important;
+                        mask-image: none !important;
+                        -webkit-mask-image: none !important;
+                        background-color: transparent !important;
+                        display: inline-block !important;
+                        text-align: center;
+                        font-size: 14px; 
+                        width: 20px !important; 
+                        height: 20px !important;
+                        line-height: 20px !important;
+                        margin-right: 5px !important;
+                        overflow: hidden !important;
+                    }}
+                    """)
+                else:
+                    path = os.path.join(addon_dir, "user_files", "custom_deck_icons", icon_file)
+                    
+                    # Check for PNG images
+                    is_png = icon_file.strip().lower().endswith(".png")
+                    
+                    if is_png:
+                        url = get_data_uri(path)
+                        if url:
+                             # PNG rendering style (no mask, original colors)
+                            css_rules.append(f"""
+                            tr[data-did="{did}"] a.deck::before {{
+                                content: '';
+                                background-image: {url} !important;
+                                -webkit-mask-image: none !important;
+                                mask-image: none !important;
+                                background-color: transparent !important;
+                                background-size: contain;
+                                background-repeat: no-repeat;
+                                background-position: center;
+                                display: inline-block !important;
+                                width: 20px !important;
+                                height: 20px !important;
+                                margin-right: 5px !important;
+                            }}
+                            """)
+                    else:
+                        # SVG rendering style (mask for colorization)
+                        url = get_data_uri(path)
+                        if url:
+                            css_rules.append(f"""
+                            tr[data-did="{did}"] a.deck::before {{
+                                mask-image: {url} !important;
+                                -webkit-mask-image: {url} !important;
+                                background-color: {color} !important;
+                                display: inline-block !important;
+                                mask-size: contain;
+                                -webkit-mask-size: contain;
+                                mask-repeat: no-repeat;
+                                -webkit-mask-repeat: no-repeat;
+                                mask-position: center;
+                                -webkit-mask-position: center;
+                                width: 20px !important;
+                                height: 20px !important;
+                                margin-right: 5px !important;
+                            }}
+                            """)
+
 
     # --- Get URLs for collapse icons ---
     closed_icon_file = mw.col.conf.get("modern_menu_icon_collapse_closed", "")
     open_icon_file = mw.col.conf.get("modern_menu_icon_collapse_open", "")
+    
+    closed_icon_url = ""
+    if closed_icon_file:
+        closed_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", closed_icon_file))
+    if not closed_icon_url:
+        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_closed.svg"))
 
-    closed_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{closed_icon_file}')" if closed_icon_file \
-        else f"url('/_addons/{addon_package}/system_files/system_icons/collapse_closed.svg')"
-
-    open_icon_url = f"url('/_addons/{addon_package}/user_files/icons/{open_icon_file}')" if open_icon_file \
-        else f"url('/_addons/{addon_package}/system_files/system_icons/collapse_open.svg')"
+    open_icon_url = ""
+    if open_icon_file:
+        open_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", open_icon_file))
+    if not open_icon_url:
+        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_open.svg"))
         
-    # Create a list of selectors for the background color, EXCLUDING the star
-    bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k != "retention_star"}
+    # Create a list of selectors for the background color, EXCLUDING the star and filtered deck (filtered has own color)
+    bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck"]}
     bg_selectors_str = ", ".join(bg_color_selectors.values())
 
     return f"""
@@ -2740,6 +2970,21 @@ def generate_icon_css(addon_package, conf):
         /* END FIX */
     }}
 
+    /* Filtered Deck Specific Color */
+    tr.is-filtered a.deck::before {{
+        background-color: #0a84ff !important; /* Anki Blue */
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        display: inline-block;
+    }}
+    .night-mode tr.is-filtered a.deck::before {{
+        background-color: #64d2ff !important; /* Light Blue for Dark Mode */
+    }}
+
     /* General rules for other icons (Unchanged) */
     {bg_selectors_str} {{
         background-color: var(--icon-color, #888888);
@@ -2751,6 +2996,29 @@ def generate_icon_css(addon_package, conf):
         -webkit-mask-position: center;
         display: inline-block;
     }}
+    
+    /* FIX: Layout and Spacing Overrides requested by user */
+    .deck-info {{
+        display: flex !important;
+        align-items: center !important;
+        gap: 0 !important;
+        width: 100%;
+    }}
+    
+    .deck-table a.deck {{
+        padding: 0 !important;
+        margin-left: 0 !important;
+        /* Ensure it behaves nicely in flex container */
+        display: inline-block !important; 
+    }}
+    
+    /* Ensure indentation span works as expected */
+    .deck-info > span:first-child {{
+        display: inline-flex !important;
+        align-items: center !important;
+        flex-shrink: 0 !important;
+    }}
+    /* END FIX */    
     /* Individual mask images for other icons (Unchanged) */
     {''.join(css_rules)}
 </style>
@@ -2777,19 +3045,27 @@ def generate_font_css(addon_package):
     """Generates @font-face rules and CSS variables for selected fonts."""
     main_font_key = mw.col.conf.get("onigiri_font_main", "system")
     subtle_font_key = mw.col.conf.get("onigiri_font_subtle", "system")
+    small_title_font_key = mw.col.conf.get("onigiri_font_small_title", "system")
+    
+    # --- NEW: Font Sizes ---
+    main_font_size = mw.col.conf.get("onigiri_font_size_main", 14)
+    subtle_font_size = mw.col.conf.get("onigiri_font_size_subtle", 20)
+    small_title_font_size = mw.col.conf.get("onigiri_font_size_small_title", 15)
+    # -----------------------
     
     # <<< MODIFIED: Use get_all_fonts to include user-added fonts >>>
     all_fonts = get_all_fonts(os.path.dirname(__file__))
     main_font_info = all_fonts.get(main_font_key)
     subtle_font_info = all_fonts.get(subtle_font_key)
+    small_title_font_info = all_fonts.get(small_title_font_key)
     # <<< END MODIFIED >>>
 
-    if not main_font_info or not subtle_font_info:
+    if not main_font_info or not subtle_font_info or not small_title_font_info:
         return ""
 
     font_faces = ""
     # Use a set to avoid generating duplicate @font-face rules
-    fonts_to_load = {main_font_key, subtle_font_key}
+    fonts_to_load = {main_font_key, subtle_font_key, small_title_font_key}
     
     # <<< MODIFIED: Loop through all fonts to generate @font-face rules >>>
     for font_key in fonts_to_load:
@@ -2816,6 +3092,10 @@ def generate_font_css(addon_package):
         :root {{
             --font-main: {main_font_info['family']};
             --font-subtle: {subtle_font_info['family']};
+            --font-small-title: {small_title_font_info['family']};
+            --font-size-main: {main_font_size}px;
+            --font-size-subtle: {subtle_font_size}px;
+            --font-size-small-title: {small_title_font_size}px;
         }}
         
         /* Apply fonts to specific elements */
@@ -2831,10 +3111,24 @@ def generate_font_css(addon_package):
         
         body:not(.card) {{
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: var(--font-size-main) !important;
         }}
         
-        .sidebar-left h2, .stat-card h3 {{
+        /* Apply font size to specific elements explicitly if needed */
+        .deck-table a.deck {{
+             font-size: var(--font-size-main) !important;
+        }}
+        
+        /* Titles (Subtle) - e.g. Today's Stats */
+        .onigiri-widget-title {{
             font-family: var(--font-subtle), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: var(--font-size-subtle) !important;
+        }}
+
+        /* Small Titles - Sidebar Headers and Widget Titles */
+        .sidebar-left h2, .stat-card h3, .onigiri-widget-container h3 {{
+            font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: var(--font-size-small-title) !important;
         }}
     </style>
     """
@@ -3368,7 +3662,36 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         return f"<span style='display:inline-block; width:{px}px;'></span>"
 
     klass = "deck current" if node.deck_id == ctx.current_deck_id else "deck"
-    deck_type_class = "is-folder" if node.children else "is-deck"
+    
+    # Determine precise deck type for styling
+    # Priority: 1) node.filtered (direct from tree node), 2) DB lookup
+    is_filtered = False
+    
+    # First, try the direct node property (most reliable in modern Anki)
+    if hasattr(node, 'filtered'):
+        is_filtered = bool(node.filtered)
+    
+    # Fallback: database lookup if node.filtered not available or returned False
+    if not is_filtered:
+        try:
+            did = int(node.deck_id)
+            deck_obj = mw.col.decks.get(did)
+            if deck_obj:
+                if isinstance(deck_obj, dict):
+                    is_filtered = bool(deck_obj.get("dyn", 0))
+                elif hasattr(deck_obj, "dyn"):
+                    is_filtered = bool(deck_obj.dyn)
+        except Exception:
+            pass  # Keep is_filtered as False
+    
+    if is_filtered:
+        deck_type_class = "is-filtered"
+    elif node.children:
+        deck_type_class = "is-folder"
+    elif node.level > 1:
+        deck_type_class = "is-subdeck"
+    else:
+        deck_type_class = "is-deck"
 
     buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'>")
 
@@ -3377,7 +3700,8 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     else:
         collapse_link = "<span class=collapse></span>"
 
-    deck_prefix = f"<span class='deck-prefix'>{indent()}{collapse_link}</span>"
+    # Removed class='deck-prefix' as requested by user
+    deck_prefix = f"<span>{indent()}{collapse_link}</span>"
     extraclass = "filtered" if node.filtered else ""
 
     # --- START MODIFICATION: Update colspan and add counts_html ---
@@ -3426,15 +3750,24 @@ def _on_sync_did_finish():
         print(f"Onigiri: Error stopping sync animation: {e}")
 
 def apply_patches():
+    """
+    Applies all legacy method patches (wrapping).
+    """
+    # ... (existing patches)
+    
+    # Apply modern menu styling
+    apply_menu_styling()
+    
+    # Patch QMenu class for transparency
+    patch_qmenu()
     """Apply all patches to Anki's UI."""
     # Register the reviewer_did_answer_card hook
     from aqt import gui_hooks
     gui_hooks.sync_did_finish.append(_on_sync_did_finish)
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_did_answer_card)
     
-    # Patch the deck browser's render method
-    from aqt.deckbrowser import DeckBrowser
-    DeckBrowser._render_deck_node = _onigiri_render_deck_node
+    # NOTE: DeckBrowser._render_deck_node is patched at top-level in __init__.py
+    # to ensure it's applied before the first render (main_window_did_init is too late)
     
     # Patch the overview page
     # REMOVED: Called explicitly in __init__.py when profile is loaded to ensure mw.col exists

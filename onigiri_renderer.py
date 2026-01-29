@@ -751,14 +751,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             z-index: 20;
             margin-bottom: 2px;
             margin-left: 0; 
-            padding: 0px;
+            padding-left: 0;
         }}
         
         .rl-nav-btn {{
             width: 24px;
             height: 24px;
-            padding: 0px;
-            margin-left: 0%;
+            padding: 0;
+            margin-left: 0;
             border: none;
             background: transparent;
             cursor: pointer;
