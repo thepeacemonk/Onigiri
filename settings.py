@@ -1324,6 +1324,7 @@ class ModernColorPickerDialog(QDialog):
         
         close_btn = QPushButton()
         close_btn.setFixedSize(24, 24)
+        close_btn.setMaximumSize(24, 24)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.clicked.connect(self.close)
         
@@ -1333,14 +1334,34 @@ class ModernColorPickerDialog(QDialog):
         if theme_manager.night_mode:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #d0d0d0;")
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; min-width: 24px; min-height: 24px; }
+                QPushButton { 
+                    background-color: transparent; 
+                    border: none; 
+                    border-radius: 12px; 
+                    padding: 0px;
+                    margin: 0px;
+                    min-width: 24px; 
+                    min-height: 24px;
+                    max-width: 24px;
+                    max-height: 24px;
+                }
                 QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
             """)
             icon_color = QColor("#ffffff")
         else:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333333;")
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; min-width: 24px; min-height: 24px; }
+                QPushButton { 
+                    background-color: transparent; 
+                    border: none; 
+                    border-radius: 12px; 
+                    padding: 0px;
+                    margin: 0px;
+                    min-width: 24px; 
+                    min-height: 24px;
+                    max-width: 24px;
+                    max-height: 24px;
+                }
                 QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
             """)
             icon_color = QColor("#555555")
@@ -1410,7 +1431,8 @@ class ModernColorPickerDialog(QDialog):
             fav_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #666;")
             
         add_fav_btn = QPushButton()
-        add_fav_btn.setFixedSize(20, 20)
+        add_fav_btn.setFixedSize(24, 24)
+        add_fav_btn.setMaximumSize(24, 24)
         add_fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_fav_btn.setToolTip("Add current color to favorites")
         add_fav_btn.clicked.connect(self.add_current_to_favorites)
@@ -1419,13 +1441,33 @@ class ModernColorPickerDialog(QDialog):
         
         if theme_manager.night_mode:
             add_fav_btn.setStyleSheet("""
-                QPushButton { background-color: #3a3a3a; border: 1px solid #555; border-radius: 10px; min-width: 20px; min-height: 20px; }
+                QPushButton { 
+                    background-color: #3a3a3a; 
+                    border: 1px solid #555; 
+                    border-radius: 12px; 
+                    padding: 0px;
+                    margin: 0px;
+                    min-width: 24px; 
+                    min-height: 24px;
+                    max-width: 24px;
+                    max-height: 24px;
+                }
                 QPushButton:hover { background-color: #4a4a4a; }
             """)
             add_icon_color = QColor("#cccccc")
         else:
             add_fav_btn.setStyleSheet("""
-                QPushButton { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; min-width: 20px; min-height: 20px; }
+                QPushButton { 
+                    background-color: #f0f0f0; 
+                    border: 1px solid #ccc; 
+                    border-radius: 12px; 
+                    padding: 0px;
+                    margin: 0px;
+                    min-width: 24px; 
+                    min-height: 24px;
+                    max-width: 24px;
+                    max-height: 24px;
+                }
                 QPushButton:hover { background-color: #e0e0e0; }
             """)
             add_icon_color = QColor("#555555")
@@ -1439,7 +1481,7 @@ class ModernColorPickerDialog(QDialog):
                 painter.fillRect(pixmap.rect(), add_icon_color)
                 painter.end()
                 add_fav_btn.setIcon(QIcon(pixmap))
-                add_fav_btn.setIconSize(QSize(10, 10))
+                add_fav_btn.setIconSize(QSize(12, 12))
             else:
                 add_fav_btn.setText("+")
         else:
@@ -2146,6 +2188,75 @@ class SettingsSearchPage(QWidget):
         
         self.results_layout.addStretch()
 
+class DonationDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Support Onigiri")
+        self.setFixedWidth(300)
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(25, 25, 25, 25)
+
+        title = QLabel("Choose a donation platform:")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 5px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # --- Theme Detection for Base Button Style ---
+        is_dark = theme_manager.night_mode
+        
+        if is_dark:
+            btn_bg = "#3a3a3a"
+            btn_text = "white"
+            btn_border = "#555"
+        else:
+            btn_bg = "#f0f0f0"
+            btn_text = "black"
+            btn_border = "#ccc"
+
+        base_style = f"""
+            QPushButton {{
+                padding: 12px;
+                border-radius: 20px;
+                background-color: {btn_bg};
+                color: {btn_text};
+                border: 1px solid {btn_border};
+                font-weight: bold;
+                font-size: 13px;
+            }}
+        """
+
+        # BMC Button
+        self.bmc_button = QPushButton("Buy Me A Coffee")
+        self.bmc_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.bmc_button.setStyleSheet(base_style + """
+            QPushButton:hover {
+                background-color: #FFDD04;
+                border: 1px solid #FFDD04;
+                color: black;
+            }
+        """)
+        self.bmc_button.clicked.connect(lambda: self._open_url("https://buymeacoffee.com/peacemonk"))
+        layout.addWidget(self.bmc_button)
+
+        # Ko-Fi Button
+        self.kofi_button = QPushButton("Ko-Fi")
+        self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.kofi_button.setStyleSheet(base_style + """
+            QPushButton:hover {
+                background-color: #FF5A16;
+                border: 1px solid #FF5A16;
+                color: white;
+            }
+        """)
+        self.kofi_button.clicked.connect(lambda: self._open_url("https://ko-fi.com/peacemonk"))
+        layout.addWidget(self.kofi_button)
+
+    def _open_url(self, url):
+        QDesktopServices.openUrl(QUrl(url))
+        self.accept()
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
         super().__init__(parent)
@@ -2585,7 +2696,8 @@ class SettingsDialog(QDialog):
         self.navigate_to_page("Search")
     
     def _open_donate_link(self):
-        QDesktopServices.openUrl(QUrl("https://buymeacoffee.com/peacemonk"))
+        dialog = DonationDialog(self)
+        dialog.exec()
 
     def _open_bugs_link(self):
         QDesktopServices.openUrl(QUrl("https://github.com/thepeacemonk/Onigiri"))
@@ -2598,6 +2710,48 @@ class SettingsDialog(QDialog):
     def _create_font_selector_group(self, title, config_key):
         """Helper to create a font selection grid for a given config key."""
         group = SectionGroup(title, self, border=False)
+        
+        # --- NEW: Font Control Row (Size) ---
+        control_widget = QWidget()
+        control_layout = QHBoxLayout(control_widget)
+        control_layout.setContentsMargins(0, 0, 0, 5) # Slight margin
+        
+        size_label = QLabel("Font Size:")
+        size_label.setStyleSheet("color: var(--fg-subtle);")
+        
+        size_spinbox = QSpinBox()
+        size_spinbox.setRange(8, 72)
+        size_spinbox.setSuffix("px")
+        size_spinbox.setFixedWidth(80)
+        
+        # Load saved size or default
+        if config_key == "main":
+            default_size = 14
+        elif config_key == "subtle":
+            default_size = 20
+        else: # small_title
+            default_size = 15
+        # Check col.conf first
+        saved_size = mw.col.conf.get(f"onigiri_font_size_{config_key}", default_size)
+        size_spinbox.setValue(int(saved_size))
+        
+        # Save reference
+        setattr(self, f"font_size_{config_key}", size_spinbox)
+        
+        # Restore Button
+        restore_btn = QPushButton("Restore Default")
+        restore_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        restore_btn.setToolTip(f"Reset to {default_size}px")
+        # Capture default_size and spinbox in lambda
+        restore_btn.clicked.connect(lambda _, s=size_spinbox, d=default_size: s.setValue(d))
+        
+        control_layout.addWidget(size_label)
+        control_layout.addWidget(size_spinbox)
+        control_layout.addWidget(restore_btn)
+        control_layout.addStretch()
+        
+        group.add_widget(control_widget)
+        # ------------------------------------
         
         container_widget = QWidget()
         container_layout = QHBoxLayout(container_widget)
@@ -2771,9 +2925,11 @@ class SettingsDialog(QDialog):
         
         text_group = self._create_font_selector_group("Text", "main")
         subtle_group = self._create_font_selector_group("Titles", "subtle")
+        small_title_group = self._create_font_selector_group("Small Titles", "small_title")
         
         fonts_layout.addWidget(text_group)
         fonts_layout.addWidget(subtle_group)
+        fonts_layout.addWidget(small_title_group)
         
         layout.addWidget(fonts_container)
         layout.addStretch()
@@ -2793,6 +2949,18 @@ class SettingsDialog(QDialog):
             if card.isChecked():
                 mw.col.conf["onigiri_font_subtle"] = card.font_key
                 break
+        for card in getattr(self, "font_cards_small_title", []):
+            if card.isChecked():
+                mw.col.conf["onigiri_font_small_title"] = card.font_key
+                break
+        
+        # Save Font Sizes
+        if hasattr(self, "font_size_main"):
+            mw.col.conf["onigiri_font_size_main"] = self.font_size_main.value()
+        if hasattr(self, "font_size_subtle"):
+            mw.col.conf["onigiri_font_size_subtle"] = self.font_size_subtle.value()
+        if hasattr(self, "font_size_small_title"):
+            mw.col.conf["onigiri_font_size_small_title"] = self.font_size_small_title.value()
     def closeEvent(self, event):
         # --- SAVE WINDOW SIZE ---
         try:
@@ -2954,6 +3122,11 @@ class SettingsDialog(QDialog):
 
         hero_gradient_top = "#343a40" if theme_manager.night_mode else "#d9dee7"
         sidebar_selected_bg, primary_button_bg = accent_color, accent_color
+
+        # Icons for spinbox
+        up_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "up.svg").replace("\\", "/")
+        down_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "down.svg").replace("\\", "/")
+
         self.setStyleSheet(f"""
             QFrame#MenuSeparator {{
                 background-color: {border};
@@ -3036,10 +3209,41 @@ class SettingsDialog(QDialog):
             QTabBar::tab:!selected:hover {{ background: {border}; }}
             QTabWidget::pane {{ background-color: transparent; border: none; }}
             QTabBar {{ qproperty-drawBase: 0; }}
-            QScrollBar:vertical {{ border: none; background: {bg}; width: 10px; margin: 0; }}
-            QScrollBar::handle:vertical {{ background: {border}; min-height: 20px; border-radius: 5px; }}
-            QScrollBar:horizontal {{ border: none; background: {bg}; height: 10px; margin: 0; }}
-            QScrollBar::handle:horizontal {{ background: {border}; min-width: 20px; border-radius: 5px; }}
+            QScrollBar:vertical {{ border: none; background: {bg}; width: 12px; margin: 0; }}
+            QScrollBar::handle:vertical {{ background: {border}; min-height: 20px; border-radius: 6px; margin: 2px; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+                height: 0px;
+                width: 0px;
+                background: none;
+                border: none;
+            }}
+            QScrollBar:horizontal {{ border: none; background: {bg}; height: 12px; margin: 0; }}
+            QScrollBar::handle:horizontal {{ background: {border}; min-width: 20px; border-radius: 6px; margin: 2px; }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+                height: 0px;
+                width: 0px;
+                background: none;
+                border: none;
+            }}
+
+            QSpinBox::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 16px;
+                border-left: 1px solid {border};
+                image: url({up_icon_path});
+                padding: 2px;
+            }}
+            QSpinBox::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 16px;
+                border-left: 1px solid {border};
+                image: url({down_icon_path});
+                padding: 2px;
+            }}
             #colorPill {{ background-color: {input_bg}; border: 1px solid {border}; border-radius: 18px; 
             }}
             QFrame#themeCard {{
@@ -4067,6 +4271,29 @@ class SettingsDialog(QDialog):
         def __init__(self, text, widget_id, style_colors, parent=None):
             super().__init__(text, widget_id, style_colors, parent)
             self.setToolTip(f"ID: {self.widget_id}\nDouble-click to rename.")
+            self.locked = False
+
+        def setLocked(self, locked: bool):
+            """Sets the locked state of the item. Locked items handle events differently."""
+            self.locked = locked
+            if locked:
+                # Visual indication of locked state
+                self.setGraphicsEffect(None) # Clear any previous effects
+                from PyQt6.QtWidgets import QGraphicsOpacityEffect
+                opacity = QGraphicsOpacityEffect(self)
+                opacity.setOpacity(0.6)
+                self.setGraphicsEffect(opacity)
+                self.setCursor(Qt.CursorShape.ForbiddenCursor)
+                self.setToolTip(f"{self.display_name} (Fixed in Full Mode)")
+            else:
+                self.setGraphicsEffect(None)
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+                self.setToolTip(f"ID: {self.widget_id}\nDouble-click to rename.")
+
+        def mouseMoveEvent(self, event):
+            if self.locked:
+                return
+            super().mouseMoveEvent(event)
 
         def contextMenuEvent(self, event):
             # Disable the right-click resize menu for sidebar items
@@ -4350,10 +4577,20 @@ class SettingsDialog(QDialog):
             default_visible = DEFAULTS["sidebarButtonLayout"]["visible"]
             default_archived = DEFAULTS["sidebarButtonLayout"]["archived"]
 
+            # Check if Full Mode is enabled
+            is_full_mode = self.settings_dialog.current_config.get("fullHideMode", False)
+
             # Create all possible items
             for widget_id, text in self.BUTTON_MAP.items():
                 item = SettingsDialog.DraggableSidebarItem(text, widget_id, self.style_colors)
                 self.all_sidebar_items[widget_id] = item
+
+            # If Full Mode is on, ensure "settings" is visible and not archived
+            if is_full_mode:
+                if "settings" in archived:
+                    archived.remove("settings")
+                if "settings" not in visible_order:
+                    visible_order.append("settings")
 
             placed_items = set()
             
@@ -4362,6 +4599,10 @@ class SettingsDialog(QDialog):
                 if item := self.all_sidebar_items.get(widget_id):
                     self.visible_zone.layout.insertWidget(self.visible_zone.layout.count() - 1, item)
                     placed_items.add(widget_id)
+                    
+                    # Lock settings button if in Full Mode
+                    if is_full_mode and widget_id == "settings":
+                        item.setLocked(True)
             
             # Place archived items
             for widget_id in archived:
@@ -4374,10 +4615,14 @@ class SettingsDialog(QDialog):
             for widget_id, item in self.all_sidebar_items.items():
                 if widget_id not in placed_items:
                     # Check against the DEFAULTS to see where new items should go
-                    if widget_id in default_archived:
+                    if widget_id in default_archived and not (is_full_mode and widget_id == "settings"):
                          self.archive_zone.layout.insertWidget(self.archive_zone.layout.count() - 1, item)
                     else: # Default to visible if not in archived (or not in defaults at all)
                          self.visible_zone.layout.insertWidget(self.visible_zone.layout.count() - 1, item)
+                         
+                         # Lock settings button if in Full Mode (edge case where it wasn't in visible_order or archived)
+                         if is_full_mode and widget_id == "settings":
+                            item.setLocked(True)
 
         def get_layout_config(self) -> dict:
             # Get keys from the "Visible" zone
@@ -6160,9 +6405,9 @@ class SettingsDialog(QDialog):
                 f"QFrame#achievementsHeroCard {{"
                 f"    border-radius: 24px;"
                 f"    background-image: url('{css_path}');"
-                f"    background-position: center right;"
-                f"    background-repeat: no-repeat;"
-                f"    background-size: contain;"
+                f"    background-position: left center;"
+                f"    background-repeat: repeat-x;"
+                f"    background-size: auto 100%;"
                 f"}}"
             )
             hero_card.setProperty("hasBackgroundImage", True)
@@ -7403,10 +7648,58 @@ class SettingsDialog(QDialog):
 
         deck_section.add_widget(indentation_group)
         
-        deck_icons_group, deck_icons_layout_content = self._create_inner_group("Deck Icons")
+        # Custom creation of deck_icons_group to add info button
+        deck_icons_group = QFrame()
+        deck_icons_group.setObjectName("innerGroup")
+        deck_icons_main_layout = QVBoxLayout(deck_icons_group)
+        deck_icons_main_layout.setContentsMargins(10, 10, 10, 10)
+        deck_icons_main_layout.setSpacing(8)
+        
+        # Title with info button
+        title_row = QHBoxLayout()
+        title_label = QLabel("Deck Icons")
+        title_label.setStyleSheet("font-weight: bold; font-size: 20px;")
+        title_row.addWidget(title_label)
+        
+        # Info button
+        # Info button
+        info_button = QPushButton()
+        info_button.setFixedSize(24, 24)
+        info_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        info_button.setToolTip("Click to learn about deck icon types")
+        
+        info_icon_path = os.path.join(mw.addonManager.addonsFolder(mw.addonManager.addonFromModule(__name__)), 
+                                    "system_files", "system_icons", "info-circle.svg")
+        
+        if os.path.exists(info_icon_path):
+            pixmap = QPixmap(info_icon_path)
+            if not pixmap.isNull():
+                # Color the icon
+                painter = QPainter(pixmap)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+                # Use accent color or text color based on theme
+                icon_color = QColor(self.accent_color)
+                painter.fillRect(pixmap.rect(), icon_color)
+                painter.end()
+                info_button.setIcon(QIcon(pixmap))
+                info_button.setIconSize(QSize(20, 20))
+            
+        info_button.setStyleSheet("QPushButton { border: none; background: transparent; }")
+        info_button.clicked.connect(self._show_deck_icon_info)
+        title_row.addWidget(info_button)
+        title_row.addStretch()
+        
+        deck_icons_main_layout.addLayout(title_row)
+        
+        # Content area
+        deck_icons_content_widget = QWidget()
+        deck_icons_layout_content = QVBoxLayout(deck_icons_content_widget)
+        deck_icons_layout_content.setContentsMargins(0, 5, 0, 0)
+        deck_icons_main_layout.addWidget(deck_icons_content_widget)
+        
         deck_icons_layout = QGridLayout(); deck_icons_layout.setSpacing(15)
         deck_icons_layout_content.addLayout(deck_icons_layout)
-        deck_icons_to_configure = {"folder": "Folder Icon", "deck_child": "Child Deck Icon", "options": "Options Icon", "collapse_closed": "Collapsed Icon (+)", "collapse_open": "Expanded Icon (-)"}
+        deck_icons_to_configure = {"folder": "Folder Icon", "deck": "Deck Icon", "subdeck": "Subdeck Icon", "filtered_deck": "Filtered Deck Icon", "options": "Options Icon", "collapse_closed": "Collapsed Icon (+)", "collapse_open": "Expanded Icon (-)"}
         row, col, num_cols = 0, 0, 3
         for key, label_text in deck_icons_to_configure.items():
             card = QWidget(); card_layout = QVBoxLayout(card); card_layout.setContentsMargins(0,0,0,0); card_layout.setSpacing(5)
@@ -7429,10 +7722,27 @@ class SettingsDialog(QDialog):
         self.hide_folder_cb.toggled.connect(self._update_deck_icon_state)
         sizing_layout.addRow("Hide Folder Icon:", self.hide_folder_cb)
         
-        self.hide_deck_child_cb = AnimatedToggleButton(accent_color=self.accent_color)
-        self.hide_deck_child_cb.setChecked(mw.col.conf.get("modern_menu_hide_deck_child_icon", False))
-        self.hide_deck_child_cb.toggled.connect(self._update_deck_icon_state)
-        sizing_layout.addRow("Hide Child Deck Icon:", self.hide_deck_child_cb)
+        self.hide_subdeck_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_subdeck_cb.setChecked(mw.col.conf.get("modern_menu_hide_subdeck_icon", False))
+        self.hide_subdeck_cb.toggled.connect(self._update_deck_icon_state)
+        sizing_layout.addRow("Hide Subdeck Icon:", self.hide_subdeck_cb)
+        
+        self.hide_deck_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_deck_cb.setChecked(mw.col.conf.get("modern_menu_hide_deck_icon", False))
+        self.hide_deck_cb.toggled.connect(self._update_deck_icon_state)
+        sizing_layout.addRow("Hide Deck Icon:", self.hide_deck_cb)
+
+        self.hide_filtered_deck_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_filtered_deck_cb.setChecked(mw.col.conf.get("modern_menu_hide_filtered_deck_icon", False))
+        self.hide_filtered_deck_cb.toggled.connect(self._update_deck_icon_state)
+        sizing_layout.addRow("Hide Filtered Deck Icon:", self.hide_filtered_deck_cb)
+
+        # [NEW] Hide default, show custom setting
+        self.hide_default_custom_cb = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hide_default_custom_cb.setChecked(mw.col.conf.get("modern_menu_hide_default_icons", False))
+        self.hide_default_custom_cb.toggled.connect(self._update_deck_icon_state)
+        self.hide_default_custom_cb.setToolTip("If enabled, default icons will be hidden, but custom deck icons will still be shown.")
+        sizing_layout.addRow("Hide default, show custom:", self.hide_default_custom_cb)
         
         icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons (px):", "action_button": "Action Button Icons (px):", "collapse": "Expand/Collapse Icons (px):", "options_gear": "Deck Options Gear Icon (px):"}
         for key, label in icon_sizes_to_configure.items(): sizing_layout.addRow(label, self.create_icon_size_spinbox(key, DEFAULT_ICON_SIZES[key]))
@@ -9956,7 +10266,7 @@ class SettingsDialog(QDialog):
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.setToolTip("Reset to Default")
         
-        trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "delete.svg") # Assuming this exists or using X
+        trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark-simple.svg") # Using xmark-simple.svg as delete icon
         
         if theme_manager.night_mode:
              delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 4px; } QPushButton:hover { background: rgba(255,0,0,0.2); }")
@@ -11395,8 +11705,12 @@ class SettingsDialog(QDialog):
         # Save Hide Icon Toggles
         if hasattr(self, "hide_folder_cb"):
             mw.col.conf["modern_menu_hide_folder_icon"] = self.hide_folder_cb.isChecked()
-        if hasattr(self, "hide_deck_child_cb"):
-            mw.col.conf["modern_menu_hide_deck_child_icon"] = self.hide_deck_child_cb.isChecked()
+        if hasattr(self, "hide_subdeck_cb"):
+            mw.col.conf["modern_menu_hide_subdeck_icon"] = self.hide_subdeck_cb.isChecked()
+        if hasattr(self, "hide_deck_cb"):
+            mw.col.conf["modern_menu_hide_deck_icon"] = self.hide_deck_cb.isChecked()
+        if hasattr(self, "hide_default_custom_cb"):
+            mw.col.conf["modern_menu_hide_default_icons"] = self.hide_default_custom_cb.isChecked()
         
         for widget in self.action_button_icon_widgets:
             key = widget.property("icon_key")
@@ -11954,8 +12268,25 @@ class SettingsDialog(QDialog):
     def _update_deck_icon_state(self):
         # Disable the deck_folder size spinbox if either hide toggle is ON
         if "deck_folder" in self.icon_size_widgets:
-            should_disable = self.hide_folder_cb.isChecked() or self.hide_deck_child_cb.isChecked()
+            should_disable = (self.hide_folder_cb.isChecked() or 
+                            self.hide_subdeck_cb.isChecked() or 
+                            self.hide_deck_cb.isChecked())
             self.icon_size_widgets["deck_folder"].setEnabled(not should_disable)
+
+    def _show_deck_icon_info(self):
+        """Display explanation of deck icon types."""
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Deck Icon Types")
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText("""
+            <h3>Understanding Deck Icon Types</h3>
+            <p><b>Folder:</b> A deck that contains subdecks inside it. Uses the folder icon.</p>
+            <p><b>Deck:</b> A top-level deck that doesn't contain any subdecks. Uses the deck icon.</p>
+            <p><b>Subdeck:</b> A deck that is nested inside a folder. Uses the subdeck icon.</p>
+            <p><b>Filtered Deck:</b> A special deck type with dynamic cards based on search criteria. Uses the filtered deck icon.</p>
+        """)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.exec()
 
     def save_settings(self):
         page_indices = {name: i for i, name in enumerate(self.page_order)}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Icon Chooser</title>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="toggle-container">
+                <div class="toggle-track">
+                    <div class="toggle-option selected" data-mode="icon">Icon</div>
+                    <div class="toggle-option" data-mode="emoji">Emoji</div>
+                    <div class="toggle-option" data-mode="image">Images</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="icon-grid" class="icon-grid">
+                <!-- Icons injected by JS -->
+            </div>
+            <div class="emoji-grid">
+                <!-- Emojis injected by JS -->
+            </div>
+        </div>
+
+        <footer>
+            <div class="control-tray">
+                <div class="color-picker-section">
+                    <button id="icon-color-btn" class="icon-color-btn">
+                        <div id="btn-color-preview" class="btn-color-preview"></div>
+                        <span class="icon-color-text">Icon Color</span>
+                    </button>
+
+                    <div id="color-picker-panel" class="color-picker-panel hidden">
+                        <!-- 2D Gradient Selector -->
+                        <div class="gradient-container">
+                            <div class="gradient-selector" id="gradient-selector">
+                                <div class="gradient-overlay-white"></div>
+                                <div class="gradient-overlay-black"></div>
+                                <div class="gradient-cursor" id="gradient-cursor"></div>
+                            </div>
+                        </div>
+
+                        <!-- Sliders -->
+                        <div class="sliders-container">
+                            <!-- Hue Slider -->
+                            <div class="slider-row">
+                                <div class="slider-track hue-slider" id="hue-slider">
+                                    <div class="slider-thumb" id="hue-thumb"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Color Preview and Hex Input -->
+                        <div class="color-input-row">
+                            <div class="color-preview-large" id="color-preview-large"></div>
+                            <input type="text" id="hex-input" class="hex-input" maxlength="7" placeholder="#000000">
+                        </div>
+
+
+                    </div>
+                </div>
+                <!-- Add Icon button moved to grid -->
+                <button id="reset-btn" class="secondary-btn">Reset to Default</button>
+                <button id="cancel-btn" class="secondary-btn">Cancel</button>
+                <button id="save-btn" class="primary-btn">Save</button>
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>

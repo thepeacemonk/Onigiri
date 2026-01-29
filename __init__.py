@@ -18,6 +18,7 @@ from . import deck_tree_updater
 from . import webview_handlers
 from .gamification import focus_dango
 from . import birthday_dialog
+from . import icon_chooser
 
 # --- SHOP INTEGRATION IMPORT ---
 from .gamification.taiyaki_store import open_taiyaki_store
@@ -324,6 +325,9 @@ def on_profile_did_open():
     # Delay by 1s to ensure main window is fully rendered for screenshot blur
     QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
 
+    # Re-apply menu styling now that we definitely know the theme
+    patcher.apply_menu_styling()
+
 # --- INITIALIZATION ---
 
 # Move UI patching to top-level so it happens during module load.
@@ -334,6 +338,11 @@ patcher.patch_congrats_page()
 
 # Initialize renderer immediately
 DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
+
+# Patch _render_deck_node at top-level to ensure it's applied before first render
+# This is critical - if done later (in apply_patches via main_window_did_init),
+# the initial deck browser render would use Anki's default, missing icons/counts
+DeckBrowser._render_deck_node = patcher._onigiri_render_deck_node
 
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
     conf = config.get_config()
@@ -371,6 +380,18 @@ def on_deck_browser_will_show(deck_browser: DeckBrowser):
     """
     patcher.take_control_of_deck_browser_hook()
 
+def on_show_icon_chooser(deck_id):
+    """Opens the dialog to choose a custom icon for the deck."""
+    dialog = icon_chooser.IconChooserDialog(deck_id, mw)
+    if dialog.exec():
+        # Refresh the deck browser to show changes immediately
+        mw.deckBrowser.refresh()
+
+def on_deck_options_shown(menu, deck_id):
+    """Appends the 'Change Icon' action to the deck options menu."""
+    a = menu.addAction("Change Icon")
+    a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
+
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
 gui_hooks.profile_did_open.append(on_profile_did_open)
@@ -387,4 +408,6 @@ gui_hooks.sync_did_finish.append(lambda: update_sync_status_indicator())
 gui_hooks.operation_did_execute.append(lambda *args: update_sync_status_indicator())
 # Update sync status when sync status changes
 gui_hooks.sync_will_start.append(lambda: update_sync_status_indicator())
-mw.addonManager.setWebExports(__name__, r"((user_files|web|system_files)/.*|onigiri_logo\.png)")
+gui_hooks.deck_browser_will_show_options_menu.append(on_deck_options_shown)
+gui_hooks.theme_did_change.append(patcher.apply_menu_styling)
+mw.addonManager.setWebExports(__name__, r"(.*)")
