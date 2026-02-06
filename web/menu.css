@@ -1275,3 +1275,9 @@ body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
 #external-menu-group:has(#external-menu-items:empty) {
     display: none;
 }
+
+/* Use inline SVG icons when provided */
+.menu-item[data-onigiri-icon] .icon::before {
+    content: none !important;
+    display: none !important;
+}
