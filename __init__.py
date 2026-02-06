@@ -19,6 +19,7 @@ from . import webview_handlers
 from .gamification import focus_dango
 from . import birthday_dialog
 from . import icon_chooser
+from .sidebar_api import register_sidebar_action
 
 # --- SHOP INTEGRATION IMPORT ---
 from .gamification.taiyaki_store import open_taiyaki_store
