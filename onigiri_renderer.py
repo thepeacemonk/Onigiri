@@ -520,6 +520,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex-direction: column;
             overflow: hidden;
             position: relative;
+            justify-content: center;
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
