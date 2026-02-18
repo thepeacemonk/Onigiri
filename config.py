@@ -111,6 +111,10 @@ DEFAULTS = {
     },
     "externalWidgetLayout": {}, 
 
+    # --- NEW: Sidebar Action Buttons Mode ---
+    # "list" (default), "collapsed" (toolbar icons), "archived" (hidden)
+    "sidebarActionsMode": "list",
+
     # --- ADDED: Sidebar Button Layout ---
     "sidebarButtonLayout": {
         "visible": [

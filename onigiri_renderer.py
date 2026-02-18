@@ -84,14 +84,91 @@ def _build_sidebar_html(conf: dict) -> str:
     visible_keys = layout_config.get("visible", [])
     external_entries = sidebar_api.get_sidebar_entries()
     
+    # --- MODIFICATION START: Sidebar Actions Mode Logic ---
+    action_buttons = {"add", "browse", "stats", "sync", "settings", "more"}
+    # Default to "list" if not set
+    actions_mode = conf.get("sidebarActionsMode", "list")
+    
     html_parts = []
     for key in visible_keys:
-        if key in BUTTON_HTML:
-            html_parts.append(BUTTON_HTML[key])
+        # If this key is one of our special action buttons...
+        if key in action_buttons:
+            # Only render it in the list if mode is "list"
+            if actions_mode == "list":
+                if key in BUTTON_HTML:
+                    html_parts.append(BUTTON_HTML[key])
+        # Otherwise render normally (external entries or profile if it was in visible_keys? profile is usually separate)
+        elif key in BUTTON_HTML:
+             html_parts.append(BUTTON_HTML[key])
         elif key in external_entries:
-            html_parts.append(sidebar_api.render_sidebar_entry(key))
+            # External entries are also subject to the mode if we want them to behave like actions?
+            # For now, let's assume external entries follow the same rule if they are actions.
+            # But the user asked for "Action Buttons" specifically.
+            # Typically external entries are treated as "actions" too. 
+            # If the user selects "Collapsed", external sidebar items should probably also disappear/move to toolbar?
+            # The current implementation of collapsed mode in injector.js only handles specific IDs.
+            # So for now, we'll keep external entries showing in list unless explicitly hidden, 
+            # OR we should hide them too if the goal is a clean sidebar.
+            # However, SidebarEntry doesn't have a "collapsed" equivalent yet.
+            # Let's hide them in collapsed/archived mode for consistency if they are button-like.
+            if actions_mode == "list": 
+                html_parts.append(sidebar_api.render_sidebar_entry(key))
             
     return "\n".join(part for part in html_parts if part)
+
+def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
+    """
+    Generates CSS to apply custom or default icons to the sidebar list items.
+    """
+    css_lines = []
+    icon_base = f"/_addons/{addon_package}/system_files/system_icons/"
+    user_icon_base = f"/_addons/{addon_package}/user_files/icons/"
+    
+    # Map action id -> default system icon filename
+    default_icons = {
+        'add': 'add.svg',
+        'browse': 'browse.svg',
+        'stats': 'stats.svg',
+        'sync': 'sync.svg',
+        'settings': 'settings.svg',
+        'more': 'more.svg',
+        'get_shared': 'get_shared.svg',
+        'create_deck': 'create_deck.svg',
+        'import_file': 'import_file.svg',
+    }
+    
+    # 1. Standard Actions
+    for action_id, filename in default_icons.items():
+        # Check for custom icon
+        custom_file = mw.col.conf.get(f"modern_menu_icon_{action_id}", "")
+        
+        if custom_file:
+            icon_url = f"{user_icon_base}{custom_file}"
+        else:
+            icon_url = f"{icon_base}{filename}"
+            
+        css = f"""
+        .action-{action_id} .icon {{
+            mask-image: url('{icon_url}') !important;
+            -webkit-mask-image: url('{icon_url}') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color); 
+        }}
+        """
+        css_lines.append(css)
+
+    # 2. External Actions (from Sidebar API)
+    # We already handle 'icon_svg' in sidebar_api.render_sidebar_entry which generates inline styles or classes.
+    # But if there are overrides defined in settings, we should handle them.
+    # sidebar_api.render_sidebar_entry already checks _load_icon_override.
+    # So we mainly need to ensure the standard buttons get their CSS.
+    
+    return "<style>" + "\n".join(css_lines) + "</style>"
 
 
 # --- Helper functions (copied from patcher.py for self-containment) ---
@@ -413,6 +490,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     # --- Part 1: Build Onigiri Widgets Grid ---
     onigiri_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
+    col_count = conf.get("onigiriWidgetLayout", {}).get("column_count", 4) # Default to 4
+
     onigiri_grid_html = ""
     
     # Check cache for main stats
@@ -450,15 +529,16 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "restaurant_level": _get_onigiri_restaurant_level_html,
     }
     
-    for widget_id, widget_config in onigiri_layout.items():
-        if widget_id in widget_generators:
-            pos = widget_config.get("pos", 0)
-            row_span = widget_config.get("row", 1)
-            col_span = widget_config.get("col", 1)
-            row = pos // 4 + 1
-            col = pos % 4 + 1
-            style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-            onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
+    if col_count > 0:
+        for widget_id, widget_config in onigiri_layout.items():
+            if widget_id in widget_generators:
+                pos = widget_config.get("pos", 0)
+                row_span = widget_config.get("row", 1)
+                col_span = widget_config.get("col", 1)
+                row = pos // col_count + 1
+                col = pos % col_count + 1
+                style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
+                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
@@ -477,16 +557,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         except Exception as e:
             external_widgets_data[hook_id] = f"<div style='color: red;'>Error in {hook_id}:<br>{e}</div>"
 
-    for hook_id, widget_config in grid_config.items():
-        if hook_html := external_widgets_data.get(hook_id):
-            pos = widget_config.get("grid_position", 0)
-            row = pos // 4 + 1
-            col = pos % 4 + 1
-            row_span = widget_config.get("row_span", 1)
-            col_span = widget_config.get("column_span", 1)
-            style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-            # Add external widgets to the same grid as Onigiri widgets
-            external_widgets_html += f'<div class="external-widget-container" style="{style}">{hook_html}</div>'
+    if col_count > 0:
+        for hook_id, widget_config in grid_config.items():
+            if hook_html := external_widgets_data.get(hook_id):
+                pos = widget_config.get("grid_position", 0)
+                row = pos // col_count + 1
+                col = pos % col_count + 1
+                row_span = widget_config.get("row_span", 1)
+                col_span = widget_config.get("column_span", 1)
+                style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
+                # Add external widgets to the same grid as Onigiri widgets
+                external_widgets_html += f'<div class="external-widget-container" style="{style}">{hook_html}</div>'
 
     # --- Part 3: Assemble the Final Stats Block ---
     stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
@@ -498,18 +579,24 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
     <style>
-        /* FIX: Reset margin for Evolution Graph to prevent squeezing */
         .evolution-graph-main-wrapper {{
             margin: 0 !important;
             padding: 0 !important;
         }}
+
+        /* Dynamic Sidebar Max-Width removed to allow full stretching */
+        /*
+        .sidebar-left {{
+            max-width: {max(400, min(1200, 1200 - (col_count * 100)))}px !important;
+        }}
+        */
 
         .unified-grid {{
             display: grid;
             gap: 15px;
             /* grid-auto-rows ensures every '1 row' has a fixed minimum height (e.g. 110px) */
             grid-auto-rows: minmax(110px, auto);
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat({col_count}, 1fr);
             width: 100%;
             box-sizing: border-box;
             overflow: hidden;
@@ -523,7 +610,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex-direction: column;
             overflow: hidden;
             position: relative;
-            justify-content: center;
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
@@ -573,6 +659,32 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             overflow: hidden;
         }}
         
+        /* Unrestricted Sidebar resizing */
+        .sidebar-left {{
+            max-width: none !important;
+        }}
+
+        .main-content {{
+            /* Dynamic Padding based on col_count */
+            padding: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            box-sizing: border-box !important;
+            /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
+            display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
+            flex-direction: column;
+            align-items: center;
+        }}
+        
+        /* Center the sidebar if main content is hidden */
+        .modern-main-menu.container {{
+            justify-content: {'center' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex-start'} !important;
+        }}
+
+        /* Allow grid to expand beyond 900px if we have many columns */
+        .main-content > * {{
+            width: 100%;
+            max-width: {1600 if col_count > 4 else 900}px !important;
+        }}
+
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image-container {{
             position: absolute;
             top: 0;
@@ -952,11 +1064,16 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     is_collapsed = mw.col.conf.get("onigiri_sidebar_collapsed", False)
     is_focused = mw.col.conf.get("onigiri_deck_focus_mode", False)
     
+    # Check for Sidebar Only Mode (0 columns or 0 rows)
+    is_sidebar_only = (col_count == 0 or conf.get('unifiedGridRows', 6) == 0)
+    
     sidebar_initial_class = ""
     if is_collapsed:
         sidebar_initial_class += "sidebar-collapsed"
     if is_focused:
         sidebar_initial_class += " deck-focus-mode" if sidebar_initial_class else "deck-focus-mode"
+    if is_sidebar_only:
+        sidebar_initial_class += " sidebar-only-mode" if sidebar_initial_class else "sidebar-only-mode"
 
     # --- MODIFICATION START ---
     
@@ -1036,6 +1153,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             }}
         </style>
         """
+        
+    # --- ADDED: Generate CSS for Action Icons ---
+    action_icons_css = _generate_action_icons_css(conf, addon_package)
+    theme_css += action_icons_css
 
     profile_bar_html = (
         f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
@@ -1058,9 +1179,36 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     # 3. Use the new {sidebar_buttons} placeholder in the template
     #    and remove the old {profile_bar} placeholder.
+    
+    # Inject Config for JS
+    action_icon_keys = [
+        "add", "browse", "stats", "sync", "settings", "more",
+        "get_shared", "create_deck", "import_file"
+    ]
+    collapsed_icons = {
+        key: mw.col.conf.get(f"modern_menu_icon_{key}", "")
+        for key in action_icon_keys
+    }
+    js_config = {
+        "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
+        "addonPackage": mw.addonManager.addonFromModule(__name__),
+        "collapsedIcons": collapsed_icons,
+    }
+    
+    # Get Sync Status
+    sync_status = patcher.get_sync_status()
+
+    # Create JS Injection Script
+    js_injection = f"""
+    <script>
+        window.ONIGIRI_CONFIG = {json.dumps(js_config)};
+        window.ONIGIRI_SYNC_STATUS = "{sync_status}";
+    </script>
+    """
+    
     final_body = custom_body_template \
         .replace("{tree}", tree_html) \
-        .replace("{stats}", stats_block_html + theme_css) \
+        .replace("{stats}", stats_block_html + theme_css + js_injection) \
         .replace("{container_extra_class}", container_extra_class) \
         .replace("{sidebar_initial_class}", sidebar_initial_class) \
         .replace("{sidebar_style}", sidebar_style) \
