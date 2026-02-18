@@ -5,6 +5,7 @@ import urllib.parse
 import json
 import functools
 import time
+import base64
 from datetime import datetime
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -39,6 +40,7 @@ from aqt.utils import showInfo
 from PyQt6.QtGui import QFontDatabase, QFont
 from PyQt6.QtCore import QRect, QSize, QPoint
 from .fonts import FONTS, get_all_fonts
+from . import sidebar_api
 
 THUMBNAIL_STYLE = "QLabel { border: 2px solid transparent; border-radius: 10px; } QLabel:hover { border: 2px solid #007bff; }"
 THUMBNAIL_STYLE_SELECTED = "QLabel { border: 2px solid #007bff; border-radius: 10px; }"
@@ -4268,10 +4270,24 @@ class SettingsDialog(QDialog):
     # --- START: New Draggable Item for Sidebar ---
     # This item is not resizeable
     class DraggableSidebarItem(DraggableItem):
-        def __init__(self, text, widget_id, style_colors, parent=None):
+        def __init__(self, text, widget_id, style_colors, is_external=False, parent=None):
+            self.is_external = bool(is_external)
             super().__init__(text, widget_id, style_colors, parent)
-            self.setToolTip(f"ID: {self.widget_id}\nDouble-click to rename.")
             self.locked = False
+
+
+        def _update_display(self):
+            super()._update_display()
+            if self.is_external:
+                self.setToolTip(f"{self.display_name}\nID: {self.widget_id}\nDouble-click to rename.")
+            else:
+                self.setToolTip(f"{self.display_name}\nID: {self.widget_id}")
+
+        def mouseDoubleClickEvent(self, event):
+            if not self.is_external:
+                event.ignore()
+                return
+            super().mouseDoubleClickEvent(event)
 
         def setLocked(self, locked: bool):
             """Sets the locked state of the item. Locked items handle events differently."""
@@ -4331,10 +4347,12 @@ class SettingsDialog(QDialog):
             self.drop_indicator.setFixedWidth(self.width() - 10)
             return None
             
+        def is_item_allowed(self, source_widget):
+            return isinstance(source_widget, SettingsDialog.DraggableSidebarItem)
+
         def dragEnterEvent(self, event):
             source_widget = event.source()
-            if event.mimeData().hasText() and \
-               isinstance(source_widget, SettingsDialog.DraggableSidebarItem):
+            if event.mimeData().hasText() and self.is_item_allowed(source_widget):
                 self.drop_indicator.setStyleSheet("background-color: #0078d7;")
                 self.drop_indicator.raise_()
                 event.acceptProposedAction()
@@ -4342,7 +4360,7 @@ class SettingsDialog(QDialog):
                 event.ignore()
                 
         def dragMoveEvent(self, event):
-            if event.mimeData().hasText():
+            if event.mimeData().hasText() and self.is_item_allowed(event.source()):
                 self.drop_indicator.show()
                 self.update_drop_indicator(event.position().toPoint())
                 event.acceptProposedAction()
@@ -4358,7 +4376,7 @@ class SettingsDialog(QDialog):
             pos = event.position().toPoint()
             source_widget = event.source()
             
-            if isinstance(source_widget, SettingsDialog.DraggableSidebarItem):
+            if self.is_item_allowed(source_widget):
                 # Find the insert position
                 insert_pos = self.layout.count() - 1  # Default to before the stretch
                 for i in range(self.layout.count()):
@@ -4391,7 +4409,7 @@ class SettingsDialog(QDialog):
                 self.layout.insertWidget(insert_pos, source_widget)
                 event.acceptProposedAction()
             else:
-                super().dropEvent(event)
+                event.ignore()
 
     class SidebarArchiveZone(VerticalDropZone):
         def __init__(self, parent=None):
@@ -4399,6 +4417,12 @@ class SettingsDialog(QDialog):
             self.drop_indicator = QLabel(self)
             self.drop_indicator.setFixedHeight(2)
             self.drop_indicator.hide()
+
+        def is_item_allowed(self, source_widget):
+            return (
+                isinstance(source_widget, SettingsDialog.DraggableSidebarItem)
+                and not getattr(source_widget, "is_external", False)
+            )
             
         def update_drop_indicator(self, pos):
             # Find the position to show the drop indicator
@@ -4423,8 +4447,7 @@ class SettingsDialog(QDialog):
             
         def dragEnterEvent(self, event):
             source_widget = event.source()
-            if event.mimeData().hasText() and \
-               isinstance(source_widget, SettingsDialog.DraggableSidebarItem):
+            if event.mimeData().hasText() and self.is_item_allowed(source_widget):
                 self.drop_indicator.setStyleSheet("background-color: #0078d7;")
                 self.drop_indicator.raise_()
                 event.acceptProposedAction()
@@ -4432,7 +4455,7 @@ class SettingsDialog(QDialog):
                 event.ignore()
                 
         def dragMoveEvent(self, event):
-            if event.mimeData().hasText():
+            if event.mimeData().hasText() and self.is_item_allowed(event.source()):
                 self.drop_indicator.show()
                 self.update_drop_indicator(event.position().toPoint())
                 event.acceptProposedAction()
@@ -4448,7 +4471,7 @@ class SettingsDialog(QDialog):
             pos = event.position().toPoint()
             source_widget = event.source()
             
-            if isinstance(source_widget, SettingsDialog.DraggableSidebarItem):
+            if self.is_item_allowed(source_widget):
                 # Find the insert position
                 insert_pos = self.layout.count() - 1  # Default to before the stretch
                 for i in range(self.layout.count()):
@@ -4481,13 +4504,20 @@ class SettingsDialog(QDialog):
                 self.layout.insertWidget(insert_pos, source_widget)
                 event.acceptProposedAction()
             else:
-                super().dropEvent(event)
+                event.ignore()
+
+    class SidebarExternalArchiveZone(SidebarArchiveZone):
+        def is_item_allowed(self, source_widget):
+            return (
+                isinstance(source_widget, SettingsDialog.DraggableSidebarItem)
+                and getattr(source_widget, "is_external", False)
+            )
     
     class SidebarLayoutEditor(QWidget):
         """
-        A widget with two vertical drop zones for reordering and archiving sidebar buttons.
+        A widget with three vertical drop zones for reordering and archiving sidebar buttons.
         """
-        BUTTON_MAP = {
+        BASE_BUTTON_MAP = {
             "profile": "Profile Bar",
             "add": "Add Button",
             "browse": "Browse Button",
@@ -4533,8 +4563,8 @@ class SettingsDialog(QDialog):
             visible_layout.addWidget(self.visible_zone)
             main_layout.addWidget(visible_group, stretch=1)
 
-            # --- Archived Items Zone ---
-            archived_group = QGroupBox("Archived Items")
+            # --- Archived Onigiri Items Zone ---
+            archived_group = QGroupBox("Archived Onigiri Items")
             archived_group.setObjectName("LayoutGroup")
             archived_layout = QVBoxLayout(archived_group)
             archived_layout.setSpacing(5)
@@ -4543,10 +4573,22 @@ class SettingsDialog(QDialog):
             self.archive_zone = SettingsDialog.SidebarArchiveZone(self)
             archived_layout.addWidget(self.archive_zone)
             main_layout.addWidget(archived_group, stretch=1)
+
+            # --- Archived External Items Zone ---
+            external_archived_group = QGroupBox("Archived External Items")
+            external_archived_group.setObjectName("LayoutGroup")
+            external_archived_layout = QVBoxLayout(external_archived_group)
+            external_archived_layout.setSpacing(5)
+            external_archived_layout.setContentsMargins(10, 15, 10, 10)
+            
+            self.external_archive_zone = SettingsDialog.SidebarExternalArchiveZone(self)
+            external_archived_layout.addWidget(self.external_archive_zone)
+            main_layout.addWidget(external_archived_group, stretch=1)
             
             # Set minimum heights for the drop zones
             self.visible_zone.setMinimumHeight(200)
             self.archive_zone.setMinimumHeight(100)
+            self.external_archive_zone.setMinimumHeight(100)
             
             # Apply styles
             self.setStyleSheet("""
@@ -4568,21 +4610,36 @@ class SettingsDialog(QDialog):
             
             self._populate_widgets()
 
+        def _get_button_map(self, include_overrides: bool = True) -> dict:
+            button_map = dict(self.BASE_BUTTON_MAP)
+            button_map.update(sidebar_api.get_sidebar_labels(include_overrides=include_overrides))
+            return button_map
+
         def _populate_widgets(self):
             # Get the saved layout config
             visible_order = self.config.get("visible", [])
             archived = self.config.get("archived", [])
+            external_ids = set(sidebar_api.get_sidebar_labels().keys())
             
             # Use defaults from the top-level DEFAULTS constant
-            default_visible = DEFAULTS["sidebarButtonLayout"]["visible"]
-            default_archived = DEFAULTS["sidebarButtonLayout"]["archived"]
+            default_archived = list(DEFAULTS["sidebarButtonLayout"]["archived"])
 
             # Check if Full Mode is enabled
             is_full_mode = self.settings_dialog.current_config.get("fullHideMode", False)
 
+            label_overrides = self.config.get("labels", {}) if isinstance(self.config, dict) else {}
+            default_labels = self._get_button_map(include_overrides=False)
+
             # Create all possible items
-            for widget_id, text in self.BUTTON_MAP.items():
-                item = SettingsDialog.DraggableSidebarItem(text, widget_id, self.style_colors)
+            for widget_id, text in default_labels.items():
+                is_external = widget_id in external_ids
+                item = SettingsDialog.DraggableSidebarItem(
+                    text, widget_id, self.style_colors, is_external=is_external
+                )
+                if isinstance(label_overrides, dict):
+                    override = label_overrides.get(widget_id)
+                    if isinstance(override, str) and override.strip():
+                        item.set_display_name(override.strip())
                 self.all_sidebar_items[widget_id] = item
 
             # If Full Mode is on, ensure "settings" is visible and not archived
@@ -4606,22 +4663,32 @@ class SettingsDialog(QDialog):
             
             # Place archived items
             for widget_id in archived:
-                 if item := self.all_sidebar_items.get(widget_id):
+                if item := self.all_sidebar_items.get(widget_id):
                     if widget_id not in placed_items: # Avoid duplicates
-                        self.archive_zone.layout.insertWidget(self.archive_zone.layout.count() - 1, item)
+                        if widget_id in external_ids:
+                            self.external_archive_zone.layout.insertWidget(
+                                self.external_archive_zone.layout.count() - 1, item
+                            )
+                        else:
+                            self.archive_zone.layout.insertWidget(self.archive_zone.layout.count() - 1, item)
                         placed_items.add(widget_id)
 
             # Place any new/unconfigured items
             for widget_id, item in self.all_sidebar_items.items():
                 if widget_id not in placed_items:
+                    # External items default to archived
+                    if widget_id in external_ids:
+                        self.external_archive_zone.layout.insertWidget(
+                            self.external_archive_zone.layout.count() - 1, item
+                        )
                     # Check against the DEFAULTS to see where new items should go
-                    if widget_id in default_archived and not (is_full_mode and widget_id == "settings"):
-                         self.archive_zone.layout.insertWidget(self.archive_zone.layout.count() - 1, item)
+                    elif widget_id in default_archived and not (is_full_mode and widget_id == "settings"):
+                        self.archive_zone.layout.insertWidget(self.archive_zone.layout.count() - 1, item)
                     else: # Default to visible if not in archived (or not in defaults at all)
-                         self.visible_zone.layout.insertWidget(self.visible_zone.layout.count() - 1, item)
+                        self.visible_zone.layout.insertWidget(self.visible_zone.layout.count() - 1, item)
                          
-                         # Lock settings button if in Full Mode (edge case where it wasn't in visible_order or archived)
-                         if is_full_mode and widget_id == "settings":
+                        # Lock settings button if in Full Mode (edge case where it wasn't in visible_order or archived)
+                        if is_full_mode and widget_id == "settings":
                             item.setLocked(True)
 
         def get_layout_config(self) -> dict:
@@ -4640,8 +4707,30 @@ class SettingsDialog(QDialog):
                 if item and (widget := item.widget()):
                     if isinstance(widget, SettingsDialog.DraggableSidebarItem):
                         archived.append(widget.widget_id)
+            for i in range(self.external_archive_zone.layout.count()):
+                item = self.external_archive_zone.layout.itemAt(i)
+                if item and (widget := item.widget()):
+                    if isinstance(widget, SettingsDialog.DraggableSidebarItem):
+                        archived.append(widget.widget_id)
                         
-            return {"visible": visible, "archived": archived}
+            default_labels = self._get_button_map(include_overrides=False)
+            labels = {}
+            if isinstance(self.config, dict):
+                saved_labels = self.config.get("labels", {})
+                if isinstance(saved_labels, dict):
+                    labels.update(saved_labels)
+
+            for widget_id, item in self.all_sidebar_items.items():
+                default_label = default_labels.get(widget_id, item.display_name)
+                if item.display_name and item.display_name != default_label:
+                    labels[widget_id] = item.display_name
+                else:
+                    labels.pop(widget_id, None)
+
+            layout = {"visible": visible, "archived": archived}
+            if labels:
+                layout["labels"] = labels
+            return layout
     
     class OnigiriLayoutEditor(QWidget):
         def __init__(self, settings_dialog):
@@ -7515,6 +7604,13 @@ class SettingsDialog(QDialog):
             "sync": "Sync", "settings": "Settings", "more": "More", 
             "get_shared": "Get Shared", "create_deck": "Create Deck", "import_file": "Import File"
         }
+        external_entries = {
+            entry_id: entry.label
+            for entry_id, entry in sidebar_api.get_sidebar_entries().items()
+            if entry_id not in action_icons_to_configure
+        }
+        for entry_id in sorted(external_entries.keys(), key=lambda k: external_entries[k].lower()):
+            action_icons_to_configure[entry_id] = external_entries[entry_id] or entry_id
         row, col, num_cols = 0, 0, 3
         for key, label_text in action_icons_to_configure.items():
             card = QWidget()
@@ -7525,7 +7621,7 @@ class SettingsDialog(QDialog):
             label = QLabel(label_text)
             label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             
-            control_widget = self._create_icon_control_widget(key)
+            control_widget = self._create_icon_control_widget(key, label_text)
             self.action_button_icon_widgets.append(control_widget)
             
             card_layout.addWidget(label)
@@ -10208,7 +10304,7 @@ class SettingsDialog(QDialog):
         if delete_button := gallery.get('delete_button'):
             delete_button.setEnabled(bool(gallery['selected']))
 
-    def _create_icon_control_widget(self, key):
+    def _create_icon_control_widget(self, key, display_name=None):
         # Modern Card-like widget for icon control
         control_widget = QWidget()
         control_widget.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -10250,7 +10346,7 @@ class SettingsDialog(QDialog):
         # Info/Edit Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
-        name_label = QLabel(key.replace("_", " ").title())
+        name_label = QLabel(display_name or key.replace("_", " ").title())
         name_label.setStyleSheet(f"background: transparent; border: none; font-weight: bold; color: {text_color}; font-size: 13px;")
         
         sub_label = QLabel("Click to change")
@@ -10324,6 +10420,20 @@ class SettingsDialog(QDialog):
             default_key = 'star' if key == 'retention_star' else key
             data_uri = ICON_DEFAULTS.get(default_key, ""); 
             if data_uri.startswith("data:image/svg+xml,"): encoded_svg = data_uri.split(",", 1)[1]; svg_xml = urllib.parse.unquote(encoded_svg)
+            entry = sidebar_api.get_sidebar_entries().get(key) if not svg_xml else None
+            if entry and entry.icon_svg:
+                icon_value = entry.icon_svg.strip()
+                if icon_value.startswith("data:image/svg+xml"):
+                    try:
+                        header, data = icon_value.split(",", 1)
+                        if ";base64" in header:
+                            svg_xml = base64.b64decode(data).decode("utf-8", errors="ignore")
+                        else:
+                            svg_xml = urllib.parse.unquote(data)
+                    except Exception:
+                        svg_xml = ""
+                elif icon_value.lstrip().startswith("<svg"):
+                    svg_xml = icon_value
         if not svg_xml: preview_label.setPixmap(QPixmap()); return
         if 'stroke="currentColor"' in svg_xml: colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{icon_color}"')
         elif 'fill="currentColor"' in svg_xml: colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{icon_color}"')
