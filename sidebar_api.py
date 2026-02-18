@@ -27,7 +27,11 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+import datetime
+
 from . import config
+
+import_time_str = datetime.datetime.now().strftime("%H:%M:%S")
 
 
 @dataclass(frozen=True)
@@ -520,6 +524,14 @@ def _reset_toolbar_entries() -> None:
 
 def _capture_toolbar_links(links, _toolbar) -> None:
     try:
+        # Debug logging
+        log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"--- Capture Hook Run at {import_time_str} ---\n")
+            f.write(f"Links count: {len(links)}\n")
+            for i, link in enumerate(links):
+                f.write(f"Link {i}: {link}\n")
+
         _reset_toolbar_entries()
         for link_html in links:
             cmd = _extract_pycmd(link_html or "")
@@ -530,6 +542,10 @@ def _capture_toolbar_links(links, _toolbar) -> None:
             entry_id = f"{_TOOLBAR_ENTRY_PREFIX}{cmd}"
             label = _label_from_html(link_html, cmd)
             icon_svg = _extract_icon_svg_from_html(link_html or "")
+            
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"  -> Captured: {entry_id} ({label})\n")
+
             register_sidebar_action(
                 entry_id=entry_id,
                 label=label,
@@ -540,6 +556,12 @@ def _capture_toolbar_links(links, _toolbar) -> None:
             _toolbar_cmds.add(cmd)
     except Exception as exc:
         print(f"Onigiri: Failed to capture toolbar links: {exc}")
+        try:
+            log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"ERROR: {exc}\n")
+        except:
+            pass
 
 
 def _dispatch_toolbar_cmd(handled, message, context):
@@ -569,4 +591,18 @@ def _install_toolbar_bridge() -> None:
         print(f"Onigiri: Failed to install toolbar bridge: {exc}")
 
 
+def ensure_capture_hook_is_last() -> None:
+    """
+    Ensures that our capture hook runs LAST, after all other add-ons have added their links.
+    """
+    try:
+        from aqt import gui_hooks
+        if _capture_toolbar_links in gui_hooks.top_toolbar_did_init_links:
+            gui_hooks.top_toolbar_did_init_links.remove(_capture_toolbar_links)
+            gui_hooks.top_toolbar_did_init_links.append(_capture_toolbar_links)
+    except Exception as exc:
+        print(f"Onigiri: Failed to reorder toolbar hook: {exc}")
+
+
 _install_toolbar_bridge()
+

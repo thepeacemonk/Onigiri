@@ -473,6 +473,7 @@ class SidebarToggleButton(QWidget):
 
         self.toggle_button = QPushButton(title)
         self.toggle_button.setCheckable(True)
+        self.toggle_button.setAutoDefault(False)
         self.toggle_button.setObjectName("mainItemButton")
         self.toggle_button.clicked.connect(self._toggle_content)
         main_layout.addWidget(self.toggle_button)
@@ -489,6 +490,7 @@ class SidebarToggleButton(QWidget):
         for item in items:
             button = QPushButton(item)
             button.setCheckable(True)
+            button.setAutoDefault(False)
             button.setObjectName("subItemButton")
             button.clicked.connect(lambda _, name=item: self.page_selected.emit(name))
             self.sub_buttons[item] = button
@@ -2044,7 +2046,7 @@ class SettingsSearchPage(QWidget):
             ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"], 
              ["Modes", "Gamification Mode", "Hide", "Pro", "Max", "Fonts", "Accent Color", "General Palette", "Boxes Color Effect", "Light Mode", "Dark Mode", "Official Themes", "Your Themes", "Gallery", "Colors Gallery", "Images Gallery"]),
             ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"], 
-             ["Organize", "Main Background", "Heatmap", "Visibility", "Congratulations", "Sidebar Customization", "Organize Sidebar", "Sidebar Background", "Action Buttons", "Deck", "Icon Sizing"]),
+             ["Organize", "Main Background", "Heatmap", "Visibility", "Congratulations", "Sidebar Customization", "Organize Action Buttons", "Sidebar Background", "Deck", "Icon Sizing"]),
             ("Study Pages", "Settings for Overviewer and Reviewer.", ["Overviewer", "Reviewer"], 
              ["Overviewer Background", "Overview Style", "Congratulations", "Reviewer Background", "Bottom Bar Background"]),
             ("Gamification", "Manage games and more.", ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"], 
@@ -2548,6 +2550,7 @@ class SettingsDialog(QDialog):
         self.search_button.setCheckable(True)
         self.search_button.setObjectName("searchSidebarButton")
         self.search_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.search_button.setAutoDefault(False)
         self.search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
         sidebar_wrapper_layout.addWidget(self.search_button)
 
@@ -2671,8 +2674,10 @@ class SettingsDialog(QDialog):
         )
 
         self.donate_button = QPushButton("Donate")
+        self.donate_button.setAutoDefault(False)
         self.donate_button.clicked.connect(self._open_donate_link)
         self.report_bugs_button = QPushButton("Report Bugs")
+        self.report_bugs_button.setAutoDefault(False)
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
         self.save_button = QPushButton("Save"); self.save_button.clicked.connect(self.save_settings)
@@ -3889,39 +3894,61 @@ class SettingsDialog(QDialog):
             self.col_count = 4
             
             # Initialize grid
-            self.update_grid_rows(self.row_count)
+            # Initialize grid
+            self.update_grid_dimensions(self.row_count)
 
-        def update_grid_rows(self, rows):
-            # Save unique existing widgets to restore them later
+        def update_grid_dimensions(self, rows, cols=None):
+            if cols is None:
+                cols = self.col_count
+            
+            # Use safe defaults if 0 to avoid errors during logic, 
+            # but we will skip shelf creation if dimensions are zero.
+            safe_rows = max(1, rows)
+            safe_cols = max(1, cols) if cols > 0 else 1
+
             # Use a dict mapped by their primary (top-left) position to avoid duplicates
             current_widgets = {}
             processed_widgets = set()
             
             # Find all widgets currently on the grid
             for pos, shelf in self.shelves.items():
-                widget = shelf.child_widget
-                if widget and widget not in processed_widgets:
-                    current_widgets[pos] = widget
-                    processed_widgets.add(widget)
-                    # Important: Hide widget before causing it to detach from layout
-                    # otherwise it might flash as a separate window
-                    widget.hide()
+                try:
+                    widget = shelf.child_widget
+                    # check if widget is valid (not C++ deleted)
+                    if widget and not widget.isHidden() and widget not in processed_widgets:
+                         # Trying to access property or method will raise RuntimeError if deleted
+                        widget_pos = self.get_widget_pos(widget) 
+                        current_widgets[widget] = widget_pos
+                        processed_widgets.add(widget)
+                        # Important: Hide widget before causing it to detach from layout
+                        # otherwise it might flash as a separate window
+                        widget.hide()
+                except RuntimeError:
+                    # Widget primitive deleted, skip
+                    continue
             
             # Detach widgets from shelves to avoid issues during shelf deletion
             for shelf in self.shelves.values():
                 shelf.child_widget = None
             
             # Clear existing layout items (shelves and widgets)
-            for i in reversed(range(self.grid_layout.count())): 
-                item = self.grid_layout.itemAt(i)
+            # CAREFUL: Use safer deletion loop
+            while self.grid_layout.count():
+                item = self.grid_layout.takeAt(0)
                 if item.widget():
-                    # Hide and detach
                     item.widget().hide()
                     item.widget().setParent(None)
+                    item.widget().deleteLater() # Explicitly schedule deletion for shelves
+            
             self.shelves = {}
             
             self.row_count = rows
+            self.col_count = cols
             
+            # If dimensions are zero, we just clear and return (Sidebar Only Mode)
+            if rows == 0 or cols == 0:
+                return
+
             # Create shelves
             for i in range(rows * self.col_count):
                 shelf = SettingsDialog.Shelf(self)
@@ -3933,7 +3960,12 @@ class SettingsDialog(QDialog):
             for col in range(self.col_count):
                 self.grid_layout.setColumnMinimumWidth(col, 120)
                 self.grid_layout.setColumnStretch(col, 1)
-                
+            
+            # Clear sizing for unused columns
+            for col in range(self.col_count, 10):
+                self.grid_layout.setColumnMinimumWidth(col, 0)
+                self.grid_layout.setColumnStretch(col, 0)
+
             # Set row sizing
             for row in range(rows):
                 self.grid_layout.setRowMinimumHeight(row, 60)
@@ -3945,16 +3977,63 @@ class SettingsDialog(QDialog):
                 self.grid_layout.setRowStretch(row, 0)
 
             # Restore widgets if they fit
-            for pos, widget in current_widgets.items():
-                if pos < rows * self.col_count:
-                    # Check if it fits in new grid (simplified check)
-                    row, col = divmod(pos, self.col_count)
-                    if row + widget.row_span <= rows:
-                        self.place_item(widget, pos, silent=True)
-                    else:
-                         widget.archive_requested.emit(widget) # Move to archive if it doesn't fit
-                else:
-                    widget.archive_requested.emit(widget) # Move to archive if pos is out of bounds
+            # Sort widgets by their original position to try and maintain order
+            sorted_widgets = sorted(current_widgets.items(), key=lambda item: item[1])
+            
+            # List of widgets to archive (if they don't fit)
+            widgets_to_archive = []
+
+            for widget, old_pos in sorted_widgets:
+                # CRITICAL FIX: Ensure widget fits in new column count
+                # If widget is wider than the grid, shrink it to fit max width
+                if widget.col_span > cols:
+                    widget.col_span = cols
+                
+                # Check for row span consistency too (optional but good safety)
+                if widget.row_span > rows:
+                     widget.row_span = rows
+
+                # Try to place at the same approximate relative position or first available
+                if self.place_item(widget, old_pos, silent=True):
+                    continue
+                
+                # If exact old pos didn't work (e.g. because cols changed), try finding first free spot
+                if self.place_item_auto(widget):
+                    continue
+                    
+                # If still fails, add to archive list
+                widgets_to_archive.append(widget)
+
+            # Process archiving asynchronously to avoid layout issues
+            if widgets_to_archive:
+                from aqt.utils import QTimer
+                QTimer.singleShot(0, lambda: self._archive_detached_widgets(widgets_to_archive))
+
+        def _archive_detached_widgets(self, widgets):
+            for widget in widgets:
+                try:
+                    if widget: # Check if still valid
+                        widget.archive_requested.emit(widget)
+                except RuntimeError:
+                    pass
+
+        def get_widget_pos(self, widget):
+            for pos, shelf in self.shelves.items():
+                if shelf.child_widget is widget:
+                    return pos
+            return 0
+            
+        def place_item_auto(self, item):
+            grid_size = self.row_count * self.col_count
+            for i in range(grid_size):
+                r, c = divmod(i, self.col_count)
+                try:
+                    if self.is_region_free(r, c, item.row_span, item.col_span, ignored_widget=item):
+                        if self.place_item(item, i, silent=True):
+                            return True
+                except Exception:
+                    continue # specific error handling if needed
+            return False
 
 
 
@@ -4230,23 +4309,21 @@ class SettingsDialog(QDialog):
             return isinstance(item, (SettingsDialog.OnigiriDraggableItem, SettingsDialog.DraggableItem))
     
     class OnigiriGridDropZone(GridDropZone):
-        def __init__(self, main_editor, parent=None):
+        def __init__(self, main_editor, parent=None, col_count=4):
             super().__init__(main_editor, parent)
-            # Override grid size to 3 rows, 4 columns
-            for i in range(20, 24):
-                if i in self.shelves:
-                    self.shelves[i].setParent(None)
-                    del self.shelves[i]
+            self.col_count = col_count
+            # Initialize with default 3 rows
+            self.update_grid_dimensions(3, self.col_count)
 
         def is_item_allowed(self, item):
             return isinstance(item, SettingsDialog.OnigiriDraggableItem)
         
-        # Override region check for 3x4 grid
+        # Override region check for dynamic grid
         def is_region_free(self, row, col, row_span, col_span, ignored_widget=None):
-            if col + col_span > 4 or row + row_span > 5: return False
+            if col + col_span > self.col_count or row + row_span > self.row_count: return False
             for r in range(row, row + row_span):
                 for c in range(col, col + col_span):
-                    pos = r * 4 + c
+                    pos = r * self.col_count + c
                     if pos in self.shelves and self.shelves[pos].child_widget and self.shelves[pos].child_widget is not ignored_widget: return False
             return True
 
@@ -4741,8 +4818,21 @@ class SettingsDialog(QDialog):
 
             onigiri_group = QGroupBox("Onigiri Widgets")
             onigiri_group.setObjectName("LayoutGroup")
-            self.grid_zone = SettingsDialog.OnigiriGridDropZone(self, onigiri_group)
             onigiri_group_layout = QVBoxLayout(onigiri_group)
+
+            # Controls row
+            controls_layout = QHBoxLayout()
+            controls_layout.addWidget(QLabel("Columns:"))
+            self.col_spin = QSpinBox()
+            self.col_spin.setRange(2, 6)
+            self.col_spin.setValue(4) # Default
+            self.col_spin.setFixedWidth(50)
+            self.col_spin.valueChanged.connect(self._on_col_count_changed)
+            controls_layout.addWidget(self.col_spin)
+            controls_layout.addStretch()
+            onigiri_group_layout.addLayout(controls_layout)
+
+            self.grid_zone = SettingsDialog.OnigiriGridDropZone(self, onigiri_group, col_count=4)
             onigiri_group_layout.addWidget(self.grid_zone)
             main_layout.addWidget(onigiri_group)
 
@@ -4991,7 +5081,20 @@ class SettingsDialog(QDialog):
             """Retrieves the current layout from the grid and archive zones."""
             grid_config = self.grid_zone.get_layout_config()
             archive_config = self.archive_zone.get_archive_config()
-            return {"grid": grid_config, "archive": archive_config}
+            # We are saving both onigiri and external layout into legacy structure for compatibility
+            # But the 'column_count' specifically goes into 'onigiriWidgetLayout' usually.
+            # However, this method returns a dict that the dialog uses to construct the full config.
+            # We need to make sure the dialog knows how to unpack this or we just update the specific keys here.
+            
+            # actually, looking at apply_changes in SettingsDialog (which calls this),
+            # it expects this to return the config for "unifiedWidgetLayout" or similar?
+            # Wait, let's verify how this is used.
+            return {
+                "grid": grid_config, 
+                "archive": archive_config,
+                "column_count": self.col_spin.value(),
+                "rows": self.row_spin.value()
+            }
 
     class UnifiedLayoutEditor(QWidget):
         """
@@ -5027,15 +5130,26 @@ class SettingsDialog(QDialog):
 
             # --- Row Count Control ---
             row_control_layout = QHBoxLayout()
-            row_label = QLabel("Grid Height (Rows):") # User friendly label
+            row_label = QLabel("Number of Rows:") # User friendly label
             row_control_layout.addWidget(row_label)
             self.row_spin = QSpinBox()
-            self.row_spin.setRange(1, 20)
+            self.row_spin.setRange(0, 20)
             # Get saved row count or default to 6
             current_rows = self.settings_dialog.current_config.get("unifiedGridRows", 6)
             self.row_spin.setValue(current_rows)
             self.row_spin.valueChanged.connect(self._on_row_count_changed)
             row_control_layout.addWidget(self.row_spin)
+            
+            row_control_layout.addSpacing(20)
+            
+            col_label = QLabel("Number of Columns:")
+            row_control_layout.addWidget(col_label)
+            self.col_spin = QSpinBox()
+            self.col_spin.setRange(0, 6)
+            self.col_spin.setValue(4) # Default
+            self.col_spin.valueChanged.connect(self._on_col_count_changed)
+            row_control_layout.addWidget(self.col_spin)
+            
             row_control_layout.addStretch()
             main_layout.addLayout(row_control_layout)
 
@@ -5044,9 +5158,16 @@ class SettingsDialog(QDialog):
             grid_group.setObjectName("LayoutGroup")
             self.grid_zone = SettingsDialog.UnifiedGridDropZone(self, grid_group)
             
-            # Apply initial row count
-            if current_rows != 6:
-                self.grid_zone.update_grid_rows(current_rows)
+            # Apply initial row count and column count
+            current_cols = self.settings_dialog.current_config.get("onigiriWidgetLayout", {}).get("column_count", 4)
+            self.col_spin.blockSignals(True)
+            self.col_spin.setValue(current_cols)
+            self.col_spin.blockSignals(False)
+            
+            # FIX: Use at least 4 columns for visual layout if 0 is selected (Sidebar Only Mode)
+            # This prevents ZeroDivisionError in place_item
+            effective_cols = current_cols if current_cols > 0 else 4
+            self.grid_zone.update_grid_dimensions(current_rows, effective_cols)
                 
             grid_group_layout = QVBoxLayout(grid_group)
             grid_group_layout.addWidget(self.grid_zone)
@@ -5127,7 +5248,38 @@ class SettingsDialog(QDialog):
             self._populate_widgets()
         
         def _on_row_count_changed(self, rows):
-            self.grid_zone.update_grid_rows(rows)
+            self.row_spin.blockSignals(True)
+            self.col_spin.blockSignals(True)
+            try:
+                if rows == 0:
+                    # Rows → 0: force cols to 0 too
+                    self.col_spin.setValue(0)
+                    self.grid_zone.update_grid_dimensions(0, 4)  # 4 cols visually to avoid ZeroDivisionError
+                else:
+                    # Rows → ≥1: if cols was 0, bump it to 1
+                    if self.col_spin.value() == 0:
+                        self.col_spin.setValue(1)
+                    self.grid_zone.update_grid_dimensions(rows, self.grid_zone.col_count)
+            finally:
+                self.row_spin.blockSignals(False)
+                self.col_spin.blockSignals(False)
+
+        def _on_col_count_changed(self, cols):
+            self.col_spin.blockSignals(True)
+            self.row_spin.blockSignals(True)
+            try:
+                if cols == 0:
+                    # Cols → 0: force rows to 0 too
+                    self.row_spin.setValue(0)
+                    self.grid_zone.update_grid_dimensions(0, 4)  # 4 cols visually to avoid ZeroDivisionError
+                else:
+                    # Cols → ≥1: if rows was 0, bump it to 1
+                    if self.row_spin.value() == 0:
+                        self.row_spin.setValue(1)
+                    self.grid_zone.update_grid_dimensions(self.grid_zone.row_count, cols)
+            finally:
+                self.col_spin.blockSignals(False)
+                self.row_spin.blockSignals(False)
 
         def _populate_widgets(self):
             if theme_manager.night_mode:
@@ -5139,6 +5291,17 @@ class SettingsDialog(QDialog):
             # --- Onigiri Widgets ---
             # --- Onigiri Widgets ---
             saved_onigiri_layout = self.settings_dialog.current_config.get("onigiriWidgetLayout", self._ONIGIRI_DEFAULTS)
+
+            # Load column count (sync with spinbox which was set in __init__)
+            saved_col_count = saved_onigiri_layout.get("column_count", 4)
+            # Spinner already set in __init__, but good to ensure sync if config reloaded
+            if self.col_spin.value() != saved_col_count:
+                self.col_spin.blockSignals(True)
+                self.col_spin.setValue(saved_col_count)
+                self.col_spin.blockSignals(False)
+                # FIX: Use at least 4 columns for visual layout if 0 is selected
+                effective_cols = saved_col_count if saved_col_count > 0 else 4
+                self.grid_zone.update_grid_dimensions(self.grid_zone.row_count, effective_cols)
             
             # Get grid and archive configs
             saved_grid_config = saved_onigiri_layout.get("grid")
@@ -5338,7 +5501,11 @@ class SettingsDialog(QDialog):
             external_archive_config = self.external_archive_zone.get_archive_config()
             
             return {
-                "onigiri": {"grid": onigiri_grid_config, "archive": onigiri_archive_config},
+                "onigiri": {
+                    "grid": onigiri_grid_config, 
+                    "archive": onigiri_archive_config,
+                    "column_count": self.col_spin.value()
+                },
                 "external": {"grid": external_grid_config, "archive": external_archive_config}
             }
 
@@ -5403,7 +5570,7 @@ class SettingsDialog(QDialog):
             self.grid_zone.shelves = {}
             
             # Re-create shelves structure for 6 rows
-            self.grid_zone.update_grid_rows(6)
+            self.grid_zone.update_grid_dimensions(6, 4) # Reset to default 6x4
 
             # 2. Reset Onigiri Widgets
             placed_onigiri = set()
@@ -7494,17 +7661,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(sidebar_section)
 
-        # --- ADD THIS NEW SECTION ---
-        organize_section = SectionGroup(
-            "Organize Sidebar",
-            self,
-            border=False,
-            description="Drag and drop to re-order or archive sidebar buttons. Changes will apply after restarting Anki."
-        )
-        self.sidebar_layout_editor = self.SidebarLayoutEditor(self)
-        organize_section.add_widget(self.sidebar_layout_editor)
-        layout.addWidget(organize_section)
-        # --- END NEW SECTION ---
+
 
         divider1 = QFrame()
         divider1.setFrameShape(QFrame.Shape.HLine)
@@ -7589,19 +7746,105 @@ class SettingsDialog(QDialog):
 
 
 
+        # --- Organize Action Buttons (merged section) ---
         action_buttons_section = SectionGroup(
-            "Action Buttons",
+            "Organize Action Buttons",
             self,
             border=False,
-            description="Customize the main action buttons."
+            description="Choose how action buttons are displayed and customize their icons."
         )
+
+        # --- Format radio buttons ---
+        mode_layout = QHBoxLayout()
+        self.actions_mode_group = QButtonGroup(action_buttons_section)
+        
+        self.actions_mode_list = QRadioButton("List (Default)")
+        self.actions_mode_list.setToolTip("Show action buttons as list items in the sidebar.")
+        
+        self.actions_mode_collapsed = QRadioButton("Collapsed (Toolbar)")
+        self.actions_mode_collapsed.setToolTip("Show action buttons as icons in the top toolbar.")
+        
+        self.actions_mode_archived = QRadioButton("Archived (Hidden)")
+        self.actions_mode_archived.setToolTip("Hide action buttons completely.")
+        
+        self.actions_mode_group.addButton(self.actions_mode_list)
+        self.actions_mode_group.addButton(self.actions_mode_collapsed)
+        self.actions_mode_group.addButton(self.actions_mode_archived)
+        
+        # Load config
+        current_mode = self.current_config.get("sidebarActionsMode", "list")
+        if current_mode == "collapsed":
+             self.actions_mode_collapsed.setChecked(True)
+        elif current_mode == "archived":
+             self.actions_mode_archived.setChecked(True)
+        else:
+             self.actions_mode_list.setChecked(True)
+
+        mode_layout.addWidget(self.actions_mode_list)
+        mode_layout.addWidget(self.actions_mode_collapsed)
+        mode_layout.addWidget(self.actions_mode_archived)
+        mode_layout.addStretch()
+        
+        action_buttons_section.add_layout(mode_layout)
+        
+        mode_help = QLabel("Choose how action buttons (Add, Browse, Stats, Sync) are displayed.")
+        if theme_manager.night_mode:
+            mode_help.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
+        else:
+            mode_help.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        action_buttons_section.add_widget(mode_help)
+
+        # --- Drag-and-drop grids (shown only when List is selected) ---
+        self.sidebar_layout_editor_container = QWidget()
+        sle_container_layout = QVBoxLayout(self.sidebar_layout_editor_container)
+        sle_container_layout.setContentsMargins(0, 5, 0, 5)
+        sle_container_layout.setSpacing(5)
+
+        organize_label = QLabel("Drag and drop to re-order or archive sidebar buttons. Changes will apply after restarting Anki.")
+        organize_label.setWordWrap(True)
+        if theme_manager.night_mode:
+            organize_label.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
+        else:
+            organize_label.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        sle_container_layout.addWidget(organize_label)
+
+        self.sidebar_layout_editor = self.SidebarLayoutEditor(self)
+        sle_container_layout.addWidget(self.sidebar_layout_editor)
+
+        action_buttons_section.add_widget(self.sidebar_layout_editor_container)
+
+        # Show/hide grids based on mode
+        def _update_organize_visibility():
+            self.sidebar_layout_editor_container.setVisible(self.actions_mode_list.isChecked())
+        
+        self.actions_mode_list.toggled.connect(_update_organize_visibility)
+        self.actions_mode_collapsed.toggled.connect(_update_organize_visibility)
+        self.actions_mode_archived.toggled.connect(_update_organize_visibility)
+        _update_organize_visibility()
+
+        # Add a separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        if theme_manager.night_mode:
+            sep.setStyleSheet("background-color: #3a3a3a; margin-bottom: 10px;")
+        else:
+            sep.setStyleSheet("background-color: #e0e0e0; margin-bottom: 10px;")
+        sep.setFixedHeight(1)
+        action_buttons_section.add_widget(sep)
+
+        # --- Icon cards (always visible) ---
+        icons_label = QLabel("Action Button Icons")
+        icons_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        action_buttons_section.add_widget(icons_label)
 
         action_buttons_layout = QGridLayout()
         action_buttons_layout.setSpacing(15)
-        
+        action_buttons_layout.setContentsMargins(0, 5, 0, 5)
+
         action_icons_to_configure = {
-            "add": "Add", "browse": "Browser", "stats": "Stats", 
-            "sync": "Sync", "settings": "Settings", "more": "More", 
+            "add": "Add", "browse": "Browser", "stats": "Stats",
+            "sync": "Sync", "settings": "Settings", "more": "More",
             "get_shared": "Get Shared", "create_deck": "Create Deck", "import_file": "Import File"
         }
         external_entries = {
@@ -7611,28 +7854,25 @@ class SettingsDialog(QDialog):
         }
         for entry_id in sorted(external_entries.keys(), key=lambda k: external_entries[k].lower()):
             action_icons_to_configure[entry_id] = external_entries[entry_id] or entry_id
+
         row, col, num_cols = 0, 0, 3
         for key, label_text in action_icons_to_configure.items():
             card = QWidget()
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(0,0,0,0)
+            card_layout.setContentsMargins(0, 0, 0, 0)
             card_layout.setSpacing(5)
-            
             label = QLabel(label_text)
             label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            
             control_widget = self._create_icon_control_widget(key, label_text)
             self.action_button_icon_widgets.append(control_widget)
-            
             card_layout.addWidget(label)
             card_layout.addWidget(control_widget)
             action_buttons_layout.addWidget(card, row, col)
-            
             col += 1
             if col >= num_cols:
                 col = 0
                 row += 1
-        
+
         action_buttons_section.add_layout(action_buttons_layout)
         
         layout.addWidget(action_buttons_section)
@@ -7867,9 +8107,8 @@ class SettingsDialog(QDialog):
         
         sections = {
             "Sidebar Customization": sidebar_section,
-            "Organize Sidebar": organize_section,
             "Sidebar Background": sidebar_group,
-            "Action Buttons": action_buttons_section,
+            "Organize Action Buttons": action_buttons_section,
             "Deck": deck_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
@@ -10304,7 +10543,7 @@ class SettingsDialog(QDialog):
         if delete_button := gallery.get('delete_button'):
             delete_button.setEnabled(bool(gallery['selected']))
 
-    def _create_icon_control_widget(self, key, display_name=None):
+    def _create_icon_control_widget(self, key, display_name=None, config_key_prefix="modern_menu_icon_"):
         # Modern Card-like widget for icon control
         control_widget = QWidget()
         control_widget.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -10395,7 +10634,8 @@ class SettingsDialog(QDialog):
         
         # Properties
         control_widget.setProperty("icon_key", key)
-        control_widget.setProperty("icon_filename", mw.col.conf.get(f"modern_menu_icon_{key}", ""))
+        control_widget.setProperty("config_key_prefix", config_key_prefix)
+        control_widget.setProperty("icon_filename", mw.col.conf.get(f"{config_key_prefix}{key}", ""))
         control_widget.setProperty("preview_label", preview_label)
         control_widget.setProperty("sub_label", sub_label) # To update text if needed
         
@@ -11804,6 +12044,14 @@ class SettingsDialog(QDialog):
         self.current_config["hideDeckCounts"] = self.hide_deck_counts_checkbox.isChecked()
         self.current_config["hideAllDeckCounts"] = self.hide_all_deck_counts_checkbox.isChecked()
         
+        # Save Sidebar Action Buttons Mode
+        if hasattr(self, "actions_mode_collapsed") and self.actions_mode_collapsed.isChecked():
+            self.current_config["sidebarActionsMode"] = "collapsed"
+        elif hasattr(self, "actions_mode_archived") and self.actions_mode_archived.isChecked():
+            self.current_config["sidebarActionsMode"] = "archived"
+        else:
+            self.current_config["sidebarActionsMode"] = "list"
+        
         # Save Deck Indentation Settings
         if hasattr(self, "indentation_mode_group"):
              if btn := self.indentation_mode_group.checkedButton():
@@ -11826,21 +12074,15 @@ class SettingsDialog(QDialog):
             key = widget.property("icon_key")
             value = widget.property("icon_filename")
             config_key = f"modern_menu_icon_{key}"
-            if value:
-                mw.col.conf[config_key] = value
-            else:
-                mw.col.conf[config_key] = ""
+            mw.col.conf[config_key] = value or ""
 
         for widget in self.icon_assignment_widgets:
             key = widget.property("icon_key")
             value = widget.property("icon_filename")
             config_key = f"modern_menu_icon_{key}"
-            if value:
-                mw.col.conf[config_key] = value
-            else:
-                mw.col.conf[config_key] = ""
+            mw.col.conf[config_key] = value or ""
 
-        for key,widget in self.icon_size_widgets.items():
+        for key, widget in self.icon_size_widgets.items():
             mw.col.conf[f"modern_menu_icon_size_{key}"] = widget.value()
         
         sidebar_color_keys = [

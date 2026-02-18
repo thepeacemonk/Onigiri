@@ -301,6 +301,10 @@ def setup_global_hooks():
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
     menu_buttons.setup_onigiri_menu(addon_path)
+    
+    # Install the toolbar bridge AFTER other addons have loaded their hooks
+    from . import sidebar_api
+    sidebar_api.ensure_capture_hook_is_last()
 
 def on_profile_did_open():
     """
@@ -328,6 +332,29 @@ def on_profile_did_open():
 
     # Re-apply menu styling now that we definitely know the theme
     patcher.apply_menu_styling()
+
+    # Ensure our sidebar hook runs last (again) just in case other add-ons loaded late
+    sidebar_api.ensure_capture_hook_is_last()
+    
+    # Force toolbar redraw so our hook (now last) captures all external links
+    try:
+        mw.toolbar.draw()
+        
+        # DEBUG: Log purely QActions and final links state
+        import os
+        log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"--- Profile Open Check ---\n")
+            # Check QActions
+            qactions = mw.form.mainToolBar.actions()
+            f.write(f"QActions count: {len(qactions)}\n")
+            for a in qactions:
+                f.write(f"  QAction: {a.text()} (visible={a.isVisible()})\n")
+    except Exception as e:
+        import os
+        log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+             f.write(f"Error checking QActions: {e}\n")
 
 # --- INITIALIZATION ---
 
