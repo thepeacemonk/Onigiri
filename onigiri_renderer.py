@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from aqt import mw
 from . import patcher
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
-from . import config, heatmap, deck_tree_updater
+from . import config, heatmap, deck_tree_updater, sidebar_api
 from .gamification import restaurant_level
 from .templates import custom_body_template
 import copy
@@ -82,13 +82,16 @@ def _build_sidebar_html(conf: dict) -> str:
     """
     layout_config = conf.get("sidebarButtonLayout", copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]))
     visible_keys = layout_config.get("visible", [])
+    external_entries = sidebar_api.get_sidebar_entries()
     
     html_parts = []
     for key in visible_keys:
         if key in BUTTON_HTML:
             html_parts.append(BUTTON_HTML[key])
+        elif key in external_entries:
+            html_parts.append(sidebar_api.render_sidebar_entry(key))
             
-    return "\n".join(html_parts)
+    return "\n".join(part for part in html_parts if part)
 
 
 # --- Helper functions (copied from patcher.py for self-containment) ---
