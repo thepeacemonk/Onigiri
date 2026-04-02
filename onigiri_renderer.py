@@ -1132,7 +1132,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     # Inject CSS for theme colors if a theme is active
     theme_css = ""
-    rl_theme_color = restaurant_level.manager.get_current_theme_color()
+    bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
+    if bar_mode == "custom":
+        rl_theme_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+    else:
+        rl_theme_color = restaurant_level.manager.get_current_theme_color()
+
     if rl_theme_color:
         theme_css = f"""
         <style id="profile-bar-theme-colors">

@@ -104,6 +104,8 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         
     elif is_reviewer:
+        silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
+        web_content.head += f'<script>window.onigiriSilentNotifications = {silent_notifs};</script>'
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += generate_notification_position_css(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
@@ -330,8 +332,8 @@ def on_profile_did_open():
     # Delay by 1s to ensure main window is fully rendered for screenshot blur
     QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
 
-    # Re-apply menu styling now that we definitely know the theme
-    patcher.apply_menu_styling()
+    # Menu styling disabled per user request
+    # patcher.apply_menu_styling()
 
     # Ensure our sidebar hook runs last (again) just in case other add-ons loaded late
     sidebar_api.ensure_capture_hook_is_last()
@@ -437,5 +439,6 @@ gui_hooks.operation_did_execute.append(lambda *args: update_sync_status_indicato
 # Update sync status when sync status changes
 gui_hooks.sync_will_start.append(lambda: update_sync_status_indicator())
 gui_hooks.deck_browser_will_show_options_menu.append(on_deck_options_shown)
-gui_hooks.theme_did_change.append(patcher.apply_menu_styling)
+# Menu styling disabled per user request
+# gui_hooks.theme_did_change.append(patcher.apply_menu_styling)
 mw.addonManager.setWebExports(__name__, r"(.*)")

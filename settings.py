@@ -2264,6 +2264,7 @@ class DonationDialog(QDialog):
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.addon_path = addon_path
         # <<< IMPORT/EXPORT THEMES >>>
         self.user_themes_path = os.path.join(self.addon_path, "user_files", "user_themes")
@@ -3936,9 +3937,11 @@ class SettingsDialog(QDialog):
             while self.grid_layout.count():
                 item = self.grid_layout.takeAt(0)
                 if item.widget():
-                    item.widget().hide()
-                    item.widget().setParent(None)
-                    item.widget().deleteLater() # Explicitly schedule deletion for shelves
+                    w = item.widget()
+                    w.hide()
+                    w.setParent(None)
+                    if w.objectName() == "Shelf":
+                        w.deleteLater() # Explicitly schedule deletion for shelves only
             
             self.shelves = {}
             
@@ -8203,6 +8206,29 @@ class SettingsDialog(QDialog):
         layout.addWidget(bg_section)
         # --- END OF REBUILT SECTION ---
 
+        bar_color_section = SectionGroup("Level Bar Color", self)
+        bar_color_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
+        bar_mode_layout = QHBoxLayout()
+        self.profile_level_bar_theme_radio = QRadioButton("Current Restaurant Theme")
+        self.profile_level_bar_custom_radio = QRadioButton("Custom Color")
+        self.profile_level_bar_theme_radio.setChecked(bar_color_mode == "theme")
+        self.profile_level_bar_custom_radio.setChecked(bar_color_mode == "custom")
+        bar_mode_layout.addWidget(self.profile_level_bar_theme_radio)
+        bar_mode_layout.addWidget(self.profile_level_bar_custom_radio)
+        bar_mode_layout.addStretch()
+        bar_color_section.add_layout(bar_mode_layout)
+
+        self.profile_level_bar_color_group = QWidget()
+        bar_color_picker_layout = QVBoxLayout(self.profile_level_bar_color_group)
+        bar_color_picker_layout.setContentsMargins(0, 10, 0, 0)
+        self.profile_level_bar_custom_row = self._create_color_picker_row("Level Bar Custom Color", mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50"), "profile_level_bar_custom_color")
+        bar_color_picker_layout.addLayout(self.profile_level_bar_custom_row)
+        bar_color_section.add_widget(self.profile_level_bar_color_group)
+
+        self.profile_level_bar_custom_radio.toggled.connect(self.toggle_profile_level_bar_options)
+        self.toggle_profile_level_bar_options()
+        layout.addWidget(bar_color_section)
+
         page_bg_section = SectionGroup("Profile Page Background", self)
         page_bg_mode = mw.col.conf.get("onigiri_profile_page_bg_mode", "color")
         page_mode_layout = QHBoxLayout()
@@ -8240,6 +8266,7 @@ class SettingsDialog(QDialog):
             "User Details": details_section,
             "Profile Picture": pic_section,
             "Profile Bar Background": bg_section,
+            "Level Bar Color": bar_color_section,
             "Profile Page Background": page_bg_section,
             "Profile Page Sections Visibility": visibility_section
         }
@@ -9817,42 +9844,41 @@ class SettingsDialog(QDialog):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             
             # Style for buttons
-            base_style = """
-                QPushButton {
+            base_style = f"""
+                QPushButton {{
                     border: 1px solid #ccc;
                     border-radius: 8px;
                     background-color: transparent;
                     font-size: 20px;
                     color: #555;
-                }
-                QPushButton:hover {
+                }}
+                QPushButton:hover {{
                     background-color: rgba(0,0,0,0.05);
-                }
-                QPushButton:checked {
-                    background-color: {self.accent_color.name()};
+                }}
+                QPushButton:checked {{
+                    background-color: {self.accent_color};
                     color: white;
-                    border: 1px solid {self.accent_color.name()};
-                }
+                    border: 1px solid {self.accent_color};
+                }}
             """
             
             if theme_manager.night_mode:
-                base_style = """
-                    QPushButton {
+                base_style = f"""
+                    QPushButton {{
                         border: 1px solid #555;
                         border-radius: 8px;
                         background-color: transparent;
                         font-size: 20px;
                         color: #ccc;
-                    }
-                    QPushButton:hover {
+                    }}
+                    QPushButton:hover {{
                         background-color: rgba(255,255,255,0.05);
-                    }
-                    QPushButton:checked {
-                    background-color: {self.accent_color.name()};
-                    color: white;
-                    border: 1px solid {self.accent_color.name()};
-                }
-    }
+                    }}
+                    QPushButton:checked {{
+                        background-color: {self.accent_color};
+                        color: white;
+                        border: 1px solid {self.accent_color};
+                    }}
                 """
             
             btn.setStyleSheet(base_style)
@@ -9895,7 +9921,28 @@ class SettingsDialog(QDialog):
         main_layout.addStretch()
         
         section.content_layout.addWidget(container)
+        
+        # --- Bottom: Silent Toggle ---
+        silent_layout = QHBoxLayout()
+        silent_label = QLabel("Silent all notifications")
+        silent_label.setStyleSheet("font-size: 14px; color: #555;")
+        if theme_manager.night_mode:
+            silent_label.setStyleSheet("font-size: 14px; color: #ccc;")
+            
+        self.silent_toggle = AnimatedToggleButton(self, accent_color=self.accent_color)
+        self.silent_toggle.setChecked(self.current_config.get("onigiri_reviewer_silent_notifications", False))
+        self.silent_toggle.toggled.connect(self._on_silent_notif_toggled)
+        
+        silent_layout.addWidget(silent_label)
+        silent_layout.addWidget(self.silent_toggle)
+        silent_layout.addStretch()
+        
+        section.content_layout.addLayout(silent_layout)
+        
         return section
+
+    def _on_silent_notif_toggled(self, checked):
+        self.current_config["onigiri_reviewer_silent_notifications"] = checked
 
     def _update_notification_position(self, pos_id):
         # Update config
@@ -11254,6 +11301,9 @@ class SettingsDialog(QDialog):
             pass
     def toggle_profile_page_bg_options(self): is_gradient = self.profile_page_bg_gradient_radio.isChecked(); self.profile_page_color_group.setVisible(not is_gradient); self.profile_page_gradient_group.setVisible(is_gradient)
     
+    def toggle_profile_level_bar_options(self):
+        self.profile_level_bar_color_group.setVisible(self.profile_level_bar_custom_radio.isChecked())
+    
     def toggle_reviewer_bar_options(self):
         is_main = self.reviewer_bar_main_radio.isChecked()
         is_match_reviewer_bg = self.reviewer_bar_match_reviewer_bg_radio.isChecked()
@@ -12274,10 +12324,19 @@ class SettingsDialog(QDialog):
             mw.col.conf["onigiri_profile_page_bg_light_color2"] = self.profile_page_light_gradient2_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_gradient1_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color2"] = self.profile_page_dark_gradient2_color_input.text()
+        else:
             mw.col.conf["onigiri_profile_page_bg_mode"] = "color"
             mw.col.conf["onigiri_profile_page_bg_light_color1"] = self.profile_page_light_color1_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_color1_color_input.text()
-            
+
+        # Profile Level Bar Color
+        if hasattr(self, 'profile_level_bar_custom_radio'):
+            if self.profile_level_bar_custom_radio.isChecked():
+                mw.col.conf["onigiri_profile_level_bar_mode"] = "custom"
+            else:
+                mw.col.conf["onigiri_profile_level_bar_mode"] = "theme"
+            if hasattr(self, 'profile_level_bar_custom_color_color_input'):
+                mw.col.conf["onigiri_profile_level_bar_custom_color"] = self.profile_level_bar_custom_color_color_input.text()
         # Save Restaurant Level visibility
         restaurant_level.manager.set_profile_page_visibility(self.profile_show_restaurant_check.isChecked())
 
@@ -12679,6 +12738,7 @@ class SettingsDialog(QDialog):
 
         config.write_config(self.current_config)
         self.accept()
+        mw.reset()
 
 _settings_dialog = None
 

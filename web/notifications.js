@@ -146,6 +146,9 @@
 
     const api = {
         show(payload) {
+            if (window.onigiriSilentNotifications) {
+                return;
+            }
             ensureDomReady(() => renderNotification(payload || {}));
         },
         showMany(items) {
