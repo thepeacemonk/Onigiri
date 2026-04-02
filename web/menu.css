@@ -389,12 +389,13 @@ tr.deck.is-hovered {
 
 /* Cell holding main content */
 tr.deck td.decktd {
-    flex-grow: 1;
+    flex: 1;
     display: flex;
     justify-content: space-between;
     align-items: center;
     row-gap: 4px;
     min-width: 0;
+    width: 0;
     max-width: 100%;
     overflow: hidden;
 }
@@ -407,6 +408,7 @@ tr.deck td.collapse-cell {
 
 /* Deck name link */
 a.deck {
+    display: block;
     font-size: 15px;
     white-space: nowrap;
     overflow: hidden;
@@ -416,9 +418,10 @@ a.deck {
     padding-right: 12px;
     margin-left: 8px;
     padding: 6px;
-    flex-grow: 1;
+    flex: 1;
     background-color: inherit !important;
     min-width: 0;
+    width: 0;
     max-width: 100%;
 }
 
@@ -469,8 +472,9 @@ tr.deck.is-deck .deck-info,
 tr.deck.is-folder .deck-info {
     display: flex;
     align-items: center;
-    flex: 1 1 auto;
+    flex: 1;
     min-width: 0;
+    width: 0;
     max-width: 100%;
     overflow: hidden;
 }

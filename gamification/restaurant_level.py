@@ -877,22 +877,12 @@ class RestaurantLevelManager:
 
                 # 4. Update Reviewer Header Chip (Reviewer Top Bar)
                 # Update Progress Bar (Reviewer)
-                "const chipProgressBar = document.querySelector('.restaurant-level-chip .level-progress-bar');"
+                "const chipProgressBar = document.querySelector('.restaurant-level-chip .rl-chip-progress-fill');"
                 "if (chipProgressBar) chipProgressBar.style.width = (progress.progressFraction * 100) + '%';"
                 
-                # Update Level Text (Reviewer) - Format: "Lv. 5"
-                "const chipLevelText = document.querySelector('.restaurant-level-chip .level-text');"
-                "if (chipLevelText) chipLevelText.textContent = `Lv. ${progress.level}`;"
-                
-                # Update XP Text (Reviewer) - Format: "100/500 XP"
-                "const chipXpText = document.querySelector('.restaurant-level-chip .xp-text');"
-                "if (chipXpText) {"
-                    "if (progress.xpToNextLevel > 0) {"
-                         "chipXpText.textContent = `${progress.xpIntoLevel.toLocaleString()}/${progress.xpToNextLevel.toLocaleString()} XP`;"
-                    "} else {"
-                         "chipXpText.textContent = `${progress.totalXp.toLocaleString()} XP total`;"
-                    "}"
-                "}"
+                # Update Level Text (Reviewer) - Format: "Lv 5"
+                "const chipLevelText = document.querySelector('.restaurant-level-chip .rl-chip-level');"
+                "if (chipLevelText) chipLevelText.textContent = `Lv ${progress.level}`;"
 
             "} catch (e) { console.error('Onigiri UI Update Error:', e); }"
             "})();"

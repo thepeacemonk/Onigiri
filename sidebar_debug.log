@@ -1912,3 +1912,1015 @@ Link 4:
 </a>
 --- Profile Open Check ---
 Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:05:11 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:05:11 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:05:32 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:05:32 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:14:54 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:14:54 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:19:00 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:19:00 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:22:52 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:22:52 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:29:47 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:29:47 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:35:18 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:35:18 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:36:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:36:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:40:43 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:40:43 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:46:11 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:46:11 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:57:04 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:57:04 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 16:38:17 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 16:38:17 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 20:08:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 20:08:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 20:09:30 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 20:09:30 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 20:27:02 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 20:27:02 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 21:11:17 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 21:11:17 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 22:34:43 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 22:34:43 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 22:38:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 22:38:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 19:07:22 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 19:07:22 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 07:26:12 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 07:26:12 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 11:27:45 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 11:27:45 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 20:31:08 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 20:31:08 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:52:12 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:52:12 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 11:05:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 11:05:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 22:59:52 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 22:59:52 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 10:16:02 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 10:16:02 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 18:05:39 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 18:05:39 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 18:18:09 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 18:18:09 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 07:05:08 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 07:05:08 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 07:05:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 07:05:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 08:14:56 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 08:14:56 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:14:47 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:14:47 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:47:59 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:47:59 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 18:34:30 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 18:34:30 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 12:29:05 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 12:29:05 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:36:04 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:36:04 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 15:38:29 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 15:38:29 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 21:07:19 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 21:07:19 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 21:08:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 21:08:36 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 16:17:42 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 16:17:42 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 16:23:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 16:23:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 18:05:32 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 18:05:32 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 10:06:44 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 10:06:44 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 10:09:44 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 10:09:44 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 10:22:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 10:22:58 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'
+--- Capture Hook Run at 10:25:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Capture Hook Run at 10:25:13 ---
+Links count: 5
+Link 0: <a class=hitem tabindex="-1" aria-label="Decks" title="Shortcut key: ⁨D⁩" id="decks" href=# onclick="return pycmd('decks')">Decks</a>
+Link 1: <a class=hitem tabindex="-1" aria-label="Add" title="Shortcut key: ⁨A⁩" id="add" href=# onclick="return pycmd('add')">Add</a>
+Link 2: <a class=hitem tabindex="-1" aria-label="Browse" title="Shortcut key: ⁨B⁩" id="browse" href=# onclick="return pycmd('browse')">Browse</a>
+Link 3: <a class=hitem tabindex="-1" aria-label="Stats" title="Shortcut key: ⁨T⁩" id="stats" href=# onclick="return pycmd('stats')">Stats</a>
+Link 4: 
+<a class=hitem tabindex="-1" aria-label="Sync" title="Shortcut key: ⁨Y⁩" id="sync" href=# onclick="return pycmd('sync')"
+>Sync<img id=sync-spinner src='/_anki/imgs/refresh.svg'>
+</a>
+--- Profile Open Check ---
+Error checking QActions: 'Ui_MainWindow' object has no attribute 'mainToolBar'

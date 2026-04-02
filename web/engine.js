@@ -3,7 +3,7 @@
 window.OnigiriEngine = {
     currentHoveredRow: null,
 
-    init: function() {
+    init: function () {
         this.deckListContainer = document.getElementById('deck-list-container');
         if (!this.deckListContainer) {
             return;
@@ -22,9 +22,9 @@ window.OnigiriEngine = {
      * preserving scroll position.
      * @param {string} newHtml The new HTML for the deck tree's <tbody>.
      */
-    updateDeckTree: function(newHtml) {
+    updateDeckTree: function (newHtml) {
         if (!this.deckListContainer) return;
-        
+
         const tableBody = this.deckListContainer.querySelector('table.deck-table tbody');
         if (!tableBody) return;
 
@@ -35,7 +35,7 @@ window.OnigiriEngine = {
             // 1. Create a temporary container
             const tempContainer = document.createElement('tbody');
             tempContainer.innerHTML = newHtml;
-            
+
             // 2. Add checkboxes to the nodes in the temporary container
             tempContainer.querySelectorAll('tr.deck').forEach(row => {
                 const did = row.dataset.did; // Relies on data-did from patcher.py
@@ -45,7 +45,7 @@ window.OnigiriEngine = {
                 checkbox.type = 'checkbox';
                 checkbox.className = 'deck-checkbox';
                 checkbox.dataset.did = did;
-                
+
                 // Restore the 'checked' state from the editor's memory
                 checkbox.checked = OnigiriEditor.SELECTED_DECKS.has(did);
 
@@ -63,11 +63,11 @@ window.OnigiriEngine = {
                     decktd.prepend(checkbox);
                 }
             });
-            
+
             // 3. Replace the content with the *modified* nodes
             tableBody.innerHTML = ''; // Clear existing content
             tableBody.append(...tempContainer.childNodes); // Append new, modified nodes
-            
+
         } else {
             // 4. If not in edit mode, use the fast original method
             tableBody.innerHTML = newHtml;
@@ -76,7 +76,7 @@ window.OnigiriEngine = {
 
         this.restoreScrollPosition();
         this.processNewNodes(tableBody.children); // Process new nodes (for collapse icons etc.)
-        
+
         if (typeof window.updateDeckLayouts === 'function') {
             window.updateDeckLayouts();
         }
@@ -92,14 +92,14 @@ window.OnigiriEngine = {
     },
 
     /** Saves the current scroll position to session storage. */
-    saveScrollPosition: function() {
+    saveScrollPosition: function () {
         if (this.deckListContainer) {
             sessionStorage.setItem('deckListScrollTop', this.deckListContainer.scrollTop);
         }
     },
 
     /** Restores the scroll position from session storage. */
-    restoreScrollPosition: function() {
+    restoreScrollPosition: function () {
         const savedScroll = sessionStorage.getItem('deckListScrollTop');
         if (savedScroll !== null && this.deckListContainer) {
             this.deckListContainer.scrollTop = parseInt(savedScroll, 10);
@@ -107,7 +107,7 @@ window.OnigiriEngine = {
     },
 
     /** Binds event listeners to handle interactions. */
-    bindEvents: function() {
+    bindEvents: function () {
         if (this.deckListContainer.dataset.engineBound) return;
         this.deckListContainer.dataset.engineBound = 'true';
 
@@ -143,7 +143,7 @@ window.OnigiriEngine = {
             if (collapseLink) {
                 this.saveScrollPosition();
                 // Allow the default action (onclick attribute) to happen.
-                return; 
+                return;
             }
 
             // Case 2: Click was on the options/gear icon. Ignore it.
@@ -194,16 +194,38 @@ window.OnigiriEngine = {
 
             const dragElement = event.target.closest('tr.deck');
             if (dragElement && event.dataTransfer) {
-                const dragImage = dragElement.cloneNode(true);
-                dragImage.style.opacity = '0.8';
-                dragImage.style.transform = 'scale(0.9)';
-                event.dataTransfer.setDragImage(dragImage, -10, -10);
+                const clone = dragElement.cloneNode(true);
+
+                // Apply subtle drag styling
+                clone.style.opacity = '0.9';
+                clone.style.transform = 'scale(0.95)';
+                clone.style.position = 'absolute';
+                clone.style.top = '-10000px'; // Render off-screen
+                clone.style.left = '-10000px';
+                clone.style.width = dragElement.offsetWidth + 'px'; // Maintain layout
+
+                document.body.appendChild(clone);
+
+                // Calculate the exact offset so the drag preview is perfectly under the cursor.
+                // We grab the exact position where the user clicked relative to the row.
+                const rect = dragElement.getBoundingClientRect();
+                const xOffset = event.clientX - rect.left;
+                const yOffset = event.clientY - rect.top;
+
+                event.dataTransfer.setDragImage(clone, xOffset, yOffset);
+
+                // Clean up the off-screen clone after the drag begins
+                setTimeout(() => {
+                    if (document.body.contains(clone)) {
+                        document.body.removeChild(clone);
+                    }
+                }, 0);
             }
         });
     },
 
     /** Watches for changes in the deck list and processes ONLY new elements. */
-    observeMutations: function() {
+    observeMutations: function () {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
                 if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
@@ -222,7 +244,7 @@ window.OnigiriEngine = {
     },
 
     /** Processes a list of new nodes, classifying icons and adding styles. */
-    processNewNodes: function(nodes) {
+    processNewNodes: function (nodes) {
         nodes.forEach(node => {
             if (node.nodeType !== Node.ELEMENT_NODE) return;
 
@@ -244,11 +266,11 @@ window.OnigiriEngine = {
     },
 
     /** Applies open/closed state classes to a collapse icon. */
-    classifyCollapseIcon: function(el) {
+    classifyCollapseIcon: function (el) {
         if (el.dataset.onigiriClassified) return;
         el.dataset.onigiriClassified = 'true';
         el.classList.remove('state-open', 'state-closed');
-        
+
         if (el.textContent.trim() === '-') {
             el.classList.add('state-open');
         } else {

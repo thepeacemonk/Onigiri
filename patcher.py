@@ -785,8 +785,18 @@ def _get_restaurant_level_profile_html() -> str:
     total_label = f"{total_xp:,} XP total"
     phrase = html.escape(payload.get("phrase") or "Keep serving knowledge!", quote=False)
 
+    bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
+    if bar_mode == "custom":
+        bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+    else:
+        bar_color = restaurant_level.manager.get_current_theme_color()
+
+    style_attr = ""
+    if bar_color:
+        style_attr = f'style="--profile-level-bar-bg: {bar_color};"'
+
     return f"""
-    <section class="profile-restaurant-level" data-level="{level}">
+    <section class="profile-restaurant-level" data-level="{level}" {style_attr}>
         <header class="prl-header">
             <div class="prl-title-group">
                 <span class="prl-title">Restaurant Level</span>
@@ -895,15 +905,15 @@ def _generate_profile_html_body():
         .night-mode .profile-restaurant-level .prl-progress {
             background: rgba(0, 0, 0, 0.35);
         }
-        .profile-restaurant-level .prl-progress-fill {
+        .profile-restaurant-level .prl-progress-fill {{
             position: absolute;
             top: 0;
             left: 0;
             height: 100%;
             border-radius: inherit;
-            background: linear-gradient(90deg, #ffe29f, #ffa99f, #ff719a);
+            background: var(--profile-level-bar-bg, linear-gradient(90deg, #ffe29f, #ffa99f, #ff719a));
             transition: width 0.3s ease;
-        }
+        }}
         .profile-restaurant-level .prl-meta {
             display: flex;
             justify-content: space-between;
@@ -2214,20 +2224,26 @@ def generate_reviewer_top_bar_html_and_css():
                 xp_to_next_level = max(1, getattr(progress, 'xp_to_next_level', 100))
                 progress_percent = min(100, max(0, (xp_into_level / xp_to_next_level) * 100))
                 
+                bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
+                if bar_mode == "custom":
+                    bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+                else:
+                    bar_color = restaurant_level.manager.get_current_theme_color()
+                
+                chip_style = ""
+                if bar_color:
+                    chip_style = f'style="--reviewer-level-bar-bg: {bar_color}; --reviewer-level-bar-hover-bg: {bar_color};"'
+
                 # Format the progress bar with proper escaping
                 restaurant_chip_html = f"""
-                <div class="restaurant-level-chip" onclick="pycmd('restaurant_level')">
-                    <div class="level-progress-container">
-                        <div class="level-progress-bar" style="width: {progress_percent:.2f}%"></div>
-                        <div class="level-progress-text">
-                            <span class="level-text">Lv. {current_level}</span>
-                            <span class="xp-text">{xp_into_level}/{xp_to_next_level} XP</span>
-                        </div>
+                <div class="restaurant-level-chip" onclick="pycmd('restaurant_level')" {chip_style}>
+                    <span class="rl-chip-level">Lv {current_level}</span>
+                    <div class="rl-chip-progress">
+                        <div class="rl-chip-progress-fill" style="width: {progress_percent:.2f}%"></div>
                     </div>
                 </div>
                 """.format(
                     progress_percent=progress_percent,
-                    current_level=current_level,
                     xp_into_level=xp_into_level,
                     xp_to_next_level=xp_to_next_level
                 )
@@ -2345,16 +2361,20 @@ def generate_reviewer_top_bar_html_and_css():
         .restaurant-level-chip {
             display: flex;
             align-items: center;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 12px;
-            padding: 0;
+            gap: 10px;
             margin-left: 12px;
-            width: 180px;
-            height: 28px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(4px);
+            color: inherit;
+            font-size: 13px;
+            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
             position: relative;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
         }
         
         .night_mode .restaurant-level-chip {
@@ -2362,59 +2382,32 @@ def generate_reviewer_top_bar_html_and_css():
             border-color: rgba(255, 255, 255, 0.05);
         }
         
-        .level-progress-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .level-progress-bar {
-            position: absolute;
-            left: 0;
-            top: 0;
-            height: 100%;
-            background: linear-gradient(90deg, #ffb347, #ff6b6b);
-            border-radius: 8px;
-            transition: width 0.5s ease-out;
-            z-index: 1;
-            box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
-        }
-        
-        .level-progress-text {
-            position: relative;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            z-index: 2;
-            font-size: 12px;
+        .restaurant-level-chip .rl-chip-level {
             font-weight: 600;
+            white-space: nowrap;
             color: white;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-            padding: 0 12px;
-            box-sizing: border-box;
+        }
+        
+        .restaurant-level-chip .rl-chip-progress {
+            width: 72px;
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.25);
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+        }
+        
+        .night_mode .restaurant-level-chip .rl-chip-progress {
+            background: rgba(0, 0, 0, 0.35);
+        }
+        
+        .restaurant-level-chip .rl-chip-progress-fill {
             height: 100%;
-        }
-        
-        .level-text {
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            text-shadow: none !important;
-        }
-        
-
-        
-        .xp-text {
-            font-size: 11px;
-            opacity: 0.95;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 500;
+            background: var(--reviewer-level-bar-bg, linear-gradient(90deg, #ffb347, #ff6b6b));
+            border-radius: inherit;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
         }
         
         .restaurant-level-chip:hover {
@@ -2422,8 +2415,8 @@ def generate_reviewer_top_bar_html_and_css():
             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
         
-        .restaurant-level-chip:hover .level-progress-bar {
-            background: linear-gradient(90deg, #ff9a3c, #ff5e62);
+        .restaurant-level-chip:hover .rl-chip-progress-fill {
+            background: var(--reviewer-level-bar-hover-bg, linear-gradient(90deg, #ff9a3c, #ff5e62));
             box-shadow: 0 0 15px rgba(255, 107, 107, 0.4);
         }
 
@@ -3755,11 +3748,11 @@ def apply_patches():
     """
     # ... (existing patches)
     
-    # Apply modern menu styling
-    apply_menu_styling()
+    # Menu styling disabled per user request
+    # apply_menu_styling()
     
-    # Patch QMenu class for transparency
-    patch_qmenu()
+    # Menu patching disabled per user request
+    # patch_qmenu()
     """Apply all patches to Anki's UI."""
     # Register the reviewer_did_answer_card hook
     from aqt import gui_hooks
