@@ -6360,7 +6360,7 @@ class SettingsDialog(QDialog):
 
         # Warning message when gamification mode is disabled
         self.gamification_warning_label = QLabel(
-            "⚠️ Gamification Mode is currently disabled. Enable it in Settings → Modes to unlock these mini-games."
+            "⚠️ Gamification Mode is currently disabled. Enable it in Settings → General → Modes to unlock these mini-games."
         )
         self.gamification_warning_label.setObjectName("gamificationWarning")
         self.gamification_warning_label.setWordWrap(True)
