@@ -39,7 +39,7 @@ from . import config
 from . import onigiri_renderer
 from . import deck_tree_updater
 from .gamification import restaurant_level
-from . import menu_buttons, settings, heatmap, fonts
+from . import settings, heatmap, fonts, gamification_settings
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
 from . import deck_tree_updater
@@ -1078,6 +1078,9 @@ def on_webview_js_message(handled, message, context):
             return (True, None)
         if cmd == "openOnigiriSettings":
             settings.open_settings(0)
+            return (True, None)
+        if cmd == "openGamificationSettings":
+            gamification_settings.open_gamification_settings()
             return (True, None)
         if cmd == "shared":
             QDesktopServices.openUrl(QUrl("https://ankiweb.net/shared/decks"))

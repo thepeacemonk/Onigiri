@@ -487,6 +487,25 @@ class StoreItemCard(QWidget):
             """)
             layout.addWidget(special_note)
 
+        # Special note for Astronigiri
+        if self.item_id == "astronigiri":
+            special_note = QLabel("🚀 This is an homage to Artemis II")
+            special_note.setWordWrap(True)
+            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            special_note.setStyleSheet("""
+                QLabel {
+                    font-size: 13px;
+                    color: #A8D8FF;
+                    background-color: rgba(116, 130, 155, 0.2);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    margin-top: 10px;
+                    border: 1px solid #74829B;
+                }
+            """)
+            layout.addWidget(special_note)
+
         # Special note for Motivated Mochi
         
         # Special note for locked evolutions
@@ -1267,6 +1286,13 @@ class TaiyakiStoreWindow(QDialog):
                 "theme": "#D22B2B", 
                 "image": "lunar_new_year_feast.png",
                 "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
+            },
+            "astronigiri": {
+                "name": "Astronigiri", 
+                "price": 5000, 
+                "theme": "#74829B", 
+                "image": "space_onigiri.png",
+                "description": "A futuristic orbital station serving the finest cosmic-themed snacks. Floating in the vastness of space, it's the perfect spot to recharge while contemplating the stars."
             },
         }
         
