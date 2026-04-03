@@ -19,6 +19,7 @@ from . import webview_handlers
 from .gamification import focus_dango
 from . import birthday_dialog
 from . import icon_chooser
+from . import heatmap
 from .sidebar_api import register_sidebar_action
 
 # --- SHOP INTEGRATION IMPORT ---
@@ -102,6 +103,19 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
+        
+        # Inject heatmap data for robust rendering
+        if "heatmap" in conf.get("onigiriWidgetLayout", {}).get("grid", {}):
+            try:
+                h_data, h_conf = heatmap.get_heatmap_and_config()
+                web_content.head += f"""
+                <script>
+                    window.onigiriHeatmapData = {json.dumps(h_data)};
+                    window.onigiriHeatmapConfig = {json.dumps(h_conf)};
+                </script>
+                """
+            except Exception:
+                pass
         
     elif is_reviewer:
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
@@ -337,26 +351,11 @@ def on_profile_did_open():
 
     # Ensure our sidebar hook runs last (again) just in case other add-ons loaded late
     sidebar_api.ensure_capture_hook_is_last()
-    
     # Force toolbar redraw so our hook (now last) captures all external links
     try:
         mw.toolbar.draw()
-        
-        # DEBUG: Log purely QActions and final links state
-        import os
-        log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"--- Profile Open Check ---\n")
-            # Check QActions
-            qactions = mw.form.mainToolBar.actions()
-            f.write(f"QActions count: {len(qactions)}\n")
-            for a in qactions:
-                f.write(f"  QAction: {a.text()} (visible={a.isVisible()})\n")
     except Exception as e:
-        import os
-        log_path = os.path.join(os.path.dirname(__file__), "sidebar_debug.log")
-        with open(log_path, "a", encoding="utf-8") as f:
-             f.write(f"Error checking QActions: {e}\n")
+        pass
 
 # --- INITIALIZATION ---
 
@@ -378,12 +377,9 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
     conf = config.get_config()
     grid_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
     if "heatmap" in grid_layout:
-        try:
-            heatmap_data, heatmap_config = heatmap.get_heatmap_and_config()
-            js = f"OnigiriHeatmap.render('onigiri-heatmap-container', {json.dumps(heatmap_data)}, {json.dumps(heatmap_config)});"
-            deck_browser.web.eval(js)
-        except Exception as e:
-            pass
+        # Data is now injected via globals in inject_menu_files for reliability.
+        # This call handles refreshes or dynamic layout changes.
+        deck_browser.web.eval("if (window.OnigiriHeatmap && typeof window.OnigiriHeatmap.autoRender === 'function') { window.OnigiriHeatmap.autoRender(); }")
     
     # Update sync status indicator
     update_sync_status_indicator()

@@ -21,6 +21,8 @@ class MochiMessenger:
         return mochi_conf
 
     def _is_enabled(self) -> bool:
+        if bool(config.get_config().get("focusedGaming", False)):
+            return False
         return bool(self._mochi_config().get("enabled", False))
 
     def _cards_interval(self) -> int:

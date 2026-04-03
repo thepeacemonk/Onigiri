@@ -124,6 +124,7 @@ DEFAULTS = {
             "stats",
             "sync",
             "settings",
+            "gamification",
             "more"
         ],
         "archived": []
@@ -464,6 +465,21 @@ def get_config():
             if widget_id in grid_conf:
                 del grid_conf[widget_id]
     # --------------------------------------------
+
+    # --- NEW: Sidebar Gamification Button Migration ---
+    # Ensure "gamification" is in the visible list if not present anywhere
+    sidebar_conf = clean_config.setdefault("sidebarButtonLayout", {"visible": [], "archived": []})
+    visible_btns = sidebar_conf.get("visible", [])
+    archived_btns = sidebar_conf.get("archived", [])
+    
+    if "gamification" not in visible_btns and "gamification" not in archived_btns:
+        # Insert before "more" if more exists, else append
+        if "more" in visible_btns:
+            idx = visible_btns.index("more")
+            visible_btns.insert(idx, "gamification")
+        else:
+            visible_btns.append("gamification")
+    # --------------------------------------------------
 
     return clean_config
 

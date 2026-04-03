@@ -2374,85 +2374,6 @@ class SettingsDialog(QDialog):
         else:
             self.accent_color = conf.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
 
-        self.mochi_messages_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.mochi_messages_toggle.setChecked(bool(self.mochi_messages_config.get("enabled", False)))
-
-        # Retrieve restaurant_level from top-level config
-        restaurant_conf = self.current_config.get("restaurant_level", {})
-        if not restaurant_conf:
-            # Fallback for safety, though migration should have handled this
-            restaurant_conf = self.achievements_config.get("restaurant_level", {})
-        self.restaurant_level_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.restaurant_level_toggle.setChecked(bool(restaurant_conf.get("enabled", False)))
-
-        self.restaurant_notifications_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.restaurant_notifications_toggle.setChecked(bool(restaurant_conf.get("notifications_enabled", True)))
-
-        self.restaurant_bar_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.restaurant_bar_toggle.setChecked(bool(restaurant_conf.get("show_profile_bar_progress", True)))
-        
-        # self.restaurant_profile_toggle moved to Profile Page settings
-        
-        self.restaurant_reviewer_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.restaurant_reviewer_toggle.setChecked(bool(restaurant_conf.get("show_reviewer_header", True)))
-
-        # Focus Dango toggle
-        self.focus_dango_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        focus_dango_conf = self.achievements_config.get("focusDango", {})
-        self.focus_dango_toggle.setChecked(bool(focus_dango_conf.get("enabled", False)))
-
-        # Focus Dango messages editor
-        dango_defaults = DEFAULTS["achievements"].get("focusDango", {})
-        
-        # --- START NEW CODE ---
-        dango_messages_list = focus_dango_conf.get("messages") # Try new plural key first
-
-        # If plural key doesn't exist, check for old singular "message" key
-        if not dango_messages_list:
-            old_message = focus_dango_conf.get("message")
-            if isinstance(old_message, str) and old_message:
-                dango_messages_list = [old_message] # Convert old string to list
-            else:
-                # Fallback to new default "messages" key
-                dango_messages_list = copy.deepcopy(dango_defaults.get("messages", []))
-                
-                # If new default is also missing, check old default "message" key
-                if not dango_messages_list:
-                     old_default_message = dango_defaults.get("message")
-                     if isinstance(old_default_message, str) and old_default_message:
-                         dango_messages_list = [old_default_message]
-        
-        if not isinstance(dango_messages_list, list):
-            dango_messages_list = [str(dango_messages_list)]
-        
-        # If all else fails and list is empty, provide a hardcoded default
-        if not dango_messages_list:
-            dango_messages_list = ["Don't give up!", "Stay focused!", "Almost there!"]
-
-        dango_messages_text = "\n".join([str(item).strip() for item in dango_messages_list if str(item).strip()])
-        self.focus_dango_message_editor = QPlainTextEdit(dango_messages_text)
-        self.focus_dango_message_editor.setPlaceholderText("One message per line. Dango-san will pick one randomly.")
-        self.focus_dango_message_editor.setMinimumHeight(80)
-        # --- END NEW CODE ---
-
-        self.mochi_interval_spinbox = QSpinBox()
-        self.mochi_interval_spinbox.setMinimum(1)
-        self.mochi_interval_spinbox.setMaximum(1000)
-        self.mochi_interval_spinbox.setSingleStep(1)
-        self.mochi_interval_spinbox.setSuffix(" cards")
-        self.mochi_interval_spinbox.setValue(int(self.mochi_messages_config.get("cards_interval", 15) or 1))
-
-        messages_list = self.mochi_messages_config.get("messages") or []
-        if not isinstance(messages_list, list):
-            messages_list = [str(messages_list)]
-        messages_text = "\n".join([str(item).strip() for item in messages_list if str(item).strip()])
-        self.mochi_messages_editor = QPlainTextEdit(messages_text)
-        self.mochi_messages_editor.setPlaceholderText("One message per line. Mochi will pick from this list when cheering you on.")
-        self.mochi_messages_editor.setMinimumHeight(120)
-
-        self.mochi_messages_toggle.toggled.connect(self._on_mochi_messages_toggled)
-        self._on_mochi_messages_toggled(self.mochi_messages_toggle.isChecked())
-
         custom_goals_conf = self.achievements_config.get("custom_goals", {})
         daily_conf = custom_goals_conf.get("daily", {})
         weekly_conf = custom_goals_conf.get("weekly", {})
@@ -2494,10 +2415,6 @@ class SettingsDialog(QDialog):
         self.flow_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.flow_mode_checkbox.setChecked(self.current_config.get("flowMode", False))
         self.flow_mode_checkbox.setToolTip("Enables 'Flow Mode' which hides the bottom toolbar on the reviewer screen until you hover over it.")
-
-        self.gamification_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
-        self.gamification_mode_checkbox.setChecked(self.current_config.get("gamificationMode", False))
-        self.gamification_mode_checkbox.setToolTip("Enable mini-games like Restaurant Level, Mochi Messages, and Focus Dango.")
 
         self.full_hide_mode_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.full_hide_mode_checkbox.setChecked(self.current_config.get("fullHideMode", False))
@@ -2602,11 +2519,6 @@ class SettingsDialog(QDialog):
             "Sidebar": self.create_sidebar_page,
             "Overviewer": self.create_overviews_page,
             "Reviewer": self.create_reviewer_tab,
-            "Onigiri Games": self.create_onigiri_games_page,
-            "Restaurant Level": self.create_restaurant_level_page,
-            "Mochi Messages": self.create_mochi_messages_page,
-            "Focus Dango": self.create_focus_dango_page,
-            "Mr. Taiyaki Store": self.create_mr_taiyaki_store_page,
             "Palette": self.create_colors_page,
             "Gallery": self.create_gallery_page,
         }
@@ -2654,12 +2566,6 @@ class SettingsDialog(QDialog):
         self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.study_zone_toggle_widget)
 
-        # Gamification section with all items
-        gamification_items = ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"]
-        self.gamification_toggle_widget = SidebarToggleButton("Gamification", gamification_items)
-        self.gamification_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.gamification_toggle_widget)
-
         # Connect toggle buttons to enable accordion behavior
         self.general_toggle_widget.toggle_button.toggled.connect(
             lambda checked: self._on_section_toggled(self.general_toggle_widget, checked)
@@ -2670,9 +2576,7 @@ class SettingsDialog(QDialog):
         self.study_zone_toggle_widget.toggle_button.toggled.connect(
             lambda checked: self._on_section_toggled(self.study_zone_toggle_widget, checked)
         )
-        self.gamification_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.gamification_toggle_widget, checked)
-        )
+
 
         self.donate_button = QPushButton("Donate")
         self.donate_button.setAutoDefault(False)
@@ -3028,7 +2932,6 @@ class SettingsDialog(QDialog):
             self.general_toggle_widget.deselect_all()
             self.menu_toggle_widget.deselect_all()
             self.study_zone_toggle_widget.deselect_all()
-            self.gamification_toggle_widget.deselect_all()
         elif self.general_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
@@ -3036,7 +2939,6 @@ class SettingsDialog(QDialog):
                 btn.blockSignals(False)
             self.menu_toggle_widget.deselect_all()
             self.study_zone_toggle_widget.deselect_all()
-            self.gamification_toggle_widget.deselect_all()
         elif self.menu_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
@@ -3044,7 +2946,6 @@ class SettingsDialog(QDialog):
                 btn.blockSignals(False)
             self.general_toggle_widget.deselect_all()
             self.study_zone_toggle_widget.deselect_all()
-            self.gamification_toggle_widget.deselect_all()
         elif self.study_zone_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
@@ -3052,13 +2953,6 @@ class SettingsDialog(QDialog):
                 btn.blockSignals(False)
             self.general_toggle_widget.deselect_all()
             self.menu_toggle_widget.deselect_all()
-            self.gamification_toggle_widget.deselect_all()
-        elif self.gamification_toggle_widget.select_page(page_name):
-            if btn := self.sidebar_button_group.checkedButton():
-                btn.blockSignals(True)
-                btn.setChecked(False)
-                btn.blockSignals(False)
-            self.general_toggle_widget.deselect_all()
             self.menu_toggle_widget.deselect_all()
             self.study_zone_toggle_widget.deselect_all()
 
@@ -3090,7 +2984,6 @@ class SettingsDialog(QDialog):
             self.general_toggle_widget,
             self.menu_toggle_widget,
             self.study_zone_toggle_widget,
-            self.gamification_toggle_widget,
         ]
         for toggle in all_toggles:
             if toggle is not toggled_widget and toggle.is_open:
@@ -6340,672 +6233,9 @@ class SettingsDialog(QDialog):
     def _create_hide_mode_card(self, title, toggle_widget, items):
         """Wrapper method for backwards compatibility - creates AdaptiveModeCard."""
         return self.AdaptiveModeCard(title, toggle_widget, items, self.addon_path, self)
-    # <<< END NEW CODE >>>
 
-    def create_onigiri_games_page(self):
-        page, layout = self._create_scrollable_page()
+    # Page creation methods (Gamification removed)
 
-        title_label = QLabel("Onigiri Games")
-        title_label.setObjectName("onigiriGamesTitle")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        title_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(title_label)
-
-        description_label = QLabel(
-            "These mini-games are a playful way to make Onigiri more fun while keeping your study sessions feeling fresh."
-        )
-        description_label.setObjectName("onigiriGamesDescription")
-        description_label.setWordWrap(True)
-        layout.addWidget(description_label)
-
-        # Warning message when gamification mode is disabled
-        self.gamification_warning_label = QLabel(
-            "⚠️ Gamification Mode is currently disabled. Enable it in Settings → Modes to unlock these mini-games."
-        )
-        self.gamification_warning_label.setObjectName("gamificationWarning")
-        self.gamification_warning_label.setWordWrap(True)
-        if theme_manager.night_mode:
-            self.gamification_warning_label.setStyleSheet(
-                "background-color: #4a3a2a; color: #ffcc80; padding: 12px; border-radius: 8px; font-size: 12px; margin: 10px 0;"
-            )
-        else:
-            self.gamification_warning_label.setStyleSheet(
-                "background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 8px; font-size: 12px; margin: 10px 0;"
-            )
-        layout.addWidget(self.gamification_warning_label)
-        
-        # Initially hide/show based on gamification mode state
-        self.gamification_warning_label.setVisible(not self.gamification_mode_checkbox.isChecked())
-
-        layout.addSpacing(12)
-        
-        # Set custom color for Restaurant Level toggle
-        self.restaurant_level_toggle.accent_color = QColor("#B94632")
-
-        # Restaurant Level card
-        restaurant_level_card = self._create_onigiri_game_hero_card(
-            icon_filename="restaurant_folder/restaurant_level.png",
-            emoji_fallback="\U0001F35F",
-            title="Restaurant Level",
-            subtitle="Grow your restaurant by completing reviews!",
-            background_light="restaurant_lvl_bg.png",
-            background_dark="restaurant_lvl_bg_night.png",
-            text_color="#B94632",
-        )
-        
-        self._attach_hero_toggle_section(
-            restaurant_level_card,
-            toggle_widget=self.restaurant_level_toggle,
-        )
-        
-        layout.addWidget(restaurant_level_card)
-        layout.addSpacing(16)
-
-        # Mochi Messages card
-        mochi_card = self._create_onigiri_game_hero_card(
-            icon_filename="mochi_messenger.png",
-            emoji_fallback="\U0001F95F",
-            title="Mochi Messages",
-            subtitle="Let Mochi cheer you on during your review sessions.",
-            background_light="mochi_messages_bg.png",
-            background_dark="mochi_messages_bg_night.png",
-            text_color="#35421C",
-        )
-
-        mochi_toggle = AnimatedToggleButton(accent_color="#35421C")
-        mochi_toggle.setChecked(self.mochi_messages_toggle.isChecked())
-
-        def handle_games_toggle(checked: bool) -> None:
-            if self.mochi_messages_toggle.isChecked() == checked:
-                return
-            blocker = QSignalBlocker(self.mochi_messages_toggle)
-            self.mochi_messages_toggle.setChecked(checked)
-            self._on_mochi_messages_toggled(checked)
-
-        def sync_from_settings(checked: bool) -> None:
-            if mochi_toggle.isChecked() == checked:
-                return
-            blocker = QSignalBlocker(mochi_toggle)
-            mochi_toggle.setChecked(checked)
-
-        mochi_toggle.toggled.connect(handle_games_toggle)
-        self.mochi_messages_toggle.toggled.connect(sync_from_settings)
-
-        def cleanup(_=None, s=self, sync=sync_from_settings) -> None:
-            try:
-                s.mochi_messages_toggle.toggled.disconnect(sync)
-            except (TypeError, RuntimeError):
-                # Disconnect might fail if the signal was already disconnected
-                pass
-            
-            # Add stretch if layout is still available
-            if hasattr(s, 'layout') and s.layout is not None:
-                try:
-                    s.layout.addStretch()
-                except (RuntimeError, AttributeError):
-                    # Layout might be already deleted or in an invalid state
-                    pass
-
-        mochi_toggle.destroyed.connect(cleanup)
-
-        self._attach_hero_toggle_section(
-            mochi_card,
-            toggle_widget=mochi_toggle,
-        )
-
-        layout.addWidget(mochi_card)
-        layout.addSpacing(16)
-
-        # Focus Dango card
-        # Set custom color for Focus Dango toggle
-        self.focus_dango_toggle.accent_color = QColor("#61252D")
-
-        focus_dango_card = self._create_onigiri_game_hero_card(
-            icon_filename="dango.png",
-            emoji_fallback="\U0001F369",
-            title="Focus Dango",
-            subtitle="Dango-san will prevent you from leaving Reviewer before you're done!",
-            background_light="dango_bg.png",
-            background_dark="dango_bg.png",
-            text_color="#f1aeca",
-        )
-
-        self._attach_hero_toggle_section(
-            focus_dango_card,
-            toggle_widget=self.focus_dango_toggle,
-        )
-
-        layout.addWidget(focus_dango_card)
-        
-        # Store reference to the mochi_toggle for gamification mode control
-        self.mochi_toggle_games_page = mochi_toggle
-        
-        # Initialize the enabled state based on gamification mode
-        self._update_gamification_toggles_state()
-        
-        # Connect gamification mode toggle to update game toggles
-        self.gamification_mode_checkbox.toggled.connect(self._update_gamification_toggles_state)
-        
-        layout.addStretch()
-        return page
-    
-    def _update_gamification_toggles_state(self):
-        """Enable/disable and reset Onigiri Games toggles based on Gamification Mode"""
-        is_gamification_enabled = self.gamification_mode_checkbox.isChecked()
-        
-        # Update warning message visibility
-        if hasattr(self, 'gamification_warning_label'):
-            self.gamification_warning_label.setVisible(not is_gamification_enabled)
-        
-        # List of all game toggles
-        game_toggles = [
-            self.restaurant_level_toggle,
-            self.mochi_messages_toggle,  # Main mochi toggle
-            self.mochi_toggle_games_page if hasattr(self, 'mochi_toggle_games_page') else None,
-            self.focus_dango_toggle
-        ]
-        
-        for toggle in game_toggles:
-            if toggle is not None:
-                toggle.setEnabled(is_gamification_enabled)
-                
-                # If gamification mode is being disabled, turn off all game toggles
-                if not is_gamification_enabled and toggle.isChecked():
-                    toggle.setChecked(False)
-
-    def create_restaurant_level_page(self):
-        page, layout = self._create_scrollable_page()
-        
-
-        
-        
-        # Restaurant Level Hero
-        restaurant_level_card = self._create_onigiri_game_hero_card(
-            icon_filename="restaurant_folder/restaurant_level.png",
-            emoji_fallback="\U0001F35F",
-            title="Restaurant Level",
-            subtitle="Grow your restaurant by completing reviews!",
-            background_light="restaurant_lvl_bg.png",
-            background_dark="restaurant_lvl_bg_night.png",
-            text_color="#B94632",
-        )
-        layout.addWidget(restaurant_level_card)
-        layout.addSpacing(16)
-
-        # Restaurant Name Section
-        name_group, name_layout = self._create_inner_group("Restaurant Name")
-        
-        # Check level
-        progress = restaurant_level.manager.get_progress()
-        
-        if progress.level >= 5:
-            self.restaurant_name_input = QLineEdit(progress.name)
-            self.restaurant_name_input.setPlaceholderText("Enter restaurant name")
-            name_layout.addWidget(QLabel("Custom Name:"))
-            name_layout.addWidget(self.restaurant_name_input)
-            
-            help_label = QLabel("Visible on the restaurant level widget.")
-            help_label.setStyleSheet("color: #888; font-size: 11px;")
-            name_layout.addWidget(help_label)
-        else:
-            lock_layout = QHBoxLayout()
-            lock_icon = QLabel("🔒")
-            lock_label = QLabel(f"Reach Level 5 to unlock custom restaurant names. (Current Level: {progress.level})")
-            lock_label.setStyleSheet("color: #888; font-style: italic;")
-            lock_layout.addWidget(lock_icon)
-            lock_layout.addWidget(lock_label)
-            lock_layout.addStretch()
-            name_layout.addLayout(lock_layout)
-            
-        layout.addWidget(name_group)
-
-        settings_group, settings_layout = self._create_inner_group("Notifications & Visibility")
-        settings_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, "Show level-up notifications"))
-        settings_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, "Show progress on sidebar profile bar"))
-        # Removed: settings_layout.addWidget(self._create_toggle_row(self.restaurant_profile_toggle, "Show progress on profile page"))
-        settings_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, "Show level in reviewer header"))
-
-
-        layout.addWidget(settings_group)
-
-        reset_group, reset_layout = self._create_inner_group("Reset Progress")
-        reset_button = QPushButton("Reset Restaurant Level")
-        reset_button.setProperty("onigiri-role", "danger")
-        reset_button.clicked.connect(self._confirm_reset_restaurant_level)
-        reset_layout.addWidget(reset_button)
-
-        notice_label = QLabel("Resetting clears Restaurant Level XP, level, and related achievements. This cannot be undone.")
-        notice_label.setWordWrap(True)
-        notice_label.setStyleSheet("color: #6b6b6b; font-size: 11px;")
-        reset_layout.addWidget(notice_label)
-        layout.addWidget(reset_group)
-
-        layout.addStretch()
-
-
-
-        return page
-
-    def _create_onigiri_game_hero_card(
-        self,
-        *,
-        icon_filename: str,
-        emoji_fallback: str,
-        title: str,
-        subtitle: str,
-        background_light: str,
-        background_dark: str,
-        text_color: str,
-    ) -> QWidget:
-        hero_card = QFrame()
-        hero_card.setObjectName("achievementsHeroCard")
-        hero_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        hero_card.setMinimumHeight(170)
-        hero_card.setProperty("hasBackgroundImage", False)
-        hero_card.setStyleSheet("QFrame#achievementsHeroCard { border-radius: 24px; }")
-
-        hero_layout = QHBoxLayout(hero_card)
-        hero_layout.setContentsMargins(24, 16, 24, 16)
-        hero_layout.setSpacing(24)
-        hero_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        icon_label = QLabel()
-        icon_label.setObjectName("achievementsHeroIcon")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-
-        # Check if the icon is in gamification_images, otherwise use system_files
-        gamification_icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", icon_filename)
-        if os.path.exists(gamification_icon_path):
-            icon_path = gamification_icon_path
-        else:
-            icon_path = os.path.join(self.addon_path, "system_files", icon_filename)
-        pixmap = QPixmap(icon_path)
-        if not pixmap.isNull():
-            icon_label.setPixmap(
-                pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            )
-        else:
-            icon_label.setText(emoji_fallback)
-        hero_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        copy_container = QWidget()
-        copy_container_layout = QVBoxLayout(copy_container)
-        copy_container_layout.setContentsMargins(0, 12, 0, 12)
-        copy_container_layout.setSpacing(8)
-
-        title_label = QLabel(title)
-        title_label.setObjectName("achievementsHeroTitle")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        title_label.setStyleSheet(f"color: {text_color}; font-weight: bold;")
-
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setObjectName("achievementsHeroSubtitle")
-        subtitle_label.setWordWrap(True)
-        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        subtitle_label.setStyleSheet(f"color: {text_color};")
-
-        copy_container_layout.addWidget(title_label)
-        copy_container_layout.addWidget(subtitle_label)
-
-        hero_layout.addWidget(copy_container, 1, Qt.AlignmentFlag.AlignVCenter)
-
-        # Always use background_light as requested, regardless of theme mode
-        background_filename = background_light
-        # Check if the background is in gamification_images, otherwise use system_files
-        gamification_bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", background_filename)
-        if os.path.exists(gamification_bg_path):
-            background_path = gamification_bg_path
-        else:
-            background_path = os.path.join(self.addon_path, "system_files", background_filename)
-        if os.path.exists(background_path):
-            # Convert backslashes to forward slashes for CSS
-            css_path = background_path.replace('\\', '/')
-            hero_card.setStyleSheet(
-                f"QFrame#achievementsHeroCard {{"
-                f"    border-radius: 24px;"
-                f"    background-image: url('{css_path}');"
-                f"    background-position: left center;"
-                f"    background-repeat: repeat-x;"
-                f"    background-size: auto 100%;"
-                f"}}"
-            )
-            hero_card.setProperty("hasBackgroundImage", True)
-
-        return hero_card
-
-    def _attach_hero_toggle_section(
-        self,
-        hero_card: QWidget,
-        *,
-        toggle_widget: AnimatedToggleButton,
-    ) -> None:
-        toggle_container = QWidget(hero_card)
-        toggle_container.setObjectName("achievementsHeroToggleArea")
-        toggle_layout = QVBoxLayout(toggle_container)
-        toggle_layout.setContentsMargins(12, 0, 12, 0)
-        toggle_layout.setSpacing(4)
-
-        toggle_layout.addWidget(toggle_widget, alignment=Qt.AlignmentFlag.AlignRight)
-
-        hero_card.layout().addWidget(toggle_container, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-    def _create_section_divider(self) -> QFrame:
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
-        divider.setStyleSheet("QFrame { color: rgba(0, 0, 0, 0.08); margin: 0 12px; }")
-        return divider
-
-    def _create_mochi_messages_settings_section(self) -> QWidget:
-        section = SectionGroup(
-            "Mochi Messages",
-            self,
-            border=True,
-            description="Personalize Mochi's encouragements during your review sessions.",
-        )
-
-        interval_row = QWidget()
-        interval_layout = QHBoxLayout(interval_row)
-        interval_layout.setContentsMargins(0, 0, 0, 0)
-        interval_layout.setSpacing(12)
-
-        interval_label = QLabel("Show a Mochi message every")
-        interval_label.setWordWrap(True)
-        interval_layout.addWidget(interval_label)
-        interval_layout.addWidget(self.mochi_interval_spinbox, 0, Qt.AlignmentFlag.AlignLeft)
-        interval_layout.addStretch()
-
-        section.add_widget(interval_row)
-
-        messages_label = QLabel("Custom messages")
-        messages_label.setStyleSheet("font-weight: bold;")
-        section.add_widget(messages_label)
-
-        helper_label = QLabel("Enter one message per line. Mochi will randomly choose from this list when it's time to cheer you on.")
-        helper_label.setWordWrap(True)
-        helper_color = "#6b6b6b" if not theme_manager.night_mode else "#b5bdc7"
-        helper_label.setStyleSheet(f"color: {helper_color}; font-size: 11px;")
-        section.add_widget(helper_label)
-
-        section.add_widget(self.mochi_messages_editor)
-
-        return section
-
-    def _on_mochi_messages_toggled(self, enabled: bool) -> None:
-        self.mochi_interval_spinbox.setEnabled(enabled)
-        self.mochi_messages_editor.setReadOnly(not enabled)
-        self.mochi_messages_editor.setEnabled(enabled)
-        if not enabled:
-            if theme_manager.night_mode:
-                disabled_style = (
-                    "QPlainTextEdit { background-color: rgba(255, 255, 255, 0.06);"
-                    " color: rgba(255, 255, 255, 0.6); }"
-                )
-            else:
-                disabled_style = (
-                    "QPlainTextEdit { background-color: rgba(0, 0, 0, 0.04);"
-                    " color: rgba(0, 0, 0, 0.55); }"
-                )
-            self.mochi_messages_editor.setStyleSheet(disabled_style)
-        else:
-            self.mochi_messages_editor.setStyleSheet("")
-
-    def create_mochi_messages_page(self):
-        page, layout = self._create_scrollable_page()
-
-        intro_section = SectionGroup(
-            "Mochi Messages",
-        self,
-            border=False,
-            description="Configure how often Mochi appears and what encouragements are shown.",
-        )
-        info_color = "#6b6b6b" if not theme_manager.night_mode else "#b5bdc7"
-        info_label = QLabel(
-            "Enable Mochi in Onigiri Settings → Onigiri Games, then customize the cadence and messages here."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet(f"color: {info_color}; font-size: 11px;")
-        intro_section.add_widget(info_label)
-        
-        # Mochi Messages Hero
-        mochi_card = self._create_onigiri_game_hero_card(
-            icon_filename="mochi_messenger.png",
-            emoji_fallback="\U0001F95F",
-            title="Mochi Messages",
-            subtitle="Let Mochi cheer you on during your review sessions.",
-            background_light="mochi_messages_bg.png",
-            background_dark="mochi_messages_bg_night.png",
-            text_color="#35421C",
-        )
-        layout.addWidget(mochi_card)
-        layout.addSpacing(16)
-        
-        layout.addWidget(intro_section)
-
-        settings_section = self._create_mochi_messages_settings_section()
-        layout.addWidget(settings_section)
-
-        layout.addStretch()
-
-        sections = {
-            "Mochi Messages": intro_section,
-            "Settings": settings_section
-        }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
-
-        return page
-
-    def create_focus_dango_page(self):
-        page, layout = self._create_scrollable_page()
-
-        intro_section = SectionGroup(
-            "Focus Dango",
-            self,
-            border=False,
-            description="Dango-san will help you stay focused during your review sessions.",
-        )
-        info_color = "#6b6b6b" if not theme_manager.night_mode else "#b5bdc7"
-        info_label = QLabel(
-            "Enable Focus Dango from the Onigiri Games tab, then customize the message here."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet(f"color: {info_color}; font-size: 11px;")
-        intro_section.add_widget(info_label)
-
-        # Focus Dango Hero
-        focus_dango_card = self._create_onigiri_game_hero_card(
-            icon_filename="dango.png",
-            emoji_fallback="\U0001F369",
-            title="Focus Dango",
-            subtitle="Dango-san will prevent you from leaving Reviewer before you're done!",
-            background_light="dango_bg.png",
-            background_dark="dango_bg.png",
-            text_color="#f1aeca",
-        )
-        layout.addWidget(focus_dango_card)
-        layout.addSpacing(16)
-        
-        layout.addWidget(intro_section)
-
-        # --- Message Editor Section ---
-        messages_section = SectionGroup(
-            "Focus Dango Messages",
-            self,
-            border=True,
-            description="Personalize Dango-san's encouragements.",
-        )
-
-        messages_label = QLabel("Custom messages")
-        messages_label.setStyleSheet("font-weight: bold;")
-        messages_section.add_widget(messages_label)
-
-        helper_label = QLabel("Enter one message per line. Dango-san will randomly choose from this list.")
-        helper_label.setWordWrap(True)
-        helper_color = "#6b6b6b" if not theme_manager.night_mode else "#b5bdc7"
-        helper_label.setStyleSheet(f"color: {helper_color}; font-size: 11px;")
-        messages_section.add_widget(helper_label)
-
-        messages_section.add_widget(self.focus_dango_message_editor)
-        
-        # Initialize state based on toggle
-        self._on_focus_dango_toggled(self.focus_dango_toggle.isChecked())
-        self.focus_dango_toggle.toggled.connect(self._on_focus_dango_toggled)
-        
-        layout.addWidget(messages_section)
-        layout.addStretch()
-
-        sections = {
-            "Focus Dango": intro_section,
-            "Focus Dango Messages": messages_section
-        }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
-
-        return page
-
-    def _on_focus_dango_toggled(self, enabled: bool) -> None:
-        self.focus_dango_message_editor.setReadOnly(not enabled)
-        self.focus_dango_message_editor.setEnabled(enabled)
-        if not enabled:
-            if theme_manager.night_mode:
-                disabled_style = (
-                    "QPlainTextEdit { background-color: rgba(255, 255, 255, 0.06);"
-                    " color: rgba(255, 255, 255, 0.6); }"
-                )
-            else:
-                disabled_style = (
-                    "QPlainTextEdit { background-color: rgba(0, 0, 0, 0.04);"
-                    " color: rgba(0, 0, 0, 0.55); }"
-                )
-            self.focus_dango_message_editor.setStyleSheet(disabled_style)
-        else:
-            self.focus_dango_message_editor.setStyleSheet("")
-
-    def create_mr_taiyaki_store_page(self):
-        page, layout = self._create_scrollable_page()
-
-        intro_section = SectionGroup(
-            "Mr. Taiyaki Store",
-            self,
-            border=False,
-            description="Manage your Mr. Taiyaki Store settings.",
-        )
-        intro_section.content_area.hide()
-
-        # Mr. Taiyaki Store Hero
-        taiyaki_card = self._create_onigiri_game_hero_card(
-            icon_filename="mr_taiyaki.png",
-            emoji_fallback="\U0001F41F",
-            title="Mr. Taiyaki Store",
-            subtitle="Manage your Mr. Taiyaki Store settings.",
-            background_light="restaurant_folder/wooden_bg.png",
-            background_dark="restaurant_folder/wooden_bg.png",
-            text_color="#ffffff",
-        )
-        layout.addWidget(taiyaki_card)
-        layout.addSpacing(16)
-
-        layout.addWidget(intro_section)
-
-        # Reset Coins Group
-        coins_group, coins_layout = self._create_inner_group("Reset Coins")
-        reset_coins_btn = QPushButton("Reset Coins")
-        reset_coins_btn.setProperty("onigiri-role", "danger")
-        reset_coins_btn.setStyleSheet("QPushButton:hover { color: #ff6b6b; }")
-        reset_coins_btn.clicked.connect(self._reset_coins)
-        coins_layout.addWidget(reset_coins_btn)
-        
-        coins_notice = QLabel("Resetting clears your Taiyaki Coins. This cannot be undone.")
-        coins_notice.setWordWrap(True)
-        coins_notice.setStyleSheet("color: #6b6b6b; font-size: 11px;")
-        coins_layout.addWidget(coins_notice)
-        layout.addWidget(coins_group)
-
-        # Reset Purchases Group
-        purchases_group, purchases_layout = self._create_inner_group("Reset Purchases")
-        reset_purchases_btn = QPushButton("Reset Purchases")
-        reset_purchases_btn.setProperty("onigiri-role", "danger")
-        reset_purchases_btn.setStyleSheet("QPushButton:hover { color: #ff6b6b; }")
-        reset_purchases_btn.clicked.connect(self._reset_purchases)
-        purchases_layout.addWidget(reset_purchases_btn)
-        
-        purchases_notice = QLabel("Resetting clears all your purchased items and upgrades. This cannot be undone.")
-        purchases_notice.setWordWrap(True)
-        purchases_notice.setStyleSheet("color: #6b6b6b; font-size: 11px;")
-        purchases_layout.addWidget(purchases_notice)
-        layout.addWidget(purchases_group)
-
-        layout.addStretch()
-
-
-
-        return page
-
-    def _reset_coins(self):
-        reply = QMessageBox.warning(
-            self,
-            "Reset Coins",
-            "Are you sure you want to reset your coins? There is no return nor refund.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            # Update gamification.json (Source of Truth)
-            manager = restaurant_level.RestaurantLevelManager()
-            manager.reset_coins()
-
-            # Update local config copy for immediate UI consistency if needed
-            if 'restaurant_level' not in self.achievements_config:
-                self.achievements_config['restaurant_level'] = {}
-            self.achievements_config['restaurant_level']['taiyaki_coins'] = 0
-            
-            showInfo("Coins have been reset to 0.")
-
-    def _reset_purchases(self):
-        reply = QMessageBox.warning(
-            self,
-            "Reset Purchases",
-            "Are you sure you want to reset all purchases? There is no return nor refund.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            # Update gamification.json (Source of Truth)
-            manager = restaurant_level.RestaurantLevelManager()
-            manager.reset_purchases()
-
-            # Update local config copy for immediate UI consistency if needed
-            if 'restaurant_level' not in self.achievements_config:
-                self.achievements_config['restaurant_level'] = {}
-            self.achievements_config['restaurant_level']['owned_items'] = ['default']
-            self.achievements_config['restaurant_level']['current_theme_id'] = 'default'
-            
-            showInfo("All purchases have been reset.")
-    def _confirm_reset_restaurant_level(self):
-        response = QMessageBox.question(
-            self,
-            "Reset Restaurant Level",
-            "Are you sure you want to reset your Restaurant Level? This will clear all XP and reset your level to 0.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if response == QMessageBox.StandardButton.Yes:
-            restaurant_level.manager.reset_progress()
-            
-            # Show success message
-            QMessageBox.information(
-                self,
-                "Reset Complete",
-                "Your Restaurant Level has been reset to 0. All XP has been cleared.\n\nThe settings dialog will now close to refresh the UI."
-            )
-            
-            # Trigger a UI refresh by resetting the main window
-            if mw:
-                mw.reset()
-            
-            # Close the settings dialog to force a complete refresh
-            # When the user reopens it, all values will be reloaded from the config
-            self.close()
 
 
     class ResponsiveModeCardsContainer(QWidget):
@@ -7120,17 +6350,7 @@ class SettingsDialog(QDialog):
 
         layout.addSpacing(20)
 
-        # Gamification Mode - Horizontal hero card (before the three columns)
-        gamification_container = QWidget()
-        gamification_container_layout = QHBoxLayout(gamification_container)
-        gamification_container_layout.setContentsMargins(0, 0, 0, 0)
-        gamification_container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        gamification_card = self._create_gamification_mode_card()
-        # gamification_card.setMaximumWidth(650)  # Removed max width constraint
-        gamification_container_layout.addWidget(gamification_card)
-        
-        layout.addWidget(gamification_container)
+        # (Gamification Mode card removed and moved to Onigiri Games dialog)
         layout.addSpacing(20)
         
         # Create responsive container for mode cards
@@ -7194,84 +6414,6 @@ class SettingsDialog(QDialog):
         
         return page
 
-    def _create_gamification_mode_card(self):
-        """Create a horizontal hero card for Gamification Mode"""
-        card = QFrame()
-        card.setObjectName("gamificationModeCard")
-        card.setMinimumHeight(140)
-        
-        # Style the card
-        if theme_manager.night_mode:
-            card.setStyleSheet("""
-                QFrame#gamificationModeCard {
-                    background-color: #3a3a3a;
-                    border-radius: 16px;
-                    padding: 20px;
-                }
-            """)
-        else:
-            card.setStyleSheet("""
-                QFrame#gamificationModeCard {
-                    background-color: #f9f9f9;
-                    border-radius: 16px;
-                    padding: 20px;
-                }
-            """)
-        
-        main_layout = QHBoxLayout(card)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Icon on the left
-        icon_label = QLabel()
-        icon_label.setObjectName("gamificationModeIcon")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        
-        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "gamification.png")
-        pixmap = QPixmap(icon_path)
-        if not pixmap.isNull():
-            icon_label.setPixmap(
-                pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            )
-        
-        main_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
-        
-        # Center - Title and description
-        center_widget = QWidget()
-        center_layout = QVBoxLayout(center_widget)
-        center_layout.setSpacing(8)
-        center_layout.setContentsMargins(0, 0, 0, 0)
-        
-        title_label = QLabel("Gamification Mode")
-        title_label.setObjectName("gamificationModeTitle")
-        if theme_manager.night_mode:
-            title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #e0e0e0; background: transparent;")
-        else:
-            title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #212121; background: transparent;")
-        center_layout.addWidget(title_label)
-        
-        description_label = QLabel("Level up your restaurant, unlock new themes, enjoy Mochi's encouragements, and stay focused with Dango.")
-        description_label.setObjectName("gamificationModeDescription")
-        description_label.setWordWrap(True)
-        if theme_manager.night_mode:
-            description_label.setStyleSheet("font-size: 13px; color: #b5bdc7; background: transparent;")
-        else:
-            description_label.setStyleSheet("font-size: 13px; color: #6b6b6b; background: transparent;")
-        center_layout.addWidget(description_label)
-        center_layout.addStretch()
-        
-        main_layout.addWidget(center_widget, 1)
-        
-        # Right side - Toggle
-        toggle_container = QWidget()
-        toggle_layout = QVBoxLayout(toggle_container)
-        toggle_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        toggle_layout.addWidget(self.gamification_mode_checkbox, alignment=Qt.AlignmentFlag.AlignRight)
-        
-        main_layout.addWidget(toggle_container, 0, Qt.AlignmentFlag.AlignVCenter)
-        
-        return card
 
     def _create_overview_bg_custom_options(self):
         """Create custom background options for the overview screen."""
@@ -12012,7 +11154,6 @@ class SettingsDialog(QDialog):
             # "proHide" removed from UI, but key might remain in config. No need to update it here.
             "maxHide": self.max_hide_checkbox.isChecked(),
             "flowMode": self.flow_mode_checkbox.isChecked(),
-            "gamificationMode": self.gamification_mode_checkbox.isChecked(),
             "fullHideMode": self.full_hide_mode_checkbox.isChecked(),
         })
 
@@ -12698,13 +11839,8 @@ class SettingsDialog(QDialog):
         """)
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
         dialog.exec()
-
     def save_settings(self):
         page_indices = {name: i for i, name in enumerate(self.page_order)}
-
-        self._save_achievements_settings()
-        self._save_mochi_messages_settings()
-        self._save_focus_dango_settings()
 
         # Always save hide mode settings
         self._save_hide_modes_settings()

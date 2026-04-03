@@ -51,6 +51,12 @@ BUTTON_HTML = {
             <span>Settings</span>
         </div>
     """,
+    "gamification": """
+        <div class="menu-item action-gamification" onclick="pycmd('openGamificationSettings')">
+            <i class="icon"></i>
+            <span>Onigiri Games</span>
+        </div>
+    """,
     "more": """
         <details class="menu-group">
             <summary class="menu-item action-more">
@@ -85,7 +91,7 @@ def _build_sidebar_html(conf: dict) -> str:
     external_entries = sidebar_api.get_sidebar_entries()
     
     # --- MODIFICATION START: Sidebar Actions Mode Logic ---
-    action_buttons = {"add", "browse", "stats", "sync", "settings", "more"}
+    action_buttons = {"add", "browse", "stats", "sync", "settings", "gamification", "more"}
     # Default to "list" if not set
     actions_mode = conf.get("sidebarActionsMode", "list")
     
@@ -131,6 +137,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
         'stats': 'stats.svg',
         'sync': 'sync.svg',
         'settings': 'settings.svg',
+        'gamification': 'gamepad.svg',
         'more': 'more.svg',
         'get_shared': 'get_shared.svg',
         'create_deck': 'create_deck.svg',

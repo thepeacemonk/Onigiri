@@ -398,7 +398,7 @@ class RestaurantLevelManager:
             "xpToNextLevel": xp_to_next,
             "xpRemaining": remaining,
             "progressFraction": percent,
-            "notificationsEnabled": progress.notifications_enabled,
+            "notificationsEnabled": progress.notifications_enabled and not bool(config.get_config().get("focusedGaming", False)),
             "showProfileBar": progress.show_profile_bar_progress,
             "showProfilePage": progress.show_profile_page_progress,
             "phrase": self._get_motivational_phrase(progress.level),
@@ -783,6 +783,14 @@ class RestaurantLevelManager:
     def _dispatch_notifications(self, notifications: List[Dict[str, Any]]) -> None:
         if notifications is None:
              notifications = []
+        
+        # Suppress popup notifications when Focused Gaming is active
+        # OR when the user has explicitly disabled Restaurant Level notifications
+        conf = config.get_config()
+        focused_gaming = conf.get("focusedGaming", False)
+        restaurant_notifications_on = conf.get("restaurant_level", {}).get("notifications_enabled", True)
+        if focused_gaming or not restaurant_notifications_on:
+            notifications = []
         
         # Always fetch latest progress to update UI, even if no notifications are present
 

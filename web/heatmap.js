@@ -360,4 +360,36 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         draw();
     };
 
+    // --- AUTO-RENDERER ---
+    exports.autoRender = function() {
+        if (window.onigiriHeatmapData && window.onigiriHeatmapConfig) {
+            exports.render('onigiri-heatmap-container', window.onigiriHeatmapData, window.onigiriHeatmapConfig);
+            return true;
+        }
+        return false;
+    };
+
+    // Self-initialize if data is already present in the DOM
+    (function () {
+        const tryAutoRender = () => {
+            if (exports.autoRender()) {
+                return;
+            }
+            // If data not yet available, poll for a short while
+            let attempts = 0;
+            const interval = setInterval(() => {
+                attempts++;
+                if (exports.autoRender() || attempts > 20) {
+                    clearInterval(interval);
+                }
+            }, 100);
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', tryAutoRender);
+        } else {
+            tryAutoRender();
+        }
+    })();
+
 })(window.OnigiriHeatmap);
