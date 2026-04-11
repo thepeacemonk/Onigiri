@@ -61,20 +61,26 @@ class GamificationData:
         self.daily_specials: List[DailySpecialData] = []
         self.restaurant_data: RestaurantLevelData = RestaurantLevelData(daily_special={})
         self.last_updated: str = datetime.now().isoformat()
+        # Cache the profile name at construction time so that save() always
+        # writes to the file that was loaded, regardless of later profile
+        # switches or renames.
+        self._profile_name: str = self._resolve_profile_name()
         self._load()
 
-    def _get_data_path(self) -> str:
-        """Get the path to the gamification.json file."""
-        user_files = os.path.join(self.addon_path, 'user_files')
-        os.makedirs(user_files, exist_ok=True)
-        
+    @staticmethod
+    def _resolve_profile_name() -> str:
+        """Read the current profile name from Anki, falling back to 'default'."""
         try:
             from aqt import mw
-            profile_name = mw.pm.name
-        except:
-            profile_name = "default"
-            
-        return os.path.join(user_files, f'gamification_{profile_name}.json')
+            return mw.pm.name or "default"
+        except Exception:
+            return "default"
+
+    def _get_data_path(self) -> str:
+        """Get the path to the gamification.json file for this instance's profile."""
+        user_files = os.path.join(self.addon_path, 'user_files')
+        os.makedirs(user_files, exist_ok=True)
+        return os.path.join(user_files, f'gamification_{self._profile_name}.json')
 
     def _load(self) -> None:
         """Load data from JSON file if it exists."""

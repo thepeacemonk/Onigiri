@@ -1272,6 +1272,21 @@ def patch_overview():
 	def new_table(self) -> str:
 		counts = list(self.mw.col.sched.counts())
 		
+		# Calculate cards due later today
+		now = int(__import__("time").time())
+		try:
+			day_cutoff = self.mw.col.sched.day_cutoff
+			deck_id = self.mw.col.decks.current()['id']
+			child_decks = self.mw.col.decks.child_ids(deck_id)
+			dids = [deck_id] + child_decks
+			dids_str = ",".join(str(d) for d in dids)
+			later_count = self.mw.col.db.scalar(
+				f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({dids_str})", 
+				now, day_cutoff
+			)
+		except Exception:
+			later_count = 0
+		
 		count_data = [
 			{"label": tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
 			{"label": tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
@@ -1284,6 +1299,14 @@ def patch_overview():
 				'<div class="stats-row">'
 				f"<span>{item['label']}</span>"
 				f"<span class=\"{item['class']}\">{item['count']}</span>"
+				'</div>'
+			)
+			
+		if later_count > 0:
+			rows_html += (
+				'<div class="stats-row due-later-row">'
+				f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> Due later</span>"
+				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
 				'</div>'
 			)
 		
@@ -1388,27 +1411,13 @@ def patch_overview():
                     !child.classList.contains('overview-title') &&
                     !child.classList.contains('overview-container')) {
                     
-                    // Check if element has visible content
+                    // Check if element has any meaningful content instantly
                     const hasVisibleContent = function(el) {
-                        // Skip if element is already hidden by CSS
-                        const style = window.getComputedStyle(el);
-                        if (style.display === 'none') return false;
-                        
-                        // Check for visible children (excluding hidden elements)
-                        const visibleChildren = Array.from(el.children).filter(function(c) {
-                            const childStyle = window.getComputedStyle(c);
-                            return childStyle.display !== 'none' && c.textContent.trim() !== '';
-                        });
-                        
-                        if (visibleChildren.length > 0) return true;
-                        
-                        // Check for direct text content (not in child elements)
-                        const textContent = Array.from(el.childNodes)
-                            .filter(function(node) { return node.nodeType === 3; })
-                            .map(function(node) { return node.textContent.trim(); })
-                            .join('');
-                        
-                        return textContent !== '';
+                        if (el.tagName === 'BR' || el.tagName === 'HR') return true;
+                        if (el.textContent.trim() !== '') return true;
+                        // Avoid getComputedStyle layout thrashing, check fast markers
+                        if (el.querySelector('img, iframe, canvas, svg, input, button, select, textarea')) return true;
+                        return false;
                     };
                     
                     if (hasVisibleContent(child)) {
@@ -1418,6 +1427,9 @@ def patch_overview():
                     }
                 }
             });
+        }
+        if (container) {
+            container.classList.remove('onigiri-mask-external');
         }
         
         // Hide reveal button if there are no external elements with content
@@ -1472,13 +1484,17 @@ def patch_overview():
         .descfont.descmid.description.dyn {
             display: none !important;
         }
+        .overview-center-container.onigiri-mask-external > *:not(#onigiri-overview-header):not(.overview-title):not(.overview-container):not(#onigiri-reveal-btn):not(style):not(script) {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
     </style>
     """
 
 	Overview._body = f"""
 {mini_css}
 {reveal_button_css}
-<div class="overview-center-container {style_class}">
+<div class="overview-center-container {style_class} onigiri-mask-external">
 	{header_html}
 	<h3 class="overview-title">%(deck)s</h3>
 	%(table)s
@@ -1551,6 +1567,24 @@ def patch_congrats_page():
 
         # 2. Get Custom Message with fallback to default
         message = conf.get("congratsMessage", DEFAULTS["congratsMessage"])
+        
+        now = int(__import__("time").time())
+        try:
+            day_cutoff = self.mw.col.sched.day_cutoff
+            deck_id = self.mw.col.decks.current()['id']
+            child_decks = self.mw.col.decks.child_ids(deck_id)
+            dids = [deck_id] + child_decks
+            dids_str = ",".join(str(d) for d in dids)
+            later_count = self.mw.col.db.scalar(
+                f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({dids_str})", 
+                now, day_cutoff
+            )
+        except Exception:
+            later_count = 0
+            
+        later_html = ""
+        if later_count > 0:
+            later_html = f"<div class='cards-due-later' style='margin-top: 15px; font-size: 15px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{later_count} learning card{'s' if later_count > 1 else ''} due later today</span></div>"
 
         # 3. Build Bottom Actions HTML
         bottom_actions_html = ""
@@ -1584,6 +1618,7 @@ def patch_congrats_page():
             {profile_bar_html}
             <div class="congrats-card">
                 <h1>{message}</h1>
+                {later_html}
             </div>
             {bottom_actions_html}
         </div>
@@ -2423,8 +2458,8 @@ def generate_reviewer_top_bar_html_and_css():
             box-shadow: 0 0 15px rgba(255, 107, 107, 0.4);
         }
 
-        /* Create space for the header and ensure proper stacking */
-        body.card, body {
+        /* Create space for the header on the reviewer card body only */
+        body.card {
             --onigiri-reviewer-header-offset: 65px;
             padding-top: var(--onigiri-reviewer-header-offset) !important;
 

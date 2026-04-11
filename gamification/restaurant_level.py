@@ -1153,8 +1153,8 @@ class RestaurantLevelManager:
             index = day_of_year % len(dishes)
             special = dishes[index]
             
-            min_cards = int(special.get('minCards', 10))
-            max_cards = int(special.get('maxCards', 100))
+            min_cards = int(special.get('minCards', 10)) * self._get_difficulty_multiplier()
+            max_cards = int(special.get('maxCards', 100)) * self._get_difficulty_multiplier()
             
             # PRNG logic matching JS:
             seed = day_of_year * 31 + index
@@ -1353,8 +1353,15 @@ class RestaurantLevelManager:
         
         return notifications
     
+    def _get_difficulty_multiplier(self) -> int:
+        conf, restaurant_conf = self._config_bundle()
+        diff = restaurant_conf.get("difficulty", "Apprendice")
+        if diff == "Cook": return 2
+        if diff == "Chef": return 4
+        return 1
+
     def _xp_for_next(self, level: int) -> int:
-        return 50 * (2 * level + 1)
+        return 50 * (2 * level + 1) * self._get_difficulty_multiplier()
 
     def _collapse_xp(self, total_xp: int) -> Tuple[int, int, int]:
         """Calculate level and XP progress based on total XP.

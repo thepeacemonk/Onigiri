@@ -68,6 +68,7 @@ DEFAULTS = {
         "name": "Restaurant Level",
         "total_xp": 0,
         "level": 0,
+        "difficulty": "Apprendice",
         "notifications_enabled": True,
         "show_profile_bar_progress": True,
         "show_profile_page_progress": True,

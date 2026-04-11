@@ -5,7 +5,7 @@ from aqt.qt import (
     QWidget, QSpinBox, QPlainTextEdit, QScrollArea, QGridLayout, QPixmap, 
     Qt, QFrame, QSizePolicy, QButtonGroup, QAbstractButton, QSignalBlocker,
     QColor, QPointF, QRectF, QPainter, QPainterPath, QPropertyAnimation,
-    QEasingCurve, QStackedWidget, QMessageBox
+    QEasingCurve, QStackedWidget, QMessageBox, QComboBox
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty
 from PyQt6.QtGui import QImage
@@ -20,6 +20,7 @@ from . import config
 from .config import DEFAULTS
 from .gamification import restaurant_level
 from .themes import THEMES
+from .settings import FlowLayout
 
 # --- UI COMPONENTS (Copied from settings.py for standalone functionality) ---
 
@@ -263,6 +264,55 @@ class SectionGroup(QWidget):
     def add_layout(self, layout):
         self.content_layout.addLayout(layout)
 
+class DifficultyCardWidget(QPushButton):
+    def __init__(self, title, description, emoji):
+        super().__init__()
+        self.setCheckable(True)
+        self.setObjectName("difficultyCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumHeight(100)
+        self.setMinimumWidth(220)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(15)
+
+        self.icon_label = QLabel(emoji)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.icon_label.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: inherit;
+                border-radius: 20px;
+                font-size: 24px;
+                min-width: 40px;
+                max-width: 40px;
+                min-height: 40px;
+                max-height: 40px;
+            }
+        """)
+
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(4)
+        
+        self.title_label = QLabel(title)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.title_label.setStyleSheet("font-weight: bold; font-size: 14px; background: transparent;")
+        
+        self.desc_label = QLabel(description)
+        self.desc_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.desc_label.setWordWrap(True)
+        self.desc_label.setStyleSheet("font-size: 12px; color: #888; background: transparent;")
+
+        text_layout.addWidget(self.title_label)
+        text_layout.addWidget(self.desc_label)
+        text_layout.addStretch()
+
+        layout.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(text_layout)
+
 
 # --- DIALOG CLASS ---
 
@@ -444,6 +494,29 @@ class GamificationSettingsDialog(QDialog):
         self.restaurant_bar_toggle.setChecked(bool(restaurant_conf.get("show_profile_bar_progress", True)))
         self.restaurant_reviewer_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_reviewer_toggle.setChecked(bool(restaurant_conf.get("show_reviewer_header", True)))
+        
+        # Difficulty Setting
+        self.restaurant_difficulty_group = QButtonGroup()
+        self.restaurant_difficulty_group.setExclusive(True)
+        
+        self.difficulty_widgets = {}
+        diffs = [
+            ("Apprendice", "Apprentice (1x)", "The journey begins! Start learning the ropes of the kitchen.", "Apprendice", "🧑‍🍳"),
+            ("Cook", "Cook (2x)", "You know your way around. Things are heating up!", "Cook", "🍳"),
+            ("Chef", "Chef (4x)", "You've become a master of your craft, and now the challenge is here.", "Chef", "🔪")
+        ]
+        
+        for name, title, description, data, emoji in diffs:
+            btn = DifficultyCardWidget(title, description, emoji)
+            
+            self.restaurant_difficulty_group.addButton(btn)
+            self.difficulty_widgets[data] = btn
+            
+        current_difficulty = restaurant_conf.get("difficulty", "Apprendice")
+        if current_difficulty in self.difficulty_widgets:
+            self.difficulty_widgets[current_difficulty].setChecked(True)
+        else:
+            self.difficulty_widgets["Apprendice"].setChecked(True)
         
         # Mochi Messages
         self.mochi_messages_config = self.current_config.get("mochi_messages", {})
@@ -696,6 +769,17 @@ class GamificationSettingsDialog(QDialog):
         vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, "Show progress on sidebar"))
         vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, "Show level in reviewer header"))
         layout.addWidget(vis_group)
+        
+        # Difficulty
+        diff_group, diff_layout = self._create_inner_group("Difficulty Level")
+        
+        vertical_layout = QVBoxLayout()
+        vertical_layout.setSpacing(10)
+        for data, btn in self.difficulty_widgets.items():
+            vertical_layout.addWidget(btn)
+            
+        diff_layout.addLayout(vertical_layout)
+        layout.addWidget(diff_group)
 
         # Reset
         reset_group, reset_layout = self._create_inner_group("Reset Progress")
@@ -842,6 +926,14 @@ class GamificationSettingsDialog(QDialog):
         res_conf["notifications_enabled"] = self.restaurant_notifications_toggle.isChecked()
         res_conf["show_profile_bar_progress"] = self.restaurant_bar_toggle.isChecked()
         res_conf["show_reviewer_header"] = self.restaurant_reviewer_toggle.isChecked()
+        
+        selected_diff = "Apprendice"
+        for data, btn in self.difficulty_widgets.items():
+            if btn.isChecked():
+                selected_diff = data
+                break
+        res_conf["difficulty"] = selected_diff
+        
         if hasattr(self, "restaurant_name_input"):
             restaurant_level.manager.set_restaurant_name(self.restaurant_name_input.text())
         
@@ -872,6 +964,7 @@ class GamificationSettingsDialog(QDialog):
             sidebar_bg = "#1a1a1a"
             inner_group_bg = "#252525"
             border = "#444444"
+            hover_bg = "#333333"
         else:
             bg = "#f0f0f0"
             content_bg = "#f0f0f0"
@@ -879,6 +972,7 @@ class GamificationSettingsDialog(QDialog):
             sidebar_bg = "#d5d5d5"
             inner_group_bg = "#ffffff"
             border = "#d0d0d0"
+            hover_bg = "#e8e8e8"
 
         self.setStyleSheet(f"""
             QDialog {{ background-color: {bg}; color: {fg}; }}
@@ -928,6 +1022,26 @@ class GamificationSettingsDialog(QDialog):
             
             QPushButton#dangerButton {{ color: #ff6b6b; font-weight: bold; border: 1px solid #ff6b6b; border-radius: 6px; padding: 8px; }}
             QPushButton#dangerButton:hover {{ background-color: #ff6b6b; color: white; }}
+            
+            QComboBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
+            QComboBox QAbstractItemView {{ background-color: {inner_group_bg}; color: {fg}; selection-background-color: {border}; }}
+            
+            QPushButton#difficultyCard {{
+                background-color: {inner_group_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                padding: 15px;
+                text-align: left;
+            }}
+            QPushButton#difficultyCard:hover {{
+                border: 1px solid {hover_bg};
+                background-color: {hover_bg};
+            }}
+            QPushButton#difficultyCard:checked {{
+                border: 2px solid {self.accent_color};
+                background-color: {inner_group_bg};
+            }}
             
             QLabel, QRadioButton {{ color: {fg}; }}
             QLineEdit, QSpinBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
