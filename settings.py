@@ -35,7 +35,7 @@ from .config import DEFAULTS
 from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
 from .themes import THEMES 
 from aqt.qt import QRectF
-from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QImage, QBitmap, QPainter as _QPainter
 from aqt.utils import showInfo
 from PyQt6.QtGui import QFontDatabase, QFont
 from PyQt6.QtCore import QRect, QSize, QPoint
@@ -457,6 +457,37 @@ class ProfileBarWidget(QWidget):
     def mousePressEvent(self, event):
         self.clicked.emit()
         super().mousePressEvent(event)
+
+class RoundedScrollArea(QScrollArea):
+    """A QScrollArea that clips its viewport to a rounded rectangle.
+    This ensures the pill shape is always properly rounded even when scrolling."""
+    def __init__(self, radius=25, parent=None):
+        super().__init__(parent)
+        self._radius = radius
+        # Install event filter on the viewport so we can respond to resize events
+        self.viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.viewport() and event.type() == QEvent.Type.Resize:
+            self._apply_mask()
+        return super().eventFilter(obj, event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_mask()
+
+    def _apply_mask(self):
+        vp = self.viewport()
+        # Use a QBitmap for pixel-perfect rounded masking (no polygon approximation error)
+        bm = QBitmap(vp.size())
+        bm.fill(Qt.GlobalColor.color0)  # transparent/clear
+        painter = _QPainter(bm)
+        painter.setRenderHint(_QPainter.RenderHint.Antialiasing)
+        painter.setBrush(Qt.GlobalColor.color1)  # white = opaque
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(0, 0, vp.width(), vp.height(), self._radius, self._radius)
+        painter.end()
+        vp.setMask(bm)
 
 class SidebarToggleButton(QWidget):
     page_selected = pyqtSignal(str)
@@ -2040,21 +2071,54 @@ class SettingsSearchPage(QWidget):
 
     def _create_cards(self):
         # Format: (Title, Description, [Pages], [Keywords])
+        # Keywords are tuples of (keyword, target_page) to allow fine-grained navigation
         sections = [
-            ("Profile", "Manage your profile settings.", ["Profile"], 
-             ["User Details", "Profile Picture", "Profile Bar Background"]),
-            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"], 
-             ["Modes", "Gamification Mode", "Hide", "Pro", "Max", "Fonts", "Accent Color", "General Palette", "Boxes Color Effect", "Light Mode", "Dark Mode", "Official Themes", "Your Themes", "Gallery", "Colors Gallery", "Images Gallery"]),
-            ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"], 
-             ["Organize", "Main Background", "Heatmap", "Visibility", "Congratulations", "Sidebar Customization", "Organize Action Buttons", "Sidebar Background", "Deck", "Icon Sizing"]),
-            ("Study Pages", "Settings for Overviewer and Reviewer.", ["Overviewer", "Reviewer"], 
-             ["Overviewer Background", "Overview Style", "Congratulations", "Reviewer Background", "Bottom Bar Background"]),
-            ("Gamification", "Manage games and more.", ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"], 
-             ["Onigiri Games", "Restaurant Level", "Mochi Messages", "Focus Dango", "Custom Goals", "Notifications & Visibility", "Reset Progress", "Mr. Taiyaki Store", "Reset Coins", "Reset Purchases", "Settings", "Focus Dango Messages"])
+            ("Profile", "Manage your profile settings.", ["Profile"],
+             # (keyword, page)
+             [("User Details", "Profile"), ("Profile Picture", "Profile"),
+              ("Profile Bar Background", "Profile"), ("Level Bar Color", "Profile"),
+              ("Profile Page Background", "Profile"), ("Profile Page Sections", "Profile"),
+              ("Username", "Profile"), ("Avatar", "Profile")]),
+            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"],
+             [("Modes", "Modes"), ("Gamification Mode", "Modes"), ("Hide", "Modes"), ("Pro", "Modes"), ("Max", "Modes"),
+              ("Fonts", "Fonts"), ("Text", "Fonts"), ("Typography", "Fonts"), ("Font Size", "Fonts"),
+              ("Titles", "Fonts"), ("Title", "Fonts"),
+              ("Accent Color", "Palette"), ("General Palette", "Palette"), ("Boxes Color Effect", "Palette"),
+              ("Light Mode", "Palette"), ("Dark Mode", "Palette"), ("Colors", "Palette"),
+              ("Official Themes", "Themes"), ("Your Themes", "Themes"), ("Themes", "Themes"),
+              ("Gallery", "Gallery"), ("Colors Gallery", "Gallery"), ("Images Gallery", "Gallery"),
+              ("Images", "Gallery"), ("Backgrounds", "Gallery"), ("Pictures", "Gallery")]),
+            ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"],
+             [("Organize", "Main menu"), ("Widget Grid", "Main menu"), ("Title", "Main menu"),
+              ("Stats Title", "Main menu"), ("Heatmap", "Main menu"), ("Main Background", "Main menu"),
+              ("Background Image", "Main menu"), ("Visibility", "Main menu"),
+              ("Congratulations", "Main menu"), ("Star Icon", "Main menu"),
+              ("Sidebar Customization", "Sidebar"), ("Organize Action Buttons", "Sidebar"),
+              ("Sidebar Background", "Sidebar"), ("Sidebar", "Sidebar"),
+              ("Save", "Sidebar"), ("Scroll", "Sidebar"),
+              ("Deck", "Sidebar"), ("Icon Sizing", "Sidebar"), ("Icons", "Sidebar")]),
+            ("Study Pages", "Settings for Overviewer and Reviewer.", ["Overviewer", "Reviewer"],
+             [("Overviewer Background", "Overviewer"), ("Overview Style", "Overviewer"),
+              ("Overviewer", "Overviewer"), ("Congratulations", "Overviewer"),
+              ("Reviewer Background", "Reviewer"), ("Bottom Bar Background", "Reviewer"),
+              ("Answer Buttons", "Reviewer"), ("Reviewer", "Reviewer"),
+              ("Notification Widget", "Reviewer"), ("Widget Position", "Reviewer"),
+              ("Bar Background", "Reviewer"), ("Corners", "Reviewer"), ("Radius", "Reviewer"),
+              ("Shadows", "Reviewer"), ("Scroll", "Reviewer"), ("Bottom Bar", "Reviewer"),
+              ("Button", "Reviewer"), ("Grid", "Reviewer"), ("Widget Grid", "Overviewer")]),
+            ("Gamification", "Manage games and more.", ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"],
+             [("Onigiri Games", "Onigiri Games"), ("Restaurant Level", "Restaurant Level"),
+              ("Mochi Messages", "Mochi Messages"), ("Focus Dango", "Focus Dango"),
+              ("Custom Goals", "Onigiri Games"), ("Notifications", "Onigiri Games"),
+              ("Reset Progress", "Onigiri Games"), ("Mr. Taiyaki Store", "Mr. Taiyaki Store"),
+              ("Taiyaki", "Mr. Taiyaki Store"), ("Reset Coins", "Mr. Taiyaki Store"),
+              ("Reset Purchases", "Mr. Taiyaki Store"), ("Focus Dango Messages", "Focus Dango"),
+              ("Difficulty", "Restaurant Level"), ("Restaurant", "Restaurant Level")])
         ]
 
         for title, desc, pages, settings in sections:
             card = self._create_card_widget(title, desc, pages)
+            # Store settings as list of (keyword, page) tuples
             self.cards.append((card, title, desc, pages, settings))
             self.cards_layout.addWidget(card)
         
@@ -2157,32 +2221,41 @@ class SettingsSearchPage(QWidget):
                 child.widget().deleteLater()
 
         results_found = False
+        seen_results = set()  # Deduplicate results
         
         for card, title, desc, pages, settings in self.cards:
             # Check for Title/Desc match
             if text in title.lower() or text in desc.lower():
-                # Add the main section as a result
-                widget = SearchResultWidget(title, desc, pages[0])
-                widget.clicked.connect(lambda _, p=pages[0]: self.page_requested.emit(p))
-                self.results_layout.addWidget(widget)
-                results_found = True
-
-            # Check for Settings match
-            for setting in settings:
-                if text in setting.lower():
-                    # Add the setting as a result
-                    # Try to map setting to a specific page if possible, otherwise default to first page
-                    target_page = pages[0]
-                    # Simple heuristic: if setting name contains page name
-                    for p in pages:
-                        if p.lower() in setting.lower():
-                            target_page = p
-                            break
-                    
-                    widget = SearchResultWidget(setting, f"In {title}", target_page)
-                    widget.clicked.connect(lambda _, p=target_page: self.page_requested.emit(p))
+                result_key = (title, pages[0])
+                if result_key not in seen_results:
+                    seen_results.add(result_key)
+                    widget = SearchResultWidget(title, desc, pages[0])
+                    widget.clicked.connect(lambda _, p=pages[0]: self.page_requested.emit(p))
                     self.results_layout.addWidget(widget)
                     results_found = True
+
+            # Check for Settings keyword match
+            # settings is a list of (keyword, target_page) tuples
+            for item in settings:
+                if isinstance(item, tuple):
+                    keyword, target_page = item
+                else:
+                    # Legacy flat string support
+                    keyword = item
+                    target_page = pages[0]
+                    for p in pages:
+                        if p.lower() in keyword.lower():
+                            target_page = p
+                            break
+
+                if text in keyword.lower():
+                    result_key = (keyword, target_page)
+                    if result_key not in seen_results:
+                        seen_results.add(result_key)
+                        widget = SearchResultWidget(keyword, f"In {title}", target_page)
+                        widget.clicked.connect(lambda _, p=target_page: self.page_requested.emit(p))
+                        self.results_layout.addWidget(widget)
+                        results_found = True
 
         if not results_found:
             no_results = QLabel("No results found.")
@@ -2455,43 +2528,43 @@ class SettingsDialog(QDialog):
         sidebar_wrapper = QWidget()
         sidebar_wrapper.setFixedWidth(215) # 185px sidebar + 15px left margin + 15px for scrollbar
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 15, 15) # 15px margins, right margin for scrollbar
-
-        # This is the actual visible sidebar widget, which will be styled
-        sidebar_widget = QWidget()
-        sidebar_widget.setObjectName("sidebarContainer") # Name for the stylesheet
-        # Set max width to available space: 200px wrapper - 15px left margin = 185px
-        sidebar_widget.setMaximumWidth(185)
+        sidebar_wrapper_layout.setContentsMargins(15, 15, 0, 15) # 15px left margin, 0px right margin
 
         # --- Search Button (Separated) ---
         self.search_button = QPushButton("Search")
         self.search_button.setCheckable(True)
         self.search_button.setObjectName("searchSidebarButton")
+        self.search_button.setFixedWidth(185) # Force fixed width
         self.search_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.search_button.setAutoDefault(False)
         self.search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
-        sidebar_wrapper_layout.addWidget(self.search_button)
+        sidebar_wrapper_layout.addWidget(self.search_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Add spacing between Search button and the rest of the sidebar
         sidebar_wrapper_layout.addSpacing(10)
 
-        # --- Scroll Area for Sidebar Content ---
-        self.sidebar_scroll_area = QScrollArea()
+        # --- Scroll Area for Sidebar Content (rounded pill) ---
+        self.sidebar_scroll_area = RoundedScrollArea(radius=25)
         self.sidebar_scroll_area.setWidgetResizable(True)
         self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.sidebar_scroll_area.setFixedWidth(200) # 185px for content + 15px for scrollbar
         
-        # Style the scroll area to be transparent so the sidebar container style shows through if needed
-        # Removed the child widget transparency rule to fix the sidebar background color issue
+        # Style the scroll area to be transparent
         self.sidebar_scroll_area.setStyleSheet("""
             QScrollArea { background: transparent; border: none; }
         """)
+
+        # This is the actual visible sidebar widget, which will be styled as the top floating pill
+        sidebar_widget = QWidget()
+        sidebar_widget.setObjectName("sidebarContainer") # Name for the stylesheet
+        sidebar_widget.setFixedWidth(185) # Force fixed width so it doesn't shrink when scrollbar appears
         
         self.sidebar_scroll_area.setWidget(sidebar_widget)
         
-        # Add the scroll area inside the wrapper instead of the raw widget
-        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area)
+        # Add the scroll area to the main wrapper
+        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # The sidebar's internal content (buttons, etc.) goes into this layout
         sidebar_layout = QVBoxLayout(sidebar_widget)
@@ -2586,19 +2659,23 @@ class SettingsDialog(QDialog):
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
         self.save_button = QPushButton("Save"); self.save_button.clicked.connect(self.save_settings)
-        self.cancel_button = QPushButton("Cancel"); self.cancel_button.clicked.connect(self.reject)
         
-        sidebar_button_layout = QVBoxLayout()
+        # Second (bottom) floating pill for the save buttons
+        bottom_widget = QWidget()
+        bottom_widget.setObjectName("sidebarContainer")
+        bottom_widget.setFixedWidth(185) # Force fixed width
+        
+        sidebar_button_layout = QVBoxLayout(bottom_widget)
         sidebar_button_layout.setSpacing(5)
-        sidebar_button_layout.setContentsMargins(0, 5, 0, 0)
+        sidebar_button_layout.setContentsMargins(10, 10, 10, 10)
 
         sidebar_button_layout.addWidget(self.donate_button)
         sidebar_button_layout.addWidget(self.report_bugs_button)
         sidebar_button_layout.addWidget(self.save_button)
-        sidebar_button_layout.addWidget(self.cancel_button)
 
-        sidebar_layout.addStretch()
-        sidebar_layout.addLayout(sidebar_button_layout)
+        # Add spacing and then the bottom pill outside the scroll area
+        sidebar_wrapper_layout.addSpacing(10)
+        sidebar_wrapper_layout.addWidget(bottom_widget, alignment=Qt.AlignmentFlag.AlignLeft)
 
         main_layout.addLayout(content_area_layout)
         self.apply_stylesheet()
@@ -2874,6 +2951,9 @@ class SettingsDialog(QDialog):
         if hasattr(self, "font_size_small_title"):
             mw.col.conf["onigiri_font_size_small_title"] = self.font_size_small_title.value()
     def closeEvent(self, event):
+        if not getattr(self, "_is_saving", False):
+            self.save_settings()
+        
         # --- SAVE WINDOW SIZE ---
         try:
             if not self.isMaximized() and not self.isFullScreen():
@@ -2953,8 +3033,6 @@ class SettingsDialog(QDialog):
                 btn.blockSignals(False)
             self.general_toggle_widget.deselect_all()
             self.menu_toggle_widget.deselect_all()
-            self.menu_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
 
         if page_name not in self.page_order:
             return
@@ -3243,10 +3321,6 @@ class SettingsDialog(QDialog):
         self.save_button.setStyleSheet(
             f"QPushButton{{background-color:{accent_color};color:white;border:none;padding:10px;border-radius:12px}}"
             f"QPushButton:pressed{{background-color:{border};color:white}}"
-        )
-        self.cancel_button.setStyleSheet(
-            f"QPushButton{{background-color:{secondary_button_bg};color:{secondary_button_fg};border:none;padding:10px;border-radius:12px}}"
-            f"QPushButton:pressed{{background-color:{border}}}"
         )
     
     def _create_toggle_row(self, toggle_widget, text_label, style_sheet=""):
@@ -4497,6 +4571,7 @@ class SettingsDialog(QDialog):
             "stats": "Stats Button",
             "sync": "Sync Button",
             "settings": "Settings Button",
+            "gamification": "Onigiri Games",
             "more": "More Menu"
         }
 
@@ -6989,7 +7064,7 @@ class SettingsDialog(QDialog):
 
         action_icons_to_configure = {
             "add": "Add", "browse": "Browser", "stats": "Stats",
-            "sync": "Sync", "settings": "Settings", "more": "More",
+            "sync": "Sync", "settings": "Settings", "gamification": "Onigiri Games", "more": "More",
             "get_shared": "Get Shared", "create_deck": "Create Deck", "import_file": "Import File"
         }
         external_entries = {
@@ -7516,32 +7591,36 @@ class SettingsDialog(QDialog):
         colors_section = SectionGroup(
             "Colors Gallery",
             self,
-            description="All colors currently applied in the add-on, organized by section, to change them, visit the specific page."
+            description="All colors currently applied in the add-on. Click any color circle to go to its settings page."
         )
         
-        # Define color categories with their keys (from colors dict)
+        # Define color categories with their keys and the settings page they belong to
         color_categories = {
-            "Palette": [
-                "--accent-color", "--bg", "--fg", "--fg-subtle", 
-                "--border", "--canvas-inset", "--icon-color"
-            ],
-            "Main Menu": [
-                "--heatmap-color", "--heatmap-color-zero", 
-                "--star-color", "--empty-star-color", "--highlight-bg"
-            ],
-            "Sidebar": [
-                "--deck-hover-bg", "--deck-dragging-bg", "--deck-edit-mode-bg"
-            ],
-            "Overviewer": [
-                "--button-primary-bg", "--button-primary-gradient-start", 
-                "--button-primary-gradient-end",
-                "--new-count-bubble-bg", "--new-count-bubble-fg",
-                "--learn-count-bubble-bg", "--learn-count-bubble-fg",
-                "--review-count-bubble-bg", "--review-count-bubble-fg"
-            ],
+            "Palette": (
+                "Palette",
+                ["--accent-color", "--fg", "--fg-subtle",
+                 "--border", "--canvas-inset", "--icon-color"]
+            ),
+            "Main Menu": (
+                "Main menu",
+                ["--bg", "--heatmap-color", "--heatmap-color-zero",
+                 "--star-color", "--empty-star-color"]
+            ),
+            "Sidebar": (
+                "Sidebar",
+                ["--highlight-bg", "--deck-hover-bg", "--deck-dragging-bg", "--deck-edit-mode-bg"]
+            ),
+            "Overviewer": (
+                "Overviewer",
+                ["--button-primary-bg", "--button-primary-gradient-start",
+                 "--button-primary-gradient-end",
+                 "--new-count-bubble-bg", "--new-count-bubble-fg",
+                 "--learn-count-bubble-bg", "--learn-count-bubble-fg",
+                 "--review-count-bubble-bg", "--review-count-bubble-fg"]
+            ),
         }
         
-        # Answer button colors (stored in config, not colors dict)
+        # Answer button colors (stored in config, not colors dict) → navigate to Reviewer
         answer_button_colors = {
             "light": {
                 "Again BG": "onigiri_reviewer_btn_again_bg_light",
@@ -7575,7 +7654,10 @@ class SettingsDialog(QDialog):
         modes_layout.setSpacing(15)
         
         # Determine label color based on current theme
-        label_color = "#ffffff" if theme_manager.night_mode else "#888"
+        label_color = "#dddddd" if theme_manager.night_mode else "#555"
+        
+        # Swatch hover style
+        swatch_hover_color = "rgba(255,255,255,0.15)" if theme_manager.night_mode else "rgba(0,0,0,0.08)"
         
         for display_mode, mode_name in [("light", "Light Mode"), ("dark", "Dark Mode")]:
             mode_colors = self.current_config.get("colors", {}).get(display_mode, {})
@@ -7583,48 +7665,62 @@ class SettingsDialog(QDialog):
             
             mode_group, mode_layout = self._create_inner_group(mode_name)
             
-            for category_name, color_keys in color_categories.items():
-                # Category title
+            for category_name, (nav_page, color_keys) in color_categories.items():
+                # Category title with clickable arrow hint
+                cat_header_widget = QWidget()
+                cat_header_layout = QHBoxLayout(cat_header_widget)
+                cat_header_layout.setContentsMargins(0, 0, 0, 0)
+                cat_header_layout.setSpacing(4)
                 cat_label = QLabel(category_name)
                 cat_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
-                mode_layout.addWidget(cat_label)
+                cat_header_layout.addWidget(cat_label)
+                cat_header_layout.addStretch()
+                mode_layout.addWidget(cat_header_widget)
                 
                 # Create a layout for color swatches, aligned to the left
                 swatches_widget = QWidget()
                 swatches_layout = QHBoxLayout(swatches_widget)
                 swatches_layout.setContentsMargins(0, 0, 0, 5)
-                swatches_layout.setSpacing(6)
+                swatches_layout.setSpacing(8)
                 
                 for color_key in color_keys:
                     color_value = mode_colors.get(color_key, mode_defaults.get(color_key, "#888888"))
                     label_info = COLOR_LABELS.get(color_key, {"label": color_key.replace("--", "").replace("-", " ").title()})
+                    full_label = label_info["label"]
                     
-                    # Create swatch widget
+                    # Create clickable swatch container — wider so full names are visible
                     swatch_container = QWidget()
-                    swatch_container.setFixedSize(55, 50)
-                    swatch_container.setToolTip(f"{label_info['label']}\n{color_value}")
+                    swatch_container.setFixedSize(80, 80)
+                    full_tooltip = f"{full_label}\n{color_value}\n\nClick to go to {category_name} settings"
+                    swatch_container.setToolTip(full_tooltip)
+                    swatch_container.setCursor(Qt.CursorShape.PointingHandCursor)
                     swatch_v_layout = QVBoxLayout(swatch_container)
-                    swatch_v_layout.setContentsMargins(2, 2, 2, 2)
-                    swatch_v_layout.setSpacing(3)
+                    swatch_v_layout.setContentsMargins(4, 6, 4, 4)
+                    swatch_v_layout.setSpacing(4)
                     
-                    # Color circle
+                    # Color circle (larger)
                     swatch = ColorSwatch(color_value)
-                    swatch.setFixedSize(22, 22)
+                    swatch.setFixedSize(28, 28)
                     swatch_v_layout.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
                     
-                    # Color label (abbreviated) - larger font
-                    abbrev_label = label_info['label'][:7] + ".." if len(label_info['label']) > 9 else label_info['label']
-                    name_label = QLabel(abbrev_label)
+                    # Full label — word-wrapped, no truncation
+                    name_label = QLabel(full_label)
                     name_label.setStyleSheet(f"font-size: 10px; color: {label_color};")
                     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    name_label.setWordWrap(True)
+                    name_label.setFixedWidth(74)
                     swatch_v_layout.addWidget(name_label)
+                    
+                    # Make container clickable - navigate to settings page
+                    _nav_page = nav_page  # capture for lambda
+                    swatch_container.mousePressEvent = lambda event, p=_nav_page: self.navigate_to_page(p)
                     
                     swatches_layout.addWidget(swatch_container)
                 
                 swatches_layout.addStretch()  # Keep swatches aligned left
                 mode_layout.addWidget(swatches_widget)
             
-            # Add Reviewer Answer Button Colors section
+            # Add Reviewer Answer Button Colors section (clickable → Reviewer page)
             reviewer_label = QLabel("Reviewer")
             reviewer_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
             mode_layout.addWidget(reviewer_label)
@@ -7632,26 +7728,32 @@ class SettingsDialog(QDialog):
             btn_swatches_widget = QWidget()
             btn_swatches_layout = QHBoxLayout(btn_swatches_widget)
             btn_swatches_layout.setContentsMargins(0, 0, 0, 5)
-            btn_swatches_layout.setSpacing(6)
+            btn_swatches_layout.setSpacing(8)
             
             for label_name, config_key in answer_button_colors[display_mode].items():
                 color_value = self.current_config.get(config_key, DEFAULTS.get(config_key, "#888888"))
                 
                 swatch_container = QWidget()
-                swatch_container.setFixedSize(55, 50)
-                swatch_container.setToolTip(f"{label_name}\n{color_value}")
+                swatch_container.setFixedSize(80, 80)
+                swatch_container.setToolTip(f"{label_name}\n{color_value}\n\nClick to go to Reviewer settings")
+                swatch_container.setCursor(Qt.CursorShape.PointingHandCursor)
                 swatch_v_layout = QVBoxLayout(swatch_container)
-                swatch_v_layout.setContentsMargins(2, 2, 2, 2)
-                swatch_v_layout.setSpacing(3)
+                swatch_v_layout.setContentsMargins(4, 6, 4, 4)
+                swatch_v_layout.setSpacing(4)
                 
                 swatch = ColorSwatch(color_value)
-                swatch.setFixedSize(22, 22)
+                swatch.setFixedSize(28, 28)
                 swatch_v_layout.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
                 
                 name_label = QLabel(label_name)
                 name_label.setStyleSheet(f"font-size: 10px; color: {label_color};")
                 name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                name_label.setWordWrap(True)
+                name_label.setFixedWidth(74)
                 swatch_v_layout.addWidget(name_label)
+                
+                # Clickable → navigate to Reviewer page
+                swatch_container.mousePressEvent = lambda event, p="Reviewer": self.navigate_to_page(p)
                 
                 btn_swatches_layout.addWidget(swatch_container)
             
@@ -7667,22 +7769,22 @@ class SettingsDialog(QDialog):
         images_section = SectionGroup(
             "Images Gallery",
             self,
-            description="All images uploaded to the add-on, organized by location."
+            description="All images uploaded to the add-on, organized by location. Click any image to go to its settings page."
         )
         
-        # Define image directories
+        # Define image directories with the settings page to navigate to
         image_directories = [
-            ("Profile Pictures", "user_files/profile"),
-            ("Profile Backgrounds", "user_files/profile_bg"),
-            ("Main Menu Backgrounds", "user_files/main_bg"),
-            ("Sidebar Backgrounds", "user_files/sidebar_bg"),
-            ("Reviewer Backgrounds", "user_files/reviewer_bg"),
-            ("Reviewer Bar Backgrounds", "user_files/reviewer_bar_bg"),
+            ("Profile Pictures", "user_files/profile", "Profile"),
+            ("Profile Backgrounds", "user_files/profile_bg", "Profile"),
+            ("Main Menu Backgrounds", "user_files/main_bg", "Main menu"),
+            ("Sidebar Backgrounds", "user_files/sidebar_bg", "Sidebar"),
+            ("Reviewer Backgrounds", "user_files/reviewer_bg", "Reviewer"),
+            ("Reviewer Bar Backgrounds", "user_files/reviewer_bar_bg", "Reviewer"),
         ]
         
         extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp")
         
-        for title, folder_path in image_directories:
+        for title, folder_path, img_nav_page in image_directories:
             full_path = os.path.join(self.addon_path, folder_path)
             
             # Get image files
@@ -7694,8 +7796,8 @@ class SettingsDialog(QDialog):
             except OSError:
                 image_files = []
             
-            # Create subsection
-            subsection_group, subsection_layout = self._create_inner_group(f"{title} ({len(image_files)})")
+            # Create subsection - no image count in title
+            subsection_group, subsection_layout = self._create_inner_group(title)
             
             if image_files:
                 # Create a scroll area for thumbnails
@@ -7715,10 +7817,17 @@ class SettingsDialog(QDialog):
                 for filename in image_files[:20]:  # Limit to 20 images per section
                     img_path = os.path.join(full_path, filename)
                     
+                    # Use a clickable container instead of plain QLabel
+                    thumb_container = QWidget()
+                    thumb_container.setFixedSize(64, 48)
+                    thumb_container.setCursor(Qt.CursorShape.PointingHandCursor)
+                    thumb_container.setToolTip(f"{filename}\n\nClick to go to {title} settings")
+                    thumb_container_layout = QVBoxLayout(thumb_container)
+                    thumb_container_layout.setContentsMargins(0, 0, 0, 0)
+                    
                     thumb_label = QLabel()
                     thumb_label.setFixedSize(64, 48)  # Smaller thumbnails
                     thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    thumb_label.setToolTip(filename)
                     
                     # Load and scale thumbnail
                     pixmap = QPixmap(img_path)
@@ -7738,7 +7847,13 @@ class SettingsDialog(QDialog):
                         thumb_label.setText("?")
                         thumb_label.setStyleSheet("background: rgba(128,128,128,0.2); border-radius: 6px;")
                     
-                    grid_layout.addWidget(thumb_label)
+                    thumb_container_layout.addWidget(thumb_label)
+                    
+                    # Make the whole thumbnail clickable → navigate to settings page
+                    _img_page = img_nav_page  # capture for lambda
+                    thumb_container.mousePressEvent = lambda event, p=_img_page: self.navigate_to_page(p)
+                    
+                    grid_layout.addWidget(thumb_container)
                 
                 if len(image_files) > 20:
                     more_label = QLabel(f"+{len(image_files) - 20} more")
@@ -9470,8 +9585,11 @@ class SettingsDialog(QDialog):
             layout.addWidget(QLabel("Selected File:")); layout.addWidget(path_input)
 
         # Determine which config source to use based on the config key pattern
-        if config_key and config_key.startswith("onigiri_reviewer_bg_image"):
-            # Reviewer background images are stored in the addon config
+        if config_key and (
+            config_key.startswith("onigiri_reviewer_bg_image")
+            or config_key.startswith("onigiri_overview_bg_image")
+        ):
+            # Reviewer and overview background images are stored in the addon config
             selected_image = self.current_config.get(config_key, "")
         elif config_key:
             # Other images are stored in Anki's collection config
@@ -11840,6 +11958,9 @@ class SettingsDialog(QDialog):
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
         dialog.exec()
     def save_settings(self):
+        if getattr(self, "_is_saving", False):
+            return
+        self._is_saving = True
         page_indices = {name: i for i, name in enumerate(self.page_order)}
 
         # Always save hide mode settings
@@ -11873,6 +11994,13 @@ class SettingsDialog(QDialog):
                 mw.col.conf["modern_menu_bg_color_dark"] = dark_bg_from_theme
 
         config.write_config(self.current_config)
+        
+        # Ensure Anki writes in-memory col.conf modifications to the database
+        if hasattr(mw.col, "setMod"):
+            mw.col.setMod()
+        if hasattr(mw.col, "mark_changed"):
+            mw.col.mark_changed()
+            
         self.accept()
         mw.reset()
 

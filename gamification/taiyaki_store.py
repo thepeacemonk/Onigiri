@@ -1341,6 +1341,22 @@ class TaiyakiStoreWindow(QDialog):
             }
         }
         
+        # Apply difficulty multiplier to prices
+        diff = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
+        multiplier = 1
+        if diff == "Cook":
+            multiplier = 2
+        elif diff == "Chef":
+            multiplier = 4
+            
+        for r_id, r_data in self.restaurants.items():
+            if isinstance(r_data.get("price"), int):
+                r_data["price"] *= multiplier
+                
+        for e_id, e_data in self.evolutions.items():
+            if isinstance(e_data.get("price"), int):
+                e_data["price"] *= multiplier
+        
         # Evolution prerequisites: each evolution requires the previous one to be owned
         self.evolution_prerequisites = {
             "restaurant_evo_ii": "restaurant_evo_i",

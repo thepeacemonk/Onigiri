@@ -229,9 +229,13 @@ def verify_coin_integrity():
     """Verify coin integrity on startup to prevent cheating."""
     try:
         from .gamification.taiyaki_store import verify_coin_data, generate_coin_token
-        
-        # Check gamification.json
-        gamification_file = os.path.join(addon_path, 'user_files', 'gamification.json')
+
+        # Resolve the profile-specific gamification file (same logic as GamificationData)
+        try:
+            profile_name = mw.pm.name or "default"
+        except Exception:
+            profile_name = "default"
+        gamification_file = os.path.join(addon_path, 'user_files', f'gamification_{profile_name}.json')
         if os.path.exists(gamification_file):
             with open(gamification_file, 'r+', encoding='utf-8') as f:
                 data = json.load(f)
@@ -340,7 +344,8 @@ def on_profile_did_open():
     setup_shop_menu()
 
     # Show welcome popup if needed (requires mw.col)
-    maybe_show_welcome_popup()
+    # Delayed to avoid conflicting with Anki's sync/conflict dialog on startup
+    QTimer.singleShot(500, maybe_show_welcome_popup)
 
     # Show birthday popup if it's the user's birthday (requires mw.col)
     # Delay by 1s to ensure main window is fully rendered for screenshot blur

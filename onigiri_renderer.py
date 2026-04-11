@@ -200,25 +200,14 @@ _DASHBOARD_LAST_UPDATE = 0
 _DASHBOARD_CACHE_TTL = 3 # 3 seconds is enough to prevent spam during animations, but keeps it fresh
 
 def _get_onigiri_retention_html() -> str:
-    # Use cached retention if available and fresh
-    global _DASHBOARD_STATS_CACHE, _DASHBOARD_LAST_UPDATE
-    now = __import__("time").time()
-    
-    if now - _DASHBOARD_LAST_UPDATE < _DASHBOARD_CACHE_TTL and "retention" in _DASHBOARD_STATS_CACHE:
-         retention_percentage = _DASHBOARD_STATS_CACHE["retention"]
-         total_reviews = _DASHBOARD_STATS_CACHE.get("total_reviews_retention", 0) # Fallback for stars check logic if needed
-    else:
-        total_reviews, correct_reviews = mw.col.db.first(
-            "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
-            (mw.col.sched.day_cutoff - 86400) * 1000
-        ) or (0, 0)
-        total_reviews = total_reviews or 0
-        correct_reviews = correct_reviews or 0
-        retention_percentage = (correct_reviews / total_reviews * 100) if total_reviews > 0 else 0
-        
-        # Update cache
-        _DASHBOARD_STATS_CACHE["retention"] = retention_percentage
-        _DASHBOARD_STATS_CACHE["total_reviews_retention"] = total_reviews
+    # Query retention directly (fast index on id)
+    total_reviews, correct_reviews = mw.col.db.first(
+        "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
+        (mw.col.sched.day_cutoff - 86400) * 1000
+    ) or (0, 0)
+    total_reviews = total_reviews or 0
+    correct_reviews = correct_reviews or 0
+    retention_percentage = (correct_reviews / total_reviews * 100) if total_reviews > 0 else 0
 
     if retention_percentage >= 90: stars = 5
     elif retention_percentage >= 70: stars = 4
@@ -517,9 +506,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         _DASHBOARD_STATS_CACHE["time_today_seconds"] = time_today_seconds
         _DASHBOARD_LAST_UPDATE = now
         
-        # Invalidate retention cache so it re-calculates
-        if "retention" in _DASHBOARD_STATS_CACHE:
-            del _DASHBOARD_STATS_CACHE["retention"]
+
         
     time_today_seconds = time_today_seconds or 0
     cards_today = cards_today or 0
