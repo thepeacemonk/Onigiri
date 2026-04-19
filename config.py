@@ -26,6 +26,7 @@ DEFAULTS = {
     "maxHide": False,
     "flowMode": False,
     "gamificationMode": False,
+    "ankiweb_sync_enabled": False,
     "fullHideMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
