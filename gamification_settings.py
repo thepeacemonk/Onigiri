@@ -484,6 +484,10 @@ class GamificationSettingsDialog(QDialog):
         # Focused Gaming Toggle
         self.focused_gaming_toggle = AnimatedToggleButton(accent_color="#5b8dee")
         self.focused_gaming_toggle.setChecked(bool(self.current_config.get("focusedGaming", False)))
+
+        # Onigiri Sync Toggle
+        self.ankiweb_sync_toggle = AnimatedToggleButton(accent_color="#27ae60")
+        self.ankiweb_sync_toggle.setChecked(bool(self.current_config.get("ankiweb_sync_enabled", False)))
         
         restaurant_conf = self.current_config.get("restaurant_level", {})
         self.restaurant_level_toggle = AnimatedToggleButton(accent_color="#B94632")
@@ -735,6 +739,38 @@ class GamificationSettingsDialog(QDialog):
         # Apply initial state
         _on_focused_gaming_changed(self.focused_gaming_toggle.isChecked())
         
+        # ---- Hero 3: AnkiWeb Sync ----
+        sync_card = QWidget()
+        sync_card.setObjectName("ankiwebSyncHero")
+        sync_card.setFixedHeight(120)
+        
+        sync_layout = QHBoxLayout(sync_card)
+        sync_layout.setSpacing(20)
+        sync_layout.setContentsMargins(20, 20, 20, 20)
+        
+        sync_icon_label = QLabel()
+        sync_icon_label.setText("☁️")
+        sync_icon_label.setStyleSheet("font-size: 40px; background: transparent;")
+        sync_layout.addWidget(sync_icon_label)
+        
+        sync_text = QWidget()
+        sync_text_layout = QVBoxLayout(sync_text)
+        sync_text_layout.setContentsMargins(0, 0, 0, 0)
+        
+        sync_title = QLabel("AnkiWeb Cloud Sync")
+        sync_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
+        sync_text_layout.addWidget(sync_title)
+        
+        sync_desc = QLabel("Synchronize your Onigiri progress, custom icons, and themes across all your devices using Anki's media sync.")
+        sync_desc.setWordWrap(True)
+        sync_desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
+        sync_text_layout.addWidget(sync_desc)
+        
+        sync_layout.addWidget(sync_text, 1)
+        sync_layout.addWidget(self.ankiweb_sync_toggle)
+        
+        layout.addWidget(sync_card)
+        
         layout.addStretch()
         
         return page
@@ -914,6 +950,7 @@ class GamificationSettingsDialog(QDialog):
     def save_settings(self):
         # Master Toggle
         self.current_config["gamificationMode"] = self.gamification_mode_toggle.isChecked()
+        self.current_config["ankiweb_sync_enabled"] = self.ankiweb_sync_toggle.isChecked()
         
         # Focused Gaming — if enabled, force restaurant notifications off
         focused = self.focused_gaming_toggle.isChecked()
