@@ -3461,6 +3461,7 @@ class SettingsDialog(QDialog):
             self.widget_id = widget_id
             self._col_span = 1
             self._row_span = 1
+            self.restaurant_orientation = "horizontal"
             self.display_name = text  # Store the display name
             self.grid_zone = None
             self.setObjectName("DraggableItem")
@@ -4217,6 +4218,7 @@ class SettingsDialog(QDialog):
 
             custom_menu = SettingsDialog.CustomMenu(self.window())
             is_heatmap = self.widget_id == 'heatmap'
+            is_restaurant = self.widget_id == 'restaurant_level'
 
             # --- Width Actions ---
             width_group = QButtonGroup(custom_menu)
@@ -4224,8 +4226,8 @@ class SettingsDialog(QDialog):
             max_cols = 4
             for i in range(1, max_cols + 1):
                 if is_heatmap and i < 2: continue # Heatmap min 2 cols
-                if self.widget_id == 'restaurant_level':
-                     if i != 2: continue # Restaurant Level exactly 2 cols
+                if is_restaurant:
+                     if i > 2: continue # Restaurant Level: allow 1 or 2 cols
                 btn = custom_menu.add_action_button(f"{i} Column{'s' if i > 1 else ''}", i, width_group, self.col_span == i)
 
             custom_menu.add_separator()
@@ -4234,11 +4236,11 @@ class SettingsDialog(QDialog):
             height_group = QButtonGroup(custom_menu)
             height_group.setExclusive(True)
             # Set row constraints
-            min_rows = 2 if (is_heatmap or self.widget_id == 'restaurant_level') else 1
+            min_rows = 2 if (is_heatmap or is_restaurant) else 1
             if is_heatmap:
                 max_rows = 2  # Heatmap: exactly 2 rows
-            elif self.widget_id == 'restaurant_level':
-                max_rows = 2  # Restaurant Level: exactly 2 rows (for now)
+            elif is_restaurant:
+                max_rows = 2  # Restaurant Level: exactly 2 rows
             elif self.widget_id == 'favorites':
                 max_rows = 3  # Favorites: up to 3 rows
             else:
@@ -4246,6 +4248,14 @@ class SettingsDialog(QDialog):
             for i in range(min_rows, max_rows + 1):
                 btn = custom_menu.add_action_button(f"{i} Row{'s' if i > 1 else ''}", i, height_group, self.row_span == i)
             
+            orientation_group = None
+            if is_restaurant:
+                custom_menu.add_separator()
+                orientation_group = QButtonGroup(custom_menu)
+                orientation_group.setExclusive(True)
+                custom_menu.add_action_button("Orientation: Side by Side", "horizontal", orientation_group, self.restaurant_orientation == "horizontal")
+                custom_menu.add_action_button("Orientation: Image on Top", "vertical", orientation_group, self.restaurant_orientation == "vertical")
+
             custom_menu.add_separator()
             
             # --- Archive Action ---
@@ -4257,13 +4267,19 @@ class SettingsDialog(QDialog):
             def on_menu_action():
                 new_col_span = width_group.checkedButton().property("action_data") if width_group.checkedButton() else self.col_span
                 new_row_span = height_group.checkedButton().property("action_data") if height_group.checkedButton() else self.row_span
+                new_orientation = self.restaurant_orientation
+                if orientation_group and orientation_group.checkedButton():
+                    new_orientation = orientation_group.checkedButton().property("action_data")
 
                 if new_col_span != self.col_span or new_row_span != self.row_span:
                     self.grid_zone.request_resize(self, new_row_span, new_col_span)
+                self.restaurant_orientation = new_orientation
                 custom_menu.close()
 
             width_group.buttonClicked.connect(on_menu_action)
             height_group.buttonClicked.connect(on_menu_action)
+            if orientation_group:
+                orientation_group.buttonClicked.connect(on_menu_action)
 
             custom_menu.move(self.mapToGlobal(event.pos()))
             custom_menu.show()
@@ -4912,6 +4928,8 @@ class SettingsDialog(QDialog):
                 if item := self.all_onigiri_items.get(widget_id):
                     item.row_span = config.get("row", 1)
                     item.col_span = config.get("col", 1)
+                    if widget_id == "restaurant_level":
+                        item.restaurant_orientation = config.get("orientation", "horizontal")
                     # Use a default 'pos' if missing (e.g., from old config)
                     if self.grid_zone.place_item(item, config.get("pos", 0), silent=True):
                         placed_widgets.add(widget_id)
@@ -4951,10 +4969,13 @@ class SettingsDialog(QDialog):
             for pos, shelf in self.grid_zone.shelves.items():
                 widget = shelf.child_widget
                 if widget and widget not in processed_widgets:
-                    grid_config[widget.widget_id] = {
+                    widget_config = {
                         "pos": pos, "row": widget.row_span, "col": widget.col_span,
                         "display_name": widget.display_name
                     }
+                    if widget.widget_id == "restaurant_level":
+                        widget_config["orientation"] = widget.restaurant_orientation
+                    grid_config[widget.widget_id] = widget_config
                     processed_widgets.add(widget)
 
             archive_config = self.archive_zone.get_archive_config()
@@ -5330,6 +5351,8 @@ class SettingsDialog(QDialog):
                 if item := self.all_onigiri_items.get(widget_id):
                     item.row_span = config.get("row", 1)
                     item.col_span = config.get("col", 1)
+                    if widget_id == "restaurant_level":
+                        item.restaurant_orientation = config.get("orientation", "horizontal")
                     if self.grid_zone.place_item(item, config.get("pos", 0), silent=True):
                         placed_onigiri.add(widget_id)
 
@@ -5456,10 +5479,13 @@ class SettingsDialog(QDialog):
                 if widget and widget not in processed_widgets:
                     # Check if it's an Onigiri widget
                     if isinstance(widget, SettingsDialog.OnigiriDraggableItem):
-                        onigiri_grid_config[widget.widget_id] = {
+                        widget_config = {
                             "pos": pos, "row": widget.row_span, "col": widget.col_span,
                             "display_name": widget.display_name
                         }
+                        if widget.widget_id == "restaurant_level":
+                            widget_config["orientation"] = widget.restaurant_orientation
+                        onigiri_grid_config[widget.widget_id] = widget_config
                     else:
                         # External widget
                         external_grid_config[widget.widget_id] = {
@@ -5551,6 +5577,8 @@ class SettingsDialog(QDialog):
                 if item := self.all_onigiri_items.get(widget_id):
                     item.row_span = config.get("row", 1)
                     item.col_span = config.get("col", 1)
+                    if widget_id == "restaurant_level":
+                        item.restaurant_orientation = "horizontal"
                     
                     # Ensure item is clean
                     item.grid_zone = None
