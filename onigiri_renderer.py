@@ -340,7 +340,7 @@ def _get_onigiri_favorites_html() -> str:
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
 
-def _get_onigiri_restaurant_level_html() -> str:
+def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
     """
     Generates the HTML for the Restaurant Level widget.
     """
@@ -448,8 +448,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     else:
         ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
 
+    widget_orientation = "vertical" if orientation == "vertical" else "horizontal"
     return f"""
-    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
+    <div class="onigiri-restaurant-level-widget orientation-{widget_orientation} {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
         <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
@@ -520,19 +521,23 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
-        "restaurant_level": _get_onigiri_restaurant_level_html,
     }
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
-            if widget_id in widget_generators:
+            if widget_id in widget_generators or widget_id == "restaurant_level":
                 pos = widget_config.get("pos", 0)
                 row_span = widget_config.get("row", 1)
                 col_span = widget_config.get("col", 1)
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
+                if widget_id == "restaurant_level":
+                    orientation = widget_config.get("orientation", "horizontal")
+                    widget_html = _get_onigiri_restaurant_level_html(orientation)
+                else:
+                    widget_html = widget_generators[widget_id]()
+                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_html}</div>'
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
@@ -627,6 +632,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             transition: all 0.3s ease;
             position: relative;
         }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical {{
+            flex-direction: column;
+        }}
         
         .onigiri-restaurant-level-widget.expanded-view {{
             background: var(--theme-bg) !important;
@@ -652,6 +661,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             min-height: 0;
             overflow: hidden;
         }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-image-container {{
+            flex: 0 0 auto;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            min-height: 0;
+            padding: 8px 10px 0 10px;
+        }}
         
         /* Unrestricted Sidebar resizing */
         .sidebar-left {{
@@ -660,7 +678,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .main-content {{
             /* Dynamic Padding based on col_count */
-            padding: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            padding: {24 if col_count == 4 else (14 if col_count > 4 else 32)}px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
             display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
@@ -676,7 +694,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         /* Allow grid to expand beyond 900px if we have many columns */
         .main-content > * {{
             width: 100%;
-            max-width: {1600 if col_count > 4 else 900}px !important;
+            max-width: {1400 if col_count > 4 else 820}px !important;
         }}
 
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image-container {{
@@ -713,12 +731,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .restaurant-info {{
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             padding: 15px 20px;
             gap: 15px;
             transition: opacity 0.2s ease;
+        }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {{
+            padding: 10px 16px 14px 16px;
+            gap: 10px;
         }}
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-info {{
