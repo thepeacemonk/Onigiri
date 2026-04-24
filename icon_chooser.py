@@ -5,13 +5,14 @@ import sys
 from aqt import mw
 from aqt.qt import *
 from aqt.webview import AnkiWebView
+from .translations import tr
 
 
 class IconChooserDialog(QDialog):
     def __init__(self, deck_id, parent=None):
         super().__init__(parent)
         self.deck_id = str(deck_id)
-        self.setWindowTitle("Choose Deck Icon")
+        self.setWindowTitle(tr("choose_deck_icon"))
         self.setMinimumSize(600, 500)
         
         self.addon_package = mw.addonManager.addonFromModule(__name__)
@@ -144,9 +145,9 @@ class IconChooserDialog(QDialog):
         """Open file dialog to import SVG icon(s)."""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select SVG Icon(s)",
+            tr("select_svg_icons"),
             "",
-            "SVG Files (*.svg)"
+            tr("svg_files_filter")
         )
         if file_paths:
             for src_path in file_paths:
@@ -176,9 +177,9 @@ class IconChooserDialog(QDialog):
         """Open file dialog to import SVG icon(s)."""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select SVG Icon(s)",
+            tr("select_svg_icons"),
             "",
-            "SVG Files (*.svg)"
+            tr("svg_files_filter")
         )
         if file_paths:
             for src_path in file_paths:
@@ -216,9 +217,9 @@ class IconChooserDialog(QDialog):
         """Open file dialog to import PNG image(s)."""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select PNG Image(s)",
+            tr("select_png_images"),
             "",
-            "Image Files (*.png)"
+            tr("image_files_filter")
         )
         if file_paths:
             for src_path in file_paths:

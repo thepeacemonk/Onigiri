@@ -21,6 +21,7 @@ from .config import DEFAULTS
 from .gamification import restaurant_level
 from .themes import THEMES
 from .settings import FlowLayout
+from .translations import tr
 
 # --- UI COMPONENTS (Copied from settings.py for standalone functionality) ---
 
@@ -62,7 +63,7 @@ class ProfileBarWidget(QWidget):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(50)
-        self.setToolTip("Open Profile Settings")
+        self.setToolTip(tr("open_profile_settings"))
 
         self._bg_mode = bg_mode
         self._bg_image_path = bg_config.get('image')
@@ -147,24 +148,24 @@ class ProfileBarWidget(QWidget):
 class DonationDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Support Onigiri Development")
+        self.setWindowTitle(tr("support_onigiri_title"))
         self.setFixedWidth(500)
         # Simplified for this context, just a simple message box to minimize copying
         layout = QVBoxLayout(self)
-        msg = QLabel("Onigiri is free and open-source. Your support helps me keep it update and better!\nChoose your preferred method below:")
+        msg = QLabel(tr("support_onigiri_desc"))
         msg.setWordWrap(True)
         layout.addWidget(msg)
         
-        paypal_btn = QPushButton("PayPal")
+        paypal_btn = QPushButton(tr("paypal"))
         paypal_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.paypal.com/donate/?hosted_button_id=HQUK49H7DEDF8")))
         layout.addWidget(paypal_btn)
         
-        pix_btn = QPushButton("Pix (Brazil)")
-        pix_label = QLabel("Chave Pix: gabrielcarusbr16@gmail.com")
+        pix_btn = QPushButton(tr("pix_brazil"))
+        pix_label = QLabel(f"{tr('pix_key')}: gabrielcarusbr16@gmail.com")
         layout.addWidget(pix_btn)
         layout.addWidget(pix_label)
         
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(tr("close"))
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
@@ -321,7 +322,7 @@ class GamificationSettingsDialog(QDialog):
         super().__init__(parent)
         self.addon_path = addon_path
         self.current_config = config.get_config()
-        self.setWindowTitle("Gamification Settings")
+        self.setWindowTitle(tr("gamification_settings_title"))
 
         # --- Screen Proportional Sizing ---
         screen = mw.app.primaryScreen()
@@ -374,12 +375,12 @@ class GamificationSettingsDialog(QDialog):
 
         # Each item has (display_name, key, bg_color, text_color)
         gamification_items = [
-            ("General",                "General",           "",         ""),
-            ("Restaurant Level",       "Restaurant Level",  "#ffbd59",  "#000000"),
-            ("Mr. Taiyaki Store",      "Mr. Taiyaki Store", "#a83e25",  "#ffffff"),
-            ("Focus Dango",            "Focus Dango",       "#9d3d64",  "#ffffff"),
-            ("Mochi Messages",         "Mochi Messages",    "#00bf63",  "#000000"),
-            ("Coming Soon",            "Coming Soon",       "",         ""),
+            (tr("general"),             "General",           "",         ""),
+            (tr("restaurant_level"),   "Restaurant Level",  "#ffbd59",  "#000000"),
+            (tr("mr_taiyaki_store"),   "Mr. Taiyaki Store", "#a83e25",  "#ffffff"),
+            (tr("focus_dango"),         "Focus Dango",       "#9d3d64",  "#ffffff"),
+            (tr("mochi_messages_title"), "Mochi Messages",    "#00bf63",  "#000000"),
+            (tr("coming_soon"),         "Coming Soon",       "",         ""),
         ]
         self._item_colors = {key: (bg, fg_c) for (_, key, bg, fg_c) in gamification_items}
 
@@ -400,7 +401,7 @@ class GamificationSettingsDialog(QDialog):
         sidebar_layout.addStretch()
 
         # Save button at the bottom
-        self.save_button = QPushButton("Save")
+        self.save_button = QPushButton(tr("save"))
         self.save_button.setObjectName("saveButton")
         self.save_button.setAutoDefault(False)
         self.save_button.clicked.connect(self.save_settings)
@@ -505,9 +506,9 @@ class GamificationSettingsDialog(QDialog):
         
         self.difficulty_widgets = {}
         diffs = [
-            ("Apprendice", "Apprentice (1x)", "The journey begins! Start learning the ropes of the kitchen.", "Apprendice", "🧑‍🍳"),
-            ("Cook", "Cook (2x)", "You know your way around. Things are heating up!", "Cook", "🍳"),
-            ("Chef", "Chef (4x)", "You've become a master of your craft, and now the challenge is here.", "Chef", "🔪")
+            ("Apprendice", tr("apprentice") + " (1x)", tr("apprentice_desc"), "Apprendice", "🧑‍🍳"),
+            ("Cook", tr("cook") + " (2x)", tr("cook_desc"), "Cook", "🍳"),
+            ("Chef", tr("chef") + " (4x)", tr("chef_desc"), "Chef", "🔪")
         ]
         
         for name, title, description, data, emoji in diffs:
@@ -528,10 +529,14 @@ class GamificationSettingsDialog(QDialog):
         self.mochi_messages_toggle.setChecked(bool(self.mochi_messages_config.get("enabled", False)))
         self.mochi_interval_spinbox = QSpinBox()
         self.mochi_interval_spinbox.setRange(1, 1000)
-        self.mochi_interval_spinbox.setSuffix(" cards")
+        self.mochi_interval_spinbox.setSuffix(tr("mochi_interval_suffix"))
         self.mochi_interval_spinbox.setValue(int(self.mochi_messages_config.get("cards_interval", 15) or 1))
         
-        messages_list = self.mochi_messages_config.get("messages") or []
+        messages_list = self.mochi_messages_config.get("messages") or [
+            tr("mochi_msg_1"), tr("mochi_msg_2"), tr("mochi_msg_3"),
+            tr("mochi_msg_4"), tr("mochi_msg_5"), tr("mochi_msg_6"),
+            tr("mochi_msg_7")
+        ]
         messages_text = "\n".join([str(item).strip() for item in messages_list if str(item).strip()])
         self.mochi_messages_editor = QPlainTextEdit(messages_text)
         self.mochi_messages_editor.setMinimumHeight(120)
@@ -541,7 +546,7 @@ class GamificationSettingsDialog(QDialog):
         self.focus_dango_toggle = AnimatedToggleButton(accent_color="#61252D")
         self.focus_dango_toggle.setChecked(bool(focus_dango_conf.get("enabled", False)))
         
-        dango_messages = focus_dango_conf.get("messages") or ["Don't give up!", "Stay focused!"]
+        dango_messages = focus_dango_conf.get("messages") or [tr("dont_give_up"), tr("stay_focused")]
         dango_text = "\n".join([str(item).strip() for item in dango_messages if str(item).strip()])
         self.focus_dango_message_editor = QPlainTextEdit(dango_text)
         self.focus_dango_message_editor.setMinimumHeight(80)
@@ -673,11 +678,11 @@ class GamificationSettingsDialog(QDialog):
         text_layout = QVBoxLayout(text_container)
         text_layout.setContentsMargins(0, 0, 0, 0)
         
-        title = QLabel("Gamification Mode")
+        title = QLabel(tr("gamification_mode"))
         title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
         text_layout.addWidget(title)
         
-        desc = QLabel("Level up your restaurant, unlock new themes, enjoy Mochi's encouragements, and stay focused with Dango.")
+        desc = QLabel(tr("gamification_mode_desc"))
         desc.setWordWrap(True)
         desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
         text_layout.addWidget(desc)
@@ -712,11 +717,11 @@ class GamificationSettingsDialog(QDialog):
         focus_text_layout = QVBoxLayout(focus_text)
         focus_text_layout.setContentsMargins(0, 0, 0, 0)
         
-        focus_title = QLabel("Focused Gaming")
+        focus_title = QLabel(tr("focused_gaming"))
         focus_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
         focus_text_layout.addWidget(focus_title)
         
-        focus_desc = QLabel("Hide all gamification notifications during reviews. Restaurant Level notifications will be turned off and locked while active.")
+        focus_desc = QLabel(tr("focused_gaming_desc"))
         focus_desc.setWordWrap(True)
         focus_desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
         focus_text_layout.addWidget(focus_desc)
@@ -779,8 +784,8 @@ class GamificationSettingsDialog(QDialog):
         page, layout = self._create_scrollable_page()
         
         hero = self._create_onigiri_game_hero_card(
-            "Restaurant Level", 
-            "Grow your restaurant by completing reviews!",
+            tr("restaurant_level"), 
+            tr("grow_restaurant_desc"),
             "restaurant_folder/restaurant_level.png",
             "restaurant_lvl_bg.png",
             "#B94632"
@@ -789,25 +794,25 @@ class GamificationSettingsDialog(QDialog):
         layout.addWidget(hero)
 
         # Name settings
-        name_group, name_layout = self._create_inner_group("Restaurant Name")
+        name_group, name_layout = self._create_inner_group(tr("restaurant_name"))
         progress = restaurant_level.manager.get_progress()
         if progress.level >= 5:
             self.restaurant_name_input = QLineEdit(progress.name)
-            name_layout.addWidget(QLabel("Custom Name:"))
+            name_layout.addWidget(QLabel(tr("custom_name")))
             name_layout.addWidget(self.restaurant_name_input)
         else:
-            name_layout.addWidget(QLabel(f"🔒 Reach Level 5 to unlock custom names. (Current: {progress.level})"))
+            name_layout.addWidget(QLabel(tr("reach_level_5").format(level=progress.level)))
         layout.addWidget(name_group)
 
         # Notifications & Visibility
-        vis_group, vis_layout = self._create_inner_group("Notifications & Visibility")
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, "Show level-up notifications"))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, "Show progress on sidebar"))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, "Show level in reviewer header"))
+        vis_group, vis_layout = self._create_inner_group(tr("notifications_visibility"))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, tr("show_levelup_notifications")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, tr("show_progress_sidebar")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, tr("show_level_reviewer")))
         layout.addWidget(vis_group)
         
         # Difficulty
-        diff_group, diff_layout = self._create_inner_group("Difficulty Level")
+        diff_group, diff_layout = self._create_inner_group(tr("difficulty_level"))
         
         vertical_layout = QVBoxLayout()
         vertical_layout.setSpacing(10)
@@ -818,8 +823,8 @@ class GamificationSettingsDialog(QDialog):
         layout.addWidget(diff_group)
 
         # Reset
-        reset_group, reset_layout = self._create_inner_group("Reset Progress")
-        reset_btn = QPushButton("Reset Restaurant Level")
+        reset_group, reset_layout = self._create_inner_group(tr("reset_progress_title"))
+        reset_btn = QPushButton(tr("reset_restaurant_level"))
         reset_btn.setObjectName("dangerButton")
         reset_btn.clicked.connect(self._confirm_reset_restaurant_level)
         reset_layout.addWidget(reset_btn)
@@ -831,22 +836,22 @@ class GamificationSettingsDialog(QDialog):
     def create_mr_taiyaki_store_page(self):
         page, layout = self._create_scrollable_page()
         hero = self._create_onigiri_game_hero_card(
-            "Mr. Taiyaki Store",
-            "Manage your Mr. Taiyaki Store settings.",
+            tr("mr_taiyaki_store"),
+            tr("manage_store_desc"),
             "mr_taiyaki.png",
             "restaurant_folder/wooden_bg.png",
             "#ffffff"
         )
         layout.addWidget(hero)
 
-        coins_group, coins_layout = self._create_inner_group("Reset Coins")
-        reset_coins_btn = QPushButton("Reset Coins")
+        coins_group, coins_layout = self._create_inner_group(tr("reset_coins"))
+        reset_coins_btn = QPushButton(tr("reset_coins"))
         reset_coins_btn.clicked.connect(self._reset_coins)
         coins_layout.addWidget(reset_coins_btn)
         layout.addWidget(coins_group)
 
-        purchases_group, purchases_layout = self._create_inner_group("Reset Purchases")
-        reset_purchases_btn = QPushButton("Reset Purchases")
+        purchases_group, purchases_layout = self._create_inner_group(tr("reset_purchases"))
+        reset_purchases_btn = QPushButton(tr("reset_purchases"))
         reset_purchases_btn.clicked.connect(self._reset_purchases)
         purchases_layout.addWidget(reset_purchases_btn)
         layout.addWidget(purchases_group)
@@ -857,8 +862,8 @@ class GamificationSettingsDialog(QDialog):
     def create_focus_dango_page(self):
         page, layout = self._create_scrollable_page()
         hero = self._create_onigiri_game_hero_card(
-            "Focus Dango",
-            "Dango-san will help you stay focused!",
+            tr("focus_dango"),
+            tr("dango_help_focus"),
             "dango.png",
             "dango_bg.png",
             "#f1aeca"
@@ -866,8 +871,8 @@ class GamificationSettingsDialog(QDialog):
         self._attach_hero_toggle(hero, self.focus_dango_toggle)
         layout.addWidget(hero)
 
-        msg_group, msg_layout = self._create_inner_group("Focus Dango Messages")
-        msg_layout.addWidget(QLabel("Custom messages (one per line):"))
+        msg_group, msg_layout = self._create_inner_group(tr("focus_dango_messages"))
+        msg_layout.addWidget(QLabel(tr("custom_messages_one_per_line")))
         msg_layout.addWidget(self.focus_dango_message_editor)
         layout.addWidget(msg_group)
 
@@ -877,8 +882,8 @@ class GamificationSettingsDialog(QDialog):
     def create_mochi_messages_page(self):
         page, layout = self._create_scrollable_page()
         hero = self._create_onigiri_game_hero_card(
-            "Mochi Messages",
-            "Let Mochi cheer you on during reviews.",
+            tr("mochi_messages_title"),
+            tr("mochi_cheer_on"),
             "mochi_messenger.png",
             "mochi_messages_bg.png",
             "#35421C"
@@ -886,15 +891,15 @@ class GamificationSettingsDialog(QDialog):
         self._attach_hero_toggle(hero, self.mochi_messages_toggle)
         layout.addWidget(hero)
 
-        settings_group, settings_layout = self._create_inner_group("Settings")
+        settings_group, settings_layout = self._create_inner_group(tr("settings"))
         
         interval_row = QHBoxLayout()
-        interval_row.addWidget(QLabel("Show message every"))
+        interval_row.addWidget(QLabel(tr("show_message_every")))
         interval_row.addWidget(self.mochi_interval_spinbox)
         interval_row.addStretch()
         settings_layout.addLayout(interval_row)
         
-        settings_layout.addWidget(QLabel("Custom messages (one per line):"))
+        settings_layout.addWidget(QLabel(tr("custom_messages_one_per_line")))
         settings_layout.addWidget(self.mochi_messages_editor)
         layout.addWidget(settings_group)
 
@@ -914,12 +919,12 @@ class GamificationSettingsDialog(QDialog):
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         c_layout.addWidget(icon_label)
 
-        title = QLabel("Coming Soon")
+        title = QLabel(tr("coming_soon"))
         title.setStyleSheet("font-size: 32px; font-weight: bold;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         c_layout.addWidget(title)
 
-        desc = QLabel("We're working on new mini-games to make your study sessions even more fun. Stay tuned!")
+        desc = QLabel(tr("coming_soon_desc"))
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc.setStyleSheet("color: #888; font-size: 16px; max-width: 400px;")
@@ -933,19 +938,19 @@ class GamificationSettingsDialog(QDialog):
     # --- Actions ---
 
     def _confirm_reset_restaurant_level(self):
-        if QMessageBox.question(self, "Reset", "Reset Restaurant Level progress?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, tr("reset"), tr("reset_restaurant_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             restaurant_level.manager.reset_progress()
-            showInfo("Restaurant Level reset.")
+            showInfo(tr("restaurant_level_reset_info"))
 
     def _reset_coins(self):
-        if QMessageBox.question(self, "Reset", "Reset Taiyaki Coins?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, tr("reset"), tr("reset_coins_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             restaurant_level.manager.reset_coins()
-            showInfo("Coins reset.")
+            showInfo(tr("coins_reset_info"))
 
     def _reset_purchases(self):
-        if QMessageBox.question(self, "Reset", "Reset all purchases?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, tr("reset"), tr("reset_purchases_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             restaurant_level.manager.reset_purchases()
-            showInfo("Purchases reset.")
+            showInfo(tr("purchases_reset_info"))
 
     def save_settings(self):
         # Master Toggle

@@ -153,6 +153,7 @@ def get_heatmap_and_config():
         except (FileNotFoundError, IOError):
             svg_content = '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>'
 
+    from .translations import tr
     heatmap_config = {
         "heatmapSvgContent": svg_content,
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
@@ -160,5 +161,12 @@ def get_heatmap_and_config():
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
+        "i18n": {
+            "activity": tr("heatmap_activity_label"),
+            "year": tr("view_year"),
+            "month": tr("view_month"),
+            "week": tr("view_week"),
+            "day_streak": tr("heatmap_day_streak"),
+        }
     }
     return heatmap_data, heatmap_config

@@ -279,7 +279,8 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
 
         function draw() {
-            const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} day streak</div>` : '';
+            const i18n = config.i18n || {};
+            const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} ${i18n.day_streak || 'day streak'}</div>` : '';
 
             let navHTML = '';
             if (state.view === 'year') {
@@ -309,15 +310,15 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             container.innerHTML = `
                 <div class="onigiri-heatmap-header">
                     <div class="header-left">
-                        <h3>Activity</h3>
+                        <h3>${i18n.activity || 'Activity'}</h3>
                         <div class="heatmap-nav">${navHTML}</div>
                     </div>
                     <div class="header-right">
                         ${streakHTML}
                         <div class="heatmap-filters">
-                            <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">Year</button>
-                            <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">Month</button>
-                            <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">Week</button>
+                            <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">${i18n.year || 'Year'}</button>
+                            <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">${i18n.month || 'Month'}</button>
+                            <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">${i18n.week || 'Week'}</button>
                         </div>
                     </div>
                 </div>

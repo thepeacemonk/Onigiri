@@ -4,6 +4,7 @@ from aqt.qt import QDialog, QVBoxLayout, QDialogButtonBox, QCheckBox, QHBoxLayou
 from aqt.webview import AnkiWebView
 from . import config
 from . import settings
+from .translations import tr
 
 CURRENT_WELCOME_VERSION = "1.0.9.1-beta"
 
@@ -14,7 +15,7 @@ class WelcomeDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Welcome to Onigiri")
+        self.setWindowTitle(tr("welcome_to_onigiri"))
         self.setMinimumSize(500, 450)
         self.setMaximumSize(500, 450)
         self.setModal(True)
@@ -35,8 +36,14 @@ class WelcomeDialog(QDialog):
         with open(html_path, "r", encoding="utf-8") as f:
             html_content = f.read()
 
-        # Replace placeholder
+        # Replace placeholders in HTML content
         html_content = html_content.replace("%%ADDON_PACKAGE%%", addon_package)
+        html_content = html_content.replace("%%WELCOME_TO_ONIGIRI%%", tr("welcome_to_onigiri"))
+        html_content = html_content.replace("%%VERSION%%", tr("version"))
+        html_content = html_content.replace("%%SETTINGS_OPEN_NOTE%%", tr("settings_open_note"))
+        html_content = html_content.replace("%%SEE_WHAT_CHANGED%%", tr("see_what_changed"))
+        html_content = html_content.replace("%%DONATE%%", tr("donate"))
+        html_content = html_content.replace("%%UPVOTE%%", tr("upvote"))
 
         self.web.stdHtml(html_content)
         self.web.set_bridge_command(self._on_bridge_cmd, self)
@@ -47,7 +54,7 @@ class WelcomeDialog(QDialog):
         controls_layout.setContentsMargins(10, 5, 10, 5)
 
         # Checkbox
-        self.dont_show_again_checkbox = QCheckBox("Don't show this again")
+        self.dont_show_again_checkbox = QCheckBox(tr("dont_show_this_again"))
 
         # Set initial state from config
         conf = config.get_config()
@@ -61,7 +68,7 @@ class WelcomeDialog(QDialog):
 
         # Button Box
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        button_box.button(QDialogButtonBox.StandardButton.Ok).setText("Got it!")
+        button_box.button(QDialogButtonBox.StandardButton.Ok).setText(tr("got_it"))
         button_box.accepted.connect(self._on_accept)
         controls_layout.addWidget(button_box)
 

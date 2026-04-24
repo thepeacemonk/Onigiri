@@ -5,6 +5,9 @@ from aqt.qt import (
 from datetime import datetime
 from .sync import onigiri_sync
 
+from aqt.theme import theme_manager
+from aqt import mw
+
 class SyncConflictDialog(QDialog):
     """
     Dialog shown when there is a difference between local and cloud data.
@@ -19,18 +22,27 @@ class SyncConflictDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
+        is_dark = theme_manager.night_mode
+        bg_color = "#2c2c2c" if is_dark else "#f5f5f5"
+        text_color = "#e0e0e0" if is_dark else "#333"
+        desc_color = "#aaa" if is_dark else "#555"
+        btn_local_bg = "#3c3c3c" if is_dark else "#f0f0f0"
+        btn_local_hover = "#4c4c4c" if is_dark else "#e0e0e0"
+        
+        self.setStyleSheet(f"background-color: {bg_color}; color: {text_color};")
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(18)
 
         # Header
         header = QLabel("Sync Conflict Detected")
-        header.setStyleSheet("font-size: 20px; font-weight: bold; color: #B94632;")
+        header.setStyleSheet("font-size: 22px; font-weight: bold; color: #E74C3C; background: transparent;")
         layout.addWidget(header)
 
         desc = QLabel("Your local Onigiri progress differs from the data on AnkiWeb. Please choose which version you would like to keep.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("font-size: 13px; color: #555;")
+        desc.setStyleSheet(f"font-size: 13px; color: {desc_color}; background: transparent;")
         layout.addWidget(desc)
 
         # Comparison Area
@@ -57,19 +69,21 @@ class SyncConflictDialog(QDialog):
 
         # Action Buttons
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        btn_layout.setSpacing(12)
 
         self.keep_local_btn = QPushButton("Keep Local (Upload)")
         self.keep_local_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.keep_local_btn.clicked.connect(self._on_keep_local)
-        self.keep_local_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f0f0f0;
-                border-radius: 8px;
-                padding: 10px;
+        self.keep_local_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {btn_local_bg};
+                color: {text_color};
+                border-radius: 10px;
+                padding: 12px;
                 font-weight: bold;
-            }
-            QPushButton:hover { background-color: #e0e0e0; }
+                border: none;
+            }}
+            QPushButton:hover {{ background-color: {btn_local_hover}; }}
         """)
 
         self.keep_cloud_btn = QPushButton("Keep Cloud (Download)")
@@ -77,13 +91,14 @@ class SyncConflictDialog(QDialog):
         self.keep_cloud_btn.clicked.connect(self._on_keep_cloud)
         self.keep_cloud_btn.setStyleSheet("""
             QPushButton {
-                background-color: #B94632;
+                background-color: #E74C3C;
                 color: white;
-                border-radius: 8px;
-                padding: 10px;
+                border-radius: 10px;
+                padding: 12px;
                 font-weight: bold;
+                border: none;
             }
-            QPushButton:hover { background-color: #a83e25; }
+            QPushButton:hover { background-color: #C0392B; }
         """)
 
         btn_layout.addWidget(self.keep_local_btn)
@@ -91,28 +106,33 @@ class SyncConflictDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _create_info_card(self, title, timestamp, is_newer=False):
+        is_dark = theme_manager.night_mode
+        card_bg = "#3c3c3c" if is_dark else "white"
+        text_color = "#e0e0e0" if is_dark else "#333"
+        sub_text_color = "#aaa" if is_dark else "#666"
+        border_color = "#E74C3C" if is_newer else ("#555" if is_dark else "#ddd")
+        
         card = QFrame()
         card.setObjectName("infoCard")
-        border_color = "#B94632" if is_newer else "#ccc"
         card.setStyleSheet(f"""
             QFrame#infoCard {{
-                background-color: white;
+                background-color: {card_bg};
                 border: 2px solid {border_color};
-                border-radius: 12px;
+                border-radius: 14px;
                 padding: 15px;
             }}
         """)
         
         layout = QVBoxLayout(card)
-        layout.setSpacing(5)
+        layout.setSpacing(8)
 
         t_lbl = QLabel(title)
-        t_lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
+        t_lbl.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {text_color}; background: transparent;")
         layout.addWidget(t_lbl)
 
         time_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M") if timestamp > 0 else "Never"
         l_lbl = QLabel(f"Last modified:\n{time_str}")
-        l_lbl.setStyleSheet("font-size: 12px; color: #666;")
+        l_lbl.setStyleSheet(f"font-size: 12px; color: {sub_text_color}; background: transparent;")
         l_lbl.setWordWrap(True)
         layout.addWidget(l_lbl)
 
@@ -120,12 +140,12 @@ class SyncConflictDialog(QDialog):
             newer_badge = QLabel("NEWER")
             newer_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             newer_badge.setStyleSheet("""
-                background-color: #B94632;
+                background-color: #E74C3C;
                 color: white;
                 font-size: 10px;
                 font-weight: bold;
-                border-radius: 4px;
-                padding: 2px 5px;
+                border-radius: 5px;
+                padding: 4px 8px;
             """)
             layout.addWidget(newer_badge)
         else:

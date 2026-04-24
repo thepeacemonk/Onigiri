@@ -14,6 +14,7 @@ from datetime import datetime
 from aqt import mw
 
 from .. import config
+from ..translations import tr
 
 
 
@@ -24,144 +25,159 @@ XP_PER_CUSTOM_GOAL = 20
 
 
 
-MOTIVATIONAL_PHRASES = (
-    "The next level awaits — make your restaurant legendary!",
-    "Keep the kitchen busy and the XP flowing!",
-    "Every serving of study brings new patrons to your restaurant.",
-    "Your crew is cheering — plate up more reviews!",
-    "Tonight's special: one more level up!",
-    "Customers are lining up; keep the knowledge coming!",
-)
+def get_motivational_phrases():
+    return [
+        tr("motivational_phrase_1"),
+        tr("motivational_phrase_2"),
+        tr("motivational_phrase_3"),
+        tr("motivational_phrase_4"),
+        tr("motivational_phrase_5"),
+        tr("motivational_phrase_6"),
+    ]
 
 RESTAURANTS = {
     "focus_dango": {
-        "name": "Focus Dango", 
+        "name": "focus_dango_name", 
         "price": 0, 
         "theme": "#DC90B8", 
         "image": "focus_dango_restaurant.png",
-        "description": "A cozy pink haven where soft melodies and the gentle aroma of sweet dango help you find your flow. Perfect for deep study sessions!"
+        "description": "focus_dango_desc"
     },
     "motivated_mochi": {
-        "name": "Motivated Mochi", 
+        "name": "motivated_mochi_name", 
         "price": 0, 
         "theme": "#6EC170", 
         "image": "mochi_msg_restaurant.png",
-        "description": "A cheerful green café where adorable mochi friends cheer you on with every review! Their little motivational notes will keep your spirits high!"
+        "description": "motivated_mochi_desc"
     },
     "macha_delights": {
-        "name": "Macha Delights", 
+        "name": "macha_delights_name", 
         "price": 400, 
         "theme": "#517C58", 
         "image": "Macha Delights.png",
-        "description": "A serene tea house specializing in premium matcha creations. Perfect for those who appreciate the subtle, earthy flavors of green tea paired with delicate pastries."
+        "description": "macha_delights_desc"
     },
     "macaron_maison": {
-        "name": "Macaron Maison", 
+        "name": "macaron_maison_name", 
         "price": 500, 
         "theme": "#AFC3D6", 
         "image": "Macaron Maison.png",
-        "description": "An elegant French patisserie known for its colorful, delicate macarons. Each bite is a perfect balance of crispy shell and smooth, flavorful filling."
+        "description": "macaron_maison_desc"
     },
     "coffee_co": {
-        "name": "Coffee & Co", 
+        "name": "coffee_co_name", 
         "price": 600, 
         "theme": "#98693A", 
         "image": "CoffeeAndCake.png",
-        "description": "A cozy coffee shop where the aroma of freshly brewed coffee fills the air. Enjoy artisan coffee paired with homemade cakes and pastries."
+        "description": "coffee_co_desc"
     },
     "grocery_store": {
-        "name": "Grocery Store", 
+        "name": "grocery_store_name", 
         "price": 700, 
         "theme": "#AD6131", 
         "image": "Grocery Store.png",
-        "description": "Your friendly neighborhood market stocked with fresh produce, pantry essentials, and daily necessities. A warm, welcoming place for all your shopping needs."
+        "description": "grocery_store_desc"
     },
     "bakery_heaven": {
-        "name": "Bakery Heaven", 
+        "name": "bakery_heaven_name", 
         "price": 800, 
         "theme": "#CD9C57", 
         "image": "Bakery.png",
-        "description": "A traditional bakery where the scent of freshly baked bread greets you every morning. From crusty baguettes to soft croissants, every item is made with love."
+        "description": "bakery_heaven_desc"
     },
     "awesome_boba": {
-        "name": "Awesome Boba", 
+        "name": "awesome_boba_name", 
         "price": 850, 
         "theme": "#CD8DCA", 
         "image": "Awesome Boba.png",
-        "description": "A vibrant bubble tea shop offering creative flavors and toppings. Customize your drink with chewy tapioca pearls, fruit jellies, and more!"
+        "description": "awesome_boba_desc"
     },
     "awesome_shiny_boba": {
-        "name": "Awesome Shiny Boba", 
+        "name": "awesome_shiny_boba_name", 
         "price": 1000, 
         "theme": "#41A59D", 
         "image": "Awesome Boba (Shiny).png",
-        "description": "The premium evolution of Awesome Boba! This exclusive location features rare ingredients and limited-edition flavors with a stunning aesthetic."
+        "description": "awesome_shiny_boba_desc"
     },
     "santas_coffee": {
-        "name": "Santa's Coffee", 
+        "name": "santas_coffee_name", 
         "price": 1225, 
         "theme": "#CA4D44", 
         "image": "Santa's Coffee.png",
-        "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
+        "description": "santas_coffee_desc"
     },
     "lunar_new_year": {
-        "name": "Lunar New Year Feast", 
+        "name": "lunar_new_year_name", 
         "price": 888, 
         "theme": "#D22B2B", 
         "image": "lunar_new_year_feast.png",
-        "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
+        "description": "lunar_new_year_desc"
     },
 }
 
 EVOLUTIONS = {
-    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None, "description": "The upgrade is here!"},
-    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None, "description": "Even better!"},
-    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None, "description": "Superb!"},
-    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None, "description": "Masterpiece!"},
-    "prev_onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76", "description": "Heavenly!"},
+    "onigiri_ii": {"name": "onigiri_ii_name", "price": 200, "theme": None, "description": "onigiri_ii_desc"},
+    "onigiri_iii": {"name": "onigiri_iii_name", "price": 300, "theme": None, "description": "onigiri_iii_desc"},
+    "onigiri_iv": {"name": "onigiri_iv_name", "price": 400, "theme": None, "description": "onigiri_iv_desc"},
+    "onigiri_v": {"name": "onigiri_v_name", "price": 500, "theme": None, "description": "onigiri_v_desc"},
+    "prev_onigiri_heaven": {"name": "onigiri_heaven_name", "price": 750, "theme": "#445b76", "description": "onigiri_heaven_desc"},
     "restaurant_evo_i": {
-        "name": "Restaurant I Star", 
+        "name": "restaurant_evo_i_name", 
         "price": 700, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo I.png",
-        "description": "The first evolution of your restaurant journey. A charming establishment that shows your dedication to growth and improvement."
+        "description": "restaurant_evo_i_desc"
     },
     "restaurant_evo_ii": {
-        "name": "Restaurant II Star", 
+        "name": "restaurant_evo_ii_name", 
         "price": 800, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo II.png",
-        "description": "Your restaurant continues to evolve! Enhanced decor and expanded menu options attract more customers and showcase your progress."
+        "description": "restaurant_evo_ii_desc"
     },
     "restaurant_evo_iii": {
-        "name": "Restaurant III Star", 
+        "name": "restaurant_evo_iii_name", 
         "price": 900, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo III.png",
-        "description": "A significant milestone in your culinary journey. Your restaurant now features premium amenities and a reputation for excellence."
+        "description": "restaurant_evo_iii_desc"
     },
     "restaurant_evo_iv": {
-        "name": "Restaurant IV Star", 
+        "name": "restaurant_evo_iv_name", 
         "price": 1000, 
         "theme": "#D07A5F", 
         "image": "Restaurant Evo IV.png",
-        "description": "Near the peak of perfection! Your establishment has become a local landmark, known for its exceptional service and quality."
+        "description": "restaurant_evo_iv_desc"
     },
     "restaurant_evo_legendary": {
-        "name": "Restaurant Legendary", 
+        "name": "restaurant_evo_legendary_name", 
         "price": 1500, 
         "theme": "#445A78", 
         "image": "Restaurant Evo Legendary.png",
-        "description": "The ultimate achievement! A legendary restaurant that stands as a testament to your dedication and hard work. Only the most committed reach this level."
+        "description": "restaurant_evo_legendary_desc"
     },
     "restaurant_evo_garden": {
-        "name": "Restaurant Garden Palace", 
+        "name": "restaurant_evo_garden_name", 
         "price": 3000, 
         "theme": "#2F553D", 
         "image": "Restaurant Evo Garden Palace.png",
-        "description": "The pinnacle of culinary prestige! This deluxe establishment radiates luxury and sophistication, offering a world-class dining experience that is truly second to none."
+        "description": "restaurant_evo_garden_desc"
     },
 }
+
+def get_localized_restaurants():
+    localized = copy.deepcopy(RESTAURANTS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
+
+def get_localized_evolutions():
+    localized = copy.deepcopy(EVOLUTIONS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
 
 
 @dataclass(frozen=True)
@@ -404,6 +420,10 @@ class RestaurantLevelManager:
             "phrase": self._get_motivational_phrase(progress.level),
         }
 
+    def _get_motivational_phrase(self, level: int) -> str:
+        phrases = get_motivational_phrases()
+        return phrases[level % len(phrases)]
+
     def get_daily_special_status(self) -> Dict[str, Any]:
         """Get daily special data, resetting it if it's a new day."""
         conf = config.get_config()
@@ -626,8 +646,8 @@ class RestaurantLevelManager:
             "coins": coins,
             "owned_items": owned,
             "current_theme_id": current,
-            "restaurants": RESTAURANTS,
-            "evolutions": EVOLUTIONS
+            "restaurants": get_localized_restaurants(),
+            "evolutions": get_localized_evolutions()
         }
 
     def refresh_state(self) -> None:
@@ -1422,10 +1442,10 @@ class RestaurantLevelManager:
         
         return [{
             "id": "restaurant_level_up",
-            "name": f"Level {new_level} Unlocked!",
-            "description": f"Your restaurant has reached level {new_level}!",
+            "name": tr("level_unlocked_msg").format(level=new_level),
+            "description": tr("level_unlocked_desc").format(level=new_level),
             "iconImage": icon_path,
-            "iconAlt": "Restaurant Level Up",
+            "iconAlt": tr("level_unlocked_msg").format(level=new_level),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 5000
@@ -1443,10 +1463,10 @@ class RestaurantLevelManager:
         progress = (xp_into_level / xp_to_next) * 100
         return [{
             "id": "restaurant_level_progress",
-            "name": f"Level {level} Progress",
-            "description": f"You're {int(progress)}% to level {level + 1}!",
+            "name": tr("level_progress_msg").format(level=level),
+            "description": tr("level_progress_desc").format(percent=int(progress), next_level=level + 1),
             "iconImage": icon_path,
-            "iconAlt": "Level Progress",
+            "iconAlt": tr("level_progress_msg").format(level=level),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1463,10 +1483,10 @@ class RestaurantLevelManager:
         
         return [{
             "id": "daily_special_complete",
-            "name": "Daily Special Complete!",
-            "description": "You've completed today's special! Great job!",
+            "name": tr("daily_special_complete_msg"),
+            "description": tr("daily_special_complete_desc"),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Complete",
+            "iconAlt": tr("daily_special_complete_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 5000
@@ -1484,10 +1504,10 @@ class RestaurantLevelManager:
         remaining = target - progress
         return [{
             "id": "daily_special_progress_75",
-            "name": "Daily Special Progress",
-            "description": f"You're 75% done! Just {remaining} more to go!",
+            "name": tr("daily_special_progress_msg"),
+            "description": tr("daily_special_75_desc").format(remaining=remaining),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Progress",
+            "iconAlt": tr("daily_special_progress_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1505,10 +1525,10 @@ class RestaurantLevelManager:
         remaining = target - progress
         return [{
             "id": "daily_special_progress_50",
-            "name": "Daily Special Progress",
-            "description": f"Halfway there! {remaining} more to complete today's special!",
+            "name": tr("daily_special_progress_msg"),
+            "description": tr("daily_special_50_desc").format(remaining=remaining),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Progress",
+            "iconAlt": tr("daily_special_progress_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1537,11 +1557,6 @@ class RestaurantLevelManager:
         """
         return []
 
-    def _get_motivational_phrase(self, level: int) -> str:
-        if not MOTIVATIONAL_PHRASES:
-            return "Keep serving knowledge!"
-        index = level % len(MOTIVATIONAL_PHRASES)
-        return MOTIVATIONAL_PHRASES[index]
         
     @property
     def _addon_prefix(self) -> str:

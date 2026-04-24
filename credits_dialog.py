@@ -3,6 +3,8 @@ from aqt import mw, utils
 from aqt.qt import QDialog, QVBoxLayout
 from aqt.webview import AnkiWebView
 
+from .translations import tr
+
 class CreditsDialog(QDialog):
     """
     A pop-up dialog that shows the Credits and Acknowledgements.
@@ -10,7 +12,7 @@ class CreditsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Credits and Acknowledgements")
+        self.setWindowTitle(tr("credits_title"))
         self.setMinimumSize(600, 500)
         self.setMaximumSize(700, 600)
         self.setModal(True)

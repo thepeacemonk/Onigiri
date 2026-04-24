@@ -10,7 +10,24 @@ from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from . import config, heatmap, deck_tree_updater, sidebar_api
 from .gamification import restaurant_level
 from .templates import custom_body_template
+from .translations import tr
 import copy
+import re
+
+def process_tr_markers(html_str: str) -> str:
+    """
+    Finds and replaces {tr("key")} markers in HTML strings with actual translations.
+    """
+    if not html_str:
+        return html_str
+        
+    def replace_match(match):
+        key = match.group(1)
+        return tr(key)
+        
+    # Matches {tr("key")} or {tr('key')}
+    pattern = r'\{tr\([\'"]([^\'"]+)[\'"]\)\}'
+    return re.sub(pattern, replace_match, html_str)
 
 @dataclass
 class RenderData:
@@ -23,58 +40,58 @@ BUTTON_HTML = {
     "add": """
         <div class="add-button-dashed action-add" onclick="pycmd('add')">
             <i class="icon"></i>
-            <span>Add</span>
+            <span>{tr("add")}</span>
         </div>
     """,
     "browse": """
         <div class="menu-item action-browse" onclick="pycmd('browse')">
             <i class="icon"></i>
-            <span>Browser</span>
+            <span>{tr("browse")}</span>
         </div>
     """,
     "stats": """
         <div class="menu-item action-stats" onclick="pycmd('stats')">
             <i class="icon"></i>
-            <span>Stats</span>
+            <span>{tr("stats")}</span>
         </div>
     """,
     "sync": """
         <div class="menu-item action-sync" onclick="pycmd('sync')">
             <i class="icon"></i>
-            <span>Sync</span>
+            <span>{tr("sync")}</span>
             <span class="sync-status-indicator"></span>
         </div>
     """,
     "settings": """
         <div class="menu-item action-settings" onclick="pycmd('openOnigiriSettings')">
             <i class="icon"></i>
-            <span>Settings</span>
+            <span>{tr("settings")}</span>
         </div>
     """,
     "gamification": """
         <div class="menu-item action-gamification" onclick="pycmd('openGamificationSettings')">
             <i class="icon"></i>
-            <span>Onigiri Games</span>
+            <span>{tr("onigiri_games")}</span>
         </div>
     """,
     "more": """
         <details class="menu-group">
             <summary class="menu-item action-more">
                 <i class="icon"></i>
-                <span>More</span>
+                <span>{tr("more")}</span>
             </summary>
             <div class="menu-group-items">
                 <div class="menu-item action-get-shared" onclick="pycmd('shared')">
                     <i class="icon"></i>
-                    <span>Get Shared</span>
+                    <span>{tr("get_shared")}</span>
                 </div>
                 <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
                     <i class="icon"></i>
-                    <span>Create Deck</span>
+                    <span>{tr("create_deck")}</span>
                 </div>
                 <div class="menu-item action-import-file" onclick="pycmd('import')">
                     <i class="icon"></i>
-                    <span>Import File</span>
+                    <span>{tr("import_file")}</span>
                 </div>
             </div>
         </details>
@@ -120,7 +137,8 @@ def _build_sidebar_html(conf: dict) -> str:
             if actions_mode == "list": 
                 html_parts.append(sidebar_api.render_sidebar_entry(key))
             
-    return "\n".join(part for part in html_parts if part)
+    full_html = "\n".join(part for part in html_parts if part)
+    return process_tr_markers(full_html)
 
 def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     """
@@ -223,15 +241,16 @@ def _get_onigiri_retention_html() -> str:
         star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
         star_rating_html = f'<div class="star-rating">{star_html}</div>'
 
-    return f"""
+    res_html = f"""
     <div class="stat-card retention-card">
-        <h3>Retention</h3>
+        <h3>{tr("retention")}</h3>
         <div class="retention-content">
             <p>{retention_percentage:.0f}%</p>
             {star_rating_html}
         </div>
     </div>
     """
+    return process_tr_markers(res_html)
 
 def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
@@ -250,16 +269,17 @@ def _get_onigiri_favorites_html() -> str:
     try:
         favorite_dids = mw.col.conf.get("onigiri_favorite_decks", [])
         if not favorite_dids:
-            return """
+            fav_placeholder = """
             <div class="onigiri-favorites-widget">
-                <h3>Favorites</h3>
+                <h3>{tr("favorites")}</h3>
                 <div class="favorites-placeholder">
-                    No favorite decks selected.
+                    {tr("no_favorites_selected")}
                     <br>
-                    <span>(Select decks in Edit Mode)</span>
+                    <span>({tr("select_decks_in_edit_mode")})</span>
                 </div>
             </div>
             """
+            return process_tr_markers(fav_placeholder)
 
         links_html = []
         valid_dids = []  # Track valid deck IDs
@@ -299,7 +319,7 @@ def _get_onigiri_favorites_html() -> str:
             links_html.append(
                 f"""<a class="favorite-deck-link" 
                       href=# onclick="pycmd('open:{did}'); return false;"
-                      title="Open {html.escape(deck_name, quote=True)}">
+                      title="{tr('open')} {html.escape(deck_name, quote=True)}">
                     <span class="fav-deck-icon"></span>
                     <span class="fav-deck-name">{html.escape(short_name)}</span>
                 </a>"""
@@ -314,25 +334,27 @@ def _get_onigiri_favorites_html() -> str:
         
         # If no valid favorites remain after cleanup, show placeholder
         if not links_html:
-            return """
+            empty_fav = """
             <div class="onigiri-favorites-widget">
-                <h3>Favorites</h3>
+                <h3>{tr("favorites")}</h3>
                 <div class="favorites-placeholder">
-                    No favorite decks selected.
+                    {tr("no_favorites_selected")}
                     <br>
-                    <span>(Select decks in Edit Mode)</span>
+                    <span>({tr("select_decks_in_edit_mode")})</span>
                 </div>
             </div>
             """
+            return process_tr_markers(empty_fav)
         
-        return f"""
+        fav_html = f"""
         <div class="onigiri-favorites-widget">
-            <h3>Favorites</h3>
+            <h3>{tr("favorites")}</h3>
             <div class="favorites-list">
                 {''.join(links_html)}
             </div>
         </div>
         """
+        return process_tr_markers(fav_html)
     except Exception as e:
         print(f"Onigiri: Error building favorites widget: {e}")
         import traceback
@@ -351,14 +373,14 @@ def _get_onigiri_restaurant_level_html() -> str:
     # Get Restaurant Level Data
     rl_payload = restaurant_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):
-        return """
+        return process_tr_markers("""
         <div class="onigiri-restaurant-level-widget disabled">
             <div class="restaurant-info">
-                <h3>Restaurant Level</h3>
-                <p>Feature Disabled</p>
+                <h3>{tr("restaurant_level")}</h3>
+                <p>{tr("feature_disabled")}</p>
             </div>
         </div>
-        """
+        """)
     
     level = rl_payload.get("level", 0)
     name = rl_payload.get("name", "Restaurant Level")
@@ -369,9 +391,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     level_percent = rl_payload.get("progressFraction", 0.0) * 100
     
     if xp_next <= 0:
-        xp_text = "Max Level"
+        xp_text = tr("max_level")
     else:
-        xp_text = f"{xp_into} / {xp_next} XP"
+        xp_text = f"{xp_into} / {xp_next} {tr('xp_label')}"
 
     # Theme Color
     theme_color = restaurant_level.manager.get_current_theme_color()
@@ -416,10 +438,10 @@ def _get_onigiri_restaurant_level_html() -> str:
     
     nav_buttons_html = f"""
     <div class="rl-widget-nav-buttons">
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="Open Taiyaki Store">
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="{tr('open_taiyaki_store')}">
             {shop_svg}
         </button>
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="Open Restaurant Level">
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="{tr('open_restaurant_level')}">
             {restaurant_svg}
         </button>
     </div>
@@ -437,7 +459,7 @@ def _get_onigiri_restaurant_level_html() -> str:
         ds_html = f"""
         <div class="daily-special-section">
             <div class="ds-header">
-                <div class="ds-label">Daily Special</div>
+                <div class="ds-label">{tr("daily_special")}</div>
                 <div class="ds-text">{ds_progress} / {ds_target}</div>
             </div>
             <div class="ds-progress-bar">
@@ -446,9 +468,9 @@ def _get_onigiri_restaurant_level_html() -> str:
         </div>
         """
     else:
-        ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
+        ds_html = f"<div class='daily-special-section'><p class='ds-label'>{tr('no_daily_special_active')}</p></div>"
 
-    return f"""
+    return process_tr_markers(f"""
     <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
         <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
@@ -469,7 +491,7 @@ def _get_onigiri_restaurant_level_html() -> str:
             {ds_html}
         </div>
     </div>
-    """
+    """)
 
 # --- The Main Rendering Function ---
 
@@ -514,12 +536,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
 
     widget_generators = {
-        "studied": lambda: _get_onigiri_stat_card_html("Studied", f"{cards_today} cards", "studied"),
-        "time": lambda: _get_onigiri_stat_card_html("Time", f"{time_today_minutes:.1f} min", "time"),
-        "pace": lambda: _get_onigiri_stat_card_html("Pace", f"{seconds_per_card:.1f} s/card", "pace"),
+        "studied": lambda: _get_onigiri_stat_card_html(tr("studied"), f"{cards_today} {tr('cards')}", "studied"),
+        "time": lambda: _get_onigiri_stat_card_html(tr("time"), f"{time_today_minutes:.1f} {tr('minutes_unit')}", "time"),
+        "pace": lambda: _get_onigiri_stat_card_html(tr("pace"), f"{seconds_per_card:.1f} {tr('seconds_unit')}/{tr('card')}", "pace"),
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
-        "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
+        "favorites": _get_onigiri_favorites_html, 
         "restaurant_level": _get_onigiri_restaurant_level_html,
     }
     
@@ -1110,7 +1132,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         xp_detail = html_module.escape(xp_detail, quote=True)
         rl_chip = f"""
         <div class="restaurant-level-chip" title="{xp_detail}">
-            <span class="rl-chip-level">Lv {rl_payload.get('level', 0)}</span>
+            <span class="rl-chip-level">{tr('level_prefix')} {rl_payload.get('level', 0)}</span>
             <div class="rl-chip-progress">
                 <div class="rl-chip-progress-fill" style="width: {fill_width}"></div>
             </div>
@@ -1171,7 +1193,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     # --- This logic remains the same ---
     profile_pic_html_collapsed = _get_profile_pic_html(user_name, addon_package, "collapsed-profile-pic")
-    welcome_message = f"WELCOME {user_name.upper()}" if not conf.get("hideWelcomeMessage", False) else ""
+    
+    # [LOCALIZED] Use tr("welcome_profile") for the sidebar welcome message
+    welcome_message = tr("welcome_profile").format(name=user_name.upper()) if not conf.get("hideWelcomeMessage", False) else ""
+    
     saved_width = mw.col.conf.get("modern_menu_sidebar_width", 300)
     sidebar_style = f"width: {saved_width}px;"
     container_extra_class = ""
@@ -1212,6 +1237,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .replace("{sidebar_initial_class}", sidebar_initial_class) \
         .replace("{sidebar_style}", sidebar_style) \
         .replace("{welcome_message}", welcome_message) \
+        .replace("{tr_decks}", tr("decks_header")) \
         .replace("{sidebar_buttons}", sidebar_buttons_html) \
         .replace("{profile_pic_html_collapsed}", profile_pic_html_collapsed)
     
