@@ -181,7 +181,7 @@ custom_body_template = """
             {sidebar_buttons}
             
             <div id="deck-list-header">
-                <h2>DECKS</h2>
+                <h2>{tr_decks}</h2>
             </div>
             <div id="deck-list-container">
                 <table class="deck-table" id="decktree">
@@ -220,7 +220,7 @@ custom_body_template = """
 
 <div id="deck-context-menu">
     <div class="context-menu-item" id="transfer-decks-btn">
-        <span>Transfer to...</span>
+        <span>{tr("transfer_to")}</span>
     </div>
 </div>
 

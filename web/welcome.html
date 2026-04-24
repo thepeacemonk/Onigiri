@@ -199,7 +199,7 @@
         }
 
         .version-button::before {
-            content: "See what changed!";
+            content: "%%SEE_WHAT_CHANGED%%";
             position: absolute;
             top: 50%;
             left: 50%;
@@ -299,20 +299,20 @@
 
     <div class="content-wrapper">
         <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri Logo">
-        <h1>Welcome to Onigiri!</h1>
+        <h1>%%WELCOME_TO_ONIGIRI%%</h1>
         <button class="version-button"
-            onclick="window.open('https://github.com/thepeacemonk/Onigiri/releases/tag/v1.0.9.1-beta', '_blank')">Version
+            onclick="window.open('https://github.com/thepeacemonk/Onigiri/releases/tag/v1.0.9.1-beta', '_blank')">%%VERSION%%
             1.0.9.1-beta</button>
-        <p>Settings will open when this window is closed.<br>Please click "Save" on Settings to continue!</p>
+        <p>%%SETTINGS_OPEN_NOTE%%</p>
         <div class="button-container">
             <a href="#" onclick="pycmd('open_link:https://github.com/thepeacemonk/Onigiri'); return false;"
                 class="link-button">GitHub</a>
             <a href="#" onclick="pycmd('open_link:https://discord.gg/ZU9VZHMk3u'); return false;"
                 class="link-button">Discord</a>
             <a href="#" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk'); return false;"
-                class="link-button">Donate</a>
+                class="link-button">%%DONATE%%</a>
             <a href="#" onclick="pycmd('open_link:https://ankiweb.net/shared/review/1011095603'); return false;"
-                class="link-button">Upvote</a>
+                class="link-button">%%UPVOTE%%</a>
         </div>
     </div>
 </body>

@@ -40,6 +40,7 @@ from . import onigiri_renderer
 from . import deck_tree_updater
 from .gamification import restaurant_level
 from . import settings, heatmap, fonts, gamification_settings
+from .translations import tr as tr_at
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
 from . import deck_tree_updater
@@ -580,7 +581,7 @@ def _get_theme_colors_html(mode, conf):
             """
             
     return f"""
-    <h2 class="section-title">Theme colors ({mode})</h2>
+    <h2 class="section-title">{tr("theme_colors_mode").format(mode=mode)}</h2>
     <div class="color-list">{items_html}</div>
     """
 
@@ -647,19 +648,19 @@ def _get_backgrounds_html(addon_package):
     # --- 3. Construct Final HTML ---
     # The title is changed to "Backgrounds" to be more accurate
     return f"""
-    <h2 class="section-title">Backgrounds</h2>
+    <h2 class="section-title">{tr("backgrounds")}</h2>
     <div class="background-previews">
         <div class="preview-card">
             <div class="preview-image" style="{main_bg_style}">
                 <span>{main_text}</span>
             </div>
-            <div class="preview-info">Main Background</div>
+            <div class="preview-info">{tr("main_background_label")}</div>
         </div>
         <div class="preview-card">
             <div class="preview-image" style="{sidebar_bg_style}">
                  <span>{sidebar_text}</span>
             </div>
-            <div class="preview-info">Sidebar Background</div>
+            <div class="preview-info">{tr("sidebar_background_label")}</div>
         </div>
     </div>
     """
@@ -719,7 +720,7 @@ def _get_stats_html():
 
     retention_stat_html = f"""
     <div class="stat-card retention-card">
-        <h3>Retention</h3>
+        <h3>{tr("retention")}</h3>
         <p>{retention_percentage:.0f}%</p>
         <div class="star-rating">{star_html}</div>
     </div>
@@ -729,11 +730,11 @@ def _get_stats_html():
     # 2. Generate the HTML for the stats grid
     stats_grid_parts = [] 
     if not conf.get("hideStudiedStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card studied-card"><h3>Studied</h3><p>{cards_today} cards</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card studied-card"><h3>{tr("studied")}</h3><p>{cards_today} {tr("cards")}</p></div>""")
     if not conf.get("hideTimeStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card time-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card time-card"><h3>{tr("time")}</h3><p>{time_today_minutes:.1f} min</p></div>""")
     if not conf.get("hidePaceStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card pace-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card pace-card"><h3>{tr("pace")}</h3><p>{seconds_per_card:.1f} s/{tr("card")}</p></div>""")
     # Add the retention card to the grid
     if not conf.get("hideRetentionStat", False):
         stats_grid_parts.append(retention_stat_html)
@@ -799,7 +800,7 @@ def _get_restaurant_level_profile_html() -> str:
     <section class="profile-restaurant-level" data-level="{level}" {style_attr}>
         <header class="prl-header">
             <div class="prl-title-group">
-                <span class="prl-title">Restaurant Level</span>
+                <span class="prl-title">{tr("restaurant_level")}</span>
                 <span class="prl-level">Lv {level}</span>
             </div>
             <span class="prl-total">{html.escape(total_label, quote=False)}</span>
@@ -856,12 +857,12 @@ def _generate_profile_html_body():
     if show_dark: theme_page_content += _get_theme_colors_html("dark", conf)
     if show_bgs: theme_page_content += _get_backgrounds_html(addon_package)
     if not theme_page_content:
-        theme_page_content = '<p class="empty-section">Theme sections are hidden in settings.</p>'
+        theme_page_content = f'<p class="empty-section">{tr("feature_disabled")}</p>'
 
     if conf.get("showHeatmapOnProfile", True):
         stats_page_content = _get_stats_html()
     else:
-        stats_page_content = '<p class="empty-section">Stats section is hidden in settings.</p>'
+        stats_page_content = f'<p class="empty-section">{tr("feature_disabled")}</p>'
 
     restaurant_level_html = _get_restaurant_level_profile_html()
     if restaurant_level_html:
@@ -943,8 +944,8 @@ def _generate_profile_html_body():
             <div class="controls-spacer"></div>
             {profile_pill_html}
             
-            <button id="nav-theme" class="nav-button">Themes</button>
-            <button id="nav-stats" class="nav-button">Stats</button>
+            <button id="nav-theme" class="nav-button">{tr("themes")}</button>
+            <button id="nav-stats" class="nav-button">{tr("stats")}</button>
             
             {export_button_html}
         </div>
@@ -1288,9 +1289,9 @@ def patch_overview():
 			later_count = 0
 		
 		count_data = [
-			{"label": tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
-			{"label": tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
-			{"label": tr.studying_to_review(), "count": counts[2], "class": "review-count-bubble"},
+			{"label": mw.col.tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
+			{"label": mw.col.tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
+			{"label": mw.col.tr.studying_to_review(), "count": counts[2], "class": "review-count-bubble"},
 		]
 
 		rows_html = ""
@@ -1303,14 +1304,15 @@ def patch_overview():
 			)
 			
 		if later_count > 0:
+			later_html = f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> {tr_at('due_later')}</span>"
 			rows_html += (
 				'<div class="stats-row due-later-row">'
-				f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> Due later</span>"
+				f"{later_html}"
 				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
 				'</div>'
 			)
 		
-		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or tr.studying_study_now()
+		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or mw.col.tr.studying_study_now()
 
 		bottom_actions_html = ""
 		if show_toolbar_replacements:
@@ -1322,18 +1324,18 @@ def patch_overview():
 				# Filtered deck buttons: Options, Rebuild, Empty
 				bottom_actions_html = (
 					'<div class="overview-bottom-actions">'
-					'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button">Options</a>'
-					'<a href="#" key=R onclick="pycmd(\'refresh\'); return false;" class="overview-button">Rebuild</a>'
-					'<a href="#" key=E onclick="pycmd(\'empty\'); return false;" class="overview-button">Empty</a>'
+					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button">{tr_at("options")}</a>'
+					f'<a href="#" key=R onclick="pycmd(\'refresh\'); return false;" class="overview-button">{tr_at("rebuild")}</a>'
+					f'<a href="#" key=E onclick="pycmd(\'empty\'); return false;" class="overview-button">{tr_at("empty")}</a>'
 					'</div>'
 				)
 			else:
 				# Non-filtered deck buttons: Options, Custom Study, Description
 				bottom_actions_html = (
 					'<div class="overview-bottom-actions">'
-					'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button overview-button-normal">Options</a>'
-					'<a href="#" key=C onclick="pycmd(\'studymore\'); return false;" class="overview-button overview-button-normal">Custom Study</a>'
-					'<a href="#" onclick="pycmd(\'description\'); return false;" class="overview-button overview-button-normal">Description</a>'
+					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button overview-button-normal">{tr_at("options")}</a>'
+					f'<a href="#" key=C onclick="pycmd(\'studymore\'); return false;" class="overview-button overview-button-normal">{tr_at("custom_study")}</a>'
+					f'<a href="#" onclick="pycmd(\'description\'); return false;" class="overview-button overview-button-normal">{tr_at("description")}</a>'
 					'</div>'
 				)
 
@@ -1346,7 +1348,7 @@ def patch_overview():
 					f'{study_now_text}'
 				'</button>'
 				f'{bottom_actions_html}'
-				'<button id="onigiri-reveal-btn">Click to reveal</button>'
+				f'<button id="onigiri-reveal-btn">{tr_at("click_to_reveal")}</button>'
 			'</div>'
 		)
 
@@ -1354,14 +1356,14 @@ def patch_overview():
 	
 	header_html = ""
 	if show_toolbar_replacements and not flow_mode:
-		header_html = """
+		header_html = f"""
     <div id="onigiri-overview-header" class="overview-header">
         <div class="onigiri-reviewer-header-buttons">
-            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
-            <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
-            <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
-            <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
-            <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
+            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
+            <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
+            <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
+            <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
+            <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
         </div>
     </div>
 """
@@ -1448,13 +1450,13 @@ def patch_overview():
                     allExternalElements.forEach(function(el) {
                         el.style.display = '';
                     });
-                    revealBtn.innerHTML = 'Click to hide';
+                    revealBtn.innerHTML = '{tr_at("click_to_hide")}';
                 } else {
                     // Hide all external elements
                     allExternalElements.forEach(function(el) {
                         el.style.display = 'none';
                     });
-                    revealBtn.innerHTML = 'Click to reveal';
+                    revealBtn.innerHTML = '{tr_at("click_to_reveal")}';
                 }
             });
         }
@@ -1522,14 +1524,14 @@ def patch_congrats_page():
 
         header_html = ""
         if show_toolbar_replacements and not flow_mode:
-            header_html = """
+            header_html = f"""
             <div class="overview-header">
                 <div class="onigiri-reviewer-header-buttons">
-                    <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
-                    <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
-                    <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
-                    <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
-                    <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
+                    <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
+                    <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
+                    <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
+                    <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
+                    <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
                 </div>
             </div>
             """
@@ -1584,7 +1586,7 @@ def patch_congrats_page():
             
         later_html = ""
         if later_count > 0:
-            later_html = f"<div class='cards-due-later' style='margin-top: 15px; font-size: 15px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{later_count} learning card{'s' if later_count > 1 else ''} due later today</span></div>"
+            later_html = f"<div class='cards-due-later' style='margin-top: 25px; font-size: 14px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{tr_at('due_later_today').format(count=later_count)}</span></div>"
 
         # 3. Build Bottom Actions HTML
         bottom_actions_html = ""
@@ -1594,20 +1596,20 @@ def patch_congrats_page():
             
             if is_filtered:
                 # Filtered deck buttons: Options, Rebuild, Empty
-                bottom_actions_html = """
+                bottom_actions_html = f"""
                 <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">Options</a>
-                    <a href="#" key=R onclick="pycmd('refresh'); return false;" class="overview-button">Rebuild</a>
-                    <a href="#" key=E onclick="pycmd('empty'); return false;" class="overview-button">Empty</a>
+                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
+                    <a href="#" key=R onclick="pycmd('refresh'); return false;" class="overview-button">{tr_at("rebuild")}</a>
+                    <a href="#" key=E onclick="pycmd('empty'); return false;" class="overview-button">{tr_at("empty")}</a>
                 </div>
                 """
             else:
                 # Non-filtered deck buttons: Options, Custom Study, Description
-                bottom_actions_html = """
+                bottom_actions_html = f"""
                 <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">Options</a>
-                    <a href="#" key=C onclick="pycmd('studymore'); return false;" class="overview-button">Custom Study</a>
-                    <a href="#" onclick="pycmd('description'); return false;" class="overview-button">Description</a>
+                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
+                    <a href="#" key=C onclick="pycmd('studymore'); return false;" class="overview-button">{tr_at("custom_study")}</a>
+                    <a href="#" onclick="pycmd('description'); return false;" class="overview-button">{tr_at("description")}</a>
                 </div>
                 """
 

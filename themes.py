@@ -682,7 +682,7 @@ THEMES = {
             "--empty-star-color": "#D6D4F5",
         }
     ),
-    "Lavander": define_theme(
+    "Lavender": define_theme(
         {
             "--accent-color": "#9187F5",
             "--bg": "#DCE1F0",
