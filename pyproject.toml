@@ -1,0 +1,19 @@
+[tool.ruff]
+target-version = "py39"
+line-length = 200
+exclude = ["settings_helpers.py"]
+
+[tool.ruff.lint]
+# Start lenient — only catch real bugs, not style issues.
+# Tighten over time as the codebase is cleaned up.
+select = [
+    "E9",    # Runtime errors (syntax errors, etc.)
+    "F63",   # Invalid comparisons (e.g., `is` with a literal)
+    "F7",    # Statement-level errors (e.g., `assert False`)
+    "F82",   # Undefined names
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F821"]
+"settings_helpers.py" = ["E9"]
