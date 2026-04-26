@@ -8,7 +8,6 @@ from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
 from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
 from . import patcher
-from . import settings
 from . import config
 from . import menu_buttons
 from .gamification import mochi_messages
@@ -20,7 +19,7 @@ from .gamification import focus_dango
 from . import birthday_dialog
 from . import icon_chooser
 from . import heatmap
-from .sidebar_api import register_sidebar_action
+from . import sidebar_api
 from .sync import onigiri_sync
 from .sync_ui import show_sync_conflict_dialog
 
@@ -325,7 +324,6 @@ def setup_global_hooks():
     menu_buttons.setup_onigiri_menu(addon_path)
     
     # Install the toolbar bridge AFTER other addons have loaded their hooks
-    from . import sidebar_api
     sidebar_api.ensure_capture_hook_is_last()
 
 def on_profile_did_open():
