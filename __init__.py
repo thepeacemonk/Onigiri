@@ -2,29 +2,47 @@ import os
 import json
 from aqt import mw, gui_hooks
 from aqt.deckbrowser import DeckBrowser
-from . import onigiri_renderer
 from aqt.reviewer import Reviewer
 from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
-from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
-from . import patcher
-from . import settings
-from . import config
-from . import menu_buttons
-from .gamification import mochi_messages
-from .gamification import mod_transfer_window
-from . import welcome_dialog
-from . import deck_tree_updater
-from . import webview_handlers
-from .gamification import focus_dango
-from . import birthday_dialog
-from . import icon_chooser
-from . import heatmap
-from .sidebar_api import register_sidebar_action
-from .sync import onigiri_sync
-from .sync_ui import show_sync_conflict_dialog
+from aqt.qt import (QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer,
+                    QPainter, QPen, QColor, QEvent, QPropertyAnimation, QEasingCurve)
+try:
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtWidgets import QGraphicsOpacityEffect
+except ImportError:
+    try:
+        from PyQt5.QtCore import QRect
+        from PyQt5.QtWidgets import QGraphicsOpacityEffect
+    except ImportError:
+        QRect = None
+        QGraphicsOpacityEffect = None
 
-# --- SHOP INTEGRATION IMPORT ---
+# Import local modules with proper error handling
+try:
+    from . import onigiri_renderer
+    from . import patcher
+    from . import settings, heatmap, fonts, gamification_settings
+    from . import menu_buttons
+    from . import welcome_dialog
+    from . import credits_dialog
+    from . import create_deck_dialog
+    from . import manual_reset_restaurant_level
+    from . import icon_chooser
+    from . import coloris_picker
+    from . import themes
+    from . import sidebar_api
+    from . import favorites_cleanup
+    from .gamification import mochi_messages
+    from .gamification import mod_transfer_window
+    from .gamification import focus_dango
+    from . import birthday_dialog
+    from . import deck_tree_updater
+    from . import webview_handlers
+except ImportError as e:
+    print(f"Warning: Could not import local modules: {e}")
+    # Continue with available modules
+    pass
 from .gamification.taiyaki_store import open_taiyaki_store
 
 
@@ -319,6 +337,9 @@ def setup_global_hooks():
     Sets up global hooks and initial patches that do NOT depend on a loaded profile.
     This runs when the main window initializes.
     """
+    # Show the native Qt overlay immediately — covers toolbar + webview during startup
+    _create_qt_overlay()
+
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
@@ -333,6 +354,24 @@ def on_profile_did_open():
     Runs when a profile is successfully loaded.
     Logic that requires access to `mw.col` (collection/database/config) goes here.
     """
+    # Update the Qt startup overlay's background color now that mw.col is available,
+    # so it accurately matches the user's configured theme color.
+    global _qt_startup_overlay
+    if _qt_startup_overlay and not _startup_render_done:
+        try:
+            is_night = mw.pm.night_mode() if mw.pm else False
+            if is_night:
+                bg = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+            else:
+                bg = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+            _qt_startup_overlay._bg_color = QColor(bg)
+            _qt_startup_overlay.update()
+        except Exception:
+            pass
+        # Safety net: if deck_browser_did_render never fires for any reason,
+        # force-dismiss the overlay after 8 seconds so Anki isn't locked out.
+        QTimer.singleShot(8000, _dismiss_qt_overlay)
+
     # Now it is safe to patch overview since mw.col is available
     patcher.patch_overview()
 
@@ -348,10 +387,6 @@ def on_profile_did_open():
     # Show welcome popup if needed (requires mw.col)
     # Delayed to avoid conflicting with Anki's sync/conflict dialog on startup
     QTimer.singleShot(500, maybe_show_welcome_popup)
-
-    # Check for sync conflicts on startup
-    if onigiri_sync.is_enabled():
-        QTimer.singleShot(1000, on_sync_did_finish)
 
     # Show birthday popup if it's the user's birthday (requires mw.col)
     # Delay by 1s to ensure main window is fully rendered for screenshot blur
@@ -384,14 +419,206 @@ DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
 # the initial deck browser render would use Anki's default, missing icons/counts
 DeckBrowser._render_deck_node = patcher._onigiri_render_deck_node
 
+# ── Qt-level startup overlay ──────────────────────────────────────────────────
+# Shows a solid-color native widget that covers the ENTIRE main window
+# (toolbar + webview) during startup. Dismissed after first deck browser render.
+
+class _OnigiriStartupOverlay(QWidget):
+    """Lightweight Qt widget that paints a full-window splash during startup."""
+
+    def __init__(self, parent, bg_color="#2C2C2C", accent_color="#007aff"):
+        super().__init__(parent)
+        import time as _time
+        self._time = _time          # cache module ref — avoid re-import every tick
+        self._start_time = _time.perf_counter()
+        self._angle = 0.0           # float so arc is sub-degree smooth, no stepping
+        self._bg_color = QColor(bg_color)
+        self._accent_color = QColor(accent_color)
+        self._dismissed = False
+        self._anim = None  # keep alive
+        # Cover entire parent immediately
+        self.setGeometry(parent.rect())
+        self.raise_()
+        # Install resize filter so we stay full-window
+        parent.installEventFilter(self)
+        # ~60 fps spinner — PreciseTimer reduces OS scheduling jitter on Windows
+        self._timer = QTimer(self)
+        try:
+            self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        except AttributeError:
+            try:
+                self._timer.setTimerType(Qt.PreciseTimer)  # PyQt5
+            except AttributeError:
+                pass
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(16)
+        self.show()
+
+    def _tick(self):
+        if not self._dismissed:
+            # Time-based float angle: perfectly smooth regardless of timer jitter.
+            # 270°/s = 0.75 rev/s. Float keeps sub-degree precision — no int-step stutter.
+            elapsed = self._time.perf_counter() - self._start_time
+            self._angle = (elapsed * 270.0) % 360.0
+            self.update()
+
+    def paintEvent(self, event):
+        try:
+            round_cap = Qt.PenCapStyle.RoundCap
+        except AttributeError:
+            round_cap = Qt.RoundCap  # PyQt5 compat
+        try:
+            aa_hint = QPainter.RenderHint.Antialiasing
+        except AttributeError:
+            aa_hint = QPainter.Antialiasing  # PyQt5 compat
+
+        p = QPainter(self)
+        p.setRenderHint(aa_hint)
+        # Solid background
+        p.fillRect(self.rect(), self._bg_color)
+        # Spinner
+        cx, cy = self.width() // 2, self.height() // 2
+        r = 18
+        if QRect is None:
+            p.end()
+            return
+        rect = QRect(cx - r, cy - r, r * 2, r * 2)
+        # Track
+        track_color = QColor(self._bg_color)
+        if track_color.lightness() < 128:
+            track_color = track_color.lighter(160)
+        else:
+            track_color = track_color.darker(130)
+        track_color.setAlpha(120)
+        pen = QPen(track_color)
+        pen.setWidth(3)
+        pen.setCapStyle(round_cap)
+        p.setPen(pen)
+        p.drawEllipse(rect)
+        # Arc
+        pen2 = QPen(self._accent_color)
+        pen2.setWidth(3)
+        pen2.setCapStyle(round_cap)
+        p.setPen(pen2)
+        # Qt drawArc uses 1/16th-degree units. Multiply the float angle
+        # before converting to int for maximum sub-degree precision.
+        start_angle = round((90.0 - self._angle) * 16)
+        span_angle  = -270 * 16
+        p.drawArc(rect, start_angle, span_angle)
+        p.end()
+
+    def eventFilter(self, obj, event):
+        if obj is self.parent() and event.type() == QEvent.Type.Resize:
+            self.setGeometry(self.parent().rect())
+            self.raise_()
+        return super().eventFilter(obj, event)
+
+    def dismiss(self):
+        if self._dismissed:
+            return
+        self._dismissed = True
+        self._timer.stop()
+        try:
+            if QGraphicsOpacityEffect is not None:
+                effect = QGraphicsOpacityEffect(self)
+                self.setGraphicsEffect(effect)
+                anim = QPropertyAnimation(effect, b"opacity")
+                anim.setDuration(350)
+                anim.setStartValue(1.0)
+                anim.setEndValue(0.0)
+                try:
+                    anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+                except AttributeError:
+                    anim.setEasingCurve(QEasingCurve.OutCubic)
+                anim.finished.connect(self.deleteLater)
+                try:
+                    anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+                except AttributeError:
+                    anim.start(QPropertyAnimation.DeleteWhenStopped)
+                self._anim = anim  # prevent GC
+            else:
+                # No opacity effect available — just hide immediately
+                QTimer.singleShot(0, self.deleteLater)
+        except Exception:
+            QTimer.singleShot(0, self.deleteLater)
+
+_qt_startup_overlay = None
+_startup_render_done = False
+
+
+def _create_qt_overlay():
+    """Create the native Qt overlay over the full Anki main window."""
+    global _qt_startup_overlay
+    if _qt_startup_overlay is not None:
+        return
+    if QRect is None:
+        return  # Qt imports unavailable — skip overlay
+    try:
+        # Determine bg color — mw.col is not yet available at main_window_did_init time,
+        # so fall back to night-mode detection via the profile manager only.
+        is_night = False
+        try:
+            if mw.pm:
+                is_night = mw.pm.night_mode()
+        except Exception:
+            pass
+
+        # Try to get the user's configured color (may fail if col not loaded yet)
+        bg = "#2C2C2C" if is_night else "#F5F5F5"
+        try:
+            if mw.col:
+                if is_night:
+                    bg = mw.col.conf.get("modern_menu_bg_color_dark", bg)
+                else:
+                    bg = mw.col.conf.get("modern_menu_bg_color_light", bg)
+        except Exception:
+            pass
+
+        _qt_startup_overlay = _OnigiriStartupOverlay(mw, bg_color=bg, accent_color="#007aff")
+    except Exception as e:
+        print(f"Onigiri: Could not create Qt startup overlay: {e}")
+
+
+def _dismiss_qt_overlay():
+    """Fade out and destroy the native Qt overlay."""
+    global _qt_startup_overlay
+    if _qt_startup_overlay:
+        try:
+            _qt_startup_overlay.dismiss()
+        except Exception:
+            pass
+        _qt_startup_overlay = None
+
+
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
+    global _startup_render_done
     conf = config.get_config()
     grid_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
     if "heatmap" in grid_layout:
         # Data is now injected via globals in inject_menu_files for reliability.
         # This call handles refreshes or dynamic layout changes.
         deck_browser.web.eval("if (window.OnigiriHeatmap && typeof window.OnigiriHeatmap.autoRender === 'function') { window.OnigiriHeatmap.autoRender(); }")
-    
+
+    if not _startup_render_done:
+        # First render on startup: dismiss the Qt overlay (which covers the toolbar)
+        # after a short delay so the fully-styled content is visible first.
+        _startup_render_done = True
+        QTimer.singleShot(400, _dismiss_qt_overlay)
+    else:
+        # Subsequent re-renders (D-key return, settings change, icon save, sort…):
+        # The webview overlay (onigiri-loading-overlay) is the sole overlay for these.
+        # Its JS controller auto-dismisses when the engine signals ready; this eval
+        # provides a fast-path fallback in case the signal fires very late.
+        deck_browser.web.eval("""
+(function(){
+    var ol = document.getElementById('onigiri-loading-overlay');
+    if (ol) {
+        ol.classList.add('dismissed');
+        setTimeout(function(){ if(ol.parentNode) ol.parentNode.removeChild(ol); }, 420);
+    }
+})();
+""")
+
     # Update sync status indicator
     update_sync_status_indicator()
 
@@ -405,37 +632,27 @@ def update_sync_status_indicator():
     except Exception as e:
         pass
 
-def on_sync_will_start():
-    """Called before Anki syncs - pack Onigiri data."""
-    update_sync_status_indicator()
-    if onigiri_sync.is_enabled():
-        onigiri_sync.pack_user_files()
-
-def on_sync_did_finish():
-    """Called after Anki sync finishes - check for new Onigiri data."""
-    update_sync_status_indicator()
-    if not onigiri_sync.is_enabled():
-        return
-
-    conflict = onigiri_sync.check_conflict()
-    if conflict == 'cloud_newer':
-        # Cloud data is newer, ask user what to do
-        choice = show_sync_conflict_dialog(mw)
-        if choice == 'cloud':
-            onigiri_sync.unpack_user_files()
-            # Reload Onigiri modules or notify user to restart? For now, just tool tip
-            from aqt.utils import showInfo
-            showInfo("Onigiri data has been updated from AnkiWeb. Some changes may require a restart to take effect.")
-        elif choice == 'local':
-            # User wants to keep local, so pack it again to set as definitive
-            onigiri_sync.pack_user_files()
-    elif conflict == 'local_newer':
-        # This shouldn't happen immediately after sync unless something is weird
-        # but we can pack just in case
-        onigiri_sync.pack_user_files()
-
 def on_state_change(new_state, old_state):
     """Called when Anki's state changes - update sync indicator."""
+    # When transitioning TO the deck browser from another screen, immediately
+    # inject a lightweight overlay onto the current page so the user sees an
+    # instant visual response while Python builds the full deck browser HTML.
+    # The injected overlay is automatically destroyed when setContent() replaces
+    # the page, and the deck browser's own onigiri-loading-overlay takes over.
+    if new_state == 'deckBrowser' and old_state in ('reviewer', 'overview', 'resetRequired'):
+        try:
+            _bg = mw.deckBrowser.web.eval("""
+                (function(){
+                    if(document.getElementById('onigiri-transition-overlay'))return;
+                    var bg=getComputedStyle(document.documentElement).getPropertyValue('--canvas')||'#1a1a1a';
+                    var d=document.createElement('div');
+                    d.id='onigiri-transition-overlay';
+                    d.style.cssText='position:fixed;inset:0;z-index:2147483647;background:'+bg.trim()+';pointer-events:none;';
+                    document.body&&document.body.appendChild(d);
+                })();
+            """)
+        except Exception:
+            pass
     update_sync_status_indicator()
       
 def on_deck_browser_will_show(deck_browser: DeckBrowser):
@@ -447,16 +664,23 @@ def on_deck_browser_will_show(deck_browser: DeckBrowser):
     patcher.take_control_of_deck_browser_hook()
 
 def on_show_icon_chooser(deck_id):
-    """Opens the dialog to choose a custom icon for the deck."""
-    dialog = icon_chooser.IconChooserDialog(deck_id, mw)
-    if dialog.exec():
-        # Refresh the deck browser to show changes immediately
-        mw.deckBrowser.refresh()
+    """Opens the in-page icon chooser modal inside the deck browser webview."""
+    try:
+        from . import webview_handlers
+        webview_handlers._open_icon_chooser_modal(mw.deckBrowser, str(deck_id))
+    except Exception as e:
+        from aqt.utils import tooltip
+        tooltip(f"Could not open icon chooser: {e}")
 
 def on_deck_options_shown(menu, deck_id):
     """Appends the 'Change Icon' action to the deck options menu."""
     a = menu.addAction("Change Icon")
     a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
+
+# Kick off the Qt startup overlay as early as possible — a 0ms single-shot
+# fires on the next event-loop iteration, before main_window_did_init.
+# This gets the spinner on screen sooner so the user sees it immediately.
+QTimer.singleShot(0, _create_qt_overlay)
 
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
@@ -469,11 +693,11 @@ gui_hooks.webview_did_receive_js_message.append(_on_webview_cmd)
 # Update sync status when state changes
 gui_hooks.state_did_change.append(on_state_change)
 # Update sync status after sync completes
-gui_hooks.sync_did_finish.append(on_sync_did_finish)
+gui_hooks.sync_did_finish.append(lambda: update_sync_status_indicator())
 # Update sync status after operations that modify the collection
 gui_hooks.operation_did_execute.append(lambda *args: update_sync_status_indicator())
 # Update sync status when sync status changes
-gui_hooks.sync_will_start.append(on_sync_will_start)
+gui_hooks.sync_will_start.append(lambda: update_sync_status_indicator())
 gui_hooks.deck_browser_will_show_options_menu.append(on_deck_options_shown)
 # Menu styling disabled per user request
 # gui_hooks.theme_did_change.append(patcher.apply_menu_styling)
