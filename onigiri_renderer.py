@@ -4,30 +4,28 @@ import html
 import json
 import os
 from dataclasses import dataclass
+
+def _load_icon(name: str) -> str:
+    """Load an SVG file from system_files/system_icons/ and return its content.
+
+    Rule: ALL icons used in Onigiri UI should be files in system_files/system_icons/,
+    never hardcoded inline strings. Use this function to load them. When adding a new
+    icon, create the .svg file first, then call _load_icon('name') — never paste SVG
+    markup directly into Python or JS source code.
+    """
+    _path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", f"{name}.svg")
+    try:
+        with open(_path, "r", encoding="utf-8") as _f:
+            return _f.read().strip()
+    except (FileNotFoundError, IOError):
+        return ""
 from aqt import mw
 from . import patcher
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from . import config, heatmap, deck_tree_updater, sidebar_api
 from .gamification import restaurant_level
 from .templates import custom_body_template
-from .translations import tr
 import copy
-import re
-
-def process_tr_markers(html_str: str) -> str:
-    """
-    Finds and replaces {tr("key")} markers in HTML strings with actual translations.
-    """
-    if not html_str:
-        return html_str
-        
-    def replace_match(match):
-        key = match.group(1)
-        return tr(key)
-        
-    # Matches {tr("key")} or {tr('key')}
-    pattern = r'\{tr\([\'"]([^\'"]+)[\'"]\)\}'
-    return re.sub(pattern, replace_match, html_str)
 
 @dataclass
 class RenderData:
@@ -40,58 +38,58 @@ BUTTON_HTML = {
     "add": """
         <div class="add-button-dashed action-add" onclick="pycmd('add')">
             <i class="icon"></i>
-            <span>{tr("add")}</span>
+            <span>Add</span>
         </div>
     """,
     "browse": """
         <div class="menu-item action-browse" onclick="pycmd('browse')">
             <i class="icon"></i>
-            <span>{tr("browse")}</span>
+            <span>Browser</span>
         </div>
     """,
     "stats": """
         <div class="menu-item action-stats" onclick="pycmd('stats')">
             <i class="icon"></i>
-            <span>{tr("stats")}</span>
+            <span>Stats</span>
         </div>
     """,
     "sync": """
         <div class="menu-item action-sync" onclick="pycmd('sync')">
             <i class="icon"></i>
-            <span>{tr("sync")}</span>
+            <span>Sync</span>
             <span class="sync-status-indicator"></span>
         </div>
     """,
     "settings": """
         <div class="menu-item action-settings" onclick="pycmd('openOnigiriSettings')">
             <i class="icon"></i>
-            <span>{tr("settings")}</span>
+            <span>Settings</span>
         </div>
     """,
     "gamification": """
         <div class="menu-item action-gamification" onclick="pycmd('openGamificationSettings')">
             <i class="icon"></i>
-            <span>{tr("onigiri_games")}</span>
+            <span>Onigiri Games</span>
         </div>
     """,
     "more": """
         <details class="menu-group">
             <summary class="menu-item action-more">
                 <i class="icon"></i>
-                <span>{tr("more")}</span>
+                <span>More</span>
             </summary>
             <div class="menu-group-items">
                 <div class="menu-item action-get-shared" onclick="pycmd('shared')">
                     <i class="icon"></i>
-                    <span>{tr("get_shared")}</span>
+                    <span>Get Shared</span>
                 </div>
                 <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
                     <i class="icon"></i>
-                    <span>{tr("create_deck")}</span>
+                    <span>Create Deck</span>
                 </div>
                 <div class="menu-item action-import-file" onclick="pycmd('import')">
                     <i class="icon"></i>
-                    <span>{tr("import_file")}</span>
+                    <span>Import File</span>
                 </div>
             </div>
         </details>
@@ -137,8 +135,7 @@ def _build_sidebar_html(conf: dict) -> str:
             if actions_mode == "list": 
                 html_parts.append(sidebar_api.render_sidebar_entry(key))
             
-    full_html = "\n".join(part for part in html_parts if part)
-    return process_tr_markers(full_html)
+    return "\n".join(part for part in html_parts if part)
 
 def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     """
@@ -217,6 +214,12 @@ _DASHBOARD_STATS_CACHE = {}
 _DASHBOARD_LAST_UPDATE = 0
 _DASHBOARD_CACHE_TTL = 3 # 3 seconds is enough to prevent spam during animations, but keeps it fresh
 
+# --- Dialog-open guard ---
+# When any in-page dialog is open (right-click menu, ellipsis menu, icon chooser),
+# automatic refreshes are suppressed. A refresh is triggered when the dialog closes.
+_onigiri_ui_open = False
+_onigiri_refresh_deferred = False
+
 def _get_onigiri_retention_html() -> str:
     # Query retention directly (fast index on id)
     total_reviews, correct_reviews = mw.col.db.first(
@@ -241,16 +244,15 @@ def _get_onigiri_retention_html() -> str:
         star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
         star_rating_html = f'<div class="star-rating">{star_html}</div>'
 
-    res_html = f"""
+    return f"""
     <div class="stat-card retention-card">
-        <h3>{tr("retention")}</h3>
+        <h3>Retention</h3>
         <div class="retention-content">
             <p>{retention_percentage:.0f}%</p>
             {star_rating_html}
         </div>
     </div>
     """
-    return process_tr_markers(res_html)
 
 def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
@@ -269,17 +271,16 @@ def _get_onigiri_favorites_html() -> str:
     try:
         favorite_dids = mw.col.conf.get("onigiri_favorite_decks", [])
         if not favorite_dids:
-            fav_placeholder = """
+            return """
             <div class="onigiri-favorites-widget">
-                <h3>{tr("favorites")}</h3>
+                <h3>Favorites</h3>
                 <div class="favorites-placeholder">
-                    {tr("no_favorites_selected")}
+                    No favorite decks selected.
                     <br>
-                    <span>({tr("select_decks_in_edit_mode")})</span>
+                    <span>(Select decks in Edit Mode)</span>
                 </div>
             </div>
             """
-            return process_tr_markers(fav_placeholder)
 
         links_html = []
         valid_dids = []  # Track valid deck IDs
@@ -319,7 +320,7 @@ def _get_onigiri_favorites_html() -> str:
             links_html.append(
                 f"""<a class="favorite-deck-link" 
                       href=# onclick="pycmd('open:{did}'); return false;"
-                      title="{tr('open')} {html.escape(deck_name, quote=True)}">
+                      title="Open {html.escape(deck_name, quote=True)}">
                     <span class="fav-deck-icon"></span>
                     <span class="fav-deck-name">{html.escape(short_name)}</span>
                 </a>"""
@@ -334,27 +335,25 @@ def _get_onigiri_favorites_html() -> str:
         
         # If no valid favorites remain after cleanup, show placeholder
         if not links_html:
-            empty_fav = """
+            return """
             <div class="onigiri-favorites-widget">
-                <h3>{tr("favorites")}</h3>
+                <h3>Favorites</h3>
                 <div class="favorites-placeholder">
-                    {tr("no_favorites_selected")}
+                    No favorite decks selected.
                     <br>
-                    <span>({tr("select_decks_in_edit_mode")})</span>
+                    <span>(Select decks in Edit Mode)</span>
                 </div>
             </div>
             """
-            return process_tr_markers(empty_fav)
         
-        fav_html = f"""
+        return f"""
         <div class="onigiri-favorites-widget">
-            <h3>{tr("favorites")}</h3>
+            <h3>Favorites</h3>
             <div class="favorites-list">
                 {''.join(links_html)}
             </div>
         </div>
         """
-        return process_tr_markers(fav_html)
     except Exception as e:
         print(f"Onigiri: Error building favorites widget: {e}")
         import traceback
@@ -373,14 +372,14 @@ def _get_onigiri_restaurant_level_html() -> str:
     # Get Restaurant Level Data
     rl_payload = restaurant_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):
-        return process_tr_markers("""
+        return """
         <div class="onigiri-restaurant-level-widget disabled">
             <div class="restaurant-info">
-                <h3>{tr("restaurant_level")}</h3>
-                <p>{tr("feature_disabled")}</p>
+                <h3>Restaurant Level</h3>
+                <p>Feature Disabled</p>
             </div>
         </div>
-        """)
+        """
     
     level = rl_payload.get("level", 0)
     name = rl_payload.get("name", "Restaurant Level")
@@ -391,9 +390,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     level_percent = rl_payload.get("progressFraction", 0.0) * 100
     
     if xp_next <= 0:
-        xp_text = tr("max_level")
+        xp_text = "Max Level"
     else:
-        xp_text = f"{xp_into} / {xp_next} {tr('xp_label')}"
+        xp_text = f"{xp_into} / {xp_next} XP"
 
     # Theme Color
     theme_color = restaurant_level.manager.get_current_theme_color()
@@ -438,10 +437,10 @@ def _get_onigiri_restaurant_level_html() -> str:
     
     nav_buttons_html = f"""
     <div class="rl-widget-nav-buttons">
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="{tr('open_taiyaki_store')}">
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="Open Taiyaki Store">
             {shop_svg}
         </button>
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="{tr('open_restaurant_level')}">
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="Open Restaurant Level">
             {restaurant_svg}
         </button>
     </div>
@@ -459,7 +458,7 @@ def _get_onigiri_restaurant_level_html() -> str:
         ds_html = f"""
         <div class="daily-special-section">
             <div class="ds-header">
-                <div class="ds-label">{tr("daily_special")}</div>
+                <div class="ds-label">Daily Special</div>
                 <div class="ds-text">{ds_progress} / {ds_target}</div>
             </div>
             <div class="ds-progress-bar">
@@ -468,9 +467,9 @@ def _get_onigiri_restaurant_level_html() -> str:
         </div>
         """
     else:
-        ds_html = f"<div class='daily-special-section'><p class='ds-label'>{tr('no_daily_special_active')}</p></div>"
+        ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
 
-    return process_tr_markers(f"""
+    return f"""
     <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
         <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
@@ -491,7 +490,7 @@ def _get_onigiri_restaurant_level_html() -> str:
             {ds_html}
         </div>
     </div>
-    """)
+    """
 
 # --- The Main Rendering Function ---
 
@@ -501,6 +500,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     It builds the entire modern UI, including Onigiri and external widgets,
     into a stable CSS grid.
     """
+    global _onigiri_ui_open, _onigiri_refresh_deferred
+    if _onigiri_ui_open:
+        # A dialog is open — defer the refresh so it fires when the dialog closes
+        _onigiri_refresh_deferred = True
+        return
+
     # Ensure hooks from other add-ons are captured just-in-time
     patcher.take_control_of_deck_browser_hook()
     conf = config.get_config()
@@ -536,12 +541,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
 
     widget_generators = {
-        "studied": lambda: _get_onigiri_stat_card_html(tr("studied"), f"{cards_today} {tr('cards')}", "studied"),
-        "time": lambda: _get_onigiri_stat_card_html(tr("time"), f"{time_today_minutes:.1f} {tr('minutes_unit')}", "time"),
-        "pace": lambda: _get_onigiri_stat_card_html(tr("pace"), f"{seconds_per_card:.1f} {tr('seconds_unit')}/{tr('card')}", "pace"),
+        "studied": lambda: _get_onigiri_stat_card_html("Studied", f"{cards_today} cards", "studied"),
+        "time": lambda: _get_onigiri_stat_card_html("Time", f"{time_today_minutes:.1f} min", "time"),
+        "pace": lambda: _get_onigiri_stat_card_html("Pace", f"{seconds_per_card:.1f} s/card", "pace"),
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
-        "favorites": _get_onigiri_favorites_html, 
+        "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
         "restaurant_level": _get_onigiri_restaurant_level_html,
     }
     
@@ -682,7 +687,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .main-content {{
             /* Dynamic Padding based on col_count */
-            padding: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            padding-top: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            padding-bottom: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            padding-left: 110px !important;
+            padding-right: 40px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
             display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
@@ -955,7 +963,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             if (!this.deckListContainer) return;
             this.bindEvents();
             this.observeMutations();
-            console.log('OnigiriEngine initialized');
+            // Signal the loading overlay that the engine is ready.
+            // The heatmap renderer will call this too (and wins the race when present);
+            // this call is the fallback for layouts that have no heatmap widget.
+            if (typeof window.onigiriDismissOverlay === 'function') window.onigiriDismissOverlay();
         },
 
         saveScrollPosition: function() {
@@ -997,16 +1008,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             this.deckListContainer.addEventListener('click', (event) => {
                 const collapseLink = event.target.closest('a.collapse');
                 if (collapseLink) {
-                    event.preventDefault();
-                    event.stopPropagation();
+                    // Save scroll and let the onclick attribute on a.collapse handle the pycmd call.
+                    // Do NOT call pycmd here — that would fire it twice (onclick + this listener).
                     this.saveScrollPosition();
-                    
-                    const deckRow = event.target.closest('tr.deck');
-                    if (deckRow && deckRow.dataset.did) {
-                        pycmd(`onigiri_collapse:${deckRow.dataset.did}`);
-                    }
-                    return false;
+                    return;
                 }
+            });
+
+            // Dismiss ellipsis menu when clicking anywhere in the deck list
+            this.deckListContainer.addEventListener('click', (event) => {
+                const menu = document.getElementById('onigiri-ellipsis-menu');
+                if (menu) menu.remove();
             });
         },
 
@@ -1055,15 +1067,55 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             if (tbody) {
                 tbody.innerHTML = html;
                 this.restoreScrollPosition();
-                
-                // Re-process any new collapse icons
                 this.processNewNodes([tbody]);
-                
-                // Trigger any layout updates
-                if (window.updateDeckLayouts) {
-                    window.updateDeckLayouts();
-                }
+                if (window.updateDeckLayouts) window.updateDeckLayouts();
             }
+        },
+
+        showEllipsisMenu: function(btn, event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const existing = document.getElementById('onigiri-ellipsis-menu');
+            if (existing) { existing.remove(); return; }
+
+            const actions = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.ellipsisActions) || [];
+            if (!actions.length) return;
+
+            const menu = document.createElement('div');
+            menu.id = 'onigiri-ellipsis-menu';
+
+            actions.forEach(action => {
+                const item = document.createElement('div');
+                item.className = 'onigiri-ellipsis-item action-' + action.key;
+
+                const icon = document.createElement('i');
+                icon.className = 'icon';
+                if (action.iconUrl) {
+                    icon.style.cssText = 'mask-image:url(' + action.iconUrl + ');-webkit-mask-image:url(' + action.iconUrl + ');mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;';
+                } else if (action.iconSvg) {
+                    const encoded = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(action.iconSvg);
+                    icon.style.cssText = 'mask-image:url(' + encoded + ');-webkit-mask-image:url(' + encoded + ');mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;';
+                }
+
+                const label = document.createElement('span');
+                label.textContent = action.label;
+
+                item.appendChild(icon);
+                item.appendChild(label);
+                item.addEventListener('click', () => { menu.remove(); pycmd(action.command); });
+                menu.appendChild(item);
+            });
+
+            const rect = btn.getBoundingClientRect();
+            menu.style.cssText = 'top:' + (rect.bottom + 4) + 'px;left:' + rect.left + 'px;';
+            document.body.appendChild(menu);
+
+            setTimeout(() => {
+                document.addEventListener('click', function dismiss(e) {
+                    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', dismiss); }
+                });
+            }, 0);
         }
     };
 
@@ -1090,6 +1142,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         sidebar_initial_class += " deck-focus-mode" if sidebar_initial_class else "deck-focus-mode"
     if is_sidebar_only:
         sidebar_initial_class += " sidebar-only-mode" if sidebar_initial_class else "sidebar-only-mode"
+    if conf.get("sidebarActionsMode", "list") == "ellipsis":
+        sidebar_initial_class += " sidebar-mode-ellipsis" if sidebar_initial_class else "sidebar-mode-ellipsis"
 
     # --- MODIFICATION START ---
     
@@ -1132,7 +1186,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         xp_detail = html_module.escape(xp_detail, quote=True)
         rl_chip = f"""
         <div class="restaurant-level-chip" title="{xp_detail}">
-            <span class="rl-chip-level">{tr('level_prefix')} {rl_payload.get('level', 0)}</span>
+            <span class="rl-chip-level">Lv {rl_payload.get('level', 0)}</span>
             <div class="rl-chip-progress">
                 <div class="rl-chip-progress-fill" style="width: {fill_width}"></div>
             </div>
@@ -1193,17 +1247,143 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     # --- This logic remains the same ---
     profile_pic_html_collapsed = _get_profile_pic_html(user_name, addon_package, "collapsed-profile-pic")
-    
-    # [LOCALIZED] Use tr("welcome_profile") for the sidebar welcome message
-    welcome_message = tr("welcome_profile").format(name=user_name.upper()) if not conf.get("hideWelcomeMessage", False) else ""
-    
+    welcome_message = f"WELCOME {user_name.upper()}" if not conf.get("hideWelcomeMessage", False) else ""
     saved_width = mw.col.conf.get("modern_menu_sidebar_width", 300)
     sidebar_style = f"width: {saved_width}px;"
     container_extra_class = ""
 
+    _icon_mask_css = (
+        'display:block;width:16px;height:16px;'
+        'mask-size:contain;-webkit-mask-size:contain;'
+        'mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;'
+        'mask-position:center;-webkit-mask-position:center;'
+        'background-color:var(--icon-color,#777);'
+    )
+    _ellipsis_url = f'/_addons/{addon_package}/system_files/system_icons/ellipsis_circle.svg'
+    ellipsis_button_html = (
+        '<div class="onigiri-ellipsis-toolbar-btn" '
+        'onclick="OnigiriEngine.showEllipsisMenu(this,event)" '
+        'title="More options" role="button">'
+        f'<i style="{_icon_mask_css}mask-image:url({_ellipsis_url});-webkit-mask-image:url({_ellipsis_url});"></i>'
+        '</div>'
+    )
+
+    undo_button_html = ''
+
+    # Build ellipsis dropdown action list from the sidebar's visible layout
+    addon_package = mw.addonManager.addonFromModule(__name__)
+    icon_base = f"/_addons/{addon_package}/system_files/system_icons/"
+    user_icon_base = f"/_addons/{addon_package}/user_files/icons/"
+    layout_config = conf.get("sidebarButtonLayout", copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]))
+    visible_keys = layout_config.get("visible", [])
+    external_entries_dict = sidebar_api.get_sidebar_entries()
+
+    _builtin_meta = {
+        "add":          {"label": "Add",          "command": "add",                     "icon": "add.svg"},
+        "browse":       {"label": "Browser",       "command": "browse",                  "icon": "browse.svg"},
+        "stats":        {"label": "Stats",         "command": "stats",                   "icon": "stats.svg"},
+        "sync":         {"label": "Sync",          "command": "sync",                    "icon": "sync.svg"},
+        "settings":     {"label": "Settings",      "command": "openOnigiriSettings",     "icon": "settings.svg"},
+        "gamification": {"label": "Onigiri Games", "command": "openGamificationSettings","icon": "gamepad.svg"},
+    }
+    _more_sub = [
+        {"key": "get_shared",  "label": "Get Shared",  "command": "shared",             "icon": "get_shared.svg"},
+        {"key": "create_deck", "label": "Create Deck", "command": "onigiri_create_deck","icon": "create_deck.svg"},
+        {"key": "import_file", "label": "Import File", "command": "import",             "icon": "import_file.svg"},
+    ]
+
+    ellipsis_actions = []
+    show_ellipsis = conf.get("sidebarActionsMode", "list") == "ellipsis"
+
+    SVG_ADD_CARD         = _load_icon('add_card')
+    SVG_ADD_DECK         = _load_icon('add_deck_custom')
+    SVG_COLLAPSE_SIDEBAR = _load_icon('collapse_sidebar')
+    SVG_ORGANISE         = _load_icon('organise')
+    SVG_STAR             = _load_icon('star_outline')
+    SVG_MARK             = _load_icon('mark_circle')
+    SVG_SORT_DEFAULT     = _load_icon('sort_default')
+    SVG_SORT_MOST_REVIEWS = _load_icon('sort_most_reviews')
+    SVG_SORT_CUSTOM      = _load_icon('sort_custom')
+
+    if show_ellipsis:
+        # Ellipsis mode: always show full action set regardless of visible_keys
+        for key, meta in _builtin_meta.items():
+            if key == "add":
+                custom = mw.col.conf.get("modern_menu_icon_add", "")
+                card_icon = f"{user_icon_base}{custom}" if custom else f"{icon_base}add.svg"
+                ellipsis_actions.append({
+                    "key": "add",
+                    "label": "Add",
+                    "iconUrl": card_icon,
+                    "group": "actions",
+                    "children": [
+                        {"key": "add_card", "label": "Add Card", "command": "add",                  "iconSvg": SVG_ADD_CARD},
+                        {"key": "add_deck", "label": "Add Deck", "command": "onigiri_create_deck", "iconSvg": SVG_ADD_DECK},
+                    ]
+                })
+            elif key == "gamification":
+                custom = mw.col.conf.get(f"modern_menu_icon_{key}", "")
+                icon_url = f"{user_icon_base}{custom}" if custom else f"{icon_base}{meta['icon']}"
+                ellipsis_actions.append({"key": key, "label": meta["label"], "command": meta["command"], "iconUrl": icon_url, "group": "extras"})
+            else:
+                custom = mw.col.conf.get(f"modern_menu_icon_{key}", "")
+                icon_url = f"{user_icon_base}{custom}" if custom else f"{icon_base}{meta['icon']}"
+                ellipsis_actions.append({"key": key, "label": meta["label"], "command": meta["command"], "iconUrl": icon_url, "group": "actions"})
+
+        for sub in _more_sub:
+            if sub["key"] == "create_deck":
+                continue  # already shown as "Add Deck" child above
+            custom = mw.col.conf.get(f"modern_menu_icon_{sub['key']}", "")
+            icon_url = f"{user_icon_base}{custom}" if custom else f"{icon_base}{sub['icon']}"
+            ellipsis_actions.append({"key": sub["key"], "label": sub["label"], "command": sub["command"], "iconUrl": icon_url, "group": "extras"})
+
+        for key, entry in external_entries_dict.items():
+            ellipsis_actions.append({"key": key, "label": entry.label, "command": entry.command, "iconUrl": "", "iconSvg": getattr(entry, "icon_svg", "") or "", "group": "actions"})
+
+        # Utility tools — read from mw.col.conf (live state, updated by handlers)
+        # If onigiri_sort_mode is "custom" but onigiri_deck_sort isn't set yet, detect it
+        _raw_sort_mode = mw.col.conf.get("onigiri_sort_mode", "")
+        current_sort = mw.col.conf.get("onigiri_deck_sort", "default")
+        if not mw.col.conf.get("onigiri_deck_sort") and _raw_sort_mode == "custom":
+            current_sort = "custom"
+        show_favourites = bool(mw.col.conf.get("onigiri_show_favourites", False))
+        show_marked = bool(mw.col.conf.get("onigiri_show_marked", False))
+        organise_children = [
+            {"type": "section", "label": "Filter"},
+            {"key": "filter_favourites", "label": "Favourites", "command": "onigiri_filter_favourites", "iconSvg": SVG_STAR,   "selected": show_favourites},
+            {"key": "filter_marked",     "label": "Marked",     "command": "onigiri_filter_marked",     "iconSvg": SVG_MARK,   "selected": show_marked},
+            {"type": "divider"},
+            {"type": "section", "label": "Sort"},
+            {"key": "sort_default",       "label": "Default",      "command": "onigiri_sort:default",      "iconSvg": SVG_SORT_DEFAULT,      "selected": current_sort == "default"},
+            {"key": "sort_most_reviews",  "label": "Most Reviews", "command": "onigiri_sort:most_reviews", "iconSvg": SVG_SORT_MOST_REVIEWS, "selected": current_sort == "most_reviews"},
+            {"key": "sort_custom",        "label": "Custom",       "command": "onigiri_sort:custom",       "iconSvg": SVG_SORT_CUSTOM,       "selected": current_sort == "custom"},
+        ]
+        ellipsis_actions.append({"key": "focus",            "label": "Focus Mode",      "command": "onigiri_toggle_deck_focus", "iconUrl": f"{icon_base}focus.svg", "group": "utils"})
+        ellipsis_actions.append({"key": "organise",         "label": "Organise",        "iconSvg": SVG_ORGANISE, "group": "utils", "children": organise_children})
+        ellipsis_actions.append({"key": "collapse_sidebar", "label": "Collapse Sidebar", "command": "onigiri_toggle_sidebar",   "iconSvg": SVG_COLLAPSE_SIDEBAR,    "group": "utils"})
+    else:
+        # Non-ellipsis modes: build from visible_keys
+        has_more = False
+        for key in visible_keys:
+            if key in _builtin_meta:
+                meta = _builtin_meta[key]
+                custom = mw.col.conf.get(f"modern_menu_icon_{key}", "")
+                icon_url = f"{user_icon_base}{custom}" if custom else f"{icon_base}{meta['icon']}"
+                ellipsis_actions.append({"key": key, "label": meta["label"], "command": meta["command"], "iconUrl": icon_url, "group": "actions"})
+            elif key == "more":
+                has_more = True
+            elif key in external_entries_dict:
+                entry = external_entries_dict[key]
+                ellipsis_actions.append({"key": key, "label": entry.label, "command": entry.command, "iconUrl": "", "iconSvg": getattr(entry, "icon_svg", "") or "", "group": "actions"})
+        if has_more:
+            for sub in _more_sub:
+                custom = mw.col.conf.get(f"modern_menu_icon_{sub['key']}", "")
+                icon_url = f"{user_icon_base}{custom}" if custom else f"{icon_base}{sub['icon']}"
+                ellipsis_actions.append({"key": sub["key"], "label": sub["label"], "command": sub["command"], "iconUrl": icon_url, "group": "actions"})
+
     # 3. Use the new {sidebar_buttons} placeholder in the template
     #    and remove the old {profile_bar} placeholder.
-    
+
     # Inject Config for JS
     action_icon_keys = [
         "add", "browse", "stats", "sync", "settings", "more",
@@ -1215,21 +1395,223 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     }
     js_config = {
         "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
-        "addonPackage": mw.addonManager.addonFromModule(__name__),
+        "addonPackage": addon_package,
         "collapsedIcons": collapsed_icons,
+        "ellipsisActions": ellipsis_actions,
     }
     
     # Get Sync Status
     sync_status = patcher.get_sync_status()
 
-    # Create JS Injection Script
+    # Deck marks (coloured dots) — injected so context menu can read current state
+    deck_marks = dict(mw.col.conf.get("onigiri_deck_marks", {}))
+
+    # Create JS Injection Script + ellipsis dropdown CSS
     js_injection = f"""
     <script>
         window.ONIGIRI_CONFIG = {json.dumps(js_config)};
         window.ONIGIRI_SYNC_STATUS = "{sync_status}";
+        window.ONIGIRI_DECK_MARKS  = {json.dumps(deck_marks)};
     </script>
+    <style>
+        .onigiri-ellipsis-toolbar-btn {{
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 11;
+            width: 24px;
+            height: 24px;
+            background: none;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--icon-color, #555);
+            line-height: 0;
+            user-select: none;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+        }}
+        .onigiri-ellipsis-toolbar-btn:hover,
+        .onigiri-ellipsis-toolbar-btn.is-open {{
+            opacity: 1;
+        }}
+
+        #onigiri-ellipsis-menu {{
+            z-index: 99999;
+            min-width: 210px;
+            border-radius: 12px;
+            padding: 5px;
+            background: var(--canvas-overlay);
+            border: 1px solid var(--border);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transform: translateZ(0);
+        }}
+        .onigiri-ellipsis-item {{
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            padding: 9px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--fg);
+            border-radius: 8px;
+            transition: background 0.1s;
+        }}
+        .onigiri-ellipsis-item:hover {{
+            background: var(--canvas-inset);
+        }}
+        .onigiri-ellipsis-item .icon {{
+            width: 16px;
+            height: 16px;
+            min-width: 16px;
+            background-color: var(--fg-subtle, var(--fg));
+            display: inline-block;
+            flex-shrink: 0;
+        }}
+        .onigiri-ellipsis-divider {{
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 4px 0;
+        }}
+        #onigiri-ellipsis-submenu {{
+            z-index: 100000;
+            min-width: 180px;
+            border-radius: 12px;
+            padding: 5px;
+            background: var(--canvas-overlay);
+            border: 1px solid var(--border);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transform: translateZ(0);
+        }}
+        .has-submenu {{
+            position: relative;
+        }}
+        .submenu-chevron {{
+            margin-left: auto;
+            padding-left: 8px;
+            font-size: 16px;
+            line-height: 1;
+            color: var(--fg-subtle, var(--fg));
+            flex-shrink: 0;
+        }}
+        #onigiri-ctx-menu {{
+            z-index: 99999;
+            min-width: 200px;
+            border-radius: 12px;
+            padding: 5px;
+            background: var(--canvas-overlay);
+            border: 1px solid var(--border);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+            will-change: transform;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transform: translateZ(0);
+        }}
+        .item-danger {{
+            color: var(--fg);
+        }}
+        .item-danger:hover {{
+            background: rgba(192, 48, 48, 0.12) !important;
+            color: #c03535 !important;
+        }}
+        .item-danger:hover .icon {{
+            background-color: #c03535 !important;
+            color: #c03535 !important;
+        }}
+        .ctx-icon {{
+            width: 16px;
+            height: 16px;
+            min-width: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: var(--fg-subtle, var(--fg));
+        }}
+        .item-danger:hover .ctx-icon {{
+            color: #c03535 !important;
+        }}
+        /* Ellipsis mode: remove empty toolbar row and pull deck list up */
+        .sidebar-mode-ellipsis .sidebar-toolbar {{
+            display: none;
+        }}
+        .sidebar-mode-ellipsis .sidebar-expanded-content > h2:first-of-type {{
+            display: none;
+        }}
+        .sidebar-mode-ellipsis .profile-bar {{
+            margin-top: 4px;
+            margin-bottom: 4px;
+        }}
+        .sidebar-left.sidebar-mode-ellipsis {{
+            padding-top: 0 !important;
+        }}
+        .sidebar-mode-ellipsis .sidebar-expanded-content {{
+            display: flex;
+            flex-direction: column;
+        }}
+        .sidebar-mode-ellipsis #deck-list-header {{
+            order: -1;
+            margin-top: 4px;
+            margin-left: 8px;
+            padding-right: 6px;
+        }}
+        .sidebar-mode-ellipsis #deck-list-header h2 {{
+            margin-top: 18px;
+            margin-bottom: 28px;
+            margin-left: 8px;
+        }}
+        .ellipsis-section-label {{
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--fg-subtle, var(--fg));
+            padding: 6px 12px 2px;
+            opacity: 0.55;
+            cursor: default;
+            user-select: none;
+        }}
+    </style>
     """
     
+    # --- Right-click highlight colour (per-mode, configurable in settings) ---
+    import re as _re
+    try:
+        _is_night_ctx = mw.pm.night_mode() if mw.pm else False
+    except Exception:
+        _is_night_ctx = False
+    _legacy_hex = mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")
+    if _is_night_ctx:
+        _ctx_hex = mw.col.conf.get("onigiri_ctx_highlight_color_dark", _legacy_hex)
+    else:
+        _ctx_hex = mw.col.conf.get("onigiri_ctx_highlight_color_light", _legacy_hex)
+    _m = _re.match(r'#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})', _ctx_hex)
+    if _m:
+        _r, _g, _b = int(_m.group(1), 16), int(_m.group(2), 16), int(_m.group(3), 16)
+        ctx_highlight_color = f"rgba({_r}, {_g}, {_b}, 0.25)"
+    else:
+        ctx_highlight_color = "rgba(128, 128, 128, 0.25)"
+
+    # Compute loading overlay background to match the user's configured background
+    try:
+        _is_night = mw.pm.night_mode() if mw.pm else False
+        if _is_night:
+            overlay_bg_color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        else:
+            overlay_bg_color = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+    except Exception:
+        overlay_bg_color = "#2C2C2C"
+
     final_body = custom_body_template \
         .replace("{tree}", tree_html) \
         .replace("{stats}", stats_block_html + theme_css + js_injection) \
@@ -1237,9 +1619,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .replace("{sidebar_initial_class}", sidebar_initial_class) \
         .replace("{sidebar_style}", sidebar_style) \
         .replace("{welcome_message}", welcome_message) \
-        .replace("{tr_decks}", tr("decks_header")) \
         .replace("{sidebar_buttons}", sidebar_buttons_html) \
-        .replace("{profile_pic_html_collapsed}", profile_pic_html_collapsed)
+        .replace("{ellipsis_button}", ellipsis_button_html) \
+        .replace("{undo_button}", undo_button_html) \
+        .replace("{profile_pic_html_collapsed}", profile_pic_html_collapsed) \
+        .replace("{ctx_highlight_color}", ctx_highlight_color) \
+        .replace("{overlay_bg_color}", overlay_bg_color)
     
     # --- MODIFICATION END ---
     
