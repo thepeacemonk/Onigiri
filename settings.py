@@ -1,4 +1,4 @@
-import os
+﻿import os
 import copy
 import shutil
 import urllib.parse
@@ -18,8 +18,7 @@ from aqt.qt import (
     QButtonGroup, QAbstractSpinBox,
     QDrag, QMimeData, QPoint, 
     QMenu, QAction, QActionGroup,
-    QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit, QLayout,
-    QGraphicsDropShadowEffect
+    QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit, QLayout
 )
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer, QDate, QLocale
 from PyQt6.QtSvg import QSvgRenderer
@@ -31,6 +30,7 @@ from aqt import mw, gui_hooks
 from aqt.theme import theme_manager
 from typing import Union
 from . import config
+from .gamification import restaurant_level
 from .config import DEFAULTS
 from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
 from .themes import THEMES 
@@ -41,7 +41,6 @@ from PyQt6.QtGui import QFontDatabase, QFont
 from PyQt6.QtCore import QRect, QSize, QPoint
 from .fonts import FONTS, get_all_fonts
 from . import sidebar_api
-from .translations import tr, LANGUAGES
 
 THUMBNAIL_STYLE = "QLabel { border: 2px solid transparent; border-radius: 10px; } QLabel:hover { border: 2px solid #007bff; }"
 THUMBNAIL_STYLE_SELECTED = "QLabel { border: 2px solid #007bff; border-radius: 10px; }"
@@ -520,18 +519,12 @@ class SidebarToggleButton(QWidget):
 
         self.sub_buttons = {}
         for item in items:
-            # item can be a string (legacy) or a tuple (display_label, internal_key)
-            if isinstance(item, tuple):
-                display_label, internal_key = item
-            else:
-                display_label, internal_key = item, item
-
-            button = QPushButton(display_label)
+            button = QPushButton(item)
             button.setCheckable(True)
             button.setAutoDefault(False)
             button.setObjectName("subItemButton")
-            button.clicked.connect(lambda _, key=internal_key: self.page_selected.emit(key))
-            self.sub_buttons[internal_key] = button
+            button.clicked.connect(lambda _, name=item: self.page_selected.emit(name))
+            self.sub_buttons[item] = button
             self.content_layout.addWidget(button)
             self.sub_button_group.addButton(button)
 
@@ -629,11 +622,7 @@ class ThemeCardWidget(QFrame):
 
         # --- Top row with title and delete button ---
         top_layout = QHBoxLayout()
-        # Localize official theme names, fallback to original name for user themes
-        clean_name = theme_name.lower().replace(' ', '_').replace("'", "").replace('é', 'e').replace('è', 'e')
-        trans_key = f"theme_{clean_name}"
-        display_name = tr(trans_key, theme_name)
-        name_label = QLabel(display_name)
+        name_label = QLabel(theme_name)
         name_label.setStyleSheet("font-weight: bold; font-size: 14px; background: transparent;")
         top_layout.addWidget(name_label)
         top_layout.addStretch()
@@ -642,7 +631,7 @@ class ThemeCardWidget(QFrame):
             self.delete_button = QPushButton()
             self.delete_button.setFixedSize(30, 30)
             self.delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.delete_button.setToolTip(tr("delete_theme_tooltip", "Delete this theme"))
+            self.delete_button.setToolTip("Delete this theme")
             if delete_icon:
                 self.delete_button.setIcon(delete_icon)
                 self.delete_button.setIconSize(self.delete_button.size() * 0.6)
@@ -1047,9 +1036,7 @@ class FontCardWidget(QPushButton):
             layout = QHBoxLayout(self) # Horizontal layout
             layout.setContentsMargins(15, 10, 15, 10)
             
-            # Localize "System" label
-            display_name = tr("system") if font_key == "system" else font_info["name"]
-            name_label = QLabel(display_name)
+            name_label = QLabel(font_info["name"])
             name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(name_label)
         else:
@@ -1368,7 +1355,7 @@ class ModernColorPickerDialog(QDialog):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         
-        title_label = QLabel(tr("select_color"))
+        title_label = QLabel("Select Color")
         
         close_btn = QPushButton()
         close_btn.setFixedSize(24, 24)
@@ -1472,7 +1459,7 @@ class ModernColorPickerDialog(QDialog):
         
         # --- Favorites Section ---
         fav_header = QHBoxLayout()
-        fav_label = QLabel(tr("favorite_colors"))
+        fav_label = QLabel("Favorite Colors")
         if theme_manager.night_mode:
             fav_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #888;")
         else:
@@ -1663,7 +1650,7 @@ class IconPickerDialog(QDialog):
         
         # --- Header ---
         header_layout = QHBoxLayout()
-        title_label = QLabel(tr("select_icon"))
+        title_label = QLabel("Select Icon")
         if theme_manager.night_mode:
             title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #e0e0e0;")
         else:
@@ -1712,7 +1699,7 @@ class IconPickerDialog(QDialog):
         else:
             self.search_input.setStyleSheet("QLineEdit { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 4px; color: #212121; } QLineEdit:focus { border-color: #aaa; }")
             
-        add_btn = QPushButton(tr("add_icon"))
+        add_btn = QPushButton("Add Icon")
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.clicked.connect(self._add_icon_from_file)
         if theme_manager.night_mode:
@@ -1724,7 +1711,7 @@ class IconPickerDialog(QDialog):
         tools_layout.addWidget(add_btn)
 
         # Use Default Button
-        default_btn = QPushButton(tr("use_default"))
+        default_btn = QPushButton("Use Default")
         default_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         default_btn.clicked.connect(lambda: (self.iconSelected.emit(""), self.close()))
         if theme_manager.night_mode:
@@ -2086,40 +2073,47 @@ class SettingsSearchPage(QWidget):
         # Format: (Title, Description, [Pages], [Keywords])
         # Keywords are tuples of (keyword, target_page) to allow fine-grained navigation
         sections = [
-            (tr("profile"), tr("profile_desc"), ["Profile"],
+            ("Profile", "Manage your profile settings.", ["Profile"],
              # (keyword, page)
-             [(tr("user_details"), "Profile"), (tr("profile_picture"), "Profile"),
-              (tr("profile_bar_bg"), "Profile"), (tr("level_bar_color"), "Profile"),
-              (tr("profile_page_bg"), "Profile"), (tr("profile_sections_visibility"), "Profile"),
-              (tr("user_name"), "Profile"), (tr("avatar"), "Profile")]),
-            (tr("general"), tr("general_desc"), ["Modes", "Languages", "Fonts", "Palette", "Themes", "Gallery"],
-             [(tr("modes"), "Modes"), (tr("hide"), "Modes"), (tr("pro"), "Modes"), (tr("max"), "Modes"),
-              (tr("languages"), "Languages"), (tr("translation"), "Languages"), (tr("portuguese"), "Languages"), (tr("spanish"), "Languages"), (tr("english"), "Languages"), (tr("chinese"), "Languages"), (tr("japanese"), "Languages"),
-              (tr("fonts"), "Fonts"), (tr("text"), "Fonts"), (tr("typography"), "Fonts"), (tr("font_size"), "Fonts"),
-              (tr("titles"), "Fonts"), (tr("title"), "Fonts"),
-              (tr("accent_color"), "Palette"), (tr("general_palette"), "Palette"), (tr("boxes_color_effect"), "Palette"),
-              (tr("light_mode"), "Palette"), (tr("dark_mode"), "Palette"), (tr("colors"), "Palette"),
-              (tr("official_themes"), "Themes"), (tr("your_themes"), "Themes"), (tr("themes"), "Themes"),
-              (tr("gallery"), "Gallery"), (tr("colors_gallery"), "Gallery"), (tr("images_gallery"), "Gallery"),
-              (tr("images"), "Gallery"), (tr("backgrounds"), "Gallery"), (tr("pictures"), "Gallery")]),
-            (tr("menu"), tr("menu_desc"), ["Main menu", "Sidebar"],
-             [(tr("organize"), "Main menu"), (tr("widget_grid"), "Main menu"), (tr("title"), "Main menu"),
-              (tr("stats_title"), "Main menu"), (tr("heatmap"), "Main menu"), (tr("main_background"), "Main menu"),
-              (tr("background_image"), "Main menu"), (tr("visibility"), "Main menu"),
-              (tr("congratulations"), "Main menu"), (tr("star_icon"), "Main menu"),
-              (tr("sidebar_customization"), "Sidebar"), (tr("organize_action_buttons"), "Sidebar"),
-              (tr("sidebar_background"), "Sidebar"), (tr("sidebar"), "Sidebar"),
-              (tr("save"), "Sidebar"), (tr("scroll"), "Sidebar"),
-              (tr("deck"), "Sidebar"), (tr("icon_sizing"), "Sidebar"), (tr("icons"), "Sidebar")]),
-            (tr("study_pages"), tr("study_pages_desc"), ["Overviewer", "Reviewer"],
-             [(tr("overviewer_background"), "Overviewer"), (tr("overview_style"), "Overviewer"),
-              (tr("overviewer"), "Overviewer"), (tr("congratulations"), "Overviewer"),
-              (tr("reviewer_background"), "Reviewer"), (tr("bottom_bar_background"), "Reviewer"),
-              (tr("answer_buttons"), "Reviewer"), (tr("reviewer"), "Reviewer"),
-              (tr("notification_widget"), "Reviewer"), (tr("widget_position"), "Reviewer"),
-              (tr("bar_background"), "Reviewer"), (tr("corners"), "Reviewer"), (tr("radius"), "Reviewer"),
-              (tr("shadows"), "Reviewer"), (tr("scroll"), "Reviewer"), (tr("bottom_bar"), "Reviewer"),
-              (tr("button"), "Reviewer"), (tr("grid"), "Reviewer"), (tr("widget_grid"), "Overviewer")]),
+             [("User Details", "Profile"), ("Profile Picture", "Profile"),
+              ("Profile Bar Background", "Profile"), ("Level Bar Color", "Profile"),
+              ("Profile Page Background", "Profile"), ("Profile Page Sections", "Profile"),
+              ("Username", "Profile"), ("Avatar", "Profile")]),
+            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"],
+             [("Modes", "Modes"), ("Gamification Mode", "Modes"), ("Hide", "Modes"), ("Pro", "Modes"), ("Max", "Modes"),
+              ("Fonts", "Fonts"), ("Text", "Fonts"), ("Typography", "Fonts"), ("Font Size", "Fonts"),
+              ("Titles", "Fonts"), ("Title", "Fonts"),
+              ("Accent Color", "Palette"), ("General Palette", "Palette"), ("Boxes Color Effect", "Palette"),
+              ("Light Mode", "Palette"), ("Dark Mode", "Palette"), ("Colors", "Palette"),
+              ("Official Themes", "Themes"), ("Your Themes", "Themes"), ("Themes", "Themes"),
+              ("Gallery", "Gallery"), ("Colors Gallery", "Gallery"), ("Images Gallery", "Gallery"),
+              ("Images", "Gallery"), ("Backgrounds", "Gallery"), ("Pictures", "Gallery")]),
+            ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"],
+             [("Organize", "Main menu"), ("Widget Grid", "Main menu"), ("Title", "Main menu"),
+              ("Stats Title", "Main menu"), ("Heatmap", "Main menu"), ("Main Background", "Main menu"),
+              ("Background Image", "Main menu"), ("Visibility", "Main menu"),
+              ("Congratulations", "Main menu"), ("Star Icon", "Main menu"),
+              ("Sidebar Customization", "Sidebar"), ("Organize Action Buttons", "Sidebar"),
+              ("Sidebar Background", "Sidebar"), ("Sidebar", "Sidebar"),
+              ("Save", "Sidebar"), ("Scroll", "Sidebar"),
+              ("Deck", "Sidebar"), ("Icon Sizing", "Sidebar"), ("Icons", "Sidebar")]),
+            ("Study Pages", "Settings for Overviewer and Reviewer.", ["Overviewer", "Reviewer"],
+             [("Overviewer Background", "Overviewer"), ("Overview Style", "Overviewer"),
+              ("Overviewer", "Overviewer"), ("Congratulations", "Overviewer"),
+              ("Reviewer Background", "Reviewer"), ("Bottom Bar Background", "Reviewer"),
+              ("Answer Buttons", "Reviewer"), ("Reviewer", "Reviewer"),
+              ("Notification Widget", "Reviewer"), ("Widget Position", "Reviewer"),
+              ("Bar Background", "Reviewer"), ("Corners", "Reviewer"), ("Radius", "Reviewer"),
+              ("Shadows", "Reviewer"), ("Scroll", "Reviewer"), ("Bottom Bar", "Reviewer"),
+              ("Button", "Reviewer"), ("Grid", "Reviewer"), ("Widget Grid", "Overviewer")]),
+            ("Gamification", "Manage games and more.", ["Onigiri Games", "Restaurant Level", "Mr. Taiyaki Store", "Mochi Messages", "Focus Dango"],
+             [("Onigiri Games", "Onigiri Games"), ("Restaurant Level", "Restaurant Level"),
+              ("Mochi Messages", "Mochi Messages"), ("Focus Dango", "Focus Dango"),
+              ("Custom Goals", "Onigiri Games"), ("Notifications", "Onigiri Games"),
+              ("Reset Progress", "Onigiri Games"), ("Mr. Taiyaki Store", "Mr. Taiyaki Store"),
+              ("Taiyaki", "Mr. Taiyaki Store"), ("Reset Coins", "Mr. Taiyaki Store"),
+              ("Reset Purchases", "Mr. Taiyaki Store"), ("Focus Dango Messages", "Focus Dango"),
+              ("Difficulty", "Restaurant Level"), ("Restaurant", "Restaurant Level")])
         ]
 
         for title, desc, pages, settings in sections:
@@ -2264,7 +2258,7 @@ class SettingsSearchPage(QWidget):
                         results_found = True
 
         if not results_found:
-            no_results = QLabel(tr("no_results_found"))
+            no_results = QLabel("No results found.")
             no_results.setAlignment(Qt.AlignmentFlag.AlignCenter)
             no_results.setStyleSheet("color: #888; font-size: 14px; margin-top: 20px;")
             self.results_layout.addWidget(no_results)
@@ -2281,7 +2275,7 @@ class DonationDialog(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(25, 25, 25, 25)
 
-        title = QLabel(tr("choose_donation_platform"))
+        title = QLabel("Choose a donation platform:")
         title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 5px;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
@@ -2311,7 +2305,7 @@ class DonationDialog(QDialog):
         """
 
         # BMC Button
-        self.bmc_button = QPushButton(tr("buy_me_a_coffee"))
+        self.bmc_button = QPushButton("Buy Me A Coffee")
         self.bmc_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.bmc_button.setStyleSheet(base_style + """
             QPushButton:hover {
@@ -2324,7 +2318,7 @@ class DonationDialog(QDialog):
         layout.addWidget(self.bmc_button)
 
         # Ko-Fi Button
-        self.kofi_button = QPushButton(tr("ko_fi"))
+        self.kofi_button = QPushButton("Ko-Fi")
         self.kofi_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.kofi_button.setStyleSheet(base_style + """
             QPushButton:hover {
@@ -2339,7 +2333,6 @@ class DonationDialog(QDialog):
     def _open_url(self, url):
         QDesktopServices.openUrl(QUrl(url))
         self.accept()
-
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
@@ -2387,12 +2380,6 @@ class SettingsDialog(QDialog):
             self.resize(900, 700)
         
         self.current_config = config.get_config()
-        
-        # [NEW] Sync profile language code with config language name
-        current_lang_name = self.current_config.get("language", "English (Default)")
-        lang_code = LANGUAGES.get(current_lang_name, "en")
-        if mw.pm.profile.get('onigiri_language') != lang_code:
-            mw.pm.profile['onigiri_language'] = lang_code
 
         # --- RESTORE WINDOW SIZE ---
         window_settings = self.current_config.get("window_settings", {})
@@ -2460,12 +2447,6 @@ class SettingsDialog(QDialog):
         else:
             self.accent_color = conf.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
 
-        # ankiweb_sync toggle — must be after self.accent_color is set
-        self.ankiweb_sync_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.ankiweb_sync_toggle.setChecked(
-            bool(self.current_config.get("ankiweb_sync_enabled", True))
-        )
-
         custom_goals_conf = self.achievements_config.get("custom_goals", {})
         daily_conf = custom_goals_conf.get("daily", {})
         weekly_conf = custom_goals_conf.get("weekly", {})
@@ -2528,6 +2509,9 @@ class SettingsDialog(QDialog):
         self.hide_all_deck_counts_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_all_deck_counts_checkbox.setChecked(self.current_config.get("hideAllDeckCounts", False))
 
+        self.show_ellipsis_button_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.show_ellipsis_button_toggle.setChecked(mw.col.conf.get("modern_menu_show_ellipsis_button", True))
+
         self.study_now_input = QLineEdit(mw.col.conf.get("modern_menu_studyNowText", DEFAULTS["studyNowText"]))
         self.show_congrats_profile_bar_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.show_congrats_profile_bar_checkbox.setChecked(self.current_config.get("showCongratsProfileBar", True))
@@ -2550,7 +2534,7 @@ class SettingsDialog(QDialog):
         sidebar_wrapper_layout.setContentsMargins(15, 15, 0, 15) # 15px left margin, 0px right margin
 
         # --- Search Button (Separated) ---
-        self.search_button = QPushButton(tr("search"))
+        self.search_button = QPushButton("Search")
         self.search_button.setCheckable(True)
         self.search_button.setObjectName("searchSidebarButton")
         self.search_button.setFixedWidth(185) # Force fixed width
@@ -2604,16 +2588,15 @@ class SettingsDialog(QDialog):
             "Search": self.create_search_page,
             "Profile": self.create_profile_tab,
             "Modes": self.create_hide_modes_page,
-            "Languages": self.create_languages_page,
+
             "Fonts": self.create_fonts_page,
-            "Themes": self.create_themes_page,
+            "Themes": self.create_themes_page, 
             "Main menu": self.create_main_menu_page,
             "Sidebar": self.create_sidebar_page,
             "Overviewer": self.create_overviews_page,
             "Reviewer": self.create_reviewer_tab,
             "Palette": self.create_colors_page,
             "Gallery": self.create_gallery_page,
-            "Sync": self.create_sync_page,
         }
         self.page_order = list(self.pages.keys())
 
@@ -2644,25 +2627,20 @@ class SettingsDialog(QDialog):
         self.sidebar_button_group = QButtonGroup()
         self.sidebar_button_group.setExclusive(True)
 
-        general_items = [
-            (tr("modes"), "Modes"), (tr("languages"), "Languages"), (tr("fonts"), "Fonts"),
-            (tr("palette"), "Palette"), (tr("themes"), "Themes"), (tr("gallery"), "Gallery")
-        ]
-        self.general_toggle_widget = SidebarToggleButton(tr("general"), general_items)
+        general_items = ["Modes", "Fonts", "Palette", "Themes", "Gallery"]
+        self.general_toggle_widget = SidebarToggleButton("General", general_items)
         self.general_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.general_toggle_widget)
 
-        menu_items = [(tr("main_menu"), "Main menu"), (tr("sidebar"), "Sidebar")]
-        self.menu_toggle_widget = SidebarToggleButton(tr("menu"), menu_items)
+        menu_items = ["Main menu", "Sidebar"]
+        self.menu_toggle_widget = SidebarToggleButton("Menu", menu_items)
         self.menu_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.menu_toggle_widget)
 
-        study_zone_items = [(tr("overviewer"), "Overviewer"), (tr("reviewer"), "Reviewer")]
-        self.study_zone_toggle_widget = SidebarToggleButton(tr("study_pages"), study_zone_items)
+        study_zone_items = ["Overviewer", "Reviewer"]
+        self.study_zone_toggle_widget = SidebarToggleButton("Study Pages", study_zone_items)
         self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
         sidebar_layout.addWidget(self.study_zone_toggle_widget)
-
-        sidebar_layout.addStretch()
 
         # Connect toggle buttons to enable accordion behavior
         self.general_toggle_widget.toggle_button.toggled.connect(
@@ -2676,14 +2654,14 @@ class SettingsDialog(QDialog):
         )
 
 
-        self.donate_button = QPushButton(tr("donate"))
+        self.donate_button = QPushButton("Donate")
         self.donate_button.setAutoDefault(False)
         self.donate_button.clicked.connect(self._open_donate_link)
-        self.report_bugs_button = QPushButton(tr("report_bugs"))
+        self.report_bugs_button = QPushButton("Report Bugs")
         self.report_bugs_button.setAutoDefault(False)
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
-        self.save_button = QPushButton(tr("save")); self.save_button.clicked.connect(self.save_settings)
+        self.save_button = QPushButton("Save"); self.save_button.clicked.connect(self.save_settings)
         
         # Second (bottom) floating pill for the save buttons
         bottom_widget = QWidget()
@@ -2696,12 +2674,6 @@ class SettingsDialog(QDialog):
 
         sidebar_button_layout.addWidget(self.donate_button)
         sidebar_button_layout.addWidget(self.report_bugs_button)
-
-        self.sync_sidebar_button = QPushButton(tr("sync_button"))
-        self.sync_sidebar_button.setAutoDefault(False)
-        self.sync_sidebar_button.clicked.connect(lambda: self.navigate_to_page("Sync"))
-        sidebar_button_layout.addWidget(self.sync_sidebar_button)
-
         sidebar_button_layout.addWidget(self.save_button)
 
         # Add spacing and then the bottom pill outside the scroll area
@@ -2722,103 +2694,6 @@ class SettingsDialog(QDialog):
     def _open_bugs_link(self):
         QDesktopServices.openUrl(QUrl("https://github.com/thepeacemonk/Onigiri"))
 
-    def create_sync_page(self):
-        page_container, layout = self._create_scrollable_page()
-
-        is_dark = theme_manager.night_mode
-        card_bg  = "#1e1e1e" if is_dark else "#e8e8e8"
-        item_bg  = "#2c2c2c" if is_dark else "#f2f2f2"
-        text_col = "#f2f2f2" if is_dark else "#2c2c2c"
-        title_col = "#e0e0e0" if is_dark else "#212121"
-
-        # --- Card (matches AdaptiveModeCard vertical layout) ---
-        card = QFrame()
-        card.setObjectName("syncHeroCard")
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        card.setStyleSheet(f"""
-            QFrame#syncHeroCard {{
-                background-color: {card_bg};
-                border-radius: 16px;
-                padding: 8px;
-            }}
-        """)
-
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
-        card_layout.setContentsMargins(8, 15, 8, 20)
-
-        # Title
-        title_label = QLabel(tr("sync_title"))
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet(
-            f"font-size: 20px; font-weight: bold; color: {title_col}; background: transparent;"
-        )
-        card_layout.addWidget(title_label)
-
-        # "made by h0tp" — directly below title
-        footer_label = QLabel()
-        made_by = tr("sync_made_by")
-        footer_label.setTextFormat(Qt.TextFormat.RichText)
-        footer_label.setOpenExternalLinks(True)
-        h0tp_link = f'<a href="https://github.com/h0tp-ftw" style="color:{self.accent_color};">h0tp</a>'
-        footer_label.setText(made_by.replace("h0tp", h0tp_link))
-        footer_label.setStyleSheet(f"font-size: 11px; color: {title_col}; background: transparent;")
-        footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(footer_label)
-
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("QFrame { background-color: rgba(128, 128, 128, 0.3); max-height: 1px; }")
-        card_layout.addWidget(separator)
-        card_layout.addSpacing(1)
-
-        # Content area — each bullet in its own rounded item box
-        content = QWidget()
-        content.setStyleSheet("QWidget { background: transparent; }")
-        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(7)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-
-        for text in [
-            tr("sync_bullet_1"),
-            tr("sync_bullet_2"),
-            tr("sync_bullet_3"),
-            tr("sync_bullet_4"),
-        ]:
-            item_box = QFrame()
-            item_box.setObjectName("hideModeItemBox")
-            item_box.setStyleSheet(f"""
-                QFrame#hideModeItemBox {{
-                    background-color: {item_bg};
-                    border-radius: 10px;
-                    padding: 12px 10px;
-                    min-height: 20px;
-                }}
-            """)
-            box_layout = QHBoxLayout(item_box)
-            box_layout.setContentsMargins(0, 0, 0, 0)
-
-            item_label = QLabel(text)
-            item_label.setWordWrap(True)
-            item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            item_label.setStyleSheet(f"font-size: 11px; color: {text_col}; background: transparent;")
-            box_layout.addWidget(item_label)
-            content_layout.addWidget(item_box)
-
-
-        card_layout.addWidget(content)
-
-        # Toggle at the bottom, centered
-        card_layout.addWidget(self.ankiweb_sync_toggle, 0, Qt.AlignmentFlag.AlignHCenter)
-
-        layout.addWidget(card)
-        layout.addStretch()
-        return page_container
-
-
     def create_search_page(self):
         page = SettingsSearchPage(self)
         page.page_requested.connect(self.navigate_to_page)
@@ -2833,7 +2708,7 @@ class SettingsDialog(QDialog):
         control_layout = QHBoxLayout(control_widget)
         control_layout.setContentsMargins(0, 0, 0, 5) # Slight margin
         
-        size_label = QLabel(tr("font_size"))
+        size_label = QLabel("Font Size:")
         size_label.setStyleSheet("color: var(--fg-subtle);")
         
         size_spinbox = QSpinBox()
@@ -2856,9 +2731,9 @@ class SettingsDialog(QDialog):
         setattr(self, f"font_size_{config_key}", size_spinbox)
         
         # Restore Button
-        restore_btn = QPushButton(tr("restore_default"))
+        restore_btn = QPushButton("Restore Default")
         restore_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        restore_btn.setToolTip(f"{tr('restore_default')} {default_size}px")
+        restore_btn.setToolTip(f"Reset to {default_size}px")
         # Capture default_size and spinbox in lambda
         restore_btn.clicked.connect(lambda _, s=size_spinbox, d=default_size: s.setValue(d))
         
@@ -2920,7 +2795,7 @@ class SettingsDialog(QDialog):
 
         # <<< START MODIFICATION >>>
         # Move the "Add Your Own Font" button to be directly under the "System" button
-        add_button = QPushButton(tr("add_your_font"))
+        add_button = QPushButton("Add Your Own Font")
         add_button.setFixedHeight(50) # Match the height of the "System" button
         add_button.setCursor(Qt.CursorShape.PointingHandCursor)
         add_button.clicked.connect(self._add_user_font)
@@ -2931,7 +2806,7 @@ class SettingsDialog(QDialog):
                 QPushButton {{ 
                     background-color: #3a3a3a; 
                     border: 2px solid #4a4a4a; 
-                    border-radius: 12px; 
+                    border-radius: px; 
                     color: #e0e0e0; 
                 }} 
                 QPushButton:hover {{ 
@@ -3040,9 +2915,9 @@ class SettingsDialog(QDialog):
         fonts_layout = FlowLayout(fonts_container, spacing=20)
         fonts_layout.setContentsMargins(0, 0, 0, 0)
         
-        text_group = self._create_font_selector_group(tr("text"), "main")
-        subtle_group = self._create_font_selector_group(tr("titles"), "subtle")
-        small_title_group = self._create_font_selector_group(tr("small_titles"), "small_title")
+        text_group = self._create_font_selector_group("Text", "main")
+        subtle_group = self._create_font_selector_group("Titles", "subtle")
+        small_title_group = self._create_font_selector_group("Small Titles", "small_title")
         
         fonts_layout.addWidget(text_group)
         fonts_layout.addWidget(subtle_group)
@@ -3115,6 +2990,7 @@ class SettingsDialog(QDialog):
         self.general_toggle_widget.deselect_all()
         self.menu_toggle_widget.deselect_all()
         self.study_zone_toggle_widget.deselect_all()
+        self.gamification_toggle_widget.deselect_all()
         
         profile_index = self.page_order.index("Profile")
         
@@ -3496,7 +3372,7 @@ class SettingsDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label = QLabel(tr("under_construction"))
+        label = QLabel("Under Construction")
         label.setStyleSheet("font-size: 20px; color: #888;")
         layout.addWidget(label)
         return page
@@ -3770,7 +3646,7 @@ class SettingsDialog(QDialog):
             # --- ADD THIS BLOCK ---
             custom_menu.add_separator()
             
-            archive_button = QPushButton(tr("archived_widgets"))
+            archive_button = QPushButton("Archive")
             archive_button.setObjectName("MenuButton")
             archive_button.clicked.connect(lambda: (self.archive_requested.emit(self), custom_menu.close()))
             custom_menu.content_layout.addWidget(archive_button)
@@ -4376,7 +4252,7 @@ class SettingsDialog(QDialog):
             custom_menu.add_separator()
             
             # --- Archive Action ---
-            archive_button = QPushButton(tr("archived_widgets"))
+            archive_button = QPushButton("Archive")
             archive_button.setObjectName("MenuButton")
             archive_button.clicked.connect(lambda: (self.archive_requested.emit(self), custom_menu.close()))
             custom_menu.content_layout.addWidget(archive_button)
@@ -4728,7 +4604,7 @@ class SettingsDialog(QDialog):
             main_layout.setContentsMargins(0, 0, 0, 0)
 
             # --- Visible Items Zone ---
-            visible_group = QGroupBox(tr("visible_items"))
+            visible_group = QGroupBox("Visible Items")
             visible_group.setObjectName("LayoutGroup")
             visible_layout = QVBoxLayout(visible_group)
             visible_layout.setSpacing(5)
@@ -4739,7 +4615,7 @@ class SettingsDialog(QDialog):
             main_layout.addWidget(visible_group, stretch=1)
 
             # --- Archived Onigiri Items Zone ---
-            archived_group = QGroupBox(tr("archived_onigiri_items"))
+            archived_group = QGroupBox("Archived Onigiri Items")
             archived_group.setObjectName("LayoutGroup")
             archived_layout = QVBoxLayout(archived_group)
             archived_layout.setSpacing(5)
@@ -4750,7 +4626,7 @@ class SettingsDialog(QDialog):
             main_layout.addWidget(archived_group, stretch=1)
 
             # --- Archived External Items Zone ---
-            external_archived_group = QGroupBox(tr("archived_external_items"))
+            external_archived_group = QGroupBox("Archived External Items")
             external_archived_group.setObjectName("LayoutGroup")
             external_archived_layout = QVBoxLayout(external_archived_group)
             external_archived_layout.setSpacing(5)
@@ -4920,7 +4796,7 @@ class SettingsDialog(QDialog):
 
             # Controls row
             controls_layout = QHBoxLayout()
-            controls_layout.addWidget(QLabel(tr("columns_label")))
+            controls_layout.addWidget(QLabel("Columns:"))
             self.col_spin = QSpinBox()
             self.col_spin.setRange(2, 6)
             self.col_spin.setValue(4) # Default
@@ -5002,8 +4878,8 @@ class SettingsDialog(QDialog):
             # --- END: Robust config merging ---
 
             widget_definitions = {
-                "studied": tr("widget_studied"), "time": tr("widget_time"), 
-                "pace": tr("widget_pace"), "retention": tr("widget_retention"), "heatmap": tr("widget_heatmap"),
+                "studied": "Studied Card", "time": "Time Card", 
+                "pace": "Pace Card", "retention": "Retention Card", "heatmap": "Heatmap",
                 "favorites": "Favorites Widget",
                 "restaurant_level": "Restaurant Level"
             }
@@ -5214,10 +5090,10 @@ class SettingsDialog(QDialog):
 
         # Default display names for Onigiri widgets
         _WIDGET_DEFINITIONS = {
-            "studied": tr("widget_studied"), "time": tr("widget_time"), 
-            "pace": tr("widget_pace"), "retention": tr("widget_retention"), "heatmap": tr("widget_heatmap"),
-            "favorites": tr("widget_favorites"),
-            "restaurant_level": tr("widget_restaurant_level")
+            "studied": "Studied Card", "time": "Time Card", 
+            "pace": "Pace Card", "retention": "Retention Card", "heatmap": "Heatmap",
+            "favorites": "Favorites Widget",
+            "restaurant_level": "Restaurant Level"
         }
 
         def __init__(self, settings_dialog):
@@ -5228,7 +5104,7 @@ class SettingsDialog(QDialog):
 
             # --- Row Count Control ---
             row_control_layout = QHBoxLayout()
-            row_label = QLabel(tr("unified_grid_rows")) # User friendly label
+            row_label = QLabel("Number of Rows:") # User friendly label
             row_control_layout.addWidget(row_label)
             self.row_spin = QSpinBox()
             self.row_spin.setRange(0, 20)
@@ -5240,7 +5116,7 @@ class SettingsDialog(QDialog):
             
             row_control_layout.addSpacing(20)
             
-            col_label = QLabel(tr("unified_grid_cols"))
+            col_label = QLabel("Number of Columns:")
             row_control_layout.addWidget(col_label)
             self.col_spin = QSpinBox()
             self.col_spin.setRange(0, 6)
@@ -5252,7 +5128,7 @@ class SettingsDialog(QDialog):
             main_layout.addLayout(row_control_layout)
 
             # --- Unified Grid ---
-            grid_group = QGroupBox(tr("widget_grid_title"))
+            grid_group = QGroupBox("Widget Grid")
             grid_group.setObjectName("LayoutGroup")
             self.grid_zone = SettingsDialog.UnifiedGridDropZone(self, grid_group)
             
@@ -5286,7 +5162,7 @@ class SettingsDialog(QDialog):
             """
 
             # Archived Onigiri Widgets
-            onigiri_archive_group = QGroupBox(tr("archived_onigiri_widgets"))
+            onigiri_archive_group = QGroupBox("Archived Onigiri Widgets")
             onigiri_archive_group.setObjectName("LayoutGroup")
             
             # Wrap in ScrollArea
@@ -5303,7 +5179,7 @@ class SettingsDialog(QDialog):
             archives_layout.addWidget(onigiri_archive_group)
 
             # Archived External Widgets
-            external_archive_group = QGroupBox(tr("archived_external_widgets"))
+            external_archive_group = QGroupBox("Archived External Widgets")
             external_archive_group.setObjectName("LayoutGroup")
             
             # Wrap in ScrollArea
@@ -5325,12 +5201,12 @@ class SettingsDialog(QDialog):
             reset_buttons_layout = QHBoxLayout()
             reset_buttons_layout.setSpacing(10)
             
-            reset_names_btn = QPushButton(tr("reset_widget_names"))
+            reset_names_btn = QPushButton("Reset Widget Names")
             reset_names_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             reset_names_btn.clicked.connect(self.reset_widget_names)
             reset_buttons_layout.addWidget(reset_names_btn)
             
-            reset_layout_btn = QPushButton(tr("reset_layout_default_btn"))
+            reset_layout_btn = QPushButton("Reset Layout to Default")
             reset_layout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             reset_layout_btn.clicked.connect(self.reset_layout)
             reset_buttons_layout.addWidget(reset_layout_btn)
@@ -5733,17 +5609,17 @@ class SettingsDialog(QDialog):
         # <<< START NEW CODE >>>
 
         organize_section = SectionGroup(
-            tr("organize"), 
+            "Organize", 
             self, 
             border=False, 
-            description=tr("organize_description")
+            description="Here you can edit the title of the stats grid, drag and drop to reorder Onigiri's widgets, and organize components from other add-ons into the grid. Right-click on a widget to resize or archive it."
         )
         
         # Add the stats title input to this section
         form_layout = QFormLayout()
         form_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form_layout.setContentsMargins(15, 0, 15, 10) # Add some padding
-        form_layout.addRow(tr("custom_stats_title"), self.stats_title_input)
+        form_layout.addRow("Custom Stats Title:", self.stats_title_input)
     
         # Heatmap Default View - Modern Segmented Control
         self.heatmap_view_group = QButtonGroup(self)
@@ -5756,13 +5632,12 @@ class SettingsDialog(QDialog):
         
         current_view = self.current_config.get("heatmapDefaultView", "year")
         
-        for view_option in [("Year", tr("view_year")), ("Month", tr("view_month")), ("Week", tr("view_week"))]:
-            display_name, trans_key = view_option
-            btn = QPushButton(trans_key)
+        for view_option in ["Year", "Month", "Week"]:
+            btn = QPushButton(view_option)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedHeight(32)
-            btn.setProperty("view_mode", display_name.lower())
+            btn.setProperty("view_mode", view_option.lower())
             
             # Modern styling mimicking a segmented control
             # Note: We use dynamic properties or just check state in styling if needed, 
@@ -5809,14 +5684,14 @@ class SettingsDialog(QDialog):
                     }}
                 """)
             
-            if display_name.lower() == current_view:
+            if view_option.lower() == current_view:
                 btn.setChecked(True)
                 
             self.heatmap_view_group.addButton(btn)
             view_layout.addWidget(btn)
             
         view_layout.addStretch()
-        form_layout.addRow(tr("default_view"), view_container)
+        form_layout.addRow("Default View:", view_container)
         
         organize_section.add_layout(form_layout)
         
@@ -5833,7 +5708,7 @@ class SettingsDialog(QDialog):
         except OSError:
             cached_user_files = []
 
-        mode_group, mode_layout_content = self._create_inner_group(tr("main_background"))
+        mode_group, mode_layout_content = self._create_inner_group("Main Background")
         mode = mw.col.conf.get("modern_menu_background_mode", "color")
         # Fallback for users who have the old "image" mode saved
         if mode == "image":
@@ -5841,9 +5716,9 @@ class SettingsDialog(QDialog):
             
         # Main mode selection
         mode_layout = QHBoxLayout()
-        self.color_radio = QRadioButton(tr("solid_color"))
-        self.image_color_radio = QRadioButton(tr("image_mode"))
-        self.slideshow_radio = QRadioButton(tr("slideshow"))
+        self.color_radio = QRadioButton("Solid Color")
+        self.image_color_radio = QRadioButton("Image")
+        self.slideshow_radio = QRadioButton("Slideshow")
         
         # Check the appropriate radio button
         # "Solid Color" covers both "color" and "accent" modes now
@@ -5866,15 +5741,25 @@ class SettingsDialog(QDialog):
         
         # Theme Mode Toggle for Colors
         self.color_theme_group = QButtonGroup()
-        self.color_theme_single_radio = QRadioButton(tr("one_theme_color"))
-        self.color_theme_separate_radio = QRadioButton(tr("different_colors_light_dark"))
-        self.color_theme_accent_radio = QRadioButton(tr("accent_color")) 
+        self.color_theme_single_radio = QRadioButton("One theme color")
+        self.color_theme_separate_radio = QRadioButton("Different colors for light/dark themes")
+        self.color_theme_accent_radio = QRadioButton("Accent Color") # New option
         
         self.color_theme_group.addButton(self.color_theme_single_radio)
         self.color_theme_group.addButton(self.color_theme_separate_radio)
         self.color_theme_group.addButton(self.color_theme_accent_radio)
         
-        # ... (rest of loading logic preserved)
+        # Load saved preference for color theme mode
+        # If mode is 'accent', check the accent radio
+        if mode == "accent":
+            self.color_theme_accent_radio.setChecked(True)
+        else:
+            color_theme_mode = mw.col.conf.get("modern_menu_bg_color_theme_mode", "single")
+            self.color_theme_single_radio.setChecked(color_theme_mode == "single")
+            self.color_theme_separate_radio.setChecked(color_theme_mode == "separate")
+            # Fallback if somehow neither is checked (though defaults handle this)
+            if not self.color_theme_single_radio.isChecked() and not self.color_theme_separate_radio.isChecked():
+                 self.color_theme_single_radio.setChecked(True)
         
         color_theme_layout = QHBoxLayout()
         color_theme_layout.addWidget(self.color_theme_single_radio)
@@ -5890,7 +5775,7 @@ class SettingsDialog(QDialog):
         self.bg_color_single_container = QWidget()
         bg_color_single_layout = QVBoxLayout(self.bg_color_single_container)
         bg_color_single_layout.setContentsMargins(0, 0, 0, 0)
-        self.bg_single_row = self._create_color_picker_row(tr("bg_single_label"), current_light_bg, "bg_single")
+        self.bg_single_row = self._create_color_picker_row("Background Color", current_light_bg, "bg_single")
         bg_color_single_layout.addLayout(self.bg_single_row)
         main_bg_color_layout.addWidget(self.bg_color_single_container)
         
@@ -5898,8 +5783,8 @@ class SettingsDialog(QDialog):
         self.bg_color_separate_container = QWidget()
         bg_color_separate_layout = QVBoxLayout(self.bg_color_separate_container)
         bg_color_separate_layout.setContentsMargins(0, 0, 0, 0)
-        self.bg_light_row = self._create_color_picker_row(tr("bg_light_label"), current_light_bg, "bg_light")
-        self.bg_dark_row = self._create_color_picker_row(tr("bg_dark_label"), current_dark_bg, "bg_dark")
+        self.bg_light_row = self._create_color_picker_row("Background (Light Mode)", current_light_bg, "bg_light")
+        self.bg_dark_row = self._create_color_picker_row("Background (Dark Mode)", current_dark_bg, "bg_dark")
         bg_color_separate_layout.addLayout(self.bg_light_row)
         bg_color_separate_layout.addLayout(self.bg_dark_row)
         main_bg_color_layout.addWidget(self.bg_color_separate_container)
@@ -5919,8 +5804,8 @@ class SettingsDialog(QDialog):
         
         # Theme Mode Toggle for Images
         self.image_theme_group = QButtonGroup()
-        self.image_theme_single_radio = QRadioButton(tr("one_image"))
-        self.image_theme_separate_radio = QRadioButton(tr("different_images_light_dark"))
+        self.image_theme_single_radio = QRadioButton("One image")
+        self.image_theme_separate_radio = QRadioButton("Different images for light/dark themes")
         self.image_theme_group.addButton(self.image_theme_single_radio)
         self.image_theme_group.addButton(self.image_theme_separate_radio)
         
@@ -5940,7 +5825,7 @@ class SettingsDialog(QDialog):
         bg_image_single_layout = QVBoxLayout(self.bg_image_single_container)
         bg_image_single_layout.setContentsMargins(0, 0, 0, 0)
         self.galleries["main_single"] = {}
-        bg_image_single_layout.addWidget(self._create_image_gallery_group("main_single", "user_files/main_bg", "modern_menu_background_image", title=tr("background_image_label"), image_files_cache=cached_user_files))
+        bg_image_single_layout.addWidget(self._create_image_gallery_group("main_single", "user_files/main_bg", "modern_menu_background_image", title="Background Image", image_files_cache=cached_user_files))
         main_bg_image_layout.addWidget(self.bg_image_single_container)
         
         # Separate Images Container (Side-by-Side)
@@ -5950,10 +5835,10 @@ class SettingsDialog(QDialog):
         bg_image_separate_layout.setSpacing(15)
         
         self.galleries["main_light"] = {}
-        bg_image_separate_layout.addWidget(self._create_image_gallery_group("main_light", "user_files/main_bg", "modern_menu_background_image_light", title=tr("light_mode_background"), image_files_cache=cached_user_files))
+        bg_image_separate_layout.addWidget(self._create_image_gallery_group("main_light", "user_files/main_bg", "modern_menu_background_image_light", title="Light Mode Background", image_files_cache=cached_user_files))
         
         self.galleries["main_dark"] = {}
-        bg_image_separate_layout.addWidget(self._create_image_gallery_group("main_dark", "user_files/main_bg", "modern_menu_background_image_dark", title=tr("dark_mode_background"), image_files_cache=cached_user_files))
+        bg_image_separate_layout.addWidget(self._create_image_gallery_group("main_dark", "user_files/main_bg", "modern_menu_background_image_dark", title="Dark Mode Background", image_files_cache=cached_user_files))
         
         main_bg_image_layout.addWidget(self.bg_image_separate_container)
         
@@ -5964,7 +5849,7 @@ class SettingsDialog(QDialog):
         
         # Effects
         effects_layout = QHBoxLayout()
-        self.bg_blur_label = QLabel(tr("background_blur"))
+        self.bg_blur_label = QLabel("Background Blur:")
         self.bg_blur_spinbox = QSpinBox()
         self.bg_blur_spinbox.setMinimum(0)
         self.bg_blur_spinbox.setMaximum(100)
@@ -5973,7 +5858,7 @@ class SettingsDialog(QDialog):
         effects_layout.addWidget(self.bg_blur_label)
         effects_layout.addWidget(self.bg_blur_spinbox)
         
-        self.bg_opacity_label = QLabel(tr("background_opacity"))
+        self.bg_opacity_label = QLabel("Background Opacity:")
         self.bg_opacity_spinbox = QSpinBox()
         self.bg_opacity_spinbox.setMinimum(0)
         self.bg_opacity_spinbox.setMaximum(100)
@@ -5992,11 +5877,11 @@ class SettingsDialog(QDialog):
         slideshow_layout.setContentsMargins(15, 10, 0, 0)
         
         interval_layout = QHBoxLayout()
-        interval_label = QLabel(tr("change_image_every"))
+        interval_label = QLabel("Change image every:")
         self.slideshow_interval_spinbox = QSpinBox()
         self.slideshow_interval_spinbox.setMinimum(1)
         self.slideshow_interval_spinbox.setMaximum(3600)
-        self.slideshow_interval_spinbox.setSuffix(f" {tr('seconds')}")
+        self.slideshow_interval_spinbox.setSuffix(" seconds")
         self.slideshow_interval_spinbox.setValue(mw.col.conf.get("modern_menu_slideshow_interval", 10))
         interval_layout.addWidget(interval_label)
         interval_layout.addWidget(self.slideshow_interval_spinbox)
@@ -6018,7 +5903,7 @@ class SettingsDialog(QDialog):
         # Initial state
         self.toggle_background_options()
         
-        reset_bg_button = QPushButton(tr("reset_bg_default"))
+        reset_bg_button = QPushButton("Reset Background to Default")
         reset_bg_button.clicked.connect(self.reset_background_to_default)
         layout.addWidget(reset_bg_button)
 
@@ -6028,39 +5913,39 @@ class SettingsDialog(QDialog):
         # <<< END NEW CODE >>>
 
         heatmap_section = SectionGroup(
-            tr("heatmap"), 
+            "Heatmap", 
             self, 
             border=False,
-            description=tr("heatmap_description") # Note: renamed to heatmap_description
+            description="Here you can edit the shape of each day on the heatmap and change its color."
         )
 
-        shape_section, shape_layout = self._create_inner_group(tr("shape"))
+        shape_section, shape_layout = self._create_inner_group("Shape")
         shape_selector = self._create_shape_selector()
         shape_layout.addWidget(shape_selector)
         heatmap_section.add_widget(shape_section)
 
-        visibility_section, visibility_layout = self._create_inner_group(tr("visibility"))
+        visibility_section, visibility_layout = self._create_inner_group("Visibility")
         self.heatmap_show_streak_check = AnimatedToggleButton(accent_color=self.accent_color)
         self.heatmap_show_streak_check.setChecked(self.current_config.get("heatmapShowStreak", True))
-        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_streak_check, tr("show_streak_counter")))
+        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_streak_check, "Show review streak counter"))
         self.heatmap_show_months_check = AnimatedToggleButton(accent_color=self.accent_color)
         self.heatmap_show_months_check.setChecked(self.current_config.get("heatmapShowMonths", True))
-        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_months_check, tr("show_month_labels")))
+        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_months_check, "Show month labels (Year view)"))
         self.heatmap_show_weekdays_check = AnimatedToggleButton(accent_color=self.accent_color)
         self.heatmap_show_weekdays_check.setChecked(self.current_config.get("heatmapShowWeekdays", True))
-        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_weekdays_check, tr("show_weekday_labels")))
+        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_weekdays_check, "Show weekday labels (Year & Month view)"))
         self.heatmap_show_week_header_check = AnimatedToggleButton(accent_color=self.accent_color)
         self.heatmap_show_week_header_check.setChecked(self.current_config.get("heatmapShowWeekHeader", True))
-        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_week_header_check, tr("show_day_labels")))
+        visibility_layout.addWidget(self._create_toggle_row(self.heatmap_show_week_header_check, "Show day labels (Week view)"))
         heatmap_section.add_widget(visibility_section)
 
         heatmap_color_modes_layout = QHBoxLayout()
-        light_heatmap_group, light_heatmap_layout = self._create_inner_group(tr("light_mode"))
+        light_heatmap_group, light_heatmap_layout = self._create_inner_group("Light Mode")
         light_heatmap_layout.setSpacing(5)
         self._populate_pills_for_keys(light_heatmap_layout, "light", ["--heatmap-color", "--heatmap-color-zero"])
         heatmap_color_modes_layout.addWidget(light_heatmap_group)
 
-        dark_heatmap_group, dark_heatmap_layout = self._create_inner_group(tr("dark_mode"))
+        dark_heatmap_group, dark_heatmap_layout = self._create_inner_group("Dark Mode")
         dark_heatmap_layout.setSpacing(5)
         self._populate_pills_for_keys(dark_heatmap_layout, "dark", ["--heatmap-color", "--heatmap-color-zero"])
         heatmap_color_modes_layout.addWidget(dark_heatmap_group)
@@ -6069,7 +5954,7 @@ class SettingsDialog(QDialog):
         # Reset Heatmap Colors button
         reset_heatmap_layout = QHBoxLayout()
         reset_heatmap_layout.addStretch()
-        reset_heatmap_button = QPushButton(tr("reset_heatmap_colors"))
+        reset_heatmap_button = QPushButton("Reset Heatmap Colors")
         reset_heatmap_button.clicked.connect(self.reset_heatmap_colors_to_default)
         reset_heatmap_layout.addWidget(reset_heatmap_button)
         heatmap_section.add_layout(reset_heatmap_layout)
@@ -6082,26 +5967,26 @@ class SettingsDialog(QDialog):
         layout.addWidget(divider2)
 
         star_icon_section = SectionGroup(
-            tr("star_icon"), 
+            "Star Icon", 
             self, 
             border=False,
-            description=tr("star_icon_description")
+            description="Here you can change the star icon and its colors."
         )
         if self.retention_star_widget is None:
-            self.retention_star_widget = self._create_icon_control_widget("retention_star", display_name=tr("retention_star"))
+            self.retention_star_widget = self._create_icon_control_widget("retention_star")
         star_icon_section.add_widget(self.retention_star_widget)
 
         self.hide_retention_stars_check = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_retention_stars_check.setChecked(self.current_config.get("hideRetentionStars", False))
-        star_icon_section.add_widget(self._create_toggle_row(self.hide_retention_stars_check, tr("hide_stars_retention")))
+        star_icon_section.add_widget(self._create_toggle_row(self.hide_retention_stars_check, "Hide stars on Retention widget"))
 
         star_color_modes_layout = QHBoxLayout()
-        light_star_group, light_star_layout = self._create_inner_group(tr("light_mode"))
+        light_star_group, light_star_layout = self._create_inner_group("Light Mode")
         light_star_layout.setSpacing(5)
         self._populate_pills_for_keys(light_star_layout, "light", ["--star-color", "--empty-star-color"])
         star_color_modes_layout.addWidget(light_star_group)
 
-        dark_star_group, dark_star_layout = self._create_inner_group(tr("dark_mode"))
+        dark_star_group, dark_star_layout = self._create_inner_group("Dark Mode")
         dark_star_layout.setSpacing(5)
         self._populate_pills_for_keys(dark_star_layout, "dark", ["--star-color", "--empty-star-color"])
         star_color_modes_layout.addWidget(dark_star_group)
@@ -6109,7 +5994,7 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(star_icon_section)
 
-        reset_button = QPushButton(tr("reset_stats_colors"))
+        reset_button = QPushButton("Reset Stats Colors")
         reset_button.clicked.connect(self.reset_stats_colors_to_default)
         reset_layout = QHBoxLayout()
         reset_layout.addStretch()
@@ -6120,10 +6005,10 @@ class SettingsDialog(QDialog):
 
         # Add navigation buttons
         sections = {
-            tr("organize_section"): organize_section,
-            tr("main_background_section"): mode_group,
-            tr("heatmap_section"): heatmap_section,
-            tr("star_icon_section"): star_icon_section
+            "Organize": organize_section,
+            "Main Background": mode_group,
+            "Heatmap": heatmap_section,
+            "Star Icon": star_icon_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
 
@@ -6220,8 +6105,7 @@ class SettingsDialog(QDialog):
                     item_box = QFrame()
                     item_box.setObjectName("hideModeItemBox")
                     
-                    # Check if this item is a warning (Restart note or OS specific note)
-                    is_warning = any(w in item for w in [tr("restart_anki_note"), tr("windows_linux_only")])
+                    is_warning = "Restart Anki" in item or "Windows and Linux" in item
                     
                     if is_warning:
                         if theme_manager.night_mode:
@@ -6339,8 +6223,7 @@ class SettingsDialog(QDialog):
             
             # Display features, with warnings in yellow containers
             for feature in all_features:
-                # Check if this feature is a warning
-                is_warning = any(w in feature for w in [tr("restart_anki_note"), tr("windows_linux_only")])
+                is_warning = "Restart Anki" in feature or "Windows and Linux" in feature
                 
                 if is_warning:
                     # Create compact yellow warning container
@@ -6526,7 +6409,7 @@ class SettingsDialog(QDialog):
     def create_hide_modes_page(self):
         page, layout = self._create_scrollable_page()
 
-        title = QLabel(tr("modes"))
+        title = QLabel("Modes")
         title.setObjectName("hideModePageTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft)
         if theme_manager.night_mode:
@@ -6535,7 +6418,10 @@ class SettingsDialog(QDialog):
             title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; color: #212121; background-color: #f3f3f3; padding: 0 5px;")
         layout.addWidget(title)
 
-        description = QLabel(tr("modes_description"))
+        description = QLabel(
+            "Choose either Focus or Zen Mode to hide elements of the interface for a more immersive experience, "
+            "you can also enable Gamification Mode to track achievements and level up, making it fun to study."
+        )
         description.setWordWrap(True)
         description.setStyleSheet("font-size: 12px; color: #666; margin-bottom: 8px; padding: 10px;")
         layout.addWidget(description)
@@ -6552,45 +6438,45 @@ class SettingsDialog(QDialog):
         # Focus mode - Basic hiding
         focus_items = [
             ("", [
-                tr("hide_anki_bars"),
-                tr("replaces_top_bar")
+                "Hide Anki's native bars",
+                "Replaces top bar for a modern one"
             ])
         ]
 
         # Flow mode - Includes everything from Focus + hides onigiri header
         flow_items = [
             ("", [
-                tr("everything_in_focus"),
-                tr("hides_onigiri_top_bar"),
-                tr("restart_anki_note")
+                "Everything in Focus",
+                "Hides Onigiri's modern top bar",
+                "Restart Anki when applying this mode"
             ])
         ]
 
         # Zen mode - Includes everything from Flow + even more
         zen_items = [
             ("", [
-                tr("everything_in_flow"),
-                tr("hides_reviewer_bottom_bar"),
-                tr("button_only_navigation"),
-                tr("restart_anki_note")
+                "Everything in Flow",
+                "Hides the bottom bar on Reviewer",
+                "(Button only navigation)",
+                "Restart Anki when applying this mode"
             ])
         ]
 
         # Full mode - Hides the top menu bar (File, Edit, View, Tools, Help)
         full_items = [
             ("", [
-                tr("hide_top_menu_bar"),
-                tr("menu_bar_items_example"),
-                tr("windows_linux_only"),
-                tr("restart_anki_note")
+                "Hide the top menu bar",
+                "(File, Edit, View, Tools, Help)",
+                "Works on Windows and Linux only",
+                "Restart Anki when applying this mode"
             ])
         ]
 
         # Create mode cards using AdaptiveModeCard
-        card1 = self._create_hide_mode_card(tr("mode_focus"), self.hide_native_header_checkbox, focus_items)
-        card4 = self._create_hide_mode_card(tr("mode_flow"), self.flow_mode_checkbox, flow_items)
-        card3 = self._create_hide_mode_card(tr("mode_zen"), self.max_hide_checkbox, zen_items)
-        card_full = self._create_hide_mode_card(tr("mode_full"), self.full_hide_mode_checkbox, full_items)
+        card1 = self._create_hide_mode_card("Focus", self.hide_native_header_checkbox, focus_items)
+        card4 = self._create_hide_mode_card("Flow", self.flow_mode_checkbox, flow_items)
+        card3 = self._create_hide_mode_card("Zen", self.max_hide_checkbox, zen_items)
+        card_full = self._create_hide_mode_card("Full", self.full_hide_mode_checkbox, full_items)
 
         # Add cards to responsive container
         cards_container.add_mode_card(card1)
@@ -6624,7 +6510,7 @@ class SettingsDialog(QDialog):
         self.overview_bg_single_color_container = QWidget()
         single_color_layout = QVBoxLayout(self.overview_bg_single_color_container)
         self.overview_bg_single_color_row = self._create_color_picker_row(
-            tr("background_color"), conf.get("onigiri_overview_bg_light_color", "#FFFFFF"), "overview_bg_single"
+            "Background Color", conf.get("onigiri_overview_bg_light_color", "#FFFFFF"), "overview_bg_single"
         )
         single_color_layout.addLayout(self.overview_bg_single_color_row)
         
@@ -6632,10 +6518,10 @@ class SettingsDialog(QDialog):
         self.overview_bg_separate_colors_container = QWidget()
         separate_colors_layout = QVBoxLayout(self.overview_bg_separate_colors_container)
         self.overview_bg_light_color_row = self._create_color_picker_row(
-            tr("background_light_mode"), conf.get("onigiri_overview_bg_light_color", "#FFFFFF"), "overview_bg_light"
+            "Background (Light Mode)", conf.get("onigiri_overview_bg_light_color", "#FFFFFF"), "overview_bg_light"
         )
         self.overview_bg_dark_color_row = self._create_color_picker_row(
-            tr("background_dark_mode"), conf.get("onigiri_overview_bg_dark_color", "#2C2C2C"), "overview_bg_dark"
+            "Background (Dark Mode)", conf.get("onigiri_overview_bg_dark_color", "#2C2C2C"), "overview_bg_dark"
         )
         separate_colors_layout.addLayout(self.overview_bg_light_color_row)
         separate_colors_layout.addLayout(self.overview_bg_dark_color_row)
@@ -6646,8 +6532,8 @@ class SettingsDialog(QDialog):
         
         # Add theme mode toggle for color selection
         self.overview_bg_color_theme_mode_group = QButtonGroup()
-        self.overview_bg_color_theme_mode_single = QRadioButton(tr("use_same_color_both_themes"))
-        self.overview_bg_color_theme_mode_separate = QRadioButton(tr("use_separate_colors"))
+        self.overview_bg_color_theme_mode_single = QRadioButton("Use same color for both themes")
+        self.overview_bg_color_theme_mode_separate = QRadioButton("Use different colors for light/dark themes")
         self.overview_bg_color_theme_mode_group.addButton(self.overview_bg_color_theme_mode_single)
         self.overview_bg_color_theme_mode_group.addButton(self.overview_bg_color_theme_mode_separate)
         
@@ -6682,8 +6568,8 @@ class SettingsDialog(QDialog):
         
         # Add theme mode toggle for image selection
         self.overview_bg_image_theme_mode_group = QButtonGroup()
-        self.overview_bg_image_theme_mode_single = QRadioButton(tr("use_same_image_both_themes"))
-        self.overview_bg_image_theme_mode_separate = QRadioButton(tr("use_separate_images"))
+        self.overview_bg_image_theme_mode_single = QRadioButton("Use same image for both themes")
+        self.overview_bg_image_theme_mode_separate = QRadioButton("Use different images for light/dark themes")
         self.overview_bg_image_theme_mode_group.addButton(self.overview_bg_image_theme_mode_single)
         self.overview_bg_image_theme_mode_group.addButton(self.overview_bg_image_theme_mode_separate)
         
@@ -6709,7 +6595,7 @@ class SettingsDialog(QDialog):
         self.galleries["overview_bg_single"] = {}
         single_image_layout.addWidget(self._create_image_gallery_group(
             "overview_bg_single", "user_files/main_bg", "onigiri_overview_bg_image", 
-            title=tr("background_image"), is_sub_group=True
+            title="Background Image", is_sub_group=True
         ))
         
         # Separate images container
@@ -6719,12 +6605,12 @@ class SettingsDialog(QDialog):
         self.galleries["overview_bg_light"] = {}
         sep_layout.addWidget(self._create_image_gallery_group(
             "overview_bg_light", "user_files/main_bg", "onigiri_overview_bg_image_light", 
-            title=tr("background_light_mode"), is_sub_group=True
+            title="Light Mode Background", is_sub_group=True
         ))
         self.galleries["overview_bg_dark"] = {}
         sep_layout.addWidget(self._create_image_gallery_group(
             "overview_bg_dark", "user_files/main_bg", "onigiri_overview_bg_image_dark", 
-            title=tr("background_dark_mode"), is_sub_group=True
+            title="Dark Mode Background", is_sub_group=True
         ))
         
         # Add both containers to the layout
@@ -6745,14 +6631,14 @@ class SettingsDialog(QDialog):
         effects_layout = QHBoxLayout(self.overview_bg_effects_container)
         effects_layout.setContentsMargins(0, 10, 0, 0)
         
-        self.overview_bg_blur_label = QLabel(tr("blur_label"))
+        self.overview_bg_blur_label = QLabel("Blur:")
         self.overview_bg_blur_spinbox = QSpinBox()
         self.overview_bg_blur_spinbox.setMinimum(0)
         self.overview_bg_blur_spinbox.setMaximum(100)
         self.overview_bg_blur_spinbox.setSuffix(" %")
         self.overview_bg_blur_spinbox.setValue(conf.get("onigiri_overview_bg_blur", 0))
         
-        self.overview_bg_opacity_label = QLabel(tr("opacity_label"))
+        self.overview_bg_opacity_label = QLabel("Opacity:")
         self.overview_bg_opacity_spinbox = QSpinBox()
         self.overview_bg_opacity_spinbox.setMinimum(0)
         self.overview_bg_opacity_spinbox.setMaximum(100)
@@ -6826,7 +6712,7 @@ class SettingsDialog(QDialog):
         page, layout = self._create_scrollable_page()
         
         # --- Overviewer Background Section ---
-        overview_bg_section = SectionGroup(tr("overviewer_background_section"), self)
+        overview_bg_section = SectionGroup("Overviewer Background", self)
         layout.addWidget(overview_bg_section)
         
         overview_bg_content = overview_bg_section.content_layout
@@ -6835,9 +6721,9 @@ class SettingsDialog(QDialog):
         overview_bg_mode_layout = QHBoxLayout()
         overview_bg_button_group = QButtonGroup(overview_bg_section)
         
-        self.overview_bg_main_radio = QRadioButton(tr("use_main_background_radio"))
-        self.overview_bg_color_radio = QRadioButton(tr("solid_color_radio"))
-        self.overview_bg_image_color_radio = QRadioButton(tr("image_mode"))
+        self.overview_bg_main_radio = QRadioButton("Use Main Background")
+        self.overview_bg_color_radio = QRadioButton("Solid Color")
+        self.overview_bg_image_color_radio = QRadioButton("Image")
         
         overview_bg_button_group.addButton(self.overview_bg_main_radio)
         overview_bg_button_group.addButton(self.overview_bg_color_radio)
@@ -6860,14 +6746,14 @@ class SettingsDialog(QDialog):
         main_effects_layout = QHBoxLayout(self.overview_bg_main_group)
         main_effects_layout.setContentsMargins(0, 10, 0, 0)
         
-        main_blur_label = QLabel(tr("background_blur_label"))
+        main_blur_label = QLabel("Background Blur:")
         self.overview_bg_main_blur_spinbox = QSpinBox()
         self.overview_bg_main_blur_spinbox.setMinimum(0)
         self.overview_bg_main_blur_spinbox.setMaximum(100)
         self.overview_bg_main_blur_spinbox.setSuffix(" %")
         self.overview_bg_main_blur_spinbox.setValue(conf.get("onigiri_overview_bg_main_blur", 0))
         
-        main_opacity_label = QLabel(tr("background_opacity_label"))
+        main_opacity_label = QLabel("Background Opacity:")
         self.overview_bg_main_opacity_spinbox = QSpinBox()
         self.overview_bg_main_opacity_spinbox.setMinimum(0)
         self.overview_bg_main_opacity_spinbox.setMaximum(100)
@@ -6893,7 +6779,7 @@ class SettingsDialog(QDialog):
         self._toggle_overview_bg_options()
 
         # Reset button
-        reset_btn = QPushButton(tr("reset_overviewer_bg_btn"))
+        reset_btn = QPushButton("Reset to Default Overviewer Background")
         reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         reset_btn.clicked.connect(lambda: self.overview_bg_main_radio.setChecked(True))
         overview_bg_content.addWidget(reset_btn)
@@ -6902,21 +6788,21 @@ class SettingsDialog(QDialog):
             "",
             self,
             border=False,
-            description=tr("overview_description")
+            description="Customize the appearance of the deck overview screen."
         )
 
         # --- NEW: Section for Overview Style ---
         style_section = SectionGroup(
-            tr("overview_style_section"),
+            "Overview Style",
             self,
             border=True,
-            description=tr("overview_style_desc")
+            description="Choose between a detailed or a compact overview screen."
         )
         style_layout = QHBoxLayout()
-        self.overview_pro_radio = QRadioButton(tr("pro_overview_label"))
-        self.overview_pro_radio.setToolTip(tr("pro_overview_tooltip"))
-        self.overview_mini_radio = QRadioButton(tr("mini_overview_label"))
-        self.overview_mini_radio.setToolTip(tr("mini_overview_tooltip"))
+        self.overview_pro_radio = QRadioButton("Pro Overview")
+        self.overview_pro_radio.setToolTip("The default, detailed overview with large stats and buttons.")
+        self.overview_mini_radio = QRadioButton("Mini Overview")
+        self.overview_mini_radio.setToolTip("A compact overview, like the one in your provided image.")
         
         current_style = mw.col.conf.get("onigiri_overview_style", "pro")
         if current_style == "mini":
@@ -6933,10 +6819,10 @@ class SettingsDialog(QDialog):
 
         overview_layout = QFormLayout()
         overview_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        overview_layout.addRow(f"{tr('custom_stats_title').replace(':', '')} ({tr('study_now')}):", self.study_now_input)
+        overview_layout.addRow("Custom 'Study Now' Text:", self.study_now_input)
         
         overview_color_modes_layout = QHBoxLayout()
-        light_overview_colors_group, light_overview_colors_layout = self._create_inner_group(tr("light_mode_colors_group"))
+        light_overview_colors_group, light_overview_colors_layout = self._create_inner_group("Light Mode Colors")
         light_overview_colors_layout.setSpacing(5)
         overview_color_keys = [
             "--button-primary-bg", "--button-primary-gradient-start", "--button-primary-gradient-end",
@@ -6946,7 +6832,7 @@ class SettingsDialog(QDialog):
         self._populate_pills_for_keys(light_overview_colors_layout, "light", overview_color_keys)
         overview_color_modes_layout.addWidget(light_overview_colors_group)
 
-        dark_overview_colors_group, dark_overview_colors_layout = self._create_inner_group(tr("dark_mode_colors_group"))
+        dark_overview_colors_group, dark_overview_colors_layout = self._create_inner_group("Dark Mode Colors")
         dark_overview_colors_layout.setSpacing(5)
         self._populate_pills_for_keys(dark_overview_colors_layout, "dark", overview_color_keys)
         overview_color_modes_layout.addWidget(dark_overview_colors_group)
@@ -6961,14 +6847,14 @@ class SettingsDialog(QDialog):
         layout.addWidget(divider)
 
         congrats_section = SectionGroup(
-            tr("congrats_section"),
+            "Congratulations",
             self,
             border=False,
-            description=tr("congrats_description")
+            description="Customize the 'Congratulations, you finished!' screen."
         )
         congrats_layout = QFormLayout()
-        congrats_layout.addRow(self._create_toggle_row(self.show_congrats_profile_bar_checkbox, tr("show_profile_bar_congrats")))
-        congrats_layout.addRow(tr("custom_message"), self.congrats_message_input)
+        congrats_layout.addRow(self._create_toggle_row(self.show_congrats_profile_bar_checkbox, "Show profile bar on congrats screen"))
+        congrats_layout.addRow("Custom Message:", self.congrats_message_input)
         congrats_section.add_layout(congrats_layout)
         layout.addWidget(congrats_section)
 
@@ -6976,8 +6862,8 @@ class SettingsDialog(QDialog):
 
         sections = {
 
-            tr("overview_style_section"): style_section,
-            tr("congratulations_label"): congrats_section
+            "Overview Style": style_section,
+            "Congratulations": congrats_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
 
@@ -6986,15 +6872,15 @@ class SettingsDialog(QDialog):
     def create_sidebar_page(self):
         page, layout = self._create_scrollable_page()
         sidebar_section = SectionGroup(
-            tr("sidebar_customization"), 
+            "Sidebar Customization", 
             self, 
             border=False,
-            description=tr("sidebar_description")
+            description="Customize general visibility options for the sidebar."
         )
         
-        sidebar_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, tr("hide_welcome_msg")))
-        sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, tr("hide_zero_counts")))
-        sidebar_section.add_widget(self._create_toggle_row(self.hide_all_deck_counts_checkbox, tr("hide_all_counts")))
+        sidebar_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, "Hide 'Welcome' message"))
+        sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, "Hide 0 counts on sidebar"))
+        sidebar_section.add_widget(self._create_toggle_row(self.hide_all_deck_counts_checkbox, "Hide deck counts entirely"))
 
         layout.addWidget(sidebar_section)
 
@@ -7006,9 +6892,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(divider1)
 
         # --- Sidebar Background Section ---
-        sidebar_group, sidebar_layout = self._create_inner_group(tr("sidebar_background"))
+        sidebar_group, sidebar_layout = self._create_inner_group("Sidebar Background")
         sidebar_mode = mw.col.conf.get("modern_menu_sidebar_bg_mode", "main"); sidebar_mode_layout = QHBoxLayout()
-        self.sidebar_bg_main_radio = QRadioButton(tr("use_main_bg_settings")); self.sidebar_bg_custom_radio = QRadioButton(tr("use_custom_sidebar_bg"))
+        self.sidebar_bg_main_radio = QRadioButton("Use Main Background Settings"); self.sidebar_bg_custom_radio = QRadioButton("Use Custom Sidebar Background")
         self.sidebar_bg_main_radio.setChecked(sidebar_mode == "main"); self.sidebar_bg_custom_radio.setChecked(sidebar_mode == "custom"); sidebar_mode_layout.addWidget(self.sidebar_bg_main_radio); sidebar_mode_layout.addWidget(self.sidebar_bg_custom_radio); sidebar_layout.addLayout(sidebar_mode_layout)
         
         self.sidebar_main_options_group = QWidget()
@@ -7017,21 +6903,16 @@ class SettingsDialog(QDialog):
         
         effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "opaque")
         effect_mode_layout = QHBoxLayout()
-        self.sidebar_effect_overlay_radio = QRadioButton(tr("color_overlay"))
-        self.sidebar_effect_glass_radio = QRadioButton(tr("glassmorphism"))
+        self.sidebar_effect_overlay_radio = QRadioButton("Color Overlay")
+        self.sidebar_effect_glass_radio = QRadioButton("Glassmorphism")
         self.sidebar_effect_overlay_radio.setChecked(effect_mode == "opaque")
-        self.sidebar_effect_glass_radio.setChecked(effect_mode == "glassmorphism")
-        effect_mode_layout.addWidget(self.sidebar_effect_overlay_radio)
-        effect_mode_layout.addWidget(self.sidebar_effect_glass_radio)
-        effect_mode_layout.addStretch()
-        sidebar_main_layout.addLayout(effect_mode_layout)
 
         self.sidebar_overlay_options_group = QWidget()
         overlay_options_layout = QVBoxLayout(self.sidebar_overlay_options_group)
         overlay_options_layout.setContentsMargins(0, 5, 0, 0)
 
         intensity_layout = QHBoxLayout()
-        intensity_label = QLabel(tr("overlay_opacity"))
+        intensity_label = QLabel("Overlay Opacity:")
         self.sidebar_overlay_intensity_spinbox = QSpinBox()
         self.sidebar_overlay_intensity_spinbox.setMinimum(0)
         self.sidebar_overlay_intensity_spinbox.setMaximum(100)
@@ -7044,8 +6925,8 @@ class SettingsDialog(QDialog):
 
         overlay_options_layout.addLayout(intensity_layout)
         
-        self.sidebar_overlay_light_color_row = self._create_color_picker_row(tr("overlay_color_light"), mw.col.conf.get("onigiri_sidebar_opaque_tint_color_light", "#FFFFFF"), "overlay_light_color")
-        self.sidebar_overlay_dark_color_row = self._create_color_picker_row(tr("overlay_color_dark"), mw.col.conf.get("onigiri_sidebar_opaque_tint_color_dark", "#2C2C2C"), "overlay_dark_color")
+        self.sidebar_overlay_light_color_row = self._create_color_picker_row("Overlay Color (Light Mode)", mw.col.conf.get("onigiri_sidebar_opaque_tint_color_light", "#FFFFFF"), "overlay_light_color")
+        self.sidebar_overlay_dark_color_row = self._create_color_picker_row("Overlay Color (Dark Mode)", mw.col.conf.get("onigiri_sidebar_opaque_tint_color_dark", "#2C2C2C"), "overlay_dark_color")
         overlay_options_layout.addLayout(self.sidebar_overlay_light_color_row)
         overlay_options_layout.addLayout(self.sidebar_overlay_dark_color_row)
         sidebar_main_layout.addWidget(self.sidebar_overlay_options_group)
@@ -7053,7 +6934,7 @@ class SettingsDialog(QDialog):
         self.sidebar_effect_intensity_group = QWidget()
         glass_intensity_layout = QHBoxLayout(self.sidebar_effect_intensity_group)
         glass_intensity_layout.setContentsMargins(0, 5, 0, 0)
-        glass_intensity_label = QLabel(tr("effect_intensity"))
+        glass_intensity_label = QLabel("Effect Intensity:")
         self.sidebar_effect_intensity_spinbox = QSpinBox()
         self.sidebar_effect_intensity_spinbox.setMinimum(0)
         self.sidebar_effect_intensity_spinbox.setMaximum(100)
@@ -7067,64 +6948,65 @@ class SettingsDialog(QDialog):
         self.sidebar_effect_overlay_radio.toggled.connect(self._toggle_sidebar_effect_options)
         self.sidebar_effect_glass_radio.toggled.connect(self._toggle_sidebar_effect_options)
         self._toggle_sidebar_effect_options()
-
         sidebar_layout.addWidget(self.sidebar_main_options_group)
         self.sidebar_custom_options_group = self.create_sidebar_custom_options()
         sidebar_layout.addWidget(self.sidebar_custom_options_group)
-        
-        layout.addWidget(sidebar_group)
 
-        self.sidebar_bg_main_radio.toggled.connect(self.toggle_sidebar_background_options)
-        self.toggle_sidebar_background_options()
-        
-        reset_sidebar_button = QPushButton(tr("reset_sidebar_default"))
+        layout.addWidget(sidebar_group)   # restore: was missing, causing the section to not render
+
+        reset_sidebar_button = QPushButton("Reset Sidebar to Default")
         reset_sidebar_button.clicked.connect(self.reset_sidebar_to_default)
         layout.addWidget(reset_sidebar_button)
 
-
-
         # --- Organize Action Buttons (merged section) ---
         action_buttons_section = SectionGroup(
-            tr("organize_action_buttons"),
+            "Organize Action Buttons",
             self,
             border=False,
-            description=tr("organize_action_buttons_desc")
+            description="Choose how action buttons are displayed and customize their icons."
         )
 
         # --- Format radio buttons ---
         mode_layout = QHBoxLayout()
         self.actions_mode_group = QButtonGroup(action_buttons_section)
-        
-        self.actions_mode_list = QRadioButton(tr("list_default"))
-        self.actions_mode_list.setToolTip("")
-        
-        self.actions_mode_collapsed = QRadioButton(tr("collapsed_toolbar"))
-        self.actions_mode_collapsed.setToolTip("")
-        
-        self.actions_mode_archived = QRadioButton(tr("archived_hidden"))
-        self.actions_mode_archived.setToolTip("")
-        
+
+        self.actions_mode_list = QRadioButton("List (Default)")
+        self.actions_mode_list.setToolTip("Show action buttons as list items in the sidebar.")
+
+        self.actions_mode_collapsed = QRadioButton("Collapsed (Toolbar)")
+        self.actions_mode_collapsed.setToolTip("Show action buttons as icons in the top toolbar.")
+
+        self.actions_mode_archived = QRadioButton("Archived (Hidden)")
+        self.actions_mode_archived.setToolTip("Hide action buttons completely.")
+
+        self.actions_mode_ellipsis = QRadioButton("Ellipsis (Dropdown)")
+        self.actions_mode_ellipsis.setToolTip("Hide action buttons and show them via a ... dropdown in the sidebar toolbar.")
+
         self.actions_mode_group.addButton(self.actions_mode_list)
         self.actions_mode_group.addButton(self.actions_mode_collapsed)
         self.actions_mode_group.addButton(self.actions_mode_archived)
-        
+        self.actions_mode_group.addButton(self.actions_mode_ellipsis)
+
         # Load config
         current_mode = self.current_config.get("sidebarActionsMode", "list")
         if current_mode == "collapsed":
              self.actions_mode_collapsed.setChecked(True)
         elif current_mode == "archived":
              self.actions_mode_archived.setChecked(True)
+        elif current_mode == "ellipsis":
+             self.actions_mode_ellipsis.setChecked(True)
         else:
              self.actions_mode_list.setChecked(True)
 
         mode_layout.addWidget(self.actions_mode_list)
         mode_layout.addWidget(self.actions_mode_collapsed)
         mode_layout.addWidget(self.actions_mode_archived)
+        mode_layout.addWidget(self.actions_mode_ellipsis)
         mode_layout.addStretch()
         
         action_buttons_section.add_layout(mode_layout)
         
-        mode_help = QLabel(tr("action_buttons_help"))
+        mode_help = QLabel("Choose how action buttons (Add, Browse, Stats, Sync) are displayed.")
         if theme_manager.night_mode:
             mode_help.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
         else:
@@ -7137,7 +7019,7 @@ class SettingsDialog(QDialog):
         sle_container_layout.setContentsMargins(0, 5, 0, 5)
         sle_container_layout.setSpacing(5)
 
-        organize_label = QLabel(tr("drag_drop_reorder"))
+        organize_label = QLabel("Drag and drop to re-order or archive sidebar buttons. Changes will apply after restarting Anki.")
         organize_label.setWordWrap(True)
         if theme_manager.night_mode:
             organize_label.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
@@ -7153,10 +7035,11 @@ class SettingsDialog(QDialog):
         # Show/hide grids based on mode
         def _update_organize_visibility():
             self.sidebar_layout_editor_container.setVisible(self.actions_mode_list.isChecked())
-        
+
         self.actions_mode_list.toggled.connect(_update_organize_visibility)
         self.actions_mode_collapsed.toggled.connect(_update_organize_visibility)
         self.actions_mode_archived.toggled.connect(_update_organize_visibility)
+        self.actions_mode_ellipsis.toggled.connect(_update_organize_visibility)
         _update_organize_visibility()
 
         # Add a separator
@@ -7171,7 +7054,7 @@ class SettingsDialog(QDialog):
         action_buttons_section.add_widget(sep)
 
         # --- Icon cards (always visible) ---
-        icons_label = QLabel(tr("action_button_icons"))
+        icons_label = QLabel("Action Button Icons")
         icons_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         action_buttons_section.add_widget(icons_label)
 
@@ -7180,9 +7063,9 @@ class SettingsDialog(QDialog):
         action_buttons_layout.setContentsMargins(0, 5, 0, 5)
 
         action_icons_to_configure = {
-            "add": tr("add"), "browse": tr("browse"), "stats": tr("stats"),
-            "sync": tr("sync"), "settings": tr("settings"), "gamification": tr("onigiri_games"), "more": tr("more"),
-            "get_shared": tr("get_shared"), "create_deck": tr("create_deck"), "import_file": tr("import_file")
+            "add": "Add", "browse": "Browser", "stats": "Stats",
+            "sync": "Sync", "settings": "Settings", "gamification": "Onigiri Games", "more": "More", "ellipsis": "Ellipsis",
+            "get_shared": "Get Shared", "create_deck": "Create Deck", "import_file": "Import File"
         }
         external_entries = {
             entry_id: entry.label
@@ -7220,13 +7103,13 @@ class SettingsDialog(QDialog):
         layout.addWidget(divider2)
         
         deck_section = SectionGroup(
-            tr("deck"),
+            "Deck",
             self,
             border=False,
-            description=tr("deck_description")
+            description="Customize the deck list appearance."
         )
 
-        indentation_group, indentation_layout_content = self._create_inner_group(tr("decks_indentation"))
+        indentation_group, indentation_layout_content = self._create_inner_group("Decks Indentation")
         
         # --- Modern Button Group UI ---
         # Main layout for the indentation section
@@ -7243,10 +7126,10 @@ class SettingsDialog(QDialog):
         self.indentation_mode_group.setExclusive(True)
         
         modes = [
-            ("default", tr("default")),
-            ("smaller", tr("smaller")),
-            ("bigger", tr("bigger")),
-            ("custom", tr("custom"))
+            ("default", "Default"),
+            ("smaller", "Smaller"),
+            ("bigger", "Bigger"),
+            ("custom", "Custom")
         ]
         
         current_mode = self.current_config.get("deck_indentation_mode", "default")
@@ -7303,7 +7186,7 @@ class SettingsDialog(QDialog):
         custom_layout.setContentsMargins(5, 0, 0, 0)
         custom_layout.setSpacing(10)
         
-        custom_label = QLabel(tr("custom_indentation_px"))
+        custom_label = QLabel("Custom Indentation (px):")
         self.indentation_custom_spin = QSpinBox()
         self.indentation_custom_spin.setRange(0, 100)
         self.indentation_custom_spin.setValue(self.current_config.get("deck_indentation_custom_px", 20))
@@ -7330,7 +7213,7 @@ class SettingsDialog(QDialog):
         
         # Title with info button
         title_row = QHBoxLayout()
-        title_label = QLabel(tr("deck_icons"))
+        title_label = QLabel("Deck Icons")
         title_label.setStyleSheet("font-weight: bold; font-size: 20px;")
         title_row.addWidget(title_label)
         
@@ -7372,19 +7255,19 @@ class SettingsDialog(QDialog):
         
         deck_icons_layout = QGridLayout(); deck_icons_layout.setSpacing(15)
         deck_icons_layout_content.addLayout(deck_icons_layout)
-        deck_icons_to_configure = {"folder": tr("folder_icon"), "deck": tr("deck_icon"), "subdeck": tr("subdeck_icon"), "filtered_deck": tr("filtered_deck_icon"), "options": tr("options_icon"), "collapse_closed": tr("collapse_icon"), "collapse_open": tr("expand_icon")}
+        deck_icons_to_configure = {"folder": "Folder Icon", "deck": "Deck Icon", "subdeck": "Subdeck Icon", "filtered_deck": "Filtered Deck Icon", "options": "Options Icon", "collapse_closed": "Collapsed Icon (+)", "collapse_open": "Expanded Icon (-)"}
         row, col, num_cols = 0, 0, 3
         for key, label_text in deck_icons_to_configure.items():
             card = QWidget(); card_layout = QVBoxLayout(card); card_layout.setContentsMargins(0,0,0,0); card_layout.setSpacing(5)
             label = QLabel(label_text); label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            control_widget = self._create_icon_control_widget(key, display_name=label_text); self.icon_assignment_widgets.append(control_widget)
+            control_widget = self._create_icon_control_widget(key); self.icon_assignment_widgets.append(control_widget)
             card_layout.addWidget(label); card_layout.addWidget(control_widget); deck_icons_layout.addWidget(card, row, col)
             col += 1
             if col >= num_cols: col = 0; row += 1
         
         deck_section.add_widget(deck_icons_group)
 
-        sizing_section, sizing_layout_content = self._create_inner_group(tr("deck_icon_settings"))
+        sizing_section, sizing_layout_content = self._create_inner_group("Deck Icon Settings")
         sizing_layout = QFormLayout(); sizing_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         sizing_layout_content.addLayout(sizing_layout)
         
@@ -7393,33 +7276,33 @@ class SettingsDialog(QDialog):
         self.hide_folder_cb = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_folder_cb.setChecked(mw.col.conf.get("modern_menu_hide_folder_icon", False))
         self.hide_folder_cb.toggled.connect(self._update_deck_icon_state)
-        sizing_layout.addRow(tr("hide_folder_icon"), self.hide_folder_cb)
+        sizing_layout.addRow("Hide Folder Icon:", self.hide_folder_cb)
         
         self.hide_subdeck_cb = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_subdeck_cb.setChecked(mw.col.conf.get("modern_menu_hide_subdeck_icon", False))
         self.hide_subdeck_cb.toggled.connect(self._update_deck_icon_state)
-        sizing_layout.addRow(tr("hide_subdeck_icon"), self.hide_subdeck_cb)
+        sizing_layout.addRow("Hide Subdeck Icon:", self.hide_subdeck_cb)
         
         self.hide_deck_cb = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_deck_cb.setChecked(mw.col.conf.get("modern_menu_hide_deck_icon", False))
         self.hide_deck_cb.toggled.connect(self._update_deck_icon_state)
-        sizing_layout.addRow(tr("hide_deck_icon"), self.hide_deck_cb)
+        sizing_layout.addRow("Hide Deck Icon:", self.hide_deck_cb)
 
         self.hide_filtered_deck_cb = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_filtered_deck_cb.setChecked(mw.col.conf.get("modern_menu_hide_filtered_deck_icon", False))
         self.hide_filtered_deck_cb.toggled.connect(self._update_deck_icon_state)
-        sizing_layout.addRow(tr("hide_filtered_deck_icon"), self.hide_filtered_deck_cb)
+        sizing_layout.addRow("Hide Filtered Deck Icon:", self.hide_filtered_deck_cb)
 
         # [NEW] Hide default, show custom setting
         self.hide_default_custom_cb = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_default_custom_cb.setChecked(mw.col.conf.get("modern_menu_hide_default_icons", False))
         self.hide_default_custom_cb.toggled.connect(self._update_deck_icon_state)
         self.hide_default_custom_cb.setToolTip("If enabled, default icons will be hidden, but custom deck icons will still be shown.")
-        sizing_layout.addRow(tr("hide_default_show_custom"), self.hide_default_custom_cb)
+        sizing_layout.addRow("Hide default, show custom:", self.hide_default_custom_cb)
         
-        icon_sizes_to_configure = {"deck_folder": tr("deck_folder_icons_label"), "action_button": tr("action_button_icons"), "collapse": tr("expand_collapse_icons_label"), "options_gear": tr("deck_options_gear_label")}
+        icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons (px):", "action_button": "Action Button Icons (px):", "collapse": "Expand/Collapse Icons (px):", "options_gear": "Deck Options Gear Icon (px):"}
         for key, label in icon_sizes_to_configure.items(): sizing_layout.addRow(label, self.create_icon_size_spinbox(key, DEFAULT_ICON_SIZES[key]))
-        reset_sizes_button = QPushButton(tr("reset_sizes_default")); reset_sizes_button.clicked.connect(self.reset_icon_sizes_to_default); sizing_layout.addRow(reset_sizes_button)
+        reset_sizes_button = QPushButton("Reset Sizes to Default"); reset_sizes_button.clicked.connect(self.reset_icon_sizes_to_default); sizing_layout.addRow(reset_sizes_button)
         
         # Initial State Update
         self._update_deck_icon_state()
@@ -7427,14 +7310,32 @@ class SettingsDialog(QDialog):
         deck_section.add_widget(sizing_section)
 
         deck_color_modes_layout = QHBoxLayout()
-        light_deck_colors_group, light_deck_colors_layout = self._create_inner_group(f"{tr('light_mode')} {tr('palette')}")
+        light_deck_colors_group, light_deck_colors_layout = self._create_inner_group("Light Mode Colors")
         light_deck_colors_layout.setSpacing(5)
         self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
+        # Right-click highlight for light mode
+        ctx_light_row = self._create_color_picker_row(
+            "Right-click Highlight",
+            mw.col.conf.get("onigiri_ctx_highlight_color_light",
+                            mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
+            "ctx_highlight_light",
+            tooltip_text="Color tint applied to the right-clicked deck row in light mode. Uses 25% opacity."
+        )
+        light_deck_colors_layout.addLayout(ctx_light_row)
         deck_color_modes_layout.addWidget(light_deck_colors_group)
 
-        dark_deck_colors_group, dark_deck_colors_layout = self._create_inner_group(f"{tr('dark_mode')} {tr('palette')}")
+        dark_deck_colors_group, dark_deck_colors_layout = self._create_inner_group("Dark Mode Colors")
         dark_deck_colors_layout.setSpacing(5)
         self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
+        # Right-click highlight for dark mode
+        ctx_dark_row = self._create_color_picker_row(
+            "Right-click Highlight",
+            mw.col.conf.get("onigiri_ctx_highlight_color_dark",
+                            mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
+            "ctx_highlight_dark",
+            tooltip_text="Color tint applied to the right-clicked deck row in dark mode. Uses 25% opacity."
+        )
+        dark_deck_colors_layout.addLayout(ctx_dark_row)
         deck_color_modes_layout.addWidget(dark_deck_colors_group)
         deck_section.add_layout(deck_color_modes_layout)
 
@@ -7443,10 +7344,10 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         
         sections = {
-            tr("sidebar_customization_label"): sidebar_section,
-            tr("sidebar_background"): sidebar_group,
-            tr("organize_action_buttons_label"): action_buttons_section,
-            tr("deck_label"): deck_section
+            "Sidebar Customization": sidebar_section,
+            "Sidebar Background": sidebar_group,
+            "Organize Action Buttons": action_buttons_section,
+            "Deck": deck_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
 
@@ -7456,10 +7357,10 @@ class SettingsDialog(QDialog):
         page, layout = self._create_scrollable_page()
         layout.setSpacing(15)
         
-        details_section = SectionGroup(tr("user_details"), self)
+        details_section = SectionGroup("User Details", self)
         form_layout = QFormLayout()
         self.name_input = QLineEdit(self.current_config.get("userName", DEFAULTS["userName"]))
-        form_layout.addRow(tr("user_name"), self.name_input)
+        form_layout.addRow("User Name:", self.name_input)
         
         # Birthday date picker
         accent_color = mw.col.conf.get("modern_menu_accent_color", "#007bff")
@@ -7473,25 +7374,25 @@ class SettingsDialog(QDialog):
             except:
                 pass
 
-        form_layout.addRow(tr("birthday"), self.birthday_input)
+        form_layout.addRow("Birthday:", self.birthday_input)
         
         details_section.add_layout(form_layout)
         layout.addWidget(details_section)
 
-        pic_section = SectionGroup(tr("profile_picture"), self)
+        pic_section = SectionGroup("Profile Picture", self)
         self.galleries["profile_pic"] = {} 
         pic_section.add_widget(self._create_image_gallery_group("profile_pic", "user_files/profile", "modern_menu_profile_picture"))
         layout.addWidget(pic_section)
         
         # --- REBUILT PROFILE BAR BACKGROUND SECTION ---
-        bg_section = SectionGroup(tr("profile_bar_bg"), self)
+        bg_section = SectionGroup("Profile Bar Background", self)
         
         # 1. Create Radio Buttons
         bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
         mode_layout = QHBoxLayout()
-        self.profile_bg_accent_radio = QRadioButton(tr("accent_color_mode"))
-        self.profile_bg_custom_radio = QRadioButton(tr("custom_color_mode"))
-        self.profile_bg_image_radio = QRadioButton(tr("image_mode"))
+        self.profile_bg_accent_radio = QRadioButton("Accent Color")
+        self.profile_bg_custom_radio = QRadioButton("Custom Color")
+        self.profile_bg_image_radio = QRadioButton("Image")
         mode_layout.addWidget(self.profile_bg_accent_radio)
         mode_layout.addWidget(self.profile_bg_custom_radio)
         mode_layout.addWidget(self.profile_bg_image_radio)
@@ -7503,8 +7404,8 @@ class SettingsDialog(QDialog):
         self.profile_bg_color_group = QWidget()
         custom_color_layout = QVBoxLayout(self.profile_bg_color_group)
         custom_color_layout.setContentsMargins(0, 10, 0, 0)
-        self.profile_bg_light_row = self._create_color_picker_row(tr("light_mode_label"), mw.col.conf.get("modern_menu_profile_bg_color_light", "#EEEEEE"), "profile_bg_light")
-        self.profile_bg_dark_row = self._create_color_picker_row(tr("dark_mode_label"), mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C"), "profile_bg_dark")
+        self.profile_bg_light_row = self._create_color_picker_row("Light Mode", mw.col.conf.get("modern_menu_profile_bg_color_light", "#EEEEEE"), "profile_bg_light")
+        self.profile_bg_dark_row = self._create_color_picker_row("Dark Mode", mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C"), "profile_bg_dark")
         custom_color_layout.addLayout(self.profile_bg_light_row)
         custom_color_layout.addLayout(self.profile_bg_dark_row)
         custom_color_layout.addStretch(1)
@@ -7540,41 +7441,69 @@ class SettingsDialog(QDialog):
         layout.addWidget(bg_section)
         # --- END OF REBUILT SECTION ---
 
+        bar_color_section = SectionGroup("Level Bar Color", self)
+        bar_color_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
+        bar_mode_layout = QHBoxLayout()
+        self.profile_level_bar_theme_radio = QRadioButton("Current Restaurant Theme")
+        self.profile_level_bar_custom_radio = QRadioButton("Custom Color")
+        self.profile_level_bar_theme_radio.setChecked(bar_color_mode == "theme")
+        self.profile_level_bar_custom_radio.setChecked(bar_color_mode == "custom")
+        bar_mode_layout.addWidget(self.profile_level_bar_theme_radio)
+        bar_mode_layout.addWidget(self.profile_level_bar_custom_radio)
+        bar_mode_layout.addStretch()
+        bar_color_section.add_layout(bar_mode_layout)
 
-        page_bg_section = SectionGroup(tr("profile_page_bg"), self)
+        self.profile_level_bar_color_group = QWidget()
+        bar_color_picker_layout = QVBoxLayout(self.profile_level_bar_color_group)
+        bar_color_picker_layout.setContentsMargins(0, 10, 0, 0)
+        self.profile_level_bar_custom_row = self._create_color_picker_row("Level Bar Custom Color", mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50"), "profile_level_bar_custom_color")
+        bar_color_picker_layout.addLayout(self.profile_level_bar_custom_row)
+        bar_color_section.add_widget(self.profile_level_bar_color_group)
+
+        self.profile_level_bar_custom_radio.toggled.connect(self.toggle_profile_level_bar_options)
+        self.toggle_profile_level_bar_options()
+        layout.addWidget(bar_color_section)
+
+        page_bg_section = SectionGroup("Profile Page Background", self)
         page_bg_mode = mw.col.conf.get("onigiri_profile_page_bg_mode", "color")
         page_mode_layout = QHBoxLayout()
-        self.profile_page_bg_color_radio = QRadioButton(tr("solid_color")); self.profile_page_bg_gradient_radio = QRadioButton(tr("gradient"))
+        self.profile_page_bg_color_radio = QRadioButton("Solid Color"); self.profile_page_bg_gradient_radio = QRadioButton("Gradient")
         self.profile_page_bg_color_radio.setChecked(page_bg_mode == "color"); self.profile_page_bg_gradient_radio.setChecked(page_bg_mode == "gradient")
         page_mode_layout.addWidget(self.profile_page_bg_color_radio); page_mode_layout.addWidget(self.profile_page_bg_gradient_radio); page_mode_layout.addStretch(); page_bg_section.add_layout(page_mode_layout)
 
         self.profile_page_color_group = QWidget(); page_color_layout = QVBoxLayout(self.profile_page_color_group); page_color_layout.setContentsMargins(0, 10, 0, 0)
-        self.profile_page_light_color_row = self._create_color_picker_row(tr("light_mode_color"), mw.col.conf.get("onigiri_profile_page_bg_light_color1", "#F5F5F5"), "profile_page_light_color1"); page_color_layout.addLayout(self.profile_page_light_color_row)
-        self.profile_page_dark_color_row = self._create_color_picker_row(tr("dark_mode_color"), mw.col.conf.get("onigiri_profile_page_bg_dark_color1", "#2c2c2c"), "profile_page_dark_color1"); page_color_layout.addLayout(self.profile_page_dark_color_row); page_bg_section.add_widget(self.profile_page_color_group)
+        self.profile_page_light_color_row = self._create_color_picker_row("Light Mode Color", mw.col.conf.get("onigiri_profile_page_bg_light_color1", "#F5F5F5"), "profile_page_light_color1"); page_color_layout.addLayout(self.profile_page_light_color_row)
+        self.profile_page_dark_color_row = self._create_color_picker_row("Dark Mode Color", mw.col.conf.get("onigiri_profile_page_bg_dark_color1", "#2c2c2c"), "profile_page_dark_color1"); page_color_layout.addLayout(self.profile_page_dark_color_row); page_bg_section.add_widget(self.profile_page_color_group)
 
         self.profile_page_gradient_group = QWidget(); page_gradient_layout = QVBoxLayout(self.profile_page_gradient_group); page_gradient_layout.setContentsMargins(0, 10, 0, 0)
-        self.profile_page_light_gradient1_row = self._create_color_picker_row(tr("light_mode_from"), mw.col.conf.get("onigiri_profile_page_bg_light_color1", "#FFFFFF"), "profile_page_light_gradient1"); page_gradient_layout.addLayout(self.profile_page_light_gradient1_row)
-        self.profile_page_light_gradient2_row = self._create_color_picker_row(tr("light_mode_to"), mw.col.conf.get("onigiri_profile_page_bg_light_color2", "#E0E0E0"), "profile_page_light_gradient2"); page_gradient_layout.addLayout(self.profile_page_light_gradient2_row)
-        self.profile_page_dark_gradient1_row = self._create_color_picker_row(tr("dark_mode_from"), mw.col.conf.get("onigiri_profile_page_bg_dark_color1", "#424242"), "profile_page_dark_gradient1"); page_gradient_layout.addLayout(self.profile_page_dark_gradient1_row)
-        self.profile_page_dark_gradient2_row = self._create_color_picker_row(tr("dark_mode_to"), mw.col.conf.get("onigiri_profile_page_bg_dark_color2", "#212121"), "profile_page_dark_gradient2"); page_gradient_layout.addLayout(self.profile_page_dark_gradient2_row); page_bg_section.add_widget(self.profile_page_gradient_group)
+        self.profile_page_light_gradient1_row = self._create_color_picker_row("Light Mode From", mw.col.conf.get("onigiri_profile_page_bg_light_color1", "#FFFFFF"), "profile_page_light_gradient1"); page_gradient_layout.addLayout(self.profile_page_light_gradient1_row)
+        self.profile_page_light_gradient2_row = self._create_color_picker_row("Light Mode To", mw.col.conf.get("onigiri_profile_page_bg_light_color2", "#E0E0E0"), "profile_page_light_gradient2"); page_gradient_layout.addLayout(self.profile_page_light_gradient2_row)
+        self.profile_page_dark_gradient1_row = self._create_color_picker_row("Dark Mode From", mw.col.conf.get("onigiri_profile_page_bg_dark_color1", "#424242"), "profile_page_dark_gradient1"); page_gradient_layout.addLayout(self.profile_page_dark_gradient1_row)
+        self.profile_page_dark_gradient2_row = self._create_color_picker_row("Dark Mode To", mw.col.conf.get("onigiri_profile_page_bg_dark_color2", "#212121"), "profile_page_dark_gradient2"); page_gradient_layout.addLayout(self.profile_page_dark_gradient2_row); page_bg_section.add_widget(self.profile_page_gradient_group)
         
         self.profile_page_bg_color_radio.toggled.connect(self.toggle_profile_page_bg_options); self.toggle_profile_page_bg_options(); layout.addWidget(page_bg_section)
 
-        visibility_section = SectionGroup(tr("profile_sections_visibility"), self)
-        self.profile_show_theme_light_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_theme_light_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_light", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_theme_light_check, tr("show_theme_light_section")))
-        self.profile_show_theme_dark_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_theme_dark_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_dark", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_theme_dark_check, tr("show_theme_dark_section")))
-        self.profile_show_backgrounds_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_backgrounds_check.setChecked(mw.col.conf.get("onigiri_profile_show_backgrounds", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_backgrounds_check, tr("show_backgrounds_section")))
-        self.profile_show_stats_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_stats_check.setChecked(mw.col.conf.get("onigiri_profile_show_stats", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_stats_check, tr("show_stats_section")))
+        visibility_section = SectionGroup("Profile Page Sections Visibility", self)
+        self.profile_show_theme_light_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_theme_light_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_light", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_theme_light_check, "Show 'Theme Colors (Light)' Section"))
+        self.profile_show_theme_dark_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_theme_dark_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_dark", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_theme_dark_check, "Show 'Theme Colors (Dark)' Section"))
+        self.profile_show_backgrounds_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_backgrounds_check.setChecked(mw.col.conf.get("onigiri_profile_show_backgrounds", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_backgrounds_check, "Show 'Background Images' Section"))
+        self.profile_show_stats_check = AnimatedToggleButton(accent_color=self.accent_color); self.profile_show_stats_check.setChecked(mw.col.conf.get("onigiri_profile_show_stats", True)); visibility_section.add_widget(self._create_toggle_row(self.profile_show_stats_check, "Show 'Daily Stats' Section"))
         
+        # Restaurant Level visibility
+        self.profile_show_restaurant_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_restaurant_check.setChecked(restaurant_level.manager.get_progress().show_profile_page_progress)
+        visibility_section.add_widget(self._create_toggle_row(self.profile_show_restaurant_check, "Show 'Restaurant Level' Section"))
+
         layout.addWidget(visibility_section)
         
         layout.addStretch()
         sections = {
-            tr("user_details"): details_section,
-            tr("profile_picture"): pic_section,
-            tr("profile_bar_background"): bg_section,
-            tr("profile_page_background"): page_bg_section,
-            tr("profile_page_sections_visibility"): visibility_section
+            "User Details": details_section,
+            "Profile Picture": pic_section,
+            "Profile Bar Background": bg_section,
+            "Level Bar Color": bar_color_section,
+            "Profile Page Background": page_bg_section,
+            "Profile Page Sections Visibility": visibility_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
 
@@ -7584,31 +7513,31 @@ class SettingsDialog(QDialog):
         page, layout = self._create_scrollable_page()
         
         # --- Create the Accent Color group first, but don't add it to the main layout yet ---
-        accent_group, accent_layout = self._create_inner_group(tr("accent_color"))
+        accent_group, accent_layout = self._create_inner_group("Accent Color")
         light_accent = self.current_config.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
         dark_accent = self.current_config.get("colors", {}).get("dark", {}).get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
-        accent_layout.addLayout(self._create_color_picker_row(tr("light_mode_accent"), light_accent, "light_accent"))
-        accent_layout.addLayout(self._create_color_picker_row(tr("dark_mode_accent"), dark_accent, "dark_accent"))
+        accent_layout.addLayout(self._create_color_picker_row("Light Mode Accent", light_accent, "light_accent", tooltip_text="The main color for buttons and selections in light mode."))
+        accent_layout.addLayout(self._create_color_picker_row("Dark Mode Accent", dark_accent, "dark_accent", tooltip_text="The main color for buttons and selections in dark mode."))
         
         # --- Create the General Palette section ---
         general_colors_section = SectionGroup(
-            tr("general_palette"), 
+            "General Palette", 
             self,
-            description=tr("general_palette_description")
+            description="Here you can customize colors that affect more than one space of the add-on"
         )
 
         # --- Add the Accent Color group to the General Palette section ---
         general_colors_section.add_widget(accent_group)
 
         # --- START: New Boxes Color Effect Section ---
-        canvas_effect_group, canvas_effect_layout = self._create_inner_group(tr("boxes_color_effect"))
-        canvas_effect_group.setToolTip(tr("boxes_color_effect_tooltip"))
+        canvas_effect_group, canvas_effect_layout = self._create_inner_group("Boxes Color Effect")
+        canvas_effect_group.setToolTip("Apply a visual effect to the 'Boxes Color' background color.")
 
         # Radio buttons for mode selection
         mode_layout = QHBoxLayout()
-        self.canvas_effect_none_radio = QRadioButton(tr("none"))
-        self.canvas_effect_opacity_radio = QRadioButton(tr("opacity"))
-        self.canvas_effect_glass_radio = QRadioButton(tr("glassmorphism"))
+        self.canvas_effect_none_radio = QRadioButton("None")
+        self.canvas_effect_opacity_radio = QRadioButton("Opacity")
+        self.canvas_effect_glass_radio = QRadioButton("Glassmorphism")
         mode_layout.addWidget(self.canvas_effect_none_radio)
         mode_layout.addWidget(self.canvas_effect_opacity_radio)
         mode_layout.addWidget(self.canvas_effect_glass_radio)
@@ -7617,7 +7546,7 @@ class SettingsDialog(QDialog):
 
         # Intensity control
         intensity_layout = QHBoxLayout()
-        intensity_label = QLabel(tr("effect_intensity"))
+        intensity_label = QLabel("Effect Intensity:")
         self.canvas_effect_intensity_spinbox = QSpinBox()
         self.canvas_effect_intensity_spinbox.setMinimum(0)
         self.canvas_effect_intensity_spinbox.setMaximum(100)
@@ -7648,11 +7577,11 @@ class SettingsDialog(QDialog):
                 
         general_modes_layout = QHBoxLayout()
 
-        light_colors_group, light_colors_layout = self._create_inner_group(tr("light_mode_label"))
+        light_colors_group, light_colors_layout = self._create_inner_group("Light Mode")
         self._build_color_sections(light_colors_layout, "light")
         general_modes_layout.addWidget(light_colors_group)
 
-        dark_colors_group, dark_colors_layout = self._create_inner_group(tr("dark_mode_label"))
+        dark_colors_group, dark_colors_layout = self._create_inner_group("Dark Mode")
         self._build_color_sections(dark_colors_layout, "dark")
         general_modes_layout.addWidget(dark_colors_group)
         
@@ -7662,8 +7591,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(general_colors_section)
 
         reset_button_layout = QHBoxLayout()
-        reset_colors_button = QPushButton(tr("reset_colors_to_default"))
-        reset_colors_button.setToolTip(tr("reset_colors_tooltip"))
+        reset_colors_button = QPushButton("Reset Colors to Default")
+        reset_colors_button.setToolTip("Resets only the theme colors (accent, text, etc.) to default.")
         reset_colors_button.clicked.connect(self.reset_colors_to_default)
 
         reset_button_layout.addStretch()
@@ -7672,179 +7601,34 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return page
     
-    class ClickableLanguageCard(QFrame):
-        def __init__(self, lang_name, lang_code, flag, is_selected, on_click, parent=None):
-            super().__init__(parent)
-            self.lang_name = lang_name
-            self.lang_code = lang_code
-            self.flag = flag
-            self.is_selected = is_selected
-            self.on_click = on_click
-            
-            self.setCursor(Qt.CursorShape.PointingHandCursor)
-            # [FIXED] Increased size to prevent description cropping
-            self.setFixedSize(160, 130)
-            self.init_ui()
-
-        def init_ui(self):
-            layout = QVBoxLayout(self)
-            layout.setContentsMargins(10, 15, 10, 15)
-            layout.setSpacing(8)
-            
-            # Flag/Icon
-            flag_label = QLabel(self.flag)
-            flag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            flag_label.setStyleSheet("font-size: 24px; background: transparent; border: none;")
-            layout.addWidget(flag_label)
-            
-            # Name
-            self.name_label = QLabel(self.lang_name)
-            self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.name_label.setWordWrap(True)
-            self.name_label.setStyleSheet("font-weight: 600; font-size: 13px; background: transparent; border: none;")
-            layout.addWidget(self.name_label)
-            
-            self.update_style()
-
-        def update_style(self):
-            flag_colors = {
-                "en": "#3C3B6E",
-                "pt-BR": "#009739",
-                "es-ES": "#FFD700",
-                "zh-CN": "#EE1C25",
-                "ja-JP": "#BC002D",
-                "fr-FR": "#002395",
-                "ko-KR": "#CD2E3A"
-            }
-            accent = flag_colors.get(self.lang_code, "#CFA13D")
-
-            if theme_manager.night_mode:
-                bg = "#2c2c2c" if not self.is_selected else "#3a3a3a"
-                border = accent if self.is_selected else "#444"
-                text = "#ffffff" if self.is_selected else "#aaaaaa"
-            else:
-                bg = "#ffffff" if not self.is_selected else "#ffffff"
-                border = accent if self.is_selected else "#e0e0e0"
-                text = "#333333" if self.is_selected else "#666666"
-
-            shadow = "0 4px 12px rgba(0,0,0,0.2)" if self.is_selected else "none"
-            
-            self.setStyleSheet(f"""
-                QFrame {{
-                    background-color: {bg};
-                    border: 2px solid {border};
-                    border-radius: 12px;
-                }}
-                QLabel {{
-                    color: {text};
-                    background: transparent;
-                }}
-            """)
-            
-            # Use QGraphicsDropShadowEffect for real shadows
-            if self.is_selected:
-                shadow_effect = QGraphicsDropShadowEffect(self)
-                shadow_effect.setBlurRadius(15)
-                shadow_effect.setXOffset(0)
-                shadow_effect.setYOffset(4)
-                shadow_effect.setColor(QColor(accent).darker(150) if theme_manager.night_mode else QColor(0, 0, 0, 80))
-                self.setGraphicsEffect(shadow_effect)
-            else:
-                self.setGraphicsEffect(None)
-
-        def mousePressEvent(self, event):
-            if event.button() == Qt.MouseButton.LeftButton:
-                self.on_click(self.lang_name)
-
-    def create_languages_page(self):
-        page, layout = self._create_scrollable_page()
-
-        # Language selection cards layout
-        lang_group = SectionGroup(tr("languages"), self, border=False, description=tr("language_description"))
-        
-        # Grid/Flow container
-        cards_container = QWidget()
-        cards_layout = FlowLayout(cards_container, spacing=15)
-        
-        flags = {
-            "English (Default)": "🇺🇸",
-            "Português (Brasil)": "🇧🇷",
-            "Español (España)": "🇪🇸",
-            "简体中文": "🇨🇳",
-            "日本語": "🇯🇵",
-            "Français": "🇫🇷",
-            "한국어": "🇰🇷"
-        }
-        
-        current_lang = self.current_config.get("language", "English (Default)")
-        self.language_cards = []
-        
-        for lang_name, lang_code in LANGUAGES.items():
-            flag = flags.get(lang_name, "🌐")
-            is_selected = (lang_name == current_lang)
-            
-            card = self.ClickableLanguageCard(
-                lang_name, lang_code, flag, is_selected, 
-                self._on_language_card_clicked, self
-            )
-            self.language_cards.append(card)
-            cards_layout.addWidget(card)
-            
-        lang_group.add_widget(cards_container)
-        
-        restart_note = QLabel(tr("language_restart_note"))
-        restart_note.setStyleSheet("font-size: 11px; color: #888; font-style: italic; margin-top: 10px;")
-        restart_note.setWordWrap(True)
-        lang_group.add_widget(restart_note)
-
-        layout.addWidget(lang_group)
-        layout.addStretch()
-
-        return page
-
-    def _on_language_card_clicked(self, lang_name):
-        # Update cards UI
-        for card in self.language_cards:
-            card.is_selected = (card.lang_name == lang_name)
-            card.update_style()
-            
-        # Update config
-        self.current_config["language"] = lang_name
-        
-        # [NEW] Update profile setting for translations
-        lang_code = LANGUAGES.get(lang_name, "en")
-        mw.pm.profile['onigiri_language'] = lang_code
-        
-        self.save_button.setEnabled(True)
-
     def create_gallery_page(self):
         """Create a Gallery page showing all applied colors and user images."""
         page, layout = self._create_scrollable_page()
         
         # === COLORS GALLERY SECTION ===
         colors_section = SectionGroup(
-            tr("gallery"),
+            "Colors Gallery",
             self,
-            description=tr("colors_gallery_desc")
+            description="All colors currently applied in the add-on. Click any color circle to go to its settings page."
         )
         
         # Define color categories with their keys and the settings page they belong to
         color_categories = {
-            tr("category_palette"): (
+            "Palette": (
                 "Palette",
                 ["--accent-color", "--fg", "--fg-subtle",
                  "--border", "--canvas-inset", "--icon-color"]
             ),
-            tr("category_main_menu"): (
+            "Main Menu": (
                 "Main menu",
                 ["--bg", "--heatmap-color", "--heatmap-color-zero",
                  "--star-color", "--empty-star-color"]
             ),
-            tr("category_sidebar"): (
+            "Sidebar": (
                 "Sidebar",
                 ["--highlight-bg", "--deck-hover-bg", "--deck-dragging-bg", "--deck-edit-mode-bg"]
             ),
-            tr("category_overviewer"): (
+            "Overviewer": (
                 "Overviewer",
                 ["--button-primary-bg", "--button-primary-gradient-start",
                  "--button-primary-gradient-end",
@@ -7857,24 +7641,24 @@ class SettingsDialog(QDialog):
         # Answer button colors (stored in config, not colors dict) → navigate to Reviewer
         answer_button_colors = {
             "light": {
-                tr("again_bg"): "onigiri_reviewer_btn_again_bg_light",
-                tr("again_text"): "onigiri_reviewer_btn_again_text_light",
-                tr("hard_bg"): "onigiri_reviewer_btn_hard_bg_light",
-                tr("hard_text"): "onigiri_reviewer_btn_hard_text_light",
-                tr("good_bg"): "onigiri_reviewer_btn_good_bg_light",
-                tr("good_text"): "onigiri_reviewer_btn_good_text_light",
-                tr("easy_bg"): "onigiri_reviewer_btn_easy_bg_light",
-                tr("easy_text"): "onigiri_reviewer_btn_easy_text_light",
+                "Again BG": "onigiri_reviewer_btn_again_bg_light",
+                "Again Text": "onigiri_reviewer_btn_again_text_light",
+                "Hard BG": "onigiri_reviewer_btn_hard_bg_light",
+                "Hard Text": "onigiri_reviewer_btn_hard_text_light",
+                "Good BG": "onigiri_reviewer_btn_good_bg_light",
+                "Good Text": "onigiri_reviewer_btn_good_text_light",
+                "Easy BG": "onigiri_reviewer_btn_easy_bg_light",
+                "Easy Text": "onigiri_reviewer_btn_easy_text_light",
             },
             "dark": {
-                tr("again_bg"): "onigiri_reviewer_btn_again_bg_dark",
-                tr("again_text"): "onigiri_reviewer_btn_again_text_dark",
-                tr("hard_bg"): "onigiri_reviewer_btn_hard_bg_dark",
-                tr("hard_text"): "onigiri_reviewer_btn_hard_text_dark",
-                tr("good_bg"): "onigiri_reviewer_btn_good_bg_dark",
-                tr("good_text"): "onigiri_reviewer_btn_good_text_dark",
-                tr("easy_bg"): "onigiri_reviewer_btn_easy_bg_dark",
-                tr("easy_text"): "onigiri_reviewer_btn_easy_text_dark",
+                "Again BG": "onigiri_reviewer_btn_again_bg_dark",
+                "Again Text": "onigiri_reviewer_btn_again_text_dark",
+                "Hard BG": "onigiri_reviewer_btn_hard_bg_dark",
+                "Hard Text": "onigiri_reviewer_btn_hard_text_dark",
+                "Good BG": "onigiri_reviewer_btn_good_bg_dark",
+                "Good Text": "onigiri_reviewer_btn_good_text_dark",
+                "Easy BG": "onigiri_reviewer_btn_easy_bg_dark",
+                "Easy Text": "onigiri_reviewer_btn_easy_text_dark",
             }
         }
         
@@ -7893,7 +7677,7 @@ class SettingsDialog(QDialog):
         # Swatch hover style
         swatch_hover_color = "rgba(255,255,255,0.15)" if theme_manager.night_mode else "rgba(0,0,0,0.08)"
         
-        for display_mode, mode_name in [("light", tr("light_mode")), ("dark", tr("dark_mode"))]:
+        for display_mode, mode_name in [("light", "Light Mode"), ("dark", "Dark Mode")]:
             mode_colors = self.current_config.get("colors", {}).get(display_mode, {})
             mode_defaults = DEFAULTS["colors"][display_mode]
             
@@ -7925,7 +7709,7 @@ class SettingsDialog(QDialog):
                     # Create clickable swatch container — wider so full names are visible
                     swatch_container = QWidget()
                     swatch_container.setFixedSize(80, 80)
-                    full_tooltip = f"{tr(full_label)}\n{color_value}\n\n{tr('click_to_go_settings')}"
+                    full_tooltip = f"{full_label}\n{color_value}\n\nClick to go to {category_name} settings"
                     swatch_container.setToolTip(full_tooltip)
                     swatch_container.setCursor(Qt.CursorShape.PointingHandCursor)
                     swatch_v_layout = QVBoxLayout(swatch_container)
@@ -7938,7 +7722,7 @@ class SettingsDialog(QDialog):
                     swatch_v_layout.addWidget(swatch, alignment=Qt.AlignmentFlag.AlignCenter)
                     
                     # Full label — word-wrapped, no truncation
-                    name_label = QLabel(tr(full_label))
+                    name_label = QLabel(full_label)
                     name_label.setStyleSheet(f"font-size: 10px; color: {label_color};")
                     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     name_label.setWordWrap(True)
@@ -7955,7 +7739,7 @@ class SettingsDialog(QDialog):
                 mode_layout.addWidget(swatches_widget)
             
             # Add Reviewer Answer Button Colors section (clickable → Reviewer page)
-            reviewer_label = QLabel(tr("category_reviewer"))
+            reviewer_label = QLabel("Reviewer")
             reviewer_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
             mode_layout.addWidget(reviewer_label)
             
@@ -7969,7 +7753,7 @@ class SettingsDialog(QDialog):
                 
                 swatch_container = QWidget()
                 swatch_container.setFixedSize(80, 80)
-                swatch_container.setToolTip(f"{label_name}\n{color_value}\n\n{tr('click_to_go_settings')}")
+                swatch_container.setToolTip(f"{label_name}\n{color_value}\n\nClick to go to Reviewer settings")
                 swatch_container.setCursor(Qt.CursorShape.PointingHandCursor)
                 swatch_v_layout = QVBoxLayout(swatch_container)
                 swatch_v_layout.setContentsMargins(4, 6, 4, 4)
@@ -8001,19 +7785,19 @@ class SettingsDialog(QDialog):
         
         # === IMAGES GALLERY SECTION ===
         images_section = SectionGroup(
-            tr("images_gallery"),
+            "Images Gallery",
             self,
-            description=tr("images_gallery_desc")
+            description="All images uploaded to the add-on, organized by location. Click any image to go to its settings page."
         )
         
         # Define image directories with the settings page to navigate to
         image_directories = [
-            (tr("profile_pictures"), "user_files/profile", "Profile"),
-            (tr("profile_backgrounds"), "user_files/profile_bg", "Profile"),
-            (tr("main_menu_backgrounds"), "user_files/main_bg", "Main menu"),
-            (tr("sidebar_backgrounds"), "user_files/sidebar_bg", "Sidebar"),
-            (tr("reviewer_backgrounds"), "user_files/reviewer_bg", "Reviewer"),
-            (tr("reviewer_bar_backgrounds"), "user_files/reviewer_bar_bg", "Reviewer"),
+            ("Profile Pictures", "user_files/profile", "Profile"),
+            ("Profile Backgrounds", "user_files/profile_bg", "Profile"),
+            ("Main Menu Backgrounds", "user_files/main_bg", "Main menu"),
+            ("Sidebar Backgrounds", "user_files/sidebar_bg", "Sidebar"),
+            ("Reviewer Backgrounds", "user_files/reviewer_bg", "Reviewer"),
+            ("Reviewer Bar Backgrounds", "user_files/reviewer_bar_bg", "Reviewer"),
         ]
         
         extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp")
@@ -8055,7 +7839,7 @@ class SettingsDialog(QDialog):
                     thumb_container = QWidget()
                     thumb_container.setFixedSize(64, 48)
                     thumb_container.setCursor(Qt.CursorShape.PointingHandCursor)
-                    thumb_container.setToolTip(f"{filename}\n\n{tr('click_to_go_settings')}")
+                    thumb_container.setToolTip(f"{filename}\n\nClick to go to {title} settings")
                     thumb_container_layout = QVBoxLayout(thumb_container)
                     thumb_container_layout.setContentsMargins(0, 0, 0, 0)
                     
@@ -8090,7 +7874,7 @@ class SettingsDialog(QDialog):
                     grid_layout.addWidget(thumb_container)
                 
                 if len(image_files) > 20:
-                    more_label = QLabel(tr("more_images").format(count=len(image_files) - 20))
+                    more_label = QLabel(f"+{len(image_files) - 20} more")
                     more_label.setStyleSheet("color: #888; font-size: 11px;")
                     grid_layout.addWidget(more_label)
                 
@@ -8098,7 +7882,7 @@ class SettingsDialog(QDialog):
                 scroll_area.setWidget(content_widget)
                 subsection_layout.addWidget(scroll_area)
             else:
-                no_files = QLabel(tr("no_images_uploaded"))
+                no_files = QLabel("No images uploaded")
                 no_files.setStyleSheet("color: #888; font-style: italic; padding: 10px;")
                 subsection_layout.addWidget(no_files)
             
@@ -8109,8 +7893,8 @@ class SettingsDialog(QDialog):
         
         # Add navigation buttons
         sections_map = {
-            tr("colors_section"): colors_section,
-            tr("images"): images_section
+            "Colors": colors_section,
+            "Images": images_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections_map)
         
@@ -8131,7 +7915,7 @@ class SettingsDialog(QDialog):
         
     def _build_color_sections(self, parent_layout, mode):
         sections = {
-            tr("general"): ["--fg", "--fg-subtle", "--border", "--canvas-inset"],
+            "General": ["--fg", "--fg-subtle", "--border", "--canvas-inset"],
         }
         
         handled_keys = {key for keys in sections.values() for key in keys}
@@ -8150,6 +7934,16 @@ class SettingsDialog(QDialog):
             parent_layout.addWidget(container)
 
     def _populate_pills_for_keys(self, layout, mode, keys):
+        local_color_labels = COLOR_LABELS.copy()
+        local_color_labels["--star-color"] = {
+            "label": "Star Color",
+            "tooltip": "Color for the filled stars in the Retention stat card."
+        }
+        local_color_labels["--empty-star-color"] = {
+            "label": "Empty Star Color",
+            "tooltip": "Color for the empty stars in the Retention stat card."
+        }
+        
         local_defaults = {
             "--star-color": "#FFD700",
             "--empty-star-color": "#e0e0e0" if mode == 'light' else '#4a4a4a'
@@ -8158,10 +7952,10 @@ class SettingsDialog(QDialog):
         colors = self.current_config.get("colors", {}).get(mode, {})
         
         for name in keys:
-            if name not in COLOR_LABELS:
+            if name not in local_color_labels:
                 continue
 
-            label_info = COLOR_LABELS[name]
+            label_info = local_color_labels[name]
             default_value = DEFAULTS["colors"][mode].get(name, local_defaults.get(name))
             
             if default_value is not None:
@@ -8174,9 +7968,8 @@ class SettingsDialog(QDialog):
         widget.setObjectName("colorPill")
         widget.setFixedHeight(36)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        label_text = tr(label_info['label'])
-        tooltip = tr(label_info.get("tooltip", ""))
-        widget.setToolTip(f"{label_text}: {tooltip}")
+        tooltip = label_info.get("tooltip", "")
+        widget.setToolTip(f"{label_info['label']}: {tooltip}")
         widget.setMouseTracking(True)
 
         layout = QHBoxLayout(widget)
@@ -8188,7 +7981,7 @@ class SettingsDialog(QDialog):
         text_stack = QStackedWidget()
         text_stack.setStyleSheet("background: transparent;")
 
-        name_label = QLabel(label_text)
+        name_label = QLabel(label_info['label'])
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setStyleSheet("background: transparent;")
 
@@ -8223,7 +8016,7 @@ class SettingsDialog(QDialog):
         hex_input.returnPressed.connect(hex_input.clearFocus)
         color_swatch.clicked.connect(lambda _, le=hex_input, btn=color_swatch: self.open_color_picker(le, btn))
 
-        min_width = max(name_label.fontMetrics().horizontalAdvance(label_text), hex_input.fontMetrics().horizontalAdvance("#" + "W"*6)) + 12
+        min_width = max(name_label.fontMetrics().horizontalAdvance(label_info['label']), hex_input.fontMetrics().horizontalAdvance("#" + "W"*6)) + 12
         text_stack.setMinimumWidth(min_width)
         
         text_stack.addWidget(name_label)
@@ -8250,9 +8043,9 @@ class SettingsDialog(QDialog):
             type_mode = 'image_color'
             
         type_layout = QHBoxLayout()
-        self.sidebar_bg_type_color_radio = QRadioButton(tr("solid_color_mode"))
-        self.sidebar_bg_type_accent_radio = QRadioButton(tr("accent_color"))
-        self.sidebar_bg_type_image_color_radio = QRadioButton(tr("image_mode"))
+        self.sidebar_bg_type_color_radio = QRadioButton("Solid Color")
+        self.sidebar_bg_type_accent_radio = QRadioButton("Accent Color")
+        self.sidebar_bg_type_image_color_radio = QRadioButton("Image")
         
         self.sidebar_bg_type_color_radio.setChecked(type_mode == "color")
         self.sidebar_bg_type_accent_radio.setChecked(type_mode == "accent")
@@ -8267,9 +8060,9 @@ class SettingsDialog(QDialog):
         self.sidebar_color_group = QWidget()
         sidebar_color_layout = QVBoxLayout(self.sidebar_color_group)
         sidebar_color_layout.setContentsMargins(0, 10, 0, 0)
-        self.sidebar_bg_light_row = self._create_color_picker_row(tr("color_light_mode"), mw.col.conf.get("modern_menu_sidebar_bg_color_light", "#F3F3F3"), "sidebar_bg_light")
+        self.sidebar_bg_light_row = self._create_color_picker_row("Color (Light Mode)", mw.col.conf.get("modern_menu_sidebar_bg_color_light", "#F3F3F3"), "sidebar_bg_light")
         sidebar_color_layout.addLayout(self.sidebar_bg_light_row)
-        self.sidebar_bg_dark_row = self._create_color_picker_row(tr("color_dark_mode"), mw.col.conf.get("modern_menu_sidebar_bg_color_dark", "#3C3C3C"), "sidebar_bg_dark")
+        self.sidebar_bg_dark_row = self._create_color_picker_row("Color (Dark Mode)", mw.col.conf.get("modern_menu_sidebar_bg_color_dark", "#3C3C3C"), "sidebar_bg_dark")
         sidebar_color_layout.addLayout(self.sidebar_bg_dark_row)
         layout.addWidget(self.sidebar_color_group)
 
@@ -8281,7 +8074,7 @@ class SettingsDialog(QDialog):
         effects_layout = QHBoxLayout(self.sidebar_effects_container)
         effects_layout.setContentsMargins(0, 10, 0, 0)
         
-        self.sidebar_bg_blur_label = QLabel(tr("blur_label"))
+        self.sidebar_bg_blur_label = QLabel("Blur:")
         self.sidebar_bg_blur_spinbox = QSpinBox()
         self.sidebar_bg_blur_spinbox.setMinimum(0)
         self.sidebar_bg_blur_spinbox.setMaximum(100)
@@ -8289,8 +8082,9 @@ class SettingsDialog(QDialog):
         self.sidebar_bg_blur_spinbox.setValue(mw.col.conf.get("modern_menu_sidebar_bg_blur", 0))
         effects_layout.addWidget(self.sidebar_bg_blur_label)
         effects_layout.addWidget(self.sidebar_bg_blur_spinbox)
-        
-        self.sidebar_bg_opacity_label = QLabel(tr("image_opacity_label"))
+
+        # ðŸ”½ Opacity and Transparency ðŸ”½
+        self.sidebar_bg_opacity_label = QLabel("Image Opacity:")
         self.sidebar_bg_opacity_spinbox = QSpinBox()
         self.sidebar_bg_opacity_spinbox.setMinimum(0)
         self.sidebar_bg_opacity_spinbox.setMaximum(100)
@@ -8299,14 +8093,15 @@ class SettingsDialog(QDialog):
         effects_layout.addWidget(self.sidebar_bg_opacity_label)
         effects_layout.addWidget(self.sidebar_bg_opacity_spinbox)
 
-        self.sidebar_bg_transparency_label = QLabel(tr("transparency_label"))
+        self.sidebar_bg_transparency_label = QLabel("Transparency:")
         self.sidebar_bg_transparency_spinbox = QSpinBox()
         self.sidebar_bg_transparency_spinbox.setMinimum(0)
         self.sidebar_bg_transparency_spinbox.setMaximum(100)
         self.sidebar_bg_transparency_spinbox.setSuffix(" %")
-        self.sidebar_bg_transparency_spinbox.setValue(mw.col.conf.get("modern_menu_sidebar_bg_transparency", 100))
+        self.sidebar_bg_transparency_spinbox.setValue(mw.col.conf.get("modern_menu_sidebar_bg_transparency", 0))
         effects_layout.addWidget(self.sidebar_bg_transparency_label)
         effects_layout.addWidget(self.sidebar_bg_transparency_spinbox)
+        # ðŸ”¼ Opacity and Transparency ðŸ”¼
 
         effects_layout.addStretch()
         layout.addWidget(self.sidebar_effects_container)
@@ -8325,7 +8120,7 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(0, 10, 0, 0)
         
         # Instructions label
-        instructions = QLabel(tr("slideshow_instructions"))
+        instructions = QLabel("Select images to include in the slideshow (click on images to toggle selection):")
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
         
@@ -8423,9 +8218,9 @@ class SettingsDialog(QDialog):
         
         # Add/Remove buttons
         button_layout = QHBoxLayout()
-        select_all_btn = QPushButton(tr("select_all_btn"))
+        select_all_btn = QPushButton("Select All")
         select_all_btn.clicked.connect(lambda: self._toggle_all_slideshow_images(True))
-        deselect_all_btn = QPushButton(tr("deselect_all_btn"))
+        deselect_all_btn = QPushButton("Deselect All")
         deselect_all_btn.clicked.connect(lambda: self._toggle_all_slideshow_images(False))
         button_layout.addWidget(select_all_btn)
         button_layout.addWidget(deselect_all_btn)
@@ -8632,11 +8427,11 @@ class SettingsDialog(QDialog):
 
 
     def create_reviewer_buttons_section(self):
-        section = SectionGroup(tr("answer_buttons_section_title"), self)
+        section = SectionGroup("Answer Buttons", self)
         layout = section.content_layout
 
         # --- General Button Settings ---
-        general_group = QGroupBox(tr("general_button_settings_group"))
+        general_group = QGroupBox("General Button settings")
         general_layout = QVBoxLayout(general_group)
         general_layout.setSpacing(10)
 
@@ -8644,16 +8439,16 @@ class SettingsDialog(QDialog):
         # Row 1: Enable & Radius
         row1 = QHBoxLayout()
         
-        enable_label = QLabel(tr("enable_custom_buttons_label"))
+        enable_label = QLabel("Enable Custom Buttons:")
         self.reviewer_btn_custom_enable_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", True))
+        self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", False))
         row1.addWidget(enable_label)
         row1.addWidget(self.reviewer_btn_custom_enable_toggle)
         row1.addSpacing(20)
-
-        radius_label = QLabel(tr("border_radius_label"))
+        
+        radius_label = QLabel("Border Radius:")
         self.reviewer_btn_radius_spin = QSpinBox()
-        self.reviewer_btn_radius_spin.setRange(0, 100)
+        self.reviewer_btn_radius_spin.setRange(0, 50)
         self.reviewer_btn_radius_spin.setSuffix(" px")
         self.reviewer_btn_radius_spin.setValue(self.current_config.get("onigiri_reviewer_btn_radius", 12))
         row1.addWidget(radius_label)
@@ -8661,30 +8456,30 @@ class SettingsDialog(QDialog):
         row1.addStretch()
         general_layout.addLayout(row1)
 
-        # Row 2: Padding, Height & Bar Height
+        # Row 2: Padding, Button Height, Bar Height
         row2 = QHBoxLayout()
         
-        padding_label = QLabel(tr("button_padding_label"))
+        padding_label = QLabel("Button Padding:")
         self.reviewer_btn_padding_spin = QSpinBox()
-        self.reviewer_btn_padding_spin.setRange(0, 100)
+        self.reviewer_btn_padding_spin.setRange(0, 30)
         self.reviewer_btn_padding_spin.setSuffix(" px")
         self.reviewer_btn_padding_spin.setValue(self.current_config.get("onigiri_reviewer_btn_padding", 5))
         row2.addWidget(padding_label)
         row2.addWidget(self.reviewer_btn_padding_spin)
         row2.addSpacing(20)
 
-        btn_height_label = QLabel(tr("min_height_label"))
+        btn_height_label = QLabel("Min Height:")
         self.reviewer_btn_height_spin = QSpinBox()
-        self.reviewer_btn_height_spin.setRange(0, 200)
+        self.reviewer_btn_height_spin.setRange(20, 100)
         self.reviewer_btn_height_spin.setSuffix(" px")
         self.reviewer_btn_height_spin.setValue(self.current_config.get("onigiri_reviewer_btn_height", 40))
         row2.addWidget(btn_height_label)
         row2.addWidget(self.reviewer_btn_height_spin)
         row2.addSpacing(20)
 
-        bar_height_label = QLabel(tr("bar_height_label"))
+        bar_height_label = QLabel("Bar Height:")
         self.reviewer_bar_height_spin = QSpinBox()
-        self.reviewer_bar_height_spin.setRange(0, 300)
+        self.reviewer_bar_height_spin.setRange(30, 200)
         self.reviewer_bar_height_spin.setSuffix(" px")
         self.reviewer_bar_height_spin.setValue(self.current_config.get("onigiri_reviewer_bar_height", 60))
         row2.addWidget(bar_height_label)
@@ -8704,15 +8499,15 @@ class SettingsDialog(QDialog):
         # (Label, key, default_bg, default_text)
         # We'll split defaults for light/dark later
         button_defs = [
-            (tr("again_label"), "again", 
+            ("Again", "again", 
              ("#ffb3b3", "#4d0000"), ("#ffcccb", "#4a0000")), # (light_bg, light_text), (dark_bg, dark_text)
-            (tr("hard_label"), "hard", 
+            ("Hard", "hard", 
              ("#ffe0b3", "#4d2600"), ("#ffd699", "#4d1d00")),
-            (tr("good_label"), "good", 
+            ("Good", "good", 
              ("#b3ffb3", "#004d00"), ("#90ee90", "#004000")),
-            (tr("easy_label"), "easy", 
+            ("Easy", "easy", 
              ("#b3d9ff", "#00264d"), ("#add8e6", "#002952")),
-            (tr("show_answer_label"), "other",
+            ("Show Answer", "other",
              ("#ffffff", "#2c2c2c"), ("#3a3a3a", "#e0e0e0")) # Special handling for other
         ]
 
@@ -8808,12 +8603,12 @@ class SettingsDialog(QDialog):
 
                 # Add rows
                 bg_row = self._create_color_picker_row(
-                    tr("background_label"), 
+                    "Background", 
                     self.current_config.get(bg_config_key, bg_default), 
                     bg_input_name
                 )
                 text_row = self._create_color_picker_row(
-                    tr("text_label"), 
+                    "Text", 
                     self.current_config.get(text_config_key, text_default), 
                     text_input_name
                 )
@@ -8822,7 +8617,7 @@ class SettingsDialog(QDialog):
                 
                 # Special case: Hover for "Other" button
                 if key == "other":
-                    hover_label = QLabel(tr("hover_state_label"))
+                    hover_label = QLabel("Hover State")
                     g_layout.addWidget(hover_label)
                     
                     if mode_key == "light":
@@ -8837,10 +8632,10 @@ class SettingsDialog(QDialog):
                         h_bg_name, h_txt_name = "other_btn_hover_bg_dark", "other_btn_hover_text_dark"
                         
                     h_bg_row = self._create_color_picker_row(
-                        tr("hover_bg_label"), self.current_config.get(h_bg_key, h_bg_def), h_bg_name
+                        "Hover Bg", self.current_config.get(h_bg_key, h_bg_def), h_bg_name
                     )
                     h_txt_row = self._create_color_picker_row(
-                        tr("hover_text_label"), self.current_config.get(h_txt_key, h_txt_def), h_txt_name
+                        "Hover Text", self.current_config.get(h_txt_key, h_txt_def), h_txt_name
                     )
                     g_layout.addLayout(h_bg_row)
                     g_layout.addLayout(h_txt_row)
@@ -8848,16 +8643,16 @@ class SettingsDialog(QDialog):
                 settings_layout.addWidget(btn_group)
             
             # Stat Text Color (One per mode)
-            stattxt_group = QGroupBox(tr("stat_text_color_group"))
+            stattxt_group = QGroupBox("Stat Text Color (.stattxt)")
             stattxt_group.setStyleSheet(f"QGroupBox::title {{ color: {'#ddd' if mode_key == 'dark' else '#333'}; }}")
             s_layout = QVBoxLayout(stattxt_group)
             if mode_key == "light":
                  stattxt_row = self._create_color_picker_row(
-                    tr("color_picker_label"), self.current_config.get("onigiri_reviewer_stattxt_color_light", "#666666"), "stattxt_color_light"
+                    "Color", self.current_config.get("onigiri_reviewer_stattxt_color_light", "#666666"), "stattxt_color_light"
                  )
             else:
                  stattxt_row = self._create_color_picker_row(
-                    tr("color_picker_label"), self.current_config.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa"), "stattxt_color_dark"
+                    "Color", self.current_config.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa"), "stattxt_color_dark"
                  )
             s_layout.addLayout(stattxt_row)
             settings_layout.addWidget(stattxt_group)
@@ -8908,7 +8703,7 @@ class SettingsDialog(QDialog):
 
         # Reset Button (specific to this section)
         reset_btn_layout = QHBoxLayout()
-        reset_btn = QPushButton(tr("reset_answer_buttons_btn"))
+        reset_btn = QPushButton("Reset Answer Buttons to Default")
         reset_btn.clicked.connect(self.reset_reviewer_buttons_to_default)
         reset_btn_layout.addWidget(reset_btn)
         reset_btn_layout.addStretch()
@@ -9041,7 +8836,7 @@ class SettingsDialog(QDialog):
         page, layout = self._create_scrollable_page()
 
         # --- Reviewer Background Section ---
-        reviewer_bg_section = SectionGroup(tr("reviewer_bg"), self)
+        reviewer_bg_section = SectionGroup("Reviewer Background", self)
         layout.addWidget(reviewer_bg_section)
         
         reviewer_bg_content = reviewer_bg_section.content_layout
@@ -9050,9 +8845,9 @@ class SettingsDialog(QDialog):
         reviewer_bg_mode_layout = QHBoxLayout()
         reviewer_bg_button_group = QButtonGroup(reviewer_bg_section)
         
-        self.reviewer_bg_main_radio = QRadioButton(tr("use_main_background"))
-        self.reviewer_bg_color_radio = QRadioButton(tr("solid_color_mode"))
-        self.reviewer_bg_image_color_radio = QRadioButton(tr("image_mode"))
+        self.reviewer_bg_main_radio = QRadioButton("Use Main Background")
+        self.reviewer_bg_color_radio = QRadioButton("Solid Color")
+        self.reviewer_bg_image_color_radio = QRadioButton("Image")
         
         reviewer_bg_button_group.addButton(self.reviewer_bg_main_radio)
         reviewer_bg_button_group.addButton(self.reviewer_bg_color_radio)
@@ -9075,14 +8870,14 @@ class SettingsDialog(QDialog):
         main_effects_layout = QHBoxLayout(self.reviewer_bg_main_group)
         main_effects_layout.setContentsMargins(0, 10, 0, 0)
         
-        main_blur_label = QLabel(tr("background_blur_label"))
+        main_blur_label = QLabel("Background Blur:")
         self.reviewer_bg_main_blur_spinbox = QSpinBox()
         self.reviewer_bg_main_blur_spinbox.setMinimum(0)
         self.reviewer_bg_main_blur_spinbox.setMaximum(100)
         self.reviewer_bg_main_blur_spinbox.setSuffix(" %")
         self.reviewer_bg_main_blur_spinbox.setValue(conf.get("onigiri_reviewer_bg_main_blur", 0))
         
-        main_opacity_label = QLabel(tr("background_opacity_label"))
+        main_opacity_label = QLabel("Background Opacity:")
         self.reviewer_bg_main_opacity_spinbox = QSpinBox()
         self.reviewer_bg_main_opacity_spinbox.setMinimum(0)
         self.reviewer_bg_main_opacity_spinbox.setMaximum(100)
@@ -9107,7 +8902,7 @@ class SettingsDialog(QDialog):
         self.reviewer_bg_image_color_radio.toggled.connect(self._toggle_reviewer_bg_options)
         self._toggle_reviewer_bg_options()
 
-        bottom_bar_section = SectionGroup(tr("bottom_bar_bg"), self)
+        bottom_bar_section = SectionGroup("Bottom Bar Background", self)
         layout.addWidget(bottom_bar_section)
 
         # --- Notification Position Section ---
@@ -9123,9 +8918,9 @@ class SettingsDialog(QDialog):
 
         bottom_bar_button_group = QButtonGroup(bottom_bar_section)
 
-        self.reviewer_bar_main_radio = QRadioButton(tr("match_main_background_radio"))
-        self.reviewer_bar_color_radio = QRadioButton(tr("solid_color_mode"))
-        self.reviewer_bar_image_color_radio = QRadioButton(tr("image_mode"))
+        self.reviewer_bar_main_radio = QRadioButton("Match Main Background")
+        self.reviewer_bar_color_radio = QRadioButton("Solid Color")
+        self.reviewer_bar_image_color_radio = QRadioButton("Image")
 
         bottom_bar_button_group.addButton(self.reviewer_bar_main_radio)
         bottom_bar_button_group.addButton(self.reviewer_bar_color_radio)
@@ -9137,7 +8932,7 @@ class SettingsDialog(QDialog):
 
         mode_layout.addWidget(self.reviewer_bar_main_radio)
         
-        self.reviewer_bar_match_reviewer_bg_radio = QRadioButton(tr("match_reviewer_background_radio"))
+        self.reviewer_bar_match_reviewer_bg_radio = QRadioButton("Match Reviewer Background")
         bottom_bar_button_group.addButton(self.reviewer_bar_match_reviewer_bg_radio)
         self.reviewer_bar_match_reviewer_bg_radio.setChecked(self.reviewer_bottom_bar_mode == "match_reviewer_bg")
         mode_layout.addWidget(self.reviewer_bar_match_reviewer_bg_radio)
@@ -9152,13 +8947,13 @@ class SettingsDialog(QDialog):
         match_main_layout.setContentsMargins(0, 10, 0, 0)
 
         match_effects_layout = QHBoxLayout()
-        blur_label = QLabel(tr("background_blur_label"))
+        blur_label = QLabel("Background Blur:")
         self.reviewer_bar_match_main_blur_spinbox = QSpinBox()
         self.reviewer_bar_match_main_blur_spinbox.setMinimum(0); self.reviewer_bar_match_main_blur_spinbox.setMaximum(100)
         self.reviewer_bar_match_main_blur_spinbox.setSuffix(" %")
         self.reviewer_bar_match_main_blur_spinbox.setValue(self.current_config.get("onigiri_reviewer_bottom_bar_match_main_blur", 5))
 
-        opacity_label = QLabel(tr("bar_opacity_label_reviewer"))
+        opacity_label = QLabel("Bar Opacity:")
         self.reviewer_bar_match_main_opacity_spinbox = QSpinBox()
         self.reviewer_bar_match_main_opacity_spinbox.setMinimum(0); self.reviewer_bar_match_main_opacity_spinbox.setMaximum(100)
         self.reviewer_bar_match_main_opacity_spinbox.setSuffix(" %")
@@ -9178,13 +8973,13 @@ class SettingsDialog(QDialog):
         match_reviewer_bg_layout.setContentsMargins(0, 10, 0, 0)
 
         match_reviewer_bg_effects_layout = QHBoxLayout()
-        blur_label_2 = QLabel(tr("background_blur_label"))
+        blur_label_2 = QLabel("Background Blur:")
         self.reviewer_bar_match_reviewer_bg_blur_spinbox = QSpinBox()
         self.reviewer_bar_match_reviewer_bg_blur_spinbox.setMinimum(0); self.reviewer_bar_match_reviewer_bg_blur_spinbox.setMaximum(100)
         self.reviewer_bar_match_reviewer_bg_blur_spinbox.setSuffix(" %")
         self.reviewer_bar_match_reviewer_bg_blur_spinbox.setValue(self.current_config.get("onigiri_reviewer_bottom_bar_match_reviewer_bg_blur", 5))
 
-        opacity_label_2 = QLabel(tr("bar_opacity_label"))
+        opacity_label_2 = QLabel("Bar Opacity:")
         self.reviewer_bar_match_reviewer_bg_opacity_spinbox = QSpinBox()
         self.reviewer_bar_match_reviewer_bg_opacity_spinbox.setMinimum(0); self.reviewer_bar_match_reviewer_bg_opacity_spinbox.setMaximum(100)
         self.reviewer_bar_match_reviewer_bg_opacity_spinbox.setSuffix(" %")
@@ -9216,11 +9011,11 @@ class SettingsDialog(QDialog):
         reset_buttons_layout = QHBoxLayout()
         reset_buttons_layout.addStretch()
 
-        reset_reviewer_bg_button = QPushButton(tr("reset_reviewer_bg_default"))
+        reset_reviewer_bg_button = QPushButton("Reset Reviewer Background to Default")
         reset_reviewer_bg_button.clicked.connect(self.reset_reviewer_bg_to_default)
         reset_buttons_layout.addWidget(reset_reviewer_bg_button)
 
-        reset_bottom_bar_button = QPushButton(tr("reset_bottom_bar_default"))
+        reset_bottom_bar_button = QPushButton("Reset Bottom Bar to Default")
         reset_bottom_bar_button.clicked.connect(self.reset_reviewer_bottom_bar_to_default)
         reset_buttons_layout.addWidget(reset_bottom_bar_button)
 
@@ -9230,10 +9025,10 @@ class SettingsDialog(QDialog):
         layout.addStretch()
 
         sections = {
-            tr("reviewer_background"): reviewer_bg_section,
-            tr("bottom_bar_background"): bottom_bar_section,
-            tr("notification_position"): notification_pos_section,
-            tr("answer_buttons"): reviewer_buttons_section
+            "Reviewer Background": reviewer_bg_section,
+            "Bottom Bar Background": bottom_bar_section,
+            "Notification Position": notification_pos_section,
+            "Answer Buttons": reviewer_buttons_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=2)
 
@@ -9249,7 +9044,7 @@ class SettingsDialog(QDialog):
         color_layout.setContentsMargins(0, 0, 0, 0)
 
         self.reviewer_bar_light_color_row = self._create_color_picker_row(
-            tr("color_light_mode"), mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_light_color", "#EEEEEE"), "reviewer_bar_light"
+            "Color (Light Mode)", mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_light_color", "#EEEEEE"), "reviewer_bar_light"
         )
         self.reviewer_bar_dark_color_row = self._create_color_picker_row(
             "Color (Dark Mode)", mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_dark_color", "#3C3C3C"), "reviewer_bar_dark"
@@ -9267,13 +9062,13 @@ class SettingsDialog(QDialog):
         effects_container = QWidget()
         effects_layout = QHBoxLayout(effects_container)
         effects_layout.setContentsMargins(0, 10, 0, 0)
-        self.reviewer_bar_blur_label = QLabel(tr("blur_label"))
+        self.reviewer_bar_blur_label = QLabel("Blur:")
         self.reviewer_bar_blur_spinbox = QSpinBox()
         self.reviewer_bar_blur_spinbox.setMinimum(0); self.reviewer_bar_blur_spinbox.setMaximum(100)
         self.reviewer_bar_blur_spinbox.setSuffix(" %")
         self.reviewer_bar_blur_spinbox.setValue(mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_blur", 0))
 
-        self.reviewer_bar_opacity_label = QLabel(tr("opacity_label"))
+        self.reviewer_bar_opacity_label = QLabel("Opacity:")
         self.reviewer_bar_opacity_spinbox = QSpinBox()
         self.reviewer_bar_opacity_spinbox.setMinimum(0); self.reviewer_bar_opacity_spinbox.setMaximum(100)
         self.reviewer_bar_opacity_spinbox.setSuffix(" %")
@@ -9293,7 +9088,7 @@ class SettingsDialog(QDialog):
         return widget
 
     def create_notification_position_section(self):
-        section = SectionGroup(tr("reviewer_notification_pos_title"), self)
+        section = SectionGroup("Reviewer Notification Widget Position", self)
         
         container = QWidget()
         main_layout = QHBoxLayout(container)
@@ -9402,7 +9197,27 @@ class SettingsDialog(QDialog):
         
         section.content_layout.addWidget(container)
         
+        # --- Bottom: Silent Toggle ---
+        silent_layout = QHBoxLayout()
+        silent_label = QLabel("Silent all notifications")
+        silent_label.setStyleSheet("font-size: 14px; color: #555;")
+        if theme_manager.night_mode:
+            silent_label.setStyleSheet("font-size: 14px; color: #ccc;")
+            
+        self.silent_toggle = AnimatedToggleButton(self, accent_color=self.accent_color)
+        self.silent_toggle.setChecked(self.current_config.get("onigiri_reviewer_silent_notifications", False))
+        self.silent_toggle.toggled.connect(self._on_silent_notif_toggled)
+        
+        silent_layout.addWidget(silent_label)
+        silent_layout.addWidget(self.silent_toggle)
+        silent_layout.addStretch()
+        
+        section.content_layout.addLayout(silent_layout)
+        
         return section
+
+    def _on_silent_notif_toggled(self, checked):
+        self.current_config["onigiri_reviewer_silent_notifications"] = checked
 
     def _update_notification_position(self, pos_id):
         # Update config
@@ -9460,7 +9275,7 @@ class SettingsDialog(QDialog):
         self.reviewer_bg_single_color_container = QWidget()
         single_color_layout = QVBoxLayout(self.reviewer_bg_single_color_container)
         self.reviewer_bg_single_color_row = self._create_color_picker_row(
-            tr("background_color"), conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF"), "reviewer_bg_single"
+            "Background Color", conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF"), "reviewer_bg_single"
         )
         single_color_layout.addLayout(self.reviewer_bg_single_color_row)
         
@@ -9468,10 +9283,10 @@ class SettingsDialog(QDialog):
         self.reviewer_bg_separate_colors_container = QWidget()
         separate_colors_layout = QVBoxLayout(self.reviewer_bg_separate_colors_container)
         self.reviewer_bg_light_color_row = self._create_color_picker_row(
-            tr("background_light_mode"), conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF"), "reviewer_bg_light"
+            "Background (Light Mode)", conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF"), "reviewer_bg_light"
         )
         self.reviewer_bg_dark_color_row = self._create_color_picker_row(
-            tr("background_dark_mode"), conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C"), "reviewer_bg_dark"
+            "Background (Dark Mode)", conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C"), "reviewer_bg_dark"
         )
         separate_colors_layout.addLayout(self.reviewer_bg_light_color_row)
         separate_colors_layout.addLayout(self.reviewer_bg_dark_color_row)
@@ -9482,8 +9297,8 @@ class SettingsDialog(QDialog):
         
         # Add theme mode toggle for color selection
         self.reviewer_bg_color_theme_mode_group = QButtonGroup()
-        self.reviewer_bg_color_theme_mode_single = QRadioButton(tr("use_same_color_both_themes"))
-        self.reviewer_bg_color_theme_mode_separate = QRadioButton(tr("use_separate_colors"))
+        self.reviewer_bg_color_theme_mode_single = QRadioButton("Use same color for both themes")
+        self.reviewer_bg_color_theme_mode_separate = QRadioButton("Use different colors for light/dark themes")
         self.reviewer_bg_color_theme_mode_group.addButton(self.reviewer_bg_color_theme_mode_single)
         self.reviewer_bg_color_theme_mode_group.addButton(self.reviewer_bg_color_theme_mode_separate)
         
@@ -9517,8 +9332,8 @@ class SettingsDialog(QDialog):
         
         # Add theme mode toggle for image selection
         self.reviewer_bg_image_theme_mode_group = QButtonGroup()
-        self.reviewer_bg_image_theme_mode_single = QRadioButton(tr("use_same_image_both_themes"))
-        self.reviewer_bg_image_theme_mode_separate = QRadioButton(tr("use_separate_images"))
+        self.reviewer_bg_image_theme_mode_single = QRadioButton("Use same image for both themes")
+        self.reviewer_bg_image_theme_mode_separate = QRadioButton("Use different images for light/dark themes")
         self.reviewer_bg_image_theme_mode_group.addButton(self.reviewer_bg_image_theme_mode_single)
         self.reviewer_bg_image_theme_mode_group.addButton(self.reviewer_bg_image_theme_mode_separate)
         
@@ -9543,7 +9358,7 @@ class SettingsDialog(QDialog):
         self.galleries["reviewer_bg_single"] = {}
         single_image_layout.addWidget(self._create_image_gallery_group(
             "reviewer_bg_single", "user_files/reviewer_bg", "onigiri_reviewer_bg_image", 
-            title=tr("background_image"), is_sub_group=True
+            title="Background Image", is_sub_group=True
         ))
         
         # Separate images container
@@ -9553,12 +9368,12 @@ class SettingsDialog(QDialog):
         self.galleries["reviewer_bg_light"] = {}
         sep_layout.addWidget(self._create_image_gallery_group(
             "reviewer_bg_light", "user_files/reviewer_bg", "onigiri_reviewer_bg_image_light", 
-            title=tr("background_light_mode"), is_sub_group=True
+            title="Light Mode Background", is_sub_group=True
         ))
         self.galleries["reviewer_bg_dark"] = {}
         sep_layout.addWidget(self._create_image_gallery_group(
             "reviewer_bg_dark", "user_files/reviewer_bg", "onigiri_reviewer_bg_image_dark", 
-            title=tr("background_dark_mode"), is_sub_group=True
+            title="Dark Mode Background", is_sub_group=True
         ))
         
         # Add both containers to the layout
@@ -9579,14 +9394,14 @@ class SettingsDialog(QDialog):
         effects_layout = QHBoxLayout(self.reviewer_bg_effects_container)
         effects_layout.setContentsMargins(0, 10, 0, 0)
         
-        self.reviewer_bg_blur_label = QLabel(tr("blur_label"))
+        self.reviewer_bg_blur_label = QLabel("Blur:")
         self.reviewer_bg_blur_spinbox = QSpinBox()
         self.reviewer_bg_blur_spinbox.setMinimum(0)
         self.reviewer_bg_blur_spinbox.setMaximum(100)
         self.reviewer_bg_blur_spinbox.setSuffix(" %")
         self.reviewer_bg_blur_spinbox.setValue(conf.get("onigiri_reviewer_bg_blur", 0))
         
-        self.reviewer_bg_opacity_label = QLabel(tr("opacity_label"))
+        self.reviewer_bg_opacity_label = QLabel("Opacity:")
         self.reviewer_bg_opacity_spinbox = QSpinBox()
         self.reviewer_bg_opacity_spinbox.setMinimum(0)
         self.reviewer_bg_opacity_spinbox.setMaximum(100)
@@ -9780,12 +9595,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(scroll_area)
         
         button_row = QHBoxLayout()
-        choose_button = QPushButton(tr("choose_image") if show_path else tr("add_icon")); choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key)); button_row.addWidget(choose_button)
-        delete_button = QPushButton(tr("delete_selected")); delete_button.clicked.connect(lambda: self._delete_from_gallery(key)); button_row.addWidget(delete_button)
+        choose_button = QPushButton("Choose Image..." if show_path else "Add Icon..."); choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key)); button_row.addWidget(choose_button)
+        delete_button = QPushButton("Delete Selected"); delete_button.clicked.connect(lambda: self._delete_from_gallery(key)); button_row.addWidget(delete_button)
         
-        path_input = QLineEdit(); path_input.setPlaceholderText(tr("no_item_selected")); path_input.setReadOnly(True)
+        path_input = QLineEdit(); path_input.setPlaceholderText("No item selected"); path_input.setReadOnly(True)
         if show_path:
-            layout.addWidget(QLabel(tr("selected_file"))); layout.addWidget(path_input)
+            layout.addWidget(QLabel("Selected File:")); layout.addWidget(path_input)
 
         # Determine which config source to use based on the config key pattern
         if config_key and (
@@ -9860,7 +9675,7 @@ class SettingsDialog(QDialog):
             except OSError: image_files = []
 
         if not image_files:
-            no_files_label = QLabel(tr("no_files_found"))
+            no_files_label = QLabel("No files here")
             no_files_label.setFixedSize(100, 100)
             no_files_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
@@ -10095,10 +9910,10 @@ class SettingsDialog(QDialog):
         # Info/Edit Text
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
-        name_label = QLabel(display_name or tr(key) or key.replace("_", " ").title())
+        name_label = QLabel(display_name or key.replace("_", " ").title())
         name_label.setStyleSheet(f"background: transparent; border: none; font-weight: bold; color: {text_color}; font-size: 13px;")
         
-        sub_label = QLabel(tr("click_to_change"))
+        sub_label = QLabel("Click to change")
         sub_label.setStyleSheet(f"background: transparent; border: none; color: {text_color}; opacity: 0.7; font-size: 10px;")
         
         text_layout.addWidget(name_label)
@@ -10109,7 +9924,7 @@ class SettingsDialog(QDialog):
         delete_btn = QPushButton()
         delete_btn.setFixedSize(24, 24)
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        delete_btn.setToolTip(tr("reset_to_default_tooltip"))
+        delete_btn.setToolTip("Reset to Default")
         
         trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark-simple.svg") # Using xmark-simple.svg as delete icon
         
@@ -10804,10 +10619,10 @@ class SettingsDialog(QDialog):
 
         # --- Section 1: Official Themes ---
         official_section = SectionGroup(
-            tr("official_themes"),
+            "Official Themes",
             self,
             border=True,
-            description=tr("official_themes_desc")
+            description="Choose from a selection of built-in color palettes."
         )
         # --- FIX START ---
         # Create the grid layout separately...
@@ -10821,16 +10636,16 @@ class SettingsDialog(QDialog):
 
         # --- Section 2: Your Themes ---
         user_section = SectionGroup(
-            tr("your_themes"),
+            "Your Themes",
             self,
             border=True,
-            description=tr("your_themes_desc")
+            description="Themes you have created or imported."
         )
 
         # Add navigation buttons
         sections = {
-            tr("official_themes"): official_section,
-            tr("your_themes"): user_section
+            "Official Themes": official_section,
+            "Your Themes": user_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
         # --- FIX START ---
@@ -10844,15 +10659,15 @@ class SettingsDialog(QDialog):
 
         # --- Action Buttons (remain the same) ---
         button_layout = QHBoxLayout()
-        import_button = QPushButton(tr("import_theme"))
+        import_button = QPushButton("Import Theme")
         import_button.clicked.connect(self._import_theme)
 
-        export_button = QPushButton(tr("export_theme"))
-        export_button.setToolTip(tr("export_theme_tooltip"))
+        export_button = QPushButton("Export Current Theme")
+        export_button.setToolTip("Saves your current color settings as a new theme file.")
         export_button.clicked.connect(self._export_current_theme)
 
-        reset_button = QPushButton(tr("reset_theme_to_default"))
-        reset_button.setToolTip(tr("reset_theme_tooltip"))
+        reset_button = QPushButton("Reset Theme to Default")
+        reset_button.setToolTip("Resets all theme and palette colors to the add-on's original defaults.")
         reset_button.clicked.connect(self.reset_theme_to_default)
 
         button_layout.addWidget(import_button)
@@ -11006,7 +10821,7 @@ class SettingsDialog(QDialog):
 
         if not themes_dict:
             if deletable:
-                grid_layout.addWidget(QLabel(tr("no_custom_themes")), 0, 0)
+                grid_layout.addWidget(QLabel("No custom themes have been imported yet."), 0, 0)
             return
 
         # Create the icon once, before the loop
@@ -11031,9 +10846,9 @@ class SettingsDialog(QDialog):
         """Opens a file dialog to import a theme from a JSON or .onigiri file."""
         filepath, _ = QFileDialog.getOpenFileName(
             self, 
-            tr("import_theme_title"), 
+            "Import Theme", 
             "", 
-            f"{tr('onigiri_theme_files', 'Onigiri Theme Files')} (*.json *.onigiri);;JSON Files (*.json);;Onigiri Files (*.onigiri)"
+            "Onigiri Theme Files (*.json *.onigiri);;JSON Files (*.json);;Onigiri Files (*.onigiri)"
         )
         if not filepath:
             return
@@ -11048,7 +10863,7 @@ class SettingsDialog(QDialog):
                 
                 # Validate
                 if not isinstance(theme_data, dict) or "light" not in theme_data or "dark" not in theme_data:
-                    QMessageBox.warning(self, tr("import_error_title"), tr("invalid_theme_file"))
+                    QMessageBox.warning(self, "Import Error", "The selected file is not a valid Onigiri theme file.")
                     return
 
                 # Copy
@@ -11561,6 +11376,8 @@ class SettingsDialog(QDialog):
             self.current_config["sidebarActionsMode"] = "collapsed"
         elif hasattr(self, "actions_mode_archived") and self.actions_mode_archived.isChecked():
             self.current_config["sidebarActionsMode"] = "archived"
+        elif hasattr(self, "actions_mode_ellipsis") and self.actions_mode_ellipsis.isChecked():
+            self.current_config["sidebarActionsMode"] = "ellipsis"
         else:
             self.current_config["sidebarActionsMode"] = "list"
         
@@ -11620,6 +11437,8 @@ class SettingsDialog(QDialog):
         mw.col.conf["onigiri_sidebar_opaque_tint_intensity"] = self.sidebar_overlay_intensity_spinbox.value()
         mw.col.conf["onigiri_sidebar_opaque_tint_color_light"] = self.overlay_light_color_color_input.text()
         mw.col.conf["onigiri_sidebar_opaque_tint_color_dark"] = self.overlay_dark_color_color_input.text()
+        mw.col.conf["onigiri_ctx_highlight_color_light"] = self.ctx_highlight_light_color_input.text()
+        mw.col.conf["onigiri_ctx_highlight_color_dark"]  = self.ctx_highlight_dark_color_input.text()
 
         if self.sidebar_bg_type_accent_radio.isChecked():
             mw.col.conf["modern_menu_sidebar_bg_type"] = "accent"
@@ -11791,6 +11610,215 @@ class SettingsDialog(QDialog):
             mw.col.conf["onigiri_profile_page_bg_light_color1"] = self.profile_page_light_color1_color_input.text()
             mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_color1_color_input.text()
 
+        # Profile Level Bar Color
+        if hasattr(self, 'profile_level_bar_custom_radio'):
+            if self.profile_level_bar_custom_radio.isChecked():
+                mw.col.conf["onigiri_profile_level_bar_mode"] = "custom"
+            else:
+                mw.col.conf["onigiri_profile_level_bar_mode"] = "theme"
+            if hasattr(self, 'profile_level_bar_custom_color_color_input'):
+                mw.col.conf["onigiri_profile_level_bar_custom_color"] = self.profile_level_bar_custom_color_color_input.text()
+        # Save Restaurant Level visibility
+        restaurant_level.manager.set_profile_page_visibility(self.profile_show_restaurant_check.isChecked())
+
+    def _save_achievements_settings(self):
+        # Save restaurant_level to top-level config
+        restaurant_conf = self.current_config.setdefault("restaurant_level", {})
+        # Also ensure it's removed from achievements if present (cleanup)
+        if "restaurant_level" in self.achievements_config:
+            # We might want to preserve it there for a moment or just rely on the top level
+            # But let's just make sure we are editing the top level one
+            pass
+
+        restaurant_enabled = self.restaurant_level_toggle.isChecked()
+        restaurant_conf["enabled"] = restaurant_enabled
+        restaurant_conf["notifications_enabled"] = self.restaurant_notifications_toggle.isChecked()
+        restaurant_conf["show_profile_bar_progress"] = self.restaurant_bar_toggle.isChecked()
+        # show_profile_page_progress is now saved in _save_profile_settings
+        restaurant_conf["show_reviewer_header"] = self.restaurant_reviewer_toggle.isChecked()
+        
+        # Save Focus Dango setting
+        focus_dango_conf = self.achievements_config.setdefault("focusDango", {})
+        focus_dango_conf["enabled"] = self.focus_dango_toggle.isChecked()
+
+        from .gamification import focus_dango
+        focus_dango.set_focus_dango_enabled(self.focus_dango_toggle.isChecked())
+        
+
+        
+        # Save restaurant name if input exists
+        if hasattr(self, 'restaurant_name_input'):
+            new_name = self.restaurant_name_input.text().strip()
+            if new_name:
+                restaurant_level.manager.set_restaurant_name(new_name)
+            else:
+                restaurant_level.manager.set_restaurant_name("Restaurant Level")
+
+        restaurant_level.manager.set_enabled(restaurant_enabled)
+        restaurant_level.manager.set_notifications_enabled(restaurant_conf["notifications_enabled"])
+        restaurant_level.manager.set_profile_bar_visibility(restaurant_conf["show_profile_bar_progress"])
+        restaurant_level.manager.set_profile_page_visibility(restaurant_conf["show_profile_page_progress"])
+
+        defaults = config.DEFAULTS["achievements"].get("custom_goals", {})
+        custom_goals = self.achievements_config.setdefault(
+            "custom_goals",
+            copy.deepcopy(defaults),
+        )
+        custom_goals.setdefault("last_modified_at", defaults.get("last_modified_at"))
+
+        previous_goals = copy.deepcopy(custom_goals)
+        daily_prev = previous_goals.get("daily", {})
+        weekly_prev = previous_goals.get("weekly", {})
+
+        daily_enabled = self.daily_goal_toggle.isChecked()
+        daily_target = self.daily_goal_spinbox.value()
+        weekly_enabled = self.weekly_goal_toggle.isChecked()
+        weekly_target = self.weekly_goal_spinbox.value()
+
+        daily_changed = (
+            bool(daily_prev.get("enabled", False)) != daily_enabled
+            or int(daily_prev.get("target", 0)) != daily_target
+        )
+        weekly_changed = (
+            bool(weekly_prev.get("enabled", False)) != weekly_enabled
+            or int(weekly_prev.get("target", 0)) != weekly_target
+        )
+        changes_requested = daily_changed or weekly_changed
+
+        if changes_requested:
+            last_modified_at = previous_goals.get("last_modified_at")
+            unlock_at = last_modified_at + CUSTOM_GOAL_COOLDOWN_SECONDS if last_modified_at else None
+            remaining = (unlock_at - int(time.time())) if unlock_at else 0
+            if remaining > 0:
+                self._restore_custom_goal_inputs(previous_goals)
+                self.achievements_config["custom_goals"] = previous_goals
+                self._show_custom_goal_lock_warning(remaining, unlock_at)
+                self._refresh_custom_goal_cooldown_label()
+                return
+
+        daily_conf = custom_goals.setdefault("daily", copy.deepcopy(defaults.get("daily", {})))
+        daily_conf["enabled"] = daily_enabled
+        daily_conf["target"] = daily_target
+        daily_conf.setdefault("last_notified_day", daily_prev.get("last_notified_day"))
+        daily_conf.setdefault("completion_count", daily_prev.get("completion_count", 0))
+
+        weekly_conf = custom_goals.setdefault("weekly", copy.deepcopy(defaults.get("weekly", {})))
+        weekly_conf["enabled"] = weekly_enabled
+        weekly_conf["target"] = weekly_target
+        weekly_conf.setdefault("last_notified_week", weekly_prev.get("last_notified_week"))
+        weekly_conf.setdefault("completion_count", weekly_prev.get("completion_count", 0))
+
+        if changes_requested:
+            custom_goals["last_modified_at"] = int(time.time())
+        else:
+            custom_goals["last_modified_at"] = previous_goals.get("last_modified_at")
+
+        self._refresh_custom_goal_cooldown_label()
+
+    def _save_mochi_messages_settings(self) -> None:
+        mochi_defaults = config.DEFAULTS.get("mochi_messages", {})
+        mochi_conf = self.current_config.setdefault("mochi_messages", copy.deepcopy(mochi_defaults))
+
+        mochi_conf["enabled"] = self.mochi_messages_toggle.isChecked()
+        mochi_conf["cards_interval"] = max(1, int(self.mochi_interval_spinbox.value()))
+
+        raw_text = self.mochi_messages_editor.toPlainText()
+        messages = [line.strip() for line in raw_text.splitlines() if line.strip()]
+        if not messages:
+            messages = copy.deepcopy(mochi_defaults.get("messages", []))
+        mochi_conf["messages"] = messages
+
+    def _save_focus_dango_settings(self) -> None:
+        if not hasattr(self, 'focus_dango_message_editor'):
+            # Page was never loaded, so don't save
+            return
+
+        focus_dango_defaults = config.DEFAULTS.get("achievements", {}).get("focusDango", {})
+        focus_dango_conf = self.achievements_config.setdefault("focusDango", copy.deepcopy(focus_dango_defaults))
+
+        # --- START MODIFICATION ---
+        raw_text = self.focus_dango_message_editor.toPlainText()
+        messages = [line.strip() for line in raw_text.splitlines() if line.strip()]
+        
+        if not messages:
+            # Fallback to new default "messages" list
+            messages = copy.deepcopy(focus_dango_defaults.get("messages", []))
+            # If that's empty, try old default "message" string
+            if not messages:
+                old_default_message = focus_dango_defaults.get("message")
+                if isinstance(old_default_message, str) and old_default_message:
+                    messages = [old_default_message]
+            # If still empty, use hardcoded default
+            if not messages:
+                messages = ["Don't give up!", "Stay focused!", "Almost there!"]
+
+        focus_dango_conf["messages"] = messages
+        
+        # Clean up old "message" key if it exists
+        if "message" in focus_dango_conf:
+            del focus_dango_conf["message"]
+        # --- END MODIFICATION ---
+
+    def _custom_goal_cooldown_state(self):
+        custom_goals = self.achievements_config.get("custom_goals", {})
+        last_modified = custom_goals.get("last_modified_at")
+        if not last_modified:
+            return 0, None
+        unlock_at = last_modified + CUSTOM_GOAL_COOLDOWN_SECONDS
+        remaining = max(0, unlock_at - int(time.time()))
+        return remaining, unlock_at
+
+    def _format_duration(self, seconds):
+        total_seconds = max(0, int(seconds))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        parts = []
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes:
+            parts.append(f"{minutes}m")
+        if not parts:
+            parts.append("less than a minute")
+        return " ".join(parts)
+
+    def _refresh_custom_goal_cooldown_label(self):
+        label = getattr(self, "custom_goal_cooldown_label", None)
+        if not label:
+            return
+        remaining, unlock_at = self._custom_goal_cooldown_state()
+        if remaining <= 0 or not unlock_at:
+            message = "You can update your Custom Goals right now."
+        else:
+            duration = self._format_duration(remaining)
+            available_time = datetime.fromtimestamp(unlock_at).strftime("%b %d, %Y %I:%M %p")
+            message = f"You can update your Custom Goals again in {duration} (after {available_time})."
+        label.setText(message)
+
+    def _restore_custom_goal_inputs(self, goals_conf):
+        daily_conf = goals_conf.get("daily", {})
+        weekly_conf = goals_conf.get("weekly", {})
+
+        self.daily_goal_toggle.setChecked(bool(daily_conf.get("enabled", False)))
+        self.daily_goal_spinbox.setValue(int(daily_conf.get("target", 0)))
+
+        self.weekly_goal_toggle.setChecked(bool(weekly_conf.get("enabled", False)))
+        self.weekly_goal_spinbox.setValue(int(weekly_conf.get("target", 0)))
+
+    def _show_custom_goal_lock_warning(self, remaining_seconds, unlock_at):
+        duration = self._format_duration(remaining_seconds)
+        if unlock_at:
+            available_time = datetime.fromtimestamp(unlock_at).strftime("%b %d, %Y %I:%M %p")
+            message = (
+                "Custom Goals can be updated once every 24 hours.\n"
+                f"You can make adjustments again in {duration} (after {available_time})."
+            )
+        else:
+            message = (
+                "Custom Goals can be updated once every 24 hours.\n"
+                "Please try again soon."
+            )
+        showInfo(message)
+
     def _save_colors_settings(self):
         # Save the accent colors, which are handled by dedicated widgets.
         self.current_config["colors"]["light"]["--accent-color"] = self.light_accent_color_input.text()
@@ -11940,14 +11968,14 @@ class SettingsDialog(QDialog):
     def _show_deck_icon_info(self):
         """Display explanation of deck icon types."""
         dialog = QMessageBox(self)
-        dialog.setWindowTitle(tr("deck_icon_info_title"))
+        dialog.setWindowTitle("Deck Icon Types")
         dialog.setTextFormat(Qt.TextFormat.RichText)
-        dialog.setText(f"""
-            <h3>{tr("deck_icon_info_header")}</h3>
-            <p>{tr("deck_icon_folder_desc")}</p>
-            <p>{tr("deck_icon_deck_desc")}</p>
-            <p>{tr("deck_icon_subdeck_desc")}</p>
-            <p>{tr("deck_icon_filtered_desc")}</p>
+        dialog.setText("""
+            <h3>Understanding Deck Icon Types</h3>
+            <p><b>Folder:</b> A deck that contains subdecks inside it. Uses the folder icon.</p>
+            <p><b>Deck:</b> A top-level deck that doesn't contain any subdecks. Uses the deck icon.</p>
+            <p><b>Subdeck:</b> A deck that is nested inside a folder. Uses the subdeck icon.</p>
+            <p><b>Filtered Deck:</b> A special deck type with dynamic cards based on search criteria. Uses the filtered deck icon.</p>
         """)
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
         dialog.exec()
@@ -11976,11 +12004,6 @@ class SettingsDialog(QDialog):
             self._save_colors_settings()
         if self.tabs_loaded.get(page_indices.get("Reviewer")):
             self._save_reviewer_settings()
-        if self.tabs_loaded.get(page_indices.get("Languages")):
-            self._save_language_settings()
-
-        # Sync toggle is always present in memory; save unconditionally
-        self.current_config["ankiweb_sync_enabled"] = self.ankiweb_sync_toggle.isChecked()
 
         # <<< THIS IS THE FIX: Manually save the theme's background color if the Main menu tab was never opened. >>>
         if not self.tabs_loaded.get(page_indices.get("Main menu")):
@@ -11994,9 +12017,6 @@ class SettingsDialog(QDialog):
 
         config.write_config(self.current_config)
         
-        # [NEW] Save profile settings (like language)
-        mw.pm.save()
-        
         # Ensure Anki writes in-memory col.conf modifications to the database
         if hasattr(mw.col, "setMod"):
             mw.col.setMod()
@@ -12005,10 +12025,6 @@ class SettingsDialog(QDialog):
             
         self.accept()
         mw.reset()
-
-    def _save_language_settings(self):
-        # Language is updated directly via self._on_language_card_clicked
-        pass
 
 _settings_dialog = None
 
