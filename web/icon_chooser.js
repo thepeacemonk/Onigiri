@@ -127,8 +127,15 @@ function waitForBridge(callback, attempts) {
 function initApp() {
     console.log("Icon Chooser: Initializing...");
 
-    // Request initial data
-    pycmd("get_init_data");
+    // Use pre-injected data if available (avoids bridge round-trip timing issues).
+    // Python injects window.ONIGIRI_ICON_INIT into the page <head>.
+    if (window.ONIGIRI_ICON_INIT) {
+        console.log("Icon Chooser: Using pre-injected init data");
+        updateData(window.ONIGIRI_ICON_INIT);
+    } else {
+        // Fallback: request data via bridge
+        pycmd("get_init_data");
+    }
 
     // Initialize color picker
     initColorPicker();
@@ -590,7 +597,7 @@ function updateGradientBackground() {
 }
 
 function notifyColorChange(hex) {
-    pycmd("update_color:" + hex);
+    if (typeof pycmd === 'function') pycmd("update_color:" + hex);
 }
 
 // ===== COLOR CONVERSION UTILITIES =====
@@ -658,8 +665,14 @@ function hexToHSV(hex) {
 
 // Start when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
-    console.log("Icon Chooser: DOM ready, waiting for bridge...");
-    waitForBridge(initApp, 40);
+    console.log("Icon Chooser: DOM ready");
+    if (window.ONIGIRI_ICON_INIT) {
+        // Pre-injected init data is available — render immediately, no pycmd wait needed.
+        initApp();
+    } else {
+        // Fallback: data wasn't pre-injected, so gate on the bridge becoming available.
+        waitForBridge(initApp, 40);
+    }
 });
 
 // Modern Confirmation Modal
