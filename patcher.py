@@ -40,7 +40,6 @@ from . import onigiri_renderer
 from . import deck_tree_updater
 from .gamification import restaurant_level
 from . import settings, heatmap, fonts, gamification_settings
-from .translations import tr as tr_at
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
 from . import deck_tree_updater
@@ -157,32 +156,38 @@ _original_MainWebView_eventFilter = None
 def get_sync_status():
     """
     Determines the current sync status of the collection.
-    Returns 'sync' if any sync is needed, 'none' if no sync needed.
+    Returns:
+      'upload' — full upload required (never synced, or full-upload needed)
+      'sync'   — normal incremental sync needed (local changes since last sync)
+      'none'   — collection is up to date
     """
     try:
-        # Check if collection is available
         if not mw.col:
             return 'none'
-        
-        # Get last sync timestamp and modification time from database
+
         try:
-            # Get last sync timestamp from database
-            ls = mw.col.db.scalar("select ls from col")
+            ls  = mw.col.db.scalar("select ls from col")
             mod = mw.col.mod if hasattr(mw.col, 'mod') else 0
-            
-            # If ls is None or 0, we've never synced - no indicator needed yet
+
+            # ls == 0: never synced or full-upload required.
+            # Only show 'upload' indicator when AnkiWeb credentials are configured.
             if ls is None or ls == 0:
+                try:
+                    auth = mw.pm.sync_auth()
+                    if auth:
+                        return 'upload'
+                except Exception:
+                    pass
                 return 'none'
-            
-            # Show sync needed if mod > ls (changes since last sync)
+
+            # Normal incremental sync needed
             if mod > ls:
                 return 'sync'
-        except:
+        except Exception:
             pass
-        
-        # No sync needed
+
         return 'none'
-    except:
+    except Exception:
         return 'none'
 
 
@@ -581,7 +586,7 @@ def _get_theme_colors_html(mode, conf):
             """
             
     return f"""
-    <h2 class="section-title">{tr("theme_colors_mode").format(mode=mode)}</h2>
+    <h2 class="section-title">Theme colors ({mode})</h2>
     <div class="color-list">{items_html}</div>
     """
 
@@ -648,19 +653,19 @@ def _get_backgrounds_html(addon_package):
     # --- 3. Construct Final HTML ---
     # The title is changed to "Backgrounds" to be more accurate
     return f"""
-    <h2 class="section-title">{tr("backgrounds")}</h2>
+    <h2 class="section-title">Backgrounds</h2>
     <div class="background-previews">
         <div class="preview-card">
             <div class="preview-image" style="{main_bg_style}">
                 <span>{main_text}</span>
             </div>
-            <div class="preview-info">{tr("main_background_label")}</div>
+            <div class="preview-info">Main Background</div>
         </div>
         <div class="preview-card">
             <div class="preview-image" style="{sidebar_bg_style}">
                  <span>{sidebar_text}</span>
             </div>
-            <div class="preview-info">{tr("sidebar_background_label")}</div>
+            <div class="preview-info">Sidebar Background</div>
         </div>
     </div>
     """
@@ -720,7 +725,7 @@ def _get_stats_html():
 
     retention_stat_html = f"""
     <div class="stat-card retention-card">
-        <h3>{tr("retention")}</h3>
+        <h3>Retention</h3>
         <p>{retention_percentage:.0f}%</p>
         <div class="star-rating">{star_html}</div>
     </div>
@@ -730,11 +735,11 @@ def _get_stats_html():
     # 2. Generate the HTML for the stats grid
     stats_grid_parts = [] 
     if not conf.get("hideStudiedStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card studied-card"><h3>{tr("studied")}</h3><p>{cards_today} {tr("cards")}</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card studied-card"><h3>Studied</h3><p>{cards_today} cards</p></div>""")
     if not conf.get("hideTimeStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card time-card"><h3>{tr("time")}</h3><p>{time_today_minutes:.1f} min</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card time-card"><h3>Time</h3><p>{time_today_minutes:.1f} min</p></div>""")
     if not conf.get("hidePaceStat", False):
-        stats_grid_parts.append(f"""<div class="stat-card pace-card"><h3>{tr("pace")}</h3><p>{seconds_per_card:.1f} s/{tr("card")}</p></div>""")
+        stats_grid_parts.append(f"""<div class="stat-card pace-card"><h3>Pace</h3><p>{seconds_per_card:.1f} s/card</p></div>""")
     # Add the retention card to the grid
     if not conf.get("hideRetentionStat", False):
         stats_grid_parts.append(retention_stat_html)
@@ -800,7 +805,7 @@ def _get_restaurant_level_profile_html() -> str:
     <section class="profile-restaurant-level" data-level="{level}" {style_attr}>
         <header class="prl-header">
             <div class="prl-title-group">
-                <span class="prl-title">{tr("restaurant_level")}</span>
+                <span class="prl-title">Restaurant Level</span>
                 <span class="prl-level">Lv {level}</span>
             </div>
             <span class="prl-total">{html.escape(total_label, quote=False)}</span>
@@ -857,12 +862,12 @@ def _generate_profile_html_body():
     if show_dark: theme_page_content += _get_theme_colors_html("dark", conf)
     if show_bgs: theme_page_content += _get_backgrounds_html(addon_package)
     if not theme_page_content:
-        theme_page_content = f'<p class="empty-section">{tr("feature_disabled")}</p>'
+        theme_page_content = '<p class="empty-section">Theme sections are hidden in settings.</p>'
 
     if conf.get("showHeatmapOnProfile", True):
         stats_page_content = _get_stats_html()
     else:
-        stats_page_content = f'<p class="empty-section">{tr("feature_disabled")}</p>'
+        stats_page_content = '<p class="empty-section">Stats section is hidden in settings.</p>'
 
     restaurant_level_html = _get_restaurant_level_profile_html()
     if restaurant_level_html:
@@ -944,8 +949,8 @@ def _generate_profile_html_body():
             <div class="controls-spacer"></div>
             {profile_pill_html}
             
-            <button id="nav-theme" class="nav-button">{tr("themes")}</button>
-            <button id="nav-stats" class="nav-button">{tr("stats")}</button>
+            <button id="nav-theme" class="nav-button">Themes</button>
+            <button id="nav-stats" class="nav-button">Stats</button>
             
             {export_button_html}
         </div>
@@ -1230,12 +1235,13 @@ def patch_overview():
             .mini-overview .stats-row span:first-child { color: var(--fg-subtle); }
             .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; }
             .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-size: 16px; border-radius: 9999px; box-shadow: none !important; }
-            .mini-overview .overview-bottom-actions { 
-                width: 280px; 
-                margin: 15px auto 0 auto; 
-                display: flex; 
-                justify-content: center; 
-                gap: 10px; 
+            .mini-overview .overview-corner-actions { display: none; }
+            .mini-overview .overview-bottom-actions {
+                width: 280px;
+                margin: 15px auto 0 auto;
+                display: flex;
+                justify-content: center;
+                gap: 10px;
                 text-align: center;
             }
             .mini-overview .overview-bottom-actions .overview-button { 
@@ -1289,9 +1295,9 @@ def patch_overview():
 			later_count = 0
 		
 		count_data = [
-			{"label": mw.col.tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
-			{"label": mw.col.tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
-			{"label": mw.col.tr.studying_to_review(), "count": counts[2], "class": "review-count-bubble"},
+			{"label": tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
+			{"label": tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
+			{"label": tr.studying_to_review(), "count": counts[2], "class": "review-count-bubble"},
 		]
 
 		rows_html = ""
@@ -1304,15 +1310,14 @@ def patch_overview():
 			)
 			
 		if later_count > 0:
-			later_html = f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> {tr_at('due_later')}</span>"
 			rows_html += (
 				'<div class="stats-row due-later-row">'
-				f"{later_html}"
+				f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> Due later</span>"
 				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
 				'</div>'
 			)
 		
-		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or mw.col.tr.studying_study_now()
+		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or tr.studying_study_now()
 
 		bottom_actions_html = ""
 		if show_toolbar_replacements:
@@ -1324,18 +1329,33 @@ def patch_overview():
 				# Filtered deck buttons: Options, Rebuild, Empty
 				bottom_actions_html = (
 					'<div class="overview-bottom-actions">'
-					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button">{tr_at("options")}</a>'
-					f'<a href="#" key=R onclick="pycmd(\'refresh\'); return false;" class="overview-button">{tr_at("rebuild")}</a>'
-					f'<a href="#" key=E onclick="pycmd(\'empty\'); return false;" class="overview-button">{tr_at("empty")}</a>'
+					'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button">Options</a>'
+					'<a href="#" key=R onclick="pycmd(\'refresh\'); return false;" class="overview-button">Rebuild</a>'
+					'<a href="#" key=E onclick="pycmd(\'empty\'); return false;" class="overview-button">Empty</a>'
 					'</div>'
 				)
 			else:
-				# Non-filtered deck buttons: Options, Custom Study, Description
+				# Non-filtered deck buttons: Options, Custom Study, Description — icon buttons in top-left corner
 				bottom_actions_html = (
-					'<div class="overview-bottom-actions">'
-					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button overview-button-normal">{tr_at("options")}</a>'
-					f'<a href="#" key=C onclick="pycmd(\'studymore\'); return false;" class="overview-button overview-button-normal">{tr_at("custom_study")}</a>'
-					f'<a href="#" onclick="pycmd(\'description\'); return false;" class="overview-button overview-button-normal">{tr_at("description")}</a>'
+					'<div class="overview-corner-actions">'
+					'<button class="overview-icon-btn" title="Options" onclick="pycmd(\'opts\'); return false;">'
+					'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">'
+					'<g fill="none" stroke="currentColor" stroke-width="1.8">'
+					'<path stroke-linecap="round" stroke-linejoin="round" d="M3 7h3M3 17h6m9 0h3M15 7h6"/>'
+					'<path d="M6 7c0-.932 0-1.398.152-1.765a2 2 0 0 1 1.083-1.083C7.602 4 8.068 4 9 4s1.398 0 1.765.152a2 2 0 0 1 1.083 1.083C12 5.602 12 6.068 12 7s0 1.398-.152 1.765a2 2 0 0 1-1.083 1.083C10.398 10 9.932 10 9 10s-1.398 0-1.765-.152a2 2 0 0 1-1.083-1.083C6 8.398 6 7.932 6 7Zm6 10c0-.932 0-1.398.152-1.765a2 2 0 0 1 1.083-1.083C13.602 14 14.068 14 15 14s1.398 0 1.765.152a2 2 0 0 1 1.083 1.083C18 15.602 18 16.068 18 17s0 1.398-.152 1.765a2 2 0 0 1-1.083 1.083C16.398 20 15.932 20 15 20s-1.398 0-1.765-.152a2 2 0 0 1-1.083-1.083C12 18.398 12 17.932 12 17Z"/>'
+					'</g></svg></button>'
+					'<button class="overview-icon-btn" title="Custom Study" onclick="pycmd(\'studymore\'); return false;">'
+					'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">'
+					'<path d="M0 0h24v24H0z" fill="none"/>'
+					'<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">'
+					'<path d="M13.243 17.5q-.072.453-.127.744c-.228 1.222-1.96 1.957-2.888 2.612c-.552.39-1.221-.074-1.293-.678a196 196 0 0 1-.673-6.917a1.05 1.05 0 0 0-.402-.755C5.37 10.646 3.598 8.6 2.63 7.45c-.3-.356-.398-.617-.457-1.076c-.203-1.572-.304-2.358.157-2.866S3.606 3 5.237 3h11.531c1.63 0 2.445 0 2.906.507c.224.246.315.558.327.993"/>'
+					'<path d="m20.863 7.44l.694.692a1.497 1.497 0 0 1 0 2.12L17.92 13.95a2 2 0 0 1-1.05.551l-2.255.488a.5.5 0 0 1-.596-.593l.48-2.235c.074-.397.267-.762.553-1.047l3.684-3.674a1.507 1.507 0 0 1 2.127 0"/>'
+					'</g></svg></button>'
+					'<button class="overview-icon-btn" title="Description" onclick="pycmd(\'description\'); return false;">'
+					'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">'
+					'<path d="M0 0h24v24H0z" fill="none"/>'
+					'<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5h12M4 12h16M4 19h8"/>'
+					'</svg></button>'
 					'</div>'
 				)
 
@@ -1348,7 +1368,7 @@ def patch_overview():
 					f'{study_now_text}'
 				'</button>'
 				f'{bottom_actions_html}'
-				f'<button id="onigiri-reveal-btn">{tr_at("click_to_reveal")}</button>'
+				'<button id="onigiri-reveal-btn">Click to reveal</button>'
 			'</div>'
 		)
 
@@ -1356,14 +1376,14 @@ def patch_overview():
 	
 	header_html = ""
 	if show_toolbar_replacements and not flow_mode:
-		header_html = f"""
+		header_html = """
     <div id="onigiri-overview-header" class="overview-header">
         <div class="onigiri-reviewer-header-buttons">
-            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
-            <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
-            <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
-            <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
-            <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
+            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
+            <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
+            <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
+            <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
+            <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
         </div>
     </div>
 """
@@ -1450,13 +1470,13 @@ def patch_overview():
                     allExternalElements.forEach(function(el) {
                         el.style.display = '';
                     });
-                    revealBtn.innerHTML = '{tr_at("click_to_hide")}';
+                    revealBtn.innerHTML = 'Click to hide';
                 } else {
                     // Hide all external elements
                     allExternalElements.forEach(function(el) {
                         el.style.display = 'none';
                     });
-                    revealBtn.innerHTML = '{tr_at("click_to_reveal")}';
+                    revealBtn.innerHTML = 'Click to reveal';
                 }
             });
         }
@@ -1524,14 +1544,14 @@ def patch_congrats_page():
 
         header_html = ""
         if show_toolbar_replacements and not flow_mode:
-            header_html = f"""
+            header_html = """
             <div class="overview-header">
                 <div class="onigiri-reviewer-header-buttons">
-                    <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
-                    <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
-                    <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
-                    <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
-                    <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
+                    <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
+                    <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
+                    <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
+                    <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
+                    <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
                 </div>
             </div>
             """
@@ -1586,7 +1606,7 @@ def patch_congrats_page():
             
         later_html = ""
         if later_count > 0:
-            later_html = f"<div class='cards-due-later' style='margin-top: 25px; font-size: 14px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{tr_at('due_later_today').format(count=later_count)}</span></div>"
+            later_html = f"<div class='cards-due-later' style='margin-top: 15px; font-size: 15px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{later_count} learning card{'s' if later_count > 1 else ''} due later today</span></div>"
 
         # 3. Build Bottom Actions HTML
         bottom_actions_html = ""
@@ -1596,20 +1616,38 @@ def patch_congrats_page():
             
             if is_filtered:
                 # Filtered deck buttons: Options, Rebuild, Empty
-                bottom_actions_html = f"""
+                bottom_actions_html = """
                 <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
-                    <a href="#" key=R onclick="pycmd('refresh'); return false;" class="overview-button">{tr_at("rebuild")}</a>
-                    <a href="#" key=E onclick="pycmd('empty'); return false;" class="overview-button">{tr_at("empty")}</a>
+                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">Options</a>
+                    <a href="#" key=R onclick="pycmd('refresh'); return false;" class="overview-button">Rebuild</a>
+                    <a href="#" key=E onclick="pycmd('empty'); return false;" class="overview-button">Empty</a>
                 </div>
                 """
             else:
-                # Non-filtered deck buttons: Options, Custom Study, Description
-                bottom_actions_html = f"""
-                <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
-                    <a href="#" key=C onclick="pycmd('studymore'); return false;" class="overview-button">{tr_at("custom_study")}</a>
-                    <a href="#" onclick="pycmd('description'); return false;" class="overview-button">{tr_at("description")}</a>
+                # Non-filtered deck buttons: icon buttons matching the overview corner actions
+                bottom_actions_html = """
+                <div class="overview-corner-actions">
+                    <button class="overview-icon-btn" title="Options" onclick="pycmd('opts'); return false;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                        <g fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h3M3 17h6m9 0h3M15 7h6"/>
+                        <path d="M6 7c0-.932 0-1.398.152-1.765a2 2 0 0 1 1.083-1.083C7.602 4 8.068 4 9 4s1.398 0 1.765.152a2 2 0 0 1 1.083 1.083C12 5.602 12 6.068 12 7s0 1.398-.152 1.765a2 2 0 0 1-1.083 1.083C10.398 10 9.932 10 9 10s-1.398 0-1.765-.152a2 2 0 0 1-1.083-1.083C6 8.398 6 7.932 6 7Zm6 10c0-.932 0-1.398.152-1.765a2 2 0 0 1 1.083-1.083C13.602 14 14.068 14 15 14s1.398 0 1.765.152a2 2 0 0 1 1.083 1.083C18 15.602 18 16.068 18 17s0 1.398-.152 1.765a2 2 0 0 1-1.083 1.083C16.398 20 15.932 20 15 20s-1.398 0-1.765-.152a2 2 0 0 1-1.083-1.083C12 18.398 12 17.932 12 17Z"/>
+                        </g></svg>
+                    </button>
+                    <button class="overview-icon-btn" title="Custom Study" onclick="pycmd('studymore'); return false;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none"/>
+                        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+                        <path d="M13.243 17.5q-.072.453-.127.744c-.228 1.222-1.96 1.957-2.888 2.612c-.552.39-1.221-.074-1.293-.678a196 196 0 0 1-.673-6.917a1.05 1.05 0 0 0-.402-.755C5.37 10.646 3.598 8.6 2.63 7.45c-.3-.356-.398-.617-.457-1.076c-.203-1.572-.304-2.358.157-2.866S3.606 3 5.237 3h11.531c1.63 0 2.445 0 2.906.507c.224.246.315.558.327.993"/>
+                        <path d="m20.863 7.44l.694.692a1.497 1.497 0 0 1 0 2.12L17.92 13.95a2 2 0 0 1-1.05.551l-2.255.488a.5.5 0 0 1-.596-.593l.48-2.235c.074-.397.267-.762.553-1.047l3.684-3.674a1.507 1.507 0 0 1 2.127 0"/>
+                        </g></svg>
+                    </button>
+                    <button class="overview-icon-btn" title="Description" onclick="pycmd('description'); return false;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                        <path d="M0 0h24v24H0z" fill="none"/>
+                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5h12M4 12h16M4 19h8"/>
+                        </svg>
+                    </button>
                 </div>
                 """
 
@@ -2779,7 +2817,9 @@ def generate_icon_size_css():
         config_key = f"modern_menu_icon_size_{key}"
         size = mw.col.conf.get(config_key, config["default"])
         selector = config["selector"]
-        css_rules.append(f"{selector} {{ width: {size}px; height: {size}px; }}")
+        css_rules.append(f"{selector} {{ width: {size}px !important; height: {size}px !important; }}")
+        if key == "collapse":
+            css_rules.append(f":root {{ --collapse-icon-size: {size}px; }}")
 
     return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
 
@@ -2873,37 +2913,50 @@ def generate_icon_css(addon_package, conf):
         color = data.get("color")
         
         if icon_file:
-                # Check if it's likely an emoji (short string, no extension)
-                is_emoji = len(icon_file) <= 8 and "." not in icon_file
+                # Emoji icons are stored with "emoji:" prefix (e.g. "emoji:😀")
+                is_emoji = icon_file.startswith("emoji:")
+                emoji_char = icon_file[len("emoji:"):] if is_emoji else ""
+
+                # Align deck name text with the icon: inline-flex + align-items:center
+                # makes ::before (the icon) and the deck name text both flex items,
+                # so align-items:center centres them on the same axis — fixing the
+                # ~2px vertical offset seen when using vertical-align:middle alone.
+                css_rules.append(f"""
+                tr[data-did="{did}"] a.deck {{
+                    display: inline-flex !important;
+                    align-items: center !important;
+                }}
+                """)
 
                 if is_emoji:
-                     # Emoji rendering style
+                    # Emoji rendering style — use only the character after the prefix
                     css_rules.append(f"""
                     tr[data-did="{did}"] a.deck::before {{
-                        content: "{icon_file}" !important;
+                        content: "{emoji_char}" !important;
                         mask-image: none !important;
                         -webkit-mask-image: none !important;
                         background-color: transparent !important;
                         display: inline-block !important;
+                        vertical-align: middle !important;
                         text-align: center;
-                        font-size: 14px; 
-                        width: 20px !important; 
+                        font-size: 14px;
+                        width: 20px !important;
                         height: 20px !important;
                         line-height: 20px !important;
-                        margin-right: 5px !important;
+                        margin-right: 3px !important;
                         overflow: hidden !important;
                     }}
                     """)
                 else:
                     path = os.path.join(addon_dir, "user_files", "custom_deck_icons", icon_file)
-                    
+
                     # Check for PNG images
                     is_png = icon_file.strip().lower().endswith(".png")
-                    
+
                     if is_png:
                         url = get_data_uri(path)
                         if url:
-                             # PNG rendering style (no mask, original colors)
+                            # PNG rendering style (no mask, original colors)
                             css_rules.append(f"""
                             tr[data-did="{did}"] a.deck::before {{
                                 content: '';
@@ -2915,9 +2968,10 @@ def generate_icon_css(addon_package, conf):
                                 background-repeat: no-repeat;
                                 background-position: center;
                                 display: inline-block !important;
+                                vertical-align: middle !important;
                                 width: 20px !important;
                                 height: 20px !important;
-                                margin-right: 5px !important;
+                                margin-right: 3px !important;
                             }}
                             """)
                     else:
@@ -2930,6 +2984,7 @@ def generate_icon_css(addon_package, conf):
                                 -webkit-mask-image: {url} !important;
                                 background-color: {color} !important;
                                 display: inline-block !important;
+                                vertical-align: middle !important;
                                 mask-size: contain;
                                 -webkit-mask-size: contain;
                                 mask-repeat: no-repeat;
@@ -2938,7 +2993,7 @@ def generate_icon_css(addon_package, conf):
                                 -webkit-mask-position: center;
                                 width: 20px !important;
                                 height: 20px !important;
-                                margin-right: 5px !important;
+                                margin-right: 3px !important;
                             }}
                             """)
 
@@ -3039,7 +3094,7 @@ def generate_icon_css(addon_package, conf):
     }}
     
     .deck-table a.deck {{
-        padding: 0 !important;
+        padding: 0px 0px 0px 3px !important;
         margin-left: 0 !important;
         /* Ensure it behaves nicely in flex container */
         display: inline-block !important; 
@@ -3180,6 +3235,53 @@ def _hex_to_rgba(hex_str: str, alpha: float) -> str:
 		return f"rgba(0,0,0,{alpha})"
 
 
+def _hex_to_hsl(hex_str):
+	"""Convert a hex color to (H degrees, S 0-1, L 0-1)."""
+	hex_str = hex_str.lstrip('#')
+	if len(hex_str) != 6:
+		return (0.0, 0.0, 0.5)
+	try:
+		r, g, b = [int(hex_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
+	except ValueError:
+		return (0.0, 0.0, 0.5)
+	max_c, min_c = max(r, g, b), min(r, g, b)
+	l = (max_c + min_c) / 2.0
+	if max_c == min_c:
+		return (0.0, 0.0, l)
+	d = max_c - min_c
+	s = d / (2.0 - max_c - min_c) if l > 0.5 else d / (max_c + min_c)
+	if max_c == r:
+		h = (g - b) / d + (6.0 if g < b else 0.0)
+	elif max_c == g:
+		h = (b - r) / d + 2.0
+	else:
+		h = (r - g) / d + 4.0
+	return (h / 6.0 * 360.0, s, l)
+
+
+def _hsl_to_hex(h, s, l):
+	"""Convert HSL (H degrees, S 0-1, L 0-1) to a hex color string."""
+	h = h / 360.0
+	s = max(0.0, min(1.0, s))
+	l = max(0.0, min(1.0, l))
+	if s == 0.0:
+		v = int(l * 255)
+		return '#{:02x}{:02x}{:02x}'.format(v, v, v)
+	def _hue(p, q, t):
+		if t < 0: t += 1.0
+		if t > 1: t -= 1.0
+		if t < 1/6: return p + (q - p) * 6.0 * t
+		if t < 1/2: return q
+		if t < 2/3: return p + (q - p) * (2.0/3.0 - t) * 6.0
+		return p
+	q = l * (1.0 + s) if l < 0.5 else l + s - l * s
+	p = 2.0 * l - q
+	r = _hue(p, q, h + 1.0/3.0)
+	g = _hue(p, q, h)
+	b = _hue(p, q, h - 1.0/3.0)
+	return '#{:02x}{:02x}{:02x}'.format(int(r * 255), int(g * 255), int(b * 255))
+
+
 def _mix_colors(c1, c2, ratio):
 	"""Mixes two colors (hex or rgba) with a given ratio (0.0 to 1.0).
 	ratio is the weight of c1.
@@ -3247,43 +3349,41 @@ def generate_dynamic_css(conf):
 
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
-		canvas_inset = colors_dict.get("--canvas-inset", "#ffffff")
-		# Get user-defined heatmap colors
 		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8")
 		heatmap_color_zero = colors_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
-		
-		# Past/Due Level 0 - use the user-defined heatmap-color-zero
+
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
 
-		# LEVELS 1-8 Loop
+		# Extract the hue from the user's chosen color and build a scale identical
+		# in approach to the reference heatmap: pale tint at level 1 → full saturated
+		# color at level 8, spanning a wide lightness range for clear contrast.
+		h, s, l = _hex_to_hsl(heatmap_color)
+
 		for i in range(1, 9):
-			# --- Past Colors ---
-			# Use the user selected color as the maximum intensity (Level 8)
-			# Interpolate towards the canvas background (inset) for lower levels.
-			# This works for both Light Mode (White bg -> Blue) and Dark Mode (Dark bg -> Blue).
-			
-			# Use a slightly non-linear ratio to make lower levels visible
-			ratio = (i / 8.0) ** 0.6
-			
-			# Determine the "faint" color limit.
-			# We don't want Level 1 to be invisible (ratio 0), so we scale ratio to be, say, 0.2 to 1.0
-			cleaned_ratio = 0.25 + (ratio * 0.75) 
+			t = i / 8.0  # 0.125 → 1.0, linear
 
-			# Mix: Target Color (weight: cleaned_ratio) <-> Empty Day Color (weight: 1-cleaned_ratio)
-			# We use heatmap_color_zero as the base to ensure a smooth transition from "Empty" to "Activity".
-			# This also avoids issues where canvas_inset might be transparent (glassmorphism).
-			colors_dict[f"--heatmap-level-{i}"] = _mix_colors(heatmap_color, heatmap_color_zero, cleaned_ratio)
-
-			# --- Future Colors (blending from heatmap_color_zero -> black/white) ---
-			# Future days: Level 8 = Strongest Contrast. Level 1 = Faint.
 			if is_night_mode:
-				# Dark mode: heatmap_color_zero (Gray) -> White
-				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% white
+				# Dark mode: medium-vivid (level 1) → very pale/light (level 8).
+				# High activity = LIGHTEST color — most visible on a dark background.
+				# L range 0.44→0.84 gives ~0.057 per step for clear mid-range contrast.
+				level_l = 0.38 + t * 0.46          # 0.44 → 0.84
+				level_s = s * max(0.75, 1.0 - t * 0.22)  # full saturation → 75%
+			else:
+				# Light mode: very pale tint (level 1) → deep/saturated (level 8).
+				# L range 0.83→0.37 gives ~0.07 per step for clear mid-range contrast.
+				level_l = 0.90 - t * 0.53          # 0.83 → 0.37
+				level_s = s * (0.55 + t * 0.45)    # 61% → 100%
+
+			colors_dict[f"--heatmap-level-{i}"] = _hsl_to_hex(h, level_s, level_l)
+
+			# Future/forecast colors: pure gray scale, more due = more contrast.
+			# Light mode matches reference: dark gray (most due) → light gray (fewest).
+			# Dark mode inverts: light gray (most due) → dark gray (fewest).
+			future_ratio = 0.08 + t * 0.62  # 0.16 → 0.70
+			if is_night_mode:
 				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#ffffff", heatmap_color_zero, future_ratio)
 			else:
-				# Light mode: heatmap_color_zero (Gray) -> Black
-				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% black
 				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#000000", heatmap_color_zero, future_ratio)
 
 	_generate_heatmap_colors(light_colors, False)
@@ -3568,20 +3668,26 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         conf = config.get_config()
         setattr(ctx, "onigiri_conf", conf)
 
-    # --- ADD THIS BLOCK ---
     # --- Onigiri Favorites ---
     favorites = mw.col.conf.get("onigiri_favorite_decks", [])
     did_str = str(node.deck_id)
     is_favorite = did_str in favorites
-    fav_class = "is-favorite" if is_favorite else ""
-    
-    fav_star_html = f"""
-    <span class="favorite-star-icon {fav_class}"
-          onclick="event.stopPropagation(); pycmd('onigiri_toggle_favorite:{node.deck_id}')"
-          title="Toggle favorite">
-    </span>
-    """
     # --- End Onigiri Favorites ---
+
+    # --- Onigiri Mark dot ---
+    _deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
+    _mark_color_map = {
+        'red':    '#FF4B4B',
+        'blue':   '#4488FF',
+        'green':  '#44BB66',
+        'yellow': '#FFB800',
+    }
+    _mark_key = _deck_marks.get(did_str)
+    if _mark_key and _mark_key in _mark_color_map:
+        mark_dot_html = f'<span class="deck-mark-dot" style="background-color:{_mark_color_map[_mark_key]};"></span>'
+    else:
+        mark_dot_html = ""
+    # --- End Onigiri Mark dot ---
     # --- END OF BLOCK ---
 
     hide_all_deck_counts = conf.get("hideAllDeckCounts", False)
@@ -3677,7 +3783,10 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         mode = conf.get("deck_indentation_mode", "default")
         
         if mode == "default":
-            return "&nbsp;" * 6 * (node.level - 1)
+            px = 20 * (node.level - 1)
+            if px <= 0:
+                return ""
+            return f"<span style='display:inline-block; width:{px}px; flex-shrink:0;'></span>"
             
         custom_px = conf.get("deck_indentation_custom_px", 20)
         step = 20
@@ -3726,7 +3835,8 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     else:
         deck_type_class = "is-deck"
 
-    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'>")
+    fav_attr = ' data-is-fav="1"' if is_favorite else ''
+    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'{fav_attr}>")
 
     if node.children:
         collapse_link = f"<a class='collapse {state_class}' href=# onclick='return pycmd(\"onigiri_collapse:{node.deck_id}\")'>{prefix}</a>"
@@ -3737,14 +3847,16 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     deck_prefix = f"<span>{indent()}{collapse_link}</span>"
     extraclass = "filtered" if node.filtered else ""
 
+    # Leaf name only (strip parent prefixes like "Parent::Child" → "Child")
+    display_name = html.escape(node.name.split("::")[-1])
+
     # --- START MODIFICATION: Update colspan and add counts_html ---
     buf.append(f"""
     <td class=decktd colspan=7>
-        {fav_star_html}
         <div class="deck-info">
             {deck_prefix}
             <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
-                {node.name}
+                {display_name}{mark_dot_html}
             </a>
         </div>
         {counts_html}
@@ -3817,10 +3929,52 @@ def apply_patches():
     
     # Add hook for toolbar visibility changes
     gui_hooks.state_did_change.append(_update_toolbar_visibility)
-    
+
+    # Patch DeckBrowser._renderPage to gracefully close any open Onigiri webview
+    # modals (icon chooser, context menus) before a full page re-render.  This
+    # prevents them from being abruptly destroyed mid-use when settings are saved.
+    _patch_render_page_for_modal_cleanup()
+
     # Mark the hook as registered and update toolbar state
     mw._onigiri_restaurant_hook_registered = True
     mw.progress.single_shot(0, lambda: _update_toolbar_visibility(mw.state, "startup"))
+
+
+def _patch_render_page_for_modal_cleanup():
+    """Wrap DeckBrowser._renderPage to close open Onigiri modals before re-rendering.
+
+    Uses a direct Python monkey-patch rather than anki.hooks.wrap because
+    _renderPage is already replaced with render_onigiri_deck_browser(self, reuse=False)
+    — that extra parameter causes the decorator-library signature-preservation in
+    anki.hooks.wrap("around") to collide with the injected _old keyword argument.
+    """
+    from aqt.deckbrowser import DeckBrowser as _DB
+
+    if getattr(_DB, '_onigiri_modal_cleanup_patched', False):
+        return  # already patched
+    _DB._onigiri_modal_cleanup_patched = True
+
+    _original_renderPage = _DB._renderPage  # our onigiri_renderer function
+
+    def _cleanup_and_render(self, *args, **kwargs):
+        # Dismiss any open Onigiri webview modals before the page is replaced
+        try:
+            if hasattr(self, 'web') and self.web:
+                self.web.eval(
+                    "(function(){"
+                    "  var bd=document.getElementById('onigiri-icon-backdrop');"
+                    "  if(bd) bd.remove();"
+                    "  var ctx=document.getElementById('onigiri-context-menu');"
+                    "  if(ctx) ctx.remove();"
+                    "  var sub=document.getElementById('onigiri-mark-submenu');"
+                    "  if(sub) sub.remove();"
+                    "})();"
+                )
+        except Exception:
+            pass
+        return _original_renderPage(self, *args, **kwargs)
+
+    _DB._renderPage = _cleanup_and_render
 
 def generate_reviewer_buttons_css(conf):
     """
