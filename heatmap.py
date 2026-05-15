@@ -103,7 +103,22 @@ def get_heatmap_data():
             else:
                 break  # Streak broken
 
-    # --- 5. Calculate Daily Average ---
+    # --- 5. Calculate Longest Streak Ever ---
+    longest_streak = streak  # at minimum, the current streak
+    if review_days_set:
+        sorted_days = sorted(review_days_set)
+        _run = 1
+        for i in range(1, len(sorted_days)):
+            prev = datetime.strptime(sorted_days[i - 1], '%Y-%m-%d').date()
+            curr = datetime.strptime(sorted_days[i],     '%Y-%m-%d').date()
+            if (curr - prev).days == 1:
+                _run += 1
+                if _run > longest_streak:
+                    longest_streak = _run
+            else:
+                _run = 1
+
+    # --- 6. Calculate Daily Average ---
     # Total reviews / Days since first review
     # We use the count of all reviews in history (no date limit)
     total_reviews_all_time = mw.col.db.scalar("SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3)") or 0
@@ -122,13 +137,21 @@ def get_heatmap_data():
                 
             daily_average = total_reviews_all_time / days_elapsed
 
+    # Detect the first year reviews were recorded
+    first_year = datetime.now().year  # fallback to current year
+    first_review_ts_raw = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
+    if first_review_ts_raw:
+        first_year = datetime.fromtimestamp(first_review_ts_raw / 1000).year
+
     return {
-        "calendar": reviews_by_day, 
-        "streak": streak, 
+        "calendar": reviews_by_day,
+        "streak": streak,
+        "longest_streak": longest_streak,
         "due_calendar": due_by_day,
         "today_date_key": today_date_key,
-        "rollover_hour": rollover_hour, # Still useful for JS, though not for date math
-        "daily_average": daily_average
+        "rollover_hour": rollover_hour,
+        "daily_average": daily_average,
+        "firstYear": first_year,
     }
 
 def get_heatmap_and_config():
@@ -153,7 +176,6 @@ def get_heatmap_and_config():
         except (FileNotFoundError, IOError):
             svg_content = '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>'
 
-    from .translations import tr
     heatmap_config = {
         "heatmapSvgContent": svg_content,
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
@@ -161,12 +183,5 @@ def get_heatmap_and_config():
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
-        "i18n": {
-            "activity": tr("heatmap_activity_label"),
-            "year": tr("view_year"),
-            "month": tr("view_month"),
-            "week": tr("view_week"),
-            "day_streak": tr("heatmap_day_streak"),
-        }
     }
     return heatmap_data, heatmap_config
