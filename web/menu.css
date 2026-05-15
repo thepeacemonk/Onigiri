@@ -21,20 +21,23 @@ body {
     background-color: transparent !important;
     padding: 25px;
     padding-bottom: 0px;
+    padding-left: 15px;
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     min-width: 325px;
     /* max-width: 800px; REMOVED to allow full resizing */
+    /* FIX: Cap sidebar at viewport height (margin is 15px each side = 30px total)
+       so the flex chain properly bounds #deck-list-container and the scrollbar
+       never extends below the visible area. */
+    max-height: calc(100vh - 30px);
     z-index: 2;
-    transition: none !important;
     overflow: hidden;
     box-sizing: border-box;
     margin: 15px;
     border-radius: 15px;
-    /* NEW: positioning + smoother collapse transition */
     position: relative;
-    transition: width 0.3s ease, padding 0.3s ease !important;
+    transition: width 0.15s cubic-bezier(0.4, 0, 0.2, 1), padding 0.15s cubic-bezier(0.4, 0, 0.2, 1), margin 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-width 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
 
     /* FIX: Prevent sidebar from shrinking when dragging resizing */
     flex-shrink: 0;
@@ -245,6 +248,18 @@ body {
 
 .menu-item .icon {
     padding-right: 8px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: block;
+    background-color: var(--icon-color, #888888);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    transition: background-color 0.2s;
 }
 
 /* --- Collapsible "More" Menu --- */
@@ -296,37 +311,15 @@ details.menu-group[open]>summary.menu-item::after {
 
 /* --- Deck List Specific Styles --- */
 #deck-list-container {
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     flex-grow: 1;
     min-height: 0;
-    contain: layout style paint;
-    scroll-behavior: auto;
+    scroll-behavior: smooth;
     background-color: transparent !important;
-    /* Made transparent per request */
 }
 
-/* --- Scrollbar Styling for Deck List --- */
-#deck-list-container::-webkit-scrollbar {
-    width: 8px;
-    background: transparent;
-    /* Transparent track background */
-}
-
-#deck-list-container::-webkit-scrollbar-track {
-    background: transparent;
-    /* Transparent track */
-}
-
-#deck-list-container::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    /* Semi-transparent thumb for visibility */
-    border-radius: 4px;
-}
-
-#deck-list-container::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.4);
-    /* Darker on hover */
-}
+/* Scrollbar rules moved to inline <style> in templates.py for higher specificity */
 
 /* Table baseline */
 #deck-list-container table.deck-table {
@@ -350,8 +343,8 @@ details.menu-group[open]>summary.menu-item::after {
 tr.deck {
     display: flex;
     align-items: center;
-    padding: 2px 10px;
-    margin-bottom: 5px;
+    padding: 3px 0px 3px 2px;
+    margin-bottom: 1px;
     border: 1px solid transparent;
     border-radius: 8px;
     transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -375,12 +368,15 @@ tr.deck {
 }
 
 tr.deck.current {
-    background-color: var(--canvas-inset);
+    background: color-mix(in srgb, var(--highlight-bg) 80%, #000 20%) !important;
+    box-shadow: none !important;
 }
 
 .night-mode tr.deck.current {
-    background-color: var(--highlight-bg);
+    background: color-mix(in srgb, var(--highlight-bg) 97%, #fff 3%) !important;
+    box-shadow: none !important;
 }
+
 
 tr.deck:hover,
 tr.deck.is-hovered {
@@ -395,8 +391,6 @@ tr.deck td.decktd {
     align-items: center;
     row-gap: 4px;
     min-width: 0;
-    width: 0;
-    max-width: 100%;
     overflow: hidden;
 }
 
@@ -416,13 +410,11 @@ a.deck {
     color: var(--fg) !important;
     text-decoration: none !important;
     padding-right: 12px;
-    margin-left: 8px;
+    margin-left: 2px;
     padding: 6px;
     flex: 1;
     background-color: inherit !important;
     min-width: 0;
-    width: 0;
-    max-width: 100%;
 }
 
 a.deck::before {
@@ -438,22 +430,51 @@ a.deck.filtered::before {
     background-color: var(--icon-color-filtered) !important;
 }
 
-/* Collapse icons */
-span.collapse,
-a.collapse {
-    display: inline-block;
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
-    margin-right: 8px;
-    opacity: 0.7;
-    text-align: center;
-    line-height: 16px;
-    font-family: monospace;
-    /* Ensure + and - are similar width/style */
-    font-weight: bold;
-    vertical-align: middle;
+/* For non-collapsible spans (decks without children), keep them hidden */
+span.collapse {
+    display: none;
 }
+
+/* Collapse icons - only for actual collapse links (folders with children) */
+a.collapse {
+    display: inline-block !important;
+    flex-shrink: 0 !important;
+    margin-right: 4px !important;
+    vertical-align: middle !important;
+    width: var(--collapse-icon-size, 12px) !important;
+    height: var(--collapse-icon-size, 12px) !important;
+    transition: transform 0.2s ease !important;
+    font-size: 0 !important;
+    color: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    text-decoration: none !important;
+    text-indent: -9999px !important;
+    overflow: visible !important;
+    line-height: 0 !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke='%23707070' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='10 26 22 16 10 6'%3E%3C/polyline%3E%3C/svg%3E") !important;
+    background-size: contain !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-color: transparent !important;
+    position: relative !important;
+}
+
+/* Completely hide any existing content */
+a.collapse * {
+    display: none !important;
+}
+
+/* Default state: pointing right (collapsed) */
+a.collapse {
+    transform: rotate(0deg);
+}
+
+/* Expanded state: pointing down */
+a.collapse.state-open {
+    transform: rotate(90deg);
+}
+
 
 /* --- INLINE OPTS LAYOUT: NEW --- */
 
@@ -463,7 +484,7 @@ tr.deck.is-folder td.decktd {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 8px;
+    gap: 3px;
     min-width: 0;
 }
 
@@ -474,14 +495,14 @@ tr.deck.is-folder .deck-info {
     align-items: center;
     flex: 1;
     min-width: 0;
-    width: 0;
-    max-width: 100%;
     overflow: hidden;
 }
 
-/* Counts at far right */
+/* Counts at far right — fixed size for ALL deck types so the name gets maximum width */
 tr.deck.is-deck .deck-counts,
-tr.deck.is-folder .deck-counts {
+tr.deck.is-folder .deck-counts,
+tr.deck.is-subdeck .deck-counts,
+tr.deck.is-filtered .deck-counts {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -489,6 +510,25 @@ tr.deck.is-folder .deck-counts {
     margin-left: auto;
     /* pushes right */
     flex-shrink: 0;
+}
+
+/* deck-info flex rules for subdeck and filtered rows (mirrors is-deck / is-folder) */
+tr.deck.is-subdeck td.decktd,
+tr.deck.is-filtered td.decktd {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+    min-width: 0;
+}
+
+tr.deck.is-subdeck .deck-info,
+tr.deck.is-filtered .deck-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 /* Show .opts only when in edit mode */
@@ -554,7 +594,7 @@ tr.deck.drag-over-nest {
 /* --- Main Content Area & Stats --- */
 .main-content {
     flex-grow: 1;
-    padding: 40px;
+    padding: 40px 65px !important;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -879,6 +919,34 @@ td.count {
     justify-content: center;
 }
 
+/* Ellipsis Button */
+.sidebar-toolbar .ellipsis-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 24px;
+    height: 24px;
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.sidebar-toolbar .ellipsis-btn:hover {
+    background-color: var(--canvas-inset);
+    border-color: var(--icon-color);
+}
+
+.sidebar-toolbar .ellipsis-btn svg {
+    stroke: var(--icon-color);
+    transition: stroke 0.3s ease;
+}
+
 /* Mask-based action icon — color controlled by background-color */
 .sidebar-toolbar .action-btn .action-icon,
 .more-dropdown-menu .menu-item .action-icon {
@@ -947,16 +1015,18 @@ td.count {
 
 /* --- Collapsed State Logic --- */
 .sidebar-left.sidebar-collapsed {
-    width: 100px !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-color: transparent !important;
+    border-width: 0 !important;
+    overflow: hidden;
 }
 
-/* --- Collapsed State Logic --- */
-.sidebar-left.sidebar-collapsed {
-    width: 100px !important;
-    min-width: 100px;
-    max-width: 100px;
-    padding: 15px;
-    overflow: hidden;
+.sidebar-left.sidebar-collapsed ~ .resize-handle {
+    display: none;
 }
 
 /* Individual Positioning (Collapsed Sidebar) */
@@ -978,7 +1048,9 @@ td.count {
 }
 
 .sidebar-left.sidebar-collapsed .sidebar-expanded-content {
-    display: none;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 .sidebar-collapsed-content {
@@ -1132,11 +1204,6 @@ tr.deck .learn-count-bubble.zero {
     }
 }
 
-/* --- Performance Optimizations --- */
-#deck-list-container {
-    contain: layout style paint;
-    overflow: hidden;
-}
 
 /* --- Transfer Button Styles --- */
 .deck-transfer-btn {
@@ -1245,11 +1312,22 @@ body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
     /* Ensure it has the accent color */
 }
 
-/* Sync needed - accent color circle */
+/* Sync needed - blue/accent dot (normal incremental sync) */
 .action-sync.sync-needed .sync-status-indicator {
     display: block;
     background-color: var(--accent-color);
-    /* Accent color */
+}
+
+/* Upload needed - red dot (full upload required) */
+.action-sync.sync-upload-needed .sync-status-indicator {
+    display: block;
+    background-color: #e5534b;
+}
+
+/* In the ellipsis dropdown the item is a flex row; push the dot to the far right */
+.onigiri-ellipsis-item.action-sync .sync-status-indicator {
+    margin-left: auto;
+    margin-top: 0;
 }
 
 /* Located at: menu.css */
@@ -1458,4 +1536,43 @@ body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
 
 .sidebar-toolbar .action-more.more-expanded .action-icon {
     background-color: var(--icon-color);
+}
+
+/* --- Sidebar Reveal Button (shown when sidebar is fully collapsed) --- */
+#onigiri-sidebar-reveal-btn {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    display: none;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    opacity: 0.5;
+    z-index: 1000;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s ease;
+}
+
+#onigiri-sidebar-reveal-btn:hover,
+#onigiri-sidebar-reveal-btn:focus,
+#onigiri-sidebar-reveal-btn:active {
+    opacity: 1;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+#onigiri-sidebar-reveal-btn svg {
+    display: block;
+    pointer-events: none;
+    width: 20px;
+    height: 20px;
 }

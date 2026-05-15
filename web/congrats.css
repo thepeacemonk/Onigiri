@@ -1,8 +1,12 @@
+html {
+    height: 100%;
+}
+
 body {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    min-height: 100%;
     margin: 0;
     overflow: hidden;
     background-color: var(--bg);
@@ -124,12 +128,66 @@ body {
     line-height: 1.4;
 }
 
-/* --- Bottom Action Buttons --- */
+/* --- Bottom Action Buttons (icon style, matching overview top-left) --- */
+.overview-corner-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.overview-icon-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer;
+    padding: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    transform: none !important;
+    text-decoration: none !important;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.overview-icon-btn:hover,
+.overview-icon-btn:focus,
+.overview-icon-btn:active {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    transform: none !important;
+    text-decoration: none !important;
+    padding: 0 !important;
+}
+
+.overview-icon-btn svg {
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+    width: 20px;
+    height: 20px;
+}
+
+.overview-icon-btn:hover svg {
+    opacity: 1;
+}
+
+/* Keep legacy text button class for filtered decks */
 .congrats-bottom-actions {
     display: flex;
     justify-content: center;
     gap: 10px;
-    margin-top: 20px; /* Space between card and buttons */
+    margin-top: 20px;
 }
 
 /* Steal the button style from overview.css */
