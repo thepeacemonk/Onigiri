@@ -12,7 +12,6 @@ from aqt.utils import showInfo, tooltip
 import os
 import tempfile
 from .. import config
-from ..translations import tr
 
 # SVG rendering imports
 try:
@@ -261,7 +260,7 @@ class StoreItemCard(QWidget):
         self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         
         if self.is_equipped:
-            self.action_btn.setText(tr("close_restaurant"))
+            self.action_btn.setText("Close restaurant")
             self.action_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #8B6F47;
@@ -278,7 +277,7 @@ class StoreItemCard(QWidget):
             """)
             self.action_btn.clicked.connect(lambda: self.store_window.equip_item('default'))
         elif self.is_owned:
-            self.action_btn.setText(tr("open_restaurant"))
+            self.action_btn.setText("Open restaurant")
             self.action_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #A0714F;
@@ -296,7 +295,7 @@ class StoreItemCard(QWidget):
             self.action_btn.clicked.connect(lambda: self.store_window.equip_item(self.item_id))
         else:
             if is_special_price:
-                self.action_btn.setText(tr("locked"))
+                self.action_btn.setText("Locked")
                 self.action_btn.setEnabled(False)
                 self.action_btn.setStyleSheet("""
                     QPushButton {
@@ -310,7 +309,7 @@ class StoreItemCard(QWidget):
                     }
                 """)
             else:
-                self.action_btn.setText(tr("buy"))
+                self.action_btn.setText("Buy")
                 can_afford = self.user_coins >= price_value
                 
                 if can_afford:
@@ -368,7 +367,7 @@ class StoreItemCard(QWidget):
         layout.setSpacing(15)
         
         # Back button to flip back
-        back_btn = QPushButton(f"← {tr('back')}")
+        back_btn = QPushButton("← Back")
         back_btn.setFixedHeight(30)
         back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         back_btn.setStyleSheet("""
@@ -402,7 +401,7 @@ class StoreItemCard(QWidget):
         layout.addWidget(title)
         
         # Description
-        description = self.item_data.get('description', tr("no_description_available"))
+        description = self.item_data.get('description', 'No description available.')
         desc_label = QLabel(description)
         desc_label.setWordWrap(True)
         desc_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
@@ -417,7 +416,7 @@ class StoreItemCard(QWidget):
         
         # Special note for Santa's Coffee
         if self.item_id == "santas_coffee":
-            special_note = QLabel(tr("santas_coffee_special"))
+            special_note = QLabel("❄️ Special Feature: It snows on this theme!")
             special_note.setWordWrap(True)
             special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             special_note.setStyleSheet("""
@@ -435,7 +434,7 @@ class StoreItemCard(QWidget):
         
         # Special note for Focus Dango
         if self.item_id == "focus_dango":
-            special_note = QLabel(tr("focus_dango_special"))
+            special_note = QLabel("⚙️ Turn on \"Focus Dango\" on Settings")
             special_note.setWordWrap(True)
             special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             special_note.setStyleSheet("""
@@ -453,7 +452,7 @@ class StoreItemCard(QWidget):
         
         # Special note for Motivated Mochi
         if self.item_id == "motivated_mochi":
-            special_note = QLabel(tr("motivated_mochi_special"))
+            special_note = QLabel("⚙️ Turn on \"Mochi Messages\" on Settings")
             special_note.setWordWrap(True)
             special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             special_note.setStyleSheet("""
@@ -471,7 +470,7 @@ class StoreItemCard(QWidget):
         
         # Special note for Lunar New Year Feast
         if self.item_id == "lunar_new_year":
-            special_note = QLabel(tr("lunar_new_year_special"))
+            special_note = QLabel("🎉 Happy New Year! Thank you for being part of our community!")
             special_note.setWordWrap(True)
             special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             special_note.setStyleSheet("""
@@ -490,7 +489,7 @@ class StoreItemCard(QWidget):
 
         # Special note for Astronigiri
         if self.item_id == "astronigiri":
-            special_note = QLabel(tr("astronigiri_special"))
+            special_note = QLabel("🚀 This is an homage to Artemis II")
             special_note.setWordWrap(True)
             special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             special_note.setStyleSheet("""
@@ -559,7 +558,7 @@ class StoreItemCard(QWidget):
         
         # Update the action button
         if self.is_equipped:
-            self.action_btn.setText(tr("close_restaurant"))
+            self.action_btn.setText("Close restaurant")
             self.action_btn.setEnabled(True)
             self.action_btn.setStyleSheet("""
                 QPushButton {
@@ -582,7 +581,7 @@ class StoreItemCard(QWidget):
                 pass
             self.action_btn.clicked.connect(lambda: self.store_window.equip_item('default'))
         elif self.is_owned:
-            self.action_btn.setText(tr("open_restaurant"))
+            self.action_btn.setText("Open restaurant")
             self.action_btn.setEnabled(True)
             self.action_btn.setStyleSheet("""
                 QPushButton {
@@ -609,7 +608,7 @@ class StoreItemCard(QWidget):
             is_special_price = isinstance(price_value, str)
             
             if is_special_price:
-                self.action_btn.setText(tr("locked"))
+                self.action_btn.setText("Locked")
                 self.action_btn.setEnabled(False)
                 self.action_btn.setStyleSheet("""
                     QPushButton {
@@ -623,7 +622,7 @@ class StoreItemCard(QWidget):
                     }
                 """)
             else:
-                self.action_btn.setText(tr("buy"))
+                self.action_btn.setText("Buy")
                 can_afford = self.user_coins >= price_value
                 
                 if can_afford:
@@ -668,7 +667,7 @@ class CoinRedemptionDialog(QDialog):
     def __init__(self, parent=None, is_night_mode=False):
         super().__init__(parent)
         self.is_night_mode = is_night_mode
-        self.setWindowTitle(tr("get_more_coins"))
+        self.setWindowTitle("Get More Coins")
         self.setFixedWidth(450)
         self.setup_ui()
         
@@ -678,7 +677,7 @@ class CoinRedemptionDialog(QDialog):
         layout.setContentsMargins(25, 25, 25, 25)
         
         # Title (Top Right)
-        title = QLabel(tr("get_more_coins"))
+        title = QLabel("Get More Coins")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
             QLabel {
@@ -694,7 +693,7 @@ class CoinRedemptionDialog(QDialog):
         info_layout = QHBoxLayout()
         info_layout.setContentsMargins(15, 15, 15, 15)
         
-        info_label = QLabel(tr("coin_level_tip"))
+        info_label = QLabel("Remember: You get more coins the higher your level!")
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #FFFFFF; font-size: 15px; font-weight: 500;")
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -717,7 +716,7 @@ class CoinRedemptionDialog(QDialog):
         support_layout.setContentsMargins(15, 15, 15, 15)
         support_layout.setSpacing(10)
         
-        support_text = QLabel(tr("support_onigiri_coins"))
+        support_text = QLabel("You can support Onigiri by buying coin codes here:")
         support_text.setWordWrap(True)
         support_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         support_text.setStyleSheet("color: rgba(255, 255, 255, 0.9); font-size: 14px;")
@@ -730,7 +729,7 @@ class CoinRedemptionDialog(QDialog):
         link_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # We use a label with a link, styled to look nice
-        link_label = QLabel(f'<a href="https://buymeacoffee.com/peacemonk/extras" style="color: #CFA13D; text-decoration: none; font-weight: bold; font-size: 15px;"> {tr("buy_coin_codes")}</a>')
+        link_label = QLabel('<a href="https://buymeacoffee.com/peacemonk/extras" style="color: #CFA13D; text-decoration: none; font-weight: bold; font-size: 15px;"> Buy Coin Codes on BuyMeACoffee</a>')
         link_label.setOpenExternalLinks(True)
         link_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bg_color = "#5F411C" if not self.is_night_mode else "#3F2B13"
@@ -763,12 +762,12 @@ class CoinRedemptionDialog(QDialog):
         layout.addWidget(support_container)
         
         # Input Section
-        input_label = QLabel(tr("have_a_code"))
+        input_label = QLabel("Have a code?")
         input_label.setStyleSheet("color: #CFA13D; font-weight: 600; margin-top: 10px;")
         layout.addWidget(input_label)
         
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText(tr("paste_code_here"))
+        self.input_field.setPlaceholderText("Paste your code here (e.g. ONI-XXXX-YYY)")
         self.input_field.setFixedHeight(45)
         self.input_field.setStyleSheet("""
             QLineEdit {
@@ -789,7 +788,7 @@ class CoinRedemptionDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(15)
         
-        cancel_btn = QPushButton(tr("cancel"))
+        cancel_btn = QPushButton("Cancel")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.setFixedHeight(40)
         cancel_btn.clicked.connect(self.reject)
@@ -807,7 +806,7 @@ class CoinRedemptionDialog(QDialog):
             }
         """)
         
-        redeem_btn = QPushButton(tr("redeem_code"))
+        redeem_btn = QPushButton("Redeem Code")
         redeem_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         redeem_btn.setFixedHeight(40)
         redeem_btn.clicked.connect(self.accept)
@@ -986,7 +985,7 @@ class CoinSuccessDialog(QDialog):
         self.new_total = new_total
         self.addon_path = addon_path
         self.is_night_mode = is_night_mode
-        self.setWindowTitle(tr("success"))
+        self.setWindowTitle("Success!")
         self.setFixedWidth(400)
         self.setup_ui()
         
@@ -1011,7 +1010,7 @@ class CoinSuccessDialog(QDialog):
         layout.addSpacing(20)
         
         # Title
-        title = QLabel(tr("coins_received"))
+        title = QLabel("Coins Received!")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("""
             QLabel {
@@ -1039,7 +1038,7 @@ class CoinSuccessDialog(QDialog):
         """)
         coins_layout.addWidget(amount_label)
         
-        label_text = QLabel(tr("coins_added"))
+        label_text = QLabel("COINS ADDED")
         label_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label_text.setStyleSheet("color: rgba(255, 255, 255, 0.6); font-size: 12px; font-weight: 700; letter-spacing: 1px; border: none")
         coins_layout.addWidget(label_text)
@@ -1057,13 +1056,13 @@ class CoinSuccessDialog(QDialog):
         layout.addWidget(coins_container)
         
         # New Balance
-        balance_label = QLabel(f"{tr('new_balance')}: {self.new_total}")
+        balance_label = QLabel(f"New Balance: {self.new_total}")
         balance_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         balance_label.setStyleSheet("color: rgba(255, 255, 255, 0.8); font-size: 15px; font-weight: 600; margin-top: 10px;")
         layout.addWidget(balance_label)
         
         # Close Button
-        close_btn = QPushButton(tr("awesome"))
+        close_btn = QPushButton("Awesome!")
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setFixedHeight(45)
         close_btn.clicked.connect(self.accept)
@@ -1100,7 +1099,7 @@ class TaiyakiStoreWindow(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("mr_taiyaki_store"))
+        self.setWindowTitle("Mr. Taiyaki Store")
         
         # Calculate adaptive window size based on screen geometry
         try:
@@ -1212,138 +1211,133 @@ class TaiyakiStoreWindow(QDialog):
         # Store items data with correct image filenames
         self.restaurants = {
             "focus_dango": {
-                "name": tr("focus_dango_name"), 
-                "price": tr("check_info"), 
+                "name": "Focus Dango", 
+                "price": "Check info", 
                 "theme": "#DC90B8", 
                 "image": "focus_dango_restaurant.png",
-                "description": tr("focus_dango_desc"),
-                "prerequisite_info": tr("focus_dango_special")
+                "description": "A cozy pink haven where soft melodies and the gentle aroma of sweet dango help you find your flow. Perfect for deep study sessions!"
             },
             "motivated_mochi": {
-                "name": tr("motivated_mochi_name"), 
-                "price": tr("check_info"), 
+                "name": "Motivated Mochi", 
+                "price": "Check info", 
                 "theme": "#6EC170", 
                 "image": "mochi_msg_restaurant.png",
-                "description": tr("motivated_mochi_desc"),
-                "prerequisite_info": tr("motivated_mochi_special")
+                "description": "A cheerful green café where adorable mochi friends cheer you on with every review! Their little motivational notes will keep your spirits high!"
             },
             "macha_delights": {
-                "name": tr("macha_delights_name"), 
+                "name": "Macha Delights", 
                 "price": 400, 
                 "theme": "#517C58", 
                 "image": "Macha Delights.png",
-                "description": tr("macha_delights_desc")
+                "description": "A serene tea house specializing in premium matcha creations. Perfect for those who appreciate the subtle, earthy flavors of green tea paired with delicate pastries."
             },
             "macaron_maison": {
-                "name": tr("macaron_maison_name"), 
+                "name": "Macaron Maison", 
                 "price": 500, 
                 "theme": "#AFC3D6", 
                 "image": "Macaron Maison.png",
-                "description": tr("macaron_maison_desc")
+                "description": "An elegant French patisserie known for its colorful, delicate macarons. Each bite is a perfect balance of crispy shell and smooth, flavorful filling."
             },
             "coffee_co": {
-                "name": tr("coffee_co_name"), 
+                "name": "Coffee & Co", 
                 "price": 600, 
                 "theme": "#98693A", 
                 "image": "CoffeeAndCake.png",
-                "description": tr("coffee_co_desc")
+                "description": "A cozy coffee shop where the aroma of freshly brewed coffee fills the air. Enjoy artisan coffee paired with homemade cakes and pastries."
             },
             "grocery_store": {
-                "name": tr("grocery_store_name"), 
+                "name": "Grocery Store", 
                 "price": 700, 
                 "theme": "#AD6131", 
                 "image": "Grocery Store.png",
-                "description": tr("grocery_store_desc")
+                "description": "Your friendly neighborhood market stocked with fresh produce, pantry essentials, and daily necessities. A warm, welcoming place for all your shopping needs."
             },
             "bakery_heaven": {
-                "name": tr("bakery_heaven_name"), 
+                "name": "Bakery Heaven", 
                 "price": 800, 
                 "theme": "#CD9C57", 
                 "image": "Bakery.png",
-                "description": tr("bakery_heaven_desc")
+                "description": "A traditional bakery where the scent of freshly baked bread greets you every morning. From crusty baguettes to soft croissants, every item is made with love."
             },
             "awesome_boba": {
-                "name": tr("awesome_boba_name"), 
+                "name": "Awesome Boba", 
                 "price": 850, 
                 "theme": "#CD8DCA", 
                 "image": "Awesome Boba.png",
-                "description": tr("awesome_boba_desc")
+                "description": "A vibrant bubble tea shop offering creative flavors and toppings. Customize your drink with chewy tapioca pearls, fruit jellies, and more!"
             },
             "awesome_shiny_boba": {
-                "name": tr("awesome_shiny_boba_name"), 
+                "name": "Awesome Shiny Boba", 
                 "price": 1000, 
                 "theme": "#41A59D", 
                 "image": "Awesome Boba (Shiny).png",
-                "description": tr("awesome_shiny_boba_desc")
+                "description": "The premium evolution of Awesome Boba! This exclusive location features rare ingredients and limited-edition flavors with a stunning aesthetic."
             },
             "santas_coffee": {
-                "name": tr("santas_coffee_name"), 
+                "name": "Santa's Coffee", 
                 "price": 1225, 
                 "theme": "#CA4D44", 
                 "image": "Santa's Coffee.png",
-                "description": tr("santas_coffee_desc"),
-                "prerequisite_info": tr("santas_coffee_special")
+                "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
             },
             "lunar_new_year": {
-                "name": tr("lunar_new_year_name"), 
+                "name": "Lunar New Year Feast", 
                 "price": 888, 
                 "theme": "#D22B2B", 
                 "image": "lunar_new_year_feast.png",
-                "description": tr("lunar_new_year_desc"),
-                "prerequisite_info": tr("lunar_new_year_special")
+                "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
             },
             "astronigiri": {
-                "name": tr("astronigiri_name"), 
+                "name": "Astronigiri", 
                 "price": 5000, 
                 "theme": "#74829B", 
                 "image": "space_onigiri.png",
-                "description": tr("astronigiri_desc"),
-                "prerequisite_info": tr("astronigiri_special")
+                "description": "A futuristic orbital station serving the finest cosmic-themed snacks. Floating in the vastness of space, it's the perfect spot to recharge while contemplating the stars."
             },
         }
         
         self.evolutions = {
             "restaurant_evo_i": {
-                "name": tr("restaurant_evo_i_name"), 
+                "name": "Restaurant I Star", 
                 "price": 700, 
                 "theme": "#D07A5F", 
                 "image": "Restaurant Evo I.png",
-                "description": tr("restaurant_evo_i_desc")
+                "description": "The first evolution of your restaurant journey. A charming establishment that shows your dedication to growth and improvement."
             },
             "restaurant_evo_ii": {
-                "name": tr("restaurant_evo_ii_name"), 
+                "name": "Restaurant II Star", 
                 "price": 800, 
                 "theme": "#D07A5F", 
                 "image": "Restaurant Evo II.png",
-                "description": tr("restaurant_evo_ii_desc")
+                "description": "Your restaurant continues to evolve! Enhanced decor and expanded menu options attract more customers and showcase your progress."
             },
             "restaurant_evo_iii": {
-                "name": tr("restaurant_evo_iii_name"), 
+                "name": "Restaurant III Star", 
                 "price": 900, 
                 "theme": "#D07A5F", 
                 "image": "Restaurant Evo III.png",
-                "description": tr("restaurant_evo_iii_desc")
+                "description": "A significant milestone in your culinary journey. Your restaurant now features premium amenities and a reputation for excellence."
             },
             "restaurant_evo_iv": {
-                "name": tr("restaurant_evo_iv_name"), 
+                "name": "Restaurant IV Star", 
                 "price": 1000, 
                 "theme": "#D07A5F", 
                 "image": "Restaurant Evo IV.png",
-                "description": tr("restaurant_evo_iv_desc")
+                "description": "Near the peak of perfection! Your establishment has become a local landmark, known for its exceptional service and quality."
             },
             "restaurant_evo_legendary": {
-                "name": tr("restaurant_evo_legendary_name"), 
+                "name": "Restaurant Legendary", 
                 "price": 2000, 
                 "theme": "#445A78", 
                 "image": "Restaurant Evo Legendary.png",
-                "description": tr("restaurant_evo_legendary_desc")
+                "description": "The ultimate achievement! A legendary restaurant that stands as a testament to your dedication and hard work. Only the most committed reach this level."
             },
             "restaurant_evo_garden": {
-                "name": tr("restaurant_evo_garden_name"), 
+                "name": "Restaurant Garden Palace", 
                 "price": 3000, 
                 "theme": "#2F553D", 
                 "image": "Restaurant Evo Garden Palace.png",
-                "description": tr("restaurant_evo_garden_desc")
+                "description": "The pinnacle of culinary prestige! This deluxe establishment radiates luxury and sophistication, offering a world-class dining experience that is truly second to none."
             }
         }
         
@@ -1486,7 +1480,7 @@ class TaiyakiStoreWindow(QDialog):
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(0)
         
-        title = QLabel(tr("mr_taiyaki_store"))
+        title = QLabel("Mr. Taiyaki Store")
         title.setContentsMargins(0, 0, 0, 0)
         title.setIndent(0)  # Remove any text indentation
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -1501,7 +1495,7 @@ class TaiyakiStoreWindow(QDialog):
             }
         """)
         
-        subtitle = QLabel(tr("upgrade_restaurant_themes"))
+        subtitle = QLabel("Upgrade your restaurant with premium themes!")
         subtitle.setContentsMargins(0, 0, 0, 0)
         subtitle.setIndent(0)  # Remove any text indentation
         subtitle.setStyleSheet("""
@@ -1603,7 +1597,7 @@ class TaiyakiStoreWindow(QDialog):
         
         # Use QToolButton instead of QPushButton for better styling control on macOS
         self.coins_btn = QToolButton()
-        self.coins_btn.setText(tr("get_more_coins"))
+        self.coins_btn.setText("Get More Coins")
         self.coins_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.coins_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.coins_btn.setFixedSize(160, 34)
@@ -1648,7 +1642,7 @@ class TaiyakiStoreWindow(QDialog):
         text_color = "#ecf0f1" if self.is_night_mode else "#7f8c8d"
         
         # Restaurants button
-        self.restaurants_btn = QPushButton(tr("restaurants_header"))
+        self.restaurants_btn = QPushButton("Restaurants")
         self.restaurants_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.restaurants_btn.setStyleSheet("""
             QPushButton {
@@ -1664,10 +1658,10 @@ class TaiyakiStoreWindow(QDialog):
         self.restaurants_btn.clicked.connect(lambda: self.switch_tab(0))
         # Install event filter for tooltip
         self.restaurants_btn.installEventFilter(self)
-        self.restaurants_btn.setProperty("tooltip_text", tr("restaurants_tooltip"))
+        self.restaurants_btn.setProperty("tooltip_text", "Different cozy themes for your Onigiri restaurant! ")
         
         # Evolutions button
-        self.evolutions_btn = QPushButton(tr("evolutions_header"))
+        self.evolutions_btn = QPushButton("Evolutions")
         self.evolutions_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.evolutions_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1687,7 +1681,7 @@ class TaiyakiStoreWindow(QDialog):
         self.evolutions_btn.clicked.connect(lambda: self.switch_tab(1))
         # Install event filter for tooltip
         self.evolutions_btn.installEventFilter(self)
-        self.evolutions_btn.setProperty("tooltip_text", tr("evolutions_tooltip"))
+        self.evolutions_btn.setProperty("tooltip_text", "Bigger and fancier versions of your restaurant!")
         
         layout.addStretch()
         layout.addWidget(self.restaurants_btn)
