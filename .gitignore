@@ -1,17 +1,29 @@
-gamification/.DS_Store
-gamification/__pycache__
-__pycache__
-.DS_Store
-system_files/gamification_images/.DS_Store
-system_files/.DS_Store
-web/.DS_Store
-system_files/gamification_images/.DS_Store
-system_files/gamification_images/.DS_Store
-system_files/gamification_images/restaurant_folder/.DS_Store
-user_files/main_bg
-user_files/profile
-user_files/gamification_*
-user_files/settings_*
-user_files/icons/*
+﻿# ── Personal user data — NEVER commit ─────────────────────────────────────
+user_files/**
+!user_files/README.md
+
+# Anki internal addon metadata (machine-specific)
 meta.json
-system_files/.DS_Store
+
+# User-specific runtime files
+config.json
+onigiri_layout.json
+sidebar_debug.log
+*.log
+
+# macOS artefacts
+__MACOSX/
+.DS_Store
+**/.DS_Store
+
+# Python byte-code
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
