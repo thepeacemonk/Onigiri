@@ -189,6 +189,7 @@
     }
 
     function setupDeckFocusButton() {
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
 
@@ -222,6 +223,7 @@
     }
 
     function setupDeckEditButton() {
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
 
@@ -272,6 +274,7 @@
     }
 
     function setupTransferButton() {
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
 
@@ -551,26 +554,73 @@
             setTimeout(() => sidebar.classList.remove('skeleton-loading'), 150);
         }
 
+        // In ellipsis mode, hide the sidebar toggle button — it lives in the dropdown instead
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') {
+            const tb = document.querySelector('.sidebar-toggle-btn');
+            if (tb) tb.style.display = 'none';
+        }
+
         const toggleBtn = document.querySelector('.sidebar-toggle-btn');
         const sidebarEl = document.querySelector('.sidebar-left');
+        const revealBtn = document.getElementById('onigiri-sidebar-reveal-btn');
+
+        // Track the width set by the resize handle so we can restore it on expand
+        let _savedSidebarWidth = null;
+
+        function updateRevealBtn(isCollapsed) {
+            if (!revealBtn) return;
+            revealBtn.style.display = isCollapsed ? 'flex' : 'none';
+        }
+
+        function collapseSidebar() {
+            // Save the resize-handle's inline width (set with !important) before removing it
+            const inlineWidth = sidebarEl.style.width;
+            if (inlineWidth) _savedSidebarWidth = inlineWidth;
+            // Remove inline width so the CSS class width:0 can take effect
+            sidebarEl.style.removeProperty('width');
+            sidebarEl.style.removeProperty('max-width');
+            sidebarEl.classList.add('sidebar-collapsed');
+            updateRevealBtn(true);
+            if (typeof pycmd === 'function') pycmd('saveSidebarState:true');
+        }
+
+        function expandSidebar() {
+            sidebarEl.classList.remove('sidebar-collapsed');
+            // Restore the previously saved width if we had one
+            if (_savedSidebarWidth) {
+                sidebarEl.style.setProperty('width', _savedSidebarWidth, 'important');
+            }
+            updateRevealBtn(false);
+            if (typeof pycmd === 'function') pycmd('saveSidebarState:false');
+        }
+
+        // Expose globally so ellipsis menu (Python handler) can call them
+        window.onigiriCollapseSidebar = collapseSidebar;
+        window.onigiriExpandSidebar = expandSidebar;
 
         if (toggleBtn && sidebarEl) {
             toggleBtn.addEventListener('click', () => {
-                sidebarEl.classList.toggle('sidebar-collapsed');
-                const isCollapsed = sidebarEl.classList.contains('sidebar-collapsed');
-                if (typeof pycmd === 'function') {
-                    pycmd(`saveSidebarState:${isCollapsed}`);
+                if (sidebarEl.classList.contains('sidebar-collapsed')) {
+                    expandSidebar();
+                } else {
+                    collapseSidebar();
                 }
+            });
+        }
+
+        if (revealBtn && sidebarEl) {
+            updateRevealBtn(sidebarEl.classList.contains('sidebar-collapsed'));
+            revealBtn.addEventListener('click', () => {
+                expandSidebar();
             });
         }
 
         setupResizeHandle();
         setupDeckFocusButton();
-        setupDeckEditButton();
-        setupTransferButton();
-        setupActionButtons(); // Initialize action buttons
-        updateDeckLayouts(); // Initial call
-        updateDeckFocusLayout(); // Add this line to handle initial state
+        // Edit mode and Transfer buttons removed — drag-and-drop is always-on
+        setupActionButtons();
+        updateDeckLayouts();
+        updateDeckFocusLayout();
     }
 
     if (document.readyState === 'loading') {
