@@ -1,3 +1,4 @@
+import html
 import os
 from aqt import mw, utils
 from aqt.qt import QDialog, QVBoxLayout
@@ -26,13 +27,22 @@ class CreditsDialog(QDialog):
 
         addon_package = mw.addonManager.addonFromModule(__name__)
 
-        # Load the HTML content from the file
         html_path = os.path.join(os.path.dirname(__file__), "web", "credits.html")
-        with open(html_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-
-        # Replace placeholder
-        html_content = html_content.replace("%%ADDON_PACKAGE%%", addon_package)
+        try:
+            with open(html_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+            html_content = html_content.replace("%%ADDON_PACKAGE%%", addon_package)
+        except Exception as e:
+            print(f"Onigiri: Failed to read credits.html: {e}")
+            html_content = (
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>"
+                "<body style=\"font-family:system-ui,sans-serif;padding:24px;"
+                "color:#e0e0e0;background:#2c2c2c;\">"
+                "<h2>Credits and Acknowledgements</h2>"
+                "<p>Could not load credits content. The file may be missing or unreadable.</p>"
+                f"<p><code>{html.escape(html_path)}</code></p>"
+                "</body></html>"
+            )
 
         self.web.stdHtml(html_content)
         self.web.set_bridge_command(self._on_bridge_cmd, self)
