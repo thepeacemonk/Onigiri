@@ -2899,7 +2899,7 @@ def generate_icon_css(addon_package, conf):
             url = get_data_uri(path)
         
         if not url: # Fallback to system
-            system_icon_name = 'star' if key == 'retention_star' else key
+            system_icon_name = 'star_filled' if key == 'retention_star' else key
             path = os.path.join(addon_dir, "system_files", "system_icons", f"{system_icon_name}.svg")
             url = get_data_uri(path)
         
