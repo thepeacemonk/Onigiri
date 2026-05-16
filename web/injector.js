@@ -293,7 +293,7 @@
             // Create SVG icon element
             const icon = document.createElement('img');
             icon.className = 'icon';
-            icon.src = '/_addons/1011095603/system_files/system_icons/airdeck.svg';
+            icon.src = '/_addons/1011095603/system_files/system_icons/organise.svg';
             icon.alt = 'Transfer';
             transferBtn.appendChild(icon);
 

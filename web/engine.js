@@ -841,11 +841,11 @@ window.OnigiriEngine = {
         const MASK_CSS = 'mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;width:16px;height:16px;min-width:16px;display:inline-block;flex-shrink:0;';
 
         const SVG_RENAME       = iconBase + 'rename.svg';
-        const SVG_SUBDECK      = iconBase + 'subdeck.svg';
-        const SVG_CHANGE_ICON  = iconBase + 'change_icon.svg';
+        const SVG_ADD_SUBDECK  = iconBase + 'add-subdeck.svg';
+        const SVG_CHANGE_ICON  = iconBase + 'edit_icon.svg';
         const SVG_CREATE_DECK  = iconBase + 'create_deck.svg';
         const SVG_OPTIONS      = iconBase + 'options.svg';
-        const SVG_EXPORT       = iconBase + 'export.svg';
+        const SVG_EXPORT       = iconBase + 'export-deck.svg';
         const SVG_COPY_ID      = iconBase + 'copy_id.svg';
         const SVG_DELETE       = iconBase + 'delete.svg';
         // Star icons — outline for non-fav, filled for fav
@@ -893,9 +893,9 @@ window.OnigiriEngine = {
         const groups = [
             // Group 1 — structural edits
             [
-                { label: 'Rename',       iconSvg: SVG_RENAME,      cmd: 'onigiri_ctx_rename:'      + did },
-                { label: 'Add Subdeck',  iconSvg: SVG_SUBDECK,     cmd: 'onigiri_ctx_subdeck:'     + did },
-                { label: 'Edit Icon',    iconSvg: SVG_EDIT_ICON,   cmd: 'onigiri_ctx_change_icon:' + did },
+                { label: 'Rename',       iconSvg: SVG_RENAME,        cmd: 'onigiri_ctx_rename:'      + did },
+                { label: 'Add Subdeck',  iconSvg: SVG_ADD_SUBDECK,  cmd: 'onigiri_ctx_subdeck:'     + did },
+                { label: 'Edit Icon',    iconSvg: SVG_EDIT_ICON,    cmd: 'onigiri_ctx_change_icon:' + did },
                 {
                     label:     isFav ? 'Unfavourite' : 'Favourite',
                     iconSvg:   isFav ? SVG_STAR : SVG_STAR_OUTLINE,

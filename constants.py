@@ -57,7 +57,7 @@ COLOR_LABELS = {
 # All icons are now SVG files, not hardcoded data URIs
 ICON_DEFAULTS = {
     "options": "options.svg",
-    "book": "book.svg",
+    "book": "deck.svg",
     "folder": "folder.svg",
     "add": "add.svg",
     "browse": "browse.svg",

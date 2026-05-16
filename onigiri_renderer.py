@@ -1295,8 +1295,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     ellipsis_actions = []
     show_ellipsis = conf.get("sidebarActionsMode", "list") == "ellipsis"
 
-    SVG_ADD_CARD         = _load_icon('add_card')
-    SVG_ADD_DECK         = _load_icon('add_deck_custom')
+    SVG_ADD_CARD         = _load_icon('add-card')
+    SVG_ADD_DECK         = _load_icon('add-deck')
     SVG_COLLAPSE_SIDEBAR = _load_icon('collapse_sidebar')
     SVG_ORGANISE         = _load_icon('organise')
     SVG_STAR             = _load_icon('star_outline')

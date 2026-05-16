@@ -430,7 +430,7 @@ a.deck::before {
     display: inline-block;
     opacity: 0.7;
     flex-shrink: 0;
-    margin-right: 8px;
+    margin-right: 3px;
     vertical-align: middle;
 }
 

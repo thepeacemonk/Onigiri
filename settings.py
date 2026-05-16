@@ -9987,10 +9987,18 @@ class SettingsDialog(QDialog):
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f: svg_xml = f.read()
         if not svg_xml:
-            default_key = 'star' if key == 'retention_star' else key
-            data_uri = ICON_DEFAULTS.get(default_key, ""); 
-            if data_uri.startswith("data:image/svg+xml,"): encoded_svg = data_uri.split(",", 1)[1]; svg_xml = urllib.parse.unquote(encoded_svg)
-            entry = sidebar_api.get_sidebar_entries().get(key) if not svg_xml else None
+            default_key = 'star_filled' if key == 'retention_star' else key
+            default_filename = ICON_DEFAULTS.get(default_key, "")
+            if default_filename:
+                default_path = os.path.join(self.addon_path, "system_files", "system_icons", default_filename)
+                if os.path.exists(default_path):
+                    try:
+                        with open(default_path, "r", encoding="utf-8") as df:
+                            svg_xml = df.read()
+                    except Exception:
+                        svg_xml = ""
+        if not svg_xml:
+            entry = sidebar_api.get_sidebar_entries().get(key)
             if entry and entry.icon_svg:
                 icon_value = entry.icon_svg.strip()
                 if icon_value.startswith("data:image/svg+xml"):
