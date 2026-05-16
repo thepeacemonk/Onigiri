@@ -117,18 +117,20 @@ custom_body_template = """
     #onigiri-deck-search-bar {
         display: none;
         position: absolute;
-        top: 13px;
+        top: 13.5px;
         left: 18px;
-        right: 42px;
+        right: 45px;
         z-index: 12;
         align-items: center;
         gap: 4px;
         background: #323232;
-        border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+        border: 2px solid #323232;
         border-radius: 9999px;
-        padding: 5px 2px 5px 10px;
-        box-sizing: border-box;
-        transition: border-color 0.15s ease;
+        padding: 4px 1px 4px 9px;
+        background-clip: padding-box;
+        outline: 2px solid #323232;
+        outline-offset: 0.3px;
+        transition: outline-color 0.15s ease;
     }
     #onigiri-deck-search-bar.is-visible {
         display: flex;
@@ -146,14 +148,14 @@ custom_body_template = """
         to {
             opacity: 1;
             transform: translateX(0);
-            clip-path: inset(0 0 0 0% round 9999px);
+            clip-path: inset(-5px -5px -5px -5px round 9999px);
         }
     }
     @keyframes oniSearchDismiss {
         from {
             opacity: 1;
             transform: translateX(0);
-            clip-path: inset(0 0 0 0% round 9999px);
+            clip-path: inset(-5px -5px -5px -5px round 9999px);
         }
         to {
             opacity: 0;
@@ -173,8 +175,7 @@ custom_body_template = """
         letter-spacing: 0.01em;
     }
     #onigiri-deck-search-bar:focus-within {
-        border-color: var(--accent-color, #007aff);
-        border-width: 2px;
+        outline-color: var(--accent-color, #007aff);
     }
     #onigiri-deck-search-input::placeholder {
         color: var(--fg-subtle, rgba(255,255,255,0.35));

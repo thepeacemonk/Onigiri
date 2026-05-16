@@ -1358,7 +1358,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             {"key": "sort_most_reviews",  "label": "Most Reviews", "command": "onigiri_sort:most_reviews", "iconSvg": SVG_SORT_MOST_REVIEWS, "selected": current_sort == "most_reviews"},
             {"key": "sort_custom",        "label": "Custom",       "command": "onigiri_sort:custom",       "iconSvg": SVG_SORT_CUSTOM,       "selected": current_sort == "custom"},
         ]
-        ellipsis_actions.append({"key": "focus",            "label": "Focus Mode",      "command": "onigiri_toggle_deck_focus", "iconUrl": f"{icon_base}focus.svg", "group": "utils"})
+        ellipsis_actions.append({"key": "focus",            "label": "Focus Mode",      "command": "onigiri_toggle_deck_focus", "iconUrl": f"{icon_base}focus.svg", "group": "utils", "selected": is_focused})
         ellipsis_actions.append({"key": "organise",         "label": "Organise",        "iconSvg": SVG_ORGANISE, "group": "utils", "children": organise_children})
         ellipsis_actions.append({"key": "collapse_sidebar", "label": "Collapse Sidebar", "command": "onigiri_toggle_sidebar",   "iconSvg": SVG_COLLAPSE_SIDEBAR,    "group": "utils"})
     else:
@@ -1560,10 +1560,13 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex-direction: column;
         }}
         .sidebar-mode-ellipsis #deck-list-header {{
-            order: -1;
+            order: 0;
             margin-top: 4px;
             margin-left: 8px;
             padding-right: 6px;
+        }}
+        .sidebar-mode-ellipsis.deck-focus-mode #deck-list-header {{
+            order: -1;
         }}
         .sidebar-mode-ellipsis #deck-list-header h2 {{
             margin-top: 18px;

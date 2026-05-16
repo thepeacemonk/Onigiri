@@ -647,8 +647,13 @@ def on_state_change(new_state, old_state):
                     var bg=getComputedStyle(document.documentElement).getPropertyValue('--canvas')||'#1a1a1a';
                     var d=document.createElement('div');
                     d.id='onigiri-transition-overlay';
-                    d.style.cssText='position:fixed;inset:0;z-index:2147483647;background:'+bg.trim()+';pointer-events:none;';
+                    d.style.cssText='position:fixed;inset:0;z-index:2147483647;background:'+bg.trim()+';pointer-events:none;display:flex;align-items:center;justify-content:center;';
+                    d.innerHTML='<div style="width:36px;height:36px;border:3px solid rgba(128,128,128,0.2);border-top-color:var(--accent-color,#007aff);border-radius:50%;animation:onigiri-transition-spin .75s linear infinite"></div>';
+                    var s=document.createElement('style');
+                    s.textContent='@keyframes onigiri-transition-spin{to{transform:rotate(360deg)}}';
+                    d.appendChild(s);
                     document.body&&document.body.appendChild(d);
+                    setTimeout(function(){var ol=document.getElementById('onigiri-transition-overlay');if(ol)ol.remove();},4500);
                 })();
             """)
         except Exception:

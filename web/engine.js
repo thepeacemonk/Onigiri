@@ -777,12 +777,16 @@ window.OnigiriEngine = {
     },
 
     _searchDebounceTimer: null,
+    _lastDeckSearchQuery: null,
 
     _filterDecks: function (query) {
+        const nextQuery = query.trim();
         clearTimeout(this._searchDebounceTimer);
         this._searchDebounceTimer = setTimeout(() => {
-            pycmd('onigiri_deck_search:' + query.trim());
-        }, 150);
+            if (nextQuery === this._lastDeckSearchQuery) return;
+            this._lastDeckSearchQuery = nextQuery;
+            pycmd('onigiri_deck_search:' + nextQuery);
+        }, 300);
     },
 
     /** Applies open/closed state classes to a collapse icon. */
@@ -1069,6 +1073,17 @@ window.OnigiriEngine = {
         if (!actions.length) return;
 
         const ICON_CSS = 'mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;width:16px;height:16px;min-width:16px;display:inline-block;flex-shrink:0;background-color:var(--fg-subtle,var(--fg,currentColor));';
+        const SVG_TICK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m5 14l3.5 3.5L19 6.5"/></svg>';
+
+        function makeTickIcon() {
+            const tick = document.createElement('span');
+            tick.className = 'ctx-icon';
+            tick.style.marginLeft = 'auto';
+            tick.innerHTML = SVG_TICK;
+            const svg = tick.querySelector('svg');
+            if (svg) { svg.setAttribute('width', '14'); svg.setAttribute('height', '14'); }
+            return tick;
+        }
 
         function makeIcon(iconUrl, iconSvg) {
             if (iconSvg) {
@@ -1128,6 +1143,12 @@ window.OnigiriEngine = {
                 _ind.className = 'sync-status-indicator';
                 item.appendChild(_ind);
             }
+            const isSelected = action.key === 'focus'
+                ? !!document.querySelector('.sidebar-left.deck-focus-mode')
+                : !!action.selected;
+            if (isSelected) {
+                item.appendChild(makeTickIcon());
+            }
 
             if (action.children && action.children.length) {
                 // Nested item — show chevron and hover submenu
@@ -1138,8 +1159,6 @@ window.OnigiriEngine = {
                 item.appendChild(chevron);
 
                 let hideTimer = null;
-                const SVG_TICK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m5 14l3.5 3.5L19 6.5"/></svg>';
-
                 function showSub() {
                     clearTimeout(hideTimer);
                     closeSubmenus();
@@ -1168,13 +1187,7 @@ window.OnigiriEngine = {
                         cl.textContent = child.label;
                         ci.appendChild(cl);
                         if (child.selected) {
-                            const tick = document.createElement('span');
-                            tick.className = 'ctx-icon';
-                            tick.style.marginLeft = 'auto';
-                            tick.innerHTML = SVG_TICK;
-                            const tv = tick.querySelector('svg');
-                            if (tv) { tv.setAttribute('width', '14'); tv.setAttribute('height', '14'); }
-                            ci.appendChild(tick);
+                            ci.appendChild(makeTickIcon());
                         }
                         ci.addEventListener('click', function(e) {
                             e.stopPropagation();

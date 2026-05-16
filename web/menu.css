@@ -317,6 +317,9 @@ details.menu-group[open]>summary.menu-item::after {
     min-height: 0;
     scroll-behavior: smooth;
     background-color: transparent !important;
+    padding-top: 1px;
+    padding-right: 1px;
+    box-sizing: border-box;
 }
 
 /* Scrollbar rules moved to inline <style> in templates.py for higher specificity */
@@ -352,15 +355,12 @@ tr.deck {
     max-width: 100%;
     box-sizing: border-box;
     position: relative;
-    will-change: transform;
-    transform: translateZ(0);
     box-shadow: none !important;
     /* Remove any shadow */
 }
 
 .deck-table tr.deck:not(:hover) {
-    will-change: auto;
-    transition: will-change 0.3s ease 0.5s;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .deck-table tr:not(.drag-hover) a.deck:hover {
