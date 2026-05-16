@@ -1,29 +1,8 @@
-﻿# ── Personal user data — NEVER commit ─────────────────────────────────────
-user_files/**
-!user_files/README.md
-
-# Anki internal addon metadata (machine-specific)
-meta.json
-
-# User-specific runtime files
-config.json
-onigiri_layout.json
-sidebar_debug.log
-*.log
-
-# macOS artefacts
-__MACOSX/
-.DS_Store
-**/.DS_Store
-
-# Python byte-code
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Editor / IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+__MACOSX/
+.DS_Store
+sidebar_debug.log
+.claude/
+user_files/
+*.log
