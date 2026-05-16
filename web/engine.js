@@ -1100,7 +1100,7 @@ window.OnigiriEngine = {
         function makeTickIcon() {
             const tick = document.createElement('span');
             tick.className = 'ctx-icon';
-            tick.style.marginLeft = 'auto';
+            tick.style.marginLeft = '10px';
             tick.innerHTML = SVG_TICK;
             const svg = tick.querySelector('svg');
             if (svg) { svg.setAttribute('width', '14'); svg.setAttribute('height', '14'); }

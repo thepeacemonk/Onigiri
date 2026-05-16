@@ -1324,9 +1324,9 @@ body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
     background-color: #e5534b;
 }
 
-/* In the ellipsis dropdown the item is a flex row; push the dot to the far right */
+/* In the ellipsis dropdown the item is a flex row; keep the dot close to the label */
 .onigiri-ellipsis-item.action-sync .sync-status-indicator {
-    margin-left: auto;
+    margin-left: 4px;
     margin-top: 0;
 }
 

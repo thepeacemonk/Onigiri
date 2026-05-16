@@ -3096,8 +3096,10 @@ def generate_icon_css(addon_package, conf):
     .deck-table a.deck {{
         padding: 0px 0px 0px 3px !important;
         margin-left: 0 !important;
-        /* Ensure it behaves nicely in flex container */
-        display: inline-block !important; 
+        /* Ensure it behaves nicely in flex container and keeps ellipsis working */
+        display: block !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
     }}
     
     /* Ensure indentation span works as expected */
