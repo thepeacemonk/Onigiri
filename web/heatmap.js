@@ -279,48 +279,57 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
 
         function draw() {
-            const i18n = config.i18n || {};
-            const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} ${i18n.day_streak || 'day streak'}</div>` : '';
+            // Flame icon + streak number: filled orange when streak > 0, outline when 0
+            const _hasStreak = data.streak > 0;
+            const FIRE_SVG = _hasStreak
+                ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="flex-shrink:0;color:#FF6B35"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`
+                : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="13" height="13" style="flex-shrink:0;opacity:0.45"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`;
+            const _longestStreak = data.longest_streak || 0;
+            const _streakTip = _longestStreak > 0
+                ? `Longest streak: ${_longestStreak} day${_longestStreak !== 1 ? 's' : ''}`
+                : 'No streak yet';
+            const streakDiv = config.heatmapShowStreak
+                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${_streakTip}">${FIRE_SVG}${data.streak}</div>`
+                : '';
 
-            let navHTML = '';
+            const L_ARROW = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg>`;
+            const R_ARROW = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg>`;
+            const CHEVRON_DOWN = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" class="year-chevron" style="flex-shrink:0;transition:transform 0.15s ease;"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+            let navContent = '';
             if (state.view === 'year') {
-                navHTML = `
-                    <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
-                    <span class="nav-title">${state.targetDate.getFullYear()}</span>
-                    <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
-                `;
+                // Custom styled dropdown for year selection
+                const today = new Date();
+                const nowYear = today.getFullYear();
+                const selYear = state.targetDate.getFullYear();
+                const firstYear = (data.firstYear && data.firstYear <= nowYear) ? data.firstYear : nowYear;
+                let items = '';
+                for (let y = nowYear; y >= firstYear; y--) {
+                    items += `<div class="year-dropdown-item${y === selYear ? ' selected' : ''}" data-year="${y}">${y}</div>`;
+                }
+                navContent = `<div class="year-select-wrapper"><button class="year-select-btn">${selYear}${CHEVRON_DOWN}</button><div class="year-dropdown-menu">${items}</div></div>`;
             } else if (state.view === 'month') {
-                navHTML = `
-                    <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
+                navContent = `
+                    <button class="nav-btn" data-nav="-1">${L_ARROW}</button>
                     <span class="nav-title">${state.targetDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
-                    <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
+                    <button class="nav-btn" data-nav="1">${R_ARROW}</button>
                 `;
             } else if (state.view === 'week') {
                 const startOfWeek = new Date(state.targetDate);
                 startOfWeek.setDate(startOfWeek.getDate() - (startOfWeek.getDay() + 6) % 7);
                 const endOfWeek = new Date(startOfWeek);
                 endOfWeek.setDate(startOfWeek.getDate() + 6);
-                navHTML = `
-                    <button class="nav-btn" data-nav="-7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
+                navContent = `
+                    <button class="nav-btn" data-nav="-7">${L_ARROW}</button>
                     <span class="nav-title">${startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                    <button class="nav-btn" data-nav="7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
+                    <button class="nav-btn" data-nav="7">${R_ARROW}</button>
                 `;
             }
 
             container.innerHTML = `
-                <div class="onigiri-heatmap-header">
-                    <div class="header-left">
-                        <h3>${i18n.activity || 'Activity'}</h3>
-                        <div class="heatmap-nav">${navHTML}</div>
-                    </div>
-                    <div class="header-right">
-                        ${streakHTML}
-                        <div class="heatmap-filters">
-                            <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">${i18n.year || 'Year'}</button>
-                            <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">${i18n.month || 'Month'}</button>
-                            <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">${i18n.week || 'Week'}</button>
-                        </div>
-                    </div>
+                <div class="heatmap-nav">
+                    ${navContent}
+                    ${streakDiv}
                 </div>
                 <div class="heatmap-grid"></div>
             `;
@@ -334,27 +343,54 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 drawWeekView(gridContainer, preparedData, config);
             }
 
-            container.querySelector('.heatmap-filters').addEventListener('click', (e) => {
-                if (e.target.classList.contains('filter-btn')) {
-                    state.view = e.target.dataset.view;
-                    state.targetDate = new Date();
-                    draw();
-                }
-            });
+            const navEl = container.querySelector('.heatmap-nav');
 
-            container.querySelector('.heatmap-nav').addEventListener('click', (e) => {
-                const navBtn = e.target.closest('.nav-btn');
-                if (navBtn) {
-                    const navAmount = parseInt(navBtn.dataset.nav, 10);
-                    if (state.view === 'year') {
-                        state.targetDate.setFullYear(state.targetDate.getFullYear() + navAmount);
-                    } else if (state.view === 'month') {
-                        state.targetDate.setMonth(state.targetDate.getMonth() + navAmount);
-                    } else if (state.view === 'week') {
-                        state.targetDate.setDate(state.targetDate.getDate() + navAmount);
+            // Custom year dropdown
+            const yearWrapper = navEl.querySelector('.year-select-wrapper');
+            if (yearWrapper) {
+                const yearBtn = yearWrapper.querySelector('.year-select-btn');
+                const yearMenu = yearWrapper.querySelector('.year-dropdown-menu');
+
+                yearBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isOpen = yearMenu.classList.contains('open');
+                    yearMenu.classList.toggle('open', !isOpen);
+                    yearBtn.classList.toggle('open', !isOpen);
+                    if (!isOpen) {
+                        setTimeout(() => {
+                            document.addEventListener('click', function onDocClick(ev) {
+                                if (!yearWrapper.contains(ev.target)) {
+                                    yearMenu.classList.remove('open');
+                                    yearBtn.classList.remove('open');
+                                }
+                                document.removeEventListener('click', onDocClick);
+                            });
+                        }, 0);
                     }
-                    draw();
+                });
+
+                yearMenu.querySelectorAll('.year-dropdown-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        state.targetDate.setFullYear(parseInt(item.dataset.year, 10));
+                        yearMenu.classList.remove('open');
+                        yearBtn.classList.remove('open');
+                        draw();
+                    });
+                });
+            }
+
+            // Prev / next for month & week
+            navEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('.nav-btn');
+                if (!btn) return;
+                const amt = parseInt(btn.dataset.nav, 10);
+                if (state.view === 'month') {
+                    state.targetDate.setMonth(state.targetDate.getMonth() + amt);
+                } else if (state.view === 'week') {
+                    state.targetDate.setDate(state.targetDate.getDate() + amt);
                 }
+                draw();
             });
         }
 
@@ -365,6 +401,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
     exports.autoRender = function() {
         if (window.onigiriHeatmapData && window.onigiriHeatmapConfig) {
             exports.render('onigiri-heatmap-container', window.onigiriHeatmapData, window.onigiriHeatmapConfig);
+            // Signal the loading overlay once the heatmap (typically the last
+            // heavy widget) has rendered — this prevents the visible layout jump.
+            if (typeof window.onigiriDismissOverlay === 'function') window.onigiriDismissOverlay('heatmap');
             return true;
         }
         return false;

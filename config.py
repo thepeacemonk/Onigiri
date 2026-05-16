@@ -26,7 +26,6 @@ DEFAULTS = {
     "maxHide": False,
     "flowMode": False,
     "gamificationMode": False,
-    "ankiweb_sync_enabled": False,
     "fullHideMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
@@ -179,7 +178,6 @@ DEFAULTS = {
     # The other lines are likely from a different context (e.g., a settings dialog setup).
     "onigiri_reviewer_btn_border_size": 0,
     "onigiri_reviewer_btn_custom_enabled": True, # Global toggle (Default OFF)
-    "language": "English (Default)",
     "deck_indentation_mode": "default", # default, smaller, bigger, custom
     "deck_indentation_custom_px": 20, # px per level
     "onigiri_reviewer_btn_radius": 12, # px

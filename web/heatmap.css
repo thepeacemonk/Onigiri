@@ -4,62 +4,80 @@
 
 #onigiri-heatmap-container,
 #onigiri-profile-heatmap-container {
-    padding-top: 5px;
+    padding-top: 20px; /* Increased from 5px to move heatmap down */
     padding-bottom: 15px;
     padding-left: 15px;
     padding-right: 15px;
     border-radius: 15px;
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
-
+    position: relative;    /* anchor for streak-counter absolute */
     overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: center;
 }
 
-/* --- Header Styles (Fixed Height & Single Line) --- */
-.onigiri-heatmap-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    flex-wrap: nowrap;
-    /* Force single line */
-    gap: 4px;
-    /* Tight gap to fit content */
-    width: 100%;
-    min-width: 0;
-}
-
-
-.onigiri-heatmap-header .header-left,
-.onigiri-heatmap-header .header-right {
+/* --- Nav bar — absolute top-left; year selector + streak sit side-by-side inside --- */
+.heatmap-nav {
+    position: absolute;
+    top: 16px;
+    left: 12px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    /* Force single line */
-    flex-shrink: 0;
-    /* Prevent crushing */
+    gap: 8px;
+    z-index: 2;
 }
 
-/* --- Streak Counter (Fixed Height) --- */
+/* --- Streak Counter — inline flex child of .heatmap-nav, to the right of year selector --- */
 .streak-counter {
     font-size: 12px;
     font-weight: 500;
     color: var(--fg-subtle);
-    background-color: var(--heatmap-color-zero);
-    border-radius: 6px;
-
-    /* Fixed Height Logic */
+    background-color: #353535;
+    border-radius: 8px;
     height: 24px;
     padding: 0 8px;
-    /* Horizontal padding only */
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
     white-space: nowrap;
+    pointer-events: none;
+}
+
+/* Streak tooltip — same look as heatmap cell tooltips */
+.streak-counter.onigiri-streak-tip {
+    pointer-events: auto;
+    position: relative;
+    cursor: default;
+}
+.streak-counter.onigiri-streak-tip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--canvas-inset, #f0f0f0) !important;
+    color: var(--fg, #1a1a1a) !important;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+    font-weight: normal !important;
+    line-height: 1.4 !important;
+    text-align: center !important;
+    border: none !important;
+}
+.streak-counter.onigiri-streak-tip:hover::after {
+    opacity: 1;
+    visibility: visible;
 }
 
 .heatmap-filters {
@@ -102,17 +120,11 @@
     box-shadow: none !important;
 }
 
-/* --- Navigation (Fixed Height) --- */
-.heatmap-nav {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
 
 .nav-btn {
     border: none;
     border-color: transparent;
-    background-color: var(--heatmap-color-zero);
+    background-color: #353535;
     color: var(--fg);
     border-radius: 8px;
     width: 24px;
@@ -150,8 +162,8 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--fg);
-    background-color: var(--heatmap-color-zero);
-    border-radius: 6px;
+    background-color: #353535;
+    border-radius: 8px;
 
     /* Fixed Height Logic */
     height: 24px;
@@ -163,12 +175,108 @@
     white-space: nowrap;
 }
 
+/* --- Custom Year Dropdown --- */
+.year-select-wrapper {
+    position: relative;
+}
+
+.year-select-btn {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+    background-color: #353535;
+    border: none !important;
+    border-radius: 8px !important;
+    height: 24px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    outline: none !important;
+    white-space: nowrap;
+    font-family: var(--font-main, system-ui, sans-serif);
+    box-shadow: none !important;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* No hover effect — suppress any browser/Anki default button styling */
+.year-select-btn:hover,
+.year-select-btn:focus,
+.year-select-btn:focus-visible,
+.year-select-btn:active {
+    background-color: #353535;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* When dropdown is open, show the highlighted state */
+.year-select-btn.open,
+.year-select-btn.open:hover,
+.year-select-btn.open:focus,
+.year-select-btn.open:active {
+    background-color: #4A4A4A;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.year-select-btn.open .year-chevron {
+    transform: rotate(180deg);
+}
+
+.year-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background-color: var(--canvas-overlay, #2a2a2a);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 8px;
+    padding: 4px;
+    min-width: 70px;
+    z-index: 1000;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.year-dropdown-menu.open {
+    display: block;
+}
+
+.year-dropdown-item {
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+    font-family: var(--font-main, system-ui, sans-serif);
+    text-align: center;
+}
+
+.year-dropdown-item:hover {
+    background-color: rgba(128,128,128,0.18);
+}
+
+.year-dropdown-item.selected {
+    color: var(--accent-color, #6366f1);
+    font-weight: 600;
+}
+
+/* --- Grid — pushed down to clear the absolute nav bar --- */
+.heatmap-grid {
+    margin-top: 44px;
+}
+
 /* --- Base Grid and Cells --- */
 .heatmap-day-cell {
     width: 100%;
     aspect-ratio: 1 / 1;
     position: relative;
-    margin: 1px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -317,16 +425,15 @@
 }
 
 
-/* Tooltip - MUST use hardcoded colors to prevent user font settings from affecting it */
+/* Tooltip — light mode: light bg + dark text; dark mode: dark grey bg + light text */
 .heatmap-day-cell::after {
     content: attr(data-tooltip);
     position: absolute;
     bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
-    /* HARDCODED COLORS - DO NOT USE CSS VARIABLES */
-    background-color: #333 !important;
-    color: #fff !important;
+    background-color: var(--canvas-inset, #f0f0f0) !important;
+    color: var(--fg, #1a1a1a) !important;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
@@ -336,22 +443,12 @@
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease, visibility 0.2s ease;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    /* Prevent inheritance of unwanted styles */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
     font-weight: normal !important;
     line-height: 1.4 !important;
     text-align: center !important;
     border: none !important;
-}
-
-/* Dark Mode - HARDCODED COLORS */
-.night .heatmap-day-cell::after,
-.nightMode .heatmap-day-cell::after,
-.night-mode .heatmap-day-cell::after {
-    background-color: #eee !important;
-    color: #000 !important;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {
@@ -456,7 +553,7 @@
     grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    gap: 0.5px;
+    gap: 0;
 }
 
 

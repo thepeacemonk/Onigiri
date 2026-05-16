@@ -1,13 +1,14 @@
-<div align="center">
-  <img width="360" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8" />
-  <br>
-  <br>
-  <h3>Onigiri (Beta)</h3>
-</div>
+<h3 align="center">
+  <img width="360" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8"/> 
 
-<div align="center">
+<br>
+<br>
+	Onigiri (Beta)
+</h3>
+
+<p align="center">
   <img width="400" height="22" alt="Onigiri divider" src="https://github.com/user-attachments/assets/77958660-41fd-4a43-85df-6c17cda02958" />
-</div>
+</p>
 
 Onigiri is an **experimental add-on** that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, transforming how Anki looks completely, a way to keep you motivated to study your cards everyday. 
 
@@ -36,6 +37,13 @@ If you have any issues while using Onigiri, please don't hesitate to post an [is
 - When you download it, your external add-ons will appear archived, go to Settings -> Menu -> Main menu and organize your "Archived External Add-ons".
 - You might find that Onigiri makes Anki "slow" due to Gamification Mode, this is a symptom of registering data while you study, and is considered normal, I will work towards optimization on future updates.
 - Onigiri does not work with older versions of Anki, only 25.07.5 and 25.09, please keep your Anki updated for a better experience. 
+
+### ✅ Recent fixes included in this PR
+
+- Align sidebar sync status dot closer to the `Sync` label instead of anchoring it to the far right
+- Preserve deck name truncation in the sidebar by ensuring long deck labels use ellipsis
+- Make right-click deck highlight colors follow the configured light/dark mode color scheme
+- Position ellipsis-menu tick indicators consistently closer to the option label
 
 ### 📜 License
 

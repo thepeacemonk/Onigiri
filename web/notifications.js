@@ -6,7 +6,23 @@
     const STACK_ID = "onigiri-notification-stack";
     const CARD_VISIBLE_CLASS = "is-visible";
     const DEFAULT_DURATION = 5200;
-    const MOCHI_ICON_IMAGE = "/_addons/1011095603/system_files/gamification_images/mochi_messenger.png";
+
+    function _getAddonPackage() {
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) {
+            return window.ONIGIRI_CONFIG.addonPackage;
+        }
+        try {
+            const me = document.currentScript ||
+                Array.from(document.querySelectorAll('script[src*="notifications.js"]')).pop();
+            if (me && me.src) {
+                const m = me.src.match(/\/_addons\/([^\/]+)\//);
+                if (m) return m[1];
+            }
+        } catch (e) {}
+        return '1011095603';
+    }
+
+    const MOCHI_ICON_IMAGE = `/_addons/${_getAddonPackage()}/system_files/gamification_images/mochi_messenger.png`;
     const pendingQueue = [];
     let domReady = document.readyState !== "loading" && !!document.body;
 
