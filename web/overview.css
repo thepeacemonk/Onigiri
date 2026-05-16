@@ -219,7 +219,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 15px 20px;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     cursor: pointer;
     border: none !important;
     color: #e1e1e1;
@@ -269,7 +269,7 @@ body {
     -webkit-appearance: none !important;
     border: none !important;
     box-shadow: none !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
 }
 
 #study:hover,
