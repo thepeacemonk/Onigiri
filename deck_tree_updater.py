@@ -248,7 +248,7 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
         js = """
         (function() {{
             const container = document.getElementById('deck-list-container');
-            const scrollTop = container?.scrollTop || 0;
+            const scrollTop = container ? container.scrollTop : 0;
             OnigiriEngine.updateDeckTree({new_tree_html});
             if (container) container.scrollTop = scrollTop;
         }})();
