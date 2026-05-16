@@ -3090,16 +3090,36 @@ def generate_icon_css(addon_package, conf):
         display: flex !important;
         align-items: center !important;
         gap: 0 !important;
-        width: 100%;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        width: auto !important;
     }}
     
     .deck-table a.deck {{
         padding: 0px 0px 0px 3px !important;
         margin-left: 0 !important;
-        /* Ensure it behaves nicely in flex container and keeps ellipsis working */
-        display: block !important;
-        flex: 1 1 auto !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        flex: 1 1 0 !important;
         min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }}
+    
+    .deck-table a.deck .deck-mark-dot {{
+        flex-shrink: 0 !important;
+    }}
+
+    .deck-table a.deck .deck-name {{
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        display: block !important;
     }}
     
     /* Ensure indentation span works as expected */
@@ -3858,7 +3878,7 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         <div class="deck-info">
             {deck_prefix}
             <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
-                {display_name}{mark_dot_html}
+                <span class="deck-name">{display_name}</span>{mark_dot_html}
             </a>
         </div>
         {counts_html}
