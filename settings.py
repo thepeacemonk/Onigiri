@@ -6896,6 +6896,8 @@ class SettingsDialog(QDialog):
         sidebar_mode = mw.col.conf.get("modern_menu_sidebar_bg_mode", "main"); sidebar_mode_layout = QHBoxLayout()
         self.sidebar_bg_main_radio = QRadioButton("Use Main Background Settings"); self.sidebar_bg_custom_radio = QRadioButton("Use Custom Sidebar Background")
         self.sidebar_bg_main_radio.setChecked(sidebar_mode == "main"); self.sidebar_bg_custom_radio.setChecked(sidebar_mode == "custom"); sidebar_mode_layout.addWidget(self.sidebar_bg_main_radio); sidebar_mode_layout.addWidget(self.sidebar_bg_custom_radio); sidebar_layout.addLayout(sidebar_mode_layout)
+        self.sidebar_bg_main_radio.toggled.connect(self.toggle_sidebar_background_options)
+        self.sidebar_bg_custom_radio.toggled.connect(self.toggle_sidebar_background_options)
         
         self.sidebar_main_options_group = QWidget()
         sidebar_main_layout = QVBoxLayout(self.sidebar_main_options_group)
@@ -6951,6 +6953,7 @@ class SettingsDialog(QDialog):
         sidebar_layout.addWidget(self.sidebar_main_options_group)
         self.sidebar_custom_options_group = self.create_sidebar_custom_options()
         sidebar_layout.addWidget(self.sidebar_custom_options_group)
+        self.toggle_sidebar_background_options()
 
         layout.addWidget(sidebar_group)   # restore: was missing, causing the section to not render
 
@@ -7255,7 +7258,7 @@ class SettingsDialog(QDialog):
         
         deck_icons_layout = QGridLayout(); deck_icons_layout.setSpacing(15)
         deck_icons_layout_content.addLayout(deck_icons_layout)
-        deck_icons_to_configure = {"folder": "Folder Icon", "deck": "Deck Icon", "subdeck": "Subdeck Icon", "filtered_deck": "Filtered Deck Icon", "options": "Options Icon", "collapse_closed": "Collapsed Icon (+)", "collapse_open": "Expanded Icon (-)"}
+        deck_icons_to_configure = {"folder": "Folder Icon", "deck": "Deck Icon", "subdeck": "Subdeck Icon", "filtered_deck": "Filtered Deck Icon", "options": "Options Icon"}
         row, col, num_cols = 0, 0, 3
         for key, label_text in deck_icons_to_configure.items():
             card = QWidget(); card_layout = QVBoxLayout(card); card_layout.setContentsMargins(0,0,0,0); card_layout.setSpacing(5)
@@ -7314,28 +7317,30 @@ class SettingsDialog(QDialog):
         light_deck_colors_layout.setSpacing(5)
         self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
         # Right-click highlight for light mode
-        ctx_light_row = self._create_color_picker_row(
-            "Right-click Highlight",
+        ctx_light_pill = self._create_color_pill(
+            "--ctx-highlight",
             mw.col.conf.get("onigiri_ctx_highlight_color_light",
                             mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
-            "ctx_highlight_light",
-            tooltip_text="Color tint applied to the right-clicked deck row in light mode. Uses 25% opacity."
+            "light",
+            {"label": "Right-click Highlight", "tooltip": "Color tint applied to the right-clicked deck row in light mode. Uses 25% opacity."}
         )
-        light_deck_colors_layout.addLayout(ctx_light_row)
+        self.ctx_highlight_light_color_input = self.color_widgets["light"]["--ctx-highlight"]
+        light_deck_colors_layout.addWidget(ctx_light_pill)
         deck_color_modes_layout.addWidget(light_deck_colors_group)
 
         dark_deck_colors_group, dark_deck_colors_layout = self._create_inner_group("Dark Mode Colors")
         dark_deck_colors_layout.setSpacing(5)
         self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
         # Right-click highlight for dark mode
-        ctx_dark_row = self._create_color_picker_row(
-            "Right-click Highlight",
+        ctx_dark_pill = self._create_color_pill(
+            "--ctx-highlight",
             mw.col.conf.get("onigiri_ctx_highlight_color_dark",
                             mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
-            "ctx_highlight_dark",
-            tooltip_text="Color tint applied to the right-clicked deck row in dark mode. Uses 25% opacity."
+            "dark",
+            {"label": "Right-click Highlight", "tooltip": "Color tint applied to the right-clicked deck row in dark mode. Uses 25% opacity."}
         )
-        dark_deck_colors_layout.addLayout(ctx_dark_row)
+        self.ctx_highlight_dark_color_input = self.color_widgets["dark"]["--ctx-highlight"]
+        dark_deck_colors_layout.addWidget(ctx_dark_pill)
         deck_color_modes_layout.addWidget(dark_deck_colors_group)
         deck_section.add_layout(deck_color_modes_layout)
 
