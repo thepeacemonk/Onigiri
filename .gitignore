@@ -4,5 +4,8 @@ __MACOSX/
 .DS_Store
 sidebar_debug.log
 .claude/
+config.json
+meta.json
+onigiri_layout.json
 user_files/
 *.log
