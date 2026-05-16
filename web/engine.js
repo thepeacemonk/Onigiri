@@ -75,6 +75,16 @@ window.OnigiriEngine = {
             Array.from(tableBody.querySelectorAll('tr.deck[data-did]')).map(r => r.dataset.did)
         );
 
+        // Snapshot edit-mode checkbox state before innerHTML wipes the DOM
+        const editor = typeof OnigiriEditor !== 'undefined' ? OnigiriEditor : null;
+        const checkboxStateMap = new Map();
+        tableBody.querySelectorAll('.deck-checkbox').forEach(cb => {
+            const did = cb.dataset.did;
+            if (did) {
+                checkboxStateMap.set(did, cb.checked);
+            }
+        });
+
         tableBody.innerHTML = newHtml;
 
         // Animate rows that are genuinely new (expansion animation)
@@ -98,6 +108,18 @@ window.OnigiriEngine = {
 
         this.restoreScrollPosition();
         this.processNewNodes(tableBody.children);
+
+        // Recreate edit-mode checkboxes and restore which decks were selected
+        if (editor && editor.EDIT_MODE && typeof editor.reapplyEditModeState === 'function') {
+            checkboxStateMap.forEach((isChecked, did) => {
+                if (isChecked) {
+                    editor.SELECTED_DECKS.add(did);
+                } else {
+                    editor.SELECTED_DECKS.delete(did);
+                }
+            });
+            editor.reapplyEditModeState();
+        }
 
         if (typeof window.updateDeckLayouts === 'function') {
             window.updateDeckLayouts();

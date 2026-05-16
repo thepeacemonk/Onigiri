@@ -243,13 +243,28 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
         # Escape the HTML for safe injection into a JavaScript string
         js_escaped_html = json.dumps(new_tree_html)
         
-        # Send the new HTML to the frontend to be injected by JavaScript
-        # This preserves checkbox *state* (checked=true/false)
+        # updateDeckTree preserves scroll, hover, and edit-mode checkbox selection
         js = """
         (function() {{
             const container = document.getElementById('deck-list-container');
             const scrollTop = container ? container.scrollTop : 0;
+
+            const checkboxStateMap = new Map();
+            document.querySelectorAll('.deck-checkbox').forEach(cb => {{
+                const did = cb.dataset.did;
+                if (did) checkboxStateMap.set(did, cb.checked);
+            }});
+
             OnigiriEngine.updateDeckTree({new_tree_html});
+
+            if (typeof OnigiriEditor !== 'undefined' && OnigiriEditor.EDIT_MODE) {{
+                checkboxStateMap.forEach((isChecked, did) => {{
+                    if (isChecked) OnigiriEditor.SELECTED_DECKS.add(did);
+                    else OnigiriEditor.SELECTED_DECKS.delete(did);
+                }});
+                OnigiriEditor.reapplyEditModeState();
+            }}
+
             if (container) container.scrollTop = scrollTop;
         }})();
         """.format(new_tree_html=js_escaped_html)

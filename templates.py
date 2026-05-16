@@ -9,6 +9,24 @@ custom_body_template = """
         transition: opacity 0.15s ease;
     }
 
+    /* --- Edit mode (multi-deck selection checkboxes) --- */
+    body.deck-edit-mode #deck-list-container {
+        border: 2px dashed var(--accent-color);
+        border-radius: 15px;
+        background-color: transparent !important;
+    }
+    body.deck-edit-mode .decktd a.deck {
+        pointer-events: none !important;
+        color: var(--fg-subtle) !important;
+    }
+    .deck-checkbox {
+        margin-left: 5px;
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        accent-color: var(--accent-color);
+    }
+
     /* --- Drag & Drop Styles --- */
     .drag-handle {
         opacity: 0;
@@ -523,14 +541,90 @@ custom_body_template = """
     }
 })();
 
-// OnigiriEditor stub — edit mode is removed; drag-and-drop is always-on via engine.js
 const OnigiriEditor = {
     EDIT_MODE: false,
     SELECTED_DECKS: new Set(),
-    init: function() {},
-    enterEditMode: function() {},
-    exitEditMode: function() {},
-    reapplyEditModeState: function() {},
+
+    init: function() {
+        try {
+            const savedEditMode = sessionStorage.getItem('onigiri_edit_mode');
+            const savedSelectedDecks = sessionStorage.getItem('onigiri_selected_decks');
+            if (savedEditMode === 'true') {
+                if (savedSelectedDecks) {
+                    this.SELECTED_DECKS = new Set(JSON.parse(savedSelectedDecks));
+                }
+                this.enterEditMode();
+            }
+        } catch (e) {
+            console.warn('Onigiri: failed to restore edit mode state', e);
+        }
+
+        const deckTreeBody = document.querySelector('#decktree > tbody');
+        if (deckTreeBody) {
+            const observer = new MutationObserver(() => {
+                if (this.EDIT_MODE) {
+                    setTimeout(() => this.reapplyEditModeState(), 50);
+                }
+            });
+            observer.observe(deckTreeBody, { childList: true });
+        }
+    },
+
+    enterEditMode: function() {
+        if (this.EDIT_MODE) return;
+        this.EDIT_MODE = true;
+        document.body.classList.add('deck-edit-mode');
+        this.reapplyEditModeState();
+        try {
+            sessionStorage.setItem('onigiri_edit_mode', 'true');
+        } catch (e) {}
+    },
+
+    exitEditMode: function() {
+        if (!this.EDIT_MODE) return;
+        this.EDIT_MODE = false;
+        document.body.classList.remove('deck-edit-mode');
+        document.querySelectorAll('.deck-checkbox').forEach(cb => cb.remove());
+        this.SELECTED_DECKS.clear();
+        try {
+            sessionStorage.removeItem('onigiri_edit_mode');
+            sessionStorage.removeItem('onigiri_selected_decks');
+        } catch (e) {}
+    },
+
+    reapplyEditModeState: function() {
+        if (!this.EDIT_MODE) return;
+        document.querySelectorAll('#decktree tr.deck').forEach(row => {
+            const did = row.dataset.did || row.id;
+            if (!did || row.querySelector('.deck-checkbox')) return;
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'deck-checkbox';
+            checkbox.dataset.did = did;
+            checkbox.checked = this.SELECTED_DECKS.has(did);
+
+            checkbox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (e.target.checked) {
+                    this.SELECTED_DECKS.add(did);
+                } else {
+                    this.SELECTED_DECKS.delete(did);
+                }
+                try {
+                    sessionStorage.setItem(
+                        'onigiri_selected_decks',
+                        JSON.stringify(Array.from(this.SELECTED_DECKS))
+                    );
+                } catch (err) {}
+            });
+
+            const decktd = row.querySelector('.decktd');
+            if (decktd) {
+                decktd.prepend(checkbox);
+            }
+        });
+    },
 };
 
 // Sync Status Manager
@@ -560,6 +654,13 @@ const SyncStatusManager = {
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof anki !== 'undefined' && anki.setupDeckBrowser) {
         anki.setupDeckBrowser();
+    }
+    OnigiriEditor.init();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && OnigiriEditor.EDIT_MODE) {
+        OnigiriEditor.exitEditMode();
     }
 });
 
