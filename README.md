@@ -38,6 +38,13 @@ If you have any issues while using Onigiri, please don't hesitate to post an [is
 - You might find that Onigiri makes Anki "slow" due to Gamification Mode, this is a symptom of registering data while you study, and is considered normal, I will work towards optimization on future updates.
 - Onigiri does not work with older versions of Anki, only 25.07.5 and 25.09, please keep your Anki updated for a better experience. 
 
+### ✅ Recent fixes included in this PR
+
+- Align sidebar sync status dot closer to the `Sync` label instead of anchoring it to the far right
+- Preserve deck name truncation in the sidebar by ensuring long deck labels use ellipsis
+- Make right-click deck highlight colors follow the configured light/dark mode color scheme
+- Position ellipsis-menu tick indicators consistently closer to the option label
+
 ### 📜 License
 
 This project is licensed under the `GNU Affero General Public License v3.0 (AGPL-3.0)`. In short: you’re free to use, study, and modify this code—but if you run it as a service or distribute modified versions, you must make your source available under the same license.
