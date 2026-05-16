@@ -1540,6 +1540,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
         .item-danger:hover .ctx-icon {{
             color: #c03535 !important;
+            background-color: #c03535 !important;
         }}
         /* Ellipsis mode: remove empty toolbar row and pull deck list up */
         .sidebar-mode-ellipsis .sidebar-toolbar {{
