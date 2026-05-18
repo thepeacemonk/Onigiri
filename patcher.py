@@ -2813,7 +2813,11 @@ def generate_icon_css(addon_package, conf):
             url = get_data_uri(path)
         
         if not url: # Fallback to system
-            system_icon_name = 'star' if key == 'retention_star' else key
+            system_icon_name = {
+                "create_deck": "add-deck",
+                "filtered_deck": "filtered-deck",
+                "retention_star": "star_filled",
+            }.get(key, key)
             path = os.path.join(addon_dir, "system_files", "system_icons", f"{system_icon_name}.svg")
             url = get_data_uri(path)
         
@@ -2915,13 +2919,13 @@ def generate_icon_css(addon_package, conf):
     if closed_icon_file:
         closed_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", closed_icon_file))
     if not closed_icon_url:
-        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_closed.svg"))
+        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "right.svg"))
 
     open_icon_url = ""
     if open_icon_file:
         open_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", open_icon_file))
     if not open_icon_url:
-        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_open.svg"))
+        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "down.svg"))
         
     # Create a list of selectors for the background color, EXCLUDING the star and filtered deck (filtered has own color)
     bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck"]}
@@ -3383,7 +3387,7 @@ def generate_dynamic_css(conf):
 	light_rules += f"\n    --profile-bg-custom-color: {profile_light_color} !important;"
 	dark_rules += f"\n    --profile-bg-custom-color: {profile_dark_color} !important;"
 
-	# --- New Glassmorphism Style Block ---
+	# --- New frosted effect style block ---
 	glass_style_block = ""
 	if effect_mode == "glassmorphism":
 		# Map intensity (0-100) to blur radius (0-20px)
@@ -3609,12 +3613,15 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     fav_attr = ' data-is-fav="1"' if is_favorite else ""
 
     deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
-    mark_colors = {
+    mark_colors = conf.get("markerColors", {}) or {}
+    default_mark_colors = {
         "red": "#FF4B4B",
         "blue": "#4488FF",
         "green": "#44BB66",
         "yellow": "#FFB800",
     }
+    default_mark_colors.update({k: v for k, v in mark_colors.items() if isinstance(v, str) and v})
+    mark_colors = default_mark_colors
     mark_key = deck_marks.get(did_str)
     mark_attr = f' data-mark="{mark_key}"' if mark_key in mark_colors else ""
     mark_dot_html = (

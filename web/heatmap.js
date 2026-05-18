@@ -98,6 +98,21 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             .replace(/>/g, '&gt;');
     }
 
+    function getWeekStartOffset(date, config) {
+        const startsSunday = (config.heatmapWeekStart || 'monday') === 'sunday';
+        return startsSunday ? date.getDay() : (date.getDay() + 6) % 7;
+    }
+
+    function orderedWeekdayLabels(config, longLabels) {
+        const labels = longLabels
+            ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        if ((config.heatmapWeekStart || 'monday') === 'sunday') {
+            return labels;
+        }
+        return labels.slice(1).concat(labels[0]);
+    }
+
 
     // --- VIEW RENDERERS ---
 
@@ -112,7 +127,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         let html = `
             <div class="heatmap-months"></div>
-            <div class="heatmap-weekdays"><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div><div>S</div></div>
+            <div class="heatmap-weekdays">${orderedWeekdayLabels(config, false).map(label => `<div>${label}</div>`).join('')}</div>
             <div class="heatmap-cells"></div>
         `;
         gridContainer.innerHTML = html;
@@ -122,7 +137,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         let currentMonth = -1;
 
         for (let i = 0; i < 371; i++) {
-            const dayOfWeek = (firstDayOfYear.getDay() + 6) % 7;
+            const dayOfWeek = getWeekStartOffset(firstDayOfYear, config);
             const date = new Date(firstDayOfYear);
             date.setDate(firstDayOfYear.getDate() - dayOfWeek + i);
 
@@ -159,13 +174,13 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         const firstDayOfMonth = new Date(year, month, 1);
 
         let html = `
-            <div class="month-weekdays-header"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+            <div class="month-weekdays-header">${orderedWeekdayLabels(config, true).map(label => `<div>${label}</div>`).join('')}</div>
             <div class="month-cells-grid"></div>
         `;
         gridContainer.innerHTML = html;
         const cellsContainer = gridContainer.querySelector('.month-cells-grid');
 
-        const firstDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
+        const firstDayOfWeek = getWeekStartOffset(firstDayOfMonth, config);
         for (let i = 0; i < firstDayOfWeek; i++) {
             const emptyCell = document.createElement('div');
             emptyCell.className = 'heatmap-day-cell empty';
@@ -188,7 +203,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         gridContainer.dataset.headerHidden = !config.heatmapShowWeekHeader;
         const target = state.targetDate;
         const startDate = new Date(target);
-        const startDayOfWeek = (target.getDay() + 6) % 7;
+        const startDayOfWeek = getWeekStartOffset(target, config);
         startDate.setDate(startDate.getDate() - startDayOfWeek);
 
         let html = `

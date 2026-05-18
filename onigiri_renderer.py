@@ -151,7 +151,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     
     # Map action id -> default system icon filename
     default_icons = {
-        'add': 'add.svg',
+        'add': 'add-card.svg',
         'browse': 'browse.svg',
         'stats': 'stats.svg',
         'sync': 'sync.svg',
@@ -159,7 +159,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
         'gamification': 'gamepad.svg',
         'more': 'more.svg',
         'get_shared': 'get_shared.svg',
-        'create_deck': 'create_deck.svg',
+        'create_deck': 'add-deck.svg',
         'import_file': 'import_file.svg',
     }
     
@@ -1247,6 +1247,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "addonPackage": mw.addonManager.addonFromModule(__name__),
         "collapsedIcons": collapsed_icons,
         "deckSortMode": mw.col.conf.get("onigiri_sort_mode", "default"),
+        "markerColors": conf.get("markerColors", config.DEFAULTS.get("markerColors", {})),
+        "filters": {
+            "favorites": bool(mw.col.conf.get("onigiri_show_favourites", False) or mw.col.conf.get("onigiri_show_favorites", False)),
+            "marked": bool(mw.col.conf.get("onigiri_show_marked", False)),
+        },
     }
     
     # Get Sync Status

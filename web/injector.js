@@ -73,14 +73,14 @@
 
         // Map action id -> default system icon filename
         const defaultIcons = {
-            'add': 'add.svg',
+            'add': 'add-card.svg',
             'browse': 'browse.svg',
             'stats': 'stats.svg',
             'sync': 'sync.svg',
             'settings': 'settings.svg',
             'more': 'more.svg',
             'get_shared': 'get_shared.svg',
-            'create_deck': 'create_deck.svg',
+            'create_deck': 'add-deck.svg',
             'import_file': 'import_file.svg',
         };
 

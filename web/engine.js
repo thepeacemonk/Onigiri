@@ -141,6 +141,7 @@ window.OnigiriEngine = {
     bindEvents: function () {
         if (this.deckListContainer.dataset.engineBound) return;
         this.deckListContainer.dataset.engineBound = 'true';
+        this.applyFilterButtonStates();
 
         // --- Listener: Keep row hovered while mouse is over it ---
         this.deckListContainer.addEventListener('mouseenter', (event) => {
@@ -216,6 +217,23 @@ window.OnigiriEngine = {
 
         this._boundDndMove = (event) => this._dndMove(event);
         this._boundDndEnd = (event) => this._dndEnd(event);
+    },
+
+    applyFilterButtonStates: function () {
+        const filters = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.filters) || {};
+        [
+            { key: 'favorites', commands: ['onigiri_filter_favourites', 'onigiri_filter_favorites'] },
+            { key: 'marked', commands: ['onigiri_filter_marked'] },
+        ].forEach(filter => {
+            const active = !!filters[filter.key];
+            filter.commands.forEach(command => {
+                document.querySelectorAll(`[onclick*="${command}"]`).forEach(button => {
+                    button.classList.toggle('active', active);
+                    button.classList.toggle('checked', active);
+                    button.setAttribute('aria-checked', active ? 'true' : 'false');
+                });
+            });
+        });
     },
 
     _dndCreateGhost: function (row) {
@@ -604,7 +622,7 @@ window.OnigiriEngine = {
 
         [
             { label: 'Rename', icon: 'rename', command: `onigiri_ctx_rename:${did}` },
-            { label: 'Add Subdeck', icon: 'subdeck', command: `onigiri_ctx_subdeck:${did}` },
+            { label: 'Add Subdeck', icon: 'add-subdeck', command: `onigiri_ctx_subdeck:${did}` },
             { label: 'Change Icon', icon: 'edit_icon', command: `onigiri_ctx_change_icon:${did}` },
             {
                 label: isFavorite ? 'Remove Favorite' : 'Favorite',
@@ -615,14 +633,22 @@ window.OnigiriEngine = {
 
         menu.appendChild(document.createElement('hr'));
 
+        const markerColors = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerColors) || {};
+        const markerDefaults = {
+            red: '#ff4d4f',
+            blue: '#4f95ff',
+            green: '#45c878',
+            yellow: '#ffc629',
+        };
+
         this.appendMenuGroup(menu, {
             label: 'Markers',
             icon: 'mark_circle',
             items: [
-                { label: 'Red', color: '#ff4d4f', selected: currentMark === 'red', command: `onigiri_ctx_mark:${did}:red` },
-                { label: 'Blue', color: '#4f95ff', selected: currentMark === 'blue', command: `onigiri_ctx_mark:${did}:blue` },
-                { label: 'Green', color: '#45c878', selected: currentMark === 'green', command: `onigiri_ctx_mark:${did}:green` },
-                { label: 'Yellow', color: '#ffc629', selected: currentMark === 'yellow', command: `onigiri_ctx_mark:${did}:yellow` },
+                { label: 'Red', color: markerColors.red || markerDefaults.red, selected: currentMark === 'red', command: `onigiri_ctx_mark:${did}:red` },
+                { label: 'Blue', color: markerColors.blue || markerDefaults.blue, selected: currentMark === 'blue', command: `onigiri_ctx_mark:${did}:blue` },
+                { label: 'Green', color: markerColors.green || markerDefaults.green, selected: currentMark === 'green', command: `onigiri_ctx_mark:${did}:green` },
+                { label: 'Yellow', color: markerColors.yellow || markerDefaults.yellow, selected: currentMark === 'yellow', command: `onigiri_ctx_mark:${did}:yellow` },
             ],
         });
 
@@ -634,12 +660,37 @@ window.OnigiriEngine = {
 
         [
             { label: 'Deck Options', icon: 'options', command: `onigiri_ctx_options:${did}` },
-            { label: 'Export Deck', icon: 'export', command: `onigiri_ctx_export:${did}` },
+            { label: 'Export Deck', icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
             { label: 'Copy Deck ID', icon: 'copy_id', command: `onigiri_ctx_copy_id:${did}` },
             { label: 'Delete Deck', icon: 'delete', danger: true, command: `onigiri_ctx_delete:${did}` },
         ].forEach(item => this.appendMenuItem(menu, item));
 
         this.positionMenu(menu, x, y);
+    },
+
+    showHomeMenu: function (button, event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        this.closeQuickMenus();
+
+        const menu = document.createElement('div');
+        menu.className = 'onigiri-quick-menu';
+        [
+            { label: 'Add', icon: 'add-card', command: 'add' },
+            { label: 'Browse', icon: 'browse', command: 'browse' },
+            { label: 'Stats', icon: 'stats', command: 'stats' },
+            { label: 'Sync', icon: 'sync', command: 'sync' },
+            { label: 'Settings', icon: 'settings', command: 'openOnigiriSettings' },
+            { label: 'Onigiri Games', icon: 'gamepad', command: 'openGamificationSettings' },
+            { label: 'Get Shared', icon: 'get_shared', command: 'shared' },
+            { label: 'Create Deck', icon: 'add-deck', command: 'onigiri_create_deck' },
+            { label: 'Import File', icon: 'import_file', command: 'import' },
+        ].forEach(item => this.appendMenuItem(menu, item));
+
+        const rect = button.getBoundingClientRect();
+        this.positionMenu(menu, rect.left, rect.bottom + 6);
     },
 
     showSortMenu: function (button, event) {
@@ -658,7 +709,7 @@ window.OnigiriEngine = {
             { label: 'A to Z', icon: 'sort_custom', mode: 'alphabetical_az' },
             { label: 'Z to A', icon: 'sort_custom', mode: 'alphabetical_za' },
             { label: 'Most due', icon: 'sort_most_reviews', mode: 'most_due' },
-            { label: 'Most new', icon: 'create_deck', mode: 'most_new' },
+            { label: 'Most new', icon: 'sort_most_new', mode: 'most_new' },
             { label: 'Most reviews', icon: 'stats', mode: 'most_reviews' },
             { label: 'Favorites first', icon: 'star_filled', mode: 'favorites_first' },
             { label: 'Custom order', icon: 'sort_custom', mode: 'custom' },

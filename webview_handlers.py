@@ -13,7 +13,8 @@ from anki.decks import DeckId
 
 
 _ICON_PRIORITY = [
-    "book.svg", "folder.svg", "star.svg", "deck.svg", "filtered_deck.svg",
+    "deck.svg", "folder.svg", "star_filled.svg", "filtered-deck.svg",
+    "add-card.svg", "add-deck.svg", "add-subdeck.svg",
     "add.svg", "browse.svg", "stats.svg", "sync.svg", "settings.svg",
     "rename.svg", "mark_circle.svg", "focus.svg", "gamepad.svg",
 ]

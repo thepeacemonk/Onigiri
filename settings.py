@@ -665,10 +665,23 @@ class SectionGroup(QWidget):
         main_layout.setSpacing(8)
         main_layout.setContentsMargins(20, 16, 20, 20)
 
+        self.header_layout = None
         if title:
+            self.header_layout = QHBoxLayout()
+            self.header_layout.setContentsMargins(0, 0, 0, 0)
+            self.header_layout.setSpacing(8)
             title_label = QLabel(title)
             title_label.setObjectName("sectionTitle")
-            main_layout.addWidget(title_label)
+            self.header_layout.addWidget(title_label)
+            if description:
+                info_button = QPushButton("i")
+                info_button.setObjectName("sectionInfoButton")
+                info_button.setFixedSize(24, 24)
+                info_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                info_button.setToolTip(description)
+                self.header_layout.addWidget(info_button)
+            self.header_layout.addStretch()
+            main_layout.addLayout(self.header_layout)
 
         if description:
             desc_label = QLabel(description)
@@ -691,6 +704,10 @@ class SectionGroup(QWidget):
 
     def add_layout(self, layout):
         self.content_layout.addLayout(layout)
+
+    def add_header_widget(self, widget):
+        if self.header_layout:
+            self.header_layout.addWidget(widget)
 
 class ColorSwatch(QWidget):
     """A simple widget to display a circle of a solid color."""
@@ -916,12 +933,23 @@ class ThemeCardWidget(QFrame):
                         icon_color = preview_colors.get("--icon-color", preview_colors.get("--fg", "#888"))
                         
                         try:
-                            # Default icons are data URIs: "data:image/svg+xml,<svg>..."
+                            svg_xml = ""
                             if default_svg_data.startswith("data:image/svg+xml,"):
                                 svg_xml = default_svg_data.replace("data:image/svg+xml,", "")
                                 import urllib.parse
                                 svg_xml = urllib.parse.unquote(svg_xml)
-                                
+                            else:
+                                default_icon_path = os.path.join(
+                                    os.path.dirname(__file__),
+                                    "system_files",
+                                    "system_icons",
+                                    default_svg_data,
+                                )
+                                if os.path.exists(default_icon_path):
+                                    with open(default_icon_path, "r", encoding="utf-8") as f:
+                                        svg_xml = f.read()
+
+                            if svg_xml:
                                 # Color the SVG
                                 if 'stroke="currentColor"' in svg_xml:
                                     colored_svg = svg_xml.replace('stroke="currentColor"', f'stroke="{icon_color}"')
@@ -929,14 +957,14 @@ class ThemeCardWidget(QFrame):
                                     colored_svg = svg_xml.replace('fill="currentColor"', f'fill="{icon_color}"')
                                 else:
                                     colored_svg = svg_xml.replace('<svg', f'<svg fill="{icon_color}" stroke="{icon_color}"', 1)
-                                
+
                                 renderer = QSvgRenderer(colored_svg.encode('utf-8'))
                                 pixmap = QPixmap(26, 26)
                                 pixmap.fill(Qt.GlobalColor.transparent)
                                 painter = QPainter(pixmap)
                                 renderer.render(painter)
                                 painter.end()
-                                
+
                                 thumb.setPixmap(pixmap)
                                 thumb.setToolTip(f"Icon: {icon_key} (default)")
                                 asset_layout.addWidget(thumb)
@@ -2515,8 +2543,8 @@ class SettingsDialog(QDialog):
             screen_width = available_geometry.width()
             screen_height = available_geometry.height()
             
-            min_w = min(max(760, int(screen_width * 0.42)), screen_width)
-            min_h = min(max(680, int(screen_height * 0.62)), screen_height)
+            min_w = min(max(560, int(screen_width * 0.32)), screen_width)
+            min_h = min(max(480, int(screen_height * 0.46)), screen_height)
             default_w = min(max(1240, int(screen_width * 0.74)), screen_width)
             default_h = min(max(780, int(screen_height * 0.78)), screen_height)
             
@@ -2528,8 +2556,8 @@ class SettingsDialog(QDialog):
             self.setMaximumHeight(screen_height)
         else:
             # Fallback if screen detection fails
-            self.setMinimumWidth(760)
-            self.setMinimumHeight(680)
+            self.setMinimumWidth(560)
+            self.setMinimumHeight(480)
             self.resize(1240, 780)
         
         self.current_config = config.get_config()
@@ -2694,7 +2722,7 @@ class SettingsDialog(QDialog):
         # Sidebar wrapper — flush left, full height
         sidebar_wrapper = QWidget()
         sidebar_wrapper.setObjectName("settingsSidebarWrapper")
-        sidebar_wrapper.setMinimumWidth(188)
+        sidebar_wrapper.setMinimumWidth(144)
         sidebar_wrapper.setMaximumWidth(240)
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
         sidebar_wrapper_layout.setContentsMargins(12, 16, 12, 12)
@@ -2707,14 +2735,14 @@ class SettingsDialog(QDialog):
         self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.sidebar_scroll_area.setMinimumWidth(164)
+        self.sidebar_scroll_area.setMinimumWidth(120)
         self.sidebar_scroll_area.setMaximumWidth(216)
         self.sidebar_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.sidebar_scroll_area.setStyleSheet("QScrollArea#sidebarNavScrollArea { background: transparent; border: none; }")
 
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("sidebarContainer")
-        sidebar_widget.setMinimumWidth(164)
+        sidebar_widget.setMinimumWidth(120)
         
         self.sidebar_scroll_area.setWidget(sidebar_widget)
         sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -2731,7 +2759,7 @@ class SettingsDialog(QDialog):
         content_shell = QWidget()
         content_shell.setObjectName("settingsContentShell")
         content_shell_layout = QVBoxLayout(content_shell)
-        content_shell_layout.setContentsMargins(22, 24, 22, 0)
+        content_shell_layout.setContentsMargins(16, 18, 16, 0)
         content_shell_layout.setSpacing(10)
 
         header_row = QWidget()
@@ -2756,7 +2784,7 @@ class SettingsDialog(QDialog):
         content_shell_outer = QWidget()
         content_shell_outer.setObjectName("settingsContentOuter")
         content_shell_outer_layout = QVBoxLayout(content_shell_outer)
-        content_shell_outer_layout.setContentsMargins(16, 18, 16, 0)
+        content_shell_outer_layout.setContentsMargins(8, 10, 8, 0)
         content_shell_outer_layout.setSpacing(0)
         content_shell_outer_layout.addWidget(content_shell)
         content_area_layout.addWidget(content_shell_outer)
@@ -2794,14 +2822,14 @@ class SettingsDialog(QDialog):
 
 
         self.profile_bar = ProfileBarWidget(user_name, pic_path, bg_mode, bg_config, self.accent_color, self)
-        self.profile_bar.setMinimumWidth(164)
+        self.profile_bar.setMinimumWidth(120)
         self.profile_bar.setMaximumWidth(216)
         sidebar_wrapper_layout.insertWidget(0, self.profile_bar, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.sidebar_search_button = QPushButton(tr("search"))
         self.sidebar_search_button.setCheckable(True)
         self.sidebar_search_button.setObjectName("sidebarSearchButton")
-        self.sidebar_search_button.setMinimumWidth(164)
+        self.sidebar_search_button.setMinimumWidth(120)
         self.sidebar_search_button.setMaximumWidth(216)
         self.sidebar_search_button.setFixedHeight(36)
         self.sidebar_search_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -2818,7 +2846,7 @@ class SettingsDialog(QDialog):
 
         self._add_sidebar_nav_section(sidebar_layout, tr("general"), [
             (tr("modes"), "Modes", "focus.svg"),
-            (tr("languages"), "Languages", "book.svg"),
+            (tr("languages"), "Languages", "deck.svg"),
             (tr("fonts"), "Fonts", "edit.svg"),
             (tr("palette"), "Palette", "paintbrush.svg"),
             (tr("themes"), "Themes", "star_outline.svg"),
@@ -2833,7 +2861,7 @@ class SettingsDialog(QDialog):
 
         self._add_sidebar_nav_section(sidebar_layout, tr("study_pages"), [
             (tr("overviewer"), "Overviewer", "stats.svg"),
-            (tr("reviewer"), "Reviewer", "add_card.svg"),
+            (tr("reviewer"), "Reviewer", "add-card.svg"),
         ])
 
         sidebar_layout.addStretch()
@@ -2860,7 +2888,7 @@ class SettingsDialog(QDialog):
         # Bottom actions container — save, donate, bugs
         bottom_widget = QWidget()
         bottom_widget.setObjectName("sidebarActionsContainer")
-        bottom_widget.setMinimumWidth(164)
+        bottom_widget.setMinimumWidth(120)
         bottom_widget.setMaximumWidth(216)
         
         sidebar_button_layout = QVBoxLayout(bottom_widget)
@@ -3505,9 +3533,14 @@ class SettingsDialog(QDialog):
         main_layout.setContentsMargins(14, 12, 14, 12)
         main_layout.setSpacing(8)
 
+        container.header_layout = QHBoxLayout()
+        container.header_layout.setContentsMargins(0, 0, 0, 0)
+        container.header_layout.setSpacing(8)
         title_label = QLabel(title)
         title_label.setObjectName("sectionTitle")
-        main_layout.addWidget(title_label)
+        container.header_layout.addWidget(title_label)
+        container.header_layout.addStretch()
+        main_layout.addLayout(container.header_layout)
         
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -3515,6 +3548,17 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(content_widget)
 
         return container, content_layout
+
+    def _create_responsive_row(self, spacing=8):
+        container = QWidget()
+        layout = FlowLayout(container, margin=0, spacing=spacing)
+        layout.setContentsMargins(0, 0, 0, 0)
+        return container, layout
+
+    def _add_header_widget(self, container, widget):
+        header_layout = getattr(container, "header_layout", None)
+        if header_layout:
+            header_layout.addWidget(widget)
 
     def apply_stylesheet(self):
         conf = self.current_config if hasattr(self, "current_config") else config.get_config()
@@ -3924,6 +3968,19 @@ class SettingsDialog(QDialog):
                 background: transparent;
                 font-size: 14px;
                 font-weight: 700;
+            }}
+            QPushButton#sectionInfoButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 12px;
+                color: {accent_color};
+                font-size: 13px;
+                font-weight: 800;
+                padding: 0px;
+            }}
+            QPushButton#sectionInfoButton:hover {{
+                background-color: {surface_hover};
+                color: {fg};
             }}
             QLabel#sectionDescription,
             QLabel#settingRowDescription {{
@@ -6692,6 +6749,44 @@ class SettingsDialog(QDialog):
     # END: Main Menu Layout Editor Widgets
     # =================================================================
 
+    def _create_boxes_color_effect_group(self):
+        canvas_effect_group, canvas_effect_layout = self._create_inner_group(tr("boxes_color_effect"))
+        canvas_effect_group.setToolTip(tr("boxes_color_effect_tooltip"))
+
+        mode_container, mode_layout = self._create_responsive_row(spacing=8)
+        self.canvas_effect_none_radio = QRadioButton(tr("none"))
+        self.canvas_effect_opacity_radio = QRadioButton(tr("opacity"))
+        self.canvas_effect_glass_radio = QRadioButton(tr("glassmorphism"))
+        mode_layout.addWidget(self.canvas_effect_none_radio)
+        mode_layout.addWidget(self.canvas_effect_opacity_radio)
+        mode_layout.addWidget(self.canvas_effect_glass_radio)
+        canvas_effect_layout.addWidget(mode_container)
+
+        intensity_container, intensity_layout = self._create_responsive_row(spacing=8)
+        intensity_label = QLabel(tr("effect_intensity"))
+        self.canvas_effect_intensity_spinbox = QSpinBox()
+        self.canvas_effect_intensity_spinbox.setMinimum(0)
+        self.canvas_effect_intensity_spinbox.setMaximum(100)
+        self.canvas_effect_intensity_spinbox.setSuffix(" %")
+        intensity_layout.addWidget(intensity_label)
+        intensity_layout.addWidget(self.canvas_effect_intensity_spinbox)
+        canvas_effect_layout.addWidget(intensity_container)
+
+        saved_mode = mw.col.conf.get("onigiri_canvas_inset_effect_mode", "none")
+        if saved_mode == "opacity":
+            self.canvas_effect_opacity_radio.setChecked(True)
+        elif saved_mode == "glassmorphism":
+            self.canvas_effect_glass_radio.setChecked(True)
+        else:
+            self.canvas_effect_none_radio.setChecked(True)
+
+        self.canvas_effect_intensity_spinbox.setValue(
+            mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
+        )
+        self.canvas_effect_none_radio.toggled.connect(self._toggle_canvas_intensity_spinbox)
+        self._toggle_canvas_intensity_spinbox()
+        return canvas_effect_group
+
     def create_main_menu_page(self):
         page, layout = self._create_scrollable_page()
 
@@ -6714,10 +6809,7 @@ class SettingsDialog(QDialog):
         self.heatmap_view_group = QButtonGroup(self)
         self.heatmap_view_group.setExclusive(True)
         
-        view_container = QWidget()
-        view_layout = QHBoxLayout(view_container)
-        view_layout.setContentsMargins(0, 0, 0, 0)
-        view_layout.setSpacing(10)
+        view_container, view_layout = self._create_responsive_row(spacing=8)
         
         current_view = self.current_config.get("heatmapDefaultView", "year")
         
@@ -6737,8 +6829,23 @@ class SettingsDialog(QDialog):
             self.heatmap_view_group.addButton(btn)
             view_layout.addWidget(btn)
             
-        view_layout.addStretch()
         form_layout.addRow(tr("default_view"), view_container)
+
+        self.heatmap_week_start_group = QButtonGroup(self)
+        self.heatmap_week_start_group.setExclusive(True)
+        week_start_container, week_start_layout = self._create_responsive_row(spacing=8)
+        current_week_start = self.current_config.get("heatmapWeekStart", "monday")
+        for key, label in [("monday", tr("week_start_monday", "Monday")), ("sunday", tr("week_start_sunday", "Sunday"))]:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(32)
+            btn.setProperty("week_start", key)
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=32))
+            btn.setChecked(key == current_week_start)
+            self.heatmap_week_start_group.addButton(btn)
+            week_start_layout.addWidget(btn)
+        form_layout.addRow(tr("week_start_label", "Week Starts On"), week_start_container)
         
         organize_section.add_layout(form_layout)
         
@@ -6746,6 +6853,15 @@ class SettingsDialog(QDialog):
         self.organize_widget_container = self._create_organize_layout_widget()
         organize_section.add_widget(self.organize_widget_container)
         layout.addWidget(organize_section)
+
+        boxes_effect_section = SectionGroup(
+            tr("boxes_color_effect"),
+            self,
+            border=False,
+            description=tr("boxes_color_effect_tooltip")
+        )
+        boxes_effect_section.add_widget(self._create_boxes_color_effect_group())
+        layout.addWidget(boxes_effect_section)
 
         # --- Main Background Section ---
         user_files_path = os.path.join(self.addon_path, "user_files", "main_bg")
@@ -6762,7 +6878,7 @@ class SettingsDialog(QDialog):
             mode = "image_color"
             
         # Main mode selection
-        mode_layout = QHBoxLayout()
+        mode_container, mode_layout = self._create_responsive_row(spacing=8)
         self.color_radio = QRadioButton(tr("solid_color"))
         self.image_color_radio = QRadioButton(tr("image_mode"))
         self.slideshow_radio = QRadioButton(tr("slideshow"))
@@ -6776,8 +6892,7 @@ class SettingsDialog(QDialog):
         mode_layout.addWidget(self.color_radio)
         mode_layout.addWidget(self.image_color_radio)
         mode_layout.addWidget(self.slideshow_radio)
-        mode_layout.addStretch()
-        mode_layout_content.addLayout(mode_layout)
+        mode_layout_content.addWidget(mode_container)
 
         # --- Options Containers (Flat Layout) ---
         
@@ -6798,12 +6913,11 @@ class SettingsDialog(QDialog):
         
         # ... (rest of loading logic preserved)
         
-        color_theme_layout = QHBoxLayout()
+        color_theme_container, color_theme_layout = self._create_responsive_row(spacing=8)
         color_theme_layout.addWidget(self.color_theme_single_radio)
         color_theme_layout.addWidget(self.color_theme_separate_radio)
         color_theme_layout.addWidget(self.color_theme_accent_radio)
-        color_theme_layout.addStretch()
-        main_bg_color_layout.addLayout(color_theme_layout)
+        main_bg_color_layout.addWidget(color_theme_container)
         
         current_light_bg = self.current_config.get("colors", {}).get("light", {}).get("--bg", "#FFFFFF")
         current_dark_bg = self.current_config.get("colors", {}).get("dark", {}).get("--bg", "#2C2C2C")
@@ -6847,15 +6961,17 @@ class SettingsDialog(QDialog):
         self.image_theme_group.addButton(self.image_theme_separate_radio)
         
         # Load saved preference for image theme mode
-        image_theme_mode = mw.col.conf.get("modern_menu_bg_image_theme_mode", "single")
+        image_theme_mode = mw.col.conf.get(
+            "modern_menu_bg_image_theme_mode",
+            mw.col.conf.get("modern_menu_background_image_mode", "single")
+        )
         self.image_theme_single_radio.setChecked(image_theme_mode == "single")
         self.image_theme_separate_radio.setChecked(image_theme_mode == "separate")
         
-        image_theme_layout = QHBoxLayout()
+        image_theme_container, image_theme_layout = self._create_responsive_row(spacing=8)
         image_theme_layout.addWidget(self.image_theme_single_radio)
         image_theme_layout.addWidget(self.image_theme_separate_radio)
-        image_theme_layout.addStretch()
-        main_bg_image_layout.addLayout(image_theme_layout)
+        main_bg_image_layout.addWidget(image_theme_container)
         
         # Single Image Container
         self.bg_image_single_container = QWidget()
@@ -6865,11 +6981,10 @@ class SettingsDialog(QDialog):
         bg_image_single_layout.addWidget(self._create_image_gallery_group("main_single", "user_files/main_bg", "modern_menu_background_image", title=tr("background_image_label"), image_files_cache=cached_user_files))
         main_bg_image_layout.addWidget(self.bg_image_single_container)
         
-        # Separate Images Container (Side-by-Side)
+        # Separate Images Container
         self.bg_image_separate_container = QWidget()
-        bg_image_separate_layout = QHBoxLayout(self.bg_image_separate_container)
+        bg_image_separate_layout = FlowLayout(self.bg_image_separate_container, margin=0, spacing=12)
         bg_image_separate_layout.setContentsMargins(0, 0, 0, 0)
-        bg_image_separate_layout.setSpacing(15)
         
         self.galleries["main_light"] = {}
         bg_image_separate_layout.addWidget(self._create_image_gallery_group("main_light", "user_files/main_bg", "modern_menu_background_image_light", title=tr("light_mode_background"), image_files_cache=cached_user_files))
@@ -6885,7 +7000,7 @@ class SettingsDialog(QDialog):
         self._update_image_theme_visibility() # Initial state
         
         # Effects
-        effects_layout = QHBoxLayout()
+        effects_container, effects_layout = self._create_responsive_row(spacing=8)
         self.bg_blur_label = QLabel(tr("background_blur"))
         self.bg_blur_spinbox = QSpinBox()
         self.bg_blur_spinbox.setMinimum(0)
@@ -6903,8 +7018,7 @@ class SettingsDialog(QDialog):
         self.bg_opacity_spinbox.setValue(mw.col.conf.get("modern_menu_background_opacity", 100))
         effects_layout.addWidget(self.bg_opacity_label)
         effects_layout.addWidget(self.bg_opacity_spinbox)
-        effects_layout.addStretch()
-        main_bg_image_layout.addLayout(effects_layout)
+        main_bg_image_layout.addWidget(effects_container)
         
         mode_layout_content.addWidget(self.main_bg_image_group)
 
@@ -7043,6 +7157,7 @@ class SettingsDialog(QDialog):
         # Add navigation buttons
         sections = {
             tr("organize_section"): organize_section,
+            tr("boxes_color_effect"): boxes_effect_section,
             tr("main_background_section"): mode_group,
             tr("heatmap_section"): heatmap_section,
             tr("star_icon_section"): star_icon_section
@@ -8006,6 +8121,8 @@ class SettingsDialog(QDialog):
         sidebar_layout.addWidget(self.sidebar_main_options_group)
         self.sidebar_custom_options_group = self.create_sidebar_custom_options()
         sidebar_layout.addWidget(self.sidebar_custom_options_group)
+        if hasattr(self, "sidebar_image_group"):
+            self._add_header_widget(sidebar_group, self.sidebar_image_group.gallery_actions_widget)
         
         layout.addWidget(sidebar_group)
 
@@ -8147,6 +8264,33 @@ class SettingsDialog(QDialog):
         divider2.setFrameShape(QFrame.Shape.HLine)
         divider2.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(divider2)
+
+        marker_section = SectionGroup(
+            tr("markers", "Markers"),
+            self,
+            border=False,
+            description=tr("markers_description", "Choose the colors used by deck marker labels and their context menu swatches.")
+        )
+        marker_colors = self.current_config.get("markerColors", DEFAULTS.get("markerColors", {}))
+        marker_group, marker_layout = self._create_inner_group(tr("marker_colors", "Marker Colors"))
+        for marker_key, fallback in [
+            ("red", "#FF4B4B"),
+            ("blue", "#4488FF"),
+            ("green", "#44BB66"),
+            ("yellow", "#FFB800"),
+        ]:
+            marker_layout.addLayout(self._create_color_picker_row(
+                tr(f"marker_{marker_key}", marker_key.title()),
+                marker_colors.get(marker_key, fallback),
+                f"marker_{marker_key}"
+            ))
+        marker_section.add_widget(marker_group)
+        layout.addWidget(marker_section)
+
+        divider_markers = QFrame()
+        divider_markers.setFrameShape(QFrame.Shape.HLine)
+        divider_markers.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(divider_markers)
         
         deck_section = SectionGroup(
             tr("deck"),
@@ -8349,6 +8493,7 @@ class SettingsDialog(QDialog):
             tr("sidebar_customization_label"): sidebar_section,
             tr("sidebar_background"): sidebar_group,
             tr("organize_action_buttons_label"): action_buttons_section,
+            tr("markers", "Markers"): marker_section,
             tr("deck_label"): deck_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
@@ -8383,7 +8528,14 @@ class SettingsDialog(QDialog):
 
         pic_section = SectionGroup(tr("profile_picture"), self)
         self.galleries["profile_pic"] = {} 
-        pic_section.add_widget(self._create_image_gallery_group("profile_pic", "user_files/profile", "modern_menu_profile_picture"))
+        profile_pic_gallery = self._create_image_gallery_group(
+            "profile_pic",
+            "user_files/profile",
+            "modern_menu_profile_picture",
+            actions_in_parent_header=True
+        )
+        pic_section.add_header_widget(profile_pic_gallery.gallery_actions_widget)
+        pic_section.add_widget(profile_pic_gallery)
         layout.addWidget(pic_section)
         
         # --- REBUILT PROFILE BAR BACKGROUND SECTION ---
@@ -8415,7 +8567,14 @@ class SettingsDialog(QDialog):
 
         # Panel for "Image"
         self.galleries["profile_bg"] = {}
-        self.profile_bg_image_group = self._create_image_gallery_group("profile_bg", "user_files/profile_bg", "modern_menu_profile_bg_image", is_sub_group=True)
+        self.profile_bg_image_group = self._create_image_gallery_group(
+            "profile_bg",
+            "user_files/profile_bg",
+            "modern_menu_profile_bg_image",
+            is_sub_group=True,
+            actions_in_parent_header=True
+        )
+        bg_section.add_header_widget(self.profile_bg_image_group.gallery_actions_widget)
 
         # 3. Use a QStackedWidget for flicker-free switching
         options_stack = QStackedWidget()
@@ -8425,20 +8584,24 @@ class SettingsDialog(QDialog):
         bg_section.add_widget(options_stack)
 
         # 4. Connect radio buttons to the QStackedWidget
-        self.profile_bg_accent_radio.clicked.connect(lambda: options_stack.setCurrentIndex(0))
-        self.profile_bg_custom_radio.clicked.connect(lambda: options_stack.setCurrentIndex(1))
-        self.profile_bg_image_radio.clicked.connect(lambda: options_stack.setCurrentIndex(2))
+        def set_profile_bg_page(index):
+            options_stack.setCurrentIndex(index)
+            self.profile_bg_image_group.gallery_actions_widget.setVisible(index == 2)
+
+        self.profile_bg_accent_radio.clicked.connect(lambda: set_profile_bg_page(0))
+        self.profile_bg_custom_radio.clicked.connect(lambda: set_profile_bg_page(1))
+        self.profile_bg_image_radio.clicked.connect(lambda: set_profile_bg_page(2))
 
         # 5. Set the initial state
         if bg_mode == "custom":
             self.profile_bg_custom_radio.setChecked(True)
-            options_stack.setCurrentIndex(1)
+            set_profile_bg_page(1)
         elif bg_mode == "image":
             self.profile_bg_image_radio.setChecked(True)
-            options_stack.setCurrentIndex(2)
+            set_profile_bg_page(2)
         else: # accent
             self.profile_bg_accent_radio.setChecked(True)
-            options_stack.setCurrentIndex(0)
+            set_profile_bg_page(0)
 
         layout.addWidget(bg_section)
         # --- END OF REBUILT SECTION ---
@@ -8503,52 +8666,6 @@ class SettingsDialog(QDialog):
         # --- Add the Accent Color group to the General Palette section ---
         general_colors_section.add_widget(accent_group)
 
-        # --- START: New Boxes Color Effect Section ---
-        canvas_effect_group, canvas_effect_layout = self._create_inner_group(tr("boxes_color_effect"))
-        canvas_effect_group.setToolTip(tr("boxes_color_effect_tooltip"))
-
-        # Radio buttons for mode selection
-        mode_layout = QHBoxLayout()
-        self.canvas_effect_none_radio = QRadioButton(tr("none"))
-        self.canvas_effect_opacity_radio = QRadioButton(tr("opacity"))
-        self.canvas_effect_glass_radio = QRadioButton(tr("glassmorphism"))
-        mode_layout.addWidget(self.canvas_effect_none_radio)
-        mode_layout.addWidget(self.canvas_effect_opacity_radio)
-        mode_layout.addWidget(self.canvas_effect_glass_radio)
-        mode_layout.addStretch()
-        canvas_effect_layout.addLayout(mode_layout)
-
-        # Intensity control
-        intensity_layout = QHBoxLayout()
-        intensity_label = QLabel(tr("effect_intensity"))
-        self.canvas_effect_intensity_spinbox = QSpinBox()
-        self.canvas_effect_intensity_spinbox.setMinimum(0)
-        self.canvas_effect_intensity_spinbox.setMaximum(100)
-        self.canvas_effect_intensity_spinbox.setSuffix(" %")
-        intensity_layout.addWidget(intensity_label)
-        intensity_layout.addWidget(self.canvas_effect_intensity_spinbox)
-        intensity_layout.addStretch()
-        canvas_effect_layout.addLayout(intensity_layout)
-
-        # Load saved settings for canvas effects
-        saved_mode = mw.col.conf.get("onigiri_canvas_inset_effect_mode", "none")
-        if saved_mode == "opacity":
-            self.canvas_effect_opacity_radio.setChecked(True)
-        elif saved_mode == "glassmorphism":
-            self.canvas_effect_glass_radio.setChecked(True)
-        else:
-            self.canvas_effect_none_radio.setChecked(True)
-
-        saved_intensity = mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
-        self.canvas_effect_intensity_spinbox.setValue(saved_intensity)
-
-        # Connect signals
-        self.canvas_effect_none_radio.toggled.connect(self._toggle_canvas_intensity_spinbox)
-        self._toggle_canvas_intensity_spinbox() # Set initial state
-
-        general_colors_section.add_widget(canvas_effect_group)
-        # --- END: New Boxes Color Effect Section ---
-                
         general_modes_layout = QHBoxLayout()
 
         light_colors_group, light_colors_layout = self._create_inner_group(tr("light_mode_label"))
@@ -9186,7 +9303,13 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.sidebar_color_group)
 
         self.galleries["sidebar_bg"] = {}
-        self.sidebar_image_group = self._create_image_gallery_group("sidebar_bg", "user_files/sidebar_bg", "modern_menu_sidebar_bg_image", is_sub_group=True)
+        self.sidebar_image_group = self._create_image_gallery_group(
+            "sidebar_bg",
+            "user_files/sidebar_bg",
+            "modern_menu_sidebar_bg_image",
+            is_sub_group=True,
+            actions_in_parent_header=True
+        )
         layout.addWidget(self.sidebar_image_group)
 
         self.sidebar_effects_container = QWidget()
@@ -9447,7 +9570,6 @@ class SettingsDialog(QDialog):
             self.selected_heatmap_shape = sender.property("shape_filename")
 
     def _reflow_shape_icons(self, width=0):
-        # Use a fixed horizontal layout instead of dynamic resizing
         if not hasattr(self, 'shape_buttons') or not self.shape_buttons:
             return
         
@@ -9459,8 +9581,8 @@ class SettingsDialog(QDialog):
             if item.widget():
                 item.widget().setParent(None)
 
-        # Use a fixed number of columns for horizontal layout (6 icons per row)
-        num_cols = 6
+        available_width = width or self.shape_scroll_content.width() or 540
+        num_cols = max(2, min(8, available_width // 90))
         
         # Repopulate the grid from the master list of buttons
         for i, button in enumerate(self.shape_buttons):
@@ -9476,14 +9598,17 @@ class SettingsDialog(QDialog):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setFixedHeight(250)
+        scroll_area.setMinimumHeight(150)
+        scroll_area.setMaximumHeight(250)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         self.shape_scroll_content = QWidget()
         self.shapes_grid_layout = QGridLayout(self.shape_scroll_content)
         self.shapes_grid_layout.setSpacing(10)
         self.shapes_grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         scroll_area.setWidget(self.shape_scroll_content)
-        # Event filter removed - using fixed horizontal layout instead of dynamic resize
+        self.shape_scroll_content.installEventFilter(self)
         
         layout.addWidget(scroll_area)
         
@@ -9607,8 +9732,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(general_group)
 
         # --- Two Column Layout for Light/Dark Mode ---
-        modes_layout = QHBoxLayout()
-        modes_layout.setSpacing(15)
+        modes_container, modes_layout = self._create_responsive_row(spacing=12)
 
         self.preview_buttons = {"light": {}, "dark": {}}
         
@@ -9629,7 +9753,7 @@ class SettingsDialog(QDialog):
         ]
 
         # Mode loop to create columns
-        for mode_name, mode_key, bg_color in [("Light Mode", "light", "#FFFFFF"), ("Dark Mode", "dark", "#2C2C2C")]:
+        for mode_name, mode_key, bg_color in [(tr("light_mode"), "light", "#FFFFFF"), (tr("dark_mode"), "dark", "#2C2C2C")]:
             column_widget = QWidget()
             column_widget.setObjectName(f"column_{mode_key}")
             
@@ -9653,8 +9777,7 @@ class SettingsDialog(QDialog):
             col_layout = QVBoxLayout(column_widget)
             col_layout.setContentsMargins(15, 15, 15, 15)
             col_layout.setSpacing(15)
-            # Ensure columns don't shrink too much
-            column_widget.setMinimumWidth(350) 
+            column_widget.setMinimumWidth(280) 
 
             # Header
             header = QLabel(mode_name)
@@ -9666,9 +9789,8 @@ class SettingsDialog(QDialog):
             # --- Preview Box for this mode ---
             preview_frame = QFrame()
             preview_frame.setStyleSheet(f"background-color: {bg_color}; border: 1px solid {'#444' if mode_key == 'dark' else '#ddd'}; border-radius: 8px;")
-            p_layout = QHBoxLayout(preview_frame)
+            p_layout = FlowLayout(preview_frame, margin=10, spacing=6)
             p_layout.setContentsMargins(10, 10, 10, 10)
-            p_layout.addStretch() # Add stretch to center buttons
             
             # Create preview buttons
             for label, key, light_defaults, dark_defaults in button_defs:
@@ -9683,7 +9805,6 @@ class SettingsDialog(QDialog):
                 self.preview_buttons[mode_key][key] = btn
                 p_layout.addWidget(btn)
             
-            p_layout.addStretch()
             col_layout.addWidget(preview_frame)
 
             # --- Settings List for this mode ---
@@ -9779,7 +9900,7 @@ class SettingsDialog(QDialog):
             col_layout.addWidget(settings_content) # Directly add widget to column layout
             modes_layout.addWidget(column_widget)
 
-        layout.addLayout(modes_layout)
+        layout.addWidget(modes_container)
 
         # Connect signals for preview updates
         # We need to collect all inputs to connect them
@@ -10113,6 +10234,8 @@ class SettingsDialog(QDialog):
 
         self.reviewer_bar_custom_group = self.create_reviewer_bar_custom_options()
         mode_layout_content.addWidget(self.reviewer_bar_custom_group)
+        if hasattr(self, "reviewer_bar_image_group"):
+            bottom_bar_section.add_header_widget(self.reviewer_bar_image_group.gallery_actions_widget)
 
         self.reviewer_bar_main_radio.toggled.connect(lambda checked: self._on_bottom_bar_mode_changed("main", checked))
         self.reviewer_bar_match_reviewer_bg_radio.toggled.connect(lambda checked: self._on_bottom_bar_mode_changed("match_reviewer_bg", checked))
@@ -10164,7 +10287,7 @@ class SettingsDialog(QDialog):
             tr("color_light_mode"), mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_light_color", "#EEEEEE"), "reviewer_bar_light"
         )
         self.reviewer_bar_dark_color_row = self._create_color_picker_row(
-            "Color (Dark Mode)", mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_dark_color", "#3C3C3C"), "reviewer_bar_dark"
+            tr("color_dark_mode"), mw.col.conf.get("onigiri_reviewer_bottom_bar_bg_dark_color", "#3C3C3C"), "reviewer_bar_dark"
         )
         color_layout.addLayout(self.reviewer_bar_light_color_row)
         color_layout.addLayout(self.reviewer_bar_dark_color_row)
@@ -10172,7 +10295,11 @@ class SettingsDialog(QDialog):
 
         self.galleries["reviewer_bar_bg"] = {}
         self.reviewer_bar_image_group = self._create_image_gallery_group(
-            "reviewer_bar_bg", "user_files/reviewer_bar_bg", "onigiri_reviewer_bottom_bar_bg_image", is_sub_group=True
+            "reviewer_bar_bg",
+            "user_files/reviewer_bar_bg",
+            "onigiri_reviewer_bottom_bar_bg_image",
+            is_sub_group=True,
+            actions_in_parent_header=True
         )
         layout.addWidget(self.reviewer_bar_image_group)
 
@@ -10460,7 +10587,7 @@ class SettingsDialog(QDialog):
         
         # Separate images container
         self.reviewer_bg_separate_images_container = QWidget()
-        sep_layout = QHBoxLayout(self.reviewer_bg_separate_images_container)
+        sep_layout = FlowLayout(self.reviewer_bg_separate_images_container, margin=0, spacing=12)
         sep_layout.setContentsMargins(0, 10, 0, 0)
         self.galleries["reviewer_bg_light"] = {}
         sep_layout.addWidget(self._create_image_gallery_group(
@@ -10575,6 +10702,8 @@ class SettingsDialog(QDialog):
         scroll.setObjectName("settingsPageScroll")
         scroll.setWidgetResizable(True)
         scroll.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         scroll.viewport().setStyleSheet("background: transparent;")
 
@@ -10584,7 +10713,7 @@ class SettingsDialog(QDialog):
         scroll.setWidget(content_widget)
         
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(20, 20, 20, 0)
+        content_layout.setContentsMargins(14, 14, 14, 24)
         content_layout.setSpacing(14)
         content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
@@ -10637,64 +10766,84 @@ class SettingsDialog(QDialog):
         if is_checked:
             self.reviewer_bottom_bar_mode = mode
 
-    def _create_image_gallery_group(self, key, folder, config_key, extensions=(".png", ".jpg", ".jpeg", ".gif", ".webp"), show_path=True, is_sub_group=False, title="", image_files_cache=None):
+    def _create_image_gallery_group(self, key, folder, config_key, extensions=(".png", ".jpg", ".jpeg", ".gif", ".webp"), show_path=True, is_sub_group=False, title="", image_files_cache=None, actions_in_parent_header=False):
         group_container = QWidget()
         layout = QVBoxLayout(group_container)
         layout.setContentsMargins(0, 0 if is_sub_group else 10, 0, 0)
         layout.setSpacing(10)
         
-        if title:
-            title_label = QLabel(title)
-            title_label.setObjectName("galleryTitleLabel")
-            layout.addWidget(title_label)
-
         palette = self._settings_palette()
         panel_bg = palette.get("--highlight-bg", "#263040" if theme_manager.night_mode else "#f3f4f6")
         text_col = palette.get("--fg", "#f9fafb" if theme_manager.night_mode else "#111827")
         muted_col = palette.get("--fg-subtle", "#d1d5db" if theme_manager.night_mode else "#4b5563")
         border_col = palette.get("--border", "#374151" if theme_manager.night_mode else "#e5e7eb")
 
-        quick_panel = QFrame()
-        quick_panel.setObjectName("imageQuickPicker")
-        quick_panel.setStyleSheet(f"""
-            QFrame#imageQuickPicker {{
-                background-color: {panel_bg};
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+
+        if title:
+            title_label = QLabel(title)
+            title_label.setObjectName("galleryTitleLabel")
+            header_layout.addWidget(title_label)
+
+        action_button_style = f"""
+            QPushButton#galleryActionButton {{
+                background-color: transparent;
                 border: 1px solid {border_col};
                 border-radius: 14px;
+                color: {muted_col};
+                font-size: 12px;
+                font-weight: 700;
+                padding: 5px 14px;
             }}
-            QLabel {{
-                background: transparent;
+            QPushButton#galleryActionButton:hover {{
+                background-color: {panel_bg};
+                color: {text_col};
             }}
-        """)
-        quick_layout = QHBoxLayout(quick_panel)
-        quick_layout.setContentsMargins(12, 10, 12, 10)
-        quick_layout.setSpacing(10)
+            QPushButton#galleryActionButton:disabled {{
+                color: {border_col};
+                border-color: {border_col};
+            }}
+        """
 
-        helper_stack = QVBoxLayout()
-        helper_stack.setSpacing(2)
-        helper_title = QLabel(tr("choose_image") if show_path else tr("add_icon"))
-        helper_title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {text_col}; background: transparent;")
-        helper_stack.addWidget(helper_title)
-
-        choose_button = QPushButton(tr("choose_image") if show_path else tr("add_icon"))
+        choose_button = QPushButton(tr("import_action") if show_path else tr("add_icon"))
+        choose_button.setObjectName("galleryActionButton")
+        choose_button.setMinimumHeight(30)
+        choose_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        choose_button.setStyleSheet(action_button_style)
         choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key))
         delete_button = QPushButton(tr("delete_selected"))
+        delete_button.setObjectName("galleryActionButton")
+        delete_button.setMinimumHeight(30)
+        delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_button.setStyleSheet(action_button_style)
         delete_button.clicked.connect(lambda: self._delete_from_gallery(key))
 
-        path_input = QLineEdit()
+        actions_widget = QWidget()
+        actions_widget.setObjectName("galleryActions")
+        actions_layout = QHBoxLayout(actions_widget)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(8)
+        actions_layout.addWidget(choose_button)
+        actions_layout.addWidget(delete_button)
+        group_container.gallery_actions_widget = actions_widget
+
+        path_input = QLineEdit(group_container)
         path_input.setObjectName("gallerySelectedInput")
         path_input.setPlaceholderText(tr("no_item_selected"))
         path_input.setReadOnly(True)
-        if show_path:
-            helper_stack.addWidget(path_input)
-        else:
-            path_input.hide()
 
-        quick_layout.addLayout(helper_stack, 1)
-        quick_layout.addWidget(choose_button)
-        quick_layout.addWidget(delete_button)
-
-        layout.addWidget(quick_panel)
+        if title:
+            header_layout.addStretch()
+            header_layout.addWidget(actions_widget)
+            layout.addLayout(header_layout)
+        elif not actions_in_parent_header:
+            action_row = QHBoxLayout()
+            action_row.setContentsMargins(0, 0, 0, 0)
+            action_row.addStretch()
+            action_row.addWidget(actions_widget)
+            layout.addLayout(action_row)
 
         scroll_area, grid_layout = self._create_gallery_ui()
         layout.addWidget(scroll_area)
@@ -10712,6 +10861,10 @@ class SettingsDialog(QDialog):
         else:
             # Fallback for cases where config_key is empty
             selected_image = ""
+
+        if show_path:
+            path_input.setText(selected_image)
+            layout.addWidget(path_input)
 
         gallery_data = {
             'selected': selected_image,
@@ -10851,14 +11004,12 @@ class SettingsDialog(QDialog):
         gallery['worker'] = worker
 
     def eventFilter(self, source, event):
-        # Disabled dynamic resize for shape gallery - using fixed horizontal layout instead
-        # if hasattr(self, 'shape_scroll_content') and source is self.shape_scroll_content and event.type() == QEvent.Type.Resize:
-        #     try:
-        #         self._reflow_shape_icons(event.size().width())
-        #     except Exception as e:
-        #         # Silently handle any reflow errors to prevent crashes
-        #         print(f"Warning: Shape reflow error: {e}")
-        #     return False
+        if hasattr(self, 'shape_scroll_content') and source is self.shape_scroll_content and event.type() == QEvent.Type.Resize:
+            try:
+                self._reflow_shape_icons(event.size().width())
+            except Exception as e:
+                print(f"Warning: Shape reflow error: {e}")
+            return False
 
         if event.type() == QEvent.Type.MouseButtonPress:
             if source.property("gallery_key"):
@@ -10872,7 +11023,7 @@ class SettingsDialog(QDialog):
                         gallery['selected'] = ""
                         if gallery.get('path_input'): 
                             gallery['path_input'].setText("")
-                            gallery['path_input'].setPlaceholderText("No item selected")
+                            gallery['path_input'].setPlaceholderText(tr("no_item_selected"))
                     else:
                         gallery['selected'] = filename
                         if gallery.get('path_input'): 
@@ -10908,7 +11059,7 @@ class SettingsDialog(QDialog):
 
     def _choose_file_for_gallery(self, key):
         gallery = self.galleries[key]
-        ext_filter = f"Files (*{' *'.join(gallery['extensions'])})"; filepath, _ = QFileDialog.getOpenFileName(self, "Select File", "", ext_filter)
+        ext_filter = f"Files (*{' *'.join(gallery['extensions'])})"; filepath, _ = QFileDialog.getOpenFileName(self, tr("import_image"), "", ext_filter)
         if not filepath: return
         
         filename = os.path.basename(filepath)
@@ -11086,10 +11237,26 @@ class SettingsDialog(QDialog):
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f: svg_xml = f.read()
         if not svg_xml:
-            default_key = 'star' if key == 'retention_star' else key
-            data_uri = ICON_DEFAULTS.get(default_key, ""); 
-            if data_uri.startswith("data:image/svg+xml,"): encoded_svg = data_uri.split(",", 1)[1]; svg_xml = urllib.parse.unquote(encoded_svg)
-            entry = sidebar_api.get_sidebar_entries().get(key) if not svg_xml else None
+            default_key = 'star_filled' if key == 'retention_star' else key
+            default_filename = {
+                "create_deck": "add-deck.svg",
+                "filtered_deck": "filtered-deck.svg",
+            }.get(default_key, ICON_DEFAULTS.get(default_key, ""))
+            if default_filename and not default_filename.startswith("data:image/svg+xml,"):
+                default_path = os.path.join(self.addon_path, "system_files", "system_icons", default_filename)
+                if os.path.exists(default_path):
+                    try:
+                        with open(default_path, "r", encoding="utf-8") as df:
+                            svg_xml = df.read()
+                    except Exception:
+                        svg_xml = ""
+            if not svg_xml:
+                data_uri = ICON_DEFAULTS.get(default_key, "")
+                if data_uri.startswith("data:image/svg+xml,"):
+                    encoded_svg = data_uri.split(",", 1)[1]
+                    svg_xml = urllib.parse.unquote(encoded_svg)
+        if not svg_xml:
+            entry = sidebar_api.get_sidebar_entries().get(key)
             if entry and entry.icon_svg:
                 icon_value = entry.icon_svg.strip()
                 if icon_value.startswith("data:image/svg+xml"):
@@ -11664,7 +11831,13 @@ class SettingsDialog(QDialog):
                 self.anim.start()        
     def toggle_sidebar_background_options(self): 
         self.sidebar_main_options_group.setVisible(self.sidebar_bg_main_radio.isChecked())
-        self.sidebar_custom_options_group.setVisible(self.sidebar_bg_custom_radio.isChecked())    
+        is_custom = self.sidebar_bg_custom_radio.isChecked()
+        self.sidebar_custom_options_group.setVisible(is_custom)
+        if hasattr(self, "sidebar_image_group"):
+            actions_widget = getattr(self.sidebar_image_group, "gallery_actions_widget", None)
+            if actions_widget:
+                actions_widget.setVisible(is_custom and self.sidebar_bg_type_image_color_radio.isChecked())
+
     def toggle_sidebar_bg_type_options(self):
         """Shows/hides options based on the selected sidebar background type."""
         try:
@@ -11677,6 +11850,9 @@ class SettingsDialog(QDialog):
 
             if self.sidebar_image_group:
                 self.sidebar_image_group.setVisible(is_image_color)
+                actions_widget = getattr(self.sidebar_image_group, "gallery_actions_widget", None)
+                if actions_widget:
+                    actions_widget.setVisible(self.sidebar_bg_custom_radio.isChecked() and is_image_color)
 
             if self.sidebar_effects_container:
                 # Blur and Opacity are only for modes with an image
@@ -11718,9 +11894,16 @@ class SettingsDialog(QDialog):
             # Show image gallery and effects (blur, opacity) for 'Image' and 'Image'
             image_options_visible = is_image_color
             self.reviewer_bar_image_group.setVisible(image_options_visible)
+            actions_widget = getattr(self.reviewer_bar_image_group, "gallery_actions_widget", None)
+            if actions_widget:
+                actions_widget.setVisible(image_options_visible)
 
             if 'reviewer_bar_bg' in self.galleries and self.galleries['reviewer_bar_bg'].get('effects_widget'):
                 self.galleries['reviewer_bar_bg']['effects_widget'].setVisible(image_options_visible)
+        elif hasattr(self, "reviewer_bar_image_group"):
+            actions_widget = getattr(self.reviewer_bar_image_group, "gallery_actions_widget", None)
+            if actions_widget:
+                actions_widget.setVisible(False)
 
     def _on_hide_all_stats_toggled(self, checked):
         self.hide_studied_stat_checkbox.setChecked(checked)
@@ -12559,6 +12742,12 @@ class SettingsDialog(QDialog):
                     widget = self.color_widgets[mode][key]
                     self.current_config["colors"][mode][key] = widget.text()
 
+        marker_colors = self.current_config.setdefault("markerColors", copy.deepcopy(DEFAULTS.get("markerColors", {})))
+        for marker_key in ["red", "blue", "green", "yellow"]:
+            input_widget = getattr(self, f"marker_{marker_key}_color_input", None)
+            if input_widget:
+                marker_colors[marker_key] = input_widget.text()
+
         # --- Sidebar Background Settings ---
         if self.sidebar_bg_custom_radio.isChecked(): mw.col.conf["modern_menu_sidebar_bg_mode"] = "custom"
         else: mw.col.conf["modern_menu_sidebar_bg_mode"] = "main"
@@ -12600,6 +12789,10 @@ class SettingsDialog(QDialog):
             checked_btn = self.heatmap_view_group.checkedButton()
             if checked_btn:
                 self.current_config["heatmapDefaultView"] = checked_btn.property("view_mode")
+        if hasattr(self, "heatmap_week_start_group"):
+            checked_btn = self.heatmap_week_start_group.checkedButton()
+            if checked_btn:
+                self.current_config["heatmapWeekStart"] = checked_btn.property("week_start")
         
         if hasattr(self, "selected_heatmap_shape"):
             self.current_config["heatmapShape"] = self.selected_heatmap_shape
@@ -12678,6 +12871,7 @@ class SettingsDialog(QDialog):
         # Save Image Theme Mode
         image_theme_mode = "single" if self.image_theme_single_radio.isChecked() else "separate"
         mw.col.conf["modern_menu_bg_image_theme_mode"] = image_theme_mode
+        mw.col.conf["modern_menu_background_image_mode"] = image_theme_mode
 
         # Save Images
         if image_theme_mode == "single" and 'main_single' in self.galleries:
@@ -12695,6 +12889,16 @@ class SettingsDialog(QDialog):
         
         mw.col.conf["modern_menu_background_blur"] = self.bg_blur_spinbox.value()
         mw.col.conf["modern_menu_background_opacity"] = self.bg_opacity_spinbox.value()
+
+        if hasattr(self, "canvas_effect_none_radio"):
+            effect_mode = "none"
+            if self.canvas_effect_opacity_radio.isChecked():
+                effect_mode = "opacity"
+            elif self.canvas_effect_glass_radio.isChecked():
+                effect_mode = "glassmorphism"
+
+            mw.col.conf["onigiri_canvas_inset_effect_mode"] = effect_mode
+            mw.col.conf["onigiri_canvas_inset_effect_intensity"] = self.canvas_effect_intensity_spinbox.value()
 
     def _save_organize_settings(self):
         """Saves the layout from the unified layout editor."""
@@ -12765,14 +12969,15 @@ class SettingsDialog(QDialog):
                     self.current_config["colors"][mode][key] = widget.text()
 
         # --- START: Save Boxes Color Effect Settings ---
-        effect_mode = "none"
-        if self.canvas_effect_opacity_radio.isChecked():
-            effect_mode = "opacity"
-        elif self.canvas_effect_glass_radio.isChecked():
-            effect_mode = "glassmorphism"
-        
-        mw.col.conf["onigiri_canvas_inset_effect_mode"] = effect_mode
-        mw.col.conf["onigiri_canvas_inset_effect_intensity"] = self.canvas_effect_intensity_spinbox.value()
+        if hasattr(self, "canvas_effect_none_radio"):
+            effect_mode = "none"
+            if self.canvas_effect_opacity_radio.isChecked():
+                effect_mode = "opacity"
+            elif self.canvas_effect_glass_radio.isChecked():
+                effect_mode = "glassmorphism"
+            
+            mw.col.conf["onigiri_canvas_inset_effect_mode"] = effect_mode
+            mw.col.conf["onigiri_canvas_inset_effect_intensity"] = self.canvas_effect_intensity_spinbox.value()
         # --- END: Save Boxes Color Effect Settings ---
 
 

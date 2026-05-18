@@ -60,6 +60,14 @@ custom_body_template = """
         pointer-events: none;
     }
 
+    #onigiri-focus-home-btn {
+        display: none;
+    }
+
+    .sidebar-left.deck-focus-mode #onigiri-focus-home-btn {
+        display: inline-flex;
+    }
+
     @keyframes deckRowAppear {
         from { opacity: 0.72; }
         to { opacity: 1; }
@@ -176,6 +184,9 @@ custom_body_template = """
                     </button>
                     <button class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><path d="M8 5.5h12M8 12h12M8 18.5h12"/><path stroke-linejoin="round" d="M4.375 5.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0"/></svg>
+                    </button>
+                    <button id="onigiri-focus-home-btn" class="deck-header-btn" type="button" title="Home actions" onclick="OnigiriEngine.showHomeMenu(this, event)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
                     </button>
                 </div>
             </div>

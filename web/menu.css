@@ -465,7 +465,7 @@ a.deck::before {
     display: inline-block;
     opacity: 0.7;
     flex-shrink: 0;
-    margin-right: 8px;
+    margin-right: 3px;
     vertical-align: middle;
 }
 
@@ -1542,6 +1542,19 @@ td.count {
 .sidebar-left.deck-focus-mode .sidebar-expanded-content .menu-group,
 .sidebar-left.deck-focus-mode .sidebar-expanded-content h2:first-of-type {
     display: none !important;
+}
+
+.sidebar-left.deck-focus-mode .sidebar-toolbar .action-btn {
+    display: none !important;
+}
+
+.sidebar-left .menu-item.active,
+.sidebar-left .menu-item.checked,
+.sidebar-left .add-button-dashed.active,
+.sidebar-left .add-button-dashed.checked {
+    background-color: var(--highlight-bg) !important;
+    color: var(--fg) !important;
+    border-color: var(--accent-color) !important;
 }
 
 /* --- Deck Count Bubbles --- */

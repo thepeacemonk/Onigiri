@@ -101,6 +101,13 @@ DEFAULTS = {
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
     "heatmapDefaultView": "year",
+    "heatmapWeekStart": "monday",
+    "markerColors": {
+        "red": "#FF4B4B",
+        "blue": "#4488FF",
+        "green": "#44BB66",
+        "yellow": "#FFB800",
+    },
     "onigiriWidgetLayout": {
     "grid": {
         "studied": {"pos": 0, "row": 1, "col": 1},
