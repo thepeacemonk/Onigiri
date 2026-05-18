@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from aqt import mw
 from . import patcher
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
+from anki.decks import DeckId
 from . import config, heatmap, deck_tree_updater, sidebar_api
 from .gamification import restaurant_level
 from .templates import custom_body_template
@@ -275,7 +276,7 @@ def _get_onigiri_favorites_html() -> str:
                 <div class="favorites-placeholder">
                     {tr("no_favorites_selected")}
                     <br>
-                    <span>({tr("select_decks_in_edit_mode")})</span>
+                    <span>Use the deck menu to add favorites.</span>
                 </div>
             </div>
             """
@@ -298,7 +299,10 @@ def _get_onigiri_favorites_html() -> str:
                 continue
             
             # Get the deck object
-            deck = mw.col.decks.get(did)
+            try:
+                deck = mw.col.decks.get(DeckId(int(did_str)))
+            except Exception:
+                deck = mw.col.decks.get(did)
             if not deck:
                 print(f"Onigiri: Skipping invalid deck ID {did_str}")
                 continue
@@ -310,7 +314,7 @@ def _get_onigiri_favorites_html() -> str:
                 continue
             
             # Deck is valid - add to valid list and create HTML
-            valid_dids.append(did)
+            valid_dids.append(did_str)
             
             # Get the short name
             short_name = deck_name.split("::")[-1]
@@ -318,7 +322,7 @@ def _get_onigiri_favorites_html() -> str:
             # Create a clickable link
             links_html.append(
                 f"""<a class="favorite-deck-link" 
-                      href=# onclick="pycmd('open:{did}'); return false;"
+                      href=# onclick="pycmd('open:{did_str}'); return false;"
                       title="{tr('open')} {html.escape(deck_name, quote=True)}">
                     <span class="fav-deck-icon"></span>
                     <span class="fav-deck-name">{html.escape(short_name)}</span>
@@ -340,7 +344,7 @@ def _get_onigiri_favorites_html() -> str:
                 <div class="favorites-placeholder">
                     {tr("no_favorites_selected")}
                     <br>
-                    <span>({tr("select_decks_in_edit_mode")})</span>
+                    <span>Use the deck menu to add favorites.</span>
                 </div>
             </div>
             """
@@ -362,7 +366,7 @@ def _get_onigiri_favorites_html() -> str:
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
 
-def _get_onigiri_restaurant_level_html() -> str:
+def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
     """
     Generates the HTML for the Restaurant Level widget.
     """
@@ -470,8 +474,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     else:
         ds_html = f"<div class='daily-special-section'><p class='ds-label'>{tr('no_daily_special_active')}</p></div>"
 
+    widget_orientation = "vertical" if orientation == "vertical" else "horizontal"
     return process_tr_markers(f"""
-    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
+    <div class="onigiri-restaurant-level-widget orientation-{widget_orientation} {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
         <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
@@ -542,19 +547,22 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, 
-        "restaurant_level": _get_onigiri_restaurant_level_html,
     }
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
-            if widget_id in widget_generators:
+            if widget_id in widget_generators or widget_id == "restaurant_level":
                 pos = widget_config.get("pos", 0)
                 row_span = widget_config.get("row", 1)
                 col_span = widget_config.get("col", 1)
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
+                if widget_id == "restaurant_level":
+                    widget_html = _get_onigiri_restaurant_level_html(widget_config.get("orientation", "horizontal"))
+                else:
+                    widget_html = widget_generators[widget_id]()
+                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_html}</div>'
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
@@ -591,6 +599,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     # Combine both Onigiri and External widgets into a single unified grid
     unified_grid_html = onigiri_grid_html + external_widgets_html
+    grid_max_width = max(1180, min(1800, col_count * 390)) if col_count > 0 else 1180
 
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
@@ -614,8 +623,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             grid-auto-rows: minmax(110px, auto);
             grid-template-columns: repeat({col_count}, 1fr);
             width: 100%;
+            max-width: {grid_max_width}px;
             box-sizing: border-box;
-            overflow: hidden;
+            overflow: visible;
         }}
         
         /* Make the container expand to fill the grid area (rows/cols) */
@@ -649,6 +659,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             transition: all 0.3s ease;
             position: relative;
         }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical {{
+            flex-direction: column;
+        }}
         
         .onigiri-restaurant-level-widget.expanded-view {{
             background: var(--theme-bg) !important;
@@ -674,6 +688,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             min-height: 0;
             overflow: hidden;
         }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-image-container {{
+            flex: 0 0 auto;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            min-height: 0;
+            padding: 8px 10px 0 10px;
+        }}
         
         /* Unrestricted Sidebar resizing */
         .sidebar-left {{
@@ -682,7 +705,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .main-content {{
             /* Dynamic Padding based on col_count */
-            padding: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
+            padding: {24 if col_count == 4 else (14 if col_count > 4 else 32)}px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
             display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
@@ -698,7 +721,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         /* Allow grid to expand beyond 900px if we have many columns */
         .main-content > * {{
             width: 100%;
-            max-width: {1600 if col_count > 4 else 900}px !important;
+            max-width: {grid_max_width}px !important;
         }}
 
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image-container {{
@@ -735,12 +758,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .restaurant-info {{
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             padding: 15px 20px;
             gap: 15px;
             transition: opacity 0.2s ease;
+        }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {{
+            padding: 10px 16px 14px 16px;
+            gap: 10px;
         }}
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-info {{
@@ -1217,6 +1246,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
         "addonPackage": mw.addonManager.addonFromModule(__name__),
         "collapsedIcons": collapsed_icons,
+        "deckSortMode": mw.col.conf.get("onigiri_sort_mode", "default"),
     }
     
     # Get Sync Status

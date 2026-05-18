@@ -27,11 +27,8 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-import datetime
 
 from . import config
-
-import_time_str = datetime.datetime.now().strftime("%H:%M:%S")
 
 
 @dataclass(frozen=True)

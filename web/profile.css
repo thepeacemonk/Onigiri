@@ -1,6 +1,5 @@
-/* --- General & Body Styling --- */
-body {
-    background-color: var(--profile-page-bg);
+.onigiri-profile-modal-body {
+    background: var(--profile-page-bg);
     color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
@@ -8,8 +7,8 @@ body {
     overflow-x: hidden;
 }
 
-.night-mode body {
-    background-color: var(--profile-page-bg);
+.night-mode .onigiri-profile-modal-body {
+    background: var(--profile-page-bg);
 }
 
 
@@ -260,113 +259,11 @@ h2.section-title {
     font-weight: 500;
 }
 
-/* --- Export Button Styling --- */
 main {
-    /* Add position relative to act as an anchor for the absolute button */
     position: relative;
     background-color: var(--profile-card-bg);
     border-radius: 20px;
     padding: 20px;
     text-align: left;
     box-shadow: 0 4px 10px var(--shadow-sm);
-}
-
-/* --- New Page Export Button --- */
-.page-export-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background-color: var(--profile-export-btn-bg);
-    color: var(--profile-export-btn-fg);
-    border: 1px solid var(--profile-export-btn-border);
-    padding: 8px 16px;
-    border-radius: 9999px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    box-shadow: 0 2px 5px var(--shadow-sm);
-    transition: all 0.2s ease-in-out;
-}
-
-.page-export-button:hover {
-    background-color: var(--button-hover-bg);
-    box-shadow: 0 4px 10px var(--shadow-sm);
-}
-
-
-.page-export-button svg {
-    fill: currentColor;
-}
-
-/* --- Image Export Overlay Styling (Updated) --- */
-.image-export-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: var(--overlay-dark);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    box-sizing: border-box;
-}
-
-.overlay-content {
-    background-color: var(--bg);
-    padding: 25px;
-    border-radius: 12px;
-    box-shadow: 0 5px 20px var(--shadow-lg);
-    text-align: center;
-    max-width: 90%;
-    max-height: 90%;
-    overflow-y: auto;
-}
-
-.overlay-content img {
-    max-width: 100%;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    display: block;
-    /* Helps with spacing */
-}
-
-.overlay-buttons {
-    display: flex;
-    gap: 15px;
-    /* Adds space between buttons */
-    justify-content: center;
-    margin-top: 20px;
-}
-
-.overlay-button {
-    display: inline-block;
-    border: none;
-    padding: 10px 30px;
-    border-radius: 9999px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    text-decoration: none;
-    /* For the <a> tag */
-    transition: transform 0.1s ease;
-}
-
-.overlay-button:hover {
-    transform: scale(1.05);
-}
-
-.overlay-button.copy {
-    /* Renamed from .download to .copy */
-    background-color: var(--accent-color);
-    color: white;
-}
-
-.overlay-button.close {
-    background-color: var(--overlay-close-btn-bg);
-    color: var(--overlay-close-btn-fg);
 }

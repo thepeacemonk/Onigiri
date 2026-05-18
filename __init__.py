@@ -1,5 +1,7 @@
 import os
+import sys
 import json
+sys.dont_write_bytecode = True
 from aqt import mw, gui_hooks
 from aqt.deckbrowser import DeckBrowser
 from . import onigiri_renderer
@@ -18,9 +20,8 @@ from . import deck_tree_updater
 from . import webview_handlers
 from .gamification import focus_dango
 from . import birthday_dialog
-from . import icon_chooser
 from . import heatmap
-from .sidebar_api import register_sidebar_action
+from . import sidebar_api
 from .sync import onigiri_sync
 from .sync_ui import show_sync_conflict_dialog
 
@@ -35,7 +36,6 @@ user_files_root = f"/_addons/{addon_package}/user_files"
 web_assets_root = f"/_addons/{addon_package}/web"
 
 # Make addon_path available to other modules
-import sys
 sys.modules[__name__].addon_path = addon_path
 
 def generate_notification_position_css(conf):
@@ -69,6 +69,32 @@ def generate_notification_position_css(conf):
     css += "}"
     return f"<style>{css}</style>"
 
+
+def quiet_state_change_css() -> str:
+    """Briefly suppress page-level motion while Anki swaps webview screens."""
+    return """
+    <script>
+        document.documentElement.classList.add('onigiri-state-settling');
+        window.setTimeout(function() {
+            document.documentElement.classList.remove('onigiri-state-settling');
+        }, 260);
+    </script>
+    <style id="onigiri-quiet-state-change">
+        html.onigiri-state-settling,
+        html.onigiri-state-settling body,
+        html.onigiri-state-settling * ,
+        html.onigiri-state-settling *::before,
+        html.onigiri-state-settling *::after {
+            transition-duration: 0.001ms !important;
+            transition-delay: 0s !important;
+            animation-duration: 0.001ms !important;
+            animation-delay: 0s !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+        }
+    </style>
+    """
+
 def inject_menu_files(web_content, context):
     conf = config.get_config()
     should_hide = conf.get("hideNativeHeaderAndBottomBar", False)
@@ -81,6 +107,7 @@ def inject_menu_files(web_content, context):
     # Inject global Onigiri CSS only for deck browser and overview, NOT reviewer
     # Reviewer has its own dedicated CSS and doesn't need text-related global styles
     if is_deck_browser or is_overview:
+        web_content.head += quiet_state_change_css()
         web_content.head += patcher.generate_dynamic_css(conf)
     if is_deck_browser:
         css_path = os.path.join(addon_path, "web", "menu.css")
@@ -103,6 +130,10 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += f'<script src="{web_assets_root}/injector.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/rename_modal.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/icon_modal.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/profile_page.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/profile_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         
@@ -195,6 +226,8 @@ def inject_menu_files(web_content, context):
                 web_content.head += f"<style>{f.read()}</style>"
         except FileNotFoundError:
             pass
+        web_content.head += f'<script src="{web_assets_root}/profile_page.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/profile_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     if is_reviewer_bottom_bar:
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
@@ -325,7 +358,6 @@ def setup_global_hooks():
     menu_buttons.setup_onigiri_menu(addon_path)
     
     # Install the toolbar bridge AFTER other addons have loaded their hooks
-    from . import sidebar_api
     sidebar_api.ensure_capture_hook_is_last()
 
 def on_profile_did_open():
@@ -447,11 +479,9 @@ def on_deck_browser_will_show(deck_browser: DeckBrowser):
     patcher.take_control_of_deck_browser_hook()
 
 def on_show_icon_chooser(deck_id):
-    """Opens the dialog to choose a custom icon for the deck."""
-    dialog = icon_chooser.IconChooserDialog(deck_id, mw)
-    if dialog.exec():
-        # Refresh the deck browser to show changes immediately
-        mw.deckBrowser.refresh()
+    """Opens the in-page icon chooser for the deck."""
+    if getattr(mw, "deckBrowser", None):
+        webview_handlers._open_icon_modal(mw.deckBrowser, str(deck_id))
 
 def on_deck_options_shown(menu, deck_id):
     """Appends the 'Change Icon' action to the deck options menu."""

@@ -5,6 +5,95 @@ from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
 from . import onigiri_renderer
 
+
+def _sort_tree_nodes(nodes, sort_mode):
+    """Sort deck tree nodes in-place for fast sidebar-only refreshes."""
+    if not sort_mode or sort_mode == "default":
+        return
+
+    favorites = {str(did) for did in mw.col.conf.get("onigiri_favorite_decks", [])}
+    custom_order = {
+        str(did): index
+        for index, did in enumerate(mw.col.conf.get("onigiri_custom_deck_order", []))
+    }
+
+    def leaf_name(node):
+        return node.name.split("::")[-1].lower()
+
+    if sort_mode == "alphabetical_az":
+        nodes.sort(key=leaf_name)
+    elif sort_mode == "alphabetical_za":
+        nodes.sort(key=leaf_name, reverse=True)
+    elif sort_mode == "most_due":
+        nodes.sort(key=lambda node: node.review_count + node.learn_count, reverse=True)
+    elif sort_mode == "most_new":
+        nodes.sort(key=lambda node: node.new_count, reverse=True)
+    elif sort_mode == "most_reviews":
+        nodes.sort(key=lambda node: node.review_count, reverse=True)
+    elif sort_mode == "favorites_first":
+        nodes.sort(key=lambda node: (str(node.deck_id) not in favorites, leaf_name(node)))
+    elif sort_mode == "custom":
+        nodes.sort(key=lambda node: (custom_order.get(str(node.deck_id), 10**9), leaf_name(node)))
+
+
+def _apply_sort_recursive(nodes, sort_mode):
+    _sort_tree_nodes(nodes, sort_mode)
+    for node in nodes:
+        if node.children:
+            _apply_sort_recursive(node.children, sort_mode)
+
+
+def _apply_active_filters(tree_data) -> None:
+    """Apply Onigiri deck list filters while preserving matching descendants."""
+    show_favorites_only = bool(
+        mw.col.conf.get("onigiri_show_favourites", False)
+        or mw.col.conf.get("onigiri_show_favorites", False)
+    )
+    show_marked_only = bool(mw.col.conf.get("onigiri_show_marked", False))
+
+    if not show_favorites_only and not show_marked_only:
+        return
+
+    favorite_ids = {str(did) for did in mw.col.conf.get("onigiri_favorite_decks", [])}
+    mark_ids = {
+        str(did)
+        for did, value in mw.col.conf.get("onigiri_deck_marks", {}).items()
+        if value
+    }
+
+    def node_matches(node) -> bool:
+        did = str(node.deck_id)
+        if show_favorites_only and did not in favorite_ids:
+            return False
+        if show_marked_only and did not in mark_ids:
+            return False
+        return True
+
+    def filter_nodes(nodes):
+        kept = []
+        for node in list(nodes):
+            matching_children = filter_nodes(node.children) if node.children else []
+            if node_matches(node) or matching_children:
+                if node.children:
+                    del node.children[:]
+                    node.children.extend(matching_children)
+                kept.append(node)
+        return kept
+
+    try:
+        kept = filter_nodes(tree_data.children)
+        del tree_data.children[:]
+        tree_data.children.extend(kept)
+    except Exception as e:
+        print(f"Onigiri: Could not apply deck list filter: {e}")
+
+
+def _apply_tree_preferences(tree_data) -> None:
+    sort_mode = mw.col.conf.get("onigiri_sort_mode", "default")
+    if sort_mode != "default":
+        _apply_sort_recursive(tree_data.children, sort_mode)
+    _apply_active_filters(tree_data)
+
 def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     """
     Renders just the HTML for the deck tree's <tbody> content.
@@ -16,15 +105,41 @@ def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     else:
         tree_data = deck_browser.mw.col.sched.deck_due_tree()
         deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
+
+    _apply_tree_preferences(tree_data)
     
     ctx = RenderDeckNodeContext(current_deck_id=deck_browser.mw.col.decks.get_current_id())
     # Note: _render_deck_node is patched by Onigiri in patcher.py
     return "".join(deck_browser._render_deck_node(child, ctx) for child in tree_data.children)
 
+
+def _render_deck_search_html(deck_browser: DeckBrowser, query: str) -> str:
+    """Render sidebar deck rows matching a deck search query."""
+    normalized = query.strip().lower()
+    if not normalized:
+        deck_browser._render_data = None
+        return _render_deck_tree_html_only(deck_browser)
+
+    tree_data = deck_browser.mw.col.sched.deck_due_tree()
+    _apply_tree_preferences(tree_data)
+    ctx = RenderDeckNodeContext(current_deck_id=deck_browser.mw.col.decks.get_current_id())
+    rows = []
+
+    def collect_matches(nodes):
+        for node in nodes:
+            name = node.name or ""
+            leaf = name.split("::")[-1]
+            if normalized in name.lower() or normalized in leaf.lower():
+                rows.append(deck_browser._render_deck_node(node, ctx))
+            elif node.children:
+                collect_matches(node.children)
+
+    collect_matches(tree_data.children)
+    return "".join(rows)
+
 def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
     """
     Handles the collapse/expand action for a deck without a full page reload.
-    Re-renders the tree HTML and uses JS to preserve checkbox *state*.
     """
     try:
         did = int(deck_id)
@@ -43,34 +158,11 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
         js_escaped_html = json.dumps(new_tree_html)
         
         # Send the new HTML to the frontend to be injected by JavaScript
-        # This preserves checkbox *state* (checked=true/false)
         js = """
         (function() {{
             const container = document.getElementById('deck-list-container');
             const scrollTop = container?.scrollTop || 0;
-            
-            // 1. Store the *state* (checked or not) of all existing checkboxes
-            const checkboxStateMap = new Map();
-            document.querySelectorAll('.deck-checkbox').forEach(cb => {{
-                const did = cb.dataset.did;
-                if (did) {{
-                    checkboxStateMap.set(did, cb.checked);
-                }}
-            }});
-            
-            // 2. Update the tree HTML
             OnigiriEngine.updateDeckTree({new_tree_html});
-            
-            // 3. Re-apply the stored state to the *new* checkboxes
-            checkboxStateMap.forEach((isChecked, did) => {{
-                // Find the *new* checkbox element in the updated DOM
-                const newCheckbox = document.querySelector(`.deck-checkbox[data-did="${{did}}"]`);
-                if (newCheckbox) {{
-                    newCheckbox.checked = isChecked;
-                }}
-            }});
-            
-            // 4. Restore scroll position
             if (container) {{
                 container.scrollTop = scrollTop;
             }}
@@ -133,9 +225,7 @@ def on_decks_move(data_str: str) -> None:
 
 def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
     """
-    Handles a full refresh of the deck tree HTML while preserving
-    scroll and edit mode state. Used for favorite toggling.
-    Preserves existing checkbox *state* in the DOM by saving and restoring it.
+    Handles a full refresh of the deck tree HTML while preserving scroll state.
     """
     try:
         # Refresh the tree data
@@ -148,35 +238,11 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
         # Escape the HTML for safe injection into a JavaScript string
         js_escaped_html = json.dumps(new_tree_html)
         
-        # Send the new HTML to the frontend to be injected by JavaScript
-        # This preserves checkbox *state* (checked=true/false)
         js = """
         (function() {{
             const container = document.getElementById('deck-list-container');
             const scrollTop = container?.scrollTop || 0;
-            
-            // 1. Store the *state* (checked or not) of all existing checkboxes
-            const checkboxStateMap = new Map();
-            document.querySelectorAll('.deck-checkbox').forEach(cb => {{
-                const did = cb.dataset.did;
-                if (did) {{
-                    checkboxStateMap.set(did, cb.checked);
-                }}
-            }});
-            
-            // 2. Update the tree HTML
             OnigiriEngine.updateDeckTree({new_tree_html});
-            
-            // 3. Re-apply the stored state to the *new* checkboxes
-            checkboxStateMap.forEach((isChecked, did) => {{
-                // Find the *new* checkbox element in the updated DOM
-                const newCheckbox = document.querySelector(`.deck-checkbox[data-did="${{did}}"]`);
-                if (newCheckbox) {{
-                    newCheckbox.checked = isChecked;
-                }}
-            }});
-            
-            // 4. Restore scroll position
             if (container) {{
                 container.scrollTop = scrollTop;
             }}

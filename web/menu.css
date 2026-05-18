@@ -14,6 +14,14 @@ body {
     display: flex;
     height: 100vh;
     position: relative;
+    animation: none !important;
+}
+
+.main-content,
+.unified-grid,
+.sidebar-expanded-content,
+#deck-list-container {
+    animation: none !important;
 }
 
 /* --- Left Sidebar (Menu & Decks) --- */
@@ -34,7 +42,16 @@ body {
     border-radius: 15px;
     /* NEW: positioning + smoother collapse transition */
     position: relative;
-    transition: width 0.3s ease, padding 0.3s ease !important;
+    transition:
+        width 0.22s ease,
+        min-width 0.22s ease,
+        max-width 0.22s ease,
+        padding-left 0.22s ease,
+        padding-right 0.22s ease,
+        margin-left 0.22s ease,
+        margin-right 0.22s ease,
+        border-color 0.16s ease,
+        opacity 0.16s ease !important;
 
     /* FIX: Prevent sidebar from shrinking when dragging resizing */
     flex-shrink: 0;
@@ -408,21 +425,39 @@ tr.deck td.collapse-cell {
 
 /* Deck name link */
 a.deck {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 15px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     color: var(--fg) !important;
     text-decoration: none !important;
     padding-right: 12px;
     margin-left: 8px;
     padding: 6px;
-    flex: 1;
+    flex: 1 1 0;
     background-color: inherit !important;
     min-width: 0;
-    width: 0;
     max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+a.deck .deck-name {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+
+.deck-mark-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
 }
 
 a.deck::before {
@@ -459,17 +494,22 @@ a.collapse {
 
 /* Structure: decktd becomes flex row for real decks/folders */
 tr.deck.is-deck td.decktd,
-tr.deck.is-folder td.decktd {
+tr.deck.is-folder td.decktd,
+tr.deck.is-subdeck td.decktd,
+tr.deck.is-filtered td.decktd {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 8px;
+    gap: 5px;
     min-width: 0;
 }
 
 /* Keep name/info flexible and truncating */
+tr.deck .deck-info,
 tr.deck.is-deck .deck-info,
-tr.deck.is-folder .deck-info {
+tr.deck.is-folder .deck-info,
+tr.deck.is-subdeck .deck-info,
+tr.deck.is-filtered .deck-info {
     display: flex;
     align-items: center;
     flex: 1;
@@ -481,19 +521,15 @@ tr.deck.is-folder .deck-info {
 
 /* Counts at far right */
 tr.deck.is-deck .deck-counts,
-tr.deck.is-folder .deck-counts {
+tr.deck.is-folder .deck-counts,
+tr.deck.is-subdeck .deck-counts,
+tr.deck.is-filtered .deck-counts {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex: 0 0 auto;
-    margin-left: auto;
-    /* pushes right */
-    flex-shrink: 0;
-}
-
-/* Show .opts only when in edit mode */
-body.deck-edit-mode tr.deck td.opts {
-    display: flex !important;
+    gap: 4px;
+    flex: 0 1 auto;
+    margin-left: 4px;
+    min-width: 0;
 }
 
 /* Hide .opts by default and remove legacy absolute positioning */
@@ -519,6 +555,250 @@ td.opts a {
 
 td.opts img.gears {
     display: none;
+}
+
+/* Quick deck action menus */
+.onigiri-quick-menu {
+    position: fixed;
+    z-index: 100000;
+    min-width: 180px;
+    border-radius: 8px;
+    padding: 5px;
+    background: var(--canvas-overlay, var(--canvas-inset));
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+    color: var(--fg);
+    will-change: transform;
+}
+
+.onigiri-quick-menu .quick-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 30px;
+    padding: 6px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.onigiri-quick-menu .quick-menu-item:hover {
+    background: rgba(128, 128, 128, 0.14);
+}
+
+.onigiri-quick-menu .quick-menu-item.danger:hover {
+    color: #c03535;
+}
+
+.onigiri-quick-menu .quick-menu-icon {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    background: currentColor;
+    opacity: 0.82;
+    mask-size: contain;
+    -webkit-mask-size: contain;
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-position: center;
+}
+
+.onigiri-quick-menu .quick-menu-color-dot {
+    width: 13px;
+    height: 13px;
+    min-width: 13px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 1px 3px rgba(0, 0, 0, 0.24);
+}
+
+.onigiri-quick-menu .quick-menu-check {
+    width: 15px;
+    height: 15px;
+    margin-left: auto;
+    color: var(--accent-color);
+}
+
+.onigiri-quick-menu .quick-menu-check svg {
+    display: block;
+    width: 15px;
+    height: 15px;
+}
+
+.onigiri-quick-menu .quick-menu-group {
+    position: relative;
+}
+
+.onigiri-quick-menu .quick-menu-group::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -10px;
+    width: 10px;
+    height: 100%;
+}
+
+.onigiri-quick-menu .quick-menu-arrow {
+    width: 16px;
+    height: 16px;
+    margin-left: auto;
+    color: var(--fg-subtle);
+    opacity: 0.9;
+}
+
+.onigiri-quick-menu .quick-menu-arrow svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.onigiri-quick-menu .quick-menu-submenu {
+    position: absolute;
+    display: none;
+    top: -5px;
+    left: calc(100% + 8px);
+    min-width: 150px;
+}
+
+.onigiri-quick-menu .quick-menu-group:hover>.quick-menu-submenu,
+.onigiri-quick-menu .quick-menu-group:focus-within>.quick-menu-submenu {
+    display: block;
+}
+
+.onigiri-quick-menu hr {
+    height: 1px;
+    border: 0;
+    background: var(--border);
+    margin: 4px 6px;
+}
+
+tr.deck.ctx-row-active {
+    background-color: var(--highlight-bg) !important;
+}
+
+body.onigiri-is-dragging,
+body.onigiri-is-dragging * {
+    cursor: grabbing !important;
+}
+
+.onigiri-drag-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(62, 62, 62, 0.97);
+    color: var(--fg);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+body:not(.night-mode) .onigiri-drag-preview {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+}
+
+.onigiri-drag-preview .deck-info {
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0;
+}
+
+.onigiri-drag-preview a.deck {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    color: inherit !important;
+    pointer-events: none;
+}
+
+.onigiri-drag-preview .deck-counts,
+.onigiri-drag-preview .standard-counts {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    max-width: none;
+    padding-left: 8px;
+    overflow: visible;
+}
+
+.onigiri-drag-preview .new-count-bubble,
+.onigiri-drag-preview .learn-count-bubble,
+.onigiri-drag-preview .review-count-bubble {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 20px;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.onigiri-drag-preview .expanded-details {
+    display: none;
+}
+
+.drag-handle {
+    opacity: 0;
+    cursor: grab !important;
+    transition: opacity 0.12s ease;
+    color: var(--fg-subtle);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    min-width: 14px;
+    height: 18px;
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
+tr.deck:hover .drag-handle,
+tr.deck.is-hovered .drag-handle {
+    opacity: 0.45;
+}
+
+tr.deck.is-dragging {
+    opacity: 0.5;
+    background-color: rgba(128, 128, 128, 0.12) !important;
+}
+
+tr.deck.drag-over-target,
+tr.deck.drop-before,
+tr.deck.drop-after {
+    background-color: var(--highlight-bg) !important;
+}
+
+.dnd-placeholder {
+    box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.22), 0 0 10px rgba(0, 122, 255, 0.34);
+}
+
+body.ctx-menu-open tr.deck:not(.ctx-row-active):hover,
+body.ctx-menu-open tr.deck.is-hovered:not(.ctx-row-active) {
+    background-color: transparent;
+}
+
+body.ctx-menu-open tr.deck:hover .drag-handle,
+tr.deck.ctx-row-active .drag-handle {
+    opacity: 0 !important;
 }
 
 /* --- Drag and Drop Styles --- */
@@ -777,6 +1057,15 @@ td.count {
 /* Individual Positioning (Expanded Sidebar) */
 .sidebar-toggle-btn {
     left: 20px;
+    background-color: var(--highlight-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px;
+    color: var(--fg-subtle);
+    opacity: 1;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .deck-focus-btn {
@@ -794,19 +1083,36 @@ td.count {
     background-color: var(--canvas-inset);
 }
 
+.sidebar-toggle-btn:hover {
+    color: var(--fg);
+    background-color: var(--canvas-inset) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
 /* Individual Active States */
 .deck-edit-btn.active,
-.sidebar-toggle-btn.active,
 .deck-focus-btn.active {
     background-color: var(--icon-color);
     border-color: var(--icon-color);
 }
 
+.sidebar-toggle-btn.active {
+    background-color: var(--highlight-bg) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+}
+
 
 /* Icons within Buttons */
 .sidebar-toggle-btn svg {
-    stroke: var(--fg-subtle);
-    transition: transform 0.3s ease;
+    display: block;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+    stroke: currentColor;
+    transition: none;
 }
 
 .deck-focus-btn .icon,
@@ -825,14 +1131,141 @@ td.count {
 
 /* Style for the toggle button when the sidebar is collapsed (active) */
 .sidebar-left.sidebar-collapsed .sidebar-toggle-btn {
-    background-color: var(--icon-color);
-    border-color: var(--icon-color);
+    background-color: var(--highlight-bg) !important;
+    border-color: var(--border) !important;
 }
 
 /* Rotate the icon and change its color in the active state */
 .sidebar-left.sidebar-collapsed .sidebar-toggle-btn svg {
-    transform: rotate(180deg);
-    stroke: white;
+    transform: none;
+    stroke: currentColor;
+}
+
+#onigiri-search-toolbar-btn {
+    position: static;
+    z-index: auto;
+    flex: 0 0 auto;
+    color: inherit;
+}
+
+#onigiri-search-toolbar-btn:hover {
+    color: var(--accent-color);
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.search-btn-icon,
+.onigiri-search-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") center / contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+#onigiri-deck-search-bar {
+    display: none;
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 4px 4px 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--canvas-inset);
+    color: var(--fg-subtle);
+    box-shadow: none;
+}
+
+.night-mode #onigiri-deck-search-bar {
+    background: rgba(50, 50, 50, 0.96);
+    box-shadow: none;
+}
+
+#onigiri-deck-search-bar.is-visible {
+    display: flex;
+    animation: oniSearchReveal 0.2s ease both;
+}
+
+#onigiri-deck-search-bar.is-closing {
+    animation: oniSearchDismiss 0.1s ease both;
+}
+
+#onigiri-deck-search-bar:focus-within {
+    border-color: var(--accent-color);
+}
+
+#onigiri-deck-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+}
+
+#onigiri-deck-search-input::placeholder {
+    color: var(--fg-subtle);
+    opacity: 0.75;
+}
+
+#onigiri-deck-search-close {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fg-subtle);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#onigiri-deck-search-close:hover {
+    color: var(--fg);
+    background: var(--highlight-bg);
+}
+
+.sidebar-left.sidebar-collapsed #onigiri-search-toolbar-btn,
+.sidebar-left.sidebar-collapsed #onigiri-deck-search-bar {
+    display: none !important;
+}
+
+@keyframes oniSearchReveal {
+    from {
+        opacity: 0;
+        transform: translateX(5px) scaleX(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scaleX(1);
+    }
+}
+
+@keyframes oniSearchDismiss {
+    from {
+        opacity: 1;
+        transform: translateX(0) scaleX(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(5px) scaleX(0.98);
+    }
 }
 
 
@@ -947,16 +1380,62 @@ td.count {
 
 /* --- Collapsed State Logic --- */
 .sidebar-left.sidebar-collapsed {
-    width: 100px !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-color: transparent !important;
+    border-left-width: 0 !important;
+    border-right-width: 0 !important;
+    opacity: 0;
+    overflow: hidden;
 }
 
-/* --- Collapsed State Logic --- */
-.sidebar-left.sidebar-collapsed {
-    width: 100px !important;
-    min-width: 100px;
-    max-width: 100px;
-    padding: 15px;
-    overflow: hidden;
+.sidebar-left.sidebar-collapsed ~ .resize-handle {
+    display: none;
+}
+
+/* --- Sidebar Reveal Button --- */
+#onigiri-sidebar-reveal-btn {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    display: none;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    opacity: 0.55;
+    z-index: 1000;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg);
+    transition: opacity 0.15s ease;
+}
+
+#onigiri-sidebar-reveal-btn:hover,
+#onigiri-sidebar-reveal-btn:focus,
+#onigiri-sidebar-reveal-btn:active {
+    opacity: 1;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+#onigiri-sidebar-reveal-btn svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
 }
 
 /* Individual Positioning (Collapsed Sidebar) */
@@ -977,7 +1456,8 @@ td.count {
     pointer-events: none;
 }
 
-.sidebar-left.sidebar-collapsed .sidebar-expanded-content {
+.sidebar-left.sidebar-collapsed .sidebar-expanded-content,
+.sidebar-left.sidebar-collapsing .sidebar-expanded-content {
     display: none;
 }
 
@@ -986,13 +1466,7 @@ td.count {
 }
 
 .sidebar-left.sidebar-collapsed .sidebar-collapsed-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding-top: 50px;
-    height: 100%;
-    box-sizing: border-box;
+    display: none;
 }
 
 .collapsed-placeholder {
@@ -1074,13 +1548,12 @@ td.count {
 .deck-counts {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding-left: 10px;
-    flex-shrink: 0;
-    flex-grow: 1;
+    gap: 4px;
+    padding-left: 4px;
+    flex: 0 1 auto;
     justify-content: flex-end;
     min-width: 0;
-    max-width: 100%;
+    max-width: 48%;
     overflow: hidden;
 }
 
@@ -1089,12 +1562,13 @@ tr.deck .review-count-bubble,
 tr.deck .learn-count-bubble {
     font-size: 11px;
     font-weight: 600;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border-radius: 10px;
-    min-width: 18px;
+    min-width: 16px;
     text-align: center;
     line-height: 1.5;
-    max-width: 8ch;
+    max-width: 5ch;
+    flex: 0 1 auto;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -1136,77 +1610,6 @@ tr.deck .learn-count-bubble.zero {
 #deck-list-container {
     contain: layout style paint;
     overflow: hidden;
-}
-
-/* --- Transfer Button Styles --- */
-.deck-transfer-btn {
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    width: 24px;
-    height: 24px;
-    background-color: var(--highlight-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    display: none;
-    /* Changed from display: flex to none */
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 10;
-    box-shadow: 0 1px 3px var(--shadow-sm);
-    transition: all 0.2s ease;
-    opacity: 0;
-    pointer-events: none;
-    flex-shrink: 0;
-}
-
-/* Visible only when in edit mode */
-body.deck-edit-mode .deck-transfer-btn {
-    display: flex;
-    /* Added display: flex */
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.deck-transfer-btn:hover {
-    background-color: var(--canvas-inset);
-}
-
-/* When no decks are selected (dimmed state) */
-body.deck-edit-mode .deck-transfer-btn:not(.has-selection) {
-    opacity: 0.5;
-    /* Keep pointer-events: auto so it can be clicked to show feedback */
-    pointer-events: auto;
-}
-
-/* When decks are selected (active/bolder state) */
-body.deck-edit-mode .deck-transfer-btn.has-selection {
-    background-color: var(--icon-color);
-    border-color: var(--icon-color);
-    opacity: 1;
-    pointer-events: auto;
-}
-
-body.deck-edit-mode .deck-transfer-btn.has-selection:hover {
-    background-color: var(--icon-color);
-    opacity: 0.9;
-}
-
-/* Icon styling */
-.deck-transfer-btn .icon {
-    width: 16px !important;
-    height: 16px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    object-fit: contain;
-    flex-shrink: 0;
-    transition: filter 0.2s ease;
-}
-
-/* Change icon color when button is active */
-body.deck-edit-mode .deck-transfer-btn.has-selection .icon {
-    filter: brightness(0) invert(1);
 }
 
 /* --- Sync Status Indicator --- */

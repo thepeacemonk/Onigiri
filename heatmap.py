@@ -103,7 +103,24 @@ def get_heatmap_data():
             else:
                 break  # Streak broken
 
-    # --- 5. Calculate Daily Average ---
+    # --- 5. Calculate Longest Streak Ever ---
+    longest_streak = 0
+    if review_days_set:
+        longest_streak = 1
+        current_run = 1
+        sorted_days = sorted(
+            datetime.strptime(day_key, "%Y-%m-%d").date()
+            for day_key in review_days_set
+        )
+        for previous_day, current_day in zip(sorted_days, sorted_days[1:]):
+            if (current_day - previous_day).days == 1:
+                current_run += 1
+            else:
+                current_run = 1
+            longest_streak = max(longest_streak, current_run)
+    longest_streak = max(longest_streak, streak)
+
+    # --- 6. Calculate Daily Average ---
     # Total reviews / Days since first review
     # We use the count of all reviews in history (no date limit)
     total_reviews_all_time = mw.col.db.scalar("SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3)") or 0
@@ -122,13 +139,20 @@ def get_heatmap_data():
                 
             daily_average = total_reviews_all_time / days_elapsed
 
+    first_year = datetime.now().year
+    first_review_ts = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
+    if first_review_ts:
+        first_year = datetime.fromtimestamp(first_review_ts / 1000).year
+
     return {
         "calendar": reviews_by_day, 
         "streak": streak, 
+        "longest_streak": longest_streak,
         "due_calendar": due_by_day,
         "today_date_key": today_date_key,
         "rollover_hour": rollover_hour, # Still useful for JS, though not for date math
-        "daily_average": daily_average
+        "daily_average": daily_average,
+        "firstYear": first_year,
     }
 
 def get_heatmap_and_config():

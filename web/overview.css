@@ -5,6 +5,16 @@ body {
     align-items: center;
     min-height: 100vh;
     margin: 0;
+    scroll-behavior: auto;
+}
+
+.overview-center-container,
+.overview-container,
+.stats-container,
+.congrats-container,
+.congrats-card {
+    animation: none !important;
+    transform: none;
 }
 
 .overview-center-container {

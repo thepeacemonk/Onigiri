@@ -2,6 +2,7 @@ import os
 import zipfile
 import shutil
 import time
+import json
 from pathlib import Path
 from aqt import mw
 from . import config
@@ -16,6 +17,7 @@ class SyncManager:
         self._sync_filename = None
         self._media_dir = None
         self._user_files_dir = os.path.join(os.path.dirname(__file__), "user_files")
+        self._state_file = os.path.join(os.path.dirname(__file__), ".onigiri_sync_state.json")
 
     def _ensure_init(self):
         """Initialize paths that depend on the active profile."""
@@ -26,6 +28,31 @@ class SyncManager:
         self._sync_filename = f"_onigiri_sync_{profile_name}.zip"
         self._media_dir = mw.col.media.dir()
         return True
+
+    def _load_state(self):
+        if os.path.exists(self._state_file):
+            try:
+                with open(self._state_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                pass
+        return {"last_zip_mtime": {}, "last_zip_size": {}}
+
+    def _save_state(self, mtime, size):
+        if not self._ensure_init():
+            return
+        
+        state = self._load_state()
+        profile_name = mw.pm.name
+        
+        state["last_zip_mtime"][profile_name] = mtime
+        state["last_zip_size"][profile_name] = size
+        
+        try:
+            with open(self._state_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+        except:
+            pass
 
     def is_enabled(self):
         return config.get_config().get("ankiweb_sync_enabled", False)
@@ -59,6 +86,11 @@ class SyncManager:
             if os.path.exists(sync_path):
                 os.remove(sync_path)
             os.rename(temp_zip, sync_path)
+            
+            # Update state
+            stat = os.stat(sync_path)
+            self._save_state(stat.st_mtime, stat.st_size)
+            
             return True
         except Exception as e:
             print(f"Onigiri Sync: Failed to pack files: {e}")
@@ -96,6 +128,11 @@ class SyncManager:
             
             # Clean up backup
             shutil.rmtree(backup_dir)
+            
+            # Update state to reflect that we are in sync with this zip
+            stat = os.stat(sync_path)
+            self._save_state(stat.st_mtime, stat.st_size)
+            
             return True
         except Exception as e:
             print(f"Onigiri Sync: Failed to unpack files: {e}")
@@ -124,18 +161,41 @@ class SyncManager:
             'none': Data is the same or cloud doesn't exist.
             'local_newer': Local data has been modified more recently than cloud.
             'cloud_newer': Cloud data is newer than local.
-            'conflict': Both appear to have changed? Actually with zips, 
-                        we usually just look for which one is newer.
         """
-        local_time = self.get_local_mtime()
-        cloud_time = self.get_cloud_mtime()
+        if not self._ensure_init():
+            return 'none'
+            
+        sync_path = self.get_sync_file_path()
+        if not os.path.exists(sync_path):
+            return 'none'
+            
+        # Get current file stats
+        stat = os.stat(sync_path)
+        curr_mtime = stat.st_mtime
+        curr_size = stat.st_size
         
-        # Give a 5-second buffer for time differences
-        if cloud_time > local_time + 5:
+        # Get last known state
+        state = self._load_state()
+        profile_name = mw.pm.name
+        last_mtime = state["last_zip_mtime"].get(profile_name, 0)
+        last_size = state["last_zip_size"].get(profile_name, 0)
+        
+        # If the file hasn't changed since we last packed/unpacked it, there's no conflict
+        # even if the zip is newer than the source files (which it always will be after a pack).
+        if abs(curr_mtime - last_mtime) < 1.0 and curr_size == last_size:
+            return 'none'
+            
+        # If it HAS changed, we compare times to see which direction to suggest
+        local_time = self.get_local_mtime()
+        
+        # Give a 5-second buffer
+        if curr_mtime > local_time + 5:
             return 'cloud_newer'
-        elif local_time > cloud_time + 5:
+        elif local_time > curr_mtime + 5:
             return 'local_newer'
+            
         return 'none'
 
 # Singleton instance
 onigiri_sync = SyncManager()
+

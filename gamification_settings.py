@@ -8,6 +8,7 @@ from aqt.qt import (
     QEasingCurve, QStackedWidget, QMessageBox, QComboBox
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QImage
 from aqt import mw
 from aqt.theme import theme_manager
@@ -350,22 +351,35 @@ class GamificationSettingsDialog(QDialog):
         main_layout.setSpacing(0)
 
         content_area_layout = QHBoxLayout()
-        content_area_layout.setSpacing(5)
+        content_area_layout.setSpacing(0)
         content_area_layout.setContentsMargins(0, 0, 0, 0)
 
         # Sidebar setup - new colorful pill design
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(210)
+        sidebar_wrapper.setObjectName("settingsSidebarWrapper")
+        sidebar_wrapper.setMinimumWidth(188)
+        sidebar_wrapper.setMaximumWidth(240)
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 15, 15)
-        sidebar_wrapper_layout.setSpacing(8)
+        sidebar_wrapper_layout.setContentsMargins(12, 16, 12, 12)
+        sidebar_wrapper_layout.setSpacing(4)
+
+        self.sidebar_scroll_area = QScrollArea()
+        self.sidebar_scroll_area.setObjectName("sidebarNavScrollArea")
+        self.sidebar_scroll_area.setWidgetResizable(True)
+        self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.sidebar_scroll_area.setMinimumWidth(164)
+        self.sidebar_scroll_area.setMaximumWidth(216)
+        self.sidebar_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Main Sidebar Widget (the rounded container)
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("sidebarContainer")
+        sidebar_widget.setMinimumWidth(164)
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 14, 10, 14)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(0, 0, 12, 16)
+        sidebar_layout.setSpacing(6)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Colored pill buttons
@@ -377,7 +391,6 @@ class GamificationSettingsDialog(QDialog):
         gamification_items = [
             (tr("general"),             "General",           "",         ""),
             (tr("restaurant_level"),   "Restaurant Level",  "#ffbd59",  "#000000"),
-            (tr("mr_taiyaki_store"),   "Mr. Taiyaki Store", "#a83e25",  "#ffffff"),
             (tr("focus_dango"),         "Focus Dango",       "#9d3d64",  "#ffffff"),
             (tr("mochi_messages_title"), "Mochi Messages",    "#00bf63",  "#000000"),
             (tr("coming_soon"),         "Coming Soon",       "",         ""),
@@ -407,7 +420,8 @@ class GamificationSettingsDialog(QDialog):
         self.save_button.clicked.connect(self.save_settings)
         sidebar_layout.addWidget(self.save_button)
 
-        sidebar_wrapper_layout.addWidget(sidebar_widget)
+        self.sidebar_scroll_area.setWidget(sidebar_widget)
+        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Content Stack
         self.content_stack = QStackedWidget()
@@ -416,7 +430,6 @@ class GamificationSettingsDialog(QDialog):
         self.pages = {
             "General": self.create_general_page,
             "Restaurant Level": self.create_restaurant_level_page,
-            "Mr. Taiyaki Store": self.create_mr_taiyaki_store_page,
             "Focus Dango": self.create_focus_dango_page,
             "Mochi Messages": self.create_mochi_messages_page,
             "Coming Soon": self.create_coming_soon_page
@@ -433,8 +446,15 @@ class GamificationSettingsDialog(QDialog):
         content_container_layout.setContentsMargins(0, 0, 0, 0)
         content_container_layout.addWidget(self.content_stack)
 
+        content_outer = QWidget()
+        content_outer.setObjectName("contentOuter")
+        content_outer_layout = QVBoxLayout(content_outer)
+        content_outer_layout.setContentsMargins(0, 14, 14, 0)
+        content_outer_layout.setSpacing(0)
+        content_outer_layout.addWidget(content_container)
+
         content_area_layout.addWidget(sidebar_wrapper)
-        content_area_layout.addWidget(content_container)
+        content_area_layout.addWidget(content_outer)
 
         main_layout.addLayout(content_area_layout)
         self.apply_stylesheet()
@@ -443,11 +463,37 @@ class GamificationSettingsDialog(QDialog):
         # Default page
         self.navigate_to_page("General")
 
+    def _theme_tokens(self):
+        mode_key = "dark" if theme_manager.night_mode else "light"
+        palette = self.current_config.get("colors", {}).get(mode_key, {})
+        defaults = DEFAULTS["colors"][mode_key]
+        if theme_manager.night_mode:
+            return {
+                "bg": palette.get("--bg", "#111827"),
+                "panel": palette.get("--canvas-inset", "#1f2937"),
+                "surface": palette.get("--highlight-bg", "#263040"),
+                "fg": palette.get("--fg", "#f9fafb"),
+                "muted": palette.get("--fg-subtle", "#d1d5db"),
+                "border": palette.get("--border", "#374151"),
+                "accent": palette.get("--accent-color", defaults["--accent-color"]),
+            }
+        return {
+            "bg": palette.get("--bg", "#f0f0f0"),
+            "panel": palette.get("--canvas-inset", "#ffffff"),
+            "surface": palette.get("--highlight-bg", "#f3f4f6"),
+            "fg": palette.get("--fg", "#111827"),
+            "muted": palette.get("--fg-subtle", "#4b5563"),
+            "border": palette.get("--border", "#e5e7eb"),
+            "accent": palette.get("--accent-color", defaults["--accent-color"]),
+        }
+
     def _apply_pill_button_styles(self):
         """Apply individual colored pill styles to each sidebar button."""
-        is_dark = theme_manager.night_mode
-        neutral_bg = "#3c3c3c" if is_dark else "#ffffff"
-        neutral_fg = "#e0e0e0" if is_dark else "#000000"
+        tokens = self._theme_tokens()
+        neutral_bg = tokens["surface"]
+        neutral_fg = tokens["fg"]
+        border = tokens["border"]
+        accent = tokens["accent"]
 
         for key, btn in self.sidebar_buttons.items():
             bg = btn.property("gameBgColor")
@@ -459,7 +505,7 @@ class GamificationSettingsDialog(QDialog):
                 QPushButton {{
                     background-color: {bg};
                     color: {fg_c};
-                    border: none;
+                    border: 1px solid transparent;
                     border-radius: 19px;
                     min-height: 38px;
                     max-height: 38px;
@@ -468,10 +514,13 @@ class GamificationSettingsDialog(QDialog):
                     font-weight: bold;
                     text-align: center;
                 }}
+                QPushButton:hover {{
+                    border: 1px solid {accent};
+                }}
                 QPushButton:checked {{
                     background-color: {bg};
                     color: {fg_c};
-                    border: 3px solid rgba(255,255,255,0.85);
+                    border: 2px solid {accent if not btn.property("gameBgColor") else "rgba(255,255,255,0.85)"};
                     border-radius: 19px;
                 }}
             """)
@@ -486,10 +535,6 @@ class GamificationSettingsDialog(QDialog):
         self.focused_gaming_toggle = AnimatedToggleButton(accent_color="#5b8dee")
         self.focused_gaming_toggle.setChecked(bool(self.current_config.get("focusedGaming", False)))
 
-        # Onigiri Sync Toggle
-        self.ankiweb_sync_toggle = AnimatedToggleButton(accent_color="#27ae60")
-        self.ankiweb_sync_toggle.setChecked(bool(self.current_config.get("ankiweb_sync_enabled", False)))
-        
         restaurant_conf = self.current_config.get("restaurant_level", {})
         self.restaurant_level_toggle = AnimatedToggleButton(accent_color="#B94632")
         self.restaurant_level_toggle.setChecked(bool(restaurant_conf.get("enabled", False)))
@@ -577,7 +622,7 @@ class GamificationSettingsDialog(QDialog):
     def _create_scrollable_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(30, 20, 30, 20)
+        layout.setContentsMargins(30, 28, 30, 20)
         layout.setSpacing(20)
         
         scroll = QScrollArea()
@@ -608,6 +653,33 @@ class GamificationSettingsDialog(QDialog):
         layout.addWidget(toggle_widget)
         return row
 
+    def _render_system_icon(self, filename, size=44, color=None):
+        icon_path = os.path.join(self.addon_path, "system_files", "system_icons", filename)
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        if not os.path.exists(icon_path):
+            return pixmap
+
+        renderer = QSvgRenderer(icon_path)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        renderer.render(painter, QRectF(0, 0, size, size))
+        painter.end()
+
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color or self._theme_tokens()["muted"]))
+        painter.end()
+        return pixmap
+
+    def _create_general_hero_icon(self, filename):
+        label = QLabel()
+        label.setFixedSize(64, 64)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background: transparent; border: none;")
+        label.setPixmap(self._render_system_icon(filename, 42, self._theme_tokens()["muted"]))
+        return label
+
     def _create_onigiri_game_hero_card(self, title, subtitle, icon_filename, background_filename, text_color):
         card = QFrame()
         card.setObjectName("achievementsHeroCard")
@@ -628,15 +700,22 @@ class GamificationSettingsDialog(QDialog):
             icon_label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         layout.addWidget(icon_label)
 
-        text_layout = QVBoxLayout()
+        text_container = QWidget()
+        text_container.setStyleSheet("background: transparent;")
+        text_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(6)
         t_label = QLabel(title)
+        t_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         t_label.setStyleSheet(f"font-weight: bold; font-size: 24px; color: {text_color}; background: transparent;")
         s_label = QLabel(subtitle)
         s_label.setWordWrap(True)
+        s_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         s_label.setStyleSheet(f"color: {text_color}; background: transparent;")
-        text_layout.addWidget(t_label)
-        text_layout.addWidget(s_label)
-        layout.addLayout(text_layout, 1)
+        text_layout.addWidget(t_label, 0, Qt.AlignmentFlag.AlignLeft)
+        text_layout.addWidget(s_label, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(text_container, 1, Qt.AlignmentFlag.AlignVCenter)
 
         bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", background_filename)
         if not os.path.exists(bg_path):
@@ -665,12 +744,7 @@ class GamificationSettingsDialog(QDialog):
         hero_layout.setSpacing(20)
         hero_layout.setContentsMargins(20, 20, 20, 20)
         
-        # Icon
-        icon_label = QLabel()
-        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "gamification.png")
-        pixmap = QPixmap(icon_path)
-        if not pixmap.isNull():
-            icon_label.setPixmap(pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        icon_label = self._create_general_hero_icon("gamepad.svg")
         hero_layout.addWidget(icon_label)
         
         # Text
@@ -701,16 +775,7 @@ class GamificationSettingsDialog(QDialog):
         focused_layout.setSpacing(20)
         focused_layout.setContentsMargins(20, 20, 20, 20)
         
-        # Icon - emoji fallback if no image found
-        focus_icon_label = QLabel()
-        focus_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "focused_gaming.png")
-        if os.path.exists(focus_icon_path):
-            focus_pixmap = QPixmap(focus_icon_path)
-            if not focus_pixmap.isNull():
-                focus_icon_label.setPixmap(focus_pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        else:
-            focus_icon_label.setText("🎯")
-            focus_icon_label.setStyleSheet("font-size: 40px; background: transparent;")
+        focus_icon_label = self._create_general_hero_icon("focus.svg")
         focused_layout.addWidget(focus_icon_label)
         
         focus_text = QWidget()
@@ -743,38 +808,6 @@ class GamificationSettingsDialog(QDialog):
         self.focused_gaming_toggle.toggled.connect(_on_focused_gaming_changed)
         # Apply initial state
         _on_focused_gaming_changed(self.focused_gaming_toggle.isChecked())
-        
-        # ---- Hero 3: AnkiWeb Sync ----
-        sync_card = QWidget()
-        sync_card.setObjectName("ankiwebSyncHero")
-        sync_card.setFixedHeight(120)
-        
-        sync_layout = QHBoxLayout(sync_card)
-        sync_layout.setSpacing(20)
-        sync_layout.setContentsMargins(20, 20, 20, 20)
-        
-        sync_icon_label = QLabel()
-        sync_icon_label.setText("☁️")
-        sync_icon_label.setStyleSheet("font-size: 40px; background: transparent;")
-        sync_layout.addWidget(sync_icon_label)
-        
-        sync_text = QWidget()
-        sync_text_layout = QVBoxLayout(sync_text)
-        sync_text_layout.setContentsMargins(0, 0, 0, 0)
-        
-        sync_title = QLabel("AnkiWeb Cloud Sync")
-        sync_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
-        sync_text_layout.addWidget(sync_title)
-        
-        sync_desc = QLabel("Synchronize your Onigiri progress, custom icons, and themes across all your devices using Anki's media sync.")
-        sync_desc.setWordWrap(True)
-        sync_desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
-        sync_text_layout.addWidget(sync_desc)
-        
-        sync_layout.addWidget(sync_text, 1)
-        sync_layout.addWidget(self.ankiweb_sync_toggle)
-        
-        layout.addWidget(sync_card)
         
         layout.addStretch()
         
@@ -828,34 +861,16 @@ class GamificationSettingsDialog(QDialog):
         reset_btn.setObjectName("dangerButton")
         reset_btn.clicked.connect(self._confirm_reset_restaurant_level)
         reset_layout.addWidget(reset_btn)
-        layout.addWidget(reset_group)
-        
-        layout.addStretch()
-        return page
 
-    def create_mr_taiyaki_store_page(self):
-        page, layout = self._create_scrollable_page()
-        hero = self._create_onigiri_game_hero_card(
-            tr("mr_taiyaki_store"),
-            tr("manage_store_desc"),
-            "mr_taiyaki.png",
-            "restaurant_folder/wooden_bg.png",
-            "#ffffff"
-        )
-        layout.addWidget(hero)
-
-        coins_group, coins_layout = self._create_inner_group(tr("reset_coins"))
         reset_coins_btn = QPushButton(tr("reset_coins"))
         reset_coins_btn.clicked.connect(self._reset_coins)
-        coins_layout.addWidget(reset_coins_btn)
-        layout.addWidget(coins_group)
+        reset_layout.addWidget(reset_coins_btn)
 
-        purchases_group, purchases_layout = self._create_inner_group(tr("reset_purchases"))
         reset_purchases_btn = QPushButton(tr("reset_purchases"))
         reset_purchases_btn.clicked.connect(self._reset_purchases)
-        purchases_layout.addWidget(reset_purchases_btn)
-        layout.addWidget(purchases_group)
-
+        reset_layout.addWidget(reset_purchases_btn)
+        layout.addWidget(reset_group)
+        
         layout.addStretch()
         return page
 
@@ -955,7 +970,6 @@ class GamificationSettingsDialog(QDialog):
     def save_settings(self):
         # Master Toggle
         self.current_config["gamificationMode"] = self.gamification_mode_toggle.isChecked()
-        self.current_config["ankiweb_sync_enabled"] = self.ankiweb_sync_toggle.isChecked()
         
         # Focused Gaming — if enabled, force restaurant notifications off
         focused = self.focused_gaming_toggle.isChecked()
@@ -997,35 +1011,62 @@ class GamificationSettingsDialog(QDialog):
             mw.reset()
 
     def apply_stylesheet(self):
-        is_dark = theme_manager.night_mode
-        if is_dark:
-            # Dialog bg matches content panel bg — only 2 visible layers: sidebar + content
-            bg = "#2e2e2e"
-            content_bg = "#2e2e2e"
-            fg = "#e0e0e0"
-            sidebar_bg = "#1a1a1a"
-            inner_group_bg = "#252525"
-            border = "#444444"
-            hover_bg = "#333333"
-        else:
-            bg = "#f0f0f0"
-            content_bg = "#f0f0f0"
-            fg = "#212121"
-            sidebar_bg = "#d5d5d5"
-            inner_group_bg = "#ffffff"
-            border = "#d0d0d0"
-            hover_bg = "#e8e8e8"
+        tokens = self._theme_tokens()
+        bg = tokens["bg"]
+        content_bg = tokens["panel"]
+        fg = tokens["fg"]
+        muted = tokens["muted"]
+        inner_group_bg = tokens["panel"]
+        surface_bg = tokens["surface"]
+        border = tokens["border"]
+        hover_bg = tokens["surface"]
+        accent = tokens["accent"]
 
         self.setStyleSheet(f"""
             QDialog {{ background-color: {bg}; color: {fg}; }}
+            QWidget#settingsSidebarWrapper {{
+                background-color: transparent;
+                border: none;
+            }}
             #sidebarContainer {{ 
-                background-color: {sidebar_bg}; 
-                border-radius: 20px; 
+                background-color: transparent;
+                border: none;
+            }}
+            QScrollArea#sidebarNavScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar:vertical {{
+                border: none;
+                background-color: {surface_bg};
+                width: 8px;
+                margin: 6px 0px 6px 6px;
+                border-radius: 4px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical {{
+                background-color: {muted};
+                min-height: 38px;
+                border-radius: 4px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical:hover {{
+                background-color: {accent};
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-page:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-page:vertical {{
+                height: 0;
+                width: 0;
+                background: none;
+                border: none;
             }}
             /* Content container - same bg as dialog so only sidebar is distinct */
             QWidget#contentContainer {{
                 background-color: {content_bg};
-                border-radius: 16px;
+                border-top-left-radius: 28px;
+                border-top-right-radius: 28px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
             }}
             QStackedWidget#contentStack {{
                 background-color: transparent;
@@ -1033,10 +1074,10 @@ class GamificationSettingsDialog(QDialog):
             
             /* Save button - always white pill with fixed height */
             QPushButton#saveButton {{
-                background-color: #ffffff;
-                color: #000000;
+                background-color: {accent};
+                color: #ffffff;
                 border: none;
-                border-radius: 19px;
+                border-radius: 16px;
                 min-height: 38px;
                 max-height: 38px;
                 padding: 0px 14px;
@@ -1044,14 +1085,14 @@ class GamificationSettingsDialog(QDialog):
                 font-weight: bold;
             }}
             QPushButton#saveButton:hover {{
-                background-color: #f0f0f0;
+                background-color: {accent};
             }}
             QPushButton#saveButton:pressed {{
-                background-color: #dddddd;
+                background-color: {accent};
             }}
 
             QWidget#gamificationModeHero, QWidget#focusedGamingHero {{ 
-                background-color: {'#353535' if is_dark else '#ffffff'}; 
+                background-color: {surface_bg}; 
                 border: 1px solid {border}; 
                 border-radius: 20px; 
             }}
@@ -1059,7 +1100,7 @@ class GamificationSettingsDialog(QDialog):
             QWidget#innerGroup {{ background-color: {inner_group_bg}; border: 1px solid {border}; border-radius: 12px; }}
             
             /* General QPushButton fallback (for content area buttons only) */
-            QPushButton {{ background-color: {'#4a4a4a' if is_dark else '#e8e8e8'}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 6px; }}
+            QPushButton {{ background-color: {surface_bg}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 18px; }}
             QPushButton:pressed {{ background-color: {border}; }}
             
             QPushButton#dangerButton {{ color: #ff6b6b; font-weight: bold; border: 1px solid #ff6b6b; border-radius: 6px; padding: 8px; }}

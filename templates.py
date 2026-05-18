@@ -2,103 +2,82 @@
 
 custom_body_template = """
 <style>
-    /* --- Edit Mode Styles --- */
-    body.deck-edit-mode #deck-list-container {
-        border: 2px dashed var(--accent-color);
-        border-radius: 15px;
-        background-color: transparent !important; /* Changed from var(--deck-edit-mode-bg) to transparent */
-    }
-
-    body.deck-edit-mode .decktd a.deck {
-        pointer-events: none !important; /* Disable clicking into decks */
-        color: var(--fg-disabled) !important;
-    }
-    
     #deck-list-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 8px;
         padding-right: 10px;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        min-height: 24px;
+        position: relative;
     }
 
-    .deck-checkbox {
-        margin-right: 0px; /* MODIFIED */
-        margin-left: 5px;
-        width: 16px;
-        height: 16px;
-        flex-shrink: 0;
-        accent-color: var(--accent-color);
+    #deck-list-header h2 {
+        margin: 0;
+        line-height: 24px;
+        flex: 0 0 auto;
     }
-    /* --- End Edit Mode Styles --- */
 
-    /* --- Custom Context Menu --- */
-    #deck-context-menu {
-        display: none;
-        position: absolute;
-        z-index: 10000;
-        background-color: var(--canvas-overlay);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        padding: 6px;
-        min-width: 180px;
-    }
-    .context-menu-item {
-        padding: 8px 12px;
-        cursor: pointer;
-        border-radius: 5px;
+    .deck-header-actions {
         display: flex;
         align-items: center;
-        font-size: 14px;
-    }
-    .context-menu-item:hover {
-        background-color: var(--canvas-inset);
-    }
-
-    /* --- NEW: Favorite Star Styles --- */
-    .favorite-star-icon {
-        display: none; /* Hidden by default */
-        width: 18px;
-        height: 18px;
+        gap: 4px;
         flex-shrink: 0;
-        background-color: var(--fg-faint);
-        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'%3E%3C/polygon%3E%3C/svg%3E");
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        cursor: pointer;
-        margin-left: 8px; /* Space from checkbox */
-        margin-right: 8px; /* Space from name */
-        transition: background-color 0.2s ease, transform 0.1s ease;
     }
-    body.deck-edit-mode .favorite-star-icon {
-        display: inline-block; /* Show in edit mode */
-    }
-    .favorite-star-icon:hover {
-        background-color: var(--accent-color);
-        transform: scale(1.1);
-    }
-    .favorite-star-icon.is-favorite {
-        background-color: var(--accent-color); /* Use theme accent color */
-        /* The mask (icon shape) remains the same */
-        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' stroke='%23FFD700' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'%3E%3C/polygon%3E%3C/svg%3E");
-    }
-    .favorite-star-icon.is-favorite:hover {
-        background-color: var(--accent-hover); /* Use theme accent hover color */
-    }
-    /* --- End Favorite Star Styles --- */
 
+    .deck-header-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--icon-color, var(--fg-subtle));
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        box-shadow: none !important;
+        opacity: 0.72;
+        outline: none !important;
+        transition: none !important;
+    }
+
+    .deck-header-btn:hover {
+        opacity: 1;
+        color: var(--accent-color);
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    .deck-header-btn svg {
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
+    }
+
+    @keyframes deckRowAppear {
+        from { opacity: 0.72; }
+        to { opacity: 1; }
+    }
+    tr.deck.deck-row-appear {
+        animation: deckRowAppear 0.06s linear both;
+    }
     /* --- Active State for Sidebar Toggle --- */
     .sidebar-toggle-btn.active {
-        background-color: var(--icon-color) !important;
-        border-color: var(--icon-color) !important;
+        background-color: var(--highlight-bg) !important;
+        border-color: var(--border) !important;
+        box-shadow: none !important;
     }
     
     /* --- End Focus Button Style --- */
 
     /* --- Sidebar Button Icon Centering Fix --- */
-    .sidebar-left .deck-focus-btn .icon,
-    .sidebar-left .deck-edit-btn .icon{
+    .sidebar-left .deck-focus-btn .icon {
         margin-right: 0 !important;
     }
     /* --- End Sidebar Button Icon Centering Fix --- */
@@ -131,10 +110,6 @@ custom_body_template = """
         flex-shrink: 0;
     }
     
-    .sidebar-left .deck-transfer-btn .icon {
-        margin: 0 !important;
-    }
-
     /* --- Deck List Click Area Fix --- */
     .deck-table .decktd {
         display: flex;
@@ -173,7 +148,13 @@ custom_body_template = """
     <div class="sidebar-left skeleton-loading {sidebar_initial_class}" style="{sidebar_style}">
         
         <div class="sidebar-toggle-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <g fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M2 12c0-3.69 0-5.534.814-6.841a4.8 4.8 0 0 1 1.105-1.243C5.08 3 6.72 3 10 3h4c3.28 0 4.919 0 6.081.916c.43.338.804.759 1.105 1.243C22 6.466 22 8.31 22 12s0 5.534-.814 6.841a4.8 4.8 0 0 1-1.105 1.243C18.92 21 17.28 21 14 21h-4c-3.28 0-4.919 0-6.081-.916a4.8 4.8 0 0 1-1.105-1.243C2 17.534 2 15.69 2 12Z" />
+                    <path stroke-linejoin="round" d="M9.5 3v18" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 7h1m-1 3h1" />
+                </g>
+            </svg>
         </div>
 
         <div class="sidebar-expanded-content">
@@ -182,6 +163,21 @@ custom_body_template = """
             
             <div id="deck-list-header">
                 <h2>{tr_decks}</h2>
+                <div id="onigiri-deck-search-bar">
+                    <span class="onigiri-search-icon" aria-hidden="true"></span>
+                    <input type="text" id="onigiri-deck-search-input" placeholder="Search decks..." autocomplete="off" spellcheck="false" />
+                    <button id="onigiri-deck-search-close" aria-label="Close" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <div class="deck-header-actions">
+                    <button id="onigiri-search-toolbar-btn" class="deck-header-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="Search decks" type="button">
+                        <i class="search-btn-icon"></i>
+                    </button>
+                    <button class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><path d="M8 5.5h12M8 12h12M8 18.5h12"/><path stroke-linejoin="round" d="M4.375 5.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0"/></svg>
+                    </button>
+                </div>
             </div>
             <div id="deck-list-container">
                 <table class="deck-table" id="decktree">
@@ -210,6 +206,15 @@ custom_body_template = """
             </div>
         </div>
     </div>
+    <button id="onigiri-sidebar-reveal-btn" title="Show sidebar" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M2 12c0-3.69 0-5.534.814-6.841a4.8 4.8 0 0 1 1.105-1.243C5.08 3 6.72 3 10 3h4c3.28 0 4.919 0 6.081.916c.43.338.804.759 1.105 1.243C22 6.466 22 8.31 22 12s0 5.534-.814 6.841a4.8 4.8 0 0 1-1.105 1.243C18.92 21 17.28 21 14 21h-4c-3.28 0-4.919 0-6.081-.916a4.8 4.8 0 0 1-1.105-1.243C2 17.534 2 15.69 2 12Z" />
+                <path stroke-linejoin="round" d="M9.5 3v18" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 7h1m-1 3h1" />
+            </g>
+        </svg>
+    </button>
     <div class="resize-handle"></div>
     <div class="main-content">
         <div class="injected-stats-block">
@@ -218,20 +223,15 @@ custom_body_template = """
     </div>
 </div>
 
-<div id="deck-context-menu">
-    <div class="context-menu-item" id="transfer-decks-btn">
-        <span>{tr("transfer_to")}</span>
-    </div>
-</div>
-
 <script>
-// Disable Anki's default drag-and-drop on the deck tree
+// Disable Anki's default jQuery sortable on the deck tree. Onigiri owns deck
+// sorting/reparenting through its lightweight pointer-drag handles.
 (function() {
-    if (typeof $!== 'undefined' &&$.ui) {
+    if (typeof $ !== 'undefined' && $.ui) {
         const originalSortable = $.fn.sortable;
         $.fn.sortable = function(options) {
             if (this.selector === '#decktree > tbody' || this.parent().attr('id') === 'decktree') {
-                return this; // Do nothing, effectively disabling it
+                return this;
             }
             return originalSortable.call(this, options);
         };
@@ -243,171 +243,12 @@ custom_body_template = """
     }
 })();
 
+// Compatibility shim for older Onigiri hooks.
 const OnigiriEditor = {
-    longPressTimer: null,
-    EDIT_MODE: false,
-    SELECTED_DECKS: new Set(),
-
-    init: function() {
-        const container = document.getElementById('deck-list-container');
-        if (!container) return;
-        
-        container.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        container.addEventListener('mouseup', this.handleMouseUp.bind(this));
-        container.addEventListener('mouseleave', this.handleMouseUp.bind(this));
-        container.addEventListener('contextmenu', this.handleContextMenu.bind(this));
-
-        document.getElementById('transfer-decks-btn').addEventListener('click', this.openTransferWindow.bind(this));
-
-        // --- RESTORE EDIT MODE STATE FROM SESSIONSTORAGE ---
-        // This ensures edit mode persists across page refreshes (e.g., after deck operations)
-        try {
-            const savedEditMode = sessionStorage.getItem('onigiri_edit_mode');
-            const savedSelectedDecks = sessionStorage.getItem('onigiri_selected_decks');
-            
-            if (savedEditMode === 'true') {
-                // Restore selected decks first
-                if (savedSelectedDecks) {
-                    const deckIds = JSON.parse(savedSelectedDecks);
-                    this.SELECTED_DECKS = new Set(deckIds);
-                }
-                // Then enter edit mode (this will apply the checkboxes)
-                this.enterEditMode();
-            }
-        } catch (e) {
-            // If sessionStorage fails, just continue without restoring state
-            console.warn('Failed to restore edit mode state:', e);
-        }
-
-        // --- NEW SELF-HEALING OBSERVER ---
-        // This watches for changes to the deck list (like after a collapse)
-        const deckTreeBody = document.querySelector('#decktree > tbody');
-        if (deckTreeBody) {
-            const observer = new MutationObserver((mutations) => {
-                if (this.EDIT_MODE) {
-                    // If we are in edit mode, re-scan for missing checkboxes
-                    // Use a short delay to let the DOM settle
-                    setTimeout(() => this.reapplyEditModeState(), 50);
-                }
-            });
-            // Watch for nodes being added or removed from the deck tree
-            observer.observe(deckTreeBody, { childList: true });
-        }
-    },
-
-    handleMouseDown: function(e) {
-        if (e.button !== 0 || this.EDIT_MODE) return;
-        
-        // --- ADD THIS BLOCK ---
-        // Don't trigger long-press if clicking on a favorite star
-        if (e.target.classList.contains('favorite-star-icon')) {
-            return;
-        }
-        // --- END OF BLOCK ---
-
-        const isScrollbar = e.currentTarget.scrollHeight > e.currentTarget.clientHeight && e.offsetX >= e.currentTarget.clientWidth;
-        if (isScrollbar) return;
-
-        this.longPressTimer = setTimeout(() => {
-            this.enterEditMode();
-        }, 600);
-    },
-
-    handleMouseUp: function() {
-        clearTimeout(this.longPressTimer);
-    },
-
-    enterEditMode: function() {
-        if (this.EDIT_MODE) return;
-        this.EDIT_MODE = true;
-        document.body.classList.add('deck-edit-mode');
-        this.reapplyEditModeState();
-        
-        // Save edit mode state to sessionStorage
-        try {
-            sessionStorage.setItem('onigiri_edit_mode', 'true');
-        } catch (e) {
-            console.warn('Failed to save edit mode state:', e);
-        }
-    },
-
-    exitEditMode: function() {
-        if (!this.EDIT_MODE) return;
-        this.EDIT_MODE = false;
-        document.body.classList.remove('deck-edit-mode');
-        document.querySelectorAll('.deck-checkbox').forEach(cb => cb.remove());
-        this.SELECTED_DECKS.clear();
-        
-        // Clear edit mode state from sessionStorage
-        try {
-            sessionStorage.removeItem('onigiri_edit_mode');
-            sessionStorage.removeItem('onigiri_selected_decks');
-        } catch (e) {
-            console.warn('Failed to clear edit mode state:', e);
-        }
-    },
-
-    reapplyEditModeState: function() {
-        document.querySelectorAll('#decktree tr.deck').forEach(row => {
-            const did = row.id.replace('deck-', '');
-            if (row.querySelector('.deck-checkbox')) return;
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'deck-checkbox';
-            checkbox.dataset.did = did;
-            checkbox.checked = this.SELECTED_DECKS.has(did);
-
-            checkbox.onclick = (e) => {
-                e.stopPropagation();
-                if (e.target.checked) {
-                    this.SELECTED_DECKS.add(e.target.dataset.did);
-                } else {
-                    this.SELECTED_DECKS.delete(e.target.dataset.did);
-                }
-                
-                // Save selected decks to sessionStorage whenever selection changes
-                try {
-                    const deckIds = Array.from(this.SELECTED_DECKS);
-                    sessionStorage.setItem('onigiri_selected_decks', JSON.stringify(deckIds));
-                } catch (e) {
-                    console.warn('Failed to save selected decks:', e);
-                }
-            };
-
-            const decktd = row.querySelector('.decktd');
-            if (decktd) {
-                decktd.prepend(checkbox);
-            }
-        });
-    },
-
-    handleContextMenu: function(e) {
-        if (!this.EDIT_MODE || this.SELECTED_DECKS.size === 0) return;
-        
-        const targetRow = e.target.closest('tr.deck');
-        if (!targetRow) return;
-
-        const did = targetRow.id.replace('deck-', '');
-        if (!this.SELECTED_DECKS.has(did)) return;
-
-        e.preventDefault();
-        const menu = document.getElementById('deck-context-menu');
-        menu.style.display = 'block';
-        menu.style.left = `${e.pageX}px`;
-        menu.style.top = `${e.pageY}px`;
-
-        const hideMenu = () => {
-            menu.style.display = 'none';
-        };
-        setTimeout(() => document.addEventListener('click', hideMenu, { once: true }), 0);
-    },
-
-    openTransferWindow: function() {
-        if (this.SELECTED_DECKS.size === 0) return;
-        const payload = Array.from(this.SELECTED_DECKS);
-        pycmd(`onigiri_show_transfer_window:${JSON.stringify(payload)}`);
-    }
+    init: function() {},
+    enterEditMode: function() {},
+    exitEditMode: function() {},
+    reapplyEditModeState: function() {},
 };
 
 // Sync Status Manager
@@ -443,13 +284,6 @@ document.addEventListener('DOMContentLoaded', function() {
         anki.setupDeckBrowser();
     }
     OnigiriEditor.init();
-
-    // Add a global escape key listener to exit edit mode
-    document.addEventListener('keydown', (e) => {
-        if (e.key === "Escape" && OnigiriEditor.EDIT_MODE) {
-            OnigiriEditor.exitEditMode();
-        }
-    });
 });
 </script>
 """

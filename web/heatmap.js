@@ -90,6 +90,14 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return `${year}-${month}-${day}`;
     }
 
+    function escapeAttr(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
 
     // --- VIEW RENDERERS ---
 
@@ -280,7 +288,18 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         function draw() {
             const i18n = config.i18n || {};
-            const streakHTML = config.heatmapShowStreak ? `<div class="streak-counter">${data.streak} ${i18n.day_streak || 'day streak'}</div>` : '';
+            const hasStreak = data.streak > 0;
+            const fireSvg = hasStreak
+                ? `<svg class="streak-icon active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`
+                : `<svg class="streak-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`;
+            const longestStreak = data.longest_streak || 0;
+            const streakTip = longestStreak > 0
+                ? `Longest streak: ${longestStreak} day${longestStreak !== 1 ? 's' : ''}`
+                : 'No streak yet';
+            const streakLabel = i18n.day_streak || 'day streak';
+            const streakHTML = config.heatmapShowStreak
+                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(streakTip)}">${fireSvg}<span>${data.streak}</span><span class="streak-label">${streakLabel}</span></div>`
+                : '';
 
             let navHTML = '';
             if (state.view === 'year') {
@@ -365,6 +384,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
     exports.autoRender = function() {
         if (window.onigiriHeatmapData && window.onigiriHeatmapConfig) {
             exports.render('onigiri-heatmap-container', window.onigiriHeatmapData, window.onigiriHeatmapConfig);
+            if (typeof window.onigiriDismissOverlay === 'function') {
+                window.onigiriDismissOverlay('heatmap');
+            }
             return true;
         }
         return false;

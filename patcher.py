@@ -20,7 +20,7 @@ from aqt.utils import showInfo, tooltip
 from aqt.webview import AnkiWebView
 from aqt.deckbrowser import DeckBrowser
 from aqt.main import MainWebView
-from aqt.utils import tr
+from aqt.utils import tr as anki_tr
 from aqt.overview import Overview
 from aqt.reviewer import Reviewer
 import os
@@ -47,6 +47,10 @@ from . import deck_tree_updater
 from .gamification import focus_dango
 from .constants import COLOR_LABELS
 from .gamification.restaurant_level_ui import RestaurantLevelWidget
+
+# Use Onigiri's string-key translator throughout this module. Anki 25.09's
+# translator expects structured keys, so passing Onigiri keys to it crashes.
+tr = tr_at
 
 # --- Menu Styling ---
 def apply_menu_styling():
@@ -372,7 +376,6 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 
 # --- Profile Page Generation ---
 
-_profile_dialog = None
 _restaurant_dialog = None
 
 
@@ -929,13 +932,6 @@ def _generate_profile_html_body():
         """
         stats_page_content = rl_styles + restaurant_level_html + stats_page_content
 
-    share_svg_icon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>"""
-    export_button_html = f"""
-    <button id="export-btn" class="page-export-button" title="Share Profile">
-        {share_svg_icon}
-    </button>
-    """
-    
     return f"""
     <div class="onigiri-profile-page">
         {banner_html}
@@ -946,8 +942,6 @@ def _generate_profile_html_body():
             
             <button id="nav-theme" class="nav-button">{tr("themes")}</button>
             <button id="nav-stats" class="nav-button">{tr("stats")}</button>
-            
-            {export_button_html}
         </div>
 
         <div class="profile-content-wrapper">
@@ -959,54 +953,31 @@ def _generate_profile_html_body():
     </div>
     """
 
-class ProfileDialog(QDialog):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setWindowTitle("Your Onigiri Profile")
-        self.setMinimumSize(500, 600)
-        self.setMaximumSize(700, 900)
-        self.web = AnkiWebView(self)
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0,0,0,0)
-        layout.addWidget(self.web)
-        self.setLayout(layout)
+def open_profile(context=None):
+    """Opens the profile inside the current webview as an Onigiri modal."""
+    try:
+        web = getattr(context, "web", None)
+        if web is None and getattr(mw, "deckBrowser", None):
+            web = getattr(mw.deckBrowser, "web", None)
+        if web is None:
+            tooltip("Profile is available from the Onigiri screen.")
+            return
 
-        addon_package = mw.addonManager.addonFromModule(__name__)
-        body_html = _generate_profile_html_body()
-        
-        # Inject the dynamic theme CSS and the custom profile page BG CSS
-        head_html = generate_dynamic_css(config.get_config())
-        head_html += generate_profile_page_background_css()
-
-        css_files = [
-            f"/_addons/{addon_package}/web/profile.css",
-            f"/_addons/{addon_package}/web/heatmap.css" # Add heatmap CSS
-        ]
-        
-        js_files = [
-            f"/_addons/{addon_package}/web/lib/html2canvas.min.js",
-            f"/_addons/{addon_package}/web/profile_page.js",
-            f"/_addons/{addon_package}/web/heatmap.js"
-        ]
-
-        self.web.stdHtml(body_html, css=css_files, js=js_files, head=head_html, context=self)
-        
-        # After webview is set up, run javascript to render heatmap
         heatmap_data, heatmap_config = _get_heatmap_data_and_config_for_profile()
-        self.web.eval(f"""
-            if (document.getElementById('onigiri-profile-heatmap-container')) {{
-                OnigiriHeatmap.render('onigiri-profile-heatmap-container', {json.dumps(heatmap_data)}, {json.dumps(heatmap_config)});
-            }}
-        """)
-
-
-def open_profile():
-    """Wrapper function to open the profile page dialog."""
-    global _profile_dialog
-    if _profile_dialog is not None:
-        _profile_dialog.close()
-    _profile_dialog = ProfileDialog(mw)
-    _profile_dialog.show()
+        payload = {
+            "html": generate_profile_page_background_css() + _generate_profile_html_body(),
+            "heatmapData": heatmap_data,
+            "heatmapConfig": heatmap_config,
+        }
+        web.eval(
+            "if(window.OnigiriProfileModal){OnigiriProfileModal.open(%s);}"
+            % json.dumps(payload)
+        )
+    except Exception as e:
+        print(f"Onigiri: Error opening profile: {e}")
+        import traceback
+        traceback.print_exc()
+        tooltip(f"Could not open profile: {e}")
 
 show_profile_page = open_profile
 
@@ -1021,23 +992,6 @@ def on_webview_js_message(handled, message, context):
                 if focus_dango.intercept_exit_attempt(message):
                     focus_dango.show_dango_dialog()
                     return (True, None)
-    if message.startswith("saveImage:") and _profile_dialog and _profile_dialog.isVisible():
-        try:
-            header, data = message.split(",", 1)
-            image_data = base64.b64decode(data)
-
-            filename, _ = QFileDialog.getSaveFileName(
-                _profile_dialog, "Save Profile Image", "onigiri-profile.png", "PNG Images (*.png)"
-            )
-
-            if filename:
-                with open(filename, "wb") as f:
-                    f.write(image_data)
-        except Exception as e:
-            print(f"Onigiri: An error occurred during image save: {e}")
-
-        return (True, None)
-
     if isinstance(context, DeckBrowser):
         cmd = message
         
@@ -1046,7 +1000,7 @@ def on_webview_js_message(handled, message, context):
         #    return webview_handlers.handle_webview_cmd((False, None), cmd, context)
         
         if cmd == "showUserProfile":
-            open_profile()
+            open_profile(context)
             return (True, None)
         if cmd == "openTaiyakiStore":
             from .gamification.taiyaki_store import open_taiyaki_store
@@ -1144,7 +1098,7 @@ def on_webview_js_message(handled, message, context):
         if cmd in ["study", "opts", "refresh", "empty", "studymore", "description"]:
             return handled
         if cmd == "showUserProfile":
-            open_profile()
+            open_profile(context)
             return (True, None)
         if cmd == "decks":
             mw.moveToState("deckBrowser")
@@ -2785,9 +2739,9 @@ def generate_icon_size_css():
 
 def generate_icon_css(addon_package, conf):
     all_icon_selectors = {
-        "options": "td.opts a", "folder": "tr.is-folder a.deck::before",
-        "deck": "tr.is-deck a.deck::before", "subdeck": "tr.is-subdeck a.deck::before",
-        "filtered_deck": "tr.is-filtered a.deck::before", "add": ".action-add .icon",
+        "options": "td.opts a", "folder": "tr.is-folder a.deck::before, .onigiri-drag-preview.is-folder a.deck::before",
+        "deck": "tr.is-deck a.deck::before, .onigiri-drag-preview.is-deck a.deck::before", "subdeck": "tr.is-subdeck a.deck::before, .onigiri-drag-preview.is-subdeck a.deck::before",
+        "filtered_deck": "tr.is-filtered a.deck::before, .onigiri-drag-preview.is-filtered a.deck::before", "add": ".action-add .icon",
         "browse": ".action-browse .icon", "stats": ".action-stats .icon", "sync": ".action-sync .icon",
         "settings": ".action-settings .icon", "more": ".action-more .icon",
         "get_shared": ".action-get-shared .icon", "create_deck": ".action-create-deck .icon",
@@ -2873,14 +2827,16 @@ def generate_icon_css(addon_package, conf):
         color = data.get("color")
         
         if icon_file:
-                # Check if it's likely an emoji (short string, no extension)
-                is_emoji = len(icon_file) <= 8 and "." not in icon_file
+                is_emoji = icon_file.startswith("emoji:") or (len(icon_file) <= 8 and "." not in icon_file)
+                emoji_char = icon_file[len("emoji:"):] if icon_file.startswith("emoji:") else icon_file
+                is_system_icon = icon_file.startswith("system:")
 
                 if is_emoji:
                      # Emoji rendering style
                     css_rules.append(f"""
-                    tr[data-did="{did}"] a.deck::before {{
-                        content: "{icon_file}" !important;
+                    tr[data-did="{did}"] a.deck::before,
+                    .onigiri-drag-preview[data-did="{did}"] a.deck::before {{
+                        content: "{emoji_char}" !important;
                         mask-image: none !important;
                         -webkit-mask-image: none !important;
                         background-color: transparent !important;
@@ -2895,17 +2851,24 @@ def generate_icon_css(addon_package, conf):
                     }}
                     """)
                 else:
-                    path = os.path.join(addon_dir, "user_files", "custom_deck_icons", icon_file)
+                    icon_name = icon_file[len("system:"):] if is_system_icon else icon_file
+                    path = os.path.join(
+                        addon_dir,
+                        "system_files",
+                        "system_icons",
+                        icon_name,
+                    ) if is_system_icon else os.path.join(addon_dir, "user_files", "custom_deck_icons", icon_name)
                     
                     # Check for PNG images
-                    is_png = icon_file.strip().lower().endswith(".png")
+                    is_png = icon_name.strip().lower().endswith(".png")
                     
                     if is_png:
                         url = get_data_uri(path)
                         if url:
                              # PNG rendering style (no mask, original colors)
                             css_rules.append(f"""
-                            tr[data-did="{did}"] a.deck::before {{
+                            tr[data-did="{did}"] a.deck::before,
+                            .onigiri-drag-preview[data-did="{did}"] a.deck::before {{
                                 content: '';
                                 background-image: {url} !important;
                                 -webkit-mask-image: none !important;
@@ -2925,7 +2888,8 @@ def generate_icon_css(addon_package, conf):
                         url = get_data_uri(path)
                         if url:
                             css_rules.append(f"""
-                            tr[data-did="{did}"] a.deck::before {{
+                            tr[data-did="{did}"] a.deck::before,
+                            .onigiri-drag-preview[data-did="{did}"] a.deck::before {{
                                 mask-image: {url} !important;
                                 -webkit-mask-image: {url} !important;
                                 background-color: {color} !important;
@@ -3004,7 +2968,8 @@ def generate_icon_css(addon_package, conf):
     }}
 
     /* Filtered Deck Specific Color */
-    tr.is-filtered a.deck::before {{
+    tr.is-filtered a.deck::before,
+    .onigiri-drag-preview.is-filtered a.deck::before {{
         background-color: #0a84ff !important; /* Anki Blue */
         mask-size: contain;
         -webkit-mask-size: contain;
@@ -3014,7 +2979,8 @@ def generate_icon_css(addon_package, conf):
         -webkit-mask-position: center;
         display: inline-block;
     }}
-    .night-mode tr.is-filtered a.deck::before {{
+    .night-mode tr.is-filtered a.deck::before,
+    .night-mode .onigiri-drag-preview.is-filtered a.deck::before {{
         background-color: #64d2ff !important; /* Light Blue for Dark Mode */
     }}
 
@@ -3035,14 +3001,36 @@ def generate_icon_css(addon_package, conf):
         display: flex !important;
         align-items: center !important;
         gap: 0 !important;
-        width: 100%;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        width: auto !important;
     }}
     
     .deck-table a.deck {{
         padding: 0 !important;
         margin-left: 0 !important;
-        /* Ensure it behaves nicely in flex container */
-        display: inline-block !important; 
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }}
+
+    .deck-table a.deck .deck-name {{
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        display: block !important;
+    }}
+
+    .deck-table a.deck .deck-mark-dot {{
+        flex-shrink: 0 !important;
     }}
     
     /* Ensure indentation span works as expected */
@@ -3180,6 +3168,64 @@ def _hex_to_rgba(hex_str: str, alpha: float) -> str:
 		return f"rgba(0,0,0,{alpha})"
 
 
+def _hex_to_hsl(hex_str: str):
+	"""Converts a hex color to HSL values in the 0..1 range."""
+	hex_str = (hex_str or "#007aff").lstrip("#")
+	if len(hex_str) == 3:
+		hex_str = "".join(ch * 2 for ch in hex_str)
+	try:
+		r = int(hex_str[0:2], 16) / 255.0
+		g = int(hex_str[2:4], 16) / 255.0
+		b = int(hex_str[4:6], 16) / 255.0
+	except Exception:
+		r, g, b = 0.0, 0.478, 1.0
+	max_c = max(r, g, b)
+	min_c = min(r, g, b)
+	l = (max_c + min_c) / 2.0
+	if max_c == min_c:
+		return 0.0, 0.0, l
+	d = max_c - min_c
+	s = d / (2.0 - max_c - min_c) if l > 0.5 else d / (max_c + min_c)
+	if max_c == r:
+		h = (g - b) / d + (6 if g < b else 0)
+	elif max_c == g:
+		h = (b - r) / d + 2
+	else:
+		h = (r - g) / d + 4
+	h /= 6.0
+	return h, s, l
+
+
+def _hsl_to_hex(h: float, s: float, l: float) -> str:
+	"""Converts HSL values in the 0..1 range to a hex color."""
+	h = max(0.0, min(1.0, h))
+	s = max(0.0, min(1.0, s))
+	l = max(0.0, min(1.0, l))
+	if s == 0.0:
+		v = int(l * 255)
+		return "#{:02x}{:02x}{:02x}".format(v, v, v)
+
+	def _hue(p, q, t):
+		if t < 0:
+			t += 1.0
+		if t > 1:
+			t -= 1.0
+		if t < 1 / 6:
+			return p + (q - p) * 6.0 * t
+		if t < 1 / 2:
+			return q
+		if t < 2 / 3:
+			return p + (q - p) * (2.0 / 3.0 - t) * 6.0
+		return p
+
+	q = l * (1.0 + s) if l < 0.5 else l + s - l * s
+	p = 2.0 * l - q
+	r = _hue(p, q, h + 1.0 / 3.0)
+	g = _hue(p, q, h)
+	b = _hue(p, q, h - 1.0 / 3.0)
+	return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+
+
 def _mix_colors(c1, c2, ratio):
 	"""Mixes two colors (hex or rgba) with a given ratio (0.0 to 1.0).
 	ratio is the weight of c1.
@@ -3247,43 +3293,30 @@ def generate_dynamic_css(conf):
 
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
-		canvas_inset = colors_dict.get("--canvas-inset", "#ffffff")
-		# Get user-defined heatmap colors
 		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8")
 		heatmap_color_zero = colors_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
-		
-		# Past/Due Level 0 - use the user-defined heatmap-color-zero
+
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
 
-		# LEVELS 1-8 Loop
+		h, s, _l = _hex_to_hsl(heatmap_color)
+
 		for i in range(1, 9):
-			# --- Past Colors ---
-			# Use the user selected color as the maximum intensity (Level 8)
-			# Interpolate towards the canvas background (inset) for lower levels.
-			# This works for both Light Mode (White bg -> Blue) and Dark Mode (Dark bg -> Blue).
-			
-			# Use a slightly non-linear ratio to make lower levels visible
-			ratio = (i / 8.0) ** 0.6
-			
-			# Determine the "faint" color limit.
-			# We don't want Level 1 to be invisible (ratio 0), so we scale ratio to be, say, 0.2 to 1.0
-			cleaned_ratio = 0.25 + (ratio * 0.75) 
+			t = i / 8.0
 
-			# Mix: Target Color (weight: cleaned_ratio) <-> Empty Day Color (weight: 1-cleaned_ratio)
-			# We use heatmap_color_zero as the base to ensure a smooth transition from "Empty" to "Activity".
-			# This also avoids issues where canvas_inset might be transparent (glassmorphism).
-			colors_dict[f"--heatmap-level-{i}"] = _mix_colors(heatmap_color, heatmap_color_zero, cleaned_ratio)
-
-			# --- Future Colors (blending from heatmap_color_zero -> black/white) ---
-			# Future days: Level 8 = Strongest Contrast. Level 1 = Faint.
 			if is_night_mode:
-				# Dark mode: heatmap_color_zero (Gray) -> White
-				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% white
+				level_l = 0.38 + t * 0.46
+				level_s = s * max(0.75, 1.0 - t * 0.22)
+			else:
+				level_l = 0.90 - t * 0.53
+				level_s = s * (0.55 + t * 0.45)
+
+			colors_dict[f"--heatmap-level-{i}"] = _hsl_to_hex(h, level_s, level_l)
+
+			future_ratio = 0.08 + t * 0.62
+			if is_night_mode:
 				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#ffffff", heatmap_color_zero, future_ratio)
 			else:
-				# Light mode: heatmap_color_zero (Gray) -> Black
-				future_ratio = 0.1 + (i / 8.0) * 0.5 # Mix in up to 60% black
 				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#000000", heatmap_color_zero, future_ratio)
 
 	_generate_heatmap_colors(light_colors, False)
@@ -3573,14 +3606,22 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     favorites = mw.col.conf.get("onigiri_favorite_decks", [])
     did_str = str(node.deck_id)
     is_favorite = did_str in favorites
-    fav_class = "is-favorite" if is_favorite else ""
+    fav_attr = ' data-is-fav="1"' if is_favorite else ""
+
+    deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
+    mark_colors = {
+        "red": "#FF4B4B",
+        "blue": "#4488FF",
+        "green": "#44BB66",
+        "yellow": "#FFB800",
+    }
+    mark_key = deck_marks.get(did_str)
+    mark_attr = f' data-mark="{mark_key}"' if mark_key in mark_colors else ""
+    mark_dot_html = (
+        f'<span class="deck-mark-dot" style="background-color:{mark_colors[mark_key]};"></span>'
+        if mark_key in mark_colors else ""
+    )
     
-    fav_star_html = f"""
-    <span class="favorite-star-icon {fav_class}"
-          onclick="event.stopPropagation(); pycmd('onigiri_toggle_favorite:{node.deck_id}')"
-          title="Toggle favorite">
-    </span>
-    """
     # --- End Onigiri Favorites ---
     # --- END OF BLOCK ---
 
@@ -3726,7 +3767,7 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     else:
         deck_type_class = "is-deck"
 
-    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'>")
+    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'{fav_attr}{mark_attr}>")
 
     if node.children:
         collapse_link = f"<a class='collapse {state_class}' href=# onclick='return pycmd(\"onigiri_collapse:{node.deck_id}\")'>{prefix}</a>"
@@ -3736,15 +3777,15 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     # Removed class='deck-prefix' as requested by user
     deck_prefix = f"<span>{indent()}{collapse_link}</span>"
     extraclass = "filtered" if node.filtered else ""
+    display_name = html.escape(node.name.split("::")[-1])
 
     # --- START MODIFICATION: Update colspan and add counts_html ---
     buf.append(f"""
     <td class=decktd colspan=7>
-        {fav_star_html}
         <div class="deck-info">
             {deck_prefix}
             <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
-                {node.name}
+                <span class="deck-name">{display_name}</span>{mark_dot_html}
             </a>
         </div>
         {counts_html}

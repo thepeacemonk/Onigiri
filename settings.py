@@ -19,7 +19,7 @@ from aqt.qt import (
     QDrag, QMimeData, QPoint, 
     QMenu, QAction, QActionGroup,
     QListWidget, QListWidgetItem, QAbstractItemView, QDateEdit, QLayout,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect
 )
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtProperty, QPointF, QSignalBlocker, QSize, QTimer, QDate, QLocale
 from PyQt6.QtSvg import QSvgRenderer
@@ -140,27 +140,65 @@ def create_circular_pixmap(source_image, size):
     if source_image.isNull(): 
         return QPixmap()
 
+    render_size = size * 2
     if source_image.width() > source_image.height():
-        scaled_image = source_image.scaledToHeight(size, Qt.TransformationMode.SmoothTransformation)
+        scaled_image = source_image.scaledToHeight(render_size, Qt.TransformationMode.SmoothTransformation)
     else:
-        scaled_image = source_image.scaledToWidth(size, Qt.TransformationMode.SmoothTransformation)
+        scaled_image = source_image.scaledToWidth(render_size, Qt.TransformationMode.SmoothTransformation)
     
-    x = (scaled_image.width() - size) / 2
-    y = (scaled_image.height() - size) / 2
-    cropped_image = scaled_image.copy(int(x), int(y), size, size)
+    x = (scaled_image.width() - render_size) / 2
+    y = (scaled_image.height() - render_size) / 2
+    cropped_image = scaled_image.copy(int(x), int(y), render_size, render_size)
 
-    target_pixmap = QPixmap(size, size)
+    target_pixmap = QPixmap(render_size, render_size)
     target_pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(target_pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
     
     path = QPainterPath()
-    path.addEllipse(0, 0, size, size)
+    path.addEllipse(0, 0, render_size, render_size)
     
     painter.setClipPath(path)
     painter.drawImage(0, 0, cropped_image)
     painter.end()
+    target_pixmap.setDevicePixelRatio(2.0)
+
+    return target_pixmap
+
+def create_circular_contained_pixmap(source_image, size, bg_color=QColor("#e5e7eb")):
+    """
+    Renders an image as a proper circular avatar.
+    The image fills the circle, so square picture edges never show inside it.
+    """
+    if source_image.isNull():
+        return QPixmap()
+
+    render_size = size * 2
+    target_pixmap = QPixmap(render_size, render_size)
+    target_pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(target_pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+    path = QPainterPath()
+    path.addEllipse(0, 0, render_size, render_size)
+    painter.setClipPath(path)
+    painter.fillRect(0, 0, render_size, render_size, bg_color)
+
+    scaled_image = source_image.scaled(
+        render_size,
+        render_size,
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    x = (render_size - scaled_image.width()) // 2
+    y = (render_size - scaled_image.height()) // 2
+    painter.drawImage(x, y, scaled_image)
+    painter.end()
+    target_pixmap.setDevicePixelRatio(2.0)
 
     return target_pixmap
 
@@ -191,10 +229,8 @@ class ThumbnailWorker(QObject):
         self.shape = shape
 
     def run(self):
-        # --- MODIFIED: Reduced dimensions to create padding ---
-        # Original was 110x62. New dimensions are 10px smaller.
-        thumb_width = 100
-        thumb_height = 55 # Kept aspect ratio close to 16:9
+        thumb_width = 142
+        thumb_height = 80
 
         for index, filename in enumerate(self.image_files):
             if self.is_cancelled:
@@ -206,7 +242,7 @@ class ThumbnailWorker(QObject):
                 if self.shape == 'circular':
                     source_image = QImage(pixmap_path)
                     if not source_image.isNull():
-                        final_pixmap = create_circular_pixmap(source_image, 100)
+                        final_pixmap = create_circular_contained_pixmap(source_image, 96, QColor("#e5e7eb"))
                 else: # 'rounded'
                     pixmap = QPixmap(pixmap_path)
                     if not pixmap.isNull():
@@ -235,15 +271,20 @@ class ThumbnailWorker(QObject):
         self.is_cancelled = True
 
 class SelectionOverlay(QWidget):
-    def __init__(self, parent=None, accent_color="#D65DB1"):
+    """Overlay de seleção — ícone de check minimalista sobre thumbnails."""
+    def __init__(self, parent=None, accent_color="#007bff"):
         super().__init__(parent)
-        self.setFixedSize(24, 24)
+        self.setFixedSize(22, 22)
         self._checked = False
         self.accent_color = QColor(accent_color)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents) # Let clicks pass through
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
     def setChecked(self, checked):
         self._checked = checked
+        self.update()
+
+    def setAccentColor(self, accent_color):
+        self.accent_color = QColor(accent_color)
         self.update()
 
     def isChecked(self):
@@ -252,36 +293,33 @@ class SelectionOverlay(QWidget):
     def paintEvent(self, event):
         if not self._checked:
             return
-            
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Draw white circle
-        painter.setBrush(Qt.GlobalColor.white)
+        # Círculo sólido com a cor accent
+        painter.setBrush(self.accent_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(self.rect())
-        
-        # Draw checkmark
-        path = QPainterPath()
-        path.moveTo(7, 12)
-        path.lineTo(10, 15)
-        path.lineTo(17, 8)
-        
-        # Use the accent color for the checkmark
-        pen = QPen(self.accent_color) 
-        pen.setWidth(3)
+        # Checkmark branco
+        pen = QPen(QColor("#ffffff"))
+        pen.setWidth(2)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
+        path = QPainterPath()
+        path.moveTo(6, 11)
+        path.lineTo(9, 14)
+        path.lineTo(16, 7)
         painter.drawPath(path)
 
+
 class CircularColorButton(QPushButton):
+    """Botão de cor circular limpo — borda fina, sem sombra."""
     def __init__(self, color=QColor("white"), parent=None):
         super().__init__("", parent)
-        self.setFixedSize(26, 26)
+        self.setFixedSize(28, 28)
         self._color = QColor(color)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Choose Color")
+        self.setToolTip("Escolher cor")
 
     def color(self):
         return self._color
@@ -295,36 +333,43 @@ class CircularColorButton(QPushButton):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = self.rect().adjusted(1, 1, -1, -1)
+        rect = self.rect().adjusted(2, 2, -2, -2)
         painter.setBrush(QBrush(self._color))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(rect)
-        border_color = QColor("#888888")
-        pen = QPen(border_color)
+        pen = QPen(QColor("#d1d5db"))
         pen.setWidth(1)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(rect)
 
+
 class AnimatedToggleButton(QAbstractButton):
+    """Modern toggle switch that follows the active user accent color."""
     def __init__(self, parent=None, accent_color="#007bff"):
         super().__init__(parent)
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.accent_color = QColor(accent_color)
-        self.track_color_off = QColor("#cccccc") if not theme_manager.night_mode else QColor("#555555")
+        self.track_color_off = QColor("#d1d5db") if not theme_manager.night_mode else QColor("#4b5563")
         self.thumb_color = QColor("#ffffff")
-        
-        self.setFixedSize(38, 20)
-        
+
+        self.setFixedSize(44, 24)
         self._thumb_x_pos = 3.0
 
         self.animation = QPropertyAnimation(self, b"thumb_x_pos", self)
-        self.animation.setDuration(150)
+        self.animation.setDuration(140)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
-
         self.toggled.connect(self._start_animation)
+
+    def setAccentColor(self, accent_color):
+        self.accent_color = QColor(accent_color)
+        self.update()
+
+    def setThemeMode(self, is_dark):
+        self.track_color_off = QColor("#4b5563") if is_dark else QColor("#d1d5db")
+        self.update()
 
     @pyqtProperty(float)
     def thumb_x_pos(self):
@@ -338,122 +383,164 @@ class AnimatedToggleButton(QAbstractButton):
     def _start_animation(self, checked):
         end_pos = self.width() - self.height() + 3 if checked else 3
         self.animation.setStartValue(self.thumb_x_pos)
-        self.animation.setEndValue(end_pos)
+        self.animation.setEndValue(float(end_pos))
         self.animation.start()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        height = self.height()
-        radius = height / 2.0
-        
+        h = self.height()
+        radius = h / 2.0
         painter.setPen(Qt.PenStyle.NoPen)
         track_color = self.accent_color if self.isChecked() else self.track_color_off
         painter.setBrush(track_color)
         painter.drawRoundedRect(self.rect(), radius, radius)
-
-        thumb_radius = radius - 3
+        thumb_r = radius - 3
         painter.setBrush(self.thumb_color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        
-        thumb_y = radius
-        painter.drawEllipse(QPointF(self._thumb_x_pos + thumb_radius, thumb_y), thumb_radius, thumb_radius)
+        painter.drawEllipse(QPointF(self._thumb_x_pos + thumb_r, radius), thumb_r, thumb_r)
 
     def showEvent(self, event):
         super().showEvent(event)
-        self._thumb_x_pos = self.width() - self.height() + 3 if self.isChecked() else 3
+        self._thumb_x_pos = float(self.width() - self.height() + 3) if self.isChecked() else 3.0
         self.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._thumb_x_pos = self.width() - self.height() + 3 if self.isChecked() else 3
+        self._thumb_x_pos = float(self.width() - self.height() + 3) if self.isChecked() else 3.0
         self.update()
 
+
 class ProfileBarWidget(QWidget):
+    """Barra de perfil na sidebar — fundo branco, avatar circular, nome escuro."""
     clicked = pyqtSignal()
 
     def __init__(self, user_name, pic_path, bg_mode, bg_config, accent_color, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(50)
-        self.setToolTip("Open Profile Settings")
+        self.setFixedHeight(58)
+        self.setToolTip("Abrir configurações de perfil")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
 
+        self._pic_path = pic_path
+        self._user_name = user_name
         self._bg_mode = bg_mode
-        self._bg_image_path = bg_config.get('image')
-        self._bg_color = QColor(bg_config.get('color', '#555555'))
-        self._accent_color = QColor(accent_color)
+        self._bg_config = bg_config or {}
+        self._accent_color = accent_color
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 5, 15, 5)
+        layout.setContentsMargins(10, 8, 12, 8)
         layout.setSpacing(10)
 
+        # Avatar circular
         self.pic_label = QLabel()
-        self.pic_label.setStyleSheet("background: transparent;")
-        self.pic_label.setFixedSize(40, 40)
-        
+        self.pic_label.setFixedSize(42, 42)
+        self.pic_label.setStyleSheet("background: transparent; border: none;")
+
         if pic_path and os.path.exists(pic_path):
             source_image = QImage(pic_path)
         else:
-            # Use default profile image
-            default_pic = os.path.join(os.path.dirname(__file__), "system_files", "profile_default", "onigiri-san.png")
+            default_pic = os.path.join(
+                os.path.dirname(__file__), "system_files", "profile_default", "onigiri-san.png"
+            )
             source_image = QImage(default_pic)
-            
+
         if not source_image.isNull():
-            circular_pixmap = create_circular_pixmap(source_image, 40)
+            circular_pixmap = create_circular_contained_pixmap(
+                source_image,
+                42,
+                self._avatar_background_color()
+            )
             self.pic_label.setPixmap(circular_pixmap)
 
+        # Nome + subtítulo
+        text_widget = QWidget()
+        text_widget.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(text_widget)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(1)
+
         self.name_label = QLabel(user_name)
-        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; color: white; background: transparent;")
+        name_color = "#f9fafb" if theme_manager.night_mode else "#111827"
+        sub_color = "#9ca3af"
+        self.name_label.setStyleSheet(
+            f"font-weight: 600; font-size: 13px; color: {name_color}; background: transparent;"
+        )
+        self.sub_label = QLabel("Perfil")
+        self.sub_label.setStyleSheet(
+            f"font-size: 11px; color: {sub_color}; background: transparent;"
+        )
+        text_layout.addWidget(self.name_label)
+        text_layout.addWidget(self.sub_label)
 
         layout.addWidget(self.pic_label)
-        layout.addWidget(self.name_label)
-        layout.addStretch()
+        layout.addWidget(text_widget, 1)
+        self.refresh_theme()
+
+    def _profile_background_color(self):
+        if self._bg_mode == "custom":
+            return QColor(self._bg_config.get("color") or self._accent_color)
+        return QColor(self._accent_color)
+
+    def _avatar_background_color(self):
+        bg = self._profile_background_color()
+        return bg.lighter(130) if bg.lightness() < 128 else bg.darker(105)
+
+    def _text_colors(self):
+        if self._bg_mode == "image" and self._bg_config.get("image"):
+            return "#ffffff", "#d1d5db"
+
+        bg = self._profile_background_color()
+        if bg.lightness() > 150:
+            return "#111827", "#4b5563"
+        return "#ffffff", "#d1d5db"
+
+    def setAccentColor(self, accent_color):
+        self._accent_color = accent_color
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        name_color, sub_color = self._text_colors()
+        self.name_label.setStyleSheet(
+            f"font-weight: 600; font-size: 13px; color: {name_color}; background: transparent;"
+        )
+        self.sub_label.setStyleSheet(
+            f"font-size: 11px; color: {sub_color}; background: transparent;"
+        )
+        self.update()
 
     def paintEvent(self, event):
-        painter = QPainter()
-        if not painter.begin(self):
-            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        radius = rect.height() / 2
+        path = QPainterPath()
+        path.addRoundedRect(rect, radius, radius)
 
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setClipPath(path)
+        if self._bg_mode == "image" and self._bg_config.get("image") and os.path.exists(self._bg_config["image"]):
+            bg_pixmap = QPixmap(self._bg_config["image"])
+            if not bg_pixmap.isNull():
+                scaled = bg_pixmap.scaled(
+                    self.size(),
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                x = (scaled.width() - self.width()) // 2
+                y = (scaled.height() - self.height()) // 2
+                painter.drawPixmap(-x, -y, scaled)
+                painter.fillPath(path, QColor(0, 0, 0, 70 if theme_manager.night_mode else 45))
+            else:
+                painter.fillPath(path, self._profile_background_color())
+        else:
+            painter.fillPath(path, self._profile_background_color())
 
-            path = QPainterPath()
-            rect = self.rect().adjusted(0, 0, -1, -1)
-            rect_f = QRectF(rect)
-            path.addRoundedRect(rect_f, 24, 24)
+        painter.setClipping(False)
+        border = QColor(255, 255, 255, 38) if theme_manager.night_mode else QColor(17, 24, 39, 25)
+        painter.setPen(QPen(border, 1))
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.end()
 
-            paint_color = self._accent_color
-            if self._bg_mode == 'custom':
-                paint_color = self._bg_color
-            elif self._bg_mode == 'image':
-                paint_color = QColor("#333333") 
-            
-            painter.fillPath(path, paint_color)
-
-            if self._bg_mode == 'image':
-                bg_image_path = self._bg_image_path
-                if not bg_image_path or not os.path.exists(bg_image_path):
-                    # Use default background image
-                    bg_image_path = os.path.join(os.path.dirname(__file__), "system_files", "profile_default", "onigiri-bg.png")
-                
-                if os.path.exists(bg_image_path):
-                    image = QImage(bg_image_path)
-                    if not image.isNull():
-                        source_pixmap = QPixmap.fromImage(image)
-                        scaled_pixmap = source_pixmap.scaled(
-                            self.size(), 
-                            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
-                            Qt.TransformationMode.SmoothTransformation
-                        )
-                        x_pos = (self.width() - scaled_pixmap.width()) / 2
-                        y_pos = (self.height() - scaled_pixmap.height()) / 2
-                        painter.setClipPath(path)
-                        painter.drawPixmap(int(x_pos), int(y_pos), scaled_pixmap)
-                        overlay_color = QColor(0, 0, 0, 100)
-                        painter.fillRect(self.rect(), overlay_color)
-        finally:
-            painter.end()
+        super().paintEvent(event)
 
     def mousePressEvent(self, event):
         self.clicked.emit()
@@ -491,6 +578,7 @@ class RoundedScrollArea(QScrollArea):
         vp.setMask(bm)
 
 class SidebarToggleButton(QWidget):
+    """Grupo expansível na sidebar — título clicável expande sub-itens."""
     page_selected = pyqtSignal(str)
 
     def __init__(self, title, items, parent=None):
@@ -498,7 +586,7 @@ class SidebarToggleButton(QWidget):
         self.items = items
         self.title = title
         self.is_open = False
-        
+
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -509,18 +597,18 @@ class SidebarToggleButton(QWidget):
         self.toggle_button.setObjectName("mainItemButton")
         self.toggle_button.clicked.connect(self._toggle_content)
         main_layout.addWidget(self.toggle_button)
-        
+
         self.content_widget = QWidget()
+        self.content_widget.setStyleSheet("background: transparent;")
         self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(15, 5, 0, 5)
-        self.content_layout.setSpacing(4)
-        
+        self.content_layout.setContentsMargins(12, 2, 0, 4)
+        self.content_layout.setSpacing(2)
+
         self.sub_button_group = QButtonGroup()
         self.sub_button_group.setExclusive(True)
 
         self.sub_buttons = {}
         for item in items:
-            # item can be a string (legacy) or a tuple (display_label, internal_key)
             if isinstance(item, tuple):
                 display_label, internal_key = item
             else:
@@ -561,34 +649,41 @@ class SidebarToggleButton(QWidget):
         self.is_open = False
         self.content_widget.hide()
         if btn := self.sub_button_group.checkedButton():
-             btn.blockSignals(True)
-             btn.setChecked(False)
-             btn.blockSignals(False)
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+
 
 class SectionGroup(QWidget):
+    """Card de seção — fundo branco, borda cinza clara, cantos arredondados."""
     def __init__(self, title="", parent=None, border=True, description=""):
         super().__init__(parent)
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(0, 5, 0, 0)
+        self.setObjectName("settingsSection")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; font-size: 20px; margin-bottom: 5px;")
-        main_layout.addWidget(title_label)
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(20, 16, 20, 20)
+
+        if title:
+            title_label = QLabel(title)
+            title_label.setObjectName("sectionTitle")
+            main_layout.addWidget(title_label)
 
         if description:
             desc_label = QLabel(description)
-            desc_label.setStyleSheet("font-size: 11px; color: #888; margin-bottom: 5px;")
+            desc_label.setObjectName("sectionDescription")
             desc_label.setWordWrap(True)
             main_layout.addWidget(desc_label)
 
         self.content_area = QWidget()
+        self.content_area.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         if border:
-            self.content_area.setObjectName("innerGroup")
-        
+            self.content_area.setObjectName("sectionBody")
+
         self.content_layout = QVBoxLayout(self.content_area)
-        self.content_layout.setContentsMargins(15, 15, 15, 15)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setContentsMargins(0, 6, 0, 0)
+        self.content_layout.setSpacing(8)
         main_layout.addWidget(self.content_area)
 
     def add_widget(self, widget):
@@ -923,11 +1018,10 @@ class BirthdayWidget(QWidget):
     def __init__(self, accent_color="#007bff", parent=None):
         super().__init__(parent)
         
-        # Resolve real accent color from theme to match accurately
-        current_theme = mw.col.conf.get("modern_menu_theme", "Tokyo Drift")
-        if current_theme in THEMES:
-            mode = "dark" if theme_manager.night_mode else "light"
-            accent_color = THEMES[current_theme][mode].get("--accent-color", accent_color)
+        mode = "dark" if theme_manager.night_mode else "light"
+        palette = config.get_config().get("colors", {}).get(mode, {})
+        defaults = DEFAULTS["colors"][mode]
+        accent_color = palette.get("--accent-color", accent_color or defaults["--accent-color"])
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -935,22 +1029,21 @@ class BirthdayWidget(QWidget):
         
         self.accent_color = accent_color
 
-        # Common style for input fields
         if theme_manager.night_mode:
-            bg_color = "#3a3a3a"
-            text_color = "#e0e0e0"
-            border_color = "#555"
-            hover_border_color = "#777"
+            bg_color = palette.get("--highlight-bg", palette.get("--canvas-inset", "#263040"))
+            text_color = palette.get("--fg", "#f9fafb")
+            border_color = palette.get("--border", "#374151")
+            hover_border_color = palette.get("--fg-subtle", "#d1d5db")
         else:
-            bg_color = "white"
-            text_color = "#333"
-            border_color = "#e0e0e0"
-            hover_border_color = "#b0b0b0"
+            bg_color = palette.get("--highlight-bg", palette.get("--canvas-inset", "#f9fafb"))
+            text_color = palette.get("--fg", "#111827")
+            border_color = palette.get("--border", "#e5e7eb")
+            hover_border_color = palette.get("--fg-subtle", "#4b5563")
 
         input_style = f"""
             QLineEdit {{
                 padding: 7px 11px;
-                border: 2px solid {border_color};
+                border: 1px solid {border_color};
                 border-radius: 8px;
                 background-color: {bg_color};
                 color: {text_color};
@@ -962,7 +1055,7 @@ class BirthdayWidget(QWidget):
                 border-color: {hover_border_color};
             }}
             QLineEdit:focus {{
-                border: 2px solid {accent_color};
+                border: 1px solid {accent_color};
                 background-color: {bg_color};
             }}
         """
@@ -1035,15 +1128,16 @@ class FontCardWidget(QPushButton):
     def __init__(self, font_key, accent_color, parent=None, is_system_card=False, delete_icon=None):
         super().__init__(parent)
         self.font_key = font_key
+        self.setObjectName("fontCard")
         all_fonts = get_all_fonts(os.path.dirname(__file__))
         font_info = all_fonts.get(font_key)
         
         self.setCheckable(True)
-        self.setAutoExclusive(True)
+        self.setAutoExclusive(False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         if is_system_card:
-            self.setFixedHeight(50)
+            self.setMinimumHeight(54)
             layout = QHBoxLayout(self) # Horizontal layout
             layout.setContentsMargins(15, 10, 15, 10)
             
@@ -1053,7 +1147,7 @@ class FontCardWidget(QPushButton):
             name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(name_label)
         else:
-            self.setFixedSize(140, 80)
+            self.setMinimumSize(132, 92)
             layout = QVBoxLayout(self) # Vertical layout
             layout.setContentsMargins(10, 10, 10, 10)
 
@@ -1113,18 +1207,7 @@ class FontCardWidget(QPushButton):
                 }}
             """)
 
-        if theme_manager.night_mode:
-            self.setStyleSheet(f"""
-                QPushButton {{ background-color: #3a3a3a; border: 2px solid #4a4a4a; border-radius: 12px; color: #e0e0e0; }}
-                QPushButton:hover {{ border-color: #5a5a5a; }}
-                QPushButton:checked {{ border-color: {accent_color}; }}
-            """)
-        else:
-            self.setStyleSheet(f"""
-                QPushButton {{ background-color: #e9e9e9; border: 2px solid #e0e0e0; border-radius: 12px; color: #212121; }}
-                QPushButton:hover {{ border-color: #d0d0d0; }}
-                QPushButton:checked {{ border-color: {accent_color}; }}
-            """)
+        self.setStyleSheet("")
     
     # <<< START NEW CODE >>>
     def _on_delete_clicked(self):
@@ -2011,42 +2094,23 @@ class SearchResultWidget(QPushButton):
             sub_label.setStyleSheet(f"font-size: 12px; color: {sub_text_color}; background: transparent;")
             layout.addWidget(sub_label)
             
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg_color};
-                border-radius: 12px;
-                border: 2px solid {border_color};
-                text-align: left;
-            }}
-            QPushButton:hover {{
-                background-color: {hover_bg};
-                border: 2px solid {accent_color};
-            }}
-        """)
+        self.setObjectName("searchResult")
 
 class SettingsSearchPage(QWidget):
     page_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("pageContainer")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(20, 20, 20, 20)
-        self.layout.setSpacing(20)
+        self.layout.setContentsMargins(20, 20, 20, 0)
+        self.layout.setSpacing(14)
 
         # --- Search Bar ---
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search settings...")
-        self.search_bar.setStyleSheet("""
-            QLineEdit {
-                padding: 8px;
-                border-radius: 15px;
-                border: 1px solid #ccc;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #007bff;
-            }
-        """)
+        self.search_bar.setObjectName("settingsSearchInput")
+        self.search_bar.setPlaceholderText(tr("search_settings_placeholder"))
         self.search_bar.textChanged.connect(self._filter_cards)
         self.layout.addWidget(self.search_bar)
 
@@ -2064,7 +2128,7 @@ class SettingsSearchPage(QWidget):
         # Cards Container (List)
         self.cards_container = QWidget()
         self.cards_layout = QVBoxLayout(self.cards_container)
-        self.cards_layout.setSpacing(10)
+        self.cards_layout.setSpacing(12)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.wrapper_layout.addWidget(self.cards_container)
 
@@ -2128,57 +2192,24 @@ class SettingsSearchPage(QWidget):
             self.cards.append((card, title, desc, pages, settings))
             self.cards_layout.addWidget(card)
         
-        self.cards_layout.addStretch()
+        self.cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def _create_card_widget(self, title, desc, pages):
         card = QFrame()
         card.setObjectName("searchCard")
         card.setCursor(Qt.CursorShape.PointingHandCursor)
-        card.setFixedHeight(80)
-        
-        # Determine background color based on theme
-        if theme_manager.night_mode:
-            bg_color = "#3a3a3a"
-            text_color = "#e0e0e0"
-            desc_color = "#aaaaaa"
-            hover_bg = "#4a4a4a"
-            match_text_color = "#bbbbbb"
-        else:
-            bg_color = "#dddddd"
-            text_color = "#212121"
-            desc_color = "#555555"
-            hover_bg = "#e0e0e0"
-            match_text_color = "#555555"
-
-        # Resolve real accent color from theme
-        current_theme = mw.col.conf.get("modern_menu_theme", "Tokyo Drift")
-        accent_color = "#007bff"
-        if current_theme in THEMES:
-            mode = "dark" if theme_manager.night_mode else "light"
-            accent_color = THEMES[current_theme][mode].get("--accent-color", accent_color)
-
-        card.setStyleSheet(f"""
-            QFrame#searchCard {{
-                background-color: {bg_color};
-                border-radius: 12px;
-                border: 2px solid transparent;
-            }}
-            QFrame#searchCard:hover {{
-                background-color: {hover_bg};
-                border: 2px solid {accent_color};
-            }}
-        """)
+        card.setMinimumHeight(82)
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(20, 15, 20, 15)
         layout.setSpacing(5)
         
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {text_color}; background: transparent;")
+        title_lbl.setObjectName("searchCardTitle")
         layout.addWidget(title_lbl)
         
         desc_lbl = QLabel(desc)
-        desc_lbl.setStyleSheet(f"font-size: 12px; color: {desc_color}; background: transparent;")
+        desc_lbl.setObjectName("searchCardDescription")
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
@@ -2195,7 +2226,7 @@ class SettingsSearchPage(QWidget):
         card.desc_label = desc_lbl
         card.matches_container = matches_container
         card.matches_layout = matches_layout
-        card.match_text_color = match_text_color
+        card.match_text_color = "#a8adb8" if theme_manager.night_mode else "#6f7683"
         card.current_target_page = pages[0]
         
         # Use a method for the click handler to access the current target
@@ -2342,15 +2373,139 @@ class DonationDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
+    def _system_icon(self, filename):
+        icon_path = os.path.join(self.addon_path, "system_files", "system_icons", filename)
+        return QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
+
+    def _settings_palette(self):
+        conf = self.current_config if hasattr(self, "current_config") else config.get_config()
+        mode = "dark" if theme_manager.night_mode else "light"
+        return conf.get("colors", {}).get(mode, {})
+
+    def _settings_icon_color(self):
+        palette = self._settings_palette()
+        fallback = "#f9fafb" if theme_manager.night_mode else "#111827"
+        return palette.get("--icon-color", palette.get("--fg", fallback))
+
+    def _layout_editor_style_colors(self):
+        palette = self._settings_palette()
+        if theme_manager.night_mode:
+            return {
+                "button_bg": palette.get("--highlight-bg", palette.get("--canvas-inset", "#263040")),
+                "border": palette.get("--border", "#374151"),
+                "fg": palette.get("--fg", "#f9fafb"),
+                "accent": palette.get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"]),
+            }
+        return {
+            "button_bg": palette.get("--highlight-bg", palette.get("--canvas-inset", "#f9fafb")),
+            "border": palette.get("--border", "#e5e7eb"),
+            "fg": palette.get("--fg", "#111827"),
+            "accent": palette.get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"]),
+        }
+
+    def _settings_pill_button_stylesheet(self, min_height=32):
+        palette = self._settings_palette()
+        if theme_manager.night_mode:
+            bg = palette.get("--highlight-bg", palette.get("--canvas-inset", "#263040"))
+            hover_bg = palette.get("--highlight-bg", "#2d3748")
+            border = palette.get("--border", "#374151")
+            fg = palette.get("--fg", "#f9fafb")
+            accent = palette.get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
+        else:
+            bg = palette.get("--highlight-bg", palette.get("--canvas-inset", "#f9fafb"))
+            hover_bg = palette.get("--highlight-bg", "#f3f4f6")
+            border = palette.get("--border", "#e5e7eb")
+            fg = palette.get("--fg", "#111827")
+            accent = palette.get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
+
+        radius = max(12, min_height // 2)
+        return f"""
+            QPushButton {{
+                min-height: {min_height}px;
+                padding: 0 16px;
+                border: 1px solid {border};
+                border-radius: {radius}px;
+                background-color: {bg};
+                color: {fg};
+                font-weight: 600;
+            }}
+            QPushButton:checked {{
+                background-color: {accent};
+                border-color: {accent};
+                color: #ffffff;
+                font-weight: 700;
+            }}
+            QPushButton:hover:!checked {{
+                background-color: {hover_bg};
+                border-color: {accent};
+            }}
+        """
+
+    def _themed_icon(self, filename, color=None, size=24):
+        icon_path = os.path.join(self.addon_path, "system_files", "system_icons", filename)
+        if not os.path.exists(icon_path):
+            return QIcon()
+
+        icon = QIcon(icon_path)
+        pixmap = icon.pixmap(size, size)
+        if pixmap.isNull():
+            return icon
+
+        tint = QColor(color or self._settings_icon_color())
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), tint)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _decorate_button(self, button, icon_filename=None, icon_size=18):
+        if icon_filename:
+            button.setIcon(self._themed_icon(icon_filename, self._settings_icon_color(), icon_size))
+            button.setIconSize(QSize(icon_size, icon_size))
+            button.setProperty("onigiri_icon_filename", icon_filename)
+            button.setProperty("onigiri_icon_size", icon_size)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoDefault(False)
+
+    def _decorate_nav_sub_buttons(self, toggle_widget, icon_map):
+        for page_name, icon_filename in icon_map.items():
+            button = toggle_widget.sub_buttons.get(page_name)
+            if button:
+                self._decorate_button(button, icon_filename, 16)
+
+    def _create_sidebar_section_label(self, title):
+        label = QLabel(title.upper())
+        label.setObjectName("sidebarSectionLabel")
+        label.setFixedHeight(24)
+        return label
+
+    def _add_sidebar_nav_section(self, layout, title, items):
+        layout.addWidget(self._create_sidebar_section_label(title))
+        for label, page_name, icon_filename in items:
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setObjectName("sidebarNavButton")
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setFixedHeight(36)
+            button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+            self._decorate_button(button, icon_filename, 16)
+            button.clicked.connect(lambda _, page=page_name: self.navigate_to_page(page))
+            button.toggled.connect(lambda checked, page=page_name: self.navigate_to_page(page) if checked else None)
+            self.sidebar_buttons[page_name] = button
+            self.sidebar_button_group.addButton(button)
+            layout.addWidget(button)
+        layout.addSpacing(10)
+
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.addon_path = addon_path
         # <<< IMPORT/EXPORT THEMES >>>
         self.user_themes_path = os.path.join(self.addon_path, "user_files", "user_themes")
         os.makedirs(self.user_themes_path, exist_ok=True)
         self.block_card_click = False
-        self.setWindowTitle("Onigiri Settings")
         self.setWindowTitle("Onigiri Settings")
         
         # --- Screen Proportional Sizing ---
@@ -2360,19 +2515,10 @@ class SettingsDialog(QDialog):
             screen_width = available_geometry.width()
             screen_height = available_geometry.height()
             
-            # Calculate dimensions
-            # Min: ~30% width, ~50% height (but at least 600px height if possible)
-            min_w = int(screen_width * 0.3)
-            min_h = int(screen_height * 0.5)
-            
-            # Default: ~45% width, ~60% height (Smaller default as requested)
-            default_w = int(screen_width * 0.55)
-            default_h = int(screen_height * 0.6)
-
-            # Ensure reasonable minimums (don't go too small on very small screens, 
-            # but respect the screen size if it's tiny)
-            min_w = max(600, min(min_w, screen_width)) 
-            min_h = max(600, min(min_h, screen_height))
+            min_w = min(max(760, int(screen_width * 0.42)), screen_width)
+            min_h = min(max(680, int(screen_height * 0.62)), screen_height)
+            default_w = min(max(1240, int(screen_width * 0.74)), screen_width)
+            default_h = min(max(780, int(screen_height * 0.78)), screen_height)
             
             self.setMinimumWidth(min_w)
             self.setMinimumHeight(min_h)
@@ -2382,9 +2528,9 @@ class SettingsDialog(QDialog):
             self.setMaximumHeight(screen_height)
         else:
             # Fallback if screen detection fails
-            self.setMinimumWidth(600)
-            self.setMinimumHeight(600)
-            self.resize(900, 700)
+            self.setMinimumWidth(760)
+            self.setMinimumHeight(680)
+            self.resize(1240, 780)
         
         self.current_config = config.get_config()
         
@@ -2453,6 +2599,9 @@ class SettingsDialog(QDialog):
         self.icon_size_widgets = {}
         self.galleries = {}
         self.tabs_loaded = {}
+        self._page_transition_animation = None
+        self._page_nav_sections = {}
+        self._building_page_name = None
 
         conf = config.get_config()
         if theme_manager.night_mode:
@@ -2539,66 +2688,78 @@ class SettingsDialog(QDialog):
         main_layout = QVBoxLayout(self); main_layout.setContentsMargins(0, 0, 0, 0); main_layout.setSpacing(0)
         
         content_area_layout = QHBoxLayout()
-        content_area_layout.setSpacing(5)
+        content_area_layout.setSpacing(0)
         content_area_layout.setContentsMargins(0, 0, 0, 0)
         
-        # This is the new wrapper that provides the margin/spacing
-        # This is the wrapper that provides margin and has a fixed width
+        # Sidebar wrapper — flush left, full height
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(215) # 185px sidebar + 15px left margin + 15px for scrollbar
+        sidebar_wrapper.setObjectName("settingsSidebarWrapper")
+        sidebar_wrapper.setMinimumWidth(188)
+        sidebar_wrapper.setMaximumWidth(240)
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 0, 15) # 15px left margin, 0px right margin
+        sidebar_wrapper_layout.setContentsMargins(12, 16, 12, 12)
+        sidebar_wrapper_layout.setSpacing(4)
 
-        # --- Search Button (Separated) ---
-        self.search_button = QPushButton(tr("search"))
-        self.search_button.setCheckable(True)
-        self.search_button.setObjectName("searchSidebarButton")
-        self.search_button.setFixedWidth(185) # Force fixed width
-        self.search_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.search_button.setAutoDefault(False)
-        self.search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
-        sidebar_wrapper_layout.addWidget(self.search_button, alignment=Qt.AlignmentFlag.AlignLeft)
-
-        # Add spacing between Search button and the rest of the sidebar
-        sidebar_wrapper_layout.addSpacing(10)
-
-        # --- Scroll Area for Sidebar Content (rounded pill) ---
-        self.sidebar_scroll_area = RoundedScrollArea(radius=25)
+        # Scroll area for sidebar nav buttons
+        self.sidebar_scroll_area = RoundedScrollArea(radius=0)
+        self.sidebar_scroll_area.setObjectName("sidebarNavScrollArea")
         self.sidebar_scroll_area.setWidgetResizable(True)
         self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.sidebar_scroll_area.setFixedWidth(200) # 185px for content + 15px for scrollbar
-        
-        # Style the scroll area to be transparent
-        self.sidebar_scroll_area.setStyleSheet("""
-            QScrollArea { background: transparent; border: none; }
-        """)
+        self.sidebar_scroll_area.setMinimumWidth(164)
+        self.sidebar_scroll_area.setMaximumWidth(216)
+        self.sidebar_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.sidebar_scroll_area.setStyleSheet("QScrollArea#sidebarNavScrollArea { background: transparent; border: none; }")
 
-        # This is the actual visible sidebar widget, which will be styled as the top floating pill
         sidebar_widget = QWidget()
-        sidebar_widget.setObjectName("sidebarContainer") # Name for the stylesheet
-        sidebar_widget.setFixedWidth(185) # Force fixed width so it doesn't shrink when scrollbar appears
+        sidebar_widget.setObjectName("sidebarContainer")
+        sidebar_widget.setMinimumWidth(164)
         
         self.sidebar_scroll_area.setWidget(sidebar_widget)
-        
-        # Add the scroll area to the main wrapper
         sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        # The sidebar's internal content (buttons, etc.) goes into this layout
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 20, 10, 10) # Balanced margins to center elements
-        sidebar_layout.setSpacing(15)
+        sidebar_layout.setContentsMargins(0, 0, 12, 16)
+        sidebar_layout.setSpacing(4)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.content_stack = QStackedWidget()
         self.content_stack.setObjectName("contentStack")
         self.content_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        # Add the final widgets to the main layout
+        content_shell = QWidget()
+        content_shell.setObjectName("settingsContentShell")
+        content_shell_layout = QVBoxLayout(content_shell)
+        content_shell_layout.setContentsMargins(22, 24, 22, 0)
+        content_shell_layout.setSpacing(10)
+
+        header_row = QWidget()
+        header_row.setObjectName("settingsPageHeader")
+        header_layout = QHBoxLayout(header_row)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
+
+        self.page_title_label = QLabel(tr("settings_title"))
+        self.page_title_label.setObjectName("settingsPageTitle")
+        header_layout.addWidget(self.page_title_label)
+
+        self.page_nav_bar = QWidget()
+        self.page_nav_bar.setObjectName("pageNavBar")
+        self.page_nav_layout = FlowLayout(self.page_nav_bar, margin=0, spacing=6)
+        self.page_nav_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.addWidget(self.page_nav_bar, 1)
+        content_shell_layout.addWidget(header_row)
+        content_shell_layout.addWidget(self.content_stack)
+
         content_area_layout.addWidget(sidebar_wrapper)
-        content_area_layout.addWidget(self.content_stack)
-        content_area_layout.addSpacing(0) 
+        content_shell_outer = QWidget()
+        content_shell_outer.setObjectName("settingsContentOuter")
+        content_shell_outer_layout = QVBoxLayout(content_shell_outer)
+        content_shell_outer_layout.setContentsMargins(16, 18, 16, 0)
+        content_shell_outer_layout.setSpacing(0)
+        content_shell_outer_layout.addWidget(content_shell)
+        content_area_layout.addWidget(content_shell_outer)
 
         self.pages = {
             "Search": self.create_search_page,
@@ -2633,79 +2794,84 @@ class SettingsDialog(QDialog):
 
 
         self.profile_bar = ProfileBarWidget(user_name, pic_path, bg_mode, bg_config, self.accent_color, self)
-        sidebar_layout.addWidget(self.profile_bar)
+        self.profile_bar.setMinimumWidth(164)
+        self.profile_bar.setMaximumWidth(216)
+        sidebar_wrapper_layout.insertWidget(0, self.profile_bar, alignment=Qt.AlignmentFlag.AlignLeft)
 
-
+        self.sidebar_search_button = QPushButton(tr("search"))
+        self.sidebar_search_button.setCheckable(True)
+        self.sidebar_search_button.setObjectName("sidebarSearchButton")
+        self.sidebar_search_button.setMinimumWidth(164)
+        self.sidebar_search_button.setMaximumWidth(216)
+        self.sidebar_search_button.setFixedHeight(36)
+        self.sidebar_search_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._decorate_button(self.sidebar_search_button, "search.svg", 17)
+        self.sidebar_search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
+        self.sidebar_search_button.toggled.connect(lambda checked: self.navigate_to_page("Search") if checked else None)
+        sidebar_wrapper_layout.insertWidget(1, self.sidebar_search_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.sidebar_buttons = {}
-        self.sidebar_buttons["Search"] = self.search_button
-        self.general_toggle_widget = None
-
         self.sidebar_button_group = QButtonGroup()
         self.sidebar_button_group.setExclusive(True)
+        self.sidebar_buttons["Search"] = self.sidebar_search_button
+        self.sidebar_button_group.addButton(self.sidebar_search_button)
 
-        general_items = [
-            (tr("modes"), "Modes"), (tr("languages"), "Languages"), (tr("fonts"), "Fonts"),
-            (tr("palette"), "Palette"), (tr("themes"), "Themes"), (tr("gallery"), "Gallery")
-        ]
-        self.general_toggle_widget = SidebarToggleButton(tr("general"), general_items)
-        self.general_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.general_toggle_widget)
+        self._add_sidebar_nav_section(sidebar_layout, tr("general"), [
+            (tr("modes"), "Modes", "focus.svg"),
+            (tr("languages"), "Languages", "book.svg"),
+            (tr("fonts"), "Fonts", "edit.svg"),
+            (tr("palette"), "Palette", "paintbrush.svg"),
+            (tr("themes"), "Themes", "star_outline.svg"),
+            (tr("gallery"), "Gallery", "folder.svg"),
+            (tr("sync_button"), "Sync", "sync.svg"),
+        ])
 
-        menu_items = [(tr("main_menu"), "Main menu"), (tr("sidebar"), "Sidebar")]
-        self.menu_toggle_widget = SidebarToggleButton(tr("menu"), menu_items)
-        self.menu_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.menu_toggle_widget)
+        self._add_sidebar_nav_section(sidebar_layout, tr("menu"), [
+            (tr("main_menu"), "Main menu", "deck.svg"),
+            (tr("sidebar"), "Sidebar", "collapse_sidebar.svg"),
+        ])
 
-        study_zone_items = [(tr("overviewer"), "Overviewer"), (tr("reviewer"), "Reviewer")]
-        self.study_zone_toggle_widget = SidebarToggleButton(tr("study_pages"), study_zone_items)
-        self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.study_zone_toggle_widget)
+        self._add_sidebar_nav_section(sidebar_layout, tr("study_pages"), [
+            (tr("overviewer"), "Overviewer", "stats.svg"),
+            (tr("reviewer"), "Reviewer", "add_card.svg"),
+        ])
 
         sidebar_layout.addStretch()
 
-        # Connect toggle buttons to enable accordion behavior
-        self.general_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.general_toggle_widget, checked)
-        )
-        self.menu_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.menu_toggle_widget, checked)
-        )
-        self.study_zone_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.study_zone_toggle_widget, checked)
-        )
-
 
         self.donate_button = QPushButton(tr("donate"))
-        self.donate_button.setAutoDefault(False)
+        self.donate_button.setObjectName("sidebarActionButton")
+        self.donate_button.setFixedHeight(40)
+        self._decorate_button(self.donate_button, "star_outline.svg")
         self.donate_button.clicked.connect(self._open_donate_link)
         self.report_bugs_button = QPushButton(tr("report_bugs"))
-        self.report_bugs_button.setAutoDefault(False)
+        self.report_bugs_button.setObjectName("sidebarActionButton")
+        self.report_bugs_button.setFixedHeight(40)
+        self._decorate_button(self.report_bugs_button, "info-circle.svg")
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
-        self.save_button = QPushButton(tr("save")); self.save_button.clicked.connect(self.save_settings)
+        self.save_button = QPushButton(tr("save"))
+        self.save_button.setObjectName("saveSidebarButton")
+        self.save_button.setFixedHeight(28)
+        self.save_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._decorate_button(self.save_button, "check.svg")
+        self.save_button.clicked.connect(self.save_settings)
         
-        # Second (bottom) floating pill for the save buttons
+        # Bottom actions container — save, donate, bugs
         bottom_widget = QWidget()
-        bottom_widget.setObjectName("sidebarContainer")
-        bottom_widget.setFixedWidth(185) # Force fixed width
+        bottom_widget.setObjectName("sidebarActionsContainer")
+        bottom_widget.setMinimumWidth(164)
+        bottom_widget.setMaximumWidth(216)
         
         sidebar_button_layout = QVBoxLayout(bottom_widget)
-        sidebar_button_layout.setSpacing(5)
-        sidebar_button_layout.setContentsMargins(10, 10, 10, 10)
+        sidebar_button_layout.setSpacing(4)
+        sidebar_button_layout.setContentsMargins(0, 8, 12, 4)
 
         sidebar_button_layout.addWidget(self.donate_button)
         sidebar_button_layout.addWidget(self.report_bugs_button)
-
-        self.sync_sidebar_button = QPushButton(tr("sync_button"))
-        self.sync_sidebar_button.setAutoDefault(False)
-        self.sync_sidebar_button.clicked.connect(lambda: self.navigate_to_page("Sync"))
-        sidebar_button_layout.addWidget(self.sync_sidebar_button)
-
+        sidebar_button_layout.addSpacing(4)
         sidebar_button_layout.addWidget(self.save_button)
 
-        # Add spacing and then the bottom pill outside the scroll area
-        sidebar_wrapper_layout.addSpacing(10)
         sidebar_wrapper_layout.addWidget(bottom_widget, alignment=Qt.AlignmentFlag.AlignLeft)
 
         main_layout.addLayout(content_area_layout)
@@ -2725,95 +2891,121 @@ class SettingsDialog(QDialog):
     def create_sync_page(self):
         page_container, layout = self._create_scrollable_page()
 
-        is_dark = theme_manager.night_mode
-        card_bg  = "#1e1e1e" if is_dark else "#e8e8e8"
-        item_bg  = "#2c2c2c" if is_dark else "#f2f2f2"
-        text_col = "#f2f2f2" if is_dark else "#2c2c2c"
-        title_col = "#e0e0e0" if is_dark else "#212121"
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#1f2937" if theme_manager.night_mode else "#ffffff")
+        item_bg = palette.get("--highlight-bg", "#263040" if theme_manager.night_mode else "#f3f4f6")
+        text_col = palette.get("--fg", "#f9fafb" if theme_manager.night_mode else "#111827")
+        muted_col = palette.get("--fg-subtle", "#d1d5db" if theme_manager.night_mode else "#4b5563")
+        border_col = palette.get("--border", "#374151" if theme_manager.night_mode else "#e5e7eb")
+        accent = self.accent_color
 
-        # --- Card (matches AdaptiveModeCard vertical layout) ---
+        card_style = f"""
+            QFrame#syncHeroCard, QFrame#syncInfoCard, QFrame#syncStateCard {{
+                background-color: {card_bg};
+                border: 1px solid {border_col};
+                border-radius: 18px;
+            }}
+            QFrame#syncInfoCard {{
+                background-color: {item_bg};
+                border-radius: 14px;
+            }}
+        """
+
         card = QFrame()
         card.setObjectName("syncHeroCard")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        card.setStyleSheet(f"""
-            QFrame#syncHeroCard {{
-                background-color: {card_bg};
-                border-radius: 16px;
-                padding: 8px;
+        card.setStyleSheet(card_style)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(20, 20, 20, 20)
+
+        header = QWidget()
+        header.setStyleSheet("background: transparent;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(14)
+
+        mark = QLabel("SYNC")
+        mark.setFixedSize(64, 34)
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setStyleSheet(f"""
+            QLabel {{
+                background-color: {accent};
+                color: #ffffff;
+                border-radius: 17px;
+                font-size: 11px;
+                font-weight: 800;
             }}
         """)
 
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
-        card_layout.setContentsMargins(8, 15, 8, 20)
+        title_stack = QWidget()
+        title_stack.setStyleSheet("background: transparent;")
+        title_stack_layout = QVBoxLayout(title_stack)
+        title_stack_layout.setContentsMargins(0, 0, 0, 0)
+        title_stack_layout.setSpacing(3)
 
-        # Title
         title_label = QLabel(tr("sync_title"))
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet(
-            f"font-size: 20px; font-weight: bold; color: {title_col}; background: transparent;"
-        )
-        card_layout.addWidget(title_label)
+        title_label.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {text_col}; background: transparent;")
+        title_stack_layout.addWidget(title_label)
 
-        # "made by h0tp" — directly below title
-        footer_label = QLabel()
         made_by = tr("sync_made_by")
+        footer_label = QLabel()
         footer_label.setTextFormat(Qt.TextFormat.RichText)
         footer_label.setOpenExternalLinks(True)
-        h0tp_link = f'<a href="https://github.com/h0tp-ftw" style="color:{self.accent_color};">h0tp</a>'
+        h0tp_link = f'<a href="https://github.com/h0tp-ftw" style="color:{accent};">h0tp</a>'
         footer_label.setText(made_by.replace("h0tp", h0tp_link))
-        footer_label.setStyleSheet(f"font-size: 11px; color: {title_col}; background: transparent;")
-        footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(footer_label)
+        footer_label.setStyleSheet(f"font-size: 11px; color: {muted_col}; background: transparent;")
+        title_stack_layout.addWidget(footer_label)
 
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setStyleSheet("QFrame { background-color: rgba(128, 128, 128, 0.3); max-height: 1px; }")
-        card_layout.addWidget(separator)
-        card_layout.addSpacing(1)
+        header_layout.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
+        header_layout.addWidget(title_stack, 1)
+        header_layout.addWidget(self.ankiweb_sync_toggle, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        card_layout.addWidget(header)
 
-        # Content area — each bullet in its own rounded item box
+        state_card = QFrame()
+        state_card.setObjectName("syncStateCard")
+        state_card.setStyleSheet(card_style)
+        state_layout = QVBoxLayout(state_card)
+        state_layout.setContentsMargins(14, 12, 14, 12)
+        state_layout.setSpacing(6)
+
+        state_title = QLabel(tr("sync_bullet_1"))
+        state_title.setWordWrap(True)
+        state_title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {text_col}; background: transparent;")
+        state_layout.addWidget(state_title)
+
+        state_desc = QLabel(tr("sync_bullet_4"))
+        state_desc.setWordWrap(True)
+        state_desc.setStyleSheet(f"font-size: 12px; color: {muted_col}; background: transparent;")
+        state_layout.addWidget(state_desc)
+        card_layout.addWidget(state_card)
+
         content = QWidget()
         content.setStyleSheet("QWidget { background: transparent; }")
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(7)
+        content_layout = QGridLayout(content)
+        content_layout.setHorizontalSpacing(10)
+        content_layout.setVerticalSpacing(10)
         content_layout.setContentsMargins(0, 0, 0, 0)
 
-        for text in [
-            tr("sync_bullet_1"),
-            tr("sync_bullet_2"),
-            tr("sync_bullet_3"),
-            tr("sync_bullet_4"),
-        ]:
+        for text in [tr("sync_bullet_2"), tr("sync_bullet_3")]:
+            index = content_layout.count()
             item_box = QFrame()
-            item_box.setObjectName("hideModeItemBox")
-            item_box.setStyleSheet(f"""
-                QFrame#hideModeItemBox {{
-                    background-color: {item_bg};
-                    border-radius: 10px;
-                    padding: 12px 10px;
-                    min-height: 20px;
-                }}
-            """)
+            item_box.setObjectName("syncInfoCard")
+            item_box.setStyleSheet(card_style)
             box_layout = QHBoxLayout(item_box)
-            box_layout.setContentsMargins(0, 0, 0, 0)
+            box_layout.setContentsMargins(14, 12, 14, 12)
 
             item_label = QLabel(text)
             item_label.setWordWrap(True)
             item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            item_label.setStyleSheet(f"font-size: 11px; color: {text_col}; background: transparent;")
+            item_label.setStyleSheet(f"font-size: 12px; color: {text_col}; background: transparent;")
             box_layout.addWidget(item_label)
-            content_layout.addWidget(item_box)
+            content_layout.addWidget(item_box, index // 2, index % 2)
 
 
         card_layout.addWidget(content)
-
-        # Toggle at the bottom, centered
-        card_layout.addWidget(self.ankiweb_sync_toggle, 0, Qt.AlignmentFlag.AlignHCenter)
-
         layout.addWidget(card)
         layout.addStretch()
         return page_container
@@ -2825,71 +3017,135 @@ class SettingsDialog(QDialog):
         return page
 
     def _create_font_selector_group(self, title, config_key):
-        """Helper to create a font selection grid for a given config key."""
-        group = SectionGroup(title, self, border=False)
-        
-        # --- NEW: Font Control Row (Size) ---
-        control_widget = QWidget()
-        control_layout = QHBoxLayout(control_widget)
-        control_layout.setContentsMargins(0, 0, 0, 5) # Slight margin
-        
-        size_label = QLabel(tr("font_size"))
-        size_label.setStyleSheet("color: var(--fg-subtle);")
-        
+        """Create a clear font role editor with one selector, size control, and preview."""
+        description_map = {
+            "main": tr("font_body_description", "Used for normal text across Onigiri."),
+            "subtle": tr("font_titles_description", "Used for large titles and page headings."),
+            "small_title": tr("font_small_titles_description", "Used for compact labels and small headings."),
+        }
+        group = SectionGroup(title, self, border=False, description=description_map.get(config_key, ""))
+
+        role_widget = QWidget()
+        role_widget.setObjectName("fontRoleControl")
+        role_layout = QVBoxLayout(role_widget)
+        role_layout.setContentsMargins(0, 0, 0, 0)
+        role_layout.setSpacing(12)
+
+        control_layout = FlowLayout(margin=0, spacing=8)
+
+        font_combo = QComboBox()
+        font_combo.setMinimumWidth(220)
+
+        all_fonts = get_all_fonts(self.addon_path)
+        ordered_keys = ["system", "instrument_serif", "nunito", "montserrat", "space_mono"]
+        ordered_keys += sorted([key for key, info in all_fonts.items() if info.get("user")])
+        for font_key in ordered_keys:
+            info = all_fonts.get(font_key)
+            if not info:
+                continue
+            display_name = tr("system") if font_key == "system" else info.get("name", font_key)
+            font_combo.addItem(display_name, font_key)
+
         size_spinbox = QSpinBox()
         size_spinbox.setRange(8, 72)
         size_spinbox.setSuffix("px")
-        size_spinbox.setFixedWidth(80)
-        
-        # Load saved size or default
+        size_spinbox.setFixedWidth(92)
+
         if config_key == "main":
             default_size = 14
         elif config_key == "subtle":
             default_size = 20
-        else: # small_title
+        else:
             default_size = 15
-        # Check col.conf first
         saved_size = mw.col.conf.get(f"onigiri_font_size_{config_key}", default_size)
         size_spinbox.setValue(int(saved_size))
-        
-        # Save reference
+
         setattr(self, f"font_size_{config_key}", size_spinbox)
-        
-        # Restore Button
+
         restore_btn = QPushButton(tr("restore_default"))
         restore_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         restore_btn.setToolTip(f"{tr('restore_default')} {default_size}px")
-        # Capture default_size and spinbox in lambda
         restore_btn.clicked.connect(lambda _, s=size_spinbox, d=default_size: s.setValue(d))
-        
-        control_layout.addWidget(size_label)
+
+        add_button = QPushButton(tr("add_your_font"))
+        add_button.setObjectName("fontAddButton")
+        add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_button.clicked.connect(self._add_user_font)
+
+        control_layout.addWidget(QLabel(tr("font")))
+        control_layout.addWidget(font_combo)
+        control_layout.addWidget(QLabel(tr("font_size")))
         control_layout.addWidget(size_spinbox)
         control_layout.addWidget(restore_btn)
-        control_layout.addStretch()
-        
-        group.add_widget(control_widget)
-        # ------------------------------------
-        
-        container_widget = QWidget()
-        container_layout = QHBoxLayout(container_widget)
-        container_layout.setContentsMargins(0, 0, 0, 0)
+        control_layout.addWidget(add_button)
+        role_layout.addLayout(control_layout)
 
-        grid_layout = QGridLayout(); grid_layout.setSpacing(15)
-        
-        # <<< Store grid_layout and config_key for later refresh >>>
-        if not hasattr(self, 'font_grids'):
-            self.font_grids = {}
-        self.font_grids[config_key] = grid_layout
-        
-        self._populate_font_grid(config_key)
-        # <<< END MODIFICATION >>>
+        preview = QFrame()
+        preview.setObjectName("fontPreviewPanel")
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(16, 14, 16, 14)
+        preview_layout.setSpacing(4)
 
-        container_layout.addLayout(grid_layout)
-        container_layout.addStretch()
+        preview_title = QLabel(title)
+        preview_title.setObjectName("fontPreviewTitle")
+        preview_body = QLabel(tr("font_preview_text", "The quick brown fox jumps over the lazy dog. 1234567890"))
+        preview_body.setObjectName("fontPreviewBody")
+        preview_body.setWordWrap(True)
+        preview_layout.addWidget(preview_title)
+        preview_layout.addWidget(preview_body)
+        role_layout.addWidget(preview)
 
-        group.add_widget(container_widget)
-        
+        if not hasattr(self, "font_selectors"):
+            self.font_selectors = {}
+        self.font_selectors[config_key] = {
+            "combo": font_combo,
+            "preview_title": preview_title,
+            "preview_body": preview_body,
+        }
+
+        saved_font = mw.col.conf.get(f"onigiri_font_{config_key}", "system")
+        idx = font_combo.findData(saved_font)
+        if idx >= 0:
+            font_combo.setCurrentIndex(idx)
+
+        font_combo.currentIndexChanged.connect(lambda _, key=config_key: self._update_font_preview(key))
+        size_spinbox.valueChanged.connect(lambda _, key=config_key: self._update_font_preview(key))
+        self._update_font_preview(config_key)
+
+        group.add_widget(role_widget)
         return group
+
+    def _font_family_for_key(self, font_key):
+        font_info = get_all_fonts(self.addon_path).get(font_key, {})
+        font_file = font_info.get("file")
+        if not font_file:
+            return ""
+        if font_info.get("user"):
+            font_path = os.path.join(self.addon_path, "user_files", "fonts", font_file)
+        else:
+            font_path = os.path.join(self.addon_path, "system_files", "fonts", "system_fonts", font_file)
+        if not os.path.exists(font_path):
+            return ""
+        font_id = QFontDatabase.addApplicationFont(font_path)
+        if font_id == -1:
+            return ""
+        families = QFontDatabase.applicationFontFamilies(font_id)
+        return families[0] if families else ""
+
+    def _update_font_preview(self, config_key):
+        selector = getattr(self, "font_selectors", {}).get(config_key)
+        if not selector:
+            return
+        font_key = selector["combo"].currentData() or "system"
+        family = self._font_family_for_key(font_key)
+        size = getattr(self, f"font_size_{config_key}").value()
+        preview_font = QFont(family, size if family else -1)
+        if family:
+            selector["preview_title"].setFont(QFont(family, max(size + 4, 15)))
+            selector["preview_body"].setFont(preview_font)
+        else:
+            selector["preview_title"].setFont(QFont())
+            selector["preview_body"].setFont(QFont())
     
     def _populate_font_grid(self, config_key):
         grid_layout = self.font_grids[config_key]
@@ -2911,47 +3167,28 @@ class SettingsDialog(QDialog):
         
         row, col, num_cols = 0, 0, 2
 
+        def add_font_widget(widget, *grid_args):
+            if isinstance(grid_layout, FlowLayout):
+                grid_layout.addWidget(widget)
+            else:
+                grid_layout.addWidget(widget, *grid_args)
+
         # Add the "System" font card first, spanning the full width
         if "system" in system_fonts:
             system_card = FontCardWidget("system", self.accent_color, self, is_system_card=True)
             font_cards.append(system_card)
-            grid_layout.addWidget(system_card, row, 0, 1, num_cols) # Add to grid, spanning 2 columns
+            add_font_widget(system_card, row, 0, 1, num_cols)
             row += 1 # Move to the next row
 
         # <<< START MODIFICATION >>>
         # Move the "Add Your Own Font" button to be directly under the "System" button
         add_button = QPushButton(tr("add_your_font"))
-        add_button.setFixedHeight(50) # Match the height of the "System" button
+        add_button.setObjectName("fontAddButton")
+        add_button.setMinimumHeight(54)
+        add_button.setMinimumWidth(180)
         add_button.setCursor(Qt.CursorShape.PointingHandCursor)
         add_button.clicked.connect(self._add_user_font)
-        
-        # Style it to look like a solid, non-dashed card
-        if theme_manager.night_mode:
-            add_button.setStyleSheet(f"""
-                QPushButton {{ 
-                    background-color: #3a3a3a; 
-                    border: 2px solid #4a4a4a; 
-                    border-radius: 12px; 
-                    color: #e0e0e0; 
-                }} 
-                QPushButton:hover {{ 
-                    border-color: #5a5a5a; 
-                }}
-            """)
-        else:
-            add_button.setStyleSheet(f"""
-                QPushButton {{ 
-                    background-color: #e9e9e9; 
-                    border: 2px solid #e0e0e0; 
-                    border-radius: 12px; 
-                    color: #212121; 
-                }} 
-                QPushButton:hover {{ 
-                    border-color: #d0d0d0; 
-                }}
-            """)
-        
-        grid_layout.addWidget(add_button, row, 0, 1, num_cols) # Add to grid, spanning 2 columns
+        add_font_widget(add_button, row, 0, 1, num_cols)
         row += 1 # Move to the next row for the regular fonts
         # <<< END MODIFICATION >>>
 
@@ -2962,7 +3199,7 @@ class SettingsDialog(QDialog):
             if all_fonts[font_key].get("user"):
                 card.delete_requested.connect(lambda key=font_key: self._delete_user_font(key))
             font_cards.append(card)
-            grid_layout.addWidget(card, row, col)
+            add_font_widget(card, row, col)
             col += 1
             if col >= num_cols:
                 col = 0
@@ -2987,6 +3224,14 @@ class SettingsDialog(QDialog):
                 break
         
         setattr(self, f"font_cards_{config_key}", font_cards)
+        for card in font_cards:
+            card.clicked.connect(lambda checked=False, selected=card, key=config_key: self._select_font_card(key, selected))
+
+    def _select_font_card(self, config_key, selected_card):
+        for card in getattr(self, f"font_cards_{config_key}", []):
+            card.blockSignals(True)
+            card.setChecked(card is selected_card)
+            card.blockSignals(False)
         
     # <<< START NEW METHODS >>>
     def _add_user_font(self):
@@ -3002,11 +3247,30 @@ class SettingsDialog(QDialog):
         try:
             shutil.copy(filepath, dest_path)
             showInfo(f"Font '{filename}' added successfully.")
-            # Refresh both font grids
-            self._populate_font_grid("main")
-            self._populate_font_grid("subtle")
+            self._refresh_font_selectors()
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not copy font file: {e}")
+
+    def _refresh_font_selectors(self):
+        selectors = getattr(self, "font_selectors", {})
+        all_fonts = get_all_fonts(self.addon_path)
+        ordered_keys = ["system", "instrument_serif", "nunito", "montserrat", "space_mono"]
+        ordered_keys += sorted([key for key, info in all_fonts.items() if info.get("user")])
+        for config_key, selector in selectors.items():
+            combo = selector["combo"]
+            current = combo.currentData() or mw.col.conf.get(f"onigiri_font_{config_key}", "system")
+            combo.blockSignals(True)
+            combo.clear()
+            for font_key in ordered_keys:
+                info = all_fonts.get(font_key)
+                if not info:
+                    continue
+                display_name = tr("system") if font_key == "system" else info.get("name", font_key)
+                combo.addItem(display_name, font_key)
+            idx = combo.findData(current)
+            combo.setCurrentIndex(idx if idx >= 0 else max(0, combo.findData("system")))
+            combo.blockSignals(False)
+            self._update_font_preview(config_key)
 
     def _delete_user_font(self, font_key):
         reply = QMessageBox.question(self, "Confirm Delete", 
@@ -3020,13 +3284,17 @@ class SettingsDialog(QDialog):
                     os.remove(font_path)
                     
                     # If the deleted font was selected, revert to system
-                    for key in ["main", "subtle"]:
+                    for key in ["main", "subtle", "small_title"]:
                         if mw.col.conf.get(f"onigiri_font_{key}") == font_key:
                             mw.col.conf[f"onigiri_font_{key}"] = "system"
                     
                     showInfo(f"Font '{font_key}' deleted.")
-                    self._populate_font_grid("main")
-                    self._populate_font_grid("subtle")
+                    if hasattr(self, "font_selectors"):
+                        self._refresh_font_selectors()
+                    elif hasattr(self, "font_grids"):
+                        self._populate_font_grid("main")
+                        self._populate_font_grid("subtle")
+                        self._populate_font_grid("small_title")
                 else:
                     QMessageBox.warning(self, "Error", "Font file not found.")
             except OSError as e:
@@ -3035,21 +3303,14 @@ class SettingsDialog(QDialog):
 
     def create_fonts_page(self):
         page, layout = self._create_scrollable_page()
-    
-        fonts_container = QWidget()
-        fonts_layout = FlowLayout(fonts_container, spacing=20)
-        fonts_layout.setContentsMargins(0, 0, 0, 0)
         
         text_group = self._create_font_selector_group(tr("text"), "main")
         subtle_group = self._create_font_selector_group(tr("titles"), "subtle")
         small_title_group = self._create_font_selector_group(tr("small_titles"), "small_title")
         
-        fonts_layout.addWidget(text_group)
-        fonts_layout.addWidget(subtle_group)
-        fonts_layout.addWidget(small_title_group)
-        
-        layout.addWidget(fonts_container)
-        layout.addStretch()
+        layout.addWidget(text_group)
+        layout.addWidget(subtle_group)
+        layout.addWidget(small_title_group)
 
         sections = {}
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
@@ -3058,18 +3319,22 @@ class SettingsDialog(QDialog):
 
 
     def _save_fonts_settings(self):
-        for card in self.font_cards_main:
-            if card.isChecked():
-                mw.col.conf["onigiri_font_main"] = card.font_key
-                break
-        for card in self.font_cards_subtle:
-            if card.isChecked():
-                mw.col.conf["onigiri_font_subtle"] = card.font_key
-                break
-        for card in getattr(self, "font_cards_small_title", []):
-            if card.isChecked():
-                mw.col.conf["onigiri_font_small_title"] = card.font_key
-                break
+        if hasattr(self, "font_selectors"):
+            for key, selector in self.font_selectors.items():
+                mw.col.conf[f"onigiri_font_{key}"] = selector["combo"].currentData() or "system"
+        else:
+            for card in self.font_cards_main:
+                if card.isChecked():
+                    mw.col.conf["onigiri_font_main"] = card.font_key
+                    break
+            for card in self.font_cards_subtle:
+                if card.isChecked():
+                    mw.col.conf["onigiri_font_subtle"] = card.font_key
+                    break
+            for card in getattr(self, "font_cards_small_title", []):
+                if card.isChecked():
+                    mw.col.conf["onigiri_font_small_title"] = card.font_key
+                    break
         
         # Save Font Sizes
         if hasattr(self, "font_size_main"):
@@ -3112,15 +3377,18 @@ class SettingsDialog(QDialog):
             btn.blockSignals(True)
             btn.setChecked(False)
             btn.blockSignals(False)
-        self.general_toggle_widget.deselect_all()
-        self.menu_toggle_widget.deselect_all()
-        self.study_zone_toggle_widget.deselect_all()
+        if hasattr(self, "page_title_label"):
+            self.page_title_label.setVisible(True)
+            self.page_title_label.setText(tr("profile"))
         
         profile_index = self.page_order.index("Profile")
         
         if not self.tabs_loaded.get(profile_index):
             create_func = self.pages["Profile"]
+            self._building_page_name = "Profile"
             new_widget = create_func()
+            self._building_page_name = None
+            self._polish_created_page(new_widget)
             
             old_widget = self.content_stack.widget(profile_index)
             self.content_stack.removeWidget(old_widget)
@@ -3129,6 +3397,8 @@ class SettingsDialog(QDialog):
             self.tabs_loaded[profile_index] = True
             
         self.content_stack.setCurrentIndex(profile_index)
+        self._populate_page_nav("Profile")
+        self._animate_page_transition()
 
     def navigate_to_page(self, page_name):
         if not page_name: 
@@ -3136,39 +3406,42 @@ class SettingsDialog(QDialog):
 
         if page_name in self.sidebar_buttons:
             self.sidebar_buttons[page_name].setChecked(True)
-            self.general_toggle_widget.deselect_all()
-            self.menu_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
-        elif self.general_toggle_widget.select_page(page_name):
+        else:
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
                 btn.setChecked(False)
                 btn.blockSignals(False)
-            self.menu_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
-        elif self.menu_toggle_widget.select_page(page_name):
-            if btn := self.sidebar_button_group.checkedButton():
-                btn.blockSignals(True)
-                btn.setChecked(False)
-                btn.blockSignals(False)
-            self.general_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
-        elif self.study_zone_toggle_widget.select_page(page_name):
-            if btn := self.sidebar_button_group.checkedButton():
-                btn.blockSignals(True)
-                btn.setChecked(False)
-                btn.blockSignals(False)
-            self.general_toggle_widget.deselect_all()
-            self.menu_toggle_widget.deselect_all()
 
         if page_name not in self.page_order:
             return
+
+        if hasattr(self, "page_title_label"):
+            title_map = {
+                "Search": tr("settings_title"),
+                "Profile": tr("profile"),
+                "Modes": tr("modes"),
+                "Languages": tr("languages"),
+                "Fonts": tr("fonts"),
+                "Themes": tr("themes"),
+                "Main menu": tr("main_menu"),
+                "Sidebar": tr("sidebar"),
+                "Overviewer": tr("overviewer"),
+                "Reviewer": tr("reviewer"),
+                "Palette": tr("palette"),
+                "Gallery": tr("gallery"),
+                "Sync": tr("sync_button"),
+            }
+            self.page_title_label.setVisible(page_name != "Sync")
+            self.page_title_label.setText(title_map.get(page_name, page_name))
             
         stack_index = self.page_order.index(page_name)
         
         if not self.tabs_loaded.get(stack_index):
             create_func = self.pages[page_name]
+            self._building_page_name = page_name
             new_widget = create_func()
+            self._building_page_name = None
+            self._polish_created_page(new_widget)
             
             old_widget = self.content_stack.widget(stack_index)
             self.content_stack.removeWidget(old_widget)
@@ -3177,32 +3450,63 @@ class SettingsDialog(QDialog):
             self.tabs_loaded[stack_index] = True
         
         self.content_stack.setCurrentIndex(stack_index)
+        self._populate_page_nav(page_name)
+        self._animate_page_transition()
+
+    def _clear_page_nav(self):
+        if not hasattr(self, "page_nav_layout"):
+            return
+        while self.page_nav_layout.count():
+            item = self.page_nav_layout.takeAt(0)
+            if widget := item.widget():
+                widget.deleteLater()
+
+    def _populate_page_nav(self, page_name):
+        self._clear_page_nav()
+        sections = self._page_nav_sections.get(page_name, [])
+        self.page_nav_bar.setVisible(bool(sections))
+        for title, target_widget in sections:
+            btn = QPushButton(title)
+            btn.setObjectName("pageNavButton")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(26)
+            btn.clicked.connect(lambda checked=False, w=target_widget: self._scroll_to_widget(self.content_stack.currentWidget().findChild(QScrollArea), w))
+            self.page_nav_layout.addWidget(btn)
+
+    def _animate_page_transition(self):
+        current_widget = self.content_stack.currentWidget()
+        if not current_widget:
+            return
+        effect = QGraphicsOpacityEffect(current_widget)
+        current_widget.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(150)
+        animation.setStartValue(0.82)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(lambda w=current_widget: w.setGraphicsEffect(None))
+        self._page_transition_animation = animation
+        animation.start()
+
+    def _polish_created_page(self, page_widget):
+        scroll_area = page_widget.findChild(QScrollArea)
+        content_widget = scroll_area.widget() if scroll_area else None
+        content_layout = content_widget.layout() if content_widget else None
+        if content_layout:
+            self._remove_trailing_layout_stretches(content_layout)
     
     def _on_section_toggled(self, toggled_widget, checked):
-        """Handle accordion behavior: close other sections when one is opened."""
-        if not checked:
-            # If the section is being closed, don't do anything special
-            return
-        
-        # Close all other sections when this one is opened
-        all_toggles = [
-            self.general_toggle_widget,
-            self.menu_toggle_widget,
-            self.study_zone_toggle_widget,
-        ]
-        for toggle in all_toggles:
-            if toggle is not toggled_widget and toggle.is_open:
-                toggle.deselect_all()
+        return
         
     def _create_inner_group(self, title):
         container = QFrame()
         container.setObjectName("innerGroup")
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setContentsMargins(14, 12, 14, 12)
         main_layout.setSpacing(8)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; font-size: 20px;")
+        title_label.setObjectName("sectionTitle")
         main_layout.addWidget(title_label)
         
         content_widget = QWidget()
@@ -3213,127 +3517,634 @@ class SettingsDialog(QDialog):
         return container, content_layout
 
     def apply_stylesheet(self):
-        conf = config.get_config()
+        conf = self.current_config if hasattr(self, "current_config") else config.get_config()
+
         if theme_manager.night_mode:
-            bg, fg, border, input_bg, button_bg, sidebar_bg = "#2c2c2c", "#e0e0e0", "#4a4a4a", "#3a3a3a", "#4a4a4a", "#3a3a3a"
-            separator_color, secondary_button_bg, secondary_button_fg = "#444444", "#555", "#e0e0e0"
-            accent_color = conf.get("colors", {}).get("dark", {}).get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
+            palette = conf.get("colors", {}).get("dark", {})
+            # ── Dark mode ──────────────────────────────────────────────────
+            window_bg        = palette.get("--bg", "#111827")
+            panel_bg         = palette.get("--canvas-inset", "#1f2937")
+            sidebar_bg       = window_bg   # sidebar alinhada ao fundo geral
+            surface_bg       = palette.get("--highlight-bg", palette.get("--canvas-inset", "#263040"))
+            surface_hover    = palette.get("--highlight-bg", "#2d3748")
+            input_bg         = panel_bg
+            button_bg        = surface_bg
+            fg               = palette.get("--fg", "#f9fafb")
+            fg_secondary     = palette.get("--fg-subtle", "#d1d5db")
+            muted_fg         = palette.get("--fg-subtle", "#6b7280")
+            border           = palette.get("--border", "#374151")
+            soft_border      = border
+            separator_color  = border
+            accent_color     = conf.get("colors", {}).get("dark", {}).get(
+                "--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"]
+            )
+            sidebar_label_color  = fg_secondary
+            nav_checked_bg   = surface_hover
+            nav_checked_fg   = fg
+            save_btn_bg      = palette.get("--button-primary-bg", accent_color)
+            save_btn_fg      = "#ffffff"
+            save_btn_border  = save_btn_bg
         else:
-            bg, fg, border, input_bg, button_bg, sidebar_bg = "#f3f3f3", "#212121", "#e0e0e0", "#f5f5f5", "#f0f0f0", "#dddddd"
-            separator_color, secondary_button_bg, secondary_button_fg = "#e0e0e0", "#c9c9c9", "#ffffff"
-            accent_color = conf.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
+            palette = conf.get("colors", {}).get("light", {})
+            # ── Light mode — fiel à referência ────────────────────────────
+            window_bg        = palette.get("--bg", "#f0f0f0")
+            panel_bg         = palette.get("--canvas-inset", "#ffffff")
+            sidebar_bg       = window_bg   # sidebar alinhada ao fundo geral
+            surface_bg       = palette.get("--highlight-bg", palette.get("--canvas-inset", "#f9fafb"))
+            surface_hover    = palette.get("--highlight-bg", "#f3f4f6")
+            input_bg         = panel_bg
+            button_bg        = surface_bg
+            fg               = palette.get("--fg", "#111827")
+            fg_secondary     = palette.get("--fg-subtle", "#374151")
+            muted_fg         = palette.get("--fg-subtle", "#9ca3af")
+            border           = palette.get("--border", "#e5e7eb")
+            soft_border      = border
+            separator_color  = border
+            accent_color     = conf.get("colors", {}).get("light", {}).get(
+                "--accent-color", DEFAULTS["colors"]["light"]["--accent-color"]
+            )
+            sidebar_label_color  = fg_secondary
+            nav_checked_bg   = surface_hover
+            nav_checked_fg   = fg
+            save_btn_bg      = palette.get("--button-primary-bg", accent_color)
+            save_btn_fg      = "#ffffff"
+            save_btn_border  = save_btn_bg
 
-        mode_key = "dark" if theme_manager.night_mode else "light"
-        fg_subtle = conf.get("colors", {}).get(mode_key, {}).get("--fg-subtle", DEFAULTS["colors"][mode_key]["--fg-subtle"])
+        self.accent_color = accent_color
 
-        hero_gradient_top = "#343a40" if theme_manager.night_mode else "#d9dee7"
-        sidebar_selected_bg, primary_button_bg = accent_color, accent_color
-
-        # Icons for spinbox
-        up_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "up.svg").replace("\\", "/")
-        down_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "down.svg").replace("\\", "/")
+        up_icon_path   = os.path.join(
+            self.addon_path, "system_files", "system_icons", "up.svg"
+        ).replace("\\", "/")
+        down_icon_path = os.path.join(
+            self.addon_path, "system_files", "system_icons", "down.svg"
+        ).replace("\\", "/")
 
         self.setStyleSheet(f"""
-            QFrame#MenuSeparator {{
-                background-color: {border};
+
+            /* ── Janela base ─────────────────────────────────────────── */
+            QDialog {{
+                background-color: {window_bg};
+                color: {fg};
+                font-size: 13px;
+                font-family: -apple-system, "Segoe UI", sans-serif;
             }}
 
-            QDialog {{ background-color: {bg}; color: {fg}; }}
-            
-            /* This rule gives the page a solid background to prevent flickering */
-            #pageContainer {{
-                background-color: {bg};
-            }}
-
-            #sidebarContainer {{
+            /* ── Sidebar ─────────────────────────────────────────────── */
+            QWidget#settingsSidebarWrapper {{
                 background-color: {sidebar_bg};
-                border-radius: 25px;
+                border-right: none;
             }}
-            #sidebarContainer QPushButton {{
-                padding: 12px;
+            QWidget#settingsContentShell {{
+                background-color: {panel_bg};
+                border: none;
+                border-top-left-radius: 24px;
+                border-top-right-radius: 24px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
+            }}
+
+            /* ── Cabeçalho da página ─────────────────────────────────── */
+            QWidget#settingsPageHeader {{
+                background-color: transparent;
+                min-height: 34px;
+            }}
+            QLabel#settingsPageTitle {{
+                color: {fg};
+                background: transparent;
+                border: none;
+                font-size: 17px;
+                font-weight: 800;
+                padding: 0px;
+                letter-spacing: 0px;
+            }}
+            QWidget#pageNavBar {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            /* Botões de navegação de seção (jump) */
+            QPushButton#pageNavButton {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 13px;
+                color: {fg_secondary};
+                padding: 3px 12px;
+                font-weight: 500;
+                font-size: 11px;
+            }}
+            QPushButton#pageNavButton:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+                color: {fg};
+            }}
+            QPushButton#pageNavButton:pressed {{
+                background-color: {nav_checked_bg};
+                border-color: {border};
+                color: {fg};
+            }}
+
+            /* ── Stack de conteúdo ───────────────────────────────────── */
+            QStackedWidget#contentStack {{
+                background-color: transparent;
+                border: none;
+            }}
+            QWidget#pageContainer {{
+                background-color: transparent;
+                border: none;
+                border-radius: 0px;
+            }}
+            QWidget#settingsPageContent {{
+                background-color: transparent;
+            }}
+            QScrollArea#settingsPageScroll,
+            QScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            /* ── Containers da sidebar ───────────────────────────────── */
+            #sidebarContainer,
+            #sidebarActionsContainer {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            QScrollArea#sidebarNavScrollArea {{
+                background-color: transparent;
+                border: none;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar:vertical {{
+                border: none;
+                background-color: {surface_bg};
+                width: 8px;
+                margin: 6px 0px 6px 6px;
+                border-radius: 4px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical {{
+                background-color: {fg_secondary};
+                min-height: 38px;
+                border-radius: 4px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical:hover {{
+                background-color: {accent_color};
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-page:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-page:vertical {{
+                height: 0;
+                width: 0;
+                background: none;
+                border: none;
+            }}
+
+            /* Botões da sidebar — estado padrão */
+            #sidebarContainer QPushButton,
+            #sidebarActionsContainer QPushButton {{
+                min-height: 28px;
+                padding: 4px 10px;
                 border-radius: 20px;
                 text-align: left;
-                border: none;
+                border: 1px solid transparent;
                 background-color: transparent;
+                color: {fg_secondary};
+                font-weight: 500;
+                font-size: 13px;
             }}
-            #sidebarContainer QPushButton:checked {{
-                background-color: {sidebar_selected_bg};
-                color: white;
+
+            /* Botão de busca no topo da sidebar */
+            QPushButton#sidebarSearchButton {{
+                min-height: 36px;
+                max-height: 36px;
+                padding: 3px 12px;
+                border-radius: 18px;
+                background-color: {input_bg};
+                border: 1px solid {border};
+                color: {muted_fg};
+                text-align: left;
+                font-weight: 400;
+                font-size: 13px;
             }}
-            QPushButton#searchSidebarButton {{
-                padding: 12px;
-                border-radius: 20px;
-                background-color: {sidebar_bg};
+            QPushButton#sidebarSearchButton:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
                 color: {fg};
-                text-align: center;
-                margin-bottom: 0px; /* Spacing handled by layout now */
-                border: none;
+                border-radius: 18px;
+            }}
+            QPushButton#sidebarSearchButton:checked {{
+                background-color: {nav_checked_bg};
+                border-color: {border};
+                color: {nav_checked_fg};
+                font-weight: 600;
+                border-radius: 18px;
+            }}
+
+            QPushButton#searchSidebarButton {{
+                background-color: {input_bg};
+                border: 1px solid {border};
+                border-radius: 20px;
+                text-align: left;
+                font-weight: 400;
+                color: {muted_fg};
             }}
             QPushButton#searchSidebarButton:hover {{
-                background-color: {border}; /* Slightly lighter/darker on hover */
+                background-color: {surface_hover};
+                border-color: {soft_border};
+                color: {fg};
+                border-radius: 20px;
             }}
             QPushButton#searchSidebarButton:checked {{
-                background-color: {sidebar_bg};
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                border-color: transparent;
+                font-weight: 600;
+                border-radius: 20px;
+            }}
+
+            /* Hover e ativo dos botões da sidebar */
+            #sidebarContainer QPushButton:hover,
+            #sidebarActionsContainer QPushButton:hover {{
+                background-color: {surface_hover};
+                color: {fg};
+                border-color: transparent;
+                border-radius: 20px;
+            }}
+            #sidebarContainer QPushButton:checked,
+            #sidebarActionsContainer QPushButton:checked {{
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                border-color: transparent;
+                font-weight: 600;
+                border-radius: 20px;
+            }}
+
+            QPushButton#sidebarActionButton,
+            #sidebarActionsContainer QPushButton#sidebarActionButton {{
+                min-height: 40px;
+                max-height: 40px;
+                padding: 4px 10px;
+                border-radius: 20px;
+                text-align: left;
+                background-color: transparent;
+                border: 1px solid transparent;
+                color: {fg_secondary};
+                font-weight: 600;
+                font-size: 13px;
+            }}
+            QPushButton#sidebarActionButton:hover,
+            #sidebarActionsContainer QPushButton#sidebarActionButton:hover {{
+                background-color: {surface_hover};
+                color: {fg};
+                border-color: transparent;
+                border-radius: 20px;
+            }}
+            QPushButton#sidebarActionButton:pressed,
+            #sidebarActionsContainer QPushButton#sidebarActionButton:pressed {{
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                border-color: transparent;
+                border-radius: 20px;
+            }}
+
+            QPushButton#saveSidebarButton,
+            #sidebarActionsContainer QPushButton#saveSidebarButton {{
+                min-height: 28px;
+                max-height: 28px;
+                padding: 1px 14px;
+                border-radius: 14px;
+                text-align: center;
+                background-color: {save_btn_bg};
+                color: {save_btn_fg};
+                border: 1px solid {save_btn_border};
+                font-weight: 700;
+                font-size: 12px;
+            }}
+            QPushButton#saveSidebarButton:hover,
+            #sidebarActionsContainer QPushButton#saveSidebarButton:hover {{
+                background-color: {accent_color};
+                color: #ffffff;
+                border-color: {accent_color};
+            }}
+            QPushButton#saveSidebarButton:pressed,
+            #sidebarActionsContainer QPushButton#saveSidebarButton:pressed {{
+                background-color: {save_btn_bg};
+                color: #ffffff;
+                border-color: {save_btn_border};
+            }}
+
+            /* Labels de seção na sidebar */
+            QLabel#sidebarSectionLabel {{
+                color: {sidebar_label_color};
+                background: transparent;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.7px;
+                padding-left: 10px;
+                padding-top: 4px;
+                margin-top: 10px;
+                margin-bottom: 0px;
+            }}
+
+            /* Sub-tipos de nav da sidebar */
+            #sidebarContainer QPushButton#mainItemButton {{
+                font-weight: 600;
                 color: {fg};
             }}
-            QPushButton#searchSidebarButton:pressed {{
-                color: {sidebar_selected_bg};
+            QPushButton#sidebarNavButton,
+            #sidebarContainer QPushButton#sidebarNavButton {{
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 20px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                text-align: left;
+                font-weight: 500;
+                color: {fg_secondary};
+            }}
+            QPushButton#sidebarNavButton:hover,
+            #sidebarContainer QPushButton#sidebarNavButton:hover {{
+                background-color: {surface_hover};
+                color: {fg};
+                border-color: transparent;
+                border-radius: 18px;
+            }}
+            QPushButton#sidebarNavButton:checked,
+            #sidebarContainer QPushButton#sidebarNavButton:checked {{
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                border-color: transparent;
+                font-weight: 600;
+                border-radius: 18px;
             }}
             #sidebarContainer QPushButton#subItemButton {{
-                background-color: transparent;
+                min-height: 28px;
+                padding: 5px 10px 5px 20px;
+                border-radius: 18px;
+                color: {muted_fg};
+                font-weight: 400;
+                font-size: 12px;
+            }}
+            #sidebarContainer QPushButton#subItemButton:hover {{
                 color: {fg};
+                background-color: {surface_hover};
+                border-radius: 18px;
             }}
             #sidebarContainer QPushButton#subItemButton:checked {{
-                background-color: transparent;
-                font-weight: bold;
-                color: {sidebar_selected_bg};
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                font-weight: 500;
+                border-radius: 18px;
             }}
-            #innerGroup {{ border: 1px solid {border}; border-radius: 12px; margin-top: 5px; }}
-            QGroupBox {{ border-radius: 16px; margin-top: 8px; padding: 0px; }}
-            
-            QLabel, QRadioButton {{ color: {fg}; }}
-            QRadioButton::indicator {{
-                border: 2px solid {border};
+
+            /* ── Labels genéricas ────────────────────────────────────── */
+            QLabel,
+            QRadioButton,
+            QCheckBox {{
+                color: {fg};
                 background-color: transparent;
+            }}
+            QLabel:disabled,
+            QRadioButton:disabled,
+            QCheckBox:disabled {{
+                color: {muted_fg};
+            }}
+
+            /* ── Cards de seção de conteúdo ──────────────────────────── */
+            QWidget#settingsSection {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            QWidget#sectionBody {{
+                background-color: transparent;
+                border: none;
+            }}
+            QLabel#sectionTitle {{
+                color: {fg};
+                background: transparent;
+                font-size: 14px;
+                font-weight: 700;
+            }}
+            QLabel#sectionDescription,
+            QLabel#settingRowDescription {{
+                color: {muted_fg};
+                background: transparent;
+                font-size: 12px;
+            }}
+            QLabel#settingRowTitle,
+            QLabel#galleryTitleLabel {{
+                color: {fg};
+                background: transparent;
+                font-weight: 600;
+            }}
+            #innerGroup {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 8px;
+            }}
+
+            /* Linhas de setting */
+            QFrame#settingRow {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                border-radius: 16px;
+            }}
+            QFrame#settingRow:hover {{
+                background-color: {surface_hover};
+            }}
+
+            /* ── GroupBox ────────────────────────────────────────────── */
+            QGroupBox {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                margin-top: 14px;
+                padding: 14px 12px 10px 12px;
+                font-weight: 600;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 2px 8px;
+                color: {muted_fg};
+                background-color: {panel_bg};
+                font-size: 11px;
+                font-weight: 600;
+            }}
+
+            /* ── Radio buttons ───────────────────────────────────────── */
+            QRadioButton::indicator {{
+                border: 1.5px solid {border};
+                background-color: {input_bg};
                 width: 16px;
                 height: 16px;
-                border-radius: 10px;
+                border-radius: 9px;
+                image: none;
             }}
             QRadioButton::indicator:checked {{
                 border: 2px solid {accent_color};
                 background-color: {accent_color};
-                image: url();
+                image: none;
             }}
-            QLineEdit, QSpinBox {{ background-color: {input_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
+            QRadioButton::indicator:hover {{
+                border-color: {soft_border};
+            }}
 
-            QPushButton {{ background-color: {button_bg}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 4px; }}
-            QPushButton:pressed {{ background-color: {border}; }}
-        
-            QFrame[frameShape="4"] {{ border: 1px solid {separator_color}; }}
-            QTabBar::tab {{ background: transparent; border: none; padding: 8px 12px; border-radius: 4px; margin-right: 2px; }}
-            QTabBar::tab:selected {{ background: {accent_color}; color: white; }}
-            QTabBar::tab:!selected:hover {{ background: {border}; }}
-            QTabWidget::pane {{ background-color: transparent; border: none; }}
+            /* ── Inputs ──────────────────────────────────────────────── */
+            QLineEdit,
+            QSpinBox,
+            QDoubleSpinBox,
+            QComboBox,
+            QPlainTextEdit,
+            QTextEdit,
+            QDateEdit {{
+                background-color: {input_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 7px;
+                padding: 6px 10px;
+                min-height: 30px;
+                selection-background-color: {accent_color};
+                selection-color: white;
+            }}
+            QLineEdit:focus,
+            QSpinBox:focus,
+            QDoubleSpinBox:focus,
+            QComboBox:focus,
+            QPlainTextEdit:focus,
+            QTextEdit:focus,
+            QDateEdit:focus {{
+                border-color: {soft_border};
+                background-color: {panel_bg};
+                outline: none;
+            }}
+            QLineEdit:disabled,
+            QSpinBox:disabled,
+            QDoubleSpinBox:disabled,
+            QComboBox:disabled {{
+                background-color: {surface_bg};
+                color: {muted_fg};
+                border-color: {border};
+            }}
+
+            /* ComboBox drop-down */
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {panel_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 7px;
+                selection-background-color: {surface_hover};
+                selection-color: {fg};
+                padding: 4px;
+                outline: none;
+            }}
+
+            /* ── Botões genéricos ────────────────────────────────────── */
+            QPushButton {{
+                background-color: {button_bg};
+                color: {fg_secondary};
+                border: 1px solid {border};
+                padding: 7px 14px;
+                border-radius: 18px;
+                font-weight: 500;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+                color: {fg};
+            }}
+            QPushButton:pressed {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+            }}
+            QPushButton:disabled {{
+                background-color: {surface_bg};
+                color: {muted_fg};
+                border-color: {border};
+            }}
+
+            /* ── Separadores ─────────────────────────────────────────── */
+            QFrame[frameShape="4"] {{
+                border: none;
+                background-color: {separator_color};
+                max-height: 1px;
+            }}
+            QFrame#MenuSeparator {{
+                background-color: {border};
+                max-height: 1px;
+                border: none;
+            }}
+
+            /* ── Tabs ────────────────────────────────────────────────── */
+            QTabBar::tab {{
+                background: transparent;
+                border: 1px solid transparent;
+                padding: 6px 14px;
+                border-radius: 7px;
+                margin-right: 3px;
+                color: {muted_fg};
+                font-weight: 500;
+            }}
+            QTabBar::tab:selected {{
+                background: {panel_bg};
+                color: {fg};
+                border-color: {border};
+                font-weight: 600;
+            }}
+            QTabBar::tab:!selected:hover {{
+                background: {surface_hover};
+                color: {fg};
+            }}
+            QTabWidget::pane {{
+                background-color: transparent;
+                border: none;
+            }}
             QTabBar {{ qproperty-drawBase: 0; }}
-            QScrollBar:vertical {{ border: none; background: {bg}; width: 12px; margin: 0; }}
-            QScrollBar::handle:vertical {{ background: {border}; min-height: 20px; border-radius: 6px; margin: 2px; }}
+
+            /* ── Scrollbars — minimalistas ───────────────────────────── */
+            QScrollBar:vertical {{
+                border: none;
+                background: transparent;
+                width: 5px;
+                margin: 8px 6px 8px 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {border};
+                min-height: 32px;
+                border-radius: 2px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {soft_border};
+            }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                height: 0px;
-                width: 0px;
-                background: none;
-                border: none;
+                height: 0; width: 0; background: none; border: none;
             }}
-            QScrollBar:horizontal {{ border: none; background: {bg}; height: 12px; margin: 0; }}
-            QScrollBar::handle:horizontal {{ background: {border}; min-width: 20px; border-radius: 6px; margin: 2px; }}
+            QScrollBar:horizontal {{
+                border: none;
+                background: transparent;
+                height: 5px;
+                margin: 0;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {border};
+                min-width: 32px;
+                border-radius: 2px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {soft_border};
+            }}
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
             QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
-                height: 0px;
-                width: 0px;
-                background: none;
-                border: none;
+                height: 0; width: 0; background: none; border: none;
             }}
 
+            /* ── Setas do SpinBox ────────────────────────────────────── */
             QSpinBox::up-button {{
                 subcontrol-origin: border;
                 subcontrol-position: top right;
@@ -3341,6 +4152,7 @@ class SettingsDialog(QDialog):
                 border-left: 1px solid {border};
                 image: url({up_icon_path});
                 padding: 2px;
+                border-top-right-radius: 7px;
             }}
             QSpinBox::down-button {{
                 subcontrol-origin: border;
@@ -3349,80 +4161,84 @@ class SettingsDialog(QDialog):
                 border-left: 1px solid {border};
                 image: url({down_icon_path});
                 padding: 2px;
+                border-bottom-right-radius: 7px;
             }}
-            #colorPill {{ background-color: {input_bg}; border: 1px solid {border}; border-radius: 18px; 
-            }}
-            QFrame#themeCard {{
+
+            /* ── Widgets especiais ───────────────────────────────────── */
+            #colorPill {{
                 background-color: {input_bg};
                 border: 1px solid {border};
+                border-radius: 8px;
+            }}
+
+            QFrame#themeCard {{
+                background-color: {panel_bg};
+                border: 1px solid {border};
                 border-radius: 12px;
-                padding: 10px;
+                padding: 12px;
             }}
             QFrame#themeCard:hover {{
-                border-color: {accent_color};
+                border-color: {soft_border};
+                background-color: {surface_hover};
             }}
 
-            /* <<< START NEW CODE >>> */
             QFrame#hideModeCard {{
-                background-color: {sidebar_bg};
+                background-color: {panel_bg};
                 border: 1px solid {border};
-                border-radius: 16px;
-                padding: 20px;
+                border-radius: 10px;
+                padding: 16px;
             }}
             QLabel#hideModeTitleLabel {{
-                font-size: 18px;
-                font-weight: bold;
-                margin-bottom: 5px;
+                font-size: 15px;
+                font-weight: 700;
+                color: {fg};
             }}
             QLabel#hideModeDescLabel {{
-                color: {fg};
+                color: {muted_fg};
                 font-size: 12px;
             }}
-            /* <<< END NEW CODE >>> */
-
-            /* <<< START NEW CODE >>> */
 
             QGroupBox#LayoutGroup {{
                 border: 1px solid {border};
                 border-radius: 8px;
-                margin-top: 10px;
-                padding: 15px 10px 10px 10px;
+                margin-top: 14px;
+                padding: 14px 10px 10px 10px;
             }}
             QGroupBox#LayoutGroup::title {{
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 5px;
-                /* Use page BG to "cut out" the border */
-                background-color: {bg};
-                /* Make title visible again, overriding default */
-                color: {fg};
+                padding: 2px 6px;
+                background-color: {panel_bg};
+                color: {muted_fg};
+                font-size: 11px;
+                font-weight: 600;
             }}
+
             #DraggableItem {{
                 background-color: {button_bg};
                 border: 1px solid {border};
-                border-radius: 4px;
+                border-radius: 7px;
                 color: {fg};
                 font-weight: 500;
                 text-align: center;
             }}
             #DropZone {{
                 background-color: {input_bg};
-                border-radius: 6px;
+                border-radius: 8px;
                 padding: 5px;
             }}
             #Shelf {{
                 background-color: transparent;
-                border: 2px dashed {border};
-                border-radius: 10px;
+                border: 1.5px dashed {border};
+                border-radius: 8px;
             }}
-            /* <<< START NEW CODE >>> */
             #Shelf[is_highlighted="true"] {{
-                background-color: rgba(0, 123, 255, 0.3);
-                border: 2px solid {accent_color};
+                background-color: rgba(99, 132, 255, 0.08);
+                border: 1.5px solid {accent_color};
             }}
-            /* <<< START NEW CODE >>> */
+
             #MenuBackground {{
-                background-color: {input_bg};
+                background-color: {panel_bg};
                 border: 1px solid {border};
                 border-radius: 8px;
             }}
@@ -3430,41 +4246,210 @@ class SettingsDialog(QDialog):
                 background-color: transparent;
                 color: {fg};
                 border: none;
-                padding: 8px 20px;
+                padding: 7px 16px;
                 text-align: center;
                 border-radius: 6px;
+                font-weight: 400;
             }}
             QPushButton#MenuButton:hover {{
-                background-color: {border};
+                background-color: {surface_hover};
             }}
             QPushButton#MenuButton:checked {{
-                background-color: {accent_color};
-                color: white;
+                background-color: {nav_checked_bg};
+                color: {nav_checked_fg};
+                font-weight: 600;
             }}
+
+            /* Barra de jump de página */
+            QWidget#pageJumpBar {{
+                background-color: {surface_bg};
                 border: 1px solid {border};
-                border-radius: 4px;
+                border-radius: 8px;
+                padding: 2px;
+            }}
+            QPushButton#pageJumpButton {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 12px;
+                padding: 5px 12px;
+                min-height: 22px;
+                font-weight: 500;
+                font-size: 12px;
+                color: {muted_fg};
+            }}
+            QPushButton#pageJumpButton:hover {{
+                background-color: {panel_bg};
+                border-color: {border};
+                color: {fg};
+            }}
+            QPushButton#pageJumpButton:pressed {{
+                background-color: {nav_checked_bg};
+                border-color: {border};
+                color: {nav_checked_fg};
+            }}
+
+            /* Página de pesquisa */
+            QLineEdit#settingsSearchInput {{
+                min-height: 36px;
+                padding: 8px 14px;
+                border-radius: 8px;
+                font-size: 13px;
+                background-color: {panel_bg};
+                border: 1px solid {border};
+                color: {fg};
+            }}
+            QFrame#searchCard {{
+                background-color: {panel_bg};
+                border-radius: 8px;
+                border: 1px solid {border};
+            }}
+            QFrame#searchCard:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+            }}
+            QLabel#searchCardTitle {{
+                color: {fg};
+                font-size: 14px;
+                font-weight: 600;
+                background: transparent;
+            }}
+            QLabel#searchCardDescription {{
+                color: {muted_fg};
+                font-size: 12px;
+                background: transparent;
+            }}
+            QPushButton#searchResult {{
+                background-color: {surface_bg};
+                border-radius: 7px;
+                border: 1px solid {border};
+                text-align: left;
+                color: {fg_secondary};
+            }}
+            QPushButton#searchResult:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+                color: {fg};
+            }}
+
+            QPushButton#pageNavButton {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 13px;
+                min-height: 24px;
+                max-height: 24px;
+                padding: 2px 12px;
+                color: {fg_secondary};
+                font-size: 11px;
+                font-weight: 500;
+            }}
+            QPushButton#pageNavButton:hover {{
+                background-color: {surface_hover};
+                border-color: {accent_color};
+                color: {fg};
+            }}
+
+            QPushButton#fontCard {{
+                background-color: {surface_bg};
+                border: 1.5px solid {border};
+                border-radius: 14px;
+                color: {fg};
+                padding: 10px;
+                text-align: center;
+            }}
+            QPushButton#fontCard:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+            }}
+            QPushButton#fontCard:checked {{
+                border: 2px solid {accent_color};
+                background-color: {panel_bg};
+            }}
+            QPushButton#fontAddButton {{
+                background-color: transparent;
+                border: 1.5px dashed {soft_border};
+                border-radius: 14px;
+                color: {fg_secondary};
+                padding: 10px 14px;
+                text-align: center;
+            }}
+            QPushButton#fontAddButton:hover {{
+                background-color: {surface_hover};
+                border-color: {accent_color};
+                color: {fg};
+            }}
+            QWidget#fontRoleControl {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#fontPreviewPanel {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 14px;
+            }}
+            QLabel#fontPreviewTitle {{
+                color: {fg};
+                background: transparent;
+                font-weight: 700;
+            }}
+            QLabel#fontPreviewBody {{
+                color: {fg_secondary};
+                background: transparent;
             }}
         """)
+
         self.save_button.setStyleSheet(
-            f"QPushButton{{background-color:{accent_color};color:white;border:none;padding:10px;border-radius:12px}}"
-            f"QPushButton:pressed{{background-color:{border};color:white}}"
+            f"QPushButton#saveSidebarButton{{"
+            f"background-color:{save_btn_bg};color:{save_btn_fg};"
+            f"border:1px solid {save_btn_border};"
+            f"min-height:28px;max-height:28px;"
+            f"padding:1px 14px;border-radius:14px;text-align:center;"
+            f"font-weight:700;font-size:12px;}}"
+            f"QPushButton#saveSidebarButton:hover{{"
+            f"background-color:{accent_color};color:#ffffff;border-color:{accent_color};}}"
+            f"QPushButton#saveSidebarButton:pressed{{"
+            f"background-color:{save_btn_bg};border-color:{save_btn_bg};color:#ffffff;}}"
         )
+        self._refresh_theme_dependent_widgets()
+
+    def _refresh_theme_dependent_widgets(self):
+        for toggle in self.findChildren(AnimatedToggleButton):
+            toggle.setAccentColor(self.accent_color)
+            toggle.setThemeMode(theme_manager.night_mode)
+
+        for overlay in self.findChildren(SelectionOverlay):
+            overlay.setAccentColor(self.accent_color)
+
+        if hasattr(self, "profile_bar"):
+            if hasattr(self.profile_bar, "setAccentColor"):
+                self.profile_bar.setAccentColor(self.accent_color)
+            elif hasattr(self.profile_bar, "refresh_theme"):
+                self.profile_bar.refresh_theme()
+
+        for button in self.findChildren(QPushButton):
+            icon_name = button.property("onigiri_icon_filename")
+            icon_size = button.property("onigiri_icon_size")
+            if icon_name:
+                size = int(icon_size or 18)
+                button.setIcon(self._themed_icon(icon_name, self._settings_icon_color(), size))
     
     def _create_toggle_row(self, toggle_widget, text_label, style_sheet=""):
-        row = QWidget()
+        row = QFrame()
+        row.setObjectName("settingRow")
         if style_sheet:
             row.setStyleSheet(f"QWidget {{ {style_sheet} }}")
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(0,0,0,0)
+        layout.setContentsMargins(12, 9, 12, 9)
+        layout.setSpacing(12)
         layout.addWidget(QLabel(text_label))
         layout.addStretch()
         layout.addWidget(toggle_widget)
         return row
 
     def _create_goal_setting_row(self, title, description, spinbox, toggle_widget):
-        row = QWidget()
+        row = QFrame()
+        row.setObjectName("settingRow")
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(12)
 
         text_container = QWidget()
@@ -3473,13 +4458,13 @@ class SettingsDialog(QDialog):
         text_layout.setSpacing(4)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: 600;")
+        title_label.setObjectName("settingRowTitle")
         text_layout.addWidget(title_label)
 
         if description:
             desc_label = QLabel(description)
             desc_label.setWordWrap(True)
-            desc_label.setStyleSheet("color: #6b6b6b; font-size: 11px;")
+            desc_label.setObjectName("settingRowDescription")
             text_layout.addWidget(desc_label)
 
         text_layout.addStretch()
@@ -4708,20 +5693,12 @@ class SettingsDialog(QDialog):
             self.config = settings_dialog.current_config.get("sidebarButtonLayout", copy.deepcopy(DEFAULTS["sidebarButtonLayout"]))
             self.all_sidebar_items = {}
 
-            if theme_manager.night_mode:
-                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
-            else:
-                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
-            self.style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+            self.style_colors = settings_dialog._layout_editor_style_colors()
             
             self._init_ui() # Call _init_ui
             
         def _init_ui(self):
-            if theme_manager.night_mode:
-                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
-            else:
-                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
-            self.style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+            self.style_colors = self.settings_dialog._layout_editor_style_colors()
 
             main_layout = QHBoxLayout(self)
             main_layout.setSpacing(15)
@@ -4779,7 +5756,7 @@ class SettingsDialog(QDialog):
                     padding: 0 3px;
                 }
                 QLabel#DropIndicator {
-                    background-color: #0078d7;
+                    background-color: %(accent)s;
                 }
             """ % self.style_colors)
             
@@ -4945,11 +5922,7 @@ class SettingsDialog(QDialog):
             self._populate_widgets()
 
         def _populate_widgets(self):
-            if theme_manager.night_mode:
-                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
-            else:
-                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
-            style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+            style_colors = self.settings_dialog._layout_editor_style_colors()
 
             # Define default layout
             DEFAULTS = {
@@ -5113,11 +6086,7 @@ class SettingsDialog(QDialog):
             self._populate_widgets()
 
         def _populate_widgets(self):
-            if theme_manager.night_mode:
-                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
-            else:
-                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
-            style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+            style_colors = self.settings_dialog._layout_editor_style_colors()
 
             saved_layout = self.settings_dialog.current_config.get("externalWidgetLayout", {})
             # Gracefully handle old config format
@@ -5380,11 +6349,7 @@ class SettingsDialog(QDialog):
                 self.row_spin.blockSignals(False)
 
         def _populate_widgets(self):
-            if theme_manager.night_mode:
-                button_bg, border, fg = "#4a4a4a", "#4a4a4a", "#e0e0e0"
-            else:
-                button_bg, border, fg = "#f0f0f0", "#e0e0e0", "#212121"
-            style_colors = {"button_bg": button_bg, "border": border, "fg": fg}
+            style_colors = self.settings_dialog._layout_editor_style_colors()
 
             # --- Onigiri Widgets ---
             # --- Onigiri Widgets ---
@@ -5764,50 +6729,7 @@ class SettingsDialog(QDialog):
             btn.setFixedHeight(32)
             btn.setProperty("view_mode", display_name.lower())
             
-            # Modern styling mimicking a segmented control
-            # Note: We use dynamic properties or just check state in styling if needed, 
-            # but here we'll use a direct stylesheet for simplicity and consistency with the add-on's theme.
-            # Using specific object name to target with stylesheet if possible, or inline styles.
-            if theme_manager.night_mode:
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: #3a3a3a;
-                        border: 1px solid #555;
-                        border-radius: 6px;
-                        color: #eee;
-                        padding: 0 15px;
-                        font-weight: normal;
-                    }}
-                    QPushButton:checked {{
-                        background-color: {self.accent_color};
-                        border: 1px solid {self.accent_color};
-                        color: white;
-                        font-weight: bold;
-                    }}
-                    QPushButton:hover:!checked {{
-                        background-color: #454545;
-                    }}
-                """)
-            else:
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: #f5f5f5;
-                        border: 1px solid #dcdcdc;
-                        border-radius: 6px;
-                        color: #333;
-                        padding: 0 15px;
-                        font-weight: normal;
-                    }}
-                    QPushButton:checked {{
-                        background-color: {self.accent_color};
-                        border: 1px solid {self.accent_color};
-                        color: white;
-                        font-weight: bold;
-                    }}
-                    QPushButton:hover:!checked {{
-                        background-color: #e0e0e0;
-                    }}
-                """)
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=32))
             
             if display_name.lower() == current_view:
                 btn.setChecked(True)
@@ -6163,30 +7085,32 @@ class SettingsDialog(QDialog):
             # Start with vertical by default
             self.main_layout.addWidget(self.vertical_card)
             self.horizontal_card.hide()
+
+        def _theme_tokens(self):
+            settings = self.parent()
+            palette = settings._settings_palette() if hasattr(settings, "_settings_palette") else {}
+            return {
+                "card_bg": palette.get("--highlight-bg", "#1e1e1e" if theme_manager.night_mode else "#e8e8e8"),
+                "item_bg": palette.get("--canvas-inset", "#2c2c2c" if theme_manager.night_mode else "#f2f2f2"),
+                "text": palette.get("--fg", "#f2f2f2" if theme_manager.night_mode else "#2c2c2c"),
+                "muted": palette.get("--fg-subtle", "#aaaaaa" if theme_manager.night_mode else "#555555"),
+                "warning_bg": palette.get("--highlight-bg", "rgba(255, 235, 59, 0.15)" if theme_manager.night_mode else "#fff9c4"),
+                "warning_text": palette.get("--fg", "#fff9c4" if theme_manager.night_mode else "#665c00"),
+            }
             
         def _create_vertical_layout(self):
             """Create the vertical card layout (original style)."""
             card = QFrame()
             card.setObjectName("hideModeCard")
             card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            
-            # Darker background to match user preference
-            if theme_manager.night_mode:
-                card.setStyleSheet("""
-                    QFrame#hideModeCard {
-                        background-color: #1e1e1e;
-                        border-radius: 16px;
-                        padding: 8px;
-                    }
-                """)
-            else:
-                card.setStyleSheet("""
-                    QFrame#hideModeCard {
-                        background-color: #e8e8e8;
-                        border-radius: 16px;
-                        padding: 8px;
-                    }
-                """)
+            tokens = self._theme_tokens()
+            card.setStyleSheet(f"""
+                QFrame#hideModeCard {{
+                    background-color: {tokens["card_bg"]};
+                    border-radius: 16px;
+                    padding: 8px;
+                }}
+            """)
 
             layout = QVBoxLayout(card)
             layout.setSpacing(12)
@@ -6224,12 +7148,8 @@ class SettingsDialog(QDialog):
                     is_warning = any(w in item for w in [tr("restart_anki_note"), tr("windows_linux_only")])
                     
                     if is_warning:
-                        if theme_manager.night_mode:
-                            bg_color = "rgba(255, 235, 59, 0.15)"
-                            text_color = "#fff9c4"
-                        else:
-                            bg_color = "#fff9c4"
-                            text_color = "#665c00"
+                        bg_color = tokens["warning_bg"]
+                        text_color = tokens["warning_text"]
                         item_box.setStyleSheet(f"""
                             QFrame#hideModeItemBox {{
                                 background-color: {bg_color};
@@ -6239,24 +7159,14 @@ class SettingsDialog(QDialog):
                             }}
                         """)
                     else:
-                        if theme_manager.night_mode:
-                            item_box.setStyleSheet("""
-                                QFrame#hideModeItemBox {
-                                    background-color: #2c2c2c;
-                                    border-radius: 10px;
-                                    padding: 12px 10px;
-                                    min-height: 20px;
-                                }
-                            """)
-                        else:
-                            item_box.setStyleSheet("""
-                                QFrame#hideModeItemBox {
-                                    background-color: #f2f2f2;
-                                    border-radius: 10px;
-                                    padding: 12px 10px;
-                                    min-height: 20px;
-                                }
-                            """)
+                        item_box.setStyleSheet(f"""
+                            QFrame#hideModeItemBox {{
+                                background-color: {tokens["item_bg"]};
+                                border-radius: 10px;
+                                padding: 12px 10px;
+                                min-height: 20px;
+                            }}
+                        """)
                     
                     box_layout = QHBoxLayout(item_box)
                     box_layout.setContentsMargins(0, 0, 0, 0)
@@ -6269,10 +7179,7 @@ class SettingsDialog(QDialog):
                         item_label.setStyleSheet(f"font-size: 11px; color: {text_color}; background: transparent; font-weight: bold;")
                     else:
                         item_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                        if theme_manager.night_mode:
-                            item_label.setStyleSheet("font-size: 11px; color: #f2f2f2; background: transparent;")
-                        else:
-                            item_label.setStyleSheet("font-size: 11px; color: #2c2c2c; background: transparent;")
+                        item_label.setStyleSheet(f"font-size: 11px; color: {tokens['text']}; background: transparent;")
                             
                     box_layout.addWidget(item_label)
                     content_layout.addWidget(item_box)
@@ -6291,24 +7198,14 @@ class SettingsDialog(QDialog):
             card = QFrame()
             card.setObjectName("hideModeHeroCard")
             card.setMinimumHeight(140)
-            
-            # Darker background to match user preference
-            if theme_manager.night_mode:
-                card.setStyleSheet("""
-                    QFrame#hideModeHeroCard {
-                        background-color: #1e1e1e;
-                        border-radius: 16px;
-                        padding: 20px;
-                    }
-                """)
-            else:
-                card.setStyleSheet("""
-                    QFrame#hideModeHeroCard {
-                        background-color: #e8e8e8;
-                        border-radius: 16px;
-                        padding: 20px;
-                    }
-                """)
+            tokens = self._theme_tokens()
+            card.setStyleSheet(f"""
+                QFrame#hideModeHeroCard {{
+                    background-color: {tokens["card_bg"]};
+                    border-radius: 16px;
+                    padding: 20px;
+                }}
+            """)
             
             main_layout = QHBoxLayout(card)
             main_layout.setSpacing(20)
@@ -6318,10 +7215,7 @@ class SettingsDialog(QDialog):
             # Left side - Title as large text (no icon for modes)
             title_label = QLabel(self.title)
             title_label.setObjectName("hideModeHeroTitle")
-            if theme_manager.night_mode:
-                title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #e0e0e0; background: transparent;")
-            else:
-                title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #212121; background: transparent;")
+            title_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {tokens['text']}; background: transparent;")
             title_label.setMinimumWidth(80)
             title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
             main_layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -6351,12 +7245,8 @@ class SettingsDialog(QDialog):
                     warning_box = QFrame()
                     warning_box.setObjectName("hideModeWarningBox")
                     
-                    if theme_manager.night_mode:
-                        bg_color = "rgba(255, 235, 59, 0.15)"
-                        text_color = "#fff9c4"
-                    else:
-                        bg_color = "#fff9c4"
-                        text_color = "#665c00"
+                    bg_color = tokens["warning_bg"]
+                    text_color = tokens["warning_text"]
                     
                     warning_box.setStyleSheet(f"""
                         QFrame#hideModeWarningBox {{
@@ -6382,11 +7272,8 @@ class SettingsDialog(QDialog):
                 else:
                     # Regular feature text
                     feature_label = QLabel(f"• {feature}")
+                    feature_label.setObjectName("sectionDescription")
                     feature_label.setWordWrap(True)
-                    if theme_manager.night_mode:
-                        feature_label.setStyleSheet("font-size: 12px; color: #b5bdc7; background: transparent;")
-                    else:
-                        feature_label.setStyleSheet("font-size: 12px; color: #6b6b6b; background: transparent;")
                     center_layout.addWidget(feature_label)
             
             center_layout.addStretch()
@@ -6428,6 +7315,85 @@ class SettingsDialog(QDialog):
     def _create_hide_mode_card(self, title, toggle_widget, items):
         """Wrapper method for backwards compatibility - creates AdaptiveModeCard."""
         return self.AdaptiveModeCard(title, toggle_widget, items, self.addon_path, self)
+
+    def _create_mode_option_card(self, title, summary, toggle_widget, items, tag):
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#1f2937" if theme_manager.night_mode else "#ffffff")
+        item_bg = palette.get("--highlight-bg", "#263040" if theme_manager.night_mode else "#f3f4f6")
+        text_col = palette.get("--fg", "#f9fafb" if theme_manager.night_mode else "#111827")
+        muted_col = palette.get("--fg-subtle", "#d1d5db" if theme_manager.night_mode else "#4b5563")
+        border_col = palette.get("--border", "#374151" if theme_manager.night_mode else "#e5e7eb")
+
+        card = QFrame()
+        card.setObjectName("modeOptionCard")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        card.setStyleSheet(f"""
+            QFrame#modeOptionCard {{
+                background-color: {card_bg};
+                border: 1px solid {border_col};
+                border-radius: 18px;
+            }}
+            QFrame#modeFeaturePill {{
+                background-color: {item_bg};
+                border: 1px solid {border_col};
+                border-radius: 12px;
+            }}
+        """)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        header.setSpacing(12)
+
+        badge = QLabel(tag)
+        badge.setFixedSize(42, 32)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {self.accent_color};
+                color: #ffffff;
+                border-radius: 16px;
+                font-size: 11px;
+                font-weight: 800;
+            }}
+        """)
+        header.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_stack = QVBoxLayout()
+        text_stack.setSpacing(3)
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"font-size: 16px; font-weight: 800; color: {text_col}; background: transparent;")
+        text_stack.addWidget(title_label)
+
+        summary_label = QLabel(summary)
+        summary_label.setWordWrap(True)
+        summary_label.setStyleSheet(f"font-size: 12px; color: {muted_col}; background: transparent;")
+        text_stack.addWidget(summary_label)
+        header.addLayout(text_stack, 1)
+        header.addWidget(toggle_widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(header)
+
+        features = QWidget()
+        features.setStyleSheet("background: transparent;")
+        features_layout = QVBoxLayout(features)
+        features_layout.setContentsMargins(0, 0, 0, 0)
+        features_layout.setSpacing(6)
+
+        for item in items:
+            pill = QFrame()
+            pill.setObjectName("modeFeaturePill")
+            pill_layout = QHBoxLayout(pill)
+            pill_layout.setContentsMargins(10, 7, 10, 7)
+            label = QLabel(item)
+            label.setWordWrap(True)
+            label.setStyleSheet(f"font-size: 11px; color: {text_col}; background: transparent;")
+            pill_layout.addWidget(label)
+            features_layout.addWidget(pill)
+
+        layout.addWidget(features)
+        return card
 
     # Page creation methods (Gamification removed)
 
@@ -6526,83 +7492,52 @@ class SettingsDialog(QDialog):
     def create_hide_modes_page(self):
         page, layout = self._create_scrollable_page()
 
-        title = QLabel(tr("modes"))
-        title.setObjectName("hideModePageTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        if theme_manager.night_mode:
-            title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; color: #e0e0e0; background-color: #2c2c2c; padding: 0 5px;")
-        else:
-            title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; color: #212121; background-color: #f3f3f3; padding: 0 5px;")
-        layout.addWidget(title)
-
         description = QLabel(tr("modes_description"))
+        description.setObjectName("sectionDescription")
         description.setWordWrap(True)
-        description.setStyleSheet("font-size: 12px; color: #666; margin-bottom: 8px; padding: 10px;")
         layout.addWidget(description)
 
-        layout.addSpacing(20)
+        modes_grid = QGridLayout()
+        modes_grid.setContentsMargins(0, 0, 0, 0)
+        modes_grid.setHorizontalSpacing(12)
+        modes_grid.setVerticalSpacing(12)
 
-        # (Gamification Mode card removed and moved to Onigiri Games dialog)
-        layout.addSpacing(20)
-        
-        # Create responsive container for mode cards
-        cards_container = self.ResponsiveModeCardsContainer(self)
-
-        # Define what each mode hides - simplified flat structure
-        # Focus mode - Basic hiding
-        focus_items = [
-            ("", [
+        cards = [
+            self._create_mode_option_card(
+                tr("mode_focus"),
                 tr("hide_anki_bars"),
-                tr("replaces_top_bar")
-            ])
-        ]
-
-        # Flow mode - Includes everything from Focus + hides onigiri header
-        flow_items = [
-            ("", [
+                self.hide_native_header_checkbox,
+                [tr("replaces_top_bar")],
+                "FCS"
+            ),
+            self._create_mode_option_card(
+                tr("mode_flow"),
                 tr("everything_in_focus"),
-                tr("hides_onigiri_top_bar"),
-                tr("restart_anki_note")
-            ])
-        ]
-
-        # Zen mode - Includes everything from Flow + even more
-        zen_items = [
-            ("", [
+                self.flow_mode_checkbox,
+                [tr("hides_onigiri_top_bar"), tr("restart_anki_note")],
+                "FLW"
+            ),
+            self._create_mode_option_card(
+                tr("mode_zen"),
                 tr("everything_in_flow"),
-                tr("hides_reviewer_bottom_bar"),
-                tr("button_only_navigation"),
-                tr("restart_anki_note")
-            ])
-        ]
-
-        # Full mode - Hides the top menu bar (File, Edit, View, Tools, Help)
-        full_items = [
-            ("", [
+                self.max_hide_checkbox,
+                [tr("hides_reviewer_bottom_bar"), tr("button_only_navigation"), tr("restart_anki_note")],
+                "ZEN"
+            ),
+            self._create_mode_option_card(
+                tr("mode_full"),
                 tr("hide_top_menu_bar"),
-                tr("menu_bar_items_example"),
-                tr("windows_linux_only"),
-                tr("restart_anki_note")
-            ])
+                self.full_hide_mode_checkbox,
+                [tr("menu_bar_items_example"), tr("windows_linux_only"), tr("restart_anki_note")],
+                "FUL"
+            ),
         ]
 
-        # Create mode cards using AdaptiveModeCard
-        card1 = self._create_hide_mode_card(tr("mode_focus"), self.hide_native_header_checkbox, focus_items)
-        card4 = self._create_hide_mode_card(tr("mode_flow"), self.flow_mode_checkbox, flow_items)
-        card3 = self._create_hide_mode_card(tr("mode_zen"), self.max_hide_checkbox, zen_items)
-        card_full = self._create_hide_mode_card(tr("mode_full"), self.full_hide_mode_checkbox, full_items)
+        for index, card in enumerate(cards):
+            modes_grid.addWidget(card, index // 2, index % 2)
 
-        # Add cards to responsive container
-        cards_container.add_mode_card(card1)
-        cards_container.add_mode_card(card4)
-        cards_container.add_mode_card(card3)
-        cards_container.add_mode_card(card_full)
-
-        layout.addWidget(cards_container)
-        
+        layout.addLayout(modes_grid)
         layout.addStretch()
-
-
         
         return page
 
@@ -7125,10 +8060,7 @@ class SettingsDialog(QDialog):
         action_buttons_section.add_layout(mode_layout)
         
         mode_help = QLabel(tr("action_buttons_help"))
-        if theme_manager.night_mode:
-            mode_help.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
-        else:
-            mode_help.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        mode_help.setObjectName("sectionDescription")
         action_buttons_section.add_widget(mode_help)
 
         # --- Drag-and-drop grids (shown only when List is selected) ---
@@ -7139,10 +8071,7 @@ class SettingsDialog(QDialog):
 
         organize_label = QLabel(tr("drag_drop_reorder"))
         organize_label.setWordWrap(True)
-        if theme_manager.night_mode:
-            organize_label.setStyleSheet("color: #b5bdc7; font-size: 11px; margin-bottom: 5px;")
-        else:
-            organize_label.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        organize_label.setObjectName("sectionDescription")
         sle_container_layout.addWidget(organize_label)
 
         self.sidebar_layout_editor = self.SidebarLayoutEditor(self)
@@ -7257,33 +8186,7 @@ class SettingsDialog(QDialog):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setProperty("indent_mode", key)
             
-            # Dynamic styling based on theme
-            if theme_manager.night_mode:
-                border_color = "#555555"
-                text_color = "#eeeeee"
-                hover_bg = "rgba(255, 255, 255, 0.1)"
-            else:
-                border_color = "#cccccc"
-                text_color = "#333333"
-                hover_bg = "rgba(0, 0, 0, 0.05)"
-
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    padding: 8px 15px;
-                    border: 1px solid {border_color};
-                    border-radius: 6px;
-                    background-color: transparent;
-                    color: {text_color};
-                }}
-                QPushButton:checked {{
-                    background-color: {self.accent_color};
-                    color: white;
-                    border-color: {self.accent_color};
-                }}
-                QPushButton:hover:!checked {{
-                    background-color: {hover_bg};
-                }}
-            """)
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=34))
             
             if key == current_mode:
                 btn.setChecked(True)
@@ -8220,6 +9123,7 @@ class SettingsDialog(QDialog):
         """)
         
         hex_input.textChanged.connect(color_swatch.setColor)
+        hex_input.textChanged.connect(lambda value, m=mode, key=name: self._on_palette_color_changed(m, key, value))
         hex_input.returnPressed.connect(hex_input.clearFocus)
         color_swatch.clicked.connect(lambda _, le=hex_input, btn=color_swatch: self.open_color_picker(le, btn))
 
@@ -8238,6 +9142,14 @@ class SettingsDialog(QDialog):
         if mode in ["light", "dark"]:
             self.color_widgets[mode][name] = hex_input
         return widget
+
+    def _on_palette_color_changed(self, mode, key, value):
+        color = QColor(value)
+        if mode not in ["light", "dark"] or not color.isValid():
+            return
+        self.current_config.setdefault("colors", {}).setdefault(mode, {})[key] = value
+        if (theme_manager.night_mode and mode == "dark") or (not theme_manager.night_mode and mode == "light"):
+            self.apply_stylesheet()
 
     def create_sidebar_custom_options(self):
         widget = QWidget()
@@ -9660,101 +10572,57 @@ class SettingsDialog(QDialog):
 
     def _create_scrollable_page(self):
         scroll = QScrollArea()
+        scroll.setObjectName("settingsPageScroll")
         scroll.setWidgetResizable(True)
+        scroll.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.viewport().setStyleSheet("background: transparent;")
 
         content_widget = QWidget()
-        # This is the key fix: It tells Qt to efficiently handle filling the 
-        # background, which prevents the flicker during redraws.
-        content_widget.setAutoFillBackground(True)
+        content_widget.setObjectName("settingsPageContent")
+        content_widget.setAutoFillBackground(False)
         scroll.setWidget(content_widget)
         
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(12, 20, 12, 20)  # Added 20px bottom padding
+        content_layout.setContentsMargins(20, 20, 20, 0)
+        content_layout.setSpacing(14)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         page_container = QWidget()
         # We give the container a name so we can style it from the main stylesheet.
         page_container.setObjectName("pageContainer")
+        page_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         
         page_layout = QVBoxLayout(page_container)
         page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
         page_layout.addWidget(scroll)
         
         return page_container, content_layout
 
     def _add_navigation_buttons(self, page_container, scroll_area, sections_map, buttons_per_row=None):
         """
-        Adds a navigation bar at the top of the page container.
-        sections_map: dict of {title: widget}
-        buttons_per_row: int or None. If specified, buttons are arranged in a grid with this many columns.
-                        If None, all buttons are placed in a single horizontal row.
+        Registers compact top navigation for the page currently being built.
         """
         if not sections_map:
             return
 
-        nav_widget = QWidget()
-        nav_widget.setObjectName("navBar")
-        
-        # Choose layout based on buttons_per_row parameter
-        if buttons_per_row is not None:
-            nav_layout = QGridLayout(nav_widget)
-            nav_layout.setContentsMargins(10, 15, 10, 10)
-            nav_layout.setSpacing(10)
-            nav_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        else:
-            nav_layout = QHBoxLayout(nav_widget)
-            nav_layout.setContentsMargins(10, 15, 10, 10)
-            nav_layout.setSpacing(10)
-            nav_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        content_widget = scroll_area.widget()
+        content_layout = content_widget.layout() if content_widget else None
+        if content_layout:
+            self._remove_trailing_layout_stretches(content_layout)
 
-        button_index = 0
-        for title, target_widget in sections_map.items():
-            btn = QPushButton(title)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            # Style the button to look like a pill
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(128, 128, 128, 0.1) !important;
-                    border: 1px solid rgba(128, 128, 128, 0.2) !important;
-                    border-radius: 15px !important;
-                    padding: 5px 15px !important;
-                    font-size: 13px !important;
-                    font-weight: bold !important;
-                    min-height: 20px !important;
-                }
-                QPushButton:hover {
-                    background-color: rgba(128, 128, 128, 0.2) !important;
-                    border: 1px solid rgba(128, 128, 128, 0.4) !important;
-                    border-radius: 15px !important;
-                }
-                QPushButton:pressed {
-                    background-color: rgba(128, 128, 128, 0.3) !important;
-                    border: 1px solid rgba(128, 128, 128, 0.5) !important;
-                    border-radius: 15px !important;
-                }
-            """)
-            
-            # Use a closure to capture the target widget
-            btn.clicked.connect(lambda checked, w=target_widget: self._scroll_to_widget(scroll_area, w))
-            
-            if buttons_per_row is not None:
-                # Grid layout: calculate row and column
-                row = button_index // buttons_per_row
-                col = button_index % buttons_per_row
-                nav_layout.addWidget(btn, row, col)
-            else:
-                # Horizontal layout
-                nav_layout.addWidget(btn)
-            
-            button_index += 1
-        
-        if buttons_per_row is None:
-            nav_layout.addStretch()
-        
-        # Insert at the top of the page container layout
-        page_layout = page_container.layout()
-        if page_layout:
-            page_layout.insertWidget(0, nav_widget)
+        page_name = self._building_page_name
+        if page_name:
+            self._page_nav_sections[page_name] = list(sections_map.items())
+
+    def _remove_trailing_layout_stretches(self, layout):
+        while layout.count():
+            item = layout.itemAt(layout.count() - 1)
+            if item and item.spacerItem() is not None:
+                layout.takeAt(layout.count() - 1)
+                continue
+            break
 
     def _scroll_to_widget(self, scroll_area, widget):
         # Get the y coordinate of the widget relative to the scroll area's content widget
@@ -9773,19 +10641,63 @@ class SettingsDialog(QDialog):
         group_container = QWidget()
         layout = QVBoxLayout(group_container)
         layout.setContentsMargins(0, 0 if is_sub_group else 10, 0, 0)
+        layout.setSpacing(10)
         
-        if title: layout.addWidget(QLabel(title))
+        if title:
+            title_label = QLabel(title)
+            title_label.setObjectName("galleryTitleLabel")
+            layout.addWidget(title_label)
+
+        palette = self._settings_palette()
+        panel_bg = palette.get("--highlight-bg", "#263040" if theme_manager.night_mode else "#f3f4f6")
+        text_col = palette.get("--fg", "#f9fafb" if theme_manager.night_mode else "#111827")
+        muted_col = palette.get("--fg-subtle", "#d1d5db" if theme_manager.night_mode else "#4b5563")
+        border_col = palette.get("--border", "#374151" if theme_manager.night_mode else "#e5e7eb")
+
+        quick_panel = QFrame()
+        quick_panel.setObjectName("imageQuickPicker")
+        quick_panel.setStyleSheet(f"""
+            QFrame#imageQuickPicker {{
+                background-color: {panel_bg};
+                border: 1px solid {border_col};
+                border-radius: 14px;
+            }}
+            QLabel {{
+                background: transparent;
+            }}
+        """)
+        quick_layout = QHBoxLayout(quick_panel)
+        quick_layout.setContentsMargins(12, 10, 12, 10)
+        quick_layout.setSpacing(10)
+
+        helper_stack = QVBoxLayout()
+        helper_stack.setSpacing(2)
+        helper_title = QLabel(tr("choose_image") if show_path else tr("add_icon"))
+        helper_title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {text_col}; background: transparent;")
+        helper_stack.addWidget(helper_title)
+
+        choose_button = QPushButton(tr("choose_image") if show_path else tr("add_icon"))
+        choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key))
+        delete_button = QPushButton(tr("delete_selected"))
+        delete_button.clicked.connect(lambda: self._delete_from_gallery(key))
+
+        path_input = QLineEdit()
+        path_input.setObjectName("gallerySelectedInput")
+        path_input.setPlaceholderText(tr("no_item_selected"))
+        path_input.setReadOnly(True)
+        if show_path:
+            helper_stack.addWidget(path_input)
+        else:
+            path_input.hide()
+
+        quick_layout.addLayout(helper_stack, 1)
+        quick_layout.addWidget(choose_button)
+        quick_layout.addWidget(delete_button)
+
+        layout.addWidget(quick_panel)
 
         scroll_area, grid_layout = self._create_gallery_ui()
         layout.addWidget(scroll_area)
-        
-        button_row = QHBoxLayout()
-        choose_button = QPushButton(tr("choose_image") if show_path else tr("add_icon")); choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key)); button_row.addWidget(choose_button)
-        delete_button = QPushButton(tr("delete_selected")); delete_button.clicked.connect(lambda: self._delete_from_gallery(key)); button_row.addWidget(delete_button)
-        
-        path_input = QLineEdit(); path_input.setPlaceholderText(tr("no_item_selected")); path_input.setReadOnly(True)
-        if show_path:
-            layout.addWidget(QLabel(tr("selected_file"))); layout.addWidget(path_input)
 
         # Determine which config source to use based on the config key pattern
         if config_key and (
@@ -9812,14 +10724,16 @@ class SettingsDialog(QDialog):
         # Defer gallery population to avoid blocking UI
         self._defer_gallery_population(key)
         
-        layout.addLayout(button_row)
         self._update_delete_button_state(key)
         return group_container
 
     def _create_gallery_ui(self):
-        scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setFixedHeight(140)
+        scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setMinimumHeight(150); scroll_area.setMaximumHeight(220)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         content_widget = QWidget(); grid_layout = QGridLayout(content_widget)
-        grid_layout.setSpacing(10); grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setSpacing(12); grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         scroll_area.setWidget(content_widget)
         return scroll_area, grid_layout
 
@@ -9880,12 +10794,12 @@ class SettingsDialog(QDialog):
         
         # Determine sizes based on key
         if key == 'profile_pic':
-            item_width, item_height = 110, 110
-            img_width, img_height = 100, 100
+            item_width, item_height = 108, 112
+            img_width, img_height = 96, 96
             shape = 'circular'
         else: # profile_bg and others
-            item_width, item_height = 120, 75
-            img_width, img_height = 100, 55
+            item_width, item_height = 154, 96
+            img_width, img_height = 142, 80
             shape = 'rounded'
 
         for i, filename in enumerate(image_files):
@@ -10001,7 +10915,12 @@ class SettingsDialog(QDialog):
         dest_path = os.path.join(self.addon_path, gallery['folder'], filename)
         
         try:
-            shutil.copy(filepath, dest_path)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            if os.path.abspath(filepath) != os.path.abspath(dest_path):
+                shutil.copy(filepath, dest_path)
+            gallery['selected'] = filename
+            if gallery.get('path_input'):
+                gallery['path_input'].setText(filename)
             self._refresh_gallery(key)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not copy file: {e}")
@@ -10244,13 +11163,16 @@ class SettingsDialog(QDialog):
         display_name = label_override if label_override is not None else name
         label=QLabel(f"{display_name}:")
         if tooltip_text: label.setToolTip(tooltip_text)
-        label.setFixedWidth(250)
+        label.setMinimumWidth(120)
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         hex_input=QLineEdit(default_value)
         hex_input.setFixedWidth(100)
         color_button = CircularColorButton(default_value)
         
         color_button.clicked.connect(lambda _, le=hex_input, btn=color_button: self.open_color_picker(le, btn))
         hex_input.textChanged.connect(lambda txt, btn=color_button: btn.setColor(txt))
+        if mode in ["light_accent", "dark_accent"]:
+            hex_input.textChanged.connect(lambda txt, m=mode: self._on_settings_accent_changed(m, txt))
         
         row_layout.addWidget(label)
         row_layout.addWidget(hex_input)
@@ -10261,6 +11183,16 @@ class SettingsDialog(QDialog):
         elif mode in ["light_accent", "dark_accent"]: setattr(self, f"{mode}_color_input", hex_input)
         else: setattr(self, f"{mode}_color_input", hex_input)
         return row_layout
+
+    def _on_settings_accent_changed(self, mode, value):
+        color = QColor(value)
+        if not color.isValid():
+            return
+        theme_key = "dark" if mode.startswith("dark") else "light"
+        self.current_config.setdefault("colors", {}).setdefault(theme_key, {})["--accent-color"] = value
+        if (theme_manager.night_mode and theme_key == "dark") or (not theme_manager.night_mode and theme_key == "light"):
+            self.accent_color = value
+            self.apply_stylesheet()
 
 
 
@@ -10844,6 +11776,8 @@ class SettingsDialog(QDialog):
 
         # --- Action Buttons (remain the same) ---
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 8, 0, 22)
+        button_layout.setSpacing(12)
         import_button = QPushButton(tr("import_theme"))
         import_button.clicked.connect(self._import_theme)
 
@@ -10861,7 +11795,6 @@ class SettingsDialog(QDialog):
         button_layout.addWidget(reset_button)
 
         layout.addLayout(button_layout)
-        layout.addStretch()
         return page
 
     def _apply_theme(self, theme_data: dict):
@@ -10975,7 +11908,13 @@ class SettingsDialog(QDialog):
 
     def _load_themes(self):
         """Loads built-in and custom themes, returning them as separate dictionaries."""
-        official_themes = THEMES.copy()
+        default_theme = copy.deepcopy(DEFAULTS["colors"])
+        default_theme["light"]["--canvas-inset"] = "#e8e8e8"
+        default_theme["light"]["--highlight-bg"] = "#e8e8e8"
+        default_theme["dark"]["--canvas-inset"] = "#1f1f1f"
+        default_theme["dark"]["--highlight-bg"] = "#3c3c3c"
+        official_themes = {"Default theme": default_theme}
+        official_themes.update(THEMES.copy())
         user_themes = {}
 
         # Load user themes from JSON files
@@ -11015,7 +11954,18 @@ class SettingsDialog(QDialog):
         row, col = 0, 0
         num_cols = 2
 
-        for name, data in sorted(themes_dict.items()):
+        theme_items = list(themes_dict.items())
+        if not deletable:
+            default_items = [(name, data) for name, data in theme_items if name == "Default theme"]
+            other_items = sorted(
+                [(name, data) for name, data in theme_items if name != "Default theme"],
+                key=lambda item: item[0].lower()
+            )
+            theme_items = default_items + other_items
+        else:
+            theme_items = sorted(theme_items, key=lambda item: item[0].lower())
+
+        for name, data in theme_items:
             card = ThemeCardWidget(name, data, deletable=deletable, delete_icon=delete_icon)
             card.theme_selected.connect(self._apply_theme)
             if deletable:
@@ -11579,6 +12529,8 @@ class SettingsDialog(QDialog):
             mw.col.conf["modern_menu_hide_subdeck_icon"] = self.hide_subdeck_cb.isChecked()
         if hasattr(self, "hide_deck_cb"):
             mw.col.conf["modern_menu_hide_deck_icon"] = self.hide_deck_cb.isChecked()
+        if hasattr(self, "hide_filtered_deck_cb"):
+            mw.col.conf["modern_menu_hide_filtered_deck_icon"] = self.hide_filtered_deck_cb.isChecked()
         if hasattr(self, "hide_default_custom_cb"):
             mw.col.conf["modern_menu_hide_default_icons"] = self.hide_default_custom_cb.isChecked()
         
