@@ -452,25 +452,22 @@ class ProfileBarWidget(QWidget):
             )
             self.pic_label.setPixmap(circular_pixmap)
 
-        # Nome + subtítulo
+        # Nome
         text_widget = QWidget()
         text_widget.setStyleSheet("background: transparent;")
         text_layout = QVBoxLayout(text_widget)
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(1)
+        text_layout.setSpacing(0)
 
         self.name_label = QLabel(user_name)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_color = "#f9fafb" if theme_manager.night_mode else "#111827"
-        sub_color = "#9ca3af"
         self.name_label.setStyleSheet(
             f"font-weight: 600; font-size: 13px; color: {name_color}; background: transparent;"
         )
-        self.sub_label = QLabel("Perfil")
-        self.sub_label.setStyleSheet(
-            f"font-size: 11px; color: {sub_color}; background: transparent;"
-        )
+        text_layout.addStretch()
         text_layout.addWidget(self.name_label)
-        text_layout.addWidget(self.sub_label)
+        text_layout.addStretch()
 
         layout.addWidget(self.pic_label)
         layout.addWidget(text_widget, 1)
@@ -499,12 +496,9 @@ class ProfileBarWidget(QWidget):
         self.refresh_theme()
 
     def refresh_theme(self):
-        name_color, sub_color = self._text_colors()
+        name_color, _ = self._text_colors()
         self.name_label.setStyleSheet(
             f"font-weight: 600; font-size: 13px; color: {name_color}; background: transparent;"
-        )
-        self.sub_label.setStyleSheet(
-            f"font-size: 11px; color: {sub_color}; background: transparent;"
         )
         self.update()
 
@@ -673,13 +667,6 @@ class SectionGroup(QWidget):
             title_label = QLabel(title)
             title_label.setObjectName("sectionTitle")
             self.header_layout.addWidget(title_label)
-            if description:
-                info_button = QPushButton("i")
-                info_button.setObjectName("sectionInfoButton")
-                info_button.setFixedSize(24, 24)
-                info_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                info_button.setToolTip(description)
-                self.header_layout.addWidget(info_button)
             self.header_layout.addStretch()
             main_layout.addLayout(self.header_layout)
 
@@ -2847,7 +2834,7 @@ class SettingsDialog(QDialog):
         self._add_sidebar_nav_section(sidebar_layout, tr("general"), [
             (tr("modes"), "Modes", "focus.svg"),
             (tr("languages"), "Languages", "deck.svg"),
-            (tr("fonts"), "Fonts", "edit.svg"),
+            (tr("fonts"), "Fonts", "font.svg"),
             (tr("palette"), "Palette", "paintbrush.svg"),
             (tr("themes"), "Themes", "star_outline.svg"),
             (tr("gallery"), "Gallery", "folder.svg"),
@@ -3091,6 +3078,7 @@ class SettingsDialog(QDialog):
         setattr(self, f"font_size_{config_key}", size_spinbox)
 
         restore_btn = QPushButton(tr("restore_default"))
+        restore_btn.setObjectName("fontRestoreButton")
         restore_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         restore_btn.setToolTip(f"{tr('restore_default')} {default_size}px")
         restore_btn.clicked.connect(lambda _, s=size_spinbox, d=default_size: s.setValue(d))
@@ -3098,11 +3086,10 @@ class SettingsDialog(QDialog):
         add_button = QPushButton(tr("add_your_font"))
         add_button.setObjectName("fontAddButton")
         add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_button.setFixedHeight(44)
         add_button.clicked.connect(self._add_user_font)
 
-        control_layout.addWidget(QLabel(tr("font")))
         control_layout.addWidget(font_combo)
-        control_layout.addWidget(QLabel(tr("font_size")))
         control_layout.addWidget(size_spinbox)
         control_layout.addWidget(restore_btn)
         control_layout.addWidget(add_button)
@@ -3551,8 +3538,9 @@ class SettingsDialog(QDialog):
 
     def _create_responsive_row(self, spacing=8):
         container = QWidget()
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = FlowLayout(container, margin=0, spacing=spacing)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 2, 0, 2)
         return container, layout
 
     def _add_header_widget(self, container, widget):
@@ -3968,19 +3956,6 @@ class SettingsDialog(QDialog):
                 background: transparent;
                 font-size: 14px;
                 font-weight: 700;
-            }}
-            QPushButton#sectionInfoButton {{
-                background-color: transparent;
-                border: none;
-                border-radius: 12px;
-                color: {accent_color};
-                font-size: 13px;
-                font-weight: 800;
-                padding: 0px;
-            }}
-            QPushButton#sectionInfoButton:hover {{
-                background-color: {surface_hover};
-                color: {fg};
             }}
             QLabel#sectionDescription,
             QLabel#settingRowDescription {{
@@ -4423,15 +4398,31 @@ class SettingsDialog(QDialog):
             }}
             QPushButton#fontAddButton {{
                 background-color: transparent;
-                border: 1.5px dashed {soft_border};
-                border-radius: 14px;
+                border: 1px solid {border};
+                border-radius: 7px;
                 color: {fg_secondary};
-                padding: 10px 14px;
+                padding: 6px 14px;
+                min-height: 30px;
+                max-height: 30px;
                 text-align: center;
             }}
             QPushButton#fontAddButton:hover {{
                 background-color: {surface_hover};
                 border-color: {accent_color};
+                color: {fg};
+            }}
+            QPushButton#fontRestoreButton {{
+                background-color: {input_bg};
+                color: {fg_secondary};
+                border: 1px solid {border};
+                border-radius: 7px;
+                padding: 6px 14px;
+                min-height: 30px;
+                font-weight: 600;
+            }}
+            QPushButton#fontRestoreButton:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
                 color: {fg};
             }}
             QWidget#fontRoleControl {{
@@ -5394,7 +5385,7 @@ class SettingsDialog(QDialog):
             for i in range(1, max_cols + 1):
                 if is_heatmap and i < 2: continue # Heatmap min 2 cols
                 if self.widget_id == 'restaurant_level':
-                     if i != 2: continue # Restaurant Level exactly 2 cols
+                    if i != 2: continue # Restaurant Level exactly 2 cols
                 btn = custom_menu.add_action_button(f"{i} Column{'s' if i > 1 else ''}", i, width_group, self.col_span == i)
 
             custom_menu.add_separator()
@@ -5403,11 +5394,13 @@ class SettingsDialog(QDialog):
             height_group = QButtonGroup(custom_menu)
             height_group.setExclusive(True)
             # Set row constraints
-            min_rows = 2 if (is_heatmap or self.widget_id == 'restaurant_level') else 1
+            min_rows = 2 if (is_heatmap or self.widget_id in ('restaurant_level', 'onigimon')) else 1
             if is_heatmap:
                 max_rows = 2  # Heatmap: exactly 2 rows
             elif self.widget_id == 'restaurant_level':
                 max_rows = 2  # Restaurant Level: exactly 2 rows (for now)
+            elif self.widget_id == 'onigimon':
+                max_rows = 2  # Onigimon: companion card is two rows tall by default
             elif self.widget_id == 'favorites':
                 max_rows = 3  # Favorites: up to 3 rows
             else:
@@ -5990,7 +5983,7 @@ class SettingsDialog(QDialog):
                     "retention": {"pos": 3, "row": 1, "col": 1},
                     "heatmap": {"pos": 4, "row": 2, "col": 4},
                 },
-                "archive": ["favorites", "restaurant_level"] # <-- "favorites" and "restaurant_level" moved here
+                "archive": ["favorites", "restaurant_level", "onigimon"] # <-- optional widgets start archived
             }
 
             saved_layout = self.settings_dialog.current_config.get("onigiriWidgetLayout", DEFAULTS)
@@ -6035,7 +6028,8 @@ class SettingsDialog(QDialog):
                 "studied": tr("widget_studied"), "time": tr("widget_time"), 
                 "pace": tr("widget_pace"), "retention": tr("widget_retention"), "heatmap": tr("widget_heatmap"),
                 "favorites": "Favorites Widget",
-                "restaurant_level": "Restaurant Level"
+                "restaurant_level": "Restaurant Level",
+                "onigimon": "Onigimon"
             }
 
             placed_widgets = set()
@@ -6047,6 +6041,8 @@ class SettingsDialog(QDialog):
                 if widget_id == "restaurant_level":
                     item.row_span = 2
                     item.col_span = 2
+                elif widget_id == "onigimon":
+                    item.row_span = 2
                 self.all_onigiri_items[widget_id] = item
 
             # Combine grid and archive configs to find all saved names
@@ -6099,6 +6095,10 @@ class SettingsDialog(QDialog):
             # Reset spans when archiving
             if item.widget_id == "heatmap":
                 item.row_span, item.col_span = 2, 4
+            elif item.widget_id == "restaurant_level":
+                item.row_span, item.col_span = 2, 2
+            elif item.widget_id == "onigimon":
+                item.row_span, item.col_span = 2, 1
             else:
                 item.row_span, item.col_span = 1, 1
 
@@ -6235,7 +6235,7 @@ class SettingsDialog(QDialog):
                 "retention": {"pos": 3, "row": 1, "col": 1},
                 "heatmap": {"pos": 4, "row": 2, "col": 4},
             },
-            "archive": ["favorites", "restaurant_level"]
+            "archive": ["favorites", "restaurant_level", "onigimon"]
         }
 
         # Default display names for Onigiri widgets
@@ -6243,7 +6243,8 @@ class SettingsDialog(QDialog):
             "studied": tr("widget_studied"), "time": tr("widget_time"), 
             "pace": tr("widget_pace"), "retention": tr("widget_retention"), "heatmap": tr("widget_heatmap"),
             "favorites": tr("widget_favorites"),
-            "restaurant_level": tr("widget_restaurant_level")
+            "restaurant_level": tr("widget_restaurant_level"),
+            "onigimon": "Onigimon"
         }
 
         def __init__(self, settings_dialog):
@@ -6459,6 +6460,8 @@ class SettingsDialog(QDialog):
                 if widget_id == "restaurant_level":
                     item.row_span = 2
                     item.col_span = 2
+                elif widget_id == "onigimon":
+                    item.row_span = 2
                 self.all_onigiri_items[widget_id] = item
 
             # Update display names from saved config
@@ -6579,6 +6582,8 @@ class SettingsDialog(QDialog):
                 item.row_span, item.col_span = 2, 4
             elif item.widget_id == "restaurant_level":
                 item.row_span, item.col_span = 2, 2
+            elif item.widget_id == "onigimon":
+                item.row_span, item.col_span = 2, 1
             else:
                 item.row_span, item.col_span = 1, 1
 
@@ -6818,10 +6823,10 @@ class SettingsDialog(QDialog):
             btn = QPushButton(trans_key)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(40)
             btn.setProperty("view_mode", display_name.lower())
             
-            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=32))
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=36))
             
             if display_name.lower() == current_view:
                 btn.setChecked(True)
@@ -6839,9 +6844,9 @@ class SettingsDialog(QDialog):
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(40)
             btn.setProperty("week_start", key)
-            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=32))
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=36))
             btn.setChecked(key == current_week_start)
             self.heatmap_week_start_group.addButton(btn)
             week_start_layout.addWidget(btn)
@@ -10143,10 +10148,6 @@ class SettingsDialog(QDialog):
         bottom_bar_section = SectionGroup(tr("bottom_bar_bg"), self)
         layout.addWidget(bottom_bar_section)
 
-        # --- Notification Position Section ---
-        notification_pos_section = self.create_notification_position_section()
-        layout.addWidget(notification_pos_section)
-
         # --- Answer Buttons Section ---
         reviewer_buttons_section = self.create_reviewer_buttons_section()
         layout.addWidget(reviewer_buttons_section)
@@ -10267,7 +10268,6 @@ class SettingsDialog(QDialog):
         sections = {
             tr("reviewer_background"): reviewer_bg_section,
             tr("bottom_bar_background"): bottom_bar_section,
-            tr("notification_position"): notification_pos_section,
             tr("answer_buttons"): reviewer_buttons_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=2)
@@ -10330,157 +10330,6 @@ class SettingsDialog(QDialog):
             self.galleries['reviewer_bar_bg']['effects_widget'] = effects_container
 
         return widget
-
-    def create_notification_position_section(self):
-        section = SectionGroup(tr("reviewer_notification_pos_title"), self)
-        
-        container = QWidget()
-        main_layout = QHBoxLayout(container)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(40)
-        
-        # --- Left Side: Selection Grid ---
-        grid_container = QWidget()
-        grid_layout = QGridLayout(grid_container)
-        grid_layout.setSpacing(10)
-        
-        positions = [
-            ("top-left", "↖", 0, 0),
-            ("top-center", "↑", 0, 1),
-            ("top-right", "↗", 0, 2),
-            ("bottom-left", "↙", 1, 0),
-            ("bottom-center", "↓", 1, 1),
-            ("bottom-right", "↘", 1, 2),
-        ]
-        
-        self.notification_pos_buttons = {}
-        current_pos = self.current_config.get("onigiri_reviewer_notification_position", "top-right")
-        
-        for pos_id, label, row, col in positions:
-            btn = QPushButton(label)
-            btn.setFixedSize(60, 45)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            
-            # Style for buttons
-            base_style = f"""
-                QPushButton {{
-                    border: 1px solid #ccc;
-                    border-radius: 8px;
-                    background-color: transparent;
-                    font-size: 20px;
-                    color: #555;
-                }}
-                QPushButton:hover {{
-                    background-color: rgba(0,0,0,0.05);
-                }}
-                QPushButton:checked {{
-                    background-color: {self.accent_color};
-                    color: white;
-                    border: 1px solid {self.accent_color};
-                }}
-            """
-            
-            if theme_manager.night_mode:
-                base_style = f"""
-                    QPushButton {{
-                        border: 1px solid #555;
-                        border-radius: 8px;
-                        background-color: transparent;
-                        font-size: 20px;
-                        color: #ccc;
-                    }}
-                    QPushButton:hover {{
-                        background-color: rgba(255,255,255,0.05);
-                    }}
-                    QPushButton:checked {{
-                        background-color: {self.accent_color};
-                        color: white;
-                        border: 1px solid {self.accent_color};
-                    }}
-                """
-            
-            btn.setStyleSheet(base_style)
-            
-            if pos_id == current_pos:
-                btn.setChecked(True)
-                
-            btn.clicked.connect(lambda checked, pid=pos_id: self._update_notification_position(pid))
-            
-            self.notification_pos_buttons[pos_id] = btn
-            grid_layout.addWidget(btn, row, col)
-            
-        main_layout.addWidget(grid_container)
-        
-        # --- Right Side: Preview ---
-        self.notif_preview_widget = QWidget()
-        self.notif_preview_widget.setFixedSize(200, 120)
-        # Style the preview container (screen representation)
-        screen_border = "#ccc" if not theme_manager.night_mode else "#555"
-        screen_bg = "transparent"
-        self.notif_preview_widget.setStyleSheet(f"""
-            QWidget {{
-                border: 2px solid {screen_border};
-                border-radius: 12px;
-                background-color: {screen_bg};
-            }}
-        """)
-        
-        # The small notification rectangle
-        self.notif_rect = QLabel(self.notif_preview_widget)
-        self.notif_rect.setFixedSize(60, 30)
-        self.notif_rect.setStyleSheet(f"""
-            background-color: {self.accent_color};
-            border-radius: 4px;
-        """)
-        
-        self._position_preview_rect(current_pos)
-        
-        main_layout.addWidget(self.notif_preview_widget)
-        main_layout.addStretch()
-        
-        section.content_layout.addWidget(container)
-        
-        return section
-
-    def _update_notification_position(self, pos_id):
-        # Update config
-        self.current_config["onigiri_reviewer_notification_position"] = pos_id
-        
-        # Update buttons state (ensure exclusive check)
-        for pid, btn in self.notification_pos_buttons.items():
-            if pid != pos_id:
-                btn.setChecked(False)
-            else:
-                btn.setChecked(True)
-                
-        # Update preview
-        self._position_preview_rect(pos_id)
-
-    def _position_preview_rect(self, pos_id):
-        # Calculate position for the preview rect within the 200x120 container
-        # Rect size: 60x30
-        # Padding/Margin assumed: 10px from edges
-        
-        container_w, container_h = 200, 120
-        rect_w, rect_h = 60, 30
-        margin = 10
-        
-        x, y = 0, 0
-        
-        if "left" in pos_id:
-            x = margin
-        elif "right" in pos_id:
-            x = container_w - rect_w - margin
-        else: # center
-            x = (container_w - rect_w) // 2
-            
-        if "top" in pos_id:
-            y = margin
-        elif "bottom" in pos_id:
-            y = container_h - rect_h - margin
-            
-        self.notif_rect.move(x, y)
 
     def _create_reviewer_bg_custom_options(self):
         """Create custom background options for the reviewer screen."""

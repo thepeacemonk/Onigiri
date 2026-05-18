@@ -691,18 +691,23 @@ body.onigiri-is-dragging * {
     padding: 6px 10px;
     box-sizing: border-box;
     border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(62, 62, 62, 0.97);
-    color: var(--fg);
+    border: 1px solid var(--onigiri-drag-border, rgba(255, 255, 255, 0.1));
+    background: var(--onigiri-drag-bg, rgba(62, 62, 62, 0.97));
+    color: var(--onigiri-drag-fg, var(--fg));
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
     overflow: hidden;
     backdrop-filter: blur(10px);
 }
 
-body:not(.night-mode) .onigiri-drag-preview {
+.onigiri-drag-preview.is-light {
     background: rgba(255, 255, 255, 0.96);
-    border-color: rgba(0, 0, 0, 0.08);
+    background: var(--onigiri-drag-bg, rgba(255, 255, 255, 0.96));
+    border-color: var(--onigiri-drag-border, rgba(0, 0, 0, 0.08));
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+}
+
+.onigiri-drag-preview.is-dark {
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.46);
 }
 
 .onigiri-drag-preview .deck-info {
@@ -717,8 +722,14 @@ body:not(.night-mode) .onigiri-drag-preview {
     display: flex;
     align-items: center;
     min-width: 0;
-    color: inherit !important;
+    color: var(--onigiri-drag-fg, inherit) !important;
     pointer-events: none;
+}
+
+.onigiri-drag-preview a.deck::before,
+.onigiri-drag-preview .icon,
+.onigiri-drag-preview .collapse {
+    color: var(--onigiri-drag-subtle, var(--fg-subtle)) !important;
 }
 
 .onigiri-drag-preview .deck-counts,

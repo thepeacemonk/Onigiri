@@ -95,6 +95,17 @@ DEFAULTS = {
             "Each review is a step closer to your goal. You've got this!",
         ],
     },
+    "onigimon": {
+        "enabled": False,
+        "notifications_enabled": True,
+        "daily_surprise_enabled": True,
+        "reward_interval": 4,
+        "reward_generosity": "normal",
+        "widget_style": "care",
+        "sprite_source": "ankimon_then_pokesprite",
+        "sprite_motion": "static",
+        "allow_ankimon_updates": False,
+    },
     "heatmapShape": "square.svg",
     "heatmapShowStreak": True,
     "heatmapShowMonths": True,
@@ -116,7 +127,7 @@ DEFAULTS = {
         "retention": {"pos": 3, "row": 1, "col": 1},
         "heatmap": {"pos": 4, "row": 2, "col": 4}
         },
-    "archive": ["favorites"] 
+    "archive": ["favorites", "onigimon"] 
     },
     "externalWidgetLayout": {}, 
 

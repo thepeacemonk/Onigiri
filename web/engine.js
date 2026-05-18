@@ -215,6 +215,26 @@ window.OnigiriEngine = {
             this.showDeckContextMenu(event.clientX, event.clientY, deckRow.dataset.did);
         });
 
+        if (!document.body.dataset.onigiriFilterStateBound) {
+            document.body.dataset.onigiriFilterStateBound = 'true';
+            document.addEventListener('click', (event) => {
+                const clickable = event.target.closest('[onclick]');
+                if (!clickable) return;
+                const onclick = clickable.getAttribute('onclick') || '';
+                if (onclick.includes('onigiri_filter_favourites') || onclick.includes('onigiri_filter_favorites')) {
+                    window.ONIGIRI_CONFIG = window.ONIGIRI_CONFIG || {};
+                    window.ONIGIRI_CONFIG.filters = window.ONIGIRI_CONFIG.filters || {};
+                    window.ONIGIRI_CONFIG.filters.favorites = !window.ONIGIRI_CONFIG.filters.favorites;
+                    this.applyFilterButtonStates();
+                } else if (onclick.includes('onigiri_filter_marked')) {
+                    window.ONIGIRI_CONFIG = window.ONIGIRI_CONFIG || {};
+                    window.ONIGIRI_CONFIG.filters = window.ONIGIRI_CONFIG.filters || {};
+                    window.ONIGIRI_CONFIG.filters.marked = !window.ONIGIRI_CONFIG.filters.marked;
+                    this.applyFilterButtonStates();
+                }
+            }, true);
+        }
+
         this._boundDndMove = (event) => this._dndMove(event);
         this._boundDndEnd = (event) => this._dndEnd(event);
     },
@@ -241,12 +261,41 @@ window.OnigiriEngine = {
         const cell = row.querySelector('td.decktd');
         const preview = document.createElement('div');
         const typeClasses = Array.from(row.classList).filter(cls => cls.indexOf('is-') === 0);
-        preview.className = ['onigiri-drag-preview', ...typeClasses].join(' ');
+        const sidebar = document.querySelector('.sidebar-left') || document.body;
+        const sidebarStyle = window.getComputedStyle(sidebar);
+        const rowStyle = window.getComputedStyle(row);
+
+        const luminanceFromRgb = (value) => {
+            const match = String(value || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+            if (!match) return 255;
+            return (0.2126 * Number(match[1])) + (0.7152 * Number(match[2])) + (0.0722 * Number(match[3]));
+        };
+        const sidebarBg = sidebarStyle.backgroundColor || rowStyle.backgroundColor;
+        const isDarkPreview = document.body.classList.contains('night-mode')
+            || document.body.classList.contains('nightMode')
+            || document.documentElement.classList.contains('night-mode')
+            || document.documentElement.classList.contains('nightMode')
+            || luminanceFromRgb(sidebarBg) < 150;
+
+        const dragBg = (sidebarStyle.getPropertyValue(isDarkPreview ? '--highlight-bg' : '--canvas-inset') || '').trim()
+            || (isDarkPreview ? 'rgba(44, 44, 44, 0.98)' : 'rgba(255, 255, 255, 0.98)');
+        const dragFg = (sidebarStyle.getPropertyValue('--fg') || rowStyle.color || '').trim()
+            || (isDarkPreview ? '#e8e8e8' : '#222222');
+        const dragSubtle = (sidebarStyle.getPropertyValue('--fg-subtle') || '').trim()
+            || (isDarkPreview ? '#b8b8b8' : '#666666');
+        const dragBorder = (sidebarStyle.getPropertyValue('--border') || '').trim()
+            || (isDarkPreview ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)');
+
+        preview.className = ['onigiri-drag-preview', isDarkPreview ? 'is-dark' : 'is-light', ...typeClasses].join(' ');
         if (row.dataset.did) preview.dataset.did = row.dataset.did;
         preview.style.cssText = [
             'position:fixed',
             'z-index:9998',
             'pointer-events:none',
+            `--onigiri-drag-bg:${dragBg}`,
+            `--onigiri-drag-fg:${dragFg}`,
+            `--onigiri-drag-subtle:${dragSubtle}`,
+            `--onigiri-drag-border:${dragBorder}`,
             `width:${Math.min(Math.max(rect.width, 260), 520)}px`,
             `top:${rect.top}px`,
             `left:${rect.left}px`,
@@ -556,6 +605,10 @@ window.OnigiriEngine = {
         }
         row.addEventListener('click', () => {
             this.closeQuickMenus();
+            if (item.sortMode) {
+                window.ONIGIRI_CONFIG = window.ONIGIRI_CONFIG || {};
+                window.ONIGIRI_CONFIG.deckSortMode = item.sortMode;
+            }
             if (item.command) pycmd(item.command);
         });
         menu.appendChild(row);
@@ -717,6 +770,7 @@ window.OnigiriEngine = {
             label: item.label,
             icon: item.icon,
             selected: item.mode === current,
+            sortMode: item.mode,
             command: `onigiri_sort:${item.mode}`,
         }));
 

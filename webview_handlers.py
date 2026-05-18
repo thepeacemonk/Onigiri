@@ -200,6 +200,57 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
+    if cmd.startswith("onigimon_feed:"):
+        try:
+            from .gamification import onigimon
+            item_key = cmd.split(":", 1)[1]
+            message = onigimon.manager.use_item(item_key)
+            if message:
+                tooltip(message)
+            else:
+                tooltip("No Onigimon item available.")
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error feeding Onigimon: {e}")
+            return (True, None)
+
+    if cmd == "onigimon_play":
+        try:
+            from .gamification import onigimon
+            message = onigimon.manager.play()
+            if message:
+                tooltip(message)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error playing with Onigimon: {e}")
+            return (True, None)
+
+    if cmd == "onigimon_daily_gift":
+        try:
+            from .gamification import onigimon
+            message = onigimon.manager.claim_daily_gift()
+            tooltip(message or "Today's Onigimon gift is already claimed.")
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error claiming Onigimon gift: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigimon_rename:"):
+        try:
+            from .gamification import onigimon
+            name = unquote(cmd.split(":", 1)[1]).strip()
+            if not name:
+                tooltip("Choose a name first.")
+                return (True, None)
+            if onigimon.manager.rename_active_companion(name):
+                tooltip(f"Renamed to {name}.")
+            else:
+                tooltip("Choose an Onigimon companion first.")
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error renaming Onigimon: {e}")
+            return (True, None)
+
     if cmd == "onigiri_create_deck":
         try:
              # tooltip("Debug: Opening Create Deck Dialog...")

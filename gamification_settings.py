@@ -5,7 +5,7 @@ from aqt.qt import (
     QWidget, QSpinBox, QPlainTextEdit, QScrollArea, QGridLayout, QPixmap, 
     Qt, QFrame, QSizePolicy, QButtonGroup, QAbstractButton, QSignalBlocker,
     QColor, QPointF, QRectF, QPainter, QPainterPath, QPropertyAnimation,
-    QEasingCurve, QStackedWidget, QMessageBox, QComboBox
+    QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty
 from PyQt6.QtSvg import QSvgRenderer
@@ -19,7 +19,7 @@ from aqt.qt import (
 
 from . import config
 from .config import DEFAULTS
-from .gamification import restaurant_level
+from .gamification import onigimon, restaurant_level
 from .themes import THEMES
 from .settings import FlowLayout
 from .translations import tr
@@ -391,6 +391,7 @@ class GamificationSettingsDialog(QDialog):
         gamification_items = [
             (tr("general"),             "General",           "",         ""),
             (tr("restaurant_level"),   "Restaurant Level",  "#ffbd59",  "#000000"),
+            ("Onigimon",               "Onigimon",          "#70c6a6",  "#10231b"),
             (tr("focus_dango"),         "Focus Dango",       "#9d3d64",  "#ffffff"),
             (tr("mochi_messages_title"), "Mochi Messages",    "#00bf63",  "#000000"),
             (tr("coming_soon"),         "Coming Soon",       "",         ""),
@@ -430,6 +431,7 @@ class GamificationSettingsDialog(QDialog):
         self.pages = {
             "General": self.create_general_page,
             "Restaurant Level": self.create_restaurant_level_page,
+            "Onigimon": self.create_onigimon_page,
             "Focus Dango": self.create_focus_dango_page,
             "Mochi Messages": self.create_mochi_messages_page,
             "Coming Soon": self.create_coming_soon_page
@@ -544,6 +546,46 @@ class GamificationSettingsDialog(QDialog):
         self.restaurant_bar_toggle.setChecked(bool(restaurant_conf.get("show_profile_bar_progress", True)))
         self.restaurant_reviewer_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_reviewer_toggle.setChecked(bool(restaurant_conf.get("show_reviewer_header", True)))
+
+        # Onigimon
+        self.onigimon_config = self.current_config.get("onigimon", {})
+        if not isinstance(self.onigimon_config, dict):
+            self.onigimon_config = {}
+        self.onigimon_toggle = AnimatedToggleButton(accent_color="#70c6a6")
+        self.onigimon_toggle.setChecked(bool(self.onigimon_config.get("enabled", False)))
+        self.onigimon_notifications_toggle = AnimatedToggleButton(accent_color="#70c6a6")
+        self.onigimon_notifications_toggle.setChecked(bool(self.onigimon_config.get("notifications_enabled", True)))
+        self.onigimon_daily_toggle = AnimatedToggleButton(accent_color="#70c6a6")
+        self.onigimon_daily_toggle.setChecked(bool(self.onigimon_config.get("daily_surprise_enabled", True)))
+        self.onigimon_ankimon_updates_toggle = AnimatedToggleButton(accent_color="#70c6a6")
+        self.onigimon_ankimon_updates_toggle.setChecked(bool(self.onigimon_config.get("allow_ankimon_updates", False)))
+        self.onigimon_reward_interval_spinbox = QSpinBox()
+        self.onigimon_reward_interval_spinbox.setRange(1, 50)
+        self.onigimon_reward_interval_spinbox.setSuffix(" cards")
+        self.onigimon_reward_interval_spinbox.setValue(int(self.onigimon_config.get("reward_interval", 4) or 4))
+        self.onigimon_widget_style_combo = QComboBox()
+        self.onigimon_widget_style_combo.addItems(["compact", "care", "detailed"])
+        current_style = str(self.onigimon_config.get("widget_style", "care"))
+        self.onigimon_widget_style_combo.setCurrentText(current_style if current_style in {"compact", "care", "detailed"} else "care")
+        self.onigimon_sprite_motion_combo = QComboBox()
+        self.onigimon_sprite_motion_combo.addItem("Static sprites", "static")
+        self.onigimon_sprite_motion_combo.addItem("GIF sprites", "gif")
+        current_motion = str(self.onigimon_config.get("sprite_motion", "static"))
+        self.onigimon_sprite_motion_combo.setCurrentIndex(1 if current_motion == "gif" else 0)
+        self.onigimon_selected_companion_id = onigimon.manager.load().active_companion_id
+        active_companion = onigimon.manager.active_companion()
+        self.onigimon_name_input = QLineEdit(onigimon.manager.companion_display_name(active_companion) if active_companion else "")
+        self.onigimon_name_input.setPlaceholderText("Nickname")
+        self.onigimon_companion_buttons = QButtonGroup(self)
+        self.onigimon_companion_buttons.setExclusive(True)
+        self.onigimon_companion_grid = QWidget()
+        self.onigimon_companion_grid.setObjectName("onigimonCompanionGrid")
+        self.onigimon_companion_grid_layout = QGridLayout(self.onigimon_companion_grid)
+        self.onigimon_companion_grid_layout.setContentsMargins(8, 8, 8, 8)
+        self.onigimon_companion_grid_layout.setSpacing(8)
+        self.onigimon_companion_status_label = QLabel("")
+        self.onigimon_companion_status_label.setWordWrap(True)
+        self._populate_onigimon_companion_combo()
         
         # Difficulty Setting
         self.restaurant_difficulty_group = QButtonGroup()
@@ -628,6 +670,7 @@ class GamificationSettingsDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("background: transparent;")
         
         scroll_content = QWidget()
@@ -655,21 +698,34 @@ class GamificationSettingsDialog(QDialog):
 
     def _render_system_icon(self, filename, size=44, color=None):
         icon_path = os.path.join(self.addon_path, "system_files", "system_icons", filename)
-        pixmap = QPixmap(size, size)
+        device_ratio = 1.0
+        screen = self.screen() if hasattr(self, "screen") else None
+        if screen:
+            device_ratio = max(device_ratio, float(screen.devicePixelRatio()))
+        elif mw and mw.app and mw.app.primaryScreen():
+            device_ratio = max(device_ratio, float(mw.app.primaryScreen().devicePixelRatio()))
+        if hasattr(self, "devicePixelRatioF"):
+            device_ratio = max(device_ratio, float(self.devicePixelRatioF()))
+        render_size = max(1, int(round(size * device_ratio)))
+
+        pixmap = QPixmap(render_size, render_size)
         pixmap.fill(Qt.GlobalColor.transparent)
         if not os.path.exists(icon_path):
+            pixmap.setDevicePixelRatio(device_ratio)
             return pixmap
 
         renderer = QSvgRenderer(icon_path)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        renderer.render(painter, QRectF(0, 0, size, size))
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        renderer.render(painter, QRectF(0, 0, render_size, render_size))
         painter.end()
 
         painter = QPainter(pixmap)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
         painter.fillRect(pixmap.rect(), QColor(color or self._theme_tokens()["muted"]))
         painter.end()
+        pixmap.setDevicePixelRatio(device_ratio)
         return pixmap
 
     def _create_general_hero_icon(self, filename):
@@ -677,7 +733,7 @@ class GamificationSettingsDialog(QDialog):
         label.setFixedSize(64, 64)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("background: transparent; border: none;")
-        label.setPixmap(self._render_system_icon(filename, 42, self._theme_tokens()["muted"]))
+        label.setPixmap(self._render_system_icon(filename, 54, self._theme_tokens()["muted"]))
         return label
 
     def _create_onigiri_game_hero_card(self, title, subtitle, icon_filename, background_filename, text_color):
@@ -702,20 +758,23 @@ class GamificationSettingsDialog(QDialog):
 
         text_container = QWidget()
         text_container.setStyleSheet("background: transparent;")
-        text_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        text_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         text_layout = QVBoxLayout(text_container)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(6)
+        text_layout.addStretch()
         t_label = QLabel(title)
         t_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         t_label.setStyleSheet(f"font-weight: bold; font-size: 24px; color: {text_color}; background: transparent;")
         s_label = QLabel(subtitle)
         s_label.setWordWrap(True)
-        s_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        s_label.setMinimumHeight(46)
+        s_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
         s_label.setStyleSheet(f"color: {text_color}; background: transparent;")
         text_layout.addWidget(t_label, 0, Qt.AlignmentFlag.AlignLeft)
         text_layout.addWidget(s_label, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(text_container, 1, Qt.AlignmentFlag.AlignVCenter)
+        text_layout.addStretch()
+        layout.addWidget(text_container, 1)
 
         bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", background_filename)
         if not os.path.exists(bg_path):
@@ -729,6 +788,96 @@ class GamificationSettingsDialog(QDialog):
 
     def _attach_hero_toggle(self, card, toggle):
         card.layout().addWidget(toggle, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def create_notification_position_section(self):
+        section = SectionGroup(tr("reviewer_notification_pos_title"), self)
+
+        container = QWidget()
+        main_layout = QHBoxLayout(container)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(28)
+
+        grid_container = QWidget()
+        grid_layout = QGridLayout(grid_container)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setSpacing(10)
+
+        positions = [
+            ("top-left", "↖", 0, 0),
+            ("top-center", "↑", 0, 1),
+            ("top-right", "↗", 0, 2),
+            ("bottom-left", "↙", 1, 0),
+            ("bottom-center", "↓", 1, 1),
+            ("bottom-right", "↘", 1, 2),
+        ]
+
+        self.notification_pos_buttons = {}
+        current_pos = self.current_config.get("onigiri_reviewer_notification_position", "top-center")
+
+        for pos_id, label, row, col in positions:
+            btn = QPushButton(label)
+            btn.setObjectName("notificationPositionButton")
+            btn.setFixedSize(60, 45)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setChecked(pos_id == current_pos)
+            btn.clicked.connect(lambda checked, pid=pos_id: self._update_notification_position(pid))
+            self.notification_pos_buttons[pos_id] = btn
+            grid_layout.addWidget(btn, row, col)
+
+        main_layout.addWidget(grid_container)
+
+        self.notif_preview_widget = QWidget()
+        self.notif_preview_widget.setObjectName("notificationPositionPreview")
+        self.notif_preview_widget.setFixedSize(200, 120)
+
+        self.notif_rect = QLabel(self.notif_preview_widget)
+        self.notif_rect.setObjectName("notificationPositionPreviewRect")
+        self.notif_rect.setFixedSize(60, 30)
+        self.notif_rect.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.notif_rect.setStyleSheet(f"""
+            QLabel#notificationPositionPreviewRect {{
+                background-color: {self.accent_color};
+                border: 1px solid {self.accent_color};
+                border-radius: 4px;
+            }}
+        """)
+        self._position_preview_rect(current_pos)
+
+        main_layout.addWidget(self.notif_preview_widget)
+        main_layout.addStretch()
+
+        section.add_widget(container)
+        return section
+
+    def _update_notification_position(self, pos_id):
+        self.current_config["onigiri_reviewer_notification_position"] = pos_id
+
+        for pid, btn in self.notification_pos_buttons.items():
+            btn.setChecked(pid == pos_id)
+
+        self._position_preview_rect(pos_id)
+
+    def _position_preview_rect(self, pos_id):
+        container_w, container_h = 200, 120
+        rect_w, rect_h = 60, 30
+        margin = 10
+
+        if "left" in pos_id:
+            x = margin
+        elif "right" in pos_id:
+            x = container_w - rect_w - margin
+        else:
+            x = (container_w - rect_w) // 2
+
+        if "top" in pos_id:
+            y = margin
+        else:
+            y = container_h - rect_h - margin
+
+        self.notif_rect.move(x, y)
+        self.notif_rect.raise_()
+        self.notif_rect.show()
 
     # --- PAGES ---
 
@@ -744,7 +893,7 @@ class GamificationSettingsDialog(QDialog):
         hero_layout.setSpacing(20)
         hero_layout.setContentsMargins(20, 20, 20, 20)
         
-        icon_label = self._create_general_hero_icon("gamepad.svg")
+        icon_label = self._create_general_hero_icon("game-mode.svg")
         hero_layout.addWidget(icon_label)
         
         # Text
@@ -775,7 +924,7 @@ class GamificationSettingsDialog(QDialog):
         focused_layout.setSpacing(20)
         focused_layout.setContentsMargins(20, 20, 20, 20)
         
-        focus_icon_label = self._create_general_hero_icon("focus.svg")
+        focus_icon_label = self._create_general_hero_icon("circle-book.svg")
         focused_layout.addWidget(focus_icon_label)
         
         focus_text = QWidget()
@@ -795,6 +944,8 @@ class GamificationSettingsDialog(QDialog):
         focused_layout.addWidget(self.focused_gaming_toggle)
         
         layout.addWidget(focused_card)
+
+        layout.addWidget(self.create_notification_position_section())
         
         # Lock logic: disable Restaurant Level notifications when Focused Gaming is on
         # Only locks notifications_enabled - the reviewer header/progress bar is unaffected
@@ -871,6 +1022,203 @@ class GamificationSettingsDialog(QDialog):
         reset_layout.addWidget(reset_purchases_btn)
         layout.addWidget(reset_group)
         
+        layout.addStretch()
+        return page
+
+    def _populate_onigimon_companion_combo(self):
+        onigimon.manager.bridge.clear_cache()
+        while self.onigimon_companion_grid_layout.count():
+            item = self.onigimon_companion_grid_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        for button in list(self.onigimon_companion_buttons.buttons()):
+            self.onigimon_companion_buttons.removeButton(button)
+
+        status = onigimon.manager.bridge.status()
+        companions = onigimon.manager.get_available_companions() if status == "ready" else []
+        active_id = self.onigimon_selected_companion_id or onigimon.manager.load().active_companion_id
+
+        if status == "missing":
+            self.onigimon_companion_status_label.setText("Ankimon is not installed.")
+            return
+        if status == "starter_needed":
+            self.onigimon_companion_status_label.setText("Choose your first Ankimon Pokémon first.")
+            return
+        if status == "no_collection":
+            self.onigimon_companion_status_label.setText("No Pokémon in Ankimon Collection PC yet.")
+            return
+        if not companions:
+            self.onigimon_companion_status_label.setText("No Ankimon Pokémon found.")
+            return
+
+        self.onigimon_companion_status_label.setText("Select your Onigimon companion.")
+        columns = 4
+        for index, pokemon in enumerate(companions):
+            ankimon_id = str(pokemon.get("ankimon_id", ""))
+            label = f"{pokemon.get('name', 'Pokemon')} · Lv. {pokemon.get('level', 1)}"
+            btn = QPushButton()
+            btn.setObjectName("onigimonCompanionTile")
+            btn.setCheckable(True)
+            btn.setFixedSize(56, 56)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(label)
+            btn.setProperty("companion_id", ankimon_id)
+            sprite_path = self._onigimon_sprite_local_path(str(pokemon.get("sprite_url") or ""))
+            if sprite_path and os.path.exists(sprite_path):
+                btn.setIcon(QIcon(sprite_path))
+                btn.setIconSize(QSize(44, 44))
+            else:
+                btn.setText(str(pokemon.get("name", "?"))[:2].upper())
+            btn.clicked.connect(lambda checked, cid=ankimon_id: self._select_onigimon_companion(cid))
+            self.onigimon_companion_buttons.addButton(btn)
+            if ankimon_id == active_id:
+                btn.setChecked(True)
+                self.onigimon_selected_companion_id = ankimon_id
+            row, col = divmod(index, columns)
+            self.onigimon_companion_grid_layout.addWidget(btn, row, col)
+
+    def _select_onigimon_companion(self, ankimon_id):
+        self.onigimon_selected_companion_id = str(ankimon_id)
+        for pokemon in onigimon.manager.get_available_companions():
+            if str(pokemon.get("ankimon_id")) == self.onigimon_selected_companion_id:
+                current = onigimon.manager.load().companions.get(self.onigimon_selected_companion_id, {})
+                self.onigimon_name_input.setText(str(current.get("display_name") or pokemon.get("name") or ""))
+                break
+
+    def _onigimon_sprite_local_path(self, sprite_url):
+        prefix = "/_addons/"
+        if not sprite_url.startswith(prefix):
+            return ""
+        parts = sprite_url[len(prefix):].split("/", 1)
+        if len(parts) != 2:
+            return ""
+        addon_id, rel_path = parts
+        try:
+            return os.path.join(mw.addonManager.addonsFolder(), addon_id, rel_path)
+        except Exception:
+            return ""
+
+    def _create_onigimon_hero(self):
+        hero = QFrame()
+        hero.setObjectName("onigimonHero")
+        hero.setMinimumHeight(132)
+        hero.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_bg.png")
+        css_bg = bg_path.replace("\\", "/")
+        if os.path.exists(bg_path):
+            hero.setStyleSheet(f"""
+                QFrame#onigimonHero {{
+                    border-radius: 18px;
+                    background-image: url('{css_bg}');
+                    background-position: center;
+                    background-repeat: repeat-x;
+                    background-size: auto 100%;
+                }}
+            """)
+        else:
+            hero.setStyleSheet("QFrame#onigimonHero { border-radius: 18px; background: #1e3c52; }")
+
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 14, 16, 14)
+        hero_layout.setSpacing(12)
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(76, 76)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setStyleSheet("background: transparent;")
+        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_pikachu.png")
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        hero_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        text_container = QWidget()
+        text_container.setStyleSheet("background: transparent;")
+        text_container.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(5)
+
+        title = QLabel("Onigimon")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white; background: transparent;")
+        title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        desc = QLabel("Choose a Pokémon from Ankimon's Collection PC, then feed, play, and grow your companion while you study.")
+        desc.setWordWrap(True)
+        desc.setMinimumWidth(0)
+        desc.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        desc.setStyleSheet("font-size: 12px; color: rgba(255,255,255,0.92); background: transparent;")
+        text_layout.addStretch()
+        text_layout.addWidget(title)
+        text_layout.addWidget(desc)
+        text_layout.addStretch()
+        hero_layout.addWidget(text_container, 1)
+        hero_layout.addWidget(self.onigimon_toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        return hero
+
+    def create_onigimon_page(self):
+        page, layout = self._create_scrollable_page()
+
+        layout.addWidget(self._create_onigimon_hero())
+
+        companion_group, companion_layout = self._create_inner_group("Companion")
+        companion_layout.addWidget(self.onigimon_companion_status_label)
+        companion_layout.addWidget(QLabel("Companion nickname"))
+        companion_layout.addWidget(self.onigimon_name_input)
+        tile_scroll = QScrollArea()
+        tile_scroll.setWidgetResizable(True)
+        tile_scroll.setMinimumHeight(92)
+        tile_scroll.setMaximumHeight(170)
+        tile_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tile_scroll.setStyleSheet("background: transparent;")
+        tile_scroll.setWidget(self.onigimon_companion_grid)
+        companion_layout.addWidget(tile_scroll)
+        refresh_btn = QPushButton("Refresh Ankimon PC")
+        refresh_btn.clicked.connect(self._populate_onigimon_companion_combo)
+        companion_layout.addWidget(refresh_btn)
+        starter_note = QLabel("If Ankimon was just installed, finish choosing your first Pokémon there before selecting an Onigimon companion.")
+        starter_note.setWordWrap(True)
+        starter_note.setMinimumWidth(0)
+        companion_layout.addWidget(starter_note)
+        layout.addWidget(companion_group)
+
+        rewards_group, rewards_layout = self._create_inner_group("Rewards")
+        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_notifications_toggle, "Show Onigimon notifications"))
+        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_daily_toggle, "Daily surprise item"))
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("Reward item every"))
+        interval_row.addWidget(self.onigimon_reward_interval_spinbox)
+        interval_row.addStretch()
+        rewards_layout.addLayout(interval_row)
+        layout.addWidget(rewards_group)
+
+        widget_group, widget_layout = self._create_inner_group("Widget")
+        widget_row = QHBoxLayout()
+        widget_row.addWidget(QLabel("Widget style"))
+        widget_row.addWidget(self.onigimon_widget_style_combo)
+        widget_row.addStretch()
+        widget_layout.addLayout(widget_row)
+        sprite_row = QHBoxLayout()
+        sprite_row.addWidget(QLabel("Sprite mode"))
+        sprite_row.addWidget(self.onigimon_sprite_motion_combo)
+        sprite_row.addStretch()
+        widget_layout.addLayout(sprite_row)
+        layout.addWidget(widget_group)
+
+        bridge_group, bridge_layout = self._create_inner_group("Ankimon Bridge")
+        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, "Allow Onigimon items to update Ankimon data"))
+        bridge_note = QLabel("Keep this off if you only want Onigiri to track companion care. EXP Candy and medicine can be connected to Ankimon later through this bridge.")
+        bridge_note.setWordWrap(True)
+        bridge_layout.addWidget(bridge_note)
+        layout.addWidget(bridge_group)
+
+        credits_group, credits_layout = self._create_inner_group("Sprite Credits")
+        credit = QLabel("PokéSprite sprite images are © Nintendo/Creatures Inc./GAME FREAK Inc. PokéSprite project code/data by msikma, MIT licensed.")
+        credit.setWordWrap(True)
+        credits_layout.addWidget(credit)
+        layout.addWidget(credits_group)
+
         layout.addStretch()
         return page
 
@@ -992,6 +1340,19 @@ class GamificationSettingsDialog(QDialog):
         
         if hasattr(self, "restaurant_name_input"):
             restaurant_level.manager.set_restaurant_name(self.restaurant_name_input.text())
+
+        # Onigimon
+        oni_conf = self.current_config.setdefault("onigimon", {})
+        oni_conf["enabled"] = self.onigimon_toggle.isChecked()
+        oni_conf["notifications_enabled"] = self.onigimon_notifications_toggle.isChecked()
+        oni_conf["daily_surprise_enabled"] = self.onigimon_daily_toggle.isChecked()
+        oni_conf["allow_ankimon_updates"] = self.onigimon_ankimon_updates_toggle.isChecked()
+        oni_conf["reward_interval"] = self.onigimon_reward_interval_spinbox.value()
+        oni_conf["widget_style"] = self.onigimon_widget_style_combo.currentText()
+        oni_conf["sprite_motion"] = self.onigimon_sprite_motion_combo.currentData()
+        if self.onigimon_selected_companion_id:
+            onigimon.manager.set_active_companion(str(self.onigimon_selected_companion_id))
+            onigimon.manager.rename_active_companion(self.onigimon_name_input.text().strip())
         
         # Mochi
         mochi_conf = self.current_config.setdefault("mochi_messages", {})
@@ -1124,6 +1485,53 @@ class GamificationSettingsDialog(QDialog):
             QPushButton#difficultyCard:checked {{
                 border: 2px solid {self.accent_color};
                 background-color: {inner_group_bg};
+            }}
+
+            QWidget#onigimonCompanionGrid {{
+                background-color: transparent;
+            }}
+            QPushButton#onigimonCompanionTile {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                padding: 4px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QPushButton#onigimonCompanionTile:hover {{
+                border: 1px solid #70c6a6;
+                background-color: {hover_bg};
+            }}
+            QPushButton#onigimonCompanionTile:checked {{
+                border: 2px solid #70c6a6;
+                background-color: rgba(112, 198, 166, 0.18);
+            }}
+
+            QPushButton#notificationPositionButton {{
+                background-color: transparent;
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                font-size: 20px;
+                padding: 0;
+            }}
+            QPushButton#notificationPositionButton:hover {{
+                background-color: {hover_bg};
+            }}
+            QPushButton#notificationPositionButton:checked {{
+                background-color: {accent};
+                color: #ffffff;
+                border: 1px solid {accent};
+            }}
+            QWidget#notificationPositionPreview {{
+                border: 2px solid {border};
+                border-radius: 12px;
+                background-color: transparent;
+            }}
+            QLabel#notificationPositionPreviewRect {{
+                background-color: {accent};
+                border-radius: 4px;
             }}
             
             QLabel, QRadioButton {{ color: {fg}; }}
