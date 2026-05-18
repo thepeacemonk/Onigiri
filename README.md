@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=thepeacemonk&project=Onigiri&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 <div align="center">
   <img width="360" height="112" alt="onigiri" src="https://github.com/user-attachments/assets/eaebfec6-f6df-45b4-a3be-22e2ae97c1e8" />
   <br>
