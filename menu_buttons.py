@@ -32,7 +32,7 @@ def get_onigiri_version():
 
 def open_settings(page_index=0):
     """
-    Opens the Onigiri settings dialog to a specific page and resets the UI upon save.
+    Opens the Onigiri settings dialog to a specific page.
     This function now accepts a page_index to open to a specific tab.
     """
     global _addon_path
@@ -42,8 +42,7 @@ def open_settings(page_index=0):
         return
         
     dialog = settings.SettingsDialog(mw, _addon_path, initial_page_index=page_index)
-    if dialog.exec():
-        mw.reset()
+    dialog.exec()
 
 def setup_onigiri_menu(addon_path):
     """

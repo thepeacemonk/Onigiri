@@ -6,6 +6,8 @@ from aqt import mw
 from aqt.qt import *
 from aqt.webview import AnkiWebView
 
+from .color_utils import normalize_color_string
+
 
 class IconChooserDialog(QDialog):
     def __init__(self, deck_id, parent=None):
@@ -23,7 +25,7 @@ class IconChooserDialog(QDialog):
         # Current Config
         self.custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
         self.current_setting = self.custom_icons.get(self.deck_id, {})
-        self.current_color = self.current_setting.get("color", "#888888")
+        self.current_color = normalize_color_string(self.current_setting.get("color", "#888888"), fallback="#888888") or "#888888"
         self.current_icon = self.current_setting.get("icon", "")
 
         # parent=self is required so Qt's WebChannel initialises correctly in a
@@ -75,6 +77,7 @@ class IconChooserDialog(QDialog):
             "system_icons": {
                 "add": f"/_addons/{self.addon_package}/system_files/system_icons/add.svg",
                 "delete": f"/_addons/{self.addon_package}/system_files/system_icons/xmark-simple.svg",
+                "default_deck": f"/_addons/{self.addon_package}/system_files/system_icons/deck.svg",
             },
         }, ensure_ascii=True)   # ensure_ascii=True → all non-ASCII as \uXXXX, 100% safe inline
 
@@ -147,7 +150,8 @@ class IconChooserDialog(QDialog):
                 "accentColor": mw.col.conf.get("colors", {}).get("light", {}).get("--accent-color", "#007aff"),
                 "system_icons": {
                     "add": f"/_addons/{self.addon_package}/system_files/system_icons/add.svg",
-                    "delete": f"/_addons/{self.addon_package}/system_files/system_icons/xmark-simple.svg"
+                    "delete": f"/_addons/{self.addon_package}/system_files/system_icons/xmark-simple.svg",
+                    "default_deck": f"/_addons/{self.addon_package}/system_files/system_icons/deck.svg",
                 }
             }
             self.web.eval(f"updateData({json.dumps(payload)})")
@@ -163,7 +167,7 @@ class IconChooserDialog(QDialog):
             self.close()
 
         elif cmd.startswith("update_color:"):
-            new_color = cmd.split(":", 1)[1]
+            new_color = normalize_color_string(cmd.split(":", 1)[1], fallback=self.current_color) or self.current_color
             self.current_color = new_color
 
         elif cmd == "add_icon":
@@ -174,12 +178,21 @@ class IconChooserDialog(QDialog):
 
         elif cmd.startswith("save:"):
             data = json.loads(cmd.split(":", 1)[1])
-            self.custom_icons[self.deck_id] = {
-                "icon": data["icon"],
-                "color": data["color"]
-            }
-            mw.col.conf["onigiri_custom_deck_icons"] = self.custom_icons
-            mw.col.setMod()
+            icon = data["icon"]
+            raw_color = data.get("color", "")
+            if not icon and not raw_color:
+                # Default icon, no custom colour — remove any stored entry
+                if self.deck_id in self.custom_icons:
+                    del self.custom_icons[self.deck_id]
+                    mw.col.conf["onigiri_custom_deck_icons"] = self.custom_icons
+                    mw.col.setMod()
+            else:
+                self.custom_icons[self.deck_id] = {
+                    "icon": icon,
+                    "color": normalize_color_string(raw_color, fallback=self.current_color) or self.current_color
+                }
+                mw.col.conf["onigiri_custom_deck_icons"] = self.custom_icons
+                mw.col.setMod()
             self.accept()
 
         elif cmd.startswith("delete_icon:"):
@@ -198,7 +211,8 @@ class IconChooserDialog(QDialog):
                         },
                         "system_icons": {
                             "add": f"/_addons/{self.addon_package}/system_files/system_icons/add.svg",
-                            "delete": f"/_addons/{self.addon_package}/system_files/system_icons/xmark-simple.svg"
+                            "delete": f"/_addons/{self.addon_package}/system_files/system_icons/xmark-simple.svg",
+                            "default_deck": f"/_addons/{self.addon_package}/system_files/system_icons/deck.svg",
                         }
                     }
                     self.web.eval(f"updateData({json.dumps(payload)})")

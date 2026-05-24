@@ -38,6 +38,8 @@ from typing import Optional, Dict, List, Tuple, Any, Callable, Union
 from . import config
 from . import onigiri_renderer
 from . import deck_tree_updater
+from . import profile_background
+from .color_utils import normalize_color_string, get_contrast_text_color
 from .gamification import restaurant_level
 from . import settings, heatmap, fonts, gamification_settings
 from .gamification.gamification import get_gamification_manager
@@ -157,28 +159,34 @@ def get_sync_status():
     """
     Determines the current sync status of the collection.
     Returns:
-      'upload' — full upload required (never synced, or full-upload needed)
-      'sync'   — normal incremental sync needed (local changes since last sync)
-      'none'   — collection is up to date
+      'upload' - full upload required (never synced, schema changed, or full-upload needed)
+      'sync'   - normal incremental sync needed (local changes since last sync)
+      'none'   - collection is up to date
     """
     try:
         if not mw.col:
             return 'none'
 
         try:
-            ls  = mw.col.db.scalar("select ls from col")
+            ls = mw.col.db.scalar("select ls from col")
+            scm = mw.col.db.scalar("select scm from col")
             mod = mw.col.mod if hasattr(mw.col, 'mod') else 0
+
+            try:
+                has_sync_auth = bool(mw.pm.sync_auth())
+            except Exception:
+                has_sync_auth = False
 
             # ls == 0: never synced or full-upload required.
             # Only show 'upload' indicator when AnkiWeb credentials are configured.
             if ls is None or ls == 0:
-                try:
-                    auth = mw.pm.sync_auth()
-                    if auth:
-                        return 'upload'
-                except Exception:
-                    pass
+                if has_sync_auth:
+                    return 'upload'
                 return 'none'
+
+            # A schema change requires a full sync, which is Anki's red state.
+            if has_sync_auth and scm is not None and scm > ls:
+                return 'upload'
 
             # Normal incremental sync needed
             if mod > ls:
@@ -191,17 +199,45 @@ def get_sync_status():
         return 'none'
 
 
+def _get_profile_initials(user_name: str) -> str:
+    parts = [part for part in user_name.split() if part]
+    if len(parts) >= 2:
+        initials = f"{parts[0][0]}{parts[1][0]}"
+    elif parts:
+        initials = parts[0][0]
+    else:
+        initials = "?"
+    return initials.upper()
+
+
+def _get_profile_first_name(user_name: str) -> str:
+    parts = [part for part in user_name.split() if part]
+    return parts[0] if parts else "USER"
+
+
 def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "profile-pic") -> str:    
     """Generates profile picture HTML (img or default) based on user settings."""
     profile_pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
     if profile_pic_filename and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile", profile_pic_filename)):
         pic_url = f"/_addons/{addon_package}/user_files/profile/{profile_pic_filename}"
-        return f'<img src="{pic_url}" class="{css_class}">'
     else:
-        # Use default profile picture when none is selected or file doesn't exist
-        default_pic = "onigiri-san.png"
-        pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
-        return f'<img src="{pic_url}" class="{css_class}">'
+        pic_url = ""
+    initials = html.escape(_get_profile_initials(user_name), quote=False)
+    escaped_alt = html.escape(user_name, quote=True)
+    if not pic_url:
+        return (
+            f'<span class="{css_class} profile-pic-frame">'
+            f'<span class="profile-pic-fallback">{initials}</span>'
+            '</span>'
+        )
+    escaped_pic_url = html.escape(pic_url, quote=True)
+    return (
+        f'<span class="{css_class} profile-pic-frame">'
+        f'<span class="profile-pic-fallback" aria-hidden="true">{initials}</span>'
+        f'<img src="{escaped_pic_url}" class="{css_class}-img profile-pic-image" alt="{escaped_alt}" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+        '</span>'
+    )
 
 
 def take_control_of_deck_browser_hook():
@@ -837,6 +873,8 @@ def _get_profile_header_html(conf, addon_package):
         light_color = mw.col.conf.get("modern_menu_profile_bg_color_light", "#EEEEEE")
         dark_color = mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C")
         bg_style = f"background-color: {light_color};"
+    elif bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+        bg_style = profile_background.get_profile_bg_gradient_style()
     else: # accent
         bg_style = "background-color: var(--accent-color);"
 
@@ -934,11 +972,8 @@ def _generate_profile_html_body():
         """
         stats_page_content = rl_styles + restaurant_level_html + stats_page_content
 
-    share_svg_icon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>"""
     export_button_html = f"""
-    <button id="export-btn" class="page-export-button" title="Share Profile">
-        {share_svg_icon}
-    </button>
+    <button id="export-btn" class="page-export-button" title="Share Profile" aria-label="Share Profile"></button>
     """
     
     return f"""
@@ -1015,6 +1050,72 @@ def open_profile():
 
 show_profile_page = open_profile
 
+_onigiri_deck_open_busy_cursor = False
+_onigiri_deck_open_cursor_timer = None
+
+
+def _qt_cursor_shape(name: str):
+    cursor_shape = getattr(Qt, "CursorShape", Qt)
+    return getattr(cursor_shape, name)
+
+
+def set_deck_open_busy_cursor():
+    global _onigiri_deck_open_busy_cursor, _onigiri_deck_open_cursor_timer
+    if _onigiri_deck_open_busy_cursor:
+        return
+    try:
+        if _onigiri_deck_open_cursor_timer:
+            _onigiri_deck_open_cursor_timer.stop()
+        timer = QTimer()
+        timer.setSingleShot(True)
+
+        def _show_busy_cursor():
+            global _onigiri_deck_open_busy_cursor, _onigiri_deck_open_cursor_timer
+            _onigiri_deck_open_cursor_timer = None
+            try:
+                QApplication.setOverrideCursor(_qt_cursor_shape("BusyCursor"))
+                _onigiri_deck_open_busy_cursor = True
+            except Exception:
+                _onigiri_deck_open_busy_cursor = False
+
+        timer.timeout.connect(_show_busy_cursor)
+        _onigiri_deck_open_cursor_timer = timer
+        timer.start(450)
+    except Exception:
+        _onigiri_deck_open_busy_cursor = False
+
+
+def restore_deck_open_busy_cursor():
+    global _onigiri_deck_open_busy_cursor, _onigiri_deck_open_cursor_timer
+    if _onigiri_deck_open_cursor_timer:
+        try:
+            _onigiri_deck_open_cursor_timer.stop()
+        except Exception:
+            pass
+        _onigiri_deck_open_cursor_timer = None
+    if _onigiri_deck_open_busy_cursor:
+        try:
+            QApplication.restoreOverrideCursor()
+        except Exception:
+            pass
+    _onigiri_deck_open_busy_cursor = False
+    _force_cursor_refresh()
+
+
+def _force_cursor_refresh():
+    """Force Qt/WebEngine to recalculate the visible cursor immediately."""
+    try:
+        app = QApplication.instance()
+        if app:
+            app.processEvents()
+        widget = QApplication.widgetAt(QCursor.pos())
+        if widget:
+            widget.setCursor(_qt_cursor_shape("ArrowCursor"))
+            QTimer.singleShot(0, widget.unsetCursor)
+            QTimer.singleShot(25, widget.unsetCursor)
+    except Exception:
+        pass
+
 def on_webview_js_message(handled, message, context):
     """
     Unified handler for messages from all webviews.
@@ -1062,6 +1163,24 @@ def on_webview_js_message(handled, message, context):
             return (True, None)
         if cmd == "showGamification":
             open_gamification_dialog()
+            return (True, None)
+        if cmd.startswith("onigiri_open_deck:"):
+            try:
+                deck_id = int(cmd.split(":", 1)[1])
+                set_deck_open_busy_cursor()
+
+                def _open_selected_deck():
+                    try:
+                        mw.col.decks.select(deck_id)
+                        mw.moveToState("overview")
+                    except Exception as e:
+                        restore_deck_open_busy_cursor()
+                        print(f"Onigiri: Error opening deck {deck_id}: {e}")
+
+                QTimer.singleShot(0, _open_selected_deck)
+            except Exception as e:
+                restore_deck_open_busy_cursor()
+                print(f"Onigiri: Error opening deck {cmd}: {e}")
             return (True, None)
         if cmd == "add":
             mw.onAddCard()
@@ -1171,6 +1290,39 @@ def on_webview_js_message(handled, message, context):
             sync_status = get_sync_status()
             context.web.eval(f"SyncStatusManager.setSyncStatus('{sync_status}');")
             return (True, None)
+        if cmd == "onigiri_overview_due_later":
+            later_count = 0
+            try:
+                now = int(time.time())
+                day_cutoff = mw.col.sched.day_cutoff
+                deck_id = mw.col.decks.current()["id"]
+                child_decks = mw.col.decks.child_ids(deck_id)
+                dids = [deck_id] + child_decks
+                placeholders = ",".join("?" for _ in dids)
+                later_count = mw.col.db.scalar(
+                    f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({placeholders})",
+                    now,
+                    day_cutoff,
+                    *dids,
+                ) or 0
+            except Exception as e:
+                print(f"Onigiri: Error loading overview due-later count: {e}")
+            context.web.eval(
+                """
+                (function(count){
+                    var row = document.getElementById('onigiri-due-later-row');
+                    var countEl = document.getElementById('onigiri-due-later-count');
+                    if (!row || !countEl) return;
+                    if (count > 0) {
+                        countEl.textContent = String(count);
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                })(%s);
+                """ % json.dumps(int(later_count))
+            )
+            return (True, None)
 
     elif isinstance(context, Reviewer):
         cmd = message  # <-- This line must come FIRST
@@ -1279,21 +1431,6 @@ def patch_overview():
 	def new_table(self) -> str:
 		counts = list(self.mw.col.sched.counts())
 		
-		# Calculate cards due later today
-		now = int(__import__("time").time())
-		try:
-			day_cutoff = self.mw.col.sched.day_cutoff
-			deck_id = self.mw.col.decks.current()['id']
-			child_decks = self.mw.col.decks.child_ids(deck_id)
-			dids = [deck_id] + child_decks
-			dids_str = ",".join(str(d) for d in dids)
-			later_count = self.mw.col.db.scalar(
-				f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({dids_str})", 
-				now, day_cutoff
-			)
-		except Exception:
-			later_count = 0
-		
 		count_data = [
 			{"label": tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
 			{"label": tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
@@ -1309,13 +1446,12 @@ def patch_overview():
 				'</div>'
 			)
 			
-		if later_count > 0:
-			rows_html += (
-				'<div class="stats-row due-later-row">'
-				f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> Due later</span>"
-				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
-				'</div>'
-			)
+		rows_html += (
+			'<div class="stats-row due-later-row" id="onigiri-due-later-row" style="display:none;">'
+			"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> Due later</span>"
+			"<span id=\"onigiri-due-later-count\" class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\"></span>"
+			'</div>'
+		)
 		
 		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or tr.studying_study_now()
 
@@ -1480,6 +1616,15 @@ def patch_overview():
                 }
             });
         }
+
+        // Non-critical count: load after first paint so deck opening feels snappy.
+        if (document.getElementById('onigiri-due-later-row')) {
+            setTimeout(function() {
+                if (typeof pycmd === 'function') {
+                    pycmd('onigiri_overview_due_later');
+                }
+            }, 0);
+        }
     });
     """
 
@@ -1488,20 +1633,25 @@ def patch_overview():
         #onigiri-reveal-btn {
             display: block;
             margin: 20px auto;
-            padding: 10px 20px;
-            background: var(--button-primary-bg);
-            color: white !important;
-            border-radius: 8px;
+            padding: 8px 18px !important;
+            background: var(--accent-color, #007aff) !important;
+            background-color: var(--accent-color, #007aff) !important;
+            color: #e1e1e1 !important;
+            border-radius: 10px !important;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.01em;
+            transition: opacity 0.15s ease;
+            border: none !important;
+            box-shadow: none !important;
+            -webkit-appearance: none !important;
         }
         #onigiri-reveal-btn:hover {
-            transform: scale(1.05);
+            opacity: 0.8;
         }
         .night-mode #onigiri-reveal-btn {
-            color: white !important;
+            color: #e1e1e1 !important;
         }
         .descfont.descmid.description.dyn {
             display: none !important;
@@ -1577,13 +1727,15 @@ def patch_congrats_page():
                 bg_class_str = "with-image-bg"
             elif profile_bg_mode == "custom":
                 bg_style_str = "background-color: var(--profile-bg-custom-color);"
+            elif profile_bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+                bg_style_str = profile_background.get_profile_bg_gradient_style()
             else: # accent
                 bg_style_str = "background-color: var(--accent-color);"
             
             profile_bar_html = f"""
             <div class="profile-bar {bg_class_str}" style="{bg_style_str}" onclick="pycmd('showUserProfile')">
                 {profile_pic_html}
-                <span class="profile-name">{user_name}</span>
+                <span class="profile-name">{html.escape(_get_profile_first_name(user_name))}</span>
             </div>
             """
 
@@ -1917,12 +2069,16 @@ def generate_deck_browser_backgrounds(addon_path):
             </style>
             """
     else: # sidebar_mode == 'main'
-        effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "opaque")
+        effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "glassmorphism")
         
         if effect_mode == "glassmorphism":
             intensity = mw.col.conf.get("onigiri_sidebar_main_bg_effect_intensity", 50)
             blur_px = (intensity / 100.0) * 15.0
             alpha = (intensity / 100.0) * 0.3
+            
+            # Search bar gets higher blur intensity for better visual hierarchy
+            search_blur_px = (intensity / 100.0) * 20.0
+            search_alpha = (intensity / 100.0) * 0.5
             
             sidebar_css = f"""
             <style id='modern-menu-sidebar-background-style'>
@@ -1933,6 +2089,19 @@ def generate_deck_browser_backgrounds(addon_path):
                 }}
                 .night-mode .sidebar-left {{
                     background-color: rgba(0, 0, 0, {alpha}) !important;
+                }}
+                #onigiri-deck-search-bar {{
+                    background-color: rgba(255, 255, 255, {search_alpha}) !important;
+                    backdrop-filter: blur({search_blur_px}px);
+                    -webkit-backdrop-filter: blur({search_blur_px}px);
+                    border-color: rgba(255, 255, 255, 0.3) !important;
+                }}
+                .night-mode #onigiri-deck-search-bar {{
+                    background-color: rgba(0, 0, 0, {search_alpha}) !important;
+                    border-color: rgba(0, 0, 0, 0.3) !important;
+                }}
+                #onigiri-deck-search-bar:focus-within {{
+                    border-color: var(--highlight-bg) !important;
                 }}
             </style>
             """
@@ -2734,57 +2903,86 @@ def generate_profile_bar_fix_css():
     """Generates responsive CSS to ensure the profile picture fits within the profile bar."""
     return """
 <style id="onigiri-profile-bar-fix">
-/* --- NEW RULES START --- */
 .profile-bar {
     display: flex;
     align-items: center;
     gap: 10px;
     overflow: hidden;
     box-sizing: border-box;
-    
-    position: relative; /* Establishes a positioning context for the picture */
-    flex-shrink: 0;     /* Prevents the bar itself from shrinking vertically */
-    
-    /* Top, Right, Bottom, Left padding. Left padding makes space for the picture. */
-    padding: 6px 8px 6px 50px; 
-    min-height: 50px; /* Ensures the bar has a minimum size */
+    padding: 6px 12px 6px 8px;
+    min-height: 45px;
 }
-
-.profile-pic, .profile-pic-placeholder {
-    position: absolute;   /* Positions the picture relative to the bar */
-    top: 5px;             /* 5px from the top of the bar */
-    left: 5px;            /* 5px from the left of the bar */
-    
-    /* Forces the height to be the container's height minus 10px (for padding) */
-    height: calc(100% - 10px);
-    width: auto;          /* Width will follow height due to aspect-ratio */
-    aspect-ratio: 1 / 1;  /* Guarantees it is a perfect circle */
-    
-    border-radius: 50%;
-}
-/* --- NEW RULES END --- */
 
 .profile-pic {
+    width: var(--onigiri-profile-bar-avatar-size, 38px);
+    height: var(--onigiri-profile-bar-avatar-size, 38px);
+    margin: 0;
+}
+
+.profile-pic,
+.profile-pic-placeholder {
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.profile-pic-frame {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 50%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    background: var(--onigiri-profile-initials-bg, var(--profile-pill-placeholder-bg));
+    color: var(--onigiri-profile-initials-fg, inherit);
+}
+
+.profile-pic-image,
+.profile-pic-img,
+.profile-pic > img {
+    grid-area: 1 / 1;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    display: block;
+}
+
+.profile-pic-fallback {
+    grid-area: 1 / 1;
+    font-size: var(--onigiri-profile-bar-initials-size, 13px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    user-select: none;
+    pointer-events: none;
 }
 
 .profile-pic-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: clamp(14px, 4vw, 20px);
-    background-color: rgba(0,0,0,0.1);
-    border: 1px solid rgba(255,255,255,0.1);
+    width: var(--onigiri-profile-bar-avatar-size, 38px);
+    height: var(--onigiri-profile-bar-avatar-size, 38px);
+    display: grid;
+    place-items: center;
+    background: var(--onigiri-profile-initials-bg, var(--profile-pill-placeholder-bg));
+    color: var(--onigiri-profile-initials-fg, inherit);
+    font-size: var(--onigiri-profile-bar-initials-size, 13px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
 .profile-name {
-    font-weight: 500;
+    font-weight: 400;
     font-size: 16px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    flex: 0 1 auto;
+    color: var(--profile-name-color, var(--fg));
 }
+
 </style>
 """
 
@@ -2804,11 +3002,15 @@ def generate_icon_size_css():
         },
         "collapse": {
             "selector": "a.collapse, span.collapse",
-            "default": 16,
+            "default": 14,
         },
         "options_gear": {
             "selector": "td.opts a",
             "default": 16,
+        },
+        "drag_handle": {
+            "selector": ".drag-handle",
+            "default": 14,
         },
     }
 
@@ -2820,6 +3022,8 @@ def generate_icon_size_css():
         css_rules.append(f"{selector} {{ width: {size}px !important; height: {size}px !important; }}")
         if key == "collapse":
             css_rules.append(f":root {{ --collapse-icon-size: {size}px; }}")
+        elif key == "drag_handle":
+            css_rules.append(f":root {{ --drag-handle-icon-size: {size}px; }}")
 
     return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
 
@@ -2835,6 +3039,9 @@ def generate_icon_css(addon_package, conf):
         "retention_star": ".star",
         "focus": ".deck-focus-btn .icon",
         "edit": ".deck-edit-btn .icon",
+        "search": "#onigiri-search-toolbar-btn .search-btn-icon",
+        "search_icon": ".onigiri-search-icon",
+        "cancel": ".search-close-icon",
     }
     
     addon_dir = os.path.dirname(__file__)
@@ -2900,6 +3107,10 @@ def generate_icon_css(addon_package, conf):
         
         if not url: # Fallback to system
             system_icon_name = 'star_filled' if key == 'retention_star' else key
+            if system_icon_name == 'search_icon':
+                system_icon_name = 'search'
+            if system_icon_name == 'ellipsis':
+                system_icon_name = 'more_circle'
             path = os.path.join(addon_dir, "system_files", "system_icons", f"{system_icon_name}.svg")
             url = get_data_uri(path)
         
@@ -2910,9 +3121,17 @@ def generate_icon_css(addon_package, conf):
     custom_deck_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
     for did, data in custom_deck_icons.items():
         icon_file = data.get("icon")
-        color = data.get("color")
+        color = normalize_color_string(data.get("color", "#888888"), fallback="#888888") or "#888888"
         
-        if icon_file:
+        if not icon_file and color:
+                # No custom icon — apply colour override to the deck's default system icon
+                css_rules.append(f"""
+                tr[data-did="{did}"] a.deck::before {{
+                    background-color: {color} !important;
+                }}
+                """)
+
+        elif icon_file:
                 # Emoji icons are stored with "emoji:" prefix (e.g. "emoji:😀")
                 is_emoji = icon_file.startswith("emoji:")
                 emoji_char = icon_file[len("emoji:"):] if is_emoji else ""
@@ -3006,16 +3225,16 @@ def generate_icon_css(addon_package, conf):
     if closed_icon_file:
         closed_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", closed_icon_file))
     if not closed_icon_url:
-        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_sidebar.svg"))
+        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "right.svg"))
 
     open_icon_url = ""
     if open_icon_file:
         open_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", open_icon_file))
     if not open_icon_url:
-        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "collapse_sidebar.svg"))
-        
-    # Create a list of selectors for the background color, EXCLUDING the star and filtered deck (filtered has own color)
-    bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck"]}
+        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "right.svg"))
+
+    # Create a list of selectors for the background color, EXCLUDING the star, filtered deck, and custom elements (filtered/custom have own colors)
+    bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck", "search_icon", "cancel"]}
     bg_selectors_str = ", ".join(bg_color_selectors.values())
 
     return f"""
@@ -3023,44 +3242,47 @@ def generate_icon_css(addon_package, conf):
     /* Hide the original '+' or '-' text from the link. */
     a.collapse {{
         font-size: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: var(--collapse-icon-size, 12px) !important;
+        min-width: var(--collapse-icon-size, 12px) !important;
+        max-width: var(--collapse-icon-size, 12px) !important;
+        height: var(--collapse-icon-size, 12px) !important;
+        min-height: var(--collapse-icon-size, 12px) !important;
+        max-height: var(--collapse-icon-size, 12px) !important;
+        flex: 0 0 var(--collapse-icon-size, 12px) !important;
+        margin-right: 2px !important;
+        box-sizing: border-box !important;
+        transform-origin: center center !important;
+        transform-box: fill-box !important;
+        aspect-ratio: 1 / 1 !important;
     }}
 
-    /* Create the icon using a pseudo-element on the link. */
+    /* Keep legacy pseudo-element rules inert; the link itself owns the mask. */
     a.collapse::before {{
-        content: '';
-        display: inline-block;
-        width: 100%;
-        height: 100%;
-        /* START FIX: Set background to transparent by default to prevent flash */
-        background-color: transparent;
-        transition: background-color 0.1s ease;
-        /* END FIX */
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
+        display: none !important;
+        content: none !important;
     }}
 
-    /* Apply the correct SVG icon and background color only when the state class is present. */
-    a.collapse.state-closed::before {{
-        mask-image: {closed_icon_url};
-        -webkit-mask-image: {closed_icon_url};
-        background-color: var(--icon-color, #888888);
-        /* END FIX */
+    /* Apply the correct SVG icon and background color only when the state class is present.
+       This avoids a square flash while still rendering before engine.js binds. */
+    a.collapse.state-closed {{
+        mask-image: {closed_icon_url} !important;
+        -webkit-mask-image: {closed_icon_url} !important;
+        background-color: var(--icon-color, #888888) !important;
+        opacity: 0.5;
     }}
-    a.collapse.state-open::before {{
-        mask-image: {open_icon_url};
-        -webkit-mask-image: {open_icon_url};
-        /* START FIX: Apply background color here */
-        background-color: var(--icon-color, #888888);
-        /* END FIX */
+    a.collapse.state-open {{
+        mask-image: {open_icon_url} !important;
+        -webkit-mask-image: {open_icon_url} !important;
+        background-color: var(--icon-color, #888888) !important;
+        opacity: 0.5;
     }}
 
     /* Filtered Deck Specific Color */
     tr.is-filtered a.deck::before {{
-        background-color: #0a84ff !important; /* Anki Blue */
+        background-color: var(--icon-color-filtered) !important;
         mask-size: contain;
         -webkit-mask-size: contain;
         mask-repeat: no-repeat;
@@ -3068,9 +3290,6 @@ def generate_icon_css(addon_package, conf):
         mask-position: center;
         -webkit-mask-position: center;
         display: inline-block;
-    }}
-    .night-mode tr.is-filtered a.deck::before {{
-        background-color: #64d2ff !important; /* Light Blue for Dark Mode */
     }}
 
     /* General rules for other icons (Unchanged) */
@@ -3096,7 +3315,7 @@ def generate_icon_css(addon_package, conf):
     }}
     
     .deck-table a.deck {{
-        padding: 0px 0px 0px 3px !important;
+        padding: 0px 0px 0px 2px !important;
         margin-left: 0 !important;
         display: flex !important;
         align-items: center !important;
@@ -3111,10 +3330,11 @@ def generate_icon_css(addon_package, conf):
     
     .deck-table a.deck .deck-mark-dot {{
         flex-shrink: 0 !important;
+        margin-left: 0px !important;
     }}
 
     .deck-table a.deck .deck-name {{
-        flex: 1 1 0 !important;
+        flex: 0 1 auto !important;
         min-width: 0 !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
@@ -3128,6 +3348,19 @@ def generate_icon_css(addon_package, conf):
         align-items: center !important;
         flex-shrink: 0 !important;
     }}
+
+    .deck-table a.collapse,
+    .deck-table span.collapse {{
+        width: var(--collapse-icon-size, 12px) !important;
+        min-width: var(--collapse-icon-size, 12px) !important;
+        max-width: var(--collapse-icon-size, 12px) !important;
+        height: var(--collapse-icon-size, 12px) !important;
+        min-height: var(--collapse-icon-size, 12px) !important;
+        max-height: var(--collapse-icon-size, 12px) !important;
+        flex: 0 0 var(--collapse-icon-size, 12px) !important;
+        margin-right: 2px !important;
+        box-sizing: border-box !important;
+    }}
     /* END FIX */    
     /* Individual mask images for other icons (Unchanged) */
     {''.join(css_rules)}
@@ -3139,6 +3372,7 @@ def generate_conditional_css(conf):
 	styles.append("""
         body.deck-browser .sidebar-left.deck-focus-mode .sidebar-expanded-content > #deck-list-header {
             display: flex !important;
+            margin-left: 8px !important;
         }
     """)
 	if conf.get("hideTodaysStats", False):
@@ -3471,6 +3705,60 @@ def generate_dynamic_css(conf):
 	profile_dark_color = mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C")
 	light_rules += f"\n    --profile-bg-custom-color: {profile_light_color} !important;"
 	dark_rules += f"\n    --profile-bg-custom-color: {profile_dark_color} !important;"
+	profile_gradient_colors = profile_background.get_profile_bg_gradient_colors(mw.col.conf)
+	light_rules += f"\n    --profile-bg-gradient-start: {profile_gradient_colors['light_start']} !important;"
+	light_rules += f"\n    --profile-bg-gradient-end: {profile_gradient_colors['light_end']} !important;"
+	dark_rules += f"\n    --profile-bg-gradient-start: {profile_gradient_colors['dark_start']} !important;"
+	dark_rules += f"\n    --profile-bg-gradient-end: {profile_gradient_colors['dark_end']} !important;"
+
+	profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+	if profile_bg_mode == "image":
+		profile_name_color_light = "#ffffff"
+		profile_name_color_dark = "#ffffff"
+	elif profile_bg_mode == "custom":
+		profile_name_color_light = get_contrast_text_color(profile_light_color)
+		profile_name_color_dark = get_contrast_text_color(profile_dark_color)
+	elif profile_bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+		light_midpoint = profile_background.get_gradient_midpoint_color(
+			profile_gradient_colors["light_start"],
+			profile_gradient_colors["light_end"],
+			fallback=profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_start"],
+		)
+		dark_midpoint = profile_background.get_gradient_midpoint_color(
+			profile_gradient_colors["dark_start"],
+			profile_gradient_colors["dark_end"],
+			fallback=profile_background.PROFILE_BG_GRADIENT_DEFAULTS["dark_start"],
+		)
+		profile_name_color_light = get_contrast_text_color(light_midpoint)
+		profile_name_color_dark = get_contrast_text_color(dark_midpoint)
+	else:  # accent
+		accent_light = light_colors.get("--accent-color", "#007aff")
+		accent_dark = dark_colors.get("--accent-color", "#0a84ff")
+		profile_name_color_light = get_contrast_text_color(accent_light)
+		profile_name_color_dark = get_contrast_text_color(accent_dark)
+	light_rules += f"\n    --profile-name-color: {profile_name_color_light} !important;"
+	dark_rules += f"\n    --profile-name-color: {profile_name_color_dark} !important;"
+
+	profile_bar_avatar_size = int(mw.col.conf.get("onigiri_profile_bar_avatar_size", 30))
+	if profile_bar_avatar_size not in {24, 30, 36}:
+		profile_bar_avatar_size = 30
+	profile_pill_avatar_size = 32
+	profile_bar_initials_size = max(10, round(profile_bar_avatar_size * 0.34))
+	profile_pill_initials_size = max(10, round(profile_pill_avatar_size * 0.34))
+	shared_avatar_vars = (
+		f"\n    --onigiri-profile-bar-avatar-size: {profile_bar_avatar_size}px !important;"
+		f"\n    --onigiri-profile-bar-initials-size: {profile_bar_initials_size}px !important;"
+		f"\n    --onigiri-profile-pill-avatar-size: {profile_pill_avatar_size}px !important;"
+		f"\n    --onigiri-profile-pill-initials-size: {profile_pill_initials_size}px !important;"
+	)
+	light_rules += shared_avatar_vars
+	dark_rules += shared_avatar_vars
+	profile_initials_bg_light = mw.col.conf.get("onigiri_profile_initials_bg_light", "#D2CDC7")
+	profile_initials_bg_dark = mw.col.conf.get("onigiri_profile_initials_bg_dark", "#6B635C")
+	light_rules += f"\n    --onigiri-profile-initials-bg: {profile_initials_bg_light} !important;"
+	light_rules += "\n    --onigiri-profile-initials-fg: #1f2937 !important;"
+	dark_rules += f"\n    --onigiri-profile-initials-bg: {profile_initials_bg_dark} !important;"
+	dark_rules += "\n    --onigiri-profile-initials-fg: white !important;"
 
 	# --- New Glassmorphism Style Block ---
 	glass_style_block = ""
@@ -3696,6 +3984,9 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     is_favorite = did_str in favorites
     # --- End Onigiri Favorites ---
 
+    archived_decks = set(str(did) for did in mw.col.conf.get(deck_tree_updater.ARCHIVED_DECKS_CONF_KEY, []))
+    is_archived = did_str in archived_decks
+
     # --- Onigiri Mark dot ---
     _deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
     _mark_color_map = {
@@ -3825,7 +4116,7 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
             
         return f"<span style='display:inline-block; width:{px}px;'></span>"
 
-    klass = "deck current" if node.deck_id == ctx.current_deck_id else "deck"
+    klass = "deck"
     
     # Determine precise deck type for styling
     # Priority: 1) node.filtered (direct from tree node), 2) DB lookup
@@ -3858,15 +4149,16 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         deck_type_class = "is-deck"
 
     fav_attr = ' data-is-fav="1"' if is_favorite else ''
-    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}'{fav_attr}>")
+    archive_attr = ' data-is-archived="1"' if is_archived else ''
+    buf.append(f"<tr class='{klass} {deck_type_class}' id='{node.deck_id}' data-did='{node.deck_id}' data-level='{node.level}'{fav_attr}{archive_attr}>")
 
     if node.children:
-        collapse_link = f"<a class='collapse {state_class}' href=# onclick='return pycmd(\"onigiri_collapse:{node.deck_id}\")'>{prefix}</a>"
+        collapse_link = f"<a class='collapse {state_class}' href=# draggable='false' ondragstart='return false;' onclick='return pycmd(\"onigiri_collapse:{node.deck_id}\")'>{prefix}</a>"
     else:
         collapse_link = "<span class=collapse></span>"
 
     # Removed class='deck-prefix' as requested by user
-    deck_prefix = f"<span>{indent()}{collapse_link}</span>"
+    deck_prefix = f"<span draggable='false' ondragstart='return false;'>{indent()}{collapse_link}</span>"
     extraclass = "filtered" if node.filtered else ""
 
     # Leaf name only (strip parent prefixes like "Parent::Child" → "Child")
@@ -3875,9 +4167,10 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     # --- START MODIFICATION: Update colspan and add counts_html ---
     buf.append(f"""
     <td class=decktd colspan=7>
+        <span class="drag-handle" title="Drag to reparent or reorder"></span>
         <div class="deck-info">
             {deck_prefix}
-            <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
+            <a class="deck {extraclass}" href=# draggable="false" onclick="return OnigiriEngine.openDeck(event, '{node.deck_id}')">
                 <span class="deck-name">{display_name}</span>{mark_dot_html}
             </a>
         </div>
