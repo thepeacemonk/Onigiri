@@ -205,7 +205,7 @@ class StoreWindow(QDialog):
             op=background_op,
             success=on_success
         )
-        op.with_progress().run_in_background()
+        op.run_in_background()
 
     def reply_to_js(self, function_name, data_dict):
         """

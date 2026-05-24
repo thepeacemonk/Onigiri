@@ -1,14 +1,84 @@
 import os
 import json
 import shutil
-from typing import Tuple, Any
+from typing import Tuple, Any, List
 from aqt.deckbrowser import DeckBrowser
 from . import deck_tree_updater
+from . import deck_drag_drop
 from . import create_deck_dialog
 from aqt import mw
 from aqt.qt import QFileDialog
 from aqt.utils import tooltip
 from . import sort_dialog
+from .color_utils import normalize_color_string
+
+def _refresh_dynamic_icon_css(context) -> None:
+    """Refresh the generated deck-icon CSS without rebuilding the whole page."""
+    if not isinstance(context, DeckBrowser):
+        return
+    try:
+        from . import config, patcher
+        addon_package = mw.addonManager.addonFromModule(__package__ or __name__)
+        css_html = patcher.generate_icon_css(addon_package, config.get_config())
+        context.web.eval(
+            """
+            (function(html){
+                var existing = document.getElementById('modern-menu-icon-styles');
+                if (existing) existing.outerHTML = html;
+                else document.head.insertAdjacentHTML('beforeend', html);
+            })(%s);
+            """ % json.dumps(css_html)
+        )
+    except Exception as e:
+        print(f"Onigiri: could not refresh dynamic icon CSS: {e}")
+
+
+def _refresh_deck_browser_locally(context, *, refresh_icon_css: bool = False) -> None:
+    """Refresh the deck tree without triggering Anki's full webview loading UI."""
+    if isinstance(context, DeckBrowser):
+        if refresh_icon_css:
+            _refresh_dynamic_icon_css(context)
+        deck_tree_updater.refresh_deck_tree_state(context)
+
+
+def _sync_organise_menu_state(context, sort_key=None, favorites=None, marked=None, archived=None) -> None:
+    """Keep in-memory Organise checkmarks correct after no-reload refreshes."""
+    if not isinstance(context, DeckBrowser):
+        return
+    updates = {
+        "sort_key": sort_key,
+        "favorites": favorites,
+        "marked": marked,
+        "archived": archived,
+    }
+    context.web.eval(
+        """
+        (function(update){
+            var cfg = window.ONIGIRI_CONFIG;
+            if (!cfg) return;
+            if (!Array.isArray(cfg.organiseActions)) return;
+            cfg.organiseActions.forEach(function(child){
+                if (!child || !child.key) return;
+                if (child.key.indexOf('sort_') === 0 && update.sort_key !== null) {
+                    child.selected = child.key === ('sort_' + update.sort_key);
+                } else if (child.key === 'filter_favorites' && update.favorites !== null) {
+                    child.selected = !!update.favorites;
+                } else if (child.key === 'filter_marked' && update.marked !== null) {
+                    child.selected = !!update.marked;
+                } else if (child.key === 'filter_archived' && update.archived !== null) {
+                    child.selected = !!update.archived;
+                }
+            });
+        })(%s);
+        """ % json.dumps(updates)
+    )
+
+
+def _conf_list(key: str) -> List[str]:
+    return [str(value) for value in mw.col.conf.get(key, [])]
+
+
+
 
 def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bool, Any]:
     """
@@ -35,6 +105,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
         sort_dialog.show_sort_dialog()
         return (True, None)
 
+    if cmd == "onigiri_force_deck_refresh":
+        if isinstance(context, DeckBrowser):
+            _refresh_deck_browser_locally(context)
+        return (True, None)
+
     if cmd == "onigiri_toggle_sidebar":
         if isinstance(context, DeckBrowser):
             # Use the proper collapse/expand helpers that handle inline width removal
@@ -58,7 +133,19 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             new_state = not current
             mw.col.conf["onigiri_deck_focus_mode"] = new_state
             mw.col.setMod()
-            js = f"var s=document.querySelector('.sidebar-left');if(s){{s.classList.toggle('deck-focus-mode',{str(new_state).lower()});}}"
+            js = f"""
+            (function(){{
+                var s=document.querySelector('.sidebar-left');
+                if(s) s.classList.toggle('deck-focus-mode',{str(new_state).lower()});
+                var cfg=window.ONIGIRI_CONFIG;
+                if(cfg&&Array.isArray(cfg.ellipsisActions)){{
+                    cfg.ellipsisActions.forEach(function(action){{
+                        if(action&&action.key==='focus') action.selected={str(new_state).lower()};
+                    }});
+                }}
+                if(typeof updateDeckFocusLayout==='function') updateDeckFocusLayout();
+            }})();
+            """
             context.web.eval(js)
         return (True, None)
 
@@ -116,6 +203,33 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             import traceback
             traceback.print_exc()
             return (True, None) # Still handle the command
+
+    if cmd.startswith("onigiri_toggle_archive:"):
+        try:
+            deck_id = cmd.split(":", 1)[1]
+            deck = mw.col.decks.get(deck_id)
+            if not deck:
+                tooltip("Cannot archive: Deck no longer exists.")
+                return (True, None)
+
+            archived = _conf_list(deck_tree_updater.ARCHIVED_DECKS_CONF_KEY)
+            if deck_id in archived:
+                archived.remove(deck_id)
+            else:
+                archived.append(deck_id)
+
+            mw.col.conf[deck_tree_updater.ARCHIVED_DECKS_CONF_KEY] = archived
+            mw.col.setMod()
+
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error handling archive toggle: {e}")
+            import traceback
+            traceback.print_exc()
+            return (True, None)
         
     if cmd.startswith("onigiri_show_transfer_window:"):
         try:
@@ -147,21 +261,27 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             leaf = current_name.split("::")[-1]
             parent_prefix = "::".join(current_name.split("::")[:-1])
 
-            new_name = _rd.show_rename_dialog(mw, leaf, current_name, parent_prefix)
-            if new_name and new_name.strip():
-                new_name = new_name.strip()
-                # If the user edited the full path, use it directly;
-                # otherwise prepend the existing parent prefix.
-                if "::" in new_name:
+            result = _rd.show_rename_dialog(mw, leaf, current_name, parent_prefix)
+            if result and result[0] and result[0].strip():
+                new_name = result[0].strip()
+                was_full_path = result[1]
+                if was_full_path:
+                    # Dialog was in full-path mode: use the user's text exactly as-is
                     new_full = new_name
                 else:
-                    new_full = (parent_prefix + "::" + new_name) if parent_prefix else new_name
+                    # Leaf mode: only re-append parent prefix if the user didn't type a separator
+                    if "::" in new_name:
+                        new_full = new_name
+                    else:
+                        new_full = (parent_prefix + "::" + new_name) if parent_prefix else new_name
                 mw.col.decks.rename(deck, new_full)
                 mw.col.setMod()
                 if isinstance(context, DeckBrowser):
                     deck_tree_updater.refresh_deck_tree_state(context)
         except Exception as e:
             tooltip(f"Rename failed: {e}")
+        if isinstance(context, DeckBrowser):
+            context.web.eval("OnigiriEngine.clearDialogFocus();")
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_subdeck:"):
@@ -181,6 +301,8 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                     deck_tree_updater.refresh_deck_tree_state(context)
         except Exception as e:
             tooltip(f"Create subdeck failed: {e}")
+        if isinstance(context, DeckBrowser):
+            context.web.eval("OnigiriEngine.clearDialogFocus();")
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_copy_id:"):
@@ -235,43 +357,9 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd.startswith("onigiri_drag_drop:"):
         try:
             import json as _json
-            from anki.decks import DeckId as _DeckId
             payload = _json.loads(cmd.split(":", 1)[1])
-            source_did = _DeckId(int(payload["source_did"]))
-            target_did = _DeckId(int(payload["target_did"]))
-            drop_type = payload.get("type", "nest")
-
-            if drop_type == "nest":
-                # Reparent source deck as a child of target deck
-                mw.col.decks.reparent([source_did], target_did)
-                mw.col.setMod()
-            else:
-                # Reorder (before/after): if source and target have different
-                # parents, move source to target's parent level first.
-                source_deck = mw.col.decks.get(source_did)
-                target_deck = mw.col.decks.get(target_did)
-                if source_deck and target_deck:
-                    source_name = source_deck["name"]
-                    target_name = target_deck["name"]
-                    source_parent = "::".join(source_name.split("::")[:-1])
-                    target_parent = "::".join(target_name.split("::")[:-1])
-                    if source_parent != target_parent:
-                        source_leaf = source_name.split("::")[-1]
-                        new_full_name = (target_parent + "::" + source_leaf) if target_parent else source_leaf
-                        existing = mw.col.decks.by_name(new_full_name)
-                        if existing is None or existing["id"] == int(source_did):
-                            mw.col.decks.rename(source_deck, new_full_name)
-                            mw.col.setMod()
-
-                # Save the new visual order as the custom sort
-                new_order = payload.get("new_order", [])
-                if new_order:
-                    mw.col.conf["onigiri_sort_mode"] = "custom"
-                    mw.col.conf["onigiri_deck_sort"] = "custom"  # sync ellipsis checkmark
-                    mw.col.conf["onigiri_custom_deck_order"] = new_order
-                    mw.col.setMod()
-
-            if isinstance(context, DeckBrowser):
+            changed = deck_drag_drop.apply_drag_drop(payload)
+            if changed and isinstance(context, DeckBrowser):
                 deck_tree_updater.refresh_deck_tree_state(context)
         except Exception as e:
             print(f"Onigiri: drag_drop error: {e}")
@@ -319,12 +407,20 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             sep = rest.index(":")
             did = rest[:sep]
             data = json.loads(rest[sep+1:])
+            icon = data.get("icon", "")
+            raw_color = data.get("color", "")
             custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
-            custom_icons[did] = {"icon": data.get("icon", ""), "color": data.get("color", "#888888")}
+            if not icon and not raw_color:
+                custom_icons.pop(did, None)
+            else:
+                custom_icons[did] = {
+                    "icon": icon,
+                    "color": normalize_color_string(raw_color, fallback="#888888") or "#888888",
+                }
             mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
             mw.col.setMod()
             if isinstance(context, DeckBrowser):
-                context._renderPage()  # full reload so loading overlay appears
+                _refresh_deck_browser_locally(context, refresh_icon_css=True)
         except Exception as e:
             tooltip(f"Icon chooser save failed: {e}")
         return (True, None)
@@ -337,7 +433,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
             mw.col.setMod()
             if isinstance(context, DeckBrowser):
-                context._renderPage()  # full reload so loading overlay appears
+                _refresh_deck_browser_locally(context, refresh_icon_css=True)
         except Exception as e:
             tooltip(f"Icon chooser reset failed: {e}")
         return (True, None)
@@ -396,6 +492,125 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             tooltip(f"Delete failed: {e}")
         return (True, None)
 
+    # --- Bulk context menu handlers for multi-selection ---
+
+    if cmd.startswith("onigiri_ctx_bulk_delete:"):
+        try:
+            from aqt.qt import QMessageBox
+            import json as _json
+            payload = _json.loads(cmd.split(":", 1)[1])
+            dids = payload.get("dids", [])
+            if not dids:
+                return (True, None)
+            count = len(dids)
+            reply = QMessageBox.question(
+                mw,
+                "Delete Decks",
+                f"Delete {count} decks and all their cards?\nThis cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                from anki.decks import DeckId as _DeckId
+                mw.col.decks.remove([_DeckId(int(d)) for d in dids])
+                mw.col.setMod()
+                if isinstance(context, DeckBrowser):
+                    deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk delete failed: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigiri_ctx_bulk_favorite:"):
+        try:
+            import json as _json
+            payload = _json.loads(cmd.split(":", 1)[1])
+            dids = payload.get("dids", [])
+            if not dids:
+                return (True, None)
+            favorites = set(mw.col.conf.get("onigiri_favorite_decks", []))
+            favorites |= set(str(d) for d in dids)
+            mw.col.conf["onigiri_favorite_decks"] = list(favorites)
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk favorite failed: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigiri_ctx_bulk_unfavorite:"):
+        try:
+            import json as _json
+            payload = _json.loads(cmd.split(":", 1)[1])
+            dids = payload.get("dids", [])
+            if not dids:
+                return (True, None)
+            favorites = set(mw.col.conf.get("onigiri_favorite_decks", []))
+            favorites -= set(str(d) for d in dids)
+            mw.col.conf["onigiri_favorite_decks"] = list(favorites)
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk unfavorite failed: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigiri_ctx_bulk_archive:"):
+        try:
+            import json as _json
+            payload = _json.loads(cmd.split(":", 1)[1])
+            dids = payload.get("dids", [])
+            if not dids:
+                return (True, None)
+            archived = set(mw.col.conf.get("onigiri_archived_decks", []))
+            archived |= set(str(d) for d in dids)
+            mw.col.conf["onigiri_archived_decks"] = list(archived)
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk archive failed: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigiri_ctx_bulk_unarchive:"):
+        try:
+            import json as _json
+            payload = _json.loads(cmd.split(":", 1)[1])
+            dids = payload.get("dids", [])
+            if not dids:
+                return (True, None)
+            archived = set(mw.col.conf.get("onigiri_archived_decks", []))
+            archived -= set(str(d) for d in dids)
+            mw.col.conf["onigiri_archived_decks"] = list(archived)
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk unarchive failed: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigiri_ctx_bulk_mark:"):
+        try:
+            import json as _json
+            rest = cmd.split(":", 1)[1]
+            payload = _json.loads(rest)
+            dids = payload.get("dids", [])
+            mark_key = payload.get("mark", "none")
+            if not dids:
+                return (True, None)
+            marks = mw.col.conf.get("onigiri_deck_marks", {})
+            for did in dids:
+                if mark_key == 'none':
+                    marks.pop(str(did), None)
+                else:
+                    marks[str(did)] = mark_key
+            mw.col.conf["onigiri_deck_marks"] = marks
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+        except Exception as e:
+            tooltip(f"Bulk mark failed: {e}")
+        return (True, None)
+
     if cmd == "onigiri_undo":
         try:
             mw.col.undo()
@@ -419,21 +634,24 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             mw.col.conf["onigiri_deck_sort"] = sort_key  # for renderer checkmarks
             mw.col.setMod()
             if isinstance(context, DeckBrowser):
-                # Full re-render so ONIGIRI_GLOBAL_DATA.ellipsis_actions is rebuilt
-                # with the updated checkmark, and the loading overlay appears briefly.
-                context._renderPage()
+                _sync_organise_menu_state(context, sort_key=sort_key)
+                deck_tree_updater.refresh_deck_tree_state(context, force=True)
         except Exception as e:
             tooltip(f"Sort failed: {e}")
         return (True, None)
 
-    if cmd == "onigiri_filter_favourites":
+    if cmd == "onigiri_filter_favorites":
         try:
-            current = bool(mw.col.conf.get("onigiri_show_favourites", False))
-            mw.col.conf["onigiri_show_favourites"] = not current
+            current = bool(mw.col.conf.get("onigiri_show_favorites", False))
+            new_state = not current
+            mw.col.conf["onigiri_show_favorites"] = new_state
             mw.col.setMod()
             if isinstance(context, DeckBrowser):
-                # Full re-render so the Favourites tick and deck list both update correctly.
-                context._renderPage()
+                _sync_organise_menu_state(
+                    context,
+                    favorites=new_state,
+                )
+                deck_tree_updater.refresh_deck_tree_state(context, force=True)
         except Exception as e:
             tooltip(f"Filter failed: {e}")
         return (True, None)
@@ -441,11 +659,31 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd == "onigiri_filter_marked":
         try:
             current = bool(mw.col.conf.get("onigiri_show_marked", False))
-            mw.col.conf["onigiri_show_marked"] = not current
+            new_state = not current
+            mw.col.conf["onigiri_show_marked"] = new_state
             mw.col.setMod()
             if isinstance(context, DeckBrowser):
-                # Full re-render so the Marked tick and deck list both update correctly.
-                context._renderPage()
+                _sync_organise_menu_state(
+                    context,
+                    marked=new_state,
+                )
+                deck_tree_updater.refresh_deck_tree_state(context, force=True)
+        except Exception as e:
+            tooltip(f"Filter failed: {e}")
+        return (True, None)
+
+    if cmd == "onigiri_filter_archived":
+        try:
+            current = bool(mw.col.conf.get(deck_tree_updater.SHOW_ARCHIVED_CONF_KEY, False))
+            new_state = not current
+            mw.col.conf[deck_tree_updater.SHOW_ARCHIVED_CONF_KEY] = new_state
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                _sync_organise_menu_state(
+                    context,
+                    archived=new_state,
+                )
+                deck_tree_updater.refresh_deck_tree_state(context, force=True)
         except Exception as e:
             tooltip(f"Filter failed: {e}")
         return (True, None)
@@ -465,20 +703,43 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 )
                 return (True, None)
 
+            archived_ids = deck_tree_updater.archived_deck_ids()
+            show_archived_only = bool(mw.col.conf.get(deck_tree_updater.SHOW_ARCHIVED_CONF_KEY, False))
+
             # Search ALL deck names (including collapsed children)
             all_decks = mw.col.decks.all()
+            archived_names = [
+                d.get("name", "")
+                for d in all_decks
+                if str(d.get("id", "")) in archived_ids and d.get("name", "")
+            ]
+
+            def hidden_by_archived_parent(name):
+                return any(name == archived_name or name.startswith(archived_name + "::") for archived_name in archived_names)
+
             matched_ids = set()
             for d in all_decks:
+                did = str(d["id"])
                 name = d.get("name", "")
+                if show_archived_only:
+                    if did not in archived_ids:
+                        continue
+                elif did in archived_ids or hidden_by_archived_parent(name):
+                    continue
                 leaf = name.split("::")[-1]
                 if query in name.lower() or query in leaf.lower():
-                    matched_ids.add(str(d["id"]))
+                    matched_ids.add(did)
 
             # Re-render the full tree but only emit rows whose deck_id is in matched_ids
             from aqt.deckbrowser import RenderDeckNodeContext
             from . import onigiri_renderer
 
             tree_data = mw.col.sched.deck_due_tree()
+            deck_tree_updater.apply_archive_filter(
+                tree_data,
+                archived_ids=archived_ids,
+                show_archived_only=show_archived_only,
+            )
             ctx = RenderDeckNodeContext(current_deck_id=mw.col.decks.get_current_id())
 
             rows = []
@@ -508,10 +769,16 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd == "onigiri_ui_close":
         from . import onigiri_renderer
         onigiri_renderer._onigiri_ui_open = False
-        if onigiri_renderer._onigiri_refresh_deferred:
-            onigiri_renderer._onigiri_refresh_deferred = False
-            if isinstance(context, DeckBrowser):
+        full_deferred = onigiri_renderer._onigiri_refresh_deferred
+        tree_deferred = onigiri_renderer._onigiri_tree_refresh_deferred
+        onigiri_renderer._onigiri_refresh_deferred = False
+        onigiri_renderer._onigiri_tree_refresh_deferred = False
+
+        if isinstance(context, DeckBrowser):
+            if full_deferred:
                 context.refresh()
+            elif tree_deferred:
+                deck_tree_updater.refresh_deck_tree_state(context)
         return (True, None)
 
     return handled
@@ -544,7 +811,7 @@ def _icon_payload(did: str) -> dict:
         "images": _list(".png"),
         "current": {
             "icon":  current.get("icon",  ""),
-            "color": current.get("color", "#888888"),
+            "color": normalize_color_string(current.get("color", "#888888"), fallback="#888888") or "#888888",
         },
     }
 
@@ -591,7 +858,17 @@ def _icon_chooser_delete_file(context, did: str, filename: str):
         except Exception as e:
             print(f"[Onigiri IconChooser] Delete error: {e}")
 
+    custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
+    current = custom_icons.get(str(did), {})
+    should_refresh_deck = current.get("icon") == filename
+    if should_refresh_deck:
+        custom_icons.pop(str(did), None)
+        mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
+        mw.col.setMod()
+
     if isinstance(context, DeckBrowser):
         payload = _icon_payload(did)
         payload_js = json.dumps(payload, ensure_ascii=True)
         context.web.eval(f"if(window.OnigiriIconChooser)OnigiriIconChooser.refreshData({payload_js});")
+        if should_refresh_deck:
+            _refresh_deck_browser_locally(context, refresh_icon_css=True)
