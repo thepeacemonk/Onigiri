@@ -136,7 +136,7 @@ class StoreItemCard(QWidget):
         info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         
         # Load and color the SVG icon
-        svg_path = os.path.join(self.addon_path, "system_files/system_icons/info-circle.svg")
+        svg_path = os.path.join(self.addon_path, "system_files/system_icons/info_circle.svg")
         if os.path.exists(svg_path):
             # Read SVG content
             with open(svg_path, 'r', encoding='utf-8') as f:

@@ -21,6 +21,7 @@ from .config import DEFAULTS
 from .gamification import restaurant_level
 from .themes import THEMES
 from .settings import FlowLayout
+from .color_utils import parse_color_string
 
 # --- UI COMPONENTS (Copied from settings.py for standalone functionality) ---
 
@@ -66,8 +67,8 @@ class ProfileBarWidget(QWidget):
 
         self._bg_mode = bg_mode
         self._bg_image_path = bg_config.get('image')
-        self._bg_color = QColor(bg_config.get('color', '#555555'))
-        self._accent_color = QColor(accent_color)
+        self._bg_color = parse_color_string(bg_config.get('color', '#555555'), fallback="#555555")
+        self._accent_color = parse_color_string(accent_color, fallback="#007BFF")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 15, 5)
@@ -174,7 +175,7 @@ class AnimatedToggleButton(QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.accent_color = QColor(accent_color)
+        self.accent_color = parse_color_string(accent_color, fallback="#007BFF")
         self.track_color_off = QColor("#cccccc") if not theme_manager.night_mode else QColor("#555555")
         self.thumb_color = QColor("#ffffff")
         
