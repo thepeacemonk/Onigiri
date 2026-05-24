@@ -5,6 +5,10 @@ from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
 from . import onigiri_renderer
 
+ARCHIVED_DECKS_CONF_KEY = "onigiri_archived_decks"
+SHOW_ARCHIVED_CONF_KEY = "onigiri_show_archived"
+
+
 def _sort_tree_nodes(nodes, sort_mode, saved_order, is_top_level=True):
     """Return a sorted copy of a DeckTreeNode children list."""
     nodes = list(nodes)
@@ -42,6 +46,56 @@ def _apply_sort_recursive(nodes_collection, sort_mode, saved_order, is_top_level
         pass
 
 
+def _replace_children(nodes_collection, nodes):
+    """Replace a mutable protobuf children collection when supported."""
+    try:
+        del nodes_collection[:]
+        nodes_collection.extend(nodes)
+    except Exception:
+        pass
+
+
+def _prune_archived_descendants(nodes_collection, archived_ids):
+    """Remove archived nodes, and their descendants, from a tree in-place."""
+    kept = []
+    for node in list(nodes_collection):
+        if str(node.deck_id) in archived_ids:
+            continue
+        _prune_archived_descendants(node.children, archived_ids)
+        kept.append(node)
+    _replace_children(nodes_collection, kept)
+
+
+def _archived_roots(nodes, archived_ids):
+    """Collect archived nodes, preserving archived descendants only."""
+    roots = []
+    for node in list(nodes):
+        if str(node.deck_id) in archived_ids:
+            archived_children = _archived_roots(node.children, archived_ids)
+            _replace_children(node.children, archived_children)
+            roots.append(node)
+        else:
+            roots.extend(_archived_roots(node.children, archived_ids))
+    return roots
+
+
+def archived_deck_ids():
+    """Return archived deck IDs as strings for consistent comparisons."""
+    return set(str(did) for did in mw.col.conf.get(ARCHIVED_DECKS_CONF_KEY, []))
+
+
+def apply_archive_filter(tree_data, archived_ids=None, show_archived_only=None):
+    """Hide archived decks, or show only archived decks when requested."""
+    archived_ids = archived_deck_ids() if archived_ids is None else set(str(did) for did in archived_ids)
+    if show_archived_only is None:
+        show_archived_only = bool(mw.col.conf.get(SHOW_ARCHIVED_CONF_KEY, False))
+
+    if show_archived_only:
+        _replace_children(tree_data.children, _archived_roots(tree_data.children, archived_ids))
+    elif archived_ids:
+        _prune_archived_descendants(tree_data.children, archived_ids)
+
+
 def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     """
     Renders just the HTML for the deck tree's <tbody> content.
@@ -59,16 +113,19 @@ def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
         saved_order = [str(x) for x in mw.col.conf.get("onigiri_custom_deck_order", [])]
         _apply_sort_recursive(tree_data.children, sort_mode, saved_order, is_top_level=True)
 
-    # Apply favourites filter if active — strict: only directly-favourited decks shown.
-    # Parents that are not themselves favourited are excluded even if a child is.
-    show_favourites_only = bool(mw.col.conf.get("onigiri_show_favourites", False))
-    if show_favourites_only:
-        favourites = set(str(f) for f in mw.col.conf.get("onigiri_favorite_decks", []))
+    show_archived_only = bool(mw.col.conf.get(SHOW_ARCHIVED_CONF_KEY, False))
+    apply_archive_filter(tree_data, show_archived_only=show_archived_only)
+
+    # Apply favorites filter if active — strict: only directly-favorited decks shown.
+    # Parents that are not themselves favorited are excluded even if a child is.
+    show_favorites_only = bool(mw.col.conf.get("onigiri_show_favorites", False))
+    if show_favorites_only:
+        favorites = set(str(f) for f in mw.col.conf.get("onigiri_favorite_decks", []))
 
         def _filter_strictly(nodes):
-            """Keep only nodes that are directly in favourites; recurse into kept nodes."""
-            kept = [n for n in nodes if str(n.deck_id) in favourites]
-            # Children of a kept (favourited) node are shown in full — no further pruning.
+            """Keep only nodes that are directly in favorites; recurse into kept nodes."""
+            kept = [n for n in nodes if str(n.deck_id) in favorites]
+            # Children of a kept (favorited) node are shown in full — no further pruning.
             return kept
 
         try:
@@ -104,7 +161,7 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
     """
     Handles the collapse/expand action for a deck without a full page reload.
     Re-renders the tree HTML and uses JS to preserve checkbox *state*.
-    When collapsing (deck was open → now closed) child rows are animated out
+    When collapsing (deck was open -> now closed) child rows are animated out
     before the innerHTML is replaced for a smooth transition.
     """
     try:
@@ -131,8 +188,8 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
         js_escaped_html = json.dumps(new_tree_html)
 
         # Send the new HTML to the frontend to be injected by JavaScript
-        # When collapsing, animate children out first (150 ms), then swap.
-        js = """
+        # When collapsing, animate children out first (120 ms), then swap.
+        js = '''
         (function() {{
             const container = document.getElementById('deck-list-container');
             const scrollTop = container ? container.scrollTop : 0;
@@ -145,32 +202,95 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
             }}
 
             if (isCollapsing) {{
-                // Collect child rows (siblings after the parent row in the tbody)
+                // Collect child rows and lower rows (siblings after the parent row in the tbody)
                 const tbody = document.querySelector('#decktree > tbody');
                 const parentRow = tbody ? tbody.querySelector('tr.deck[data-did="' + deckId + '"]') : null;
                 const childRows = [];
+                const lowerRows = [];
                 if (parentRow) {{
+                    const parentLevel = parseInt(parentRow.dataset.level || '1', 10);
                     let el = parentRow.nextElementSibling;
-                    while (el && el.tagName === 'TR') {{
-                        childRows.push(el);
+                    let isChild = true;
+                    while (el && el.tagName === 'TR' && el.classList.contains('deck')) {{
+                        const level = parseInt(el.dataset.level || '1', 10);
+                        if (isChild && level > parentLevel) {{
+                            childRows.push(el);
+                        }} else {{
+                            isChild = false;
+                            lowerRows.push(el);
+                        }}
                         el = el.nextElementSibling;
                     }}
                 }}
                 if (childRows.length > 0) {{
+                    let totalChildHeight = 0;
                     childRows.forEach(function(r) {{
+                        totalChildHeight += r.offsetHeight || 0;
                         r.classList.add('deck-row-disappear');
                     }});
-                    setTimeout(doUpdate, 155);
+                    if (totalChildHeight > 0 && lowerRows.length > 0) {{
+                        lowerRows.forEach(function(r) {{
+                            r.style.transition = 'transform 120ms cubic-bezier(0.55, 0, 1, 0.45)';
+                            r.style.transform = 'translateY(-' + totalChildHeight + 'px)';
+                        }});
+                    }}
+                    setTimeout(doUpdate, 135);
                     return;
                 }}
+            }} else {{
+                // Expanding: let new child rows fade in (deck-row-appear handles opacity).
+                // Use proper FLIP to slide lower surviving rows down smoothly.
+
+                // 1. Snapshot positions of ALL current rows by data-did BEFORE swap
+                const tbody = document.querySelector('#decktree > tbody');
+                const prePositions = {{}};
+                if (tbody) {{
+                    tbody.querySelectorAll('tr.deck[data-did]').forEach(function(r) {{
+                        prePositions[r.dataset.did] = r.getBoundingClientRect().top;
+                    }});
+                }}
+
+                // 2. Swap DOM
+                doUpdate();
+
+                // 3. FLIP: for every row that existed before, compute delta and offset it back
+                if (tbody) {{
+                    requestAnimationFrame(function() {{
+                        const movedRows = [];
+                        tbody.querySelectorAll('tr.deck[data-did]').forEach(function(r) {{
+                            const did = r.dataset.did;
+                            if (did in prePositions) {{
+                                const delta = r.getBoundingClientRect().top - prePositions[did];
+                                if (Math.abs(delta) > 0.5) {{
+                                    r.style.transition = 'none';
+                                    r.style.transform = 'translateY(' + (-delta) + 'px)';
+                                    movedRows.push(r);
+                                }}
+                            }}
+                        }});
+
+                        if (movedRows.length > 0) {{
+                            requestAnimationFrame(function() {{
+                                movedRows.forEach(function(r) {{
+                                    r.style.transition = 'transform 120ms cubic-bezier(0.16,1,0.3,1)';
+                                    r.style.transform = 'translateY(0)';
+                                }});
+                                setTimeout(function() {{
+                                    movedRows.forEach(function(r) {{
+                                        r.style.transition = '';
+                                        r.style.transform = '';
+                                    }});
+                                }}, 135);
+                            }});
+                        }}
+                    }});
+                }}
+                return;
             }}
+
             doUpdate();
         }})();
-        """.format(
-            is_collapsing="true" if is_collapsing else "false",
-            deck_id=deck_id,
-            new_tree_html=js_escaped_html
-        )
+        '''.format(is_collapsing=str(is_collapsing).lower(), deck_id=deck_id, new_tree_html=js_escaped_html)
 
         deck_browser.web.eval(js)
 
@@ -207,32 +327,36 @@ def on_decks_move(data_str: str) -> None:
 
         source_dids = [DeckId(int(did)) for did in source_dids_str]
         target_did = DeckId(int(target_did_str))
-        # Corrected print statement
         print(f"Onigiri: converted to DeckIds - source_dids: {source_dids}, target_did: {target_did}")
 
         # Anki's reparent function handles invalid moves (e.g., moving a parent into its child)
         mw.col.decks.reparent(source_dids, target_did)
         print(f"Onigiri: Successfully called reparent")
 
-        # Force a complete deck browser refresh to update all internal state
-        # This prevents stale deck IDs from persisting in the context menu
         if mw.deckBrowser:
-            # Call show() which triggers a full re-render via _renderPage
-            mw.deckBrowser.show()
-            print(f"Onigiri: Successfully refreshed deck browser with full render")
+            refresh_deck_tree_state(mw.deckBrowser)
+            print(f"Onigiri: Successfully refreshed deck browser locally")
         else:
             print(f"Onigiri: deckBrowser is None, cannot refresh")
 
     except (ValueError, TypeError, json.JSONDecodeError) as e:
         print(f"Onigiri: Could not process deck move request: {e}")
 
-def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
+def refresh_deck_tree_state(deck_browser: DeckBrowser, force: bool = False) -> None:
     """
     Handles a full refresh of the deck tree HTML while preserving
     scroll and edit mode state. Used for favorite toggling.
     Preserves existing checkbox *state* in the DOM by saving and restoring it.
+
+    Args:
+        force: If True, bypass the UI-open deferral and refresh immediately.
+               Used for organise menu filter/sort actions.
     """
     try:
+        if onigiri_renderer._onigiri_ui_open and not force:
+            onigiri_renderer._onigiri_tree_refresh_deferred = True
+            return
+
         # Refresh the tree data
         tree_data = deck_browser.mw.col.sched.deck_due_tree()
         deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
@@ -244,8 +368,15 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
         js_escaped_html = json.dumps(new_tree_html)
         
         # updateDeckTree preserves scroll, hover, and edit-mode checkbox selection
-        js = """
-        (function() {{
+        js = '''
+        (function attemptDeckTreeUpdate(retries) {{
+            if (!window.OnigiriEngine || typeof OnigiriEngine.updateDeckTree !== 'function') {{
+                if (retries > 0) {{
+                    setTimeout(function() {{ attemptDeckTreeUpdate(retries - 1); }}, 50);
+                }}
+                return;
+            }}
+
             const container = document.getElementById('deck-list-container');
             const scrollTop = container ? container.scrollTop : 0;
 
@@ -266,8 +397,8 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser) -> None:
             }}
 
             if (container) container.scrollTop = scrollTop;
-        }})();
-        """.format(new_tree_html=js_escaped_html)
+        }})(10);
+        '''.format(new_tree_html=js_escaped_html)
 
         deck_browser.web.eval(js)
 

@@ -21,6 +21,7 @@ DEFAULTS = {
     "hideWelcomeMessage": False,
     "hideAllDeckCounts": False,
     "hideDeckCounts": True,
+    "alwaysShowSidebarCollapseButton": False,
     "hideNativeHeaderAndBottomBar": True,
     "proHide": False,
     "maxHide": False,
@@ -113,8 +114,8 @@ DEFAULTS = {
     "externalWidgetLayout": {}, 
 
     # --- NEW: Sidebar Action Buttons Mode ---
-    # "list" (default), "collapsed" (toolbar icons), "archived" (hidden)
-    "sidebarActionsMode": "list",
+    # "full" (default), "compact" (toolbar icons), "minimal" (more menu)
+    "sidebarActionsMode": "full",
 
     # --- ADDED: Sidebar Button Layout ---
     "sidebarButtonLayout": {
@@ -240,7 +241,8 @@ DEFAULTS = {
             "--icon-color-filtered": "#007AFF",
             "--fg-subtle": "#757575",
             "--border": "#e0e0e0",
-            "--highlight-bg": "#eeeeee",
+            "--hover-deck-bg": "#eeeeee",
+            "--edit-deck-bg": "#e8e8e8",
             "--canvas-inset": "#ffffff",
             "--button-primary-bg": "#007aff",
             "--button-primary-gradient-start": "#0088ff",
@@ -287,7 +289,8 @@ DEFAULTS = {
             "--icon-color-filtered": "#0A84FF", 
             "--fg-subtle": "#9e9e9e",
             "--border": "#424242",
-            "--highlight-bg": "#3c3c3c",
+            "--hover-deck-bg": "#3c3c3c",
+            "--edit-deck-bg": "#3c3c3c",
             "--canvas-inset": "#2c2c2c",
             "--button-primary-bg": "#0a84ff",
             "--button-primary-gradient-start": "#0a94ff",
@@ -465,6 +468,17 @@ def get_config():
         for widget_id in archived_ids:
             if widget_id in grid_conf:
                 del grid_conf[widget_id]
+
+    # Compatibility: Migrate legacy right-click highlight colors to main color config
+    if "colors" in clean_config:
+        for mode in ["light", "dark"]:
+            legacy_key = f"onigiri_ctx_highlight_color_{mode}"
+            if mw.col and legacy_key in mw.col.conf:
+                clean_config["colors"][mode]["--edit-deck-bg"] = mw.col.conf[legacy_key]
+                del mw.col.conf[legacy_key]
+    # Also clean up the generic legacy key if present
+    if mw.col and "onigiri_ctx_highlight_color" in mw.col.conf:
+        del mw.col.conf["onigiri_ctx_highlight_color"]
     # --------------------------------------------
 
     # --- NEW: Sidebar Gamification Button Migration ---

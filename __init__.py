@@ -51,10 +51,26 @@ addon_path = os.path.dirname(__file__)
 addon_package = mw.addonManager.addonFromModule(__name__)
 user_files_root = f"/_addons/{addon_package}/user_files"
 web_assets_root = f"/_addons/{addon_package}/web"
+_asset_text_cache = {}
 
 # Make addon_path available to other modules
 import sys
 sys.modules[__name__].addon_path = addon_path
+
+
+def _read_text_asset_cached(path: str) -> str:
+    """Read a local static asset once, refreshing only when the file changes."""
+    try:
+        mtime = os.path.getmtime(path)
+        cached = _asset_text_cache.get(path)
+        if cached and cached[0] == mtime:
+            return cached[1]
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        _asset_text_cache[path] = (mtime, text)
+        return text
+    except FileNotFoundError:
+        return ""
 
 def generate_notification_position_css(conf):
     """Generates CSS for notification positioning logic."""
@@ -96,29 +112,47 @@ def inject_menu_files(web_content, context):
     is_top_toolbar = isinstance(context, Toolbar)
     is_bottom_toolbar = isinstance(context, BottomBar)
     is_reviewer_bottom_bar = type(context).__name__ == "ReviewerBottomBar"
+    deck_shortcut_js = """
+        <script>
+        (function(){
+            if (window.__onigiriDeckShortcutBound) return;
+            window.__onigiriDeckShortcutBound = true;
+            function onKey(event) {
+                var target = event.target;
+                var tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+                var isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable);
+                if (isTyping || event.ctrlKey || event.altKey || event.metaKey) return;
+                if (String(event.key).toLowerCase() !== 'd') return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                if (typeof pycmd === 'function') pycmd('decks');
+            }
+            window.addEventListener('keydown', onKey, true);
+            document.addEventListener('keydown', onKey, true);
+        })();
+        </script>
+        """
     # Inject global Onigiri CSS only for deck browser and overview, NOT reviewer
     # Reviewer has its own dedicated CSS and doesn't need text-related global styles
     if is_deck_browser or is_overview:
         web_content.head += patcher.generate_dynamic_css(conf)
     if is_deck_browser:
         css_path = os.path.join(addon_path, "web", "menu.css")
-        try:
-            with open(css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
+        css_text = _read_text_asset_cached(css_path)
+        if css_text:
+            web_content.head += f"<style>{css_text}</style>"
         heatmap_css_path = os.path.join(addon_path, "web", "heatmap.css")
-        try:
-            with open(heatmap_css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
+        heatmap_css_text = _read_text_asset_cached(heatmap_css_path)
+        if heatmap_css_text:
+            web_content.head += f"<style>{heatmap_css_text}</style>"
         web_content.head += patcher.generate_profile_bar_fix_css()
         web_content.head += patcher.generate_deck_browser_backgrounds(addon_path)
         web_content.head += patcher.generate_icon_css(addon_package, conf)
         web_content.head += patcher.generate_conditional_css(conf)
         web_content.head += patcher.generate_icon_size_css()
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+        web_content.head += deck_shortcut_js
         web_content.head += f'<script src="{web_assets_root}/injector.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
@@ -203,16 +237,17 @@ def inject_menu_files(web_content, context):
         web_content.head += js_injector
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     elif is_overview:
+        patcher.restore_deck_open_busy_cursor()
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+        web_content.head += "<style>html, body { cursor: auto !important; }</style>"
+        web_content.head += deck_shortcut_js
         web_content.head += patcher.generate_overview_background_css(addon_path)
         _top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
         css_path = os.path.join(addon_path, "web", "overview.css")
-        try:
-            with open(css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
+        css_text = _read_text_asset_cached(css_path)
+        if css_text:
+            web_content.head += f"<style>{css_text}</style>"
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     if is_reviewer_bottom_bar:
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
@@ -337,8 +372,10 @@ def setup_global_hooks():
     Sets up global hooks and initial patches that do NOT depend on a loaded profile.
     This runs when the main window initializes.
     """
-    # Show the native Qt overlay immediately — covers toolbar + webview during startup
-    _create_qt_overlay()
+    # Show the native Qt overlay immediately via QTimer.singleShot(0).
+    # This ensures the main window has loaded its geometry so the overlay
+    # captures the correct screen size and doesn't flicker at a wrong offset.
+    QTimer.singleShot(0, _create_qt_overlay)
 
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
@@ -354,6 +391,9 @@ def on_profile_did_open():
     Runs when a profile is successfully loaded.
     Logic that requires access to `mw.col` (collection/database/config) goes here.
     """
+    # Trigger config migration
+    config.get_config()
+    
     # Update the Qt startup overlay's background color now that mw.col is available,
     # so it accurately matches the user's configured theme color.
     global _qt_startup_overlay
@@ -426,7 +466,7 @@ DeckBrowser._render_deck_node = patcher._onigiri_render_deck_node
 class _OnigiriStartupOverlay(QWidget):
     """Lightweight Qt widget that paints a full-window splash during startup."""
 
-    def __init__(self, parent, bg_color="#2C2C2C", accent_color="#007aff"):
+    def __init__(self, parent, bg_color="#2C2C2C", accent_color="#036FDC"):
         super().__init__(parent)
         import time as _time
         self._time = _time          # cache module ref — avoid re-import every tick
@@ -459,7 +499,7 @@ class _OnigiriStartupOverlay(QWidget):
             # Time-based float angle: perfectly smooth regardless of timer jitter.
             # 270°/s = 0.75 rev/s. Float keeps sub-degree precision — no int-step stutter.
             elapsed = self._time.perf_counter() - self._start_time
-            self._angle = (elapsed * 270.0) % 360.0
+            self._angle = (360.0 - (elapsed * 180.0)) % 360.0
             self.update()
 
     def paintEvent(self, event):
@@ -476,35 +516,51 @@ class _OnigiriStartupOverlay(QWidget):
         p.setRenderHint(aa_hint)
         # Solid background
         p.fillRect(self.rect(), self._bg_color)
-        # Spinner
-        cx, cy = self.width() // 2, self.height() // 2
-        r = 18
+
+        # Calculate Spinner Center
+        # Anchor the spinner to the bottom so it never shifts when the toolbar loads
+        cx = self.width() // 2
+        cy = self.height() - 420
+
+        r = 28
         if QRect is None:
             p.end()
             return
         rect = QRect(cx - r, cy - r, r * 2, r * 2)
-        # Track
-        track_color = QColor(self._bg_color)
-        if track_color.lightness() < 128:
-            track_color = track_color.lighter(160)
-        else:
-            track_color = track_color.darker(130)
-        track_color.setAlpha(120)
+        # Track - match the web spinner style.
+        track_color = QColor(self._accent_color)
+        track_color.setAlphaF(0.2)
         pen = QPen(track_color)
-        pen.setWidth(3)
+        pen.setWidth(5)
         pen.setCapStyle(round_cap)
         p.setPen(pen)
         p.drawEllipse(rect)
-        # Arc
-        pen2 = QPen(self._accent_color)
-        pen2.setWidth(3)
-        pen2.setCapStyle(round_cap)
-        p.setPen(pen2)
-        # Qt drawArc uses 1/16th-degree units. Multiply the float angle
-        # before converting to int for maximum sub-degree precision.
-        start_angle = round((90.0 - self._angle) * 16)
-        span_angle  = -270 * 16
-        p.drawArc(rect, start_angle, span_angle)
+
+        # Rotating gradient arc. Qt does not animate SVG data URIs in a QWidget,
+        # so layer short rounded arc segments with the same #036FDC fade profile.
+        arc_span = 164.0
+        segments = 24
+        for idx in range(segments):
+            t0 = idx / segments
+            t1 = (idx + 1) / segments
+            if t0 <= 0.3:
+                alpha = 255 - int((t0 / 0.3) * 25)
+            elif t0 <= 0.6:
+                alpha = 230 - int(((t0 - 0.3) / 0.3) * 76)
+            elif t0 <= 0.8:
+                alpha = 154 - int(((t0 - 0.6) / 0.2) * 78)
+            else:
+                alpha = max(0, 76 - int(((t0 - 0.8) / 0.2) * 76))
+
+            color = QColor(self._accent_color)
+            color.setAlpha(alpha)
+            pen = QPen(color)
+            pen.setWidth(5)
+            pen.setCapStyle(round_cap)
+            p.setPen(pen)
+            start = (self._angle - arc_span * t1) * 16
+            span = (arc_span / segments) * 16
+            p.drawArc(rect, int(start), int(span))
         p.end()
 
     def eventFilter(self, obj, event):
@@ -546,6 +602,26 @@ _qt_startup_overlay = None
 _startup_render_done = False
 
 
+def _deck_browser_overlay_bg():
+    """Return the configured deck-browser background color for the startup overlay."""
+    is_night = False
+    try:
+        if mw.pm:
+            is_night = mw.pm.night_mode()
+    except Exception:
+        pass
+    bg = "#2C2C2C" if is_night else "#F5F5F5"
+    try:
+        if mw.col:
+            if is_night:
+                bg = mw.col.conf.get("modern_menu_bg_color_dark", bg)
+            else:
+                bg = mw.col.conf.get("modern_menu_bg_color_light", bg)
+    except Exception:
+        pass
+    return bg
+
+
 def _create_qt_overlay():
     """Create the native Qt overlay over the full Anki main window."""
     global _qt_startup_overlay
@@ -574,13 +650,16 @@ def _create_qt_overlay():
         except Exception:
             pass
 
-        _qt_startup_overlay = _OnigiriStartupOverlay(mw, bg_color=bg, accent_color="#007aff")
+        _qt_startup_overlay = _OnigiriStartupOverlay(mw, bg_color=_deck_browser_overlay_bg(), accent_color="#036FDC")
+        # Fail-safe: Always dismiss the Qt overlay after 4.5 seconds to guarantee
+        # it never gets stuck forever if Anki's startup sequence gets interrupted.
+        QTimer.singleShot(4500, _dismiss_qt_overlay)
     except Exception as e:
         print(f"Onigiri: Could not create Qt startup overlay: {e}")
 
 
 def _dismiss_qt_overlay():
-    """Fade out and destroy the native Qt overlay."""
+    """Fade out and destroy the native startup overlay."""
     global _qt_startup_overlay
     if _qt_startup_overlay:
         try:
@@ -600,24 +679,9 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
         deck_browser.web.eval("if (window.OnigiriHeatmap && typeof window.OnigiriHeatmap.autoRender === 'function') { window.OnigiriHeatmap.autoRender(); }")
 
     if not _startup_render_done:
-        # First render on startup: dismiss the Qt overlay (which covers the toolbar)
-        # after a short delay so the fully-styled content is visible first.
+        # Rely on the JS engine to call pycmd('onigiri_dismiss_qt_overlay')
+        # when it is fully loaded and ready, ensuring perfect cross-fade synchronization.
         _startup_render_done = True
-        QTimer.singleShot(400, _dismiss_qt_overlay)
-    else:
-        # Subsequent re-renders (D-key return, settings change, icon save, sort…):
-        # The webview overlay (onigiri-loading-overlay) is the sole overlay for these.
-        # Its JS controller auto-dismisses when the engine signals ready; this eval
-        # provides a fast-path fallback in case the signal fires very late.
-        deck_browser.web.eval("""
-(function(){
-    var ol = document.getElementById('onigiri-loading-overlay');
-    if (ol) {
-        ol.classList.add('dismissed');
-        setTimeout(function(){ if(ol.parentNode) ol.parentNode.removeChild(ol); }, 420);
-    }
-})();
-""")
 
     # Update sync status indicator
     update_sync_status_indicator()
@@ -634,30 +698,6 @@ def update_sync_status_indicator():
 
 def on_state_change(new_state, old_state):
     """Called when Anki's state changes - update sync indicator."""
-    # When transitioning TO the deck browser from another screen, immediately
-    # inject a lightweight overlay onto the current page so the user sees an
-    # instant visual response while Python builds the full deck browser HTML.
-    # The injected overlay is automatically destroyed when setContent() replaces
-    # the page, and the deck browser's own onigiri-loading-overlay takes over.
-    if new_state == 'deckBrowser' and old_state in ('reviewer', 'overview', 'resetRequired'):
-        try:
-            _bg = mw.deckBrowser.web.eval("""
-                (function(){
-                    if(document.getElementById('onigiri-transition-overlay'))return;
-                    var bg=getComputedStyle(document.documentElement).getPropertyValue('--canvas')||'#1a1a1a';
-                    var d=document.createElement('div');
-                    d.id='onigiri-transition-overlay';
-                    d.style.cssText='position:fixed;inset:0;z-index:2147483647;background:'+bg.trim()+';pointer-events:none;display:flex;align-items:center;justify-content:center;';
-                    d.innerHTML='<div style="width:36px;height:36px;border:3px solid rgba(128,128,128,0.2);border-top-color:var(--accent-color,#007aff);border-radius:50%;animation:onigiri-transition-spin .75s linear infinite"></div>';
-                    var s=document.createElement('style');
-                    s.textContent='@keyframes onigiri-transition-spin{to{transform:rotate(360deg)}}';
-                    d.appendChild(s);
-                    document.body&&document.body.appendChild(d);
-                    setTimeout(function(){var ol=document.getElementById('onigiri-transition-overlay');if(ol)ol.remove();},4500);
-                })();
-            """)
-        except Exception:
-            pass
     update_sync_status_indicator()
       
 def on_deck_browser_will_show(deck_browser: DeckBrowser):
@@ -682,10 +722,13 @@ def on_deck_options_shown(menu, deck_id):
     a = menu.addAction("Change Icon")
     a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
 
-# Kick off the Qt startup overlay as early as possible — a 0ms single-shot
-# fires on the next event-loop iteration, before main_window_did_init.
-# This gets the spinner on screen sooner so the user sees it immediately.
-QTimer.singleShot(0, _create_qt_overlay)
+# (The Qt startup overlay is created via QTimer.singleShot in setup_global_hooks)
+
+def _onigiri_handle_qt_dismiss(handled, cmd, context):
+    if cmd == "onigiri_dismiss_qt_overlay":
+        _dismiss_qt_overlay()
+        return (True, None)
+    return handled
 
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
@@ -695,6 +738,7 @@ gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)
 # MODIFICATION: Use the current, correct hook instead of the outdated one.
 gui_hooks.webview_did_receive_js_message.append(_on_webview_cmd)
+gui_hooks.webview_did_receive_js_message.append(_onigiri_handle_qt_dismiss)
 # Update sync status when state changes
 gui_hooks.state_did_change.append(on_state_change)
 # Update sync status after sync completes
