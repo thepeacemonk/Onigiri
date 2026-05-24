@@ -41,7 +41,9 @@ body {
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    padding: 6px;
+    gap: 10px;
+    padding: 6px 12px 6px 8px;
+    min-height: 50px;
     border-radius: 50px;
     background-color: var(--highlight-bg);
     transition: background-color 0.2s;
@@ -58,36 +60,70 @@ body {
 }
 
 .profile-pic {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-right: 12px;
+    width: var(--onigiri-profile-bar-avatar-size, 38px);
+    height: var(--onigiri-profile-bar-avatar-size, 38px);
     flex-shrink: 0;
+    margin: 0;
+}
+
+.profile-pic-frame {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 50%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    background: var(--onigiri-profile-initials-bg, var(--profile-pill-placeholder-bg));
+    color: var(--onigiri-profile-initials-fg, inherit);
+}
+
+.profile-pic-image,
+.profile-pic-img,
+.profile-pic > img {
+    grid-area: 1 / 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.profile-pic-fallback {
+    grid-area: 1 / 1;
+    font-size: var(--onigiri-profile-bar-initials-size, 13px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    user-select: none;
+    pointer-events: none;
 }
 
 .profile-pic-placeholder {
-    width: 38px;
-    height: 38px;
+    width: var(--onigiri-profile-bar-avatar-size, 38px);
+    height: var(--onigiri-profile-bar-avatar-size, 38px);
     border-radius: 50%;
-    margin-right: 12px;
-    background-color: var(--accent-color);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: bold;
+    background: var(--onigiri-profile-initials-bg, var(--profile-pill-placeholder-bg));
+    color: var(--onigiri-profile-initials-fg, inherit);
+    display: grid;
+    place-items: center;
+    font-size: var(--onigiri-profile-bar-initials-size, 13px);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     flex-shrink: 0;
 }
 
 .profile-name {
     font-size: 16px;
     font-weight: 500;
+    min-width: 0;
+    flex: 0 1 auto;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--fg);
+    color: var(--profile-name-color, var(--fg));
 }
 
 .profile-bar::after {
@@ -104,7 +140,7 @@ body {
 }
 .profile-bar.with-image-bg .profile-name {
     color: white;
-    text-shadow: 1px 1px 3px var(--text-shadow-light);
+    text-shadow: none;
 }
 
 .congrats-card {

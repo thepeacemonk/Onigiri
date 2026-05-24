@@ -222,7 +222,7 @@ body {
     content: " (disabled)";
     font-size: 16px;
     font-weight: 600;
-    opacity: 0.6;
+    opacity: 0.8;
 }
 
 .restaurant-level-page[data-enabled="false"] .rl-card {
