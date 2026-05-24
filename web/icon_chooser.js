@@ -5,6 +5,7 @@ var currentSelectedColor = "#888888";
 var systemIcons = {}; // Store system icon URLs
 var currentMode = "icon"; // 'icon' or 'emoji'
 var accentColor = "#007aff";
+var colorWasModified = false;
 
 var commonEmojis = [
     "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰",
@@ -105,11 +106,99 @@ var colorPickerState = {
     hue: 0,
     saturation: 100,
     value: 100,
+    alpha: 100,
     isDraggingGradient: false,
-    isDraggingHue: false
+    isDraggingHue: false,
+    isDraggingAlpha: false
 };
 
+function clampByte(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+}
 
+function channelToHex(value) {
+    var hex = clampByte(value).toString(16).toUpperCase();
+    return hex.length === 1 ? "0" + hex : hex;
+}
+
+function rgbaToHex(r, g, b, a) {
+    var base = "#" + channelToHex(r) + channelToHex(g) + channelToHex(b);
+    var alpha = typeof a === "number" ? clampByte(a) : 255;
+    return alpha < 255 ? base + channelToHex(alpha) : base;
+}
+
+function parseColorValue(value) {
+    if (typeof value !== "string") return null;
+    var text = value.trim();
+    if (!text) return null;
+
+    var hexMatch = text.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
+    if (hexMatch) {
+        var digits = hexMatch[1];
+        if (digits.length === 3 || digits.length === 4) {
+            digits = digits.split("").map(function (ch) { return ch + ch; }).join("");
+        }
+        if (digits.length === 6) {
+            return {
+                r: parseInt(digits.slice(0, 2), 16),
+                g: parseInt(digits.slice(2, 4), 16),
+                b: parseInt(digits.slice(4, 6), 16),
+                a: 255
+            };
+        }
+        return {
+            r: parseInt(digits.slice(0, 2), 16),
+            g: parseInt(digits.slice(2, 4), 16),
+            b: parseInt(digits.slice(4, 6), 16),
+            a: parseInt(digits.slice(6, 8), 16)
+        };
+    }
+
+    var rgbMatch = text.match(/^rgba?\((.+)\)$/i);
+    if (rgbMatch) {
+        var parts = rgbMatch[1].split(",").map(function (part) { return part.trim(); });
+        if (parts.length === 3 || parts.length === 4) {
+            var r = parseFloat(parts[0]);
+            var g = parseFloat(parts[1]);
+            var b = parseFloat(parts[2]);
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                var alpha = 255;
+                if (parts.length === 4) {
+                    var alphaValue = parts[3];
+                    if (/%$/.test(alphaValue)) {
+                        alpha = clampByte(parseFloat(alphaValue) * 2.55);
+                    } else {
+                        var alphaFloat = parseFloat(alphaValue);
+                        if (!isNaN(alphaFloat)) {
+                            alpha = alphaFloat <= 1 ? clampByte(alphaFloat * 255) : clampByte(alphaFloat);
+                        }
+                    }
+                }
+                return { r: clampByte(r), g: clampByte(g), b: clampByte(b), a: alpha };
+            }
+        }
+    }
+
+    return null;
+}
+
+function normalizeColorValue(value, fallback) {
+    var parsed = parseColorValue(value);
+    if (parsed) return rgbaToHex(parsed.r, parsed.g, parsed.b, parsed.a);
+    if (fallback) return normalizeColorValue(fallback);
+    return null;
+}
+
+function colorToCss(value) {
+    var parsed = typeof value === "string" ? parseColorValue(value) : value;
+    if (!parsed) return "#888888";
+    if (parsed.a >= 255) {
+        return rgbaToHex(parsed.r, parsed.g, parsed.b, 255);
+    }
+    var alpha = (parsed.a / 255).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+    if (!alpha) alpha = "0";
+    return "rgba(" + parsed.r + ", " + parsed.g + ", " + parsed.b + ", " + alpha + ")";
+}
 
 // Wait for pycmd to be available
 function waitForBridge(callback, attempts) {
@@ -125,12 +214,9 @@ function waitForBridge(callback, attempts) {
 }
 
 function initApp() {
-    console.log("Icon Chooser: Initializing...");
-
     // Use pre-injected data if available (avoids bridge round-trip timing issues).
     // Python injects window.ONIGIRI_ICON_INIT into the page <head>.
     if (window.ONIGIRI_ICON_INIT) {
-        console.log("Icon Chooser: Using pre-injected init data");
         updateData(window.ONIGIRI_ICON_INIT);
     } else {
         // Fallback: request data via bridge
@@ -149,17 +235,15 @@ function initApp() {
 
     if (resetBtn) {
         resetBtn.onclick = function () {
-            console.log("Reset clicked");
             pycmd("reset");
         };
     }
 
     if (saveBtn) {
         saveBtn.onclick = function () {
-            console.log("Save clicked. Icon:", currentSelectedIcon, "Color:", currentSelectedColor);
-            if (currentSelectedIcon) {
-                var payload = JSON.stringify({ icon: currentSelectedIcon, color: currentSelectedColor });
-                console.log("Sending save:", payload);
+            if (currentSelectedIcon !== null && currentSelectedIcon !== undefined) {
+                var colorToSave = (currentSelectedIcon === "" && !colorWasModified) ? "" : currentSelectedColor;
+                var payload = JSON.stringify({ icon: currentSelectedIcon, color: colorToSave });
                 pycmd("save:" + payload);
             } else {
                 alert("Please select an icon first.");
@@ -169,14 +253,12 @@ function initApp() {
 
     if (cancelBtn) {
         cancelBtn.onclick = function () {
-            console.log("Cancel clicked");
             pycmd("cancel");
         };
     }
 
     if (addIconBtn) {
         addIconBtn.onclick = function () {
-            console.log("Add icon clicked");
             pycmd("add_icon");
         };
     }
@@ -201,11 +283,9 @@ function initApp() {
         };
     });
 
-    console.log("Icon Chooser: All handlers bound");
 }
 
 window.updateData = function (data) {
-    console.log("Icon Chooser: Got data", data);
     if (data.system_icons) {
         systemIcons = data.system_icons;
     }
@@ -246,7 +326,9 @@ window.updateData = function (data) {
         }
     }
 
+    colorWasModified = false;
     updateColor(data.current.color || "#888888");
+    applyColorToSelectedIcon();
 };
 
 var loadedIcons = [];
@@ -318,7 +400,6 @@ function selectEmoji(emoji, element) {
     items.forEach(function (i) { i.classList.remove("selected"); });
     element.classList.add("selected");
 
-    console.log("Selected emoji:", emoji);
 }
 
 function renderGrid(itemsList, selectedIconName, type) {
@@ -353,6 +434,32 @@ function renderGrid(itemsList, selectedIconName, type) {
     addCard.appendChild(addImgContainer);
     addCard.appendChild(addText);
     grid.appendChild(addCard);
+
+    // Default icon card (represents the built-in placeholder — always shown in icon mode)
+    if (type === "icon") {
+        var defaultCard = document.createElement("div");
+        defaultCard.className = "icon-item default-icon-card";
+        if (selectedIconName === "") {
+            defaultCard.classList.add("selected");
+        }
+        defaultCard.dataset.name = "";
+        defaultCard.onclick = function () { selectIcon("", defaultCard, "icon"); };
+
+        var defaultImgContainer = document.createElement("div");
+        defaultImgContainer.className = "icon-img-container";
+        var defaultImg = document.createElement("img");
+        defaultImg.src = systemIcons.default_deck || "";
+        defaultImg.className = "icon-img";
+        defaultImgContainer.appendChild(defaultImg);
+
+        var defaultText = document.createElement("div");
+        defaultText.className = "icon-name";
+        defaultText.textContent = "Default";
+
+        defaultCard.appendChild(defaultImgContainer);
+        defaultCard.appendChild(defaultText);
+        grid.appendChild(defaultCard);
+    }
 
     if (!itemsList || itemsList.length === 0) {
         return;
@@ -411,7 +518,6 @@ function selectIcon(name, element, type) {
         items[i].classList.remove("selected");
     }
     element.classList.add("selected");
-    console.log("Selected " + type + ":", name);
 
     // Apply current color to newly selected icon ONLY if it's an SVG icon
     if (type === "icon") {
@@ -420,22 +526,27 @@ function selectIcon(name, element, type) {
 }
 
 function updateColor(hex) {
-    currentSelectedColor = hex;
+    currentSelectedColor = normalizeColorValue(hex, currentSelectedColor || "#888888") || "#888888";
+    var cssColor = colorToCss(currentSelectedColor);
     var preview = document.getElementById("color-preview-large");
-    if (preview) preview.style.backgroundColor = hex;
+    if (preview) preview.style.backgroundColor = cssColor;
 
     // Update button preview as well
     var btnPreview = document.getElementById("btn-color-preview");
-    if (btnPreview) btnPreview.style.backgroundColor = hex;
+    if (btnPreview) {
+        btnPreview.style.backgroundColor = cssColor;
+        btnPreview.style.color = cssColor;
+    }
 
     var hexInput = document.getElementById("hex-input");
-    if (hexInput) hexInput.value = hex;
+    if (hexInput) hexInput.value = currentSelectedColor;
 
-    // Update HSV state from hex
-    var hsv = hexToHSV(hex);
+    // Update HSV state from the normalized value
+    var hsv = hexToHSV(currentSelectedColor);
     colorPickerState.hue = hsv.h;
     colorPickerState.saturation = hsv.s;
     colorPickerState.value = hsv.v;
+    colorPickerState.alpha = hsv.a;
 
     updateColorPickerUI();
 
@@ -453,30 +564,22 @@ function applyColorToSelectedIcon() {
     var iconImg = selectedItem.querySelector(".icon-img");
     if (!iconImg) return;
 
-    // Apply color using CSS filter to colorize the SVG
-    // We use a combination of filters to apply the exact color
-    var rgb = hexToRGB(currentSelectedColor);
-
-    // Method: brightness(0) saturate(100%) makes it black,
-    // then we use flood and composite filters via inline SVG filter
-    // For simplicity, we'll use a drop-shadow with huge spread
-    iconImg.style.filter = "brightness(0) saturate(100%) drop-shadow(0 0 0 " + currentSelectedColor + ")";
+    iconImg.style.filter = "brightness(0) saturate(100%) drop-shadow(0 0 0 " + colorToCss(currentSelectedColor) + ")";
 }
 
 function hexToRGB(hex) {
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-    } : { r: 136, g: 136, b: 136 };
+    var parsed = parseColorValue(hex);
+    return parsed ? {
+        r: parsed.r,
+        g: parsed.g,
+        b: parsed.b,
+        a: parsed.a
+    } : { r: 136, g: 136, b: 136, a: 255 };
 }
 
 // ===== COLOR PICKER FUNCTIONS =====
 
 function initColorPicker() {
-
-
     // Gradient selector
     var gradientSelector = document.getElementById("gradient-selector");
     if (gradientSelector) {
@@ -495,28 +598,60 @@ function initColorPicker() {
         });
     }
 
+    var alphaSlider = document.getElementById("alpha-slider");
+    if (alphaSlider) {
+        alphaSlider.addEventListener("mousedown", function (e) {
+            colorPickerState.isDraggingAlpha = true;
+            updateAlphaPosition(e);
+        });
+    }
+
     // Global mouse events
     document.addEventListener("mousemove", function (e) {
         if (colorPickerState.isDraggingGradient) {
             updateGradientPosition(e);
         } else if (colorPickerState.isDraggingHue) {
             updateHuePosition(e);
+        } else if (colorPickerState.isDraggingAlpha) {
+            updateAlphaPosition(e);
         }
     });
 
     document.addEventListener("mouseup", function () {
         colorPickerState.isDraggingGradient = false;
         colorPickerState.isDraggingHue = false;
+        colorPickerState.isDraggingAlpha = false;
     });
 
     // Hex input
     var hexInput = document.getElementById("hex-input");
     if (hexInput) {
         hexInput.addEventListener("input", function (e) {
-            var value = e.target.value;
-            if (value.match(/^#[0-9A-Fa-f]{6}$/)) {
-                updateColor(value);
-                notifyColorChange(value);
+            var value = e.target.value.replace(/[^#0-9A-Fa-f]/g, "");
+            if (value && value.charAt(0) !== "#") {
+                value = "#" + value.replace(/#/g, "");
+            } else if (value) {
+                value = "#" + value.slice(1).replace(/#/g, "");
+            }
+            if (value.length > 9) {
+                value = value.slice(0, 9);
+            }
+            if (value !== e.target.value) {
+                e.target.value = value;
+            }
+
+            var normalized = normalizeColorValue(value);
+            if (normalized) {
+                updateColor(normalized);
+                notifyColorChange(normalized);
+            }
+        });
+        hexInput.addEventListener("blur", function () {
+            hexInput.value = currentSelectedColor || "#888888";
+        });
+        hexInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+                hexInput.blur();
             }
         });
     }
@@ -554,17 +689,38 @@ function updateHuePosition(e) {
     updateGradientBackground();
 }
 
+function updateAlphaPosition(e) {
+    var alphaSlider = document.getElementById("alpha-slider");
+    if (!alphaSlider) return;
+
+    var rect = alphaSlider.getBoundingClientRect();
+    var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    colorPickerState.alpha = (x / rect.width) * 100;
+    updateColorFromHSV();
+}
+
 function updateColorFromHSV() {
-    var hex = hsvToHex(colorPickerState.hue, colorPickerState.saturation, colorPickerState.value);
+    var alpha = clampByte((colorPickerState.alpha / 100) * 255);
+    var hex = hsvToHex(colorPickerState.hue, colorPickerState.saturation, colorPickerState.value, alpha);
     currentSelectedColor = hex;
+    var cssColor = colorToCss(hex);
 
     var preview = document.getElementById("color-preview-large");
-    if (preview) preview.style.backgroundColor = hex;
+    if (preview) preview.style.backgroundColor = cssColor;
+
+    var btnPreview = document.getElementById("btn-color-preview");
+    if (btnPreview) {
+        btnPreview.style.backgroundColor = cssColor;
+        btnPreview.style.color = cssColor;
+    }
 
     var hexInput = document.getElementById("hex-input");
     if (hexInput) hexInput.value = hex;
 
     updateColorPickerUI();
+    if (currentMode === "icon") {
+        applyColorToSelectedIcon();
+    }
     notifyColorChange(hex);
 }
 
@@ -585,7 +741,18 @@ function updateColorPickerUI() {
         hueThumb.style.left = huePercent + "%";
     }
 
+    var alphaThumb = document.getElementById("alpha-thumb");
+    if (alphaThumb) {
+        alphaThumb.style.left = colorPickerState.alpha + "%";
+    }
+
+    var alphaValue = document.getElementById("alpha-value");
+    if (alphaValue) {
+        alphaValue.textContent = Math.round(colorPickerState.alpha) + "%";
+    }
+
     updateGradientBackground();
+    updateAlphaBackground();
 }
 
 function updateGradientBackground() {
@@ -596,13 +763,27 @@ function updateGradientBackground() {
     }
 }
 
+function updateAlphaBackground() {
+    var alphaGradient = document.getElementById("alpha-gradient");
+    if (!alphaGradient) return;
+
+    var baseColor = parseColorValue(hsvToHex(colorPickerState.hue, colorPickerState.saturation, colorPickerState.value, 255));
+    if (!baseColor) return;
+
+    alphaGradient.style.background =
+        "linear-gradient(to right, rgba(" + baseColor.r + ", " + baseColor.g + ", " + baseColor.b + ", 0), " +
+        "rgba(" + baseColor.r + ", " + baseColor.g + ", " + baseColor.b + ", 1))";
+}
+
 function notifyColorChange(hex) {
-    if (typeof pycmd === 'function') pycmd("update_color:" + hex);
+    colorWasModified = true;
+    var normalized = normalizeColorValue(hex, currentSelectedColor || "#888888");
+    if (normalized && typeof pycmd === 'function') pycmd("update_color:" + normalized);
 }
 
 // ===== COLOR CONVERSION UTILITIES =====
 
-function hsvToHex(h, s, v) {
+function hsvToHex(h, s, v, alpha) {
     h = h / 360;
     s = s / 100;
     v = v / 100;
@@ -623,21 +804,16 @@ function hsvToHex(h, s, v) {
         case 5: r = v; g = p; b = q; break;
     }
 
-    var toHex = function (x) {
-        var hex = Math.round(x * 255).toString(16);
-        return hex.length === 1 ? "0" + hex : hex;
-    };
-
-    return "#" + toHex(r) + toHex(g) + toHex(b);
+    return rgbaToHex(r * 255, g * 255, b * 255, typeof alpha === "number" ? alpha : 255);
 }
 
 function hexToHSV(hex) {
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!result) return { h: 0, s: 0, v: 100 };
+    var parsed = parseColorValue(hex);
+    if (!parsed) return { h: 0, s: 0, v: 100, a: 100 };
 
-    var r = parseInt(result[1], 16) / 255;
-    var g = parseInt(result[2], 16) / 255;
-    var b = parseInt(result[3], 16) / 255;
+    var r = parsed.r / 255;
+    var g = parsed.g / 255;
+    var b = parsed.b / 255;
 
     var max = Math.max(r, g, b);
     var min = Math.min(r, g, b);
@@ -659,13 +835,13 @@ function hexToHSV(hex) {
     return {
         h: Math.round(h * 360),
         s: Math.round(s * 100),
-        v: Math.round(v * 100)
+        v: Math.round(v * 100),
+        a: Math.round((parsed.a / 255) * 100)
     };
 }
 
 // Start when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
-    console.log("Icon Chooser: DOM ready");
     if (window.ONIGIRI_ICON_INIT) {
         // Pre-injected init data is available — render immediately, no pycmd wait needed.
         initApp();

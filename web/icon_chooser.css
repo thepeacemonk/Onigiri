@@ -330,6 +330,17 @@ body.night-mode button#save-btn.primary-btn:hover {
     /* Default teal */
     border: 2px solid rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--canvas,#ffffff), 0 0 0 3.5px currentColor;
+}
+
+.btn-color-preview,
+.color-preview-large,
+.alpha-slider {
+    background-image:
+        linear-gradient(45deg, rgba(0, 0, 0, 0.08) 25%, transparent 25%, transparent 75%, rgba(0, 0, 0, 0.08) 75%, rgba(0, 0, 0, 0.08)),
+        linear-gradient(45deg, rgba(255, 255, 255, 0.92) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.92) 75%, rgba(255, 255, 255, 0.92));
+    background-position: 0 0, 4px 4px;
+    background-size: 8px 8px;
 }
 
 .icon-color-text {
@@ -346,12 +357,12 @@ body.night-mode button#save-btn.primary-btn:hover {
     bottom: 100%;
     left: 0;
     margin-bottom: 10px;
-    background-color: var(--canvas);
+    background-color: var(--tray-bg);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    width: 300px;
+    border-radius: 10px;
+    padding: 14px 16px 16px;
+    box-shadow: var(--tray-shadow);
+    width: 320px;
     z-index: 1000;
 }
 
@@ -367,7 +378,7 @@ body.night-mode button#save-btn.primary-btn:hover {
 .gradient-selector {
     position: relative;
     width: 100%;
-    height: 150px;
+    height: 176px;
     border-radius: 8px;
     background: linear-gradient(to right, #ff0000, #ff0000);
     cursor: crosshair;
@@ -394,9 +405,9 @@ body.night-mode button#save-btn.primary-btn:hover {
 
 .gradient-cursor {
     position: absolute;
-    width: 16px;
-    height: 16px;
-    border: 3px solid white;
+    width: 14px;
+    height: 14px;
+    border: 2px solid white;
     border-radius: 50%;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
     transform: translate(-50%, -50%);
@@ -408,17 +419,29 @@ body.night-mode button#save-btn.primary-btn:hover {
     margin-bottom: 15px;
 }
 
+.slider-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    color: var(--fg-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
 /* Hue Slider */
 .slider-row {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .slider-track {
     position: relative;
     width: 100%;
-    height: 14px;
-    border-radius: 7px;
+    height: 12px;
+    border-radius: 999px;
     cursor: pointer;
+    overflow: hidden;
 }
 
 .hue-slider {
@@ -432,15 +455,21 @@ body.night-mode button#save-btn.primary-btn:hover {
             #ff0000 100%);
 }
 
+.alpha-gradient {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+}
+
 .slider-thumb {
     position: absolute;
     top: 50%;
-    width: 18px;
-    height: 18px;
-    border: 3px solid white;
+    width: 14px;
+    height: 14px;
+    border: 2px solid white;
     border-radius: 50%;
-    background-color: transparent;
-    box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+    background-color: #ffffff;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
     transform: translate(-50%, -50%);
     pointer-events: none;
 }
@@ -450,28 +479,28 @@ body.night-mode button#save-btn.primary-btn:hover {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 2px;
 }
 
 .color-preview-large {
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-    border: 3px solid var(--border);
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
     flex-shrink: 0;
 }
 
 .hex-input {
     flex: 1;
-    padding: 12px 16px;
+    padding: 10px 12px;
     border: 1px solid var(--border);
-    border-radius: 24px;
+    border-radius: 6px;
     background-color: var(--canvas-inset);
     color: var(--fg);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 500;
-    text-align: center;
-    font-family: 'Courier New', monospace;
+    text-align: left;
+    font-family: Consolas, 'Courier New', monospace;
 }
 
 .delete-icon-btn {
@@ -513,7 +542,7 @@ body.night-mode button#save-btn.primary-btn:hover {
 .add-icon-card .icon-img {
     filter: none !important;
     /* Don't apply color filter to add icon initially */
-    opacity: 0.6;
+    opacity: 0.8;
 }
 
 .add-icon-card:hover .icon-img {
