@@ -1,4 +1,4 @@
-﻿import os
+import os
 import copy
 import shutil
 import urllib.parse
@@ -41,11 +41,122 @@ from PyQt6.QtGui import QFontDatabase, QFont
 from PyQt6.QtCore import QRect, QSize, QPoint
 from .fonts import FONTS, get_all_fonts
 from . import sidebar_api
+from .color_utils import normalize_color_string, parse_color_string, qcolor_to_hex, get_contrast_text_color
+from . import profile_background
 
 THUMBNAIL_STYLE = "QLabel { border: 2px solid transparent; border-radius: 10px; } QLabel:hover { border: 2px solid #007bff; }"
 THUMBNAIL_STYLE_SELECTED = "QLabel { border: 2px solid #007bff; border-radius: 10px; }"
 
 CUSTOM_GOAL_COOLDOWN_SECONDS = 24 * 60 * 60
+
+
+def _paint_checkerboard(painter, rect, check_size=4):
+    light = QColor("#F4F4F4")
+    dark = QColor("#D7D7D7")
+    top = rect.top()
+    bottom = rect.bottom()
+    left = rect.left()
+    right = rect.right()
+
+    y = top
+    while y <= bottom:
+        x = left
+        while x <= right:
+            offset = ((x - left) // check_size + (y - top) // check_size) % 2
+            painter.fillRect(x, y, check_size, check_size, dark if offset == 0 else light)
+            x += check_size
+        y += check_size
+
+
+def _paint_color_chip(painter, rect, color, *, ellipse=True, border_color="#888888", radius=12):
+    chip_color = parse_color_string(color, fallback="#000000")
+    border = QColor(border_color)
+    path = QPainterPath()
+    rect_f = QRectF(rect)
+
+    if ellipse:
+        path.addEllipse(rect_f)
+    else:
+        path.addRoundedRect(rect_f, radius, radius)
+
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setClipPath(path)
+    _paint_checkerboard(painter, rect)
+    painter.fillPath(path, chip_color)
+    painter.restore()
+
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(border, 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    if ellipse:
+        painter.drawEllipse(rect_f)
+    else:
+        painter.drawRoundedRect(rect_f, radius, radius)
+
+
+class NormalizedColorLineEdit(QLineEdit):
+    validColorChanged = pyqtSignal(str)
+
+    def __init__(self, initial_value="#FFFFFF", fallback="#FFFFFF", parent=None):
+        super().__init__(parent)
+        self._fallback_color = normalize_color_string(fallback, fallback="#FFFFFF") or "#FFFFFF"
+        self._last_valid_color = self._fallback_color
+        self.setMaxLength(9)
+        self.setValidator(QRegularExpressionValidator(QRegularExpression(r"^#?[0-9A-Fa-f]{0,8}$"), self))
+        self.setPlaceholderText("#RRGGBBAA")
+        self.textChanged.connect(self._on_text_changed)
+        self.editingFinished.connect(self.normalize_current_text)
+        self.setText(initial_value)
+
+    def _on_text_changed(self, text):
+        normalized = normalize_color_string(text, allow_empty=True)
+        if normalized:
+            self._last_valid_color = normalized
+            self.validColorChanged.emit(normalized)
+
+    def normalize_current_text(self):
+        normalized = normalize_color_string(super().text(), fallback=self._last_valid_color or self._fallback_color)
+        if not normalized:
+            normalized = self._fallback_color
+
+        blocker = QSignalBlocker(self)
+        super().setText(normalized)
+        del blocker
+
+        self._last_valid_color = normalized
+        self.validColorChanged.emit(normalized)
+
+    def focusOutEvent(self, event):
+        self.normalize_current_text()
+        super().focusOutEvent(event)
+
+    def setText(self, text):
+        normalized = normalize_color_string(text, fallback=self._last_valid_color or self._fallback_color)
+        if not normalized:
+            normalized = self._fallback_color
+        self._last_valid_color = normalized
+        super().setText(normalized)
+
+    def colorText(self):
+        return self._last_valid_color or self._fallback_color
+
+
+class ColorPreviewWidget(QWidget):
+    def __init__(self, color=QColor("white"), parent=None):
+        super().__init__(parent)
+        self.setFixedSize(40, 40)
+        self._color = parse_color_string(color, fallback="#FFFFFF")
+
+    def setColor(self, color):
+        qcolor = parse_color_string(color, fallback=self._color)
+        if self._color != qcolor:
+            self._color = qcolor
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        _paint_color_chip(painter, self.rect().adjusted(1, 1, -1, -1), self._color, ellipse=False, radius=8)
 
 class FlowLayout(QLayout):
     """A responsive layout that arranges widgets horizontally when space permits, vertically otherwise."""
@@ -163,6 +274,36 @@ def create_circular_pixmap(source_image, size):
 
     return target_pixmap
 
+
+def get_profile_initials(user_name):
+    parts = [part for part in user_name.split() if part]
+    if len(parts) >= 2:
+        initials = f"{parts[0][0]}{parts[1][0]}"
+    elif parts:
+        initials = parts[0][0]
+    else:
+        initials = "?"
+    return initials.upper()
+
+
+def get_profile_first_name(user_name):
+    parts = [part for part in user_name.split() if part]
+    return parts[0] if parts else "USER"
+
+
+def get_profile_initials_style(size):
+    if theme_manager.night_mode:
+        bg = mw.col.conf.get("onigiri_profile_initials_bg_dark", "#6B635C")
+        fg = "white"
+    else:
+        bg = mw.col.conf.get("onigiri_profile_initials_bg_light", "#D2CDC7")
+        fg = "#1f2937"
+    font_px = max(10, round(size * 0.34))
+    return (
+        f"background: {bg}; color: {fg}; border-radius: {size // 2}px; "
+        f"font-weight: 600; font-size: {font_px}px;"
+    )
+
 def create_rounded_pixmap(source_pixmap, radius):
     if source_pixmap.isNull(): return QPixmap()
     rounded = QPixmap(source_pixmap.size())
@@ -238,7 +379,7 @@ class SelectionOverlay(QWidget):
         super().__init__(parent)
         self.setFixedSize(24, 24)
         self._checked = False
-        self.accent_color = QColor(accent_color)
+        self.accent_color = parse_color_string(accent_color, fallback="#007BFF")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents) # Let clicks pass through
 
     def setChecked(self, checked):
@@ -278,7 +419,7 @@ class CircularColorButton(QPushButton):
     def __init__(self, color=QColor("white"), parent=None):
         super().__init__("", parent)
         self.setFixedSize(26, 26)
-        self._color = QColor(color)
+        self._color = parse_color_string(color, fallback="#FFFFFF")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip("Choose Color")
 
@@ -286,24 +427,15 @@ class CircularColorButton(QPushButton):
         return self._color
 
     def setColor(self, color):
-        qcolor = QColor(color)
+        qcolor = parse_color_string(color, fallback=self._color)
         if self._color != qcolor:
             self._color = qcolor
             self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(1, 1, -1, -1)
-        painter.setBrush(QBrush(self._color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(rect)
-        border_color = QColor("#888888")
-        pen = QPen(border_color)
-        pen.setWidth(1)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(rect)
+        _paint_color_chip(painter, rect, self._color, ellipse=True)
 
 class AnimatedToggleButton(QAbstractButton):
     def __init__(self, parent=None, accent_color="#007bff"):
@@ -311,7 +443,7 @@ class AnimatedToggleButton(QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.accent_color = QColor(accent_color)
+        self.accent_color = parse_color_string(accent_color, fallback="#007BFF")
         self.track_color_off = QColor("#cccccc") if not theme_manager.night_mode else QColor("#555555")
         self.thumb_color = QColor("#ffffff")
         
@@ -372,42 +504,104 @@ class AnimatedToggleButton(QAbstractButton):
 class ProfileBarWidget(QWidget):
     clicked = pyqtSignal()
 
-    def __init__(self, user_name, pic_path, bg_mode, bg_config, accent_color, parent=None):
+    def __init__(self, user_name, pic_path, bg_mode, bg_config, accent_color, avatar_size=40, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(50)
         self.setToolTip("Open Profile Settings")
-
-        self._bg_mode = bg_mode
-        self._bg_image_path = bg_config.get('image')
-        self._bg_color = QColor(bg_config.get('color', '#555555'))
-        self._accent_color = QColor(accent_color)
+        self._accent_color = parse_color_string(accent_color, fallback="#007BFF")
+        self._user_name = user_name
+        self._pic_path = pic_path
+        self._avatar_size = avatar_size
+        self._bg_mode = "accent"
+        self._bg_image_path = ""
+        self._bg_color = QColor("#555555")
+        self._bg_gradient_start = QColor(profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_start"])
+        self._bg_gradient_end = QColor(profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_end"])
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 15, 5)
         layout.setSpacing(10)
 
         self.pic_label = QLabel()
+        self.pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pic_label.setStyleSheet("background: transparent;")
-        self.pic_label.setFixedSize(40, 40)
-        
-        if pic_path and os.path.exists(pic_path):
-            source_image = QImage(pic_path)
-        else:
-            # Use default profile image
-            default_pic = os.path.join(os.path.dirname(__file__), "system_files", "profile_default", "onigiri-san.png")
-            source_image = QImage(default_pic)
-            
-        if not source_image.isNull():
-            circular_pixmap = create_circular_pixmap(source_image, 40)
-            self.pic_label.setPixmap(circular_pixmap)
-
         self.name_label = QLabel(user_name)
         self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; color: white; background: transparent;")
 
         layout.addWidget(self.pic_label)
         layout.addWidget(self.name_label)
         layout.addStretch()
+        self.update_background(bg_mode, bg_config)
+        self.update_profile(user_name=user_name, pic_path=pic_path, avatar_size=avatar_size)
+
+    def _resolve_avatar_path(self):
+        if self._pic_path and os.path.exists(self._pic_path):
+            return self._pic_path
+        return ""
+
+    def _apply_avatar(self):
+        avatar_path = self._resolve_avatar_path()
+        self.pic_label.clear()
+        if avatar_path:
+            source_image = QImage(avatar_path)
+            if not source_image.isNull():
+                circular_pixmap = create_circular_pixmap(source_image, self._avatar_size)
+                if not circular_pixmap.isNull():
+                    self.pic_label.setPixmap(circular_pixmap)
+                    self.pic_label.setStyleSheet("background: transparent;")
+                    return
+
+        initials = get_profile_initials(self._user_name)
+        self.pic_label.setText(initials)
+        self.pic_label.setStyleSheet(get_profile_initials_style(self._avatar_size))
+
+    def _update_name_label_color(self):
+        if self._bg_mode == 'image':
+            text_color = "white"
+        elif self._bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+            midpoint = profile_background.get_gradient_midpoint_color(
+                self._bg_gradient_start,
+                self._bg_gradient_end,
+                fallback="#555555",
+            )
+            text_color = get_contrast_text_color(midpoint)
+        else:
+            bg_qc = self._accent_color if self._bg_mode == 'accent' else self._bg_color
+            text_color = get_contrast_text_color(bg_qc)
+        self.name_label.setStyleSheet(
+            f"font-weight: bold; font-size: 14px; color: {text_color}; background: transparent;"
+        )
+
+    def update_background(self, bg_mode=None, bg_config=None):
+        if bg_mode is not None:
+            self._bg_mode = bg_mode
+        if bg_config is not None:
+            self._bg_image_path = bg_config.get('image', '')
+            self._bg_color = parse_color_string(bg_config.get('color', '#555555'), fallback="#555555")
+            self._bg_gradient_start = parse_color_string(
+                bg_config.get('gradient_start', profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_start"]),
+                fallback=profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_start"],
+            )
+            self._bg_gradient_end = parse_color_string(
+                bg_config.get('gradient_end', profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_end"]),
+                fallback=profile_background.PROFILE_BG_GRADIENT_DEFAULTS["light_end"],
+            )
+        self._update_name_label_color()
+        self.update()
+
+    def update_profile(self, user_name=None, pic_path=None, avatar_size=None):
+        if user_name is not None:
+            self._user_name = user_name
+            self.name_label.setText(get_profile_first_name(user_name))
+        if pic_path is not None:
+            self._pic_path = pic_path
+        if avatar_size is not None:
+            self._avatar_size = int(avatar_size)
+
+        self.pic_label.setFixedSize(self._avatar_size, self._avatar_size)
+        self.setFixedHeight(max(50, self._avatar_size + 12))
+        self._apply_avatar()
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter()
@@ -420,15 +614,22 @@ class ProfileBarWidget(QWidget):
             path = QPainterPath()
             rect = self.rect().adjusted(0, 0, -1, -1)
             rect_f = QRectF(rect)
-            path.addRoundedRect(rect_f, 24, 24)
+            radius = rect.height() / 2
+            path.addRoundedRect(rect_f, radius, radius)
 
-            paint_color = self._accent_color
-            if self._bg_mode == 'custom':
-                paint_color = self._bg_color
-            elif self._bg_mode == 'image':
-                paint_color = QColor("#333333") 
-            
-            painter.fillPath(path, paint_color)
+            if self._bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+                gradient = QLinearGradient(0, 0, max(1, self.width()), 0)
+                gradient.setColorAt(0, self._bg_gradient_start)
+                gradient.setColorAt(1, self._bg_gradient_end)
+                painter.fillPath(path, QBrush(gradient))
+            else:
+                paint_color = self._accent_color
+                if self._bg_mode == 'custom':
+                    paint_color = self._bg_color
+                elif self._bg_mode == 'image':
+                    paint_color = QColor("#333333") 
+                
+                painter.fillPath(path, paint_color)
 
             if self._bg_mode == 'image':
                 bg_image_path = self._bg_image_path
@@ -595,15 +796,12 @@ class ColorSwatch(QWidget):
     def __init__(self, color_hex, parent=None):
         super().__init__(parent)
         self.setFixedSize(20, 20)
-        self.color = QColor(color_hex)
-        self.setToolTip(color_hex.upper())
+        self.color = parse_color_string(color_hex, fallback="#FFFFFF")
+        self.setToolTip((normalize_color_string(color_hex, fallback="#FFFFFF") or "#FFFFFF").upper())
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(self.color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(self.rect())
+        _paint_color_chip(painter, self.rect().adjusted(1, 1, -1, -1), self.color, ellipse=True)
 
 class ThemeCardWidget(QFrame):
     """A clickable card widget to display and select a theme."""
@@ -1129,7 +1327,7 @@ class ColorMapWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(280, 150)
+        self.setFixedSize(288, 176)
         self._hue = 0.0
         self._sat = 0.0
         self._val = 0.0
@@ -1162,12 +1360,12 @@ class ColorMapWidget(QWidget):
         else: hue_color = QColor.fromHsvF(max(0, self._hue), 1.0, 1.0)
         
         path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 12, 12)
+        path.addRoundedRect(QRectF(self.rect()), 8, 8)
         painter.setClipPath(path)
         
         painter.setBrush(hue_color)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 12, 12)
+        painter.drawRoundedRect(self.rect(), 8, 8)
 
         sat_grad = QLinearGradient(0, 0, self.width(), 0)
         sat_grad.setColorAt(0, QColor(255, 255, 255, 255))
@@ -1179,12 +1377,17 @@ class ColorMapWidget(QWidget):
         val_grad.setColorAt(1, QColor(0, 0, 0, 255))
         painter.fillRect(self.rect(), val_grad)
 
+        painter.setClipping(False)
+        painter.setPen(QPen(QColor(255, 255, 255, 28) if theme_manager.night_mode else QColor(0, 0, 0, 20), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 8, 8)
 
         painter.setPen(QPen(Qt.GlobalColor.white, 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(self._cursor_pos, 6, 6)
-        painter.setPen(QPen(Qt.GlobalColor.black, 1))
-        painter.drawEllipse(self._cursor_pos, 6, 6)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor.fromHsvF(max(0, self._hue), self._sat, self._val))
+        painter.drawEllipse(self._cursor_pos, 4, 4)
 
     def mousePressEvent(self, event):
         self._update_color(event.pos())
@@ -1212,13 +1415,25 @@ class GradientSlider(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(280, 12)
+        self._pad = 8
+        self._thumb_radius = 8
+        self._track_height = 12
+        self.setFixedSize(288, self._thumb_radius * 2 + 4)
         self._value = 0.0
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def setValue(self, value):
         self._value = max(0.0, min(1.0, value))
         self.update()
+
+    def _track_rect(self):
+        center_y = self.height() // 2
+        return QRect(
+            self._pad,
+            center_y - self._track_height // 2,
+            self.width() - (self._pad * 2),
+            self._track_height,
+        )
 
     def mousePressEvent(self, event):
         self._update_value(event.pos())
@@ -1227,7 +1442,10 @@ class GradientSlider(QWidget):
         self._update_value(event.pos())
 
     def _update_value(self, pos):
-        val = pos.x() / self.width()
+        track_rect = self._track_rect()
+        if track_rect.width() <= 0:
+            return
+        val = (pos.x() - track_rect.x()) / track_rect.width()
         self._value = max(0.0, min(1.0, val))
         self.valueChanged.emit(self._value)
         self.update()
@@ -1235,26 +1453,32 @@ class GradientSlider(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.draw_track(painter)
-        thumb_x = int(self._value * self.width())
-        thumb_x = max(6, min(thumb_x, self.width() - 6))
-        painter.setPen(QPen(Qt.GlobalColor.white, 2))
-        painter.setBrush(Qt.GlobalColor.transparent)
-        painter.drawEllipse(QPoint(thumb_x, self.height() // 2), 5, 5)
-        painter.setPen(QPen(Qt.GlobalColor.black, 1))
-        painter.drawEllipse(QPoint(thumb_x, self.height() // 2), 5, 5)
+        track_rect = self._track_rect()
+        self.draw_track(painter, track_rect)
 
-    def draw_track(self, painter):
+        thumb_x = track_rect.x() + int(self._value * track_rect.width())
+        thumb_x = max(track_rect.x(), min(thumb_x, track_rect.right()))
+        thumb_center = QPoint(thumb_x, self.height() // 2)
+        painter.setBrush(Qt.GlobalColor.white)
+        painter.setPen(QPen(QColor(255, 255, 255, 210), 2))
+        painter.drawEllipse(thumb_center, self._thumb_radius - 1, self._thumb_radius - 1)
+
+    def draw_track(self, painter, track_rect):
         pass
 
 class HueSlider(GradientSlider):
-    def draw_track(self, painter):
-        grad = QLinearGradient(0, 0, self.width(), 0)
+    def draw_track(self, painter, track_rect):
+        grad = QLinearGradient(
+            float(track_rect.left()),
+            float(track_rect.top()),
+            float(track_rect.right()),
+            float(track_rect.top()),
+        )
         for i in range(7):
             grad.setColorAt(i / 6.0, QColor.fromHsvF(i / 6.0, 1.0, 1.0))
         painter.setBrush(QBrush(grad))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 6, 6)
+        painter.drawRoundedRect(track_rect, track_rect.height() / 2, track_rect.height() / 2)
 
 class AlphaSlider(GradientSlider):
     def __init__(self, parent=None):
@@ -1262,64 +1486,58 @@ class AlphaSlider(GradientSlider):
         self._color = QColor(255, 0, 0)
 
     def setColor(self, color):
-        self._color = color
+        self._color = parse_color_string(color, fallback=self._color)
         self.update()
 
-    def draw_track(self, painter):
+    def draw_track(self, painter, track_rect):
+        radius = track_rect.height() / 2
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(track_rect), radius, radius)
+
         painter.save()
-        painter.setClipRect(self.rect())
-        check_size = 4
-        for y in range(0, self.height(), check_size):
-            for x in range(0, self.width(), check_size):
-                if (x // check_size + y // check_size) % 2 == 0:
-                    painter.fillRect(x, y, check_size, check_size, QColor(200, 200, 200))
-                else:
-                    painter.fillRect(x, y, check_size, check_size, QColor(255, 255, 255))
+        painter.setClipPath(path)
+        _paint_checkerboard(painter, track_rect)
         painter.restore()
-        grad = QLinearGradient(0, 0, self.width(), 0)
+        grad = QLinearGradient(
+            float(track_rect.left()),
+            float(track_rect.top()),
+            float(track_rect.right()),
+            float(track_rect.top()),
+        )
         c1 = QColor(self._color); c1.setAlpha(0)
         c2 = QColor(self._color); c2.setAlpha(255)
         grad.setColorAt(0, c1)
         grad.setColorAt(1, c2)
         painter.setBrush(QBrush(grad))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 6, 6)
+        painter.drawRoundedRect(track_rect, radius, radius)
 
 class FavoriteColorButton(QWidget):
     def __init__(self, color_hex, on_select, on_remove, parent=None):
         super().__init__(parent)
-        self.setFixedSize(24, 24)
-        self.color_hex = color_hex
+        self.setFixedSize(28, 28)
+        self.color_hex = normalize_color_string(color_hex, fallback="#FFFFFF") or "#FFFFFF"
         self.on_select = on_select
         self.on_remove = on_remove
         
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Long click to delete")
-        
-        self._long_press_timer = QTimer(self)
-        self._long_press_timer.setSingleShot(True)
-        self._long_press_timer.setInterval(800) 
-        self._long_press_timer.timeout.connect(self._handle_long_press)
+        self.setToolTip("Right-click to remove")
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(self.color_hex))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 12, 12)
+        _paint_color_chip(painter, self.rect().adjusted(2, 2, -2, -2), self.color_hex, ellipse=True)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._long_press_timer.start()
+            self.on_select(self.color_hex)
+            event.accept()
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            if self._long_press_timer.isActive():
-                self._long_press_timer.stop()
-                self.on_select(self.color_hex)
-
-    def _handle_long_press(self):
-        self.on_remove(self.color_hex)
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        remove_action = QAction("Remove", self)
+        remove_action.triggered.connect(lambda: self.on_remove(self.color_hex))
+        menu.addAction(remove_action)
+        menu.exec(event.globalPos())
 
 
 
@@ -1333,181 +1551,241 @@ class ModernColorPickerDialog(QDialog):
         self.setWindowTitle("Select Color")
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._color = QColor(initial_color)
-        self.favorite_colors = favorite_colors[:] if favorite_colors else []
+        self._color = parse_color_string(initial_color, fallback="#FFFFFF")
+        self.favorite_colors = [
+            normalize_color_string(color, fallback="#FFFFFF")
+            for color in (favorite_colors[:] if favorite_colors else [])
+            if normalize_color_string(color, fallback="#FFFFFF")
+        ]
         self._drag_pos = None
+        mode_key = "dark" if theme_manager.night_mode else "light"
+        accent_color = normalize_color_string(
+            mw.col.conf.get("colors", {}).get(mode_key, {}).get("--accent-color", "#5A9CF8"),
+            fallback="#5A9CF8",
+        ) or "#5A9CF8"
 
-        
+        if theme_manager.night_mode:
+            bg = "#2b2b2b"
+            panel = "#323232"
+            border = "#404040"
+            text = "#d4d4d4"
+            text_dim = "#888888"
+            hover_fill = "rgba(255, 255, 255, 0.08)"
+        else:
+            bg = "#fbfbfb"
+            panel = "#f2f2f2"
+            border = "#dddddd"
+            text = "#2b2b2b"
+            text_dim = "#7a7a7a"
+            hover_fill = "rgba(0, 0, 0, 0.05)"
+
+        self.setFixedWidth(320)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: transparent;
+            }}
+            QFrame#ColorPickerContainer {{
+                background: {bg};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            QLabel {{
+                color: {text};
+                font-size: 12px;
+            }}
+            QLabel#ColorPickerTitle {{
+                color: {text};
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QLabel#ColorPickerDim {{
+                color: {text_dim};
+                font-size: 11px;
+            }}
+            QLineEdit#ColorPickerHexInput {{
+                background: {panel};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                font-family: Consolas, 'Courier New', monospace;
+                selection-background-color: {accent_color};
+            }}
+            QLineEdit#ColorPickerHexInput:focus {{
+                border: 1px solid {accent_color};
+            }}
+            QPushButton#ColorPickerCloseButton {{
+                background: transparent;
+                border: none;
+                border-radius: 11px;
+                padding: 0px;
+            }}
+            QPushButton#ColorPickerCloseButton:hover {{
+                background: {hover_fill};
+            }}
+            QPushButton#ColorPickerAddFavButton {{
+                background: transparent;
+                color: {text_dim};
+                border: 1px solid {border};
+                border-radius: 12px;
+                min-width: 24px;
+                min-height: 24px;
+                max-width: 24px;
+                max-height: 24px;
+                padding: 0px;
+            }}
+            QPushButton#ColorPickerAddFavButton:hover {{
+                color: {text};
+                border-color: {accent_color};
+            }}
+            QPushButton#ColorPickerCancelButton {{
+                background: transparent;
+                color: {text_dim};
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 7px 16px;
+                font-size: 12px;
+            }}
+            QPushButton#ColorPickerCancelButton:hover {{
+                color: {text};
+                border-color: #666666;
+            }}
+            QPushButton#ColorPickerApplyButton {{
+                background: {accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 22px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton#ColorPickerApplyButton:hover {{
+                background: {accent_color};
+            }}
+            QFrame#ColorPickerDivider {{
+                background: {border};
+                min-height: 1px;
+                max-height: 1px;
+                border: none;
+            }}
+            QMenu {{
+                background: {panel};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 6px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 6px 16px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background: {accent_color};
+                color: #ffffff;
+            }}
+        """)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
         self.container = QFrame()
         self.container.setObjectName("ColorPickerContainer")
-        if theme_manager.night_mode:
-             self.container.setStyleSheet("QFrame#ColorPickerContainer { background-color: #2c2c2c; border-radius: 12px; border: 1px solid #4a4a4a; }")
-        else:
-             self.container.setStyleSheet("QFrame#ColorPickerContainer { background-color: #ffffff; border-radius: 12px; border: 1px solid #e0e0e0; }")
+        layout.addWidget(self.container)
 
         container_layout = QVBoxLayout(self.container)
-        container_layout.setSpacing(15)
-        
-        # --- Header with Close Button ---
+        container_layout.setContentsMargins(16, 14, 16, 16)
+        container_layout.setSpacing(10)
+
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
-        
         title_label = QLabel("Select Color")
-        
-        close_btn = QPushButton()
-        close_btn.setFixedSize(24, 24)
-        close_btn.setMaximumSize(24, 24)
-        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_btn.clicked.connect(self.close)
-        
-        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark-simple.svg")
-        
-        # Style the close button and title to be adapted to the theme
-        if theme_manager.night_mode:
-            title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #d0d0d0;")
-            close_btn.setStyleSheet("""
-                QPushButton { 
-                    background-color: transparent; 
-                    border: none; 
-                    border-radius: 12px; 
-                    padding: 0px;
-                    margin: 0px;
-                    min-width: 24px; 
-                    min-height: 24px;
-                    max-width: 24px;
-                    max-height: 24px;
-                }
-                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
-            """)
-            icon_color = QColor("#ffffff")
-        else:
-            title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333333;")
-            close_btn.setStyleSheet("""
-                QPushButton { 
-                    background-color: transparent; 
-                    border: none; 
-                    border-radius: 12px; 
-                    padding: 0px;
-                    margin: 0px;
-                    min-width: 24px; 
-                    min-height: 24px;
-                    max-width: 24px;
-                    max-height: 24px;
-                }
-                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
-            """)
-            icon_color = QColor("#555555")
+        title_label.setObjectName("ColorPickerTitle")
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
 
-            
+        close_btn = QPushButton()
+        close_btn.setObjectName("ColorPickerCloseButton")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.clicked.connect(self.reject)
+        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "cancel.svg")
+        icon_color = QColor(text_dim)
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
-                # Colorize the icon
                 painter = QPainter(pixmap)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
                 painter.fillRect(pixmap.rect(), icon_color)
                 painter.end()
-                
                 close_btn.setIcon(QIcon(pixmap))
-                close_btn.setIconSize(QSize(12, 12))
+                close_btn.setIconSize(QSize(11, 11))
             else:
-                close_btn.setText("x")
-                close_btn.setStyleSheet(close_btn.styleSheet() + f"color: {icon_color.name()}; font-weight: bold; font-size: 16px; font-family: Arial, sans-serif; padding-bottom: 2px;")
+                close_btn.setText("×")
         else:
-            close_btn.setText("x")
-            close_btn.setStyleSheet(close_btn.styleSheet() + f"color: {icon_color.name()}; font-weight: bold; font-size: 16px; font-family: Arial, sans-serif; padding-bottom: 2px;")
-            
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
+            close_btn.setText("×")
+        if close_btn.text():
+            close_btn.setStyleSheet(close_btn.styleSheet() + f"QPushButton#ColorPickerCloseButton {{ color: {text_dim}; font-size: 16px; }}")
         header_layout.addWidget(close_btn)
         container_layout.addLayout(header_layout)
-        # --------------------------------
-        
+
         self.color_map = ColorMapWidget()
         self.color_map.colorChanged.connect(self._on_map_color_changed)
         container_layout.addWidget(self.color_map, 0, Qt.AlignmentFlag.AlignCenter)
-        
-        sliders_layout = QVBoxLayout()
-        sliders_layout.setSpacing(8)
+
         self.hue_slider = HueSlider()
         self.hue_slider.valueChanged.connect(self._on_hue_changed)
-        sliders_layout.addWidget(self.hue_slider, 0, Qt.AlignmentFlag.AlignCenter)
-        # Alpha slider removed
-        container_layout.addLayout(sliders_layout)
-        
-        input_layout = QHBoxLayout()
-        self.preview_circle = QLabel()
-        self.preview_circle.setFixedSize(32, 32)
-        
-        self.hex_input = QLineEdit(self._color.name())
-        self.hex_input.setFixedWidth(100)
-        self.hex_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if theme_manager.night_mode:
-            self.hex_input.setStyleSheet("QLineEdit { background-color: #333; color: #fff; border: 1px solid #555; border-radius: 12px; padding: 4px; }")
-        else:
-            self.hex_input.setStyleSheet("QLineEdit { background-color: #fff; color: #000; border: 1px solid #ccc; border-radius: 12px; padding: 4px; }")
-        self.hex_input.textChanged.connect(self._on_hex_changed)
+        container_layout.addWidget(self.hue_slider, 0, Qt.AlignmentFlag.AlignCenter)
 
-        
+        alpha_header_layout = QHBoxLayout()
+        alpha_header_layout.setContentsMargins(0, 2, 0, 0)
+        alpha_label = QLabel("Opacity")
+        alpha_label.setObjectName("ColorPickerDim")
+        self.alpha_value_label = QLabel("100%")
+        self.alpha_value_label.setObjectName("ColorPickerDim")
+        alpha_header_layout.addWidget(alpha_label)
+        alpha_header_layout.addStretch()
+        alpha_header_layout.addWidget(self.alpha_value_label)
+        container_layout.addLayout(alpha_header_layout)
+
+        self.alpha_slider = AlphaSlider()
+        self.alpha_slider.valueChanged.connect(self._on_alpha_changed)
+        container_layout.addWidget(self.alpha_slider, 0, Qt.AlignmentFlag.AlignCenter)
+
+        input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(0, 4, 0, 0)
+        input_layout.setSpacing(10)
+        self.preview_circle = ColorPreviewWidget()
         input_layout.addWidget(self.preview_circle)
-        input_layout.addWidget(self.hex_input)
-        input_layout.addStretch()
+
+        self.hex_input = NormalizedColorLineEdit(qcolor_to_hex(self._color) or "#FFFFFF", fallback="#FFFFFF")
+        self.hex_input.setObjectName("ColorPickerHexInput")
+        self.hex_input.setMinimumHeight(34)
+        self.hex_input.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.hex_input.editingFinished.connect(self._on_hex_changed)
+        input_layout.addWidget(self.hex_input, 1)
         container_layout.addLayout(input_layout)
-        
-        # --- Favorites Section ---
+
+        divider = QFrame()
+        divider.setObjectName("ColorPickerDivider")
+        container_layout.addWidget(divider)
+
         fav_header = QHBoxLayout()
+        fav_header.setContentsMargins(0, 0, 0, 0)
         fav_label = QLabel("Favorite Colors")
-        if theme_manager.night_mode:
-            fav_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #888;")
-        else:
-            fav_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #666;")
-            
+        fav_label.setObjectName("ColorPickerDim")
+        fav_header.addWidget(fav_label)
+        fav_header.addStretch()
+
         add_fav_btn = QPushButton()
+        add_fav_btn.setObjectName("ColorPickerAddFavButton")
         add_fav_btn.setFixedSize(24, 24)
-        add_fav_btn.setMaximumSize(24, 24)
         add_fav_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_fav_btn.setToolTip("Add current color to favorites")
         add_fav_btn.clicked.connect(self.add_current_to_favorites)
-        
         add_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "add.svg")
-        
-        if theme_manager.night_mode:
-            add_fav_btn.setStyleSheet("""
-                QPushButton { 
-                    background-color: #3a3a3a; 
-                    border: 1px solid #555; 
-                    border-radius: 12px; 
-                    padding: 0px;
-                    margin: 0px;
-                    min-width: 24px; 
-                    min-height: 24px;
-                    max-width: 24px;
-                    max-height: 24px;
-                }
-                QPushButton:hover { background-color: #4a4a4a; }
-            """)
-            add_icon_color = QColor("#cccccc")
-        else:
-            add_fav_btn.setStyleSheet("""
-                QPushButton { 
-                    background-color: #f0f0f0; 
-                    border: 1px solid #ccc; 
-                    border-radius: 12px; 
-                    padding: 0px;
-                    margin: 0px;
-                    min-width: 24px; 
-                    min-height: 24px;
-                    max-width: 24px;
-                    max-height: 24px;
-                }
-                QPushButton:hover { background-color: #e0e0e0; }
-            """)
-            add_icon_color = QColor("#555555")
-
-            
+        add_icon_color = QColor(text_dim)
         if os.path.exists(add_icon_path):
             pixmap = QPixmap(add_icon_path)
             if not pixmap.isNull():
@@ -1521,71 +1799,78 @@ class ModernColorPickerDialog(QDialog):
                 add_fav_btn.setText("+")
         else:
             add_fav_btn.setText("+")
-            
-        fav_header.addWidget(fav_label)
-        fav_header.addStretch()
         fav_header.addWidget(add_fav_btn)
         container_layout.addLayout(fav_header)
-        
-        self.favorites_grid = QGridLayout()
-        self.favorites_grid.setSpacing(8)
-        container_layout.addLayout(self.favorites_grid)
-        
+
+        self.favorites_row = QHBoxLayout()
+        self.favorites_row.setContentsMargins(0, 0, 0, 0)
+        self.favorites_row.setSpacing(6)
+        container_layout.addLayout(self.favorites_row)
         self.refresh_favorites()
-        
-        layout.addWidget(self.container)
+
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+        footer_layout.setSpacing(8)
+        footer_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("ColorPickerCancelButton")
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(self.reject)
+        footer_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply")
+        apply_btn.setObjectName("ColorPickerApplyButton")
+        apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        apply_btn.clicked.connect(self.accept)
+        footer_layout.addWidget(apply_btn)
+        container_layout.addLayout(footer_layout)
+
         self.setColor(self._color)
 
 
 
     def refresh_favorites(self):
-        # Clear grid
-        while self.favorites_grid.count():
-            child = self.favorites_grid.takeAt(0)
+        while self.favorites_row.count():
+            child = self.favorites_row.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
         
-        for i, color_hex in enumerate(self.favorite_colors):
+        for color_hex in self.favorite_colors[:8]:
             btn = FavoriteColorButton(
                 color_hex, 
-                lambda c: self.setColor(QColor(c)), 
+                lambda c: self.setColor(parse_color_string(c, fallback=self._color)), 
                 self.remove_favorite
             )
-            
-            row, col = divmod(i, 8)
-            self.favorites_grid.addWidget(btn, row, col)
+            self.favorites_row.addWidget(btn)
+        self.favorites_row.addStretch()
             
     def add_current_to_favorites(self):
-        color_hex = self._color.name()
+        color_hex = qcolor_to_hex(self._color) or "#FFFFFF"
         if color_hex not in self.favorite_colors:
-            self.favorite_colors.append(color_hex)
+            self.favorite_colors.insert(0, color_hex)
+            self.favorite_colors = self.favorite_colors[:8]
             self.refresh_favorites()
             
-    def show_context_menu(self, pos, color_hex, btn):
-        menu = QMenu(self)
-        remove_action = QAction("Remove", self)
-        remove_action.triggered.connect(lambda: self.remove_favorite(color_hex))
-        menu.addAction(remove_action)
-        menu.exec(btn.mapToGlobal(pos))
-        
     def remove_favorite(self, color_hex):
         if color_hex in self.favorite_colors:
             self.favorite_colors.remove(color_hex)
             self.refresh_favorites()
 
     def setColor(self, color):
-        self._color = color
-        self.color_map.setColor(color)
-        self.hue_slider.setValue(max(0, color.hueF()))
-        # Alpha slider update removed
-        self.preview_circle.setStyleSheet(f"background-color: {color.name(QColor.NameFormat.HexArgb)}; border-radius: 16px; border: 1px solid #888;")
+        self._color = parse_color_string(color, fallback=self._color)
+        self.color_map.setColor(self._color)
+        self.hue_slider.setValue(max(0.0, self._color.hueF()))
+        self.alpha_slider.setColor(self._color)
+        self.alpha_slider.setValue(self._color.alphaF())
+        self.alpha_value_label.setText(f"{round(self._color.alphaF() * 100)}%")
+        self.preview_circle.setColor(self._color)
         self.hex_input.blockSignals(True)
-        self.hex_input.setText(color.name())
+        self.hex_input.setText(qcolor_to_hex(self._color) or "#FFFFFF")
         self.hex_input.blockSignals(False)
         self.colorSelected.emit(self._color)
 
     def _on_map_color_changed(self, color):
-        # Preserve existing alpha if needed, though slider is gone
         alpha = self._color.alpha()
         self._color = color
         self._color.setAlpha(alpha)
@@ -1594,15 +1879,22 @@ class ModernColorPickerDialog(QDialog):
     def _on_hue_changed(self, hue):
         self.color_map.setHue(hue)
 
-    def _on_hex_changed(self, text):
-        if QColor.isValidColor(text):
-            self.setColor(QColor(text))
+    def _on_alpha_changed(self, alpha_value):
+        self._color.setAlphaF(alpha_value)
+        self._update_ui_from_internal()
+
+    def _on_hex_changed(self):
+        normalized = normalize_color_string(self.hex_input.text(), fallback=qcolor_to_hex(self._color) or "#FFFFFF")
+        if normalized:
+            self.setColor(parse_color_string(normalized, fallback=self._color))
 
     def _update_ui_from_internal(self):
-        # Alpha slider update removed
-        self.preview_circle.setStyleSheet(f"background-color: {self._color.name(QColor.NameFormat.HexArgb)}; border-radius: 16px; border: 1px solid #888;")
+        self.alpha_slider.setColor(self._color)
+        self.alpha_slider.setValue(self._color.alphaF())
+        self.alpha_value_label.setText(f"{round(self._color.alphaF() * 100)}%")
+        self.preview_circle.setColor(self._color)
         self.hex_input.blockSignals(True)
-        self.hex_input.setText(self._color.name())
+        self.hex_input.setText(qcolor_to_hex(self._color) or "#FFFFFF")
         self.hex_input.blockSignals(False)
         self.colorSelected.emit(self._color)
 
@@ -2380,6 +2672,8 @@ class SettingsDialog(QDialog):
             self.resize(900, 700)
         
         self.current_config = config.get_config()
+        self._original_config = copy.deepcopy(self.current_config)
+        self._is_saving = False
 
         # --- RESTORE WINDOW SIZE ---
         window_settings = self.current_config.get("window_settings", {})
@@ -2509,6 +2803,9 @@ class SettingsDialog(QDialog):
         self.hide_all_deck_counts_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
         self.hide_all_deck_counts_checkbox.setChecked(self.current_config.get("hideAllDeckCounts", False))
 
+        self.always_show_sidebar_collapse_button_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.always_show_sidebar_collapse_button_checkbox.setChecked(self.current_config.get("alwaysShowSidebarCollapseButton", False))
+
         self.show_ellipsis_button_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.show_ellipsis_button_toggle.setChecked(mw.col.conf.get("modern_menu_show_ellipsis_button", True))
 
@@ -2606,16 +2903,25 @@ class SettingsDialog(QDialog):
         user_name = self.current_config.get("userName", DEFAULTS["userName"])
         pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
         pic_path = os.path.join(self.addon_path, "user_files", "profile", pic_filename) if pic_filename else ""
+        profile_bar_avatar_size = mw.col.conf.get("onigiri_profile_bar_avatar_size", 30)
         bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
         is_dark = theme_manager.night_mode
         bg_color = mw.col.conf.get(f"modern_menu_profile_bg_color_{'dark' if is_dark else 'light'}", "#555" if is_dark else "#EEE")
+        gradient_start, gradient_end = profile_background.get_profile_bg_gradient_pair(mw.col.conf, is_dark)
         bg_image_filename = mw.col.conf.get("modern_menu_profile_bg_image", "")
         bg_image_path = os.path.join(self.addon_path, "user_files", "profile_bg", bg_image_filename) if bg_image_filename else ""
-        bg_config = {'color': bg_color, 'image': bg_image_path}
+        bg_config = {'color': bg_color, 'image': bg_image_path, 'gradient_start': gradient_start, 'gradient_end': gradient_end}
         
 
-
-        self.profile_bar = ProfileBarWidget(user_name, pic_path, bg_mode, bg_config, self.accent_color, self)
+        self.profile_bar = ProfileBarWidget(
+            user_name,
+            pic_path,
+            bg_mode,
+            bg_config,
+            self.accent_color,
+            avatar_size=profile_bar_avatar_size,
+            parent=self,
+        )
         sidebar_layout.addWidget(self.profile_bar)
 
 
@@ -2953,22 +3259,32 @@ class SettingsDialog(QDialog):
             mw.col.conf["onigiri_font_size_subtle"] = self.font_size_subtle.value()
         if hasattr(self, "font_size_small_title"):
             mw.col.conf["onigiri_font_size_small_title"] = self.font_size_small_title.value()
+
+    def _current_window_settings(self):
+        if self.isMaximized() or self.isFullScreen():
+            return None
+
+        return {
+            "width": self.width(),
+            "height": self.height(),
+        }
+
+    def _persist_window_settings_only(self):
+        window_settings = self._current_window_settings()
+        if not window_settings:
+            return
+
+        preserved_config = copy.deepcopy(self._original_config)
+        preserved_config["window_settings"] = window_settings
+        config.write_config(preserved_config)
+
     def closeEvent(self, event):
-        if not getattr(self, "_is_saving", False):
-            self.save_settings()
-        
-        # --- SAVE WINDOW SIZE ---
+        # Preserve window size without treating a plain close as a settings save.
         try:
-            if not self.isMaximized() and not self.isFullScreen():
-                window_settings = {
-                    "width": self.width(),
-                    "height": self.height()
-                }
-                self.current_config["window_settings"] = window_settings
-                config.write_config(self.current_config)
+            if not self._is_saving:
+                self._persist_window_settings_only()
         except Exception as e:
             print(f"Error saving window settings: {e}")
-        # ------------------------
 
         for gallery in self.galleries.values():
             if worker := gallery.get('worker'):
@@ -2987,10 +3303,7 @@ class SettingsDialog(QDialog):
             btn.blockSignals(True)
             btn.setChecked(False)
             btn.blockSignals(False)
-        self.general_toggle_widget.deselect_all()
-        self.menu_toggle_widget.deselect_all()
-        self.study_zone_toggle_widget.deselect_all()
-        self.gamification_toggle_widget.deselect_all()
+        self._deselect_sidebar_navigation()
         
         profile_index = self.page_order.index("Profile")
         
@@ -3012,9 +3325,7 @@ class SettingsDialog(QDialog):
 
         if page_name in self.sidebar_buttons:
             self.sidebar_buttons[page_name].setChecked(True)
-            self.general_toggle_widget.deselect_all()
-            self.menu_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
+            self._deselect_sidebar_navigation()
         elif self.general_toggle_widget.select_page(page_name):
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
@@ -3054,6 +3365,16 @@ class SettingsDialog(QDialog):
         
         self.content_stack.setCurrentIndex(stack_index)
     
+    def _deselect_sidebar_navigation(self):
+        """Clear the expandable sidebar groups without assuming obsolete widgets exist."""
+        for toggle in (
+            self.general_toggle_widget,
+            self.menu_toggle_widget,
+            self.study_zone_toggle_widget,
+        ):
+            if toggle is not None:
+                toggle.deselect_all()
+
     def _on_section_toggled(self, toggled_widget, checked):
         """Handle accordion behavior: close other sections when one is opened."""
         if not checked:
@@ -6881,6 +7202,12 @@ class SettingsDialog(QDialog):
         sidebar_section.add_widget(self._create_toggle_row(self.hide_welcome_checkbox, "Hide 'Welcome' message"))
         sidebar_section.add_widget(self._create_toggle_row(self.hide_deck_counts_checkbox, "Hide 0 counts on sidebar"))
         sidebar_section.add_widget(self._create_toggle_row(self.hide_all_deck_counts_checkbox, "Hide deck counts entirely"))
+        sidebar_section.add_widget(
+            self._create_toggle_row(
+                self.always_show_sidebar_collapse_button_checkbox,
+                "Always show sidebar collapse button"
+            )
+        )
 
         layout.addWidget(sidebar_section)
 
@@ -6903,11 +7230,15 @@ class SettingsDialog(QDialog):
         sidebar_main_layout = QVBoxLayout(self.sidebar_main_options_group)
         sidebar_main_layout.setContentsMargins(15, 10, 0, 0)
         
-        effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "opaque")
+        effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "glassmorphism")
         effect_mode_layout = QHBoxLayout()
         self.sidebar_effect_overlay_radio = QRadioButton("Color Overlay")
         self.sidebar_effect_glass_radio = QRadioButton("Glassmorphism")
         self.sidebar_effect_overlay_radio.setChecked(effect_mode == "opaque")
+        self.sidebar_effect_glass_radio.setChecked(effect_mode == "glassmorphism")
+        effect_mode_layout.addWidget(self.sidebar_effect_overlay_radio)
+        effect_mode_layout.addWidget(self.sidebar_effect_glass_radio)
+        sidebar_main_layout.addLayout(effect_mode_layout)
 
         self.sidebar_overlay_options_group = QWidget()
         overlay_options_layout = QVBoxLayout(self.sidebar_overlay_options_group)
@@ -6973,38 +7304,37 @@ class SettingsDialog(QDialog):
         mode_layout = QHBoxLayout()
         self.actions_mode_group = QButtonGroup(action_buttons_section)
 
-        self.actions_mode_list = QRadioButton("List (Default)")
-        self.actions_mode_list.setToolTip("Show action buttons as list items in the sidebar.")
+        self.actions_mode_full = QRadioButton("Full (Default)")
+        self.actions_mode_full.setToolTip("Show action buttons as full list items in the sidebar.")
 
-        self.actions_mode_collapsed = QRadioButton("Collapsed (Toolbar)")
-        self.actions_mode_collapsed.setToolTip("Show action buttons as icons in the top toolbar.")
+        self.actions_mode_compact = QRadioButton("Compact")
+        self.actions_mode_compact.setToolTip("Show action buttons as compact icons in the top toolbar.")
 
-        self.actions_mode_archived = QRadioButton("Archived (Hidden)")
-        self.actions_mode_archived.setToolTip("Hide action buttons completely.")
+        self.actions_mode_minimal = QRadioButton("Minimal")
+        self.actions_mode_minimal.setToolTip("Move action buttons into the minimal More menu.")
 
-        self.actions_mode_ellipsis = QRadioButton("Ellipsis (Dropdown)")
-        self.actions_mode_ellipsis.setToolTip("Hide action buttons and show them via a ... dropdown in the sidebar toolbar.")
-
-        self.actions_mode_group.addButton(self.actions_mode_list)
-        self.actions_mode_group.addButton(self.actions_mode_collapsed)
-        self.actions_mode_group.addButton(self.actions_mode_archived)
-        self.actions_mode_group.addButton(self.actions_mode_ellipsis)
+        self.actions_mode_group.addButton(self.actions_mode_full)
+        self.actions_mode_group.addButton(self.actions_mode_compact)
+        self.actions_mode_group.addButton(self.actions_mode_minimal)
 
         # Load config
-        current_mode = self.current_config.get("sidebarActionsMode", "list")
-        if current_mode == "collapsed":
-             self.actions_mode_collapsed.setChecked(True)
-        elif current_mode == "archived":
-             self.actions_mode_archived.setChecked(True)
-        elif current_mode == "ellipsis":
-             self.actions_mode_ellipsis.setChecked(True)
+        current_mode = self.current_config.get("sidebarActionsMode", "full")
+        current_mode = {
+            "list": "full",
+            "collapsed": "compact",
+            "archived": "minimal",
+            "ellipsis": "minimal",
+        }.get(current_mode, current_mode)
+        if current_mode == "compact":
+             self.actions_mode_compact.setChecked(True)
+        elif current_mode == "minimal":
+             self.actions_mode_minimal.setChecked(True)
         else:
-             self.actions_mode_list.setChecked(True)
+             self.actions_mode_full.setChecked(True)
 
-        mode_layout.addWidget(self.actions_mode_list)
-        mode_layout.addWidget(self.actions_mode_collapsed)
-        mode_layout.addWidget(self.actions_mode_archived)
-        mode_layout.addWidget(self.actions_mode_ellipsis)
+        mode_layout.addWidget(self.actions_mode_full)
+        mode_layout.addWidget(self.actions_mode_compact)
+        mode_layout.addWidget(self.actions_mode_minimal)
         mode_layout.addStretch()
         
         action_buttons_section.add_layout(mode_layout)
@@ -7037,12 +7367,11 @@ class SettingsDialog(QDialog):
 
         # Show/hide grids based on mode
         def _update_organize_visibility():
-            self.sidebar_layout_editor_container.setVisible(self.actions_mode_list.isChecked())
+            self.sidebar_layout_editor_container.setVisible(self.actions_mode_full.isChecked())
 
-        self.actions_mode_list.toggled.connect(_update_organize_visibility)
-        self.actions_mode_collapsed.toggled.connect(_update_organize_visibility)
-        self.actions_mode_archived.toggled.connect(_update_organize_visibility)
-        self.actions_mode_ellipsis.toggled.connect(_update_organize_visibility)
+        self.actions_mode_full.toggled.connect(_update_organize_visibility)
+        self.actions_mode_compact.toggled.connect(_update_organize_visibility)
+        self.actions_mode_minimal.toggled.connect(_update_organize_visibility)
         _update_organize_visibility()
 
         # Add a separator
@@ -7067,7 +7396,7 @@ class SettingsDialog(QDialog):
 
         action_icons_to_configure = {
             "add": "Add", "browse": "Browser", "stats": "Stats",
-            "sync": "Sync", "settings": "Settings", "gamification": "Onigiri Games", "more": "More", "ellipsis": "Ellipsis",
+            "sync": "Sync", "settings": "Settings", "gamification": "Onigiri Games", "more": "More", "ellipsis": "More (Circle)",
             "get_shared": "Get Shared", "create_deck": "Create Deck", "import_file": "Import File"
         }
         external_entries = {
@@ -7147,7 +7476,7 @@ class SettingsDialog(QDialog):
             if theme_manager.night_mode:
                 border_color = "#555555"
                 text_color = "#eeeeee"
-                hover_bg = "rgba(255, 255, 255, 0.1)"
+                hover_bg = "background: color-mix(in srgb, var(--profile-bg-custom-color) 95%, white)"
             else:
                 border_color = "#cccccc"
                 text_color = "#333333"
@@ -7228,7 +7557,7 @@ class SettingsDialog(QDialog):
         info_button.setToolTip("Click to learn about deck icon types")
         
         info_icon_path = os.path.join(mw.addonManager.addonsFolder(mw.addonManager.addonFromModule(__name__)), 
-                                    "system_files", "system_icons", "info-circle.svg")
+                                    "system_files", "system_icons", "info_circle.svg")
         
         if os.path.exists(info_icon_path):
             pixmap = QPixmap(info_icon_path)
@@ -7237,7 +7566,7 @@ class SettingsDialog(QDialog):
                 painter = QPainter(pixmap)
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
                 # Use accent color or text color based on theme
-                icon_color = QColor(self.accent_color)
+                icon_color = parse_color_string(self.accent_color, fallback="#007BFF")
                 painter.fillRect(pixmap.rect(), icon_color)
                 painter.end()
                 info_button.setIcon(QIcon(pixmap))
@@ -7303,7 +7632,7 @@ class SettingsDialog(QDialog):
         self.hide_default_custom_cb.setToolTip("If enabled, default icons will be hidden, but custom deck icons will still be shown.")
         sizing_layout.addRow("Hide default, show custom:", self.hide_default_custom_cb)
         
-        icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons (px):", "action_button": "Action Button Icons (px):", "collapse": "Expand/Collapse Icons (px):", "options_gear": "Deck Options Gear Icon (px):"}
+        icon_sizes_to_configure = {"deck_folder": "Deck/Folder Icons (px):", "action_button": "Action Button Icons (px):", "collapse": "Expand/Collapse Icons (px):", "options_gear": "Deck Options Gear Icon (px):", "drag_handle": "Drag Handle Icon (px):"}
         for key, label in icon_sizes_to_configure.items(): sizing_layout.addRow(label, self.create_icon_size_spinbox(key, DEFAULT_ICON_SIZES[key]))
         reset_sizes_button = QPushButton("Reset Sizes to Default"); reset_sizes_button.clicked.connect(self.reset_icon_sizes_to_default); sizing_layout.addRow(reset_sizes_button)
         
@@ -7315,32 +7644,14 @@ class SettingsDialog(QDialog):
         deck_color_modes_layout = QHBoxLayout()
         light_deck_colors_group, light_deck_colors_layout = self._create_inner_group("Light Mode Colors")
         light_deck_colors_layout.setSpacing(5)
-        self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
-        # Right-click highlight for light mode
-        ctx_light_pill = self._create_color_pill(
-            "--ctx-highlight",
-            mw.col.conf.get("onigiri_ctx_highlight_color_light",
-                            mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
-            "light",
-            {"label": "Right-click Highlight", "tooltip": "Color tint applied to the right-clicked deck row in light mode. Uses 25% opacity."}
-        )
-        self.ctx_highlight_light_color_input = self.color_widgets["light"]["--ctx-highlight"]
-        light_deck_colors_layout.addWidget(ctx_light_pill)
+        self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--deck-list-bg", "--hover-deck-bg", "--edit-deck-bg"])
+        self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--highlight-fg", "--icon-color", "--icon-color-filtered"])
         deck_color_modes_layout.addWidget(light_deck_colors_group)
 
         dark_deck_colors_group, dark_deck_colors_layout = self._create_inner_group("Dark Mode Colors")
         dark_deck_colors_layout.setSpacing(5)
-        self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
-        # Right-click highlight for dark mode
-        ctx_dark_pill = self._create_color_pill(
-            "--ctx-highlight",
-            mw.col.conf.get("onigiri_ctx_highlight_color_dark",
-                            mw.col.conf.get("onigiri_ctx_highlight_color", "#808080")),
-            "dark",
-            {"label": "Right-click Highlight", "tooltip": "Color tint applied to the right-clicked deck row in dark mode. Uses 25% opacity."}
-        )
-        self.ctx_highlight_dark_color_input = self.color_widgets["dark"]["--ctx-highlight"]
-        dark_deck_colors_layout.addWidget(ctx_dark_pill)
+        self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--deck-list-bg", "--hover-deck-bg", "--edit-deck-bg"])
+        self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--highlight-fg", "--icon-color", "--icon-color-filtered"])
         deck_color_modes_layout.addWidget(dark_deck_colors_group)
         deck_section.add_layout(deck_color_modes_layout)
 
@@ -7365,7 +7676,7 @@ class SettingsDialog(QDialog):
         details_section = SectionGroup("User Details", self)
         form_layout = QFormLayout()
         self.name_input = QLineEdit(self.current_config.get("userName", DEFAULTS["userName"]))
-        form_layout.addRow("User Name:", self.name_input)
+        form_layout.addRow("Name:", self.name_input)
         
         # Birthday date picker
         accent_color = mw.col.conf.get("modern_menu_accent_color", "#007bff")
@@ -7384,9 +7695,63 @@ class SettingsDialog(QDialog):
         details_section.add_layout(form_layout)
         layout.addWidget(details_section)
 
+        pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
+        pic_path = os.path.join(self.addon_path, "user_files", "profile", pic_filename) if pic_filename else ""
+        bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+        is_dark = theme_manager.night_mode
+        bg_color = mw.col.conf.get(f"modern_menu_profile_bg_color_{'dark' if is_dark else 'light'}", "#555" if is_dark else "#EEE")
+        bg_image_filename = mw.col.conf.get("modern_menu_profile_bg_image", "")
+        bg_image_path = os.path.join(self.addon_path, "user_files", "profile_bg", bg_image_filename) if bg_image_filename else ""
+
         pic_section = SectionGroup("Profile Picture", self)
         self.galleries["profile_pic"] = {} 
         pic_section.add_widget(self._create_image_gallery_group("profile_pic", "user_files/profile", "modern_menu_profile_picture"))
+
+        avatar_controls = QWidget()
+        avatar_controls_layout = QFormLayout(avatar_controls)
+        avatar_controls_layout.setContentsMargins(0, 6, 0, 0)
+
+        self.profile_bar_avatar_size_combo = QComboBox()
+        avatar_size_presets = [
+            ("Large", 36),
+            ("Default", 30),
+            ("Small", 24),
+        ]
+        for label, size in avatar_size_presets:
+            self.profile_bar_avatar_size_combo.addItem(f"{label} ({size}px)", size)
+        saved_avatar_size = int(mw.col.conf.get("onigiri_profile_bar_avatar_size", 30))
+        size_index = self.profile_bar_avatar_size_combo.findData(saved_avatar_size)
+        if size_index < 0:
+            size_index = self.profile_bar_avatar_size_combo.findData(30)
+        self.profile_bar_avatar_size_combo.setCurrentIndex(size_index)
+        avatar_controls_layout.addRow("Profile bar icon size:", self.profile_bar_avatar_size_combo)
+
+        clear_profile_picture_button = QPushButton("Use Initials")
+        clear_profile_picture_button.clicked.connect(self._clear_profile_picture_selection)
+        avatar_controls_layout.addRow("", clear_profile_picture_button)
+        pic_section.add_widget(avatar_controls)
+
+        initials_color_group = QWidget()
+        initials_color_layout = QVBoxLayout(initials_color_group)
+        initials_color_layout.setContentsMargins(0, 6, 0, 0)
+        self.profile_initials_bg_light_row = self._create_color_picker_row(
+            "Light Mode",
+            mw.col.conf.get("onigiri_profile_initials_bg_light", "#D2CDC7"),
+            "profile_initials_bg_light",
+        )
+        self.profile_initials_bg_dark_row = self._create_color_picker_row(
+            "Dark Mode",
+            mw.col.conf.get("onigiri_profile_initials_bg_dark", "#6B635C"),
+            "profile_initials_bg_dark",
+        )
+        initials_color_layout.addLayout(self.profile_initials_bg_light_row)
+        initials_color_layout.addLayout(self.profile_initials_bg_dark_row)
+        pic_section.add_widget(QLabel("Initials background"))
+        pic_section.add_widget(initials_color_group)
+
+        avatar_help_label = QLabel("Select an image for the avatar, or use initials when no image is selected.")
+        avatar_help_label.setWordWrap(True)
+        pic_section.add_widget(avatar_help_label)
         layout.addWidget(pic_section)
         
         # --- REBUILT PROFILE BAR BACKGROUND SECTION ---
@@ -7396,16 +7761,18 @@ class SettingsDialog(QDialog):
         bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
         mode_layout = QHBoxLayout()
         self.profile_bg_accent_radio = QRadioButton("Accent Color")
-        self.profile_bg_custom_radio = QRadioButton("Custom Color")
+        self.profile_bg_custom_radio = QRadioButton("Solid Colour")
+        self.profile_bg_gradient_radio = QRadioButton("Gradient")
         self.profile_bg_image_radio = QRadioButton("Image")
         mode_layout.addWidget(self.profile_bg_accent_radio)
         mode_layout.addWidget(self.profile_bg_custom_radio)
+        mode_layout.addWidget(self.profile_bg_gradient_radio)
         mode_layout.addWidget(self.profile_bg_image_radio)
         mode_layout.addStretch()
         bg_section.add_layout(mode_layout)
 
         # 2. Create the panels for each radio button option
-        # Panel for "Custom Color"
+        # Panel for "Solid Colour" (stored as the existing "custom" mode)
         self.profile_bg_color_group = QWidget()
         custom_color_layout = QVBoxLayout(self.profile_bg_color_group)
         custom_color_layout.setContentsMargins(0, 10, 0, 0)
@@ -7415,6 +7782,20 @@ class SettingsDialog(QDialog):
         custom_color_layout.addLayout(self.profile_bg_dark_row)
         custom_color_layout.addStretch(1)
 
+        # Panel for "Gradient"
+        gradient_colors = profile_background.get_profile_bg_gradient_colors(mw.col.conf)
+        self.profile_bg_gradient_group = QWidget()
+        gradient_layout = QVBoxLayout(self.profile_bg_gradient_group)
+        gradient_layout.setContentsMargins(0, 10, 0, 0)
+        self.profile_bg_gradient_light_start_row = self._create_color_picker_row("Light Mode Start", gradient_colors["light_start"], "profile_bg_gradient_light_start")
+        self.profile_bg_gradient_light_end_row = self._create_color_picker_row("Light Mode End", gradient_colors["light_end"], "profile_bg_gradient_light_end")
+        self.profile_bg_gradient_dark_start_row = self._create_color_picker_row("Dark Mode Start", gradient_colors["dark_start"], "profile_bg_gradient_dark_start")
+        self.profile_bg_gradient_dark_end_row = self._create_color_picker_row("Dark Mode End", gradient_colors["dark_end"], "profile_bg_gradient_dark_end")
+        gradient_layout.addLayout(self.profile_bg_gradient_light_start_row)
+        gradient_layout.addLayout(self.profile_bg_gradient_light_end_row)
+        gradient_layout.addLayout(self.profile_bg_gradient_dark_start_row)
+        gradient_layout.addLayout(self.profile_bg_gradient_dark_end_row)
+        gradient_layout.addStretch(1)
 
         # Panel for "Image"
         self.galleries["profile_bg"] = {}
@@ -7424,21 +7805,30 @@ class SettingsDialog(QDialog):
         options_stack = QStackedWidget()
         options_stack.addWidget(QWidget()) # Index 0: A blank widget for "Accent Color"
         options_stack.addWidget(self.profile_bg_color_group)  # Index 1: Custom color panel
-        options_stack.addWidget(self.profile_bg_image_group)   # Index 2: Image gallery panel
+        options_stack.addWidget(self.profile_bg_gradient_group) # Index 2: Gradient panel
+        options_stack.addWidget(self.profile_bg_image_group)   # Index 3: Image gallery panel
         bg_section.add_widget(options_stack)
 
         # 4. Connect radio buttons to the QStackedWidget
-        self.profile_bg_accent_radio.clicked.connect(lambda: options_stack.setCurrentIndex(0))
-        self.profile_bg_custom_radio.clicked.connect(lambda: options_stack.setCurrentIndex(1))
-        self.profile_bg_image_radio.clicked.connect(lambda: options_stack.setCurrentIndex(2))
+        self.profile_bg_accent_radio.toggled.connect(lambda checked: options_stack.setCurrentIndex(0) if checked else None)
+        self.profile_bg_custom_radio.toggled.connect(lambda checked: options_stack.setCurrentIndex(1) if checked else None)
+        self.profile_bg_gradient_radio.toggled.connect(lambda checked: options_stack.setCurrentIndex(2) if checked else None)
+        self.profile_bg_image_radio.toggled.connect(lambda checked: options_stack.setCurrentIndex(3) if checked else None)
+        self.profile_bg_accent_radio.toggled.connect(lambda checked: self._refresh_settings_profile_bar() if checked else None)
+        self.profile_bg_custom_radio.toggled.connect(lambda checked: self._refresh_settings_profile_bar() if checked else None)
+        self.profile_bg_gradient_radio.toggled.connect(lambda checked: self._refresh_settings_profile_bar() if checked else None)
+        self.profile_bg_image_radio.toggled.connect(lambda checked: self._refresh_settings_profile_bar() if checked else None)
 
         # 5. Set the initial state
         if bg_mode == "custom":
             self.profile_bg_custom_radio.setChecked(True)
             options_stack.setCurrentIndex(1)
+        elif bg_mode == profile_background.PROFILE_BG_MODE_GRADIENT:
+            self.profile_bg_gradient_radio.setChecked(True)
+            options_stack.setCurrentIndex(2)
         elif bg_mode == "image":
             self.profile_bg_image_radio.setChecked(True)
-            options_stack.setCurrentIndex(2)
+            options_stack.setCurrentIndex(3)
         else: # accent
             self.profile_bg_accent_radio.setChecked(True)
             options_stack.setCurrentIndex(0)
@@ -7468,6 +7858,17 @@ class SettingsDialog(QDialog):
         self.profile_level_bar_custom_radio.toggled.connect(self.toggle_profile_level_bar_options)
         self.toggle_profile_level_bar_options()
         layout.addWidget(bar_color_section)
+
+        self.name_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bar_avatar_size_combo.currentIndexChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_light_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_dark_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_gradient_light_start_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_gradient_light_end_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_gradient_dark_start_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_bg_gradient_dark_end_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_initials_bg_light_color_input.textChanged.connect(self._refresh_settings_profile_bar)
+        self.profile_initials_bg_dark_color_input.textChanged.connect(self._refresh_settings_profile_bar)
 
         page_bg_section = SectionGroup("Profile Page Background", self)
         page_bg_mode = mw.col.conf.get("onigiri_profile_page_bg_mode", "color")
@@ -7511,8 +7912,87 @@ class SettingsDialog(QDialog):
             "Profile Page Sections Visibility": visibility_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
+        self._refresh_settings_profile_bar()
 
         return page
+
+    def _get_selected_profile_picture_path(self):
+        gallery = self.galleries.get("profile_pic", {})
+        filename = gallery.get('selected', '')
+        if not filename:
+            return ""
+        return os.path.join(self.addon_path, "user_files", "profile", filename)
+
+    def _get_profile_bar_background_state(self):
+        if hasattr(self, 'profile_bg_image_radio') and self.profile_bg_image_radio.isChecked():
+            bg_mode = "image"
+        elif hasattr(self, 'profile_bg_gradient_radio') and self.profile_bg_gradient_radio.isChecked():
+            bg_mode = profile_background.PROFILE_BG_MODE_GRADIENT
+        elif hasattr(self, 'profile_bg_custom_radio') and self.profile_bg_custom_radio.isChecked():
+            bg_mode = "custom"
+        else:
+            bg_mode = "accent"
+
+        is_dark = theme_manager.night_mode
+        default_color = "#555" if is_dark else "#EEE"
+        color = default_color
+        if hasattr(self, 'profile_bg_dark_color_input') and is_dark:
+            color = self.profile_bg_dark_color_input.text() or default_color
+        elif hasattr(self, 'profile_bg_light_color_input') and not is_dark:
+            color = self.profile_bg_light_color_input.text() or default_color
+
+        gradient_defaults = profile_background.PROFILE_BG_GRADIENT_DEFAULTS
+        if is_dark:
+            start_attr = 'profile_bg_gradient_dark_start_color_input'
+            end_attr = 'profile_bg_gradient_dark_end_color_input'
+            start_role = "dark_start"
+            end_role = "dark_end"
+        else:
+            start_attr = 'profile_bg_gradient_light_start_color_input'
+            end_attr = 'profile_bg_gradient_light_end_color_input'
+            start_role = "light_start"
+            end_role = "light_end"
+        gradient_start = gradient_defaults[start_role]
+        gradient_end = gradient_defaults[end_role]
+        if hasattr(self, start_attr):
+            gradient_start = profile_background.normalize_profile_gradient_color(getattr(self, start_attr).text(), start_role)
+        if hasattr(self, end_attr):
+            gradient_end = profile_background.normalize_profile_gradient_color(getattr(self, end_attr).text(), end_role)
+
+        image_filename = self.galleries.get("profile_bg", {}).get('selected', '')
+        image_path = os.path.join(self.addon_path, "user_files", "profile_bg", image_filename) if image_filename else ""
+        return bg_mode, {'color': color, 'image': image_path, 'gradient_start': gradient_start, 'gradient_end': gradient_end}
+
+    def _refresh_settings_profile_bar(self):
+        user_name = self.name_input.text() if hasattr(self, 'name_input') else self.current_config.get("userName", DEFAULTS["userName"])
+        pic_path = self._get_selected_profile_picture_path()
+        bg_mode, bg_config = self._get_profile_bar_background_state()
+        bar_size = self.profile_bar_avatar_size_combo.currentData() if hasattr(self, 'profile_bar_avatar_size_combo') else mw.col.conf.get("onigiri_profile_bar_avatar_size", 30)
+
+        if hasattr(self, 'profile_initials_bg_light_color_input'):
+            mw.col.conf["onigiri_profile_initials_bg_light"] = self.profile_initials_bg_light_color_input.text()
+        if hasattr(self, 'profile_initials_bg_dark_color_input'):
+            mw.col.conf["onigiri_profile_initials_bg_dark"] = self.profile_initials_bg_dark_color_input.text()
+
+        if hasattr(self, 'profile_bar'):
+            self.profile_bar.update_background(bg_mode, bg_config)
+            self.profile_bar.update_profile(user_name=user_name, pic_path=pic_path, avatar_size=bar_size)
+
+    def _clear_profile_picture_selection(self):
+        gallery = self.galleries.get("profile_pic")
+        if not gallery:
+            return
+
+        gallery['selected'] = ""
+        if gallery.get('path_input'):
+            gallery['path_input'].clear()
+            gallery['path_input'].setPlaceholderText("No item selected")
+
+        for overlay in gallery.get('overlays', []):
+            overlay.setChecked(False)
+
+        self._update_delete_button_state("profile_pic")
+        self._refresh_settings_profile_bar()
 
     def create_colors_page(self):
         page, layout = self._create_scrollable_page()
@@ -7990,7 +8470,7 @@ class SettingsDialog(QDialog):
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setStyleSheet("background: transparent;")
 
-        hex_input = QLineEdit(default_value)
+        hex_input = NormalizedColorLineEdit(default_value, fallback=default_value)
         hex_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         if theme_manager.night_mode:
@@ -8017,11 +8497,11 @@ class SettingsDialog(QDialog):
             }}
         """)
         
-        hex_input.textChanged.connect(color_swatch.setColor)
+        hex_input.validColorChanged.connect(color_swatch.setColor)
         hex_input.returnPressed.connect(hex_input.clearFocus)
         color_swatch.clicked.connect(lambda _, le=hex_input, btn=color_swatch: self.open_color_picker(le, btn))
 
-        min_width = max(name_label.fontMetrics().horizontalAdvance(label_info['label']), hex_input.fontMetrics().horizontalAdvance("#" + "W"*6)) + 12
+        min_width = max(name_label.fontMetrics().horizontalAdvance(label_info['label']), hex_input.fontMetrics().horizontalAdvance("#" + "W"*8)) + 12
         text_stack.setMinimumWidth(min_width)
         
         text_stack.addWidget(name_label)
@@ -9600,8 +10080,10 @@ class SettingsDialog(QDialog):
         layout.addWidget(scroll_area)
         
         button_row = QHBoxLayout()
-        choose_button = QPushButton("Choose Image..." if show_path else "Add Icon..."); choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key)); button_row.addWidget(choose_button)
-        delete_button = QPushButton("Delete Selected"); delete_button.clicked.connect(lambda: self._delete_from_gallery(key)); button_row.addWidget(delete_button)
+        choose_label = "Add Profile Picture..." if key == "profile_pic" else ("Choose Image..." if show_path else "Add Icon...")
+        delete_label = "Delete Profile Picture" if key == "profile_pic" else "Delete Selected"
+        choose_button = QPushButton(choose_label); choose_button.clicked.connect(lambda: self._choose_file_for_gallery(key)); button_row.addWidget(choose_button)
+        delete_button = QPushButton(delete_label); delete_button.clicked.connect(lambda: self._delete_from_gallery(key)); button_row.addWidget(delete_button)
         
         path_input = QLineEdit(); path_input.setPlaceholderText("No item selected"); path_input.setReadOnly(True)
         if show_path:
@@ -9793,6 +10275,8 @@ class SettingsDialog(QDialog):
                             label.setStyleSheet(THUMBNAIL_STYLE_SELECTED if is_selected else THUMBNAIL_STYLE)
                             
                     self._update_delete_button_state(key)
+                    if key in {"profile_pic", "profile_bg"}:
+                        self._refresh_settings_profile_bar()
                     return True
 
             if source.property("icon_key"):
@@ -9822,7 +10306,12 @@ class SettingsDialog(QDialog):
         
         try:
             shutil.copy(filepath, dest_path)
+            gallery['selected'] = filename
+            if gallery.get('path_input'):
+                gallery['path_input'].setText(filename)
             self._refresh_gallery(key)
+            if key in {"profile_pic", "profile_bg"}:
+                self._refresh_settings_profile_bar()
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not copy file: {e}")
 
@@ -9839,6 +10328,8 @@ class SettingsDialog(QDialog):
                 gallery['selected'] = ""
                 if gallery.get('path_input'): gallery['path_input'].clear()
                 self._refresh_gallery(key)
+                if key in {"profile_pic", "profile_bg"}:
+                    self._refresh_settings_profile_bar()
             except OSError as e:
                 QMessageBox.warning(self, "Error", f"Could not delete file: {e}")
 
@@ -9931,7 +10422,7 @@ class SettingsDialog(QDialog):
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.setToolTip("Reset to Default")
         
-        trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "xmark-simple.svg") # Using xmark-simple.svg as delete icon
+        trash_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "delete.svg") # Using cancel.svg as trash icon
         
         if theme_manager.night_mode:
              delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 4px; } QPushButton:hover { background: rgba(255,0,0,0.2); }")
@@ -10073,12 +10564,12 @@ class SettingsDialog(QDialog):
         label=QLabel(f"{display_name}:")
         if tooltip_text: label.setToolTip(tooltip_text)
         label.setFixedWidth(250)
-        hex_input=QLineEdit(default_value)
-        hex_input.setFixedWidth(100)
+        hex_input=NormalizedColorLineEdit(default_value, fallback=default_value)
+        hex_input.setFixedWidth(112)
         color_button = CircularColorButton(default_value)
         
         color_button.clicked.connect(lambda _, le=hex_input, btn=color_button: self.open_color_picker(le, btn))
-        hex_input.textChanged.connect(lambda txt, btn=color_button: btn.setColor(txt))
+        hex_input.validColorChanged.connect(lambda txt, btn=color_button: btn.setColor(txt))
         
         row_layout.addWidget(label)
         row_layout.addWidget(hex_input)
@@ -10093,7 +10584,8 @@ class SettingsDialog(QDialog):
 
 
     def open_color_picker(self, line_edit, button):
-        initial_color = QColor(line_edit.text())
+        initial_color = parse_color_string(line_edit.text(), fallback="#FFFFFF")
+        original_color_name = normalize_color_string(line_edit.text(), fallback="#FFFFFF") or "#FFFFFF"
         
         # Load favorites from global config
         favorites = mw.col.conf.get("onigiri_favorites", [])
@@ -10103,28 +10595,52 @@ class SettingsDialog(QDialog):
         picker = ModernColorPickerDialog(initial_color, self, favorite_colors=favorites)
         
         def on_color_selected(color):
-            # Use HexArgb format if there is transparency, otherwise standard Hex
-            if color.alpha() < 255:
-                color_name = color.name(QColor.NameFormat.HexArgb)
-            else:
-                color_name = color.name()
-                
+            color_name = qcolor_to_hex(color) or "#FFFFFF"
             line_edit.setText(color_name)
             if isinstance(button, CircularColorButton):
                 button.setColor(color_name)
                 
         picker.colorSelected.connect(on_color_selected)
-        
-        # Center the picker over the settings dialog
-        # Calculate center position relative to the parent (SettingsDialog)
-        parent_geo = self.geometry()
-        picker_geo = picker.geometry()
-        x = parent_geo.x() + (parent_geo.width() - picker_geo.width()) // 2
-        y = parent_geo.y() + (parent_geo.height() - picker_geo.height()) // 2
+
+        # Keep the dialog fully within the available screen area.
+        picker.adjustSize()
+        parent_center = self.frameGeometry().center()
+        screen = (
+            QGuiApplication.screenAt(parent_center)
+            or self.window().screen()
+            or QGuiApplication.primaryScreen()
+        )
+        available_geometry = screen.availableGeometry() if screen else self.frameGeometry()
+        picker_size = picker.frameGeometry().size()
+        margin = 12
+
+        x = parent_center.x() - (picker_size.width() // 2)
+        y = parent_center.y() - (picker_size.height() // 2)
+
+        min_x = available_geometry.left() + margin
+        min_y = available_geometry.top() + margin
+        max_x = available_geometry.right() - picker_size.width() - margin + 1
+        max_y = available_geometry.bottom() - picker_size.height() - margin + 1
+
+        if max_x < min_x:
+            x = min_x
+        else:
+            x = max(min_x, min(x, max_x))
+
+        if max_y < min_y:
+            y = min_y
+        else:
+            y = max(min_y, min(y, max_y))
+
         picker.move(x, y)
         picker.raise_()
         
-        picker.exec()
+        result = picker.exec()
+
+        if result != QDialog.DialogCode.Accepted:
+            line_edit.setText(original_color_name)
+            if isinstance(button, CircularColorButton):
+                button.setColor(original_color_name)
         
         # Save updated favorites to global config
         mw.col.conf["onigiri_favorites"] = picker.favorite_colors
@@ -10195,6 +10711,8 @@ class SettingsDialog(QDialog):
         self.bg_opacity_spinbox.setValue(100)
     
     def reset_sidebar_to_default(self):
+        self.always_show_sidebar_collapse_button_checkbox.setChecked(False)
+
         # Set the main mode back to "Use Main Background Settings"
         self.sidebar_bg_main_radio.setChecked(True)
         
@@ -11383,16 +11901,15 @@ class SettingsDialog(QDialog):
         self.current_config["hideWelcomeMessage"] = self.hide_welcome_checkbox.isChecked()
         self.current_config["hideDeckCounts"] = self.hide_deck_counts_checkbox.isChecked()
         self.current_config["hideAllDeckCounts"] = self.hide_all_deck_counts_checkbox.isChecked()
+        self.current_config["alwaysShowSidebarCollapseButton"] = self.always_show_sidebar_collapse_button_checkbox.isChecked()
         
         # Save Sidebar Action Buttons Mode
-        if hasattr(self, "actions_mode_collapsed") and self.actions_mode_collapsed.isChecked():
-            self.current_config["sidebarActionsMode"] = "collapsed"
-        elif hasattr(self, "actions_mode_archived") and self.actions_mode_archived.isChecked():
-            self.current_config["sidebarActionsMode"] = "archived"
-        elif hasattr(self, "actions_mode_ellipsis") and self.actions_mode_ellipsis.isChecked():
-            self.current_config["sidebarActionsMode"] = "ellipsis"
+        if hasattr(self, "actions_mode_compact") and self.actions_mode_compact.isChecked():
+            self.current_config["sidebarActionsMode"] = "compact"
+        elif hasattr(self, "actions_mode_minimal") and self.actions_mode_minimal.isChecked():
+            self.current_config["sidebarActionsMode"] = "minimal"
         else:
-            self.current_config["sidebarActionsMode"] = "list"
+            self.current_config["sidebarActionsMode"] = "full"
         
         # Save Deck Indentation Settings
         if hasattr(self, "indentation_mode_group"):
@@ -11429,7 +11946,7 @@ class SettingsDialog(QDialog):
         
         sidebar_color_keys = [
             "--icon-color", "--icon-color-filtered", "--deck-list-bg",
-            "--highlight-bg", "--highlight-fg"
+            "--hover-deck-bg", "--edit-deck-bg", "--highlight-fg"
         ]
         for mode in ["light", "dark"]:
             for key in sidebar_color_keys:
@@ -11450,8 +11967,6 @@ class SettingsDialog(QDialog):
         mw.col.conf["onigiri_sidebar_opaque_tint_intensity"] = self.sidebar_overlay_intensity_spinbox.value()
         mw.col.conf["onigiri_sidebar_opaque_tint_color_light"] = self.overlay_light_color_color_input.text()
         mw.col.conf["onigiri_sidebar_opaque_tint_color_dark"] = self.overlay_dark_color_color_input.text()
-        mw.col.conf["onigiri_ctx_highlight_color_light"] = self.ctx_highlight_light_color_input.text()
-        mw.col.conf["onigiri_ctx_highlight_color_dark"]  = self.ctx_highlight_dark_color_input.text()
 
         if self.sidebar_bg_type_accent_radio.isChecked():
             mw.col.conf["modern_menu_sidebar_bg_type"] = "accent"
@@ -11601,13 +12116,22 @@ class SettingsDialog(QDialog):
             mw.col.conf["modern_menu_profile_picture"] = self.galleries['profile_pic']['selected']
         if 'profile_bg' in self.galleries:
             mw.col.conf["modern_menu_profile_bg_image"] = self.galleries['profile_bg']['selected']
+        if hasattr(self, 'profile_bar_avatar_size_combo'):
+            mw.col.conf["onigiri_profile_bar_avatar_size"] = self.profile_bar_avatar_size_combo.currentData()
 
         if self.profile_bg_image_radio.isChecked(): mw.col.conf["modern_menu_profile_bg_mode"] = "image"
+        elif self.profile_bg_gradient_radio.isChecked(): mw.col.conf["modern_menu_profile_bg_mode"] = profile_background.PROFILE_BG_MODE_GRADIENT
         elif self.profile_bg_custom_radio.isChecked(): mw.col.conf["modern_menu_profile_bg_mode"] = "custom"
         else: mw.col.conf["modern_menu_profile_bg_mode"] = "accent"
         
         mw.col.conf["modern_menu_profile_bg_color_light"] = self.profile_bg_light_color_input.text()
         mw.col.conf["modern_menu_profile_bg_color_dark"] = self.profile_bg_dark_color_input.text()
+        mw.col.conf[profile_background.PROFILE_BG_GRADIENT_LIGHT_START_KEY] = self.profile_bg_gradient_light_start_color_input.text()
+        mw.col.conf[profile_background.PROFILE_BG_GRADIENT_LIGHT_END_KEY] = self.profile_bg_gradient_light_end_color_input.text()
+        mw.col.conf[profile_background.PROFILE_BG_GRADIENT_DARK_START_KEY] = self.profile_bg_gradient_dark_start_color_input.text()
+        mw.col.conf[profile_background.PROFILE_BG_GRADIENT_DARK_END_KEY] = self.profile_bg_gradient_dark_end_color_input.text()
+        mw.col.conf["onigiri_profile_initials_bg_light"] = self.profile_initials_bg_light_color_input.text()
+        mw.col.conf["onigiri_profile_initials_bg_dark"] = self.profile_initials_bg_dark_color_input.text()
         mw.col.conf["onigiri_profile_show_theme_light"] = self.profile_show_theme_light_check.isChecked()
         mw.col.conf["onigiri_profile_show_theme_dark"] = self.profile_show_theme_dark_check.isChecked()
         mw.col.conf["onigiri_profile_show_backgrounds"] = self.profile_show_backgrounds_check.isChecked()
@@ -11993,51 +12517,58 @@ class SettingsDialog(QDialog):
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
         dialog.exec()
     def save_settings(self):
-        if getattr(self, "_is_saving", False):
+        if self._is_saving:
             return
         self._is_saving = True
-        page_indices = {name: i for i, name in enumerate(self.page_order)}
+        try:
+            page_indices = {name: i for i, name in enumerate(self.page_order)}
 
-        # Always save hide mode settings
-        self._save_hide_modes_settings()
-        
-        if self.tabs_loaded.get(page_indices.get("Main menu")):
-            self._save_main_menu_settings()
-            self._save_organize_settings()
-        if self.tabs_loaded.get(page_indices.get("Sidebar")):
-            self._save_sidebar_settings()
-            self._save_sidebar_layout_settings()
-        if self.tabs_loaded.get(page_indices.get("Overviewer")):
-            self._save_overviews_settings()
-        if self.tabs_loaded.get(page_indices.get("Fonts")): # <<< ADD THIS IF BLOCK
-            self._save_fonts_settings()
-        if self.tabs_loaded.get(page_indices.get("Profile")):
-            self._save_profile_settings()
-        if self.tabs_loaded.get(page_indices.get("Palette")):
-            self._save_colors_settings()
-        if self.tabs_loaded.get(page_indices.get("Reviewer")):
-            self._save_reviewer_settings()
+            # Always save hide mode settings
+            self._save_hide_modes_settings()
 
-        # <<< THIS IS THE FIX: Manually save the theme's background color if the Main menu tab was never opened. >>>
-        if not self.tabs_loaded.get(page_indices.get("Main menu")):
-            light_bg_from_theme = self.current_config['colors']['light'].get('--bg')
-            dark_bg_from_theme = self.current_config['colors']['dark'].get('--bg')
-            
-            if light_bg_from_theme:
-                mw.col.conf["modern_menu_bg_color_light"] = light_bg_from_theme
-            if dark_bg_from_theme:
-                mw.col.conf["modern_menu_bg_color_dark"] = dark_bg_from_theme
+            if self.tabs_loaded.get(page_indices.get("Main menu")):
+                self._save_main_menu_settings()
+                self._save_organize_settings()
+            if self.tabs_loaded.get(page_indices.get("Sidebar")):
+                self._save_sidebar_settings()
+                self._save_sidebar_layout_settings()
+            if self.tabs_loaded.get(page_indices.get("Overviewer")):
+                self._save_overviews_settings()
+            if self.tabs_loaded.get(page_indices.get("Fonts")):
+                self._save_fonts_settings()
+            if self.tabs_loaded.get(page_indices.get("Profile")):
+                self._save_profile_settings()
+            if self.tabs_loaded.get(page_indices.get("Palette")):
+                self._save_colors_settings()
+            if self.tabs_loaded.get(page_indices.get("Reviewer")):
+                self._save_reviewer_settings()
 
-        config.write_config(self.current_config)
-        
-        # Ensure Anki writes in-memory col.conf modifications to the database
-        if hasattr(mw.col, "setMod"):
-            mw.col.setMod()
-        if hasattr(mw.col, "mark_changed"):
-            mw.col.mark_changed()
-            
-        self.accept()
-        mw.reset()
+            # Keep theme background colors in sync even if the Main menu page was never opened.
+            if not self.tabs_loaded.get(page_indices.get("Main menu")):
+                light_bg_from_theme = self.current_config["colors"]["light"].get("--bg")
+                dark_bg_from_theme = self.current_config["colors"]["dark"].get("--bg")
+
+                if light_bg_from_theme:
+                    mw.col.conf["modern_menu_bg_color_light"] = light_bg_from_theme
+                if dark_bg_from_theme:
+                    mw.col.conf["modern_menu_bg_color_dark"] = dark_bg_from_theme
+
+            if window_settings := self._current_window_settings():
+                self.current_config["window_settings"] = window_settings
+
+            config.write_config(self.current_config)
+
+            # Ensure Anki writes in-memory col.conf modifications to the database
+            if hasattr(mw.col, "setMod"):
+                mw.col.setMod()
+            if hasattr(mw.col, "mark_changed"):
+                mw.col.mark_changed()
+
+            self.accept()
+            mw.reset()
+        except Exception:
+            self._is_saving = False
+            raise
 
 _settings_dialog = None
 
