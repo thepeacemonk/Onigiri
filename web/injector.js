@@ -3,6 +3,16 @@
 // logic has been moved to engine.js.
 
 (function () {
+    const SIDEBAR_ACTION_MODE_MAP = {
+        list: 'full',
+        collapsed: 'compact',
+        archived: 'minimal',
+        ellipsis: 'minimal',
+    };
+
+    function normalizeSidebarActionsMode(rawMode) {
+        return SIDEBAR_ACTION_MODE_MAP[rawMode] || rawMode || 'full';
+    }
 
     // This function is now globally accessible so the engine can call it.
     window.updateDeckLayouts = function () {
@@ -12,6 +22,16 @@
                 cell.classList.add('is-cramped');
             }
         });
+        updateSidebarOverflowState();
+    }
+
+    function updateSidebarOverflowState() {
+        const sidebar = document.querySelector('.sidebar-left');
+        const deckListContainer = document.getElementById('deck-list-container');
+        if (!sidebar || !deckListContainer) return;
+
+        const hasOverflow = deckListContainer.scrollHeight > deckListContainer.clientHeight + 1;
+        sidebar.classList.toggle('has-deck-browser-overflow', hasOverflow);
     }
 
     function updateDeckFocusLayout() {
@@ -19,47 +39,147 @@
         const header = document.getElementById('deck-list-header');
         const expandedContent = sidebar ? sidebar.querySelector('.sidebar-expanded-content') : null;
         const deckListContainer = document.getElementById('deck-list-container');
+        const toolbar = sidebar ? sidebar.querySelector('.sidebar-toolbar') : null;
 
         if (!sidebar || !header || !expandedContent || !deckListContainer) return;
-
-        if (sidebar.classList.contains('deck-focus-mode')) {
-            // If focus mode is ON, move the header to be a direct child of the sidebar
-            if (header.parentElement !== sidebar) {
-                sidebar.insertBefore(header, expandedContent);
-            }
-        } else {
-            // If focus mode is OFF, move the header back to its original position
-            if (header.parentElement !== expandedContent) {
-                expandedContent.insertBefore(header, deckListContainer);
-            }
+        // Keep the DOM order stable across all modes. Focus Mode is now purely
+        // class/CSS driven, which prevents the header/search/ellipsis controls
+        // from jumping during refreshes or when Focus Mode is toggled off.
+        if (header.parentElement !== expandedContent) {
+            expandedContent.insertBefore(header, deckListContainer);
         }
+
+        if (toolbar) ensureToolbarPrecedesHeader(sidebar, toolbar, header);
+
+        requestAnimationFrame(alignSidebarToolbarToDeckHeader);
+        requestAnimationFrame(updateSidebarOverflowState);
+    }
+    window.updateDeckFocusLayout = updateDeckFocusLayout;
+
+    function alignSidebarToolbarToDeckHeader() {
+        const sidebar = document.querySelector('.sidebar-left');
+        const header = document.getElementById('deck-list-header');
+        if (!sidebar || !header || sidebar.classList.contains('sidebar-collapsed')) return;
+
+        const toolbar = sidebar.querySelector('.sidebar-toolbar');
+        if (toolbar) {
+            toolbar.style.top = '';
+        }
+
+        const headerLabel = header.querySelector('h2') || header;
+        const sidebarRect = sidebar.getBoundingClientRect();
+        const headerRect = headerLabel.getBoundingClientRect();
+        if (!sidebarRect.height || !headerRect.height) return;
+
+        const headerCenterY = headerRect.top + (headerRect.height / 2) - sidebarRect.top;
+        const setCenterTop = (el, fallbackHeight) => {
+            if (!el) return;
+            const height = el.offsetHeight || fallbackHeight;
+            el.style.top = `${Math.max(0, headerCenterY - (height / 2))}px`;
+        };
+
+        setCenterTop(document.getElementById('onigiri-deck-search-bar'), 30);
+    }
+    window.alignSidebarToolbarToDeckHeader = alignSidebarToolbarToDeckHeader;
+
+    function normalizeSidebarModeControls() {
+        const sidebar = document.querySelector('.sidebar-left');
+        if (!sidebar) return;
+
+        // The archived control belongs in the dedicated top-right
+        // container. Any toolbar copy is legacy/stale and can enter normal
+        // flow for a frame during rebuilds, causing a duplicate/jump.
+        sidebar.querySelectorAll('.sidebar-toolbar .ellipsis-btn, .sidebar-toolbar .onigiri-ellipsis-toolbar-btn')
+            .forEach(btn => btn.remove());
+
+        const directButtons = Array.from(sidebar.children)
+            .filter(el => el.classList && el.classList.contains('onigiri-ellipsis-toolbar-btn'));
+        directButtons.slice(1).forEach(btn => btn.remove());
+    }
+
+    function getDirectSidebarEllipsisButtons(sidebar) {
+        return Array.from(sidebar.children)
+            .filter(el => el.classList && el.classList.contains('onigiri-ellipsis-toolbar-btn'));
+    }
+
+    function ensureToolbarPrecedesHeader(sidebar, toolbar, header) {
+        if (!sidebar || !toolbar) return;
+
+        const expandedContent = sidebar.querySelector('.sidebar-expanded-content');
+        if (expandedContent && header) {
+            if (toolbar.parentElement !== expandedContent || toolbar.nextElementSibling !== header) {
+                expandedContent.insertBefore(toolbar, header);
+            }
+        } else if (toolbar.parentElement !== sidebar) {
+            sidebar.appendChild(toolbar);
+        }
+    }
+
+    function setupSidebarTopRightControls() {
+        const sidebar = document.querySelector('.sidebar-left');
+        if (!sidebar) return null;
+        const header = document.getElementById('deck-list-header');
+
+        let controls = sidebar.querySelector('.sidebar-top-right-controls');
+        if (!controls) {
+            controls = document.createElement('div');
+            controls.className = 'sidebar-top-right-controls';
+        }
+
+        if (header && controls.parentElement !== header) {
+            header.appendChild(controls);
+        } else if (!header && controls.parentElement !== sidebar) {
+            sidebar.appendChild(controls);
+        }
+
+        const searchBtn = sidebar.querySelector('#onigiri-search-toolbar-btn');
+        if (searchBtn && searchBtn.parentElement !== controls) {
+            controls.prepend(searchBtn);
+        }
+
+        const strayDirectButtons = getDirectSidebarEllipsisButtons(sidebar);
+        strayDirectButtons.forEach(btn => {
+            if (btn.parentElement !== controls) {
+                controls.appendChild(btn);
+            }
+        });
+
+        const topRightButtons = Array.from(controls.children)
+            .filter(el => el.classList && el.classList.contains('onigiri-ellipsis-toolbar-btn'));
+        topRightButtons.slice(1).forEach(btn => btn.remove());
+
+        if (searchBtn && searchBtn.parentElement === controls && controls.firstElementChild !== searchBtn) {
+            controls.prepend(searchBtn);
+        }
+
+        return controls;
     }
 
     function setupSidebarToolbar() {
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
+        normalizeSidebarModeControls();
+        const header = document.getElementById('deck-list-header');
 
         let toolbar = sidebar.querySelector('.sidebar-toolbar');
         if (!toolbar) {
             toolbar = document.createElement('div');
             toolbar.className = 'sidebar-toolbar';
-            sidebar.appendChild(toolbar);
-
-            // Move existing toggle button if it exists
-            const toggleBtn = sidebar.querySelector('.sidebar-toggle-btn');
-            if (toggleBtn) {
-                toolbar.appendChild(toggleBtn);
-            }
         }
+        ensureToolbarPrecedesHeader(sidebar, toolbar, header);
         return toolbar;
     }
+
+    const actionClass = (id) => `action-${String(id).replace(/_/g, '-')}`;
 
     function setupActionButtons() {
         // Check config
         if (typeof window.ONIGIRI_CONFIG === 'undefined') return;
 
-        // Only show toolbar icons if mode is 'collapsed'
-        if (window.ONIGIRI_CONFIG.sidebarActionsMode !== 'collapsed') {
+        const sidebarActionsMode = normalizeSidebarActionsMode(window.ONIGIRI_CONFIG.sidebarActionsMode);
+
+        // Only show toolbar icons if mode is 'compact'
+        if (sidebarActionsMode !== 'compact') {
             return;
         }
 
@@ -69,7 +189,7 @@
         const pkg = window.ONIGIRI_CONFIG.addonPackage || '1011095603';
         const iconBase = `/_addons/${pkg}/system_files/system_icons/`;
         const userIconBase = `/_addons/${pkg}/user_files/icons/`;
-        const collapsedIcons = window.ONIGIRI_CONFIG.collapsedIcons || {};
+        const compactIcons = window.ONIGIRI_CONFIG.compactIcons || {};
 
         // Map action id -> default system icon filename
         const defaultIcons = {
@@ -78,59 +198,94 @@
             'stats': 'stats.svg',
             'sync': 'sync.svg',
             'settings': 'settings.svg',
+            'gamification': 'games.svg',
             'more': 'more.svg',
             'get_shared': 'get_shared.svg',
             'create_deck': 'create_deck.svg',
             'import_file': 'import_file.svg',
         };
+        const defaultIconUrl = (id) => `${iconBase}${defaultIcons[id] || id + '.svg'}`;
 
-        const actions = [
+        // Primary group: main actions (left side)
+        const primaryActions = [
             { id: 'add', cmd: 'add', title: 'Add' },
             { id: 'browse', cmd: 'browse', title: 'Browser' },
             { id: 'stats', cmd: 'stats', title: 'Stats' },
             { id: 'sync', cmd: 'sync', title: 'Sync' },
+        ];
+
+        // Secondary group: utility/settings (right side)
+        const secondaryActions = [
             { id: 'settings', cmd: 'openOnigiriSettings', title: 'Settings' },
             { id: 'more', cmd: null, title: 'More' }
         ];
 
-        actions.forEach(action => {
-            if (toolbar.querySelector(`.action-btn.action-${action.id}`)) return;
+        // Ensure the two sub-groups exist
+        let primaryGroup = toolbar.querySelector('.toolbar-group-primary');
+        if (!primaryGroup) {
+            primaryGroup = document.createElement('div');
+            primaryGroup.className = 'toolbar-group-primary';
+            toolbar.appendChild(primaryGroup);
+        }
 
-            // Resolve icon URL: use custom collapsed icon if set, else fall back to system icon
-            const customFile = collapsedIcons[action.id];
+        let secondaryGroup = toolbar.querySelector('.toolbar-group-secondary');
+        if (!secondaryGroup) {
+            secondaryGroup = document.createElement('div');
+            secondaryGroup.className = 'toolbar-group-secondary';
+            toolbar.appendChild(secondaryGroup);
+        }
+
+        function makeBtn(action, container) {
+            const customFile = compactIcons[action.id];
             const iconUrl = customFile
                 ? `${userIconBase}${customFile}`
-                : `${iconBase}${defaultIcons[action.id]}`;
+                : defaultIconUrl(action.id);
 
-            const btn = document.createElement('div');
-            btn.className = `action-btn action-${action.id}`;
+            let btn = container.querySelector(`.action-btn.${actionClass(action.id)}`);
+            if (!btn) {
+                btn = document.createElement('div');
+                btn.className = `action-btn ${actionClass(action.id)}`;
+                container.appendChild(btn);
+            } else if (btn.parentElement !== container) {
+                container.appendChild(btn);
+            }
+
             btn.title = action.title;
-            // Use <i> with mask-image so background-color: var(--icon-color) applies
             btn.innerHTML = `<i class="action-icon" style="mask-image: url('${iconUrl}'); -webkit-mask-image: url('${iconUrl}');"></i>`;
 
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (action.id === 'more') {
-                    toggleMoreMenu();
-                    return;
-                }
-                if (typeof pycmd === 'function') {
-                    pycmd(action.cmd);
-                }
-            });
-
-            toolbar.appendChild(btn);
-
-            if (action.id === 'sync' && window.ONIGIRI_SYNC_STATUS === 'sync') {
-                btn.classList.add('sync-needed');
+            if (!btn.dataset.onigiriBound) {
+                btn.dataset.onigiriBound = 'true';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof btn.blur === 'function') btn.blur();
+                    if (action.id === 'more') {
+                        toggleMoreMenu();
+                        return;
+                    }
+                    if (typeof pycmd === 'function') {
+                        pycmd(action.cmd);
+                    }
+                });
             }
-        });
 
-        setupMoreDropdown(toolbar, iconBase, userIconBase, collapsedIcons, defaultIcons);
+            if (action.id === 'sync') {
+                const syncStatus = typeof window.getOnigiriSyncStatus === 'function'
+                    ? window.getOnigiriSyncStatus()
+                    : 'none';
+                if (typeof applySyncStatusClasses === 'function') {
+                    applySyncStatusClasses(btn, syncStatus);
+                }
+            }
+        }
+
+        primaryActions.forEach(action => makeBtn(action, primaryGroup));
+        secondaryActions.forEach(action => makeBtn(action, secondaryGroup));
+
+        setupMoreDropdown(toolbar, userIconBase, compactIcons, defaultIconUrl);
+        orderCollapsedToolbarButtons(toolbar);
     }
 
-    function setupMoreDropdown(toolbar, iconBase, userIconBase, collapsedIcons, defaultIcons) {
-        // Remove old dropdown if it exists
+    function setupMoreDropdown(toolbar, userIconBase, compactIcons, defaultIconUrl) {
         const old = toolbar.querySelector('.more-dropdown-menu');
         if (old) old.remove();
 
@@ -143,20 +298,24 @@
         const items = [
             { label: 'Get Shared', id: 'get_shared', cmd: 'shared' },
             { label: 'Create Deck', id: 'create_deck', cmd: 'onigiri_create_deck' },
-            { label: 'Import File', id: 'import_file', cmd: 'import' }
+            { label: 'Import File', id: 'import_file', cmd: 'import' },
+            { label: 'Onigiri Games', id: 'gamification', cmd: 'openGamificationSettings' }
         ];
 
         // Insert the 3 inline buttons right after the More button
         let insertAfter = moreBtn;
         items.forEach(item => {
-            const customFile = (collapsedIcons || {})[item.id];
+            const customFile = (compactIcons || {})[item.id];
             const iconUrl = customFile
                 ? `${userIconBase}${customFile}`
-                : `${iconBase}${(defaultIcons || {})[item.id] || item.id + '.svg'}`;
+                : defaultIconUrl(item.id);
 
             const btn = document.createElement('div');
-            btn.className = `action-btn more-item action-${item.id}`;
+            btn.className = `action-btn more-item ${actionClass(item.id)}`;
             btn.title = item.label;
+            btn.dataset.command = item.cmd;
+            btn.dataset.label = item.label;
+            btn.dataset.iconUrl = iconUrl;
             btn.innerHTML = `<i class="action-icon" style="mask-image: url('${iconUrl}'); -webkit-mask-image: url('${iconUrl}');"></i>`;
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -180,230 +339,235 @@
         }
     }
 
+    function orderCollapsedToolbarButtons(toolbar) {
+        if (!toolbar) return;
+
+        let secondaryGroup = toolbar.querySelector('.toolbar-group-secondary');
+        if (!secondaryGroup) {
+            secondaryGroup = document.createElement('div');
+            secondaryGroup.className = 'toolbar-group-secondary';
+            toolbar.appendChild(secondaryGroup);
+        }
+
+        const orderedControls = [
+            toolbar.querySelector('.action-settings'),
+            ...Array.from(toolbar.querySelectorAll('.action-btn.more-item')),
+            toolbar.querySelector('.action-more'),
+        ].filter(Boolean);
+
+        orderedControls.forEach(control => secondaryGroup.appendChild(control));
+    }
+
+    function closeCollapsedMoreMenu() {
+        const menu = document.getElementById('onigiri-collapsed-more-menu');
+        const wasOpen = !!menu;
+        if (menu) menu.remove();
+
+        document.querySelectorAll('.sidebar-toolbar .action-more.more-expanded')
+            .forEach(btn => btn.classList.remove('more-expanded'));
+
+        return wasOpen;
+    }
+    window.closeOnigiriCollapsedMoreMenu = closeCollapsedMoreMenu;
+
     function toggleMoreMenu() {
         const toolbar = document.querySelector('.sidebar-toolbar');
         if (!toolbar) return;
         const moreBtn = toolbar.querySelector('.action-more');
         if (!moreBtn) return;
-        moreBtn.classList.toggle('more-expanded');
+        const existing = document.getElementById('onigiri-collapsed-more-menu');
+        if (existing) {
+            closeCollapsedMoreMenu();
+            return;
+        }
+
+        if (window.OnigiriEngine) {
+            if (typeof window.OnigiriEngine.closeDeckContextMenu === 'function') {
+                window.OnigiriEngine.closeDeckContextMenu();
+            }
+            if (typeof window.OnigiriEngine.closeOrganiseMenu === 'function') {
+                window.OnigiriEngine.closeOrganiseMenu();
+            }
+            if (typeof window.OnigiriEngine.closeEllipsisMenu === 'function') {
+                window.OnigiriEngine.closeEllipsisMenu();
+            }
+        }
+
+        const items = Array.from(toolbar.querySelectorAll('.action-btn.more-item'));
+        if (!items.length) return;
+
+        const menu = document.createElement('div');
+        menu.id = 'onigiri-collapsed-more-menu';
+
+        items.forEach(source => {
+            const item = document.createElement('div');
+            item.className = source.className
+                .split(/\s+/)
+                .filter(Boolean)
+                .filter(cls => cls !== 'action-btn' && cls !== 'more-item')
+                .concat('onigiri-ellipsis-item')
+                .join(' ');
+
+            const icon = document.createElement('i');
+            icon.className = 'icon';
+            let maskImage = '';
+            if (source.dataset.iconUrl) {
+                maskImage = `url("${source.dataset.iconUrl}")`;
+            } else {
+                const sourceIcon = source.querySelector('.action-icon');
+                if (sourceIcon) {
+                    const sourceStyle = window.getComputedStyle(sourceIcon);
+                    maskImage = sourceIcon.style.maskImage
+                        || sourceIcon.style.webkitMaskImage
+                        || sourceStyle.maskImage
+                        || sourceStyle.webkitMaskImage;
+                }
+            }
+            if (maskImage && maskImage !== 'none') {
+                icon.style.maskImage = maskImage;
+                icon.style.webkitMaskImage = maskImage;
+            }
+
+            const label = document.createElement('span');
+            label.textContent = source.dataset.label || source.title || '';
+
+            item.appendChild(icon);
+            item.appendChild(label);
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.remove();
+                moreBtn.classList.remove('more-expanded');
+                if (typeof pycmd === 'function' && source.dataset.command) {
+                    pycmd(source.dataset.command);
+                }
+            });
+            menu.appendChild(item);
+        });
+
+        document.body.appendChild(menu);
+
+        const rect = moreBtn.getBoundingClientRect();
+        const menuRect = menu.getBoundingClientRect();
+        const viewportPadding = 8;
+        const left = Math.max(viewportPadding, rect.left);
+        const top = Math.max(viewportPadding, rect.top - menuRect.height - 6);
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+
+        moreBtn.classList.add('more-expanded');
+
+        setTimeout(() => {
+            document.addEventListener('click', function dismiss(e) {
+                if (!menu.contains(e.target) && !moreBtn.contains(e.target)) {
+                    closeCollapsedMoreMenu();
+                    document.removeEventListener('click', dismiss);
+                }
+            });
+        }, 0);
+    }
+
+    const managedHoverSelectors = [
+        '.rl-nav-btn',
+        '.sidebar-toolbar .action-btn'
+    ];
+    const managedHoverSelector = managedHoverSelectors.join(',');
+    const managedHoverActiveSelector = managedHoverSelectors
+        .map(selector => `${selector}.is-true-hover`)
+        .join(',');
+
+    function clearManagedHoverStates() {
+        document.querySelectorAll(managedHoverActiveSelector).forEach(el => {
+            el.classList.remove('is-true-hover');
+        });
+    }
+
+    function bindManagedHoverState(root) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll(managedHoverSelector).forEach(el => {
+            if (el.dataset.onigiriManagedHover) return;
+            el.dataset.onigiriManagedHover = 'true';
+
+            el.addEventListener('mouseenter', () => {
+                el.classList.add('is-true-hover');
+            });
+            el.addEventListener('mouseleave', () => {
+                el.classList.remove('is-true-hover');
+            });
+        });
+    }
+
+    function setupManagedHoverStates() {
+        bindManagedHoverState(document);
+        if (document.documentElement.dataset.onigiriHoverManager) return;
+        document.documentElement.dataset.onigiriHoverManager = 'true';
+
+        window.addEventListener('focus', clearManagedHoverStates);
+        document.addEventListener('visibilitychange', clearManagedHoverStates);
+        document.addEventListener('mouseleave', clearManagedHoverStates);
     }
 
     function setupDeckFocusButton() {
-        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
 
-        // Ensure toolbar exists
-        const toolbar = setupSidebarToolbar();
-        if (!toolbar || toolbar.querySelector('.deck-focus-btn')) return;
+        const pkg = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage
+            ? window.ONIGIRI_CONFIG.addonPackage
+            : '1011095603';
+        const header = document.getElementById('deck-list-header');
+        if (!header) return;
 
-        const focusBtn = document.createElement('div');
-        focusBtn.className = 'deck-focus-btn';
+        document.querySelectorAll('.sidebar-toolbar .deck-focus-btn').forEach(btn => btn.remove());
+
+        let focusBtn = header.querySelector('.deck-focus-btn');
+        if (focusBtn) {
+            setupDeckFocusToggle(sidebar, header, focusBtn);
+            return;
+        }
+
+        focusBtn = document.createElement('div');
+        focusBtn.className = 'deck-focus-btn deck-header-focus-btn';
         focusBtn.title = 'Focus on Decks';
-        focusBtn.innerHTML = `<i class="icon"></i>`;
+        focusBtn.innerHTML = `<i class="icon" style="mask-image: url('/_addons/${pkg}/system_files/system_icons/focus.svg'); -webkit-mask-image: url('/_addons/${pkg}/system_files/system_icons/focus.svg');"></i>`;
 
-        // Add to toolbar instead of sidebar directly
-        toolbar.appendChild(focusBtn);
+        const controls = header.querySelector('.sidebar-top-right-controls');
+        header.insertBefore(focusBtn, controls || null);
 
-        focusBtn.addEventListener('click', (e) => {
+        setupDeckFocusToggle(sidebar, header, focusBtn);
+    }
+
+    function setupDeckFocusToggle(sidebar, header, focusBtn) {
+        if (!sidebar || !focusBtn) return;
+
+        if (header) {
+            header.classList.add('has-deck-focus-toggle');
+            header.classList.toggle('deck-focus-active', sidebar.classList.contains('deck-focus-mode'));
+        }
+
+        const applyState = (isFocused) => {
+            focusBtn.classList.toggle('active', isFocused);
+            if (header) header.classList.toggle('deck-focus-active', isFocused);
+        };
+
+        const toggleFocus = (e) => {
             e.stopPropagation();
             const isFocused = sidebar.classList.toggle('deck-focus-mode');
-            focusBtn.classList.toggle('active', isFocused);
+            applyState(isFocused);
+            if (typeof focusBtn.blur === 'function') focusBtn.blur();
 
             updateDeckFocusLayout(); // Ensure header visibility is updated on click
+            requestAnimationFrame(alignSidebarToolbarToDeckHeader);
 
             if (typeof pycmd === 'function') {
                 pycmd(`saveDeckFocusState:${isFocused}`);
             }
-        });
+        };
 
-        if (sidebar.classList.contains('deck-focus-mode')) {
-            focusBtn.classList.add('active');
-        }
-    }
-
-    function setupDeckEditButton() {
-        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
-        const sidebar = document.querySelector('.sidebar-left');
-        if (!sidebar) return;
-
-        // Ensure toolbar exists
-        const toolbar = setupSidebarToolbar();
-        if (!toolbar || toolbar.querySelector('.deck-edit-btn')) return;
-
-        const editBtn = document.createElement('div');
-        editBtn.className = 'deck-edit-btn';
-        editBtn.title = 'Toggle Editing Mode';
-        editBtn.innerHTML = `<i class="icon"></i>`;
-
-        // Add to toolbar instead of sidebar directly
-        toolbar.appendChild(editBtn);
-
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-
-            if (typeof OnigiriEditor !== 'undefined') {
-                if (OnigiriEditor.EDIT_MODE) {
-                    OnigiriEditor.exitEditMode();
-                } else {
-                    OnigiriEditor.enterEditMode();
-                }
-                // Refresh resize handle after edit mode toggle
-                setTimeout(() => refreshResizeHandle(), 10);
-            }
-        });
-
-        // Use a MutationObserver to keep the button's active state
-        // in sync if the edit mode is changed by other means (e.g., ESC key).
-        const bodyObserver = new MutationObserver((mutationsList) => {
-            for (const mutation of mutationsList) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    const isEditing = document.body.classList.contains('deck-edit-mode');
-                    editBtn.classList.toggle('active', isEditing);
-                    // Refresh resize handle when edit mode changes
-                    setTimeout(() => refreshResizeHandle(), 10);
-                }
-            }
-        });
-
-        bodyObserver.observe(document.body, { attributes: true });
-
-        // Set initial state
-        const isEditingInitial = document.body.classList.contains('deck-edit-mode');
-        editBtn.classList.toggle('active', isEditingInitial);
-    }
-
-    function setupTransferButton() {
-        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') return;
-        const sidebar = document.querySelector('.sidebar-left');
-        if (!sidebar) return;
-
-        // Ensure toolbar exists and put the transfer button inside it
-        const toolbar = setupSidebarToolbar();
-        if (!toolbar) return;
-
-        let transferBtn = toolbar.querySelector('.deck-transfer-btn');
-
-        // If button doesn't exist, create it
-        if (!transferBtn) {
-            transferBtn = document.createElement('div');
-            transferBtn.className = 'deck-transfer-btn';
-            transferBtn.title = 'Transfer Selected Decks';
-
-            // Create SVG icon element
-            const icon = document.createElement('img');
-            icon.className = 'icon';
-            icon.src = '/_addons/1011095603/system_files/system_icons/organise.svg';
-            icon.alt = 'Transfer';
-            transferBtn.appendChild(icon);
-
-            // Insert before the Focus button so it appears to its left
-            const focusBtn = toolbar.querySelector('.deck-focus-btn');
-            if (focusBtn) {
-                toolbar.insertBefore(transferBtn, focusBtn);
-            } else {
-                toolbar.appendChild(transferBtn);
-            }
+        if (!focusBtn.dataset.onigiriFocusToggleBound) {
+            focusBtn.dataset.onigiriFocusToggleBound = 'true';
+            focusBtn.addEventListener('click', toggleFocus);
         }
 
-        function updateTransferButtonState() {
-            const checkedBoxes = document.querySelectorAll('input[type="checkbox"]:checked');
-            const hasSelection = checkedBoxes.length > 0;
-            transferBtn.classList.toggle('has-selection', hasSelection);
-        }
-
-        // Remove existing click handler if any (need to check if handler exists)
-        if (transferBtn._clickHandler) {
-            transferBtn.removeEventListener('click', transferBtn._clickHandler);
-        }
-
-        function handleTransferClick(e) {
-            e.stopPropagation();
-
-            // Get all checked checkboxes - look for them in the deck list
-            const checkedBoxes = document.querySelectorAll('input[type="checkbox"]:checked');
-
-            if (checkedBoxes.length === 0) {
-                alert('Please select decks first by checking the boxes next to them.');
-                return;
-            }
-
-            // Extract deck IDs from checked checkboxes
-            const selectedDids = [];
-
-            // Try different types of checkboxes
-            const allCheckedElements = [
-                ...document.querySelectorAll('input[type="checkbox"]:checked'),
-                ...document.querySelectorAll('[role="checkbox"][aria-checked="true"]'),
-                ...document.querySelectorAll('.checkbox.checked, .checkbox[aria-checked="true"]')
-            ];
-
-            allCheckedElements.forEach((checkbox, index) => {
-                // Find the deck row that contains this checkbox - try multiple selectors
-                let deckRow = null;
-
-                // Try different parent selectors
-                deckRow = checkbox.closest('tr.deck');
-                if (!deckRow) deckRow = checkbox.closest('tr');
-                if (!deckRow) deckRow = checkbox.closest('div.deck');
-                if (!deckRow) deckRow = checkbox.closest('li.deck');
-                if (!deckRow) deckRow = checkbox.closest('[data-did]');
-
-                if (deckRow && deckRow.dataset && deckRow.dataset.did) {
-                    selectedDids.push(deckRow.dataset.did);
-                }
-            });
-
-            if (selectedDids.length === 0) {
-                alert('Could not find deck IDs for selected items. Please try selecting decks again.');
-                return;
-            }
-
-            // Show the transfer window with the selected deck IDs
-            if (typeof pycmd === 'function') {
-                pycmd(`onigiri_show_transfer_window:${JSON.stringify(selectedDids)}`);
-            } else {
-                console.error('pycmd is not available');
-                alert('Error: Communication with Anki failed. Please restart Anki.');
-            }
-        }
-
-        function getParentChain(element) {
-            const chain = [];
-            let current = element;
-            while (current && chain.length < 5) {
-                chain.push(current.tagName + (current.className ? '.' + current.className : ''));
-                current = current.parentElement;
-            }
-            return chain;
-        }
-
-        // Store the handler so we can remove it later if needed
-        transferBtn._clickHandler = handleTransferClick;
-
-        // Attach the click handler
-        transferBtn.addEventListener('click', handleTransferClick);
-
-        // Also add some direct styling to ensure it's clickable
-        transferBtn.style.cursor = 'pointer';
-        transferBtn.style.userSelect = 'none';
-        transferBtn.style.zIndex = '9999'; // Ensure it's on top
-
-        // Monitor for checkbox changes to update button state
-        document.addEventListener('change', (e) => {
-            if (e.target.type === 'checkbox') {
-                updateTransferButtonState();
-            }
-        }, true);
-
-        // Also observe mutations in case checkboxes are added dynamically
-        const observer = new MutationObserver(() => {
-            updateTransferButtonState();
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // Initial state
-        updateTransferButtonState();
+        applyState(sidebar.classList.contains('deck-focus-mode'));
     }
 
     function setupResizeHandle() {
@@ -412,79 +576,65 @@
         if (!handle || !sidebarEl || handle.dataset.onigiriSetup) return;
         handle.dataset.onigiriSetup = 'true';
 
-        const indicator = document.createElement('div');
-        indicator.className = 'resize-handle-indicator';
-        handle.appendChild(indicator);
+        const setSidebarFixedWidth = (width) => {
+            sidebarEl.style.setProperty('width', `${width}px`, 'important');
+        };
+
+        let hitbox = handle.querySelector('.resize-handle-hitbox');
+        if (!hitbox) {
+            hitbox = document.createElement('div');
+            hitbox.className = 'resize-handle-hitbox';
+            handle.appendChild(hitbox);
+        }
+
+        if (!handle.querySelector('.resize-handle-indicator')) {
+            const indicator = document.createElement('div');
+            indicator.className = 'resize-handle-indicator';
+            handle.appendChild(indicator);
+        }
 
         let isResizing = false;
         let startX, startWidth, animationFrameId = null, lastClientX = 0, lastWidth = 0;
-        let isCentered = false; // Track if layout is centered
+        let isCentered = false;
 
         const updateSidebarWidth = () => {
             const deltaX = lastClientX - startX;
-            // If centered, the sidebar grows from center, so the right edge moves at half speed relative to width change.
-            // We need to double the width change to make the handle follow the mouse.
             const effectiveDelta = isCentered ? (deltaX * 2) : deltaX;
-
             let newWidth = startWidth + effectiveDelta;
-            // Clamp width with early return to avoid unnecessary DOM updates
             if (newWidth < 325) newWidth = 325;
-            // if (newWidth > 800) newWidth = 800; // Removed limit
 
-            // Use cached width comparison to avoid layout thrashing
             if (Math.abs(newWidth - lastWidth) > 0.5) {
-                // FORCE the width with !important to override any CSS specificity issues
-                sidebarEl.style.setProperty('width', `${newWidth}px`, 'important');
+                setSidebarFixedWidth(newWidth);
                 lastWidth = newWidth;
+                if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
+                    window.onigiriUpdateSidebarEdgeToggle();
+                }
             }
             animationFrameId = null;
         };
 
-        const mousemoveHandler = (e) => {
-            if (isResizing) return;
-            const rect = handle.getBoundingClientRect();
-            const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
-            handle.style.setProperty('--handle-top', `${(y / rect.height) * 100}%`);
-        };
-
-        const mouseleaveHandler = () => {
-            if (!isResizing) handle.style.setProperty('--handle-top', '50%');
-        };
-
         const mousedownHandler = (e) => {
-            if (e.button !== 0) return; // Only allow left click
+            if (e.button !== 0) return;
             isResizing = true;
             startX = e.clientX;
             lastClientX = e.clientX;
 
-            // Use getBoundingClientRect for sub-pixel precision
             const rect = sidebarEl.getBoundingClientRect();
             startWidth = rect.width;
             lastWidth = startWidth;
 
-            // Check if sidebar is centered using the class added by Python backend
-            // Also fallback to computed style just in case
             isCentered = sidebarEl.classList.contains('sidebar-only-mode');
             if (!isCentered && sidebarEl.parentElement) {
-                const style = window.getComputedStyle(sidebarEl.parentElement);
-                // Check multiple possibilities for centered alignment
-                isCentered = (style.justifyContent === 'center' || style.justifyContent.includes('center'));
+                isCentered = window.getComputedStyle(sidebarEl.parentElement).justifyContent.includes('center');
             }
 
-            // Lock the current width explicitly using !important BEFORE clearing max-width
-            // This prevents the visual jump if width was 'auto'
-            sidebarEl.style.setProperty('width', `${startWidth}px`, 'important');
-
-            // Ensure no max-width constraint interferes - use setProperty to clear it forcefully
+            setSidebarFixedWidth(startWidth);
             sidebarEl.style.setProperty('max-width', 'none', 'important');
 
             sidebarEl.classList.add('is-resizing');
             handle.classList.add('is-resizing');
             document.body.style.userSelect = 'none';
             document.body.style.cursor = 'col-resize';
-
-            // Debug log (viewable in inspector if needed)
-            console.log(`Resize Start: Width=${startWidth}, Centered=${isCentered}`);
         };
 
         const documentMousemoveHandler = (e) => {
@@ -508,23 +658,22 @@
                 document.body.style.removeProperty('user-select');
                 document.body.style.removeProperty('cursor');
                 const finalWidth = parseInt(sidebarEl.style.width, 10) || lastWidth;
+                setSidebarFixedWidth(finalWidth);
+                if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
+                    window.onigiriUpdateSidebarEdgeToggle();
+                }
                 if (typeof pycmd === 'function') pycmd(`saveSidebarWidth:${finalWidth}`);
             }
         };
 
-        // Store handlers for cleanup
         handle._resizeHandlers = {
-            mousemove: mousemoveHandler,
-            mouseleave: mouseleaveHandler,
+            hitbox,
             mousedown: mousedownHandler,
             documentMousemove: documentMousemoveHandler,
             documentMouseup: documentMouseupHandler
         };
 
-        // Attach event listeners
-        handle.addEventListener('mousemove', mousemoveHandler);
-        handle.addEventListener('mouseleave', mouseleaveHandler);
-        handle.addEventListener('mousedown', mousedownHandler);
+        hitbox.addEventListener('mousedown', mousedownHandler);
         document.addEventListener('mousemove', documentMousemoveHandler);
         document.addEventListener('mouseup', documentMouseupHandler);
     }
@@ -533,94 +682,154 @@
         const handle = document.querySelector('.resize-handle');
         if (!handle || !handle._resizeHandlers) return;
 
-        // Remove existing handlers
         const handlers = handle._resizeHandlers;
-        handle.removeEventListener('mousemove', handlers.mousemove);
-        handle.removeEventListener('mouseleave', handlers.mouseleave);
-        handle.removeEventListener('mousedown', handlers.mousedown);
+        handlers.hitbox.removeEventListener('mousedown', handlers.mousedown);
         document.removeEventListener('mousemove', handlers.documentMousemove);
         document.removeEventListener('mouseup', handlers.documentMouseup);
 
-        // Remove the setup flag to allow re-setup
         delete handle.dataset.onigiriSetup;
-
-        // Re-setup the resize handle
         setupResizeHandle();
     }
 
     function init() {
+        normalizeSidebarModeControls();
+        setupSidebarTopRightControls();
+
         const sidebar = document.querySelector('.sidebar-left.skeleton-loading');
         if (sidebar) {
             setTimeout(() => sidebar.classList.remove('skeleton-loading'), 150);
         }
 
-        // In ellipsis mode, hide the sidebar toggle button — it lives in the dropdown instead
-        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarActionsMode === 'ellipsis') {
-            const tb = document.querySelector('.sidebar-toggle-btn');
-            if (tb) tb.style.display = 'none';
-        }
-
-        const toggleBtn = document.querySelector('.sidebar-toggle-btn');
         const sidebarEl = document.querySelector('.sidebar-left');
-        const revealBtn = document.getElementById('onigiri-sidebar-reveal-btn');
+        const edgeToggleBtn = document.getElementById('onigiri-sidebar-edge-toggle');
+        const edgeToggleZone = document.querySelector('.sidebar-edge-toggle-zone');
+        const actionsMode = normalizeSidebarActionsMode(
+            window.ONIGIRI_CONFIG ? window.ONIGIRI_CONFIG.sidebarActionsMode : 'full'
+        );
+        if (sidebarEl) {
+            sidebarEl.classList.toggle('sidebar-actions-full', actionsMode === 'full');
+            sidebarEl.classList.toggle('sidebar-actions-compact', actionsMode === 'compact');
+            sidebarEl.classList.toggle('sidebar-mode-minimal', actionsMode === 'minimal');
+        }
 
         // Track the width set by the resize handle so we can restore it on expand
         let _savedSidebarWidth = null;
+        let _edgeToggleCollapseLocked = false;
+        const collapsedEdgeTogglePosition = {
+            left: 24,
+            top: 24,
+            zoneLeft: 8,
+            zoneTop: 16,
+        };
 
-        function updateRevealBtn(isCollapsed) {
-            if (!revealBtn) return;
-            revealBtn.style.display = isCollapsed ? 'flex' : 'none';
+        function applyCollapsedEdgeTogglePosition() {
+            if (edgeToggleBtn) {
+                edgeToggleBtn.style.left = `${collapsedEdgeTogglePosition.left}px`;
+                edgeToggleBtn.style.top = `${collapsedEdgeTogglePosition.top}px`;
+                edgeToggleBtn.classList.add('is-collapsed');
+            }
+            if (edgeToggleZone) {
+                edgeToggleZone.style.left = `${collapsedEdgeTogglePosition.zoneLeft}px`;
+                edgeToggleZone.style.top = `${collapsedEdgeTogglePosition.zoneTop}px`;
+            }
         }
 
+        function updateSidebarEdgeToggle() {
+            if (!edgeToggleBtn || !sidebarEl) return;
+            const isCollapsed = sidebarEl.classList.contains('sidebar-collapsed') || _edgeToggleCollapseLocked;
+            const rect = sidebarEl.getBoundingClientRect();
+            const btnWidth = edgeToggleBtn.offsetWidth || 24;
+            const left = isCollapsed ? collapsedEdgeTogglePosition.left : Math.max(0, rect.right - Math.round(btnWidth / 2));
+            const top = isCollapsed ? collapsedEdgeTogglePosition.top : Math.max(0, rect.top + 24);
+
+            edgeToggleBtn.style.left = `${left}px`;
+            edgeToggleBtn.style.top = `${top}px`;
+            edgeToggleBtn.classList.toggle('is-collapsed', isCollapsed);
+            edgeToggleBtn.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            edgeToggleBtn.setAttribute('aria-label', edgeToggleBtn.title);
+
+            if (edgeToggleZone) {
+                const zoneLeft = isCollapsed ? collapsedEdgeTogglePosition.zoneLeft : Math.max(0, left - 28);
+                edgeToggleZone.style.left = `${zoneLeft}px`;
+                edgeToggleZone.style.top = `${isCollapsed ? collapsedEdgeTogglePosition.zoneTop : Math.max(0, top - 8)}px`;
+            }
+        }
+        window.onigiriUpdateSidebarEdgeToggle = updateSidebarEdgeToggle;
+
         function collapseSidebar() {
-            // Save the resize-handle's inline width (set with !important) before removing it
+            _edgeToggleCollapseLocked = true;
+            applyCollapsedEdgeTogglePosition();
+
+            // Save the current sidebar width so expanding restores the user's resize.
             const inlineWidth = sidebarEl.style.width;
             if (inlineWidth) _savedSidebarWidth = inlineWidth;
-            // Remove inline width so the CSS class width:0 can take effect
             sidebarEl.style.removeProperty('width');
             sidebarEl.style.removeProperty('max-width');
             sidebarEl.classList.add('sidebar-collapsed');
-            updateRevealBtn(true);
+            updateSidebarEdgeToggle();
             if (typeof pycmd === 'function') pycmd('saveSidebarState:true');
         }
 
         function expandSidebar() {
+            _edgeToggleCollapseLocked = false;
             sidebarEl.classList.remove('sidebar-collapsed');
             // Restore the previously saved width if we had one
             if (_savedSidebarWidth) {
-                sidebarEl.style.setProperty('width', _savedSidebarWidth, 'important');
+                const restoredWidth = parseFloat(_savedSidebarWidth);
+                if (Number.isFinite(restoredWidth) && restoredWidth > 0) {
+                    sidebarEl.style.setProperty('width', `${restoredWidth}px`, 'important');
+                }
             }
-            updateRevealBtn(false);
+            updateSidebarEdgeToggle();
             if (typeof pycmd === 'function') pycmd('saveSidebarState:false');
         }
 
-        // Expose globally so ellipsis menu (Python handler) can call them
-        window.onigiriCollapseSidebar = collapseSidebar;
-        window.onigiriExpandSidebar = expandSidebar;
-
-        if (toggleBtn && sidebarEl) {
-            toggleBtn.addEventListener('click', () => {
+        if (edgeToggleBtn && sidebarEl) {
+            updateSidebarEdgeToggle();
+            edgeToggleBtn.addEventListener('click', () => {
                 if (sidebarEl.classList.contains('sidebar-collapsed')) {
                     expandSidebar();
                 } else {
                     collapseSidebar();
                 }
+                edgeToggleBtn.blur();
             });
+            window.addEventListener('resize', updateSidebarEdgeToggle);
+            if (typeof ResizeObserver !== 'undefined') {
+                const edgeToggleObserver = new ResizeObserver(updateSidebarEdgeToggle);
+                edgeToggleObserver.observe(sidebarEl);
+                const toolbarAlignObserver = new ResizeObserver(() => requestAnimationFrame(alignSidebarToolbarToDeckHeader));
+                toolbarAlignObserver.observe(sidebarEl);
+                const deckListContainer = document.getElementById('deck-list-container');
+                if (deckListContainer) {
+                    const deckOverflowObserver = new ResizeObserver(() => requestAnimationFrame(updateSidebarOverflowState));
+                    deckOverflowObserver.observe(deckListContainer);
+                }
+            }
+            requestAnimationFrame(updateSidebarEdgeToggle);
         }
 
-        if (revealBtn && sidebarEl) {
-            updateRevealBtn(sidebarEl.classList.contains('sidebar-collapsed'));
-            revealBtn.addEventListener('click', () => {
-                expandSidebar();
-            });
+        const deckListContainer = document.getElementById('deck-list-container');
+        if (deckListContainer) {
+            deckListContainer.addEventListener('scroll', updateSidebarOverflowState, { passive: true });
+            if (typeof MutationObserver !== 'undefined') {
+                const overflowMutationObserver = new MutationObserver(() => requestAnimationFrame(updateSidebarOverflowState));
+                overflowMutationObserver.observe(deckListContainer, { childList: true, subtree: true });
+            }
         }
 
         setupResizeHandle();
         setupDeckFocusButton();
         // Edit mode and Transfer buttons removed — drag-and-drop is always-on
         setupActionButtons();
+        setupManagedHoverStates();
         updateDeckLayouts();
+        updateSidebarOverflowState();
         updateDeckFocusLayout();
+        requestAnimationFrame(alignSidebarToolbarToDeckHeader);
+        requestAnimationFrame(updateSidebarOverflowState);
+        window.addEventListener('resize', () => requestAnimationFrame(alignSidebarToolbarToDeckHeader));
+        window.addEventListener('resize', () => requestAnimationFrame(updateSidebarOverflowState));
     }
 
     if (document.readyState === 'loading') {
