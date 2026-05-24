@@ -13,7 +13,8 @@ COLOR_LABELS = {
     "--icon-color-filtered": {"label": "Filtered Deck Icon", "tooltip": "The color of the icon for filtered decks in the deck list."},
     "--fg-subtle": {"label": "Titles", "tooltip": "A less prominent text color, used for secondary information."},
     "--border": {"label": "Border", "tooltip": "Color for borders and separators between elements."},
-    "--highlight-bg": {"label": "Hover Highlight", "tooltip": "Background color when hovering over items like decks in the list."},
+    "--hover-deck-bg": {"label": "Hover Highlight", "tooltip": "Background color when hovering over items like decks in the list."},
+    "--edit-deck-bg": {"label": "Edit Highlight", "tooltip": "Background color for the right-clicked deck row."},
     "--button-primary-bg": {"label": "Study Button", "tooltip": "The main background color of the 'Study Now' button on the deck overview screen. Also sets the focus border color."},
     "--button-primary-gradient-start": {"label": "Study Button Hover Gradient (Start)", "tooltip": "The starting color of the gradient when hovering over the 'Study Now' button."},
     "--button-primary-gradient-end": {"label": "Study Button Hover Gradient (End)", "tooltip": "The ending color of the gradient when hovering over the 'Study Now' button."},
@@ -43,11 +44,6 @@ COLOR_LABELS = {
     "--overlay-close-btn-bg": {"label": "Overlay Close Button BG", "tooltip": "Background color for close button in overlays."},
     "--overlay-close-btn-fg": {"label": "Overlay Close Button Text", "tooltip": "Text color for close button in overlays."},
     
-    # Deck list specific colors
-    "--deck-hover-bg": {"label": "Deck Hover Background", "tooltip": "Background color when hovering over deck items."},
-    "--deck-dragging-bg": {"label": "Deck Dragging Background", "tooltip": "Background color for decks being dragged."},
-    "--deck-edit-mode-bg": {"label": "Deck Edit Mode Background", "tooltip": "Background tint when in deck edit mode."},
-    
     # Text shadow colors
     "--text-shadow-light": {"label": "Light Text Shadow", "tooltip": "Shadow for text on dark backgrounds."},
     "--profile-pic-border": {"label": "Profile Picture Border", "tooltip": "Border color for profile pictures with image backgrounds."},
@@ -64,14 +60,18 @@ ICON_DEFAULTS = {
     "stats": "stats.svg",
     "sync": "sync.svg",
     "settings": "settings.svg",
+    "gamification": "games.svg",
     "more": "more.svg",
     "get_shared": "get_shared.svg",
     "create_deck": "create_deck.svg",
     "import_file": "import_file.svg",
-    "ellipsis": "ellipsis.svg",
+    "ellipsis": "more_circle.svg",
+    "deck": "deck.svg",
+    "subdeck": "subdeck.svg",
+    "filtered_deck": "filtered_deck.svg",
 }
 
-DEFAULT_ICON_SIZES = {"deck_folder": 20, "action_button": 14, "collapse": 12, "options_gear": 16}
+DEFAULT_ICON_SIZES = {"deck_folder": 20, "action_button": 14, "collapse": 14, "options_gear": 16, "drag_handle": 14}
 ALL_THEME_KEYS = [
     # General & Accent
     "--accent-color",
@@ -83,7 +83,8 @@ ALL_THEME_KEYS = [
 
     # Deck List & Sidebar
     "--deck-list-bg",
-    "--highlight-bg",
+    "--hover-deck-bg",
+    "--edit-deck-bg",
     "--highlight-fg",
     "--icon-color",
     "--icon-color-filtered",
@@ -121,11 +122,6 @@ ALL_THEME_KEYS = [
     "--profile-export-btn-border",
     "--overlay-close-btn-bg",
     "--overlay-close-btn-fg",
-    
-    # Deck list specific colors
-    "--deck-hover-bg",
-    "--deck-dragging-bg",
-    "--deck-edit-mode-bg",
     
     # Text shadow colors
     "--text-shadow-light",
