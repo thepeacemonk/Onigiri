@@ -1,0 +1,351 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="coloris.min.css">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --picker-bg: #ffffff;
+      --picker-panel: #ffffff;
+      --picker-fg: #2f2f32;
+      --picker-muted: #70757f;
+      --picker-border: rgba(0, 0, 0, 0.13);
+      --picker-empty: rgba(0, 0, 0, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --picker-bg: #2f2f2f;
+        --picker-panel: #454545;
+        --picker-fg: #f3f3f3;
+        --picker-muted: #b3b3bb;
+        --picker-border: rgba(255, 255, 255, 0.16);
+        --picker-empty: rgba(255, 255, 255, 0.08);
+      }
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: transparent;
+      color: var(--picker-fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .picker-shell {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+      padding: 4px;
+    }
+
+    #coloris-input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #coloris-host {
+      width: 318px;
+      min-height: 276px;
+      position: relative;
+    }
+
+    .clr-picker[data-inline="true"] {
+      display: flex !important;
+      position: relative !important;
+      left: auto !important;
+      top: auto !important;
+      z-index: 1;
+    }
+
+    .clr-picker.clr-pill {
+      width: 318px;
+      min-height: 276px;
+      padding-left: 126px;
+      border-radius: 14px;
+      background: var(--picker-bg);
+      color: #cc458f;
+      box-shadow: none;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .clr-picker.clr-dark {
+      background: var(--picker-panel);
+    }
+
+    .clr-pill .clr-gradient {
+      width: 126px;
+      height: 100%;
+      border-radius: 14px 0 0 14px;
+    }
+
+    .clr-pill .clr-marker {
+      width: 12px;
+      height: 12px;
+      margin: -6px 0 0 -6px;
+      border-width: 2px;
+    }
+
+    .clr-pill .clr-hue,
+    .clr-pill .clr-alpha {
+      width: calc(100% - 30px);
+      height: 6px;
+      margin: 13px 15px 5px;
+      border-radius: 999px;
+    }
+
+    .clr-pill .clr-alpha {
+      margin-top: 10px;
+    }
+
+    .clr-pill .clr-hue div,
+    .clr-pill .clr-alpha div {
+      width: 16px;
+      height: 16px;
+      margin-left: -8px;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.24);
+    }
+
+    .clr-pill .clr-preview {
+      width: 32px;
+      height: 32px;
+      margin: 14px 0 10px 15px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px var(--picker-border);
+    }
+
+    .clr-pill input.clr-color {
+      width: calc(100% - 62px);
+      height: 34px;
+      margin: 14px 15px 10px auto;
+      border-radius: 999px;
+      border: 1px solid var(--picker-border);
+      background: var(--picker-bg);
+      color: var(--picker-fg);
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: none;
+      text-transform: lowercase;
+    }
+
+    .clr-dark input.clr-color {
+      background: #555555;
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+    }
+
+    .clr-pill .clr-swatches,
+    .clr-pill .clr-clear,
+    .clr-pill .clr-close {
+      display: none !important;
+    }
+
+    .favorites {
+      position: absolute;
+      left: 154px;
+      top: 126px;
+      width: 118px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      align-items: center;
+      z-index: 5;
+    }
+
+    .favorite-slot {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--picker-border);
+      border-radius: 999px;
+      background: var(--favorite-color, var(--picker-empty));
+      color: var(--picker-muted);
+      display: grid;
+      place-items: center;
+      padding: 0;
+      cursor: pointer;
+      box-sizing: border-box;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .favorite-slot.has-color {
+      color: transparent;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+    }
+
+    .favorite-slot:hover,
+    .favorite-slot.is-active {
+      border-color: #8ab4ff;
+      box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.18);
+    }
+
+    .favorite-slot.is-empty::before {
+      content: "+";
+      transform: translateY(-1px);
+    }
+  </style>
+</head>
+<body>
+  <main class="picker-shell">
+    <div id="coloris-host">
+      <input id="coloris-input" class="clr-color" type="text" value="#ffffff" data-coloris>
+      <div id="favorites" class="favorites" aria-label="Favorite colors"></div>
+    </div>
+  </main>
+
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script src="coloris.min.js"></script>
+  <script>
+    var pyBridge = null;
+    var selectedColor = "#FFFFFF";
+    var pickerReady = false;
+    var favorites = [];
+    var activeFavoriteIndex = -1;
+
+    function normalizeColor(value) {
+      value = String(value || "").trim();
+      var hex = value.match(/^#?[0-9a-fA-F]{6}$/);
+      if (!hex) {
+        return selectedColor || "#FFFFFF";
+      }
+      return ("#" + value.replace("#", "")).toUpperCase();
+    }
+
+    function persistFavorites() {
+      if (pyBridge && pyBridge.setFavoriteColors) {
+        pyBridge.setFavoriteColors(JSON.stringify(favorites.slice(0, 9)));
+      }
+    }
+
+    function renderFavorites() {
+      var container = document.getElementById("favorites");
+      container.innerHTML = "";
+      for (var i = 0; i < 9; i += 1) {
+        var color = favorites[i] || "";
+        var button = document.createElement("button");
+        button.type = "button";
+          button.className = "favorite-slot" + (color ? " has-color" : " is-empty") + (i === activeFavoriteIndex ? " is-active" : "");
+        button.dataset.index = String(i);
+        if (color) {
+          button.style.setProperty("--favorite-color", color);
+          button.title = color + " (click to use)";
+          button.textContent = "";
+        } else {
+          button.title = "Save current color here";
+          button.textContent = "";
+        }
+        button.addEventListener("click", function(event) {
+          var index = Number(event.currentTarget.dataset.index);
+          if (favorites[index]) {
+            activeFavoriteIndex = index;
+            setColor(favorites[index], false);
+          } else {
+            favorites[index] = window.currentColor();
+            activeFavoriteIndex = index;
+            persistFavorites();
+          }
+          renderFavorites();
+        });
+        button.addEventListener("contextmenu", function(event) {
+          event.preventDefault();
+          var index = Number(event.currentTarget.dataset.index);
+          favorites[index] = "";
+          if (activeFavoriteIndex === index) {
+            activeFavoriteIndex = -1;
+          }
+          persistFavorites();
+          renderFavorites();
+        });
+        container.appendChild(button);
+      }
+    }
+
+    function setColor(value, updatePicker) {
+      selectedColor = normalizeColor(value);
+      document.getElementById("coloris-input").value = selectedColor.toLowerCase();
+      if (updatePicker !== false && pickerReady && window.Coloris && Coloris.set) {
+        Coloris.set({ defaultColor: selectedColor });
+      }
+    }
+
+    function initPicker(initialColor) {
+      selectedColor = normalizeColor(initialColor || selectedColor);
+      document.getElementById("coloris-input").value = selectedColor.toLowerCase();
+      if (!window.Coloris) {
+        return;
+      }
+      Coloris({
+        el: "#coloris-input",
+        parent: "#coloris-host",
+        theme: "pill",
+        themeMode: "auto",
+        inline: true,
+        wrap: false,
+        format: "hex",
+        alpha: true,
+        forceAlpha: false,
+        defaultColor: selectedColor,
+        swatches: [],
+        onChange: function(color) {
+          selectedColor = normalizeColor(color);
+          document.getElementById("coloris-input").value = selectedColor.toLowerCase();
+        }
+      });
+      pickerReady = true;
+    }
+
+    window.currentColor = function() {
+      return normalizeColor(document.getElementById("coloris-input").value || selectedColor);
+    };
+
+    window.requestCurrentColor = function() {
+      var color = window.currentColor();
+      if (pyBridge && pyBridge.onColorSelected) {
+        pyBridge.onColorSelected(color);
+      }
+      return color;
+    };
+
+    renderFavorites();
+
+    if (window.QWebChannel && window.qt && window.qt.webChannelTransport) {
+      new QWebChannel(window.qt.webChannelTransport, function(channel) {
+        pyBridge = channel.objects.py_bridge;
+        if (pyBridge && pyBridge.getFavoriteColors) {
+          pyBridge.getFavoriteColors(function(payload) {
+            try {
+              favorites = JSON.parse(payload || "[]").slice(0, 9);
+            } catch (error) {
+              favorites = [];
+            }
+            while (favorites.length < 9) {
+              favorites.push("");
+            }
+            renderFavorites();
+          });
+        }
+        if (pyBridge && pyBridge.getInitialColor) {
+          pyBridge.getInitialColor(function(color) {
+            initPicker(color || "#FFFFFF");
+          });
+        } else {
+          initPicker("#FFFFFF");
+        }
+      });
+    } else {
+      initPicker("#FFFFFF");
+    }
+  </script>
+</body>
+</html>

@@ -8,11 +8,12 @@ import requests
 import hashlib
 from aqt import mw
 from aqt.qt import *
-from aqt.utils import showInfo, tooltip
 import os
 import tempfile
 from .. import config
 from ..translations import tr
+from ..onigiri_notifications import notify as tooltip
+from ..onigiri_notifications import notify_info as showInfo
 
 # SVG rendering imports
 try:

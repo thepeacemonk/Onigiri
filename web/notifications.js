@@ -75,6 +75,15 @@
         } else if (data.id === 'mochi_message') {
             card.dataset.variant = 'mochi';
         }
+        if (data.hideIcon) {
+            card.classList.add('has-no-icon');
+        }
+        if (data.hideTitle) {
+            card.classList.add('has-no-title');
+        }
+        if (data.centered) {
+            card.classList.add('is-centered');
+        }
 
         if (data.textColorLight) {
             card.style.setProperty('--notification-text-light', data.textColorLight);
@@ -115,12 +124,16 @@
         description.className = "onigiri-notification-description";
         description.textContent = data.description || "";
 
-        content.appendChild(title);
+        if (!data.hideTitle) {
+            content.appendChild(title);
+        }
         if (description.textContent) {
             content.appendChild(description);
         }
 
-        card.appendChild(icon);
+        if (!data.hideIcon) {
+            card.appendChild(icon);
+        }
         card.appendChild(content);
 
         stack.appendChild(card);

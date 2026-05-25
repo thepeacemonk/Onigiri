@@ -16,7 +16,8 @@ from aqt import mw, gui_hooks
 from aqt.qt import *
 import aqt
 from aqt import mw, gui_hooks
-from aqt.utils import showInfo, tooltip
+from .onigiri_notifications import notify as tooltip
+from .onigiri_notifications import notify_info as showInfo
 from aqt.webview import AnkiWebView
 from aqt.deckbrowser import DeckBrowser
 from aqt.main import MainWebView
@@ -448,6 +449,16 @@ def open_restaurant_level_dialog():
         _restaurant_dialog.close()
     _restaurant_dialog = RestaurantLevelDialog(mw)
     _restaurant_dialog.show()
+
+_onigimon_care_dialog = None
+
+def open_onigimon_care_dialog():
+    global _onigimon_care_dialog
+    from .gamification.onigimon_care_ui import OnigimonCareDialog
+    if _onigimon_care_dialog is not None:
+        _onigimon_care_dialog.close()
+    _onigimon_care_dialog = OnigimonCareDialog(mw)
+    _onigimon_care_dialog.show()
 
 
 class MrTaiyakiStoreDialog(QDialog):
@@ -1009,6 +1020,9 @@ def on_webview_js_message(handled, message, context):
         if cmd == "openRestaurantLevel":
             open_restaurant_level_dialog()
             return (True, None)
+        if cmd == "openOnigimonCare":
+            open_onigimon_care_dialog()
+            return (True, None)
         if cmd == "showGamification":
             open_gamification_dialog()
             return (True, None)
@@ -1036,6 +1050,9 @@ def on_webview_js_message(handled, message, context):
             return (True, None)
         if cmd == "openGamificationSettings":
             gamification_settings.open_gamification_settings()
+            return (True, None)
+        if cmd == "openOnigimonSettings":
+            gamification_settings.open_gamification_settings("Onigimon")
             return (True, None)
         if cmd == "shared":
             QDesktopServices.openUrl(QUrl("https://ankiweb.net/shared/decks"))

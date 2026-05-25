@@ -693,7 +693,7 @@ class OnigimonManager:
         state = self.load()
         if state.inventory.get(item_key, 0) <= 0:
             return None
-        if item_key in BERRY_ITEMS and companion.hunger >= 100:
+        if (item_key in BERRY_ITEMS or item_key == "curry_ingredients") and companion.hunger >= 100:
             return f"{self.companion_display_name(companion)} is already full."
         if item_key == "pokeballs":
             return f"{self.companion_display_name(companion)} is saving Pokéballs for future Pokémon."
@@ -739,6 +739,16 @@ class OnigimonManager:
         self.save()
         self.notify("Onigimon care", message, companion.sprite_url)
         return message
+
+    def category_status_message(self, category_id: str) -> Optional[str]:
+        companion = self.active_companion()
+        if companion is None:
+            return None
+        if category_id == "food":
+            if companion.hunger >= 100:
+                return f"{self.companion_display_name(companion)} is already full."
+            return "Choose a food item below to feed your Onigimon."
+        return None
 
     def _berry_type_bonus(self, companion: OnigimonCompanion, berry: Dict[str, Any]) -> int:
         raw_types = companion.types if isinstance(companion.types, list) else [companion.types]
@@ -832,7 +842,8 @@ def render_widget_html() -> str:
         sprite = companion.get("sprite_url") or ""
         img = f'<img src="{escape(sprite)}" alt="">' if sprite else f'<img class="onigimon-placeholder" src="{escape(pokeball_icon)}" alt="">'
         body = f"""
-            <div class="onigimon-main">
+            <div class="onigimon-main onigimon-scene" {_onigimon_scene_style_attr()}>
+                {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
                 <div class="onigimon-info">
                     <strong>{name}</strong>
@@ -844,32 +855,16 @@ def render_widget_html() -> str:
             {_meter("Fresh", int(companion.get("cleanliness", 0)), "#70c6a6")}
         """
 
-    berry_total = sum(int(inventory.get(key, 0)) for key in BERRY_KEYS)
-    widget_counts = (
-        ("berry_cheri", berry_total, "Berries"),
-        ("poke_candies", int(inventory.get("poke_candies", 0)), ITEMS["poke_candies"]["label"]),
-        ("curry_ingredients", int(inventory.get("curry_ingredients", 0)), ITEMS["curry_ingredients"]["label"]),
-        ("exp_candy", int(inventory.get("exp_candy", 0)), ITEMS["exp_candy"]["label"]),
-        ("medicine", int(inventory.get("medicine", 0)), ITEMS["medicine"]["label"]),
-        ("pokeballs", int(inventory.get("pokeballs", 0)), ITEMS["pokeballs"]["label"]),
-    )
-    item_bits = "".join(
-        f"<span title=\"{escape(label)}\">{_item_icon(key)} {count}</span>"
-        for key, count, label in widget_counts
-    )
-    modal = _care_modal_html(payload, companion)
     return f"""
-    <div class="onigimon-widget" onclick="pycmd('openGamificationSettings')">
+    <div class="onigimon-widget" onclick="pycmd('openOnigimonSettings')">
         <div class="onigimon-header">
             <h3>Onigimon</h3>
-            <button class="onigimon-ball-btn" title="Open Onigimon care" onclick="event.stopPropagation(); document.getElementById('onigimon-care-modal').classList.add('is-open');">
+            <button class="onigimon-ball-btn" title="Open Onigimon care" onclick="event.stopPropagation(); pycmd('openOnigimonCare');">
                 <i class="onigimon-ball-icon" style="mask-image: url('{escape(pokeball_icon)}'); -webkit-mask-image: url('{escape(pokeball_icon)}');"></i>
             </button>
         </div>
         <div class="onigimon-body">{body}</div>
-        <div class="onigimon-inventory">{item_bits}</div>
     </div>
-    {modal}
     """
 
 
@@ -910,6 +905,83 @@ def _addon_asset_url(rel_path: str) -> str:
             addon_package = "1011095603"
         return f"/_addons/{addon_package}/{rel_path}"
     return ""
+
+
+def _normalize_scene_color(value: Any) -> str:
+    text = str(value or "").strip()
+    if re.match(r"^#[0-9a-fA-F]{6}$", text):
+        return text
+    return "#e8f4ff"
+
+
+def _onigimon_scene_image_url() -> str:
+    image_path = str(manager.config().get("scene_background_image", "") or "").strip()
+    if not image_path:
+        return ""
+    if image_path.startswith("/_addons/") or image_path.startswith("http://") or image_path.startswith("https://"):
+        return image_path
+    if os.path.isabs(image_path):
+        addon_path = os.path.dirname(os.path.dirname(__file__))
+        try:
+            rel_path = os.path.relpath(image_path, addon_path)
+        except Exception:
+            return ""
+    else:
+        rel_path = image_path
+    return _addon_asset_url(rel_path)
+
+
+def _onigimon_scene_style_attr() -> str:
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#e8f4ff"))
+    image_url = _onigimon_scene_image_url()
+    try:
+        blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))
+    except Exception:
+        blur = 9
+    try:
+        opacity = max(0, min(100, int(manager.config().get("scene_background_opacity", 90) or 0))) / 100.0
+    except Exception:
+        opacity = 0.9
+    parts = [
+        f"background-color: {color}",
+        "--onigimon-scene-image: none",
+        f"--onigimon-scene-blur: {blur}px",
+        f"--onigimon-scene-opacity: {opacity:.2f}",
+    ]
+    if image_url:
+        parts.extend([
+            f"--onigimon-scene-image: url('{escape(image_url)}')",
+        ])
+    return f'style="{"; ".join(parts)};"'
+
+
+def _onigimon_scene_background_style_attr() -> str:
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#e8f4ff"))
+    image_url = _onigimon_scene_image_url()
+    try:
+        blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))
+    except Exception:
+        blur = 9
+    try:
+        opacity = max(0, min(100, int(manager.config().get("scene_background_opacity", 90) or 0))) / 100.0
+    except Exception:
+        opacity = 0.9
+    parts = [
+        f"background-color: {color}",
+        "background-image: none",
+        "background-size: cover",
+        "background-position: center",
+        "background-repeat: no-repeat",
+        f"filter: blur({blur}px)",
+        f"opacity: {opacity:.2f}",
+    ]
+    if image_url:
+        parts[1] = f"background-image: url('{escape(image_url)}')"
+    return f'style="{"; ".join(parts)};"'
+
+
+def _onigimon_scene_background_layer(class_name: str) -> str:
+    return f'<div class="{escape(class_name)}" {_onigimon_scene_background_style_attr()}></div>'
 
 
 def _care_modal_html(payload: Dict[str, Any], companion: Optional[Dict[str, Any]]) -> str:
@@ -954,7 +1026,8 @@ def _care_modal_html(payload: Dict[str, Any], companion: Optional[Dict[str, Any]
             </button>
             <h3>{name}</h3>
 
-            <div class="onigimon-care-display">
+            <div class="onigimon-care-display" {_onigimon_scene_style_attr()}>
+                {_onigimon_scene_background_layer("onigimon-care-bg")}
                 <div class="onigimon-care-item-flow">
                     {flow_item_html}
                 </div>
@@ -1026,6 +1099,10 @@ def _care_modal_html(payload: Dict[str, Any], companion: Optional[Dict[str, Any]
                             }}
                         }};
                     }}
+                    if (action === 'feed') {{
+                        onigimonTriggerReaction(key);
+                        pycmd('onigimon_feed:' + key);
+                    }}
                 }};
                 window.onigimonTriggerReaction = function(key){{
                     var flow = modal.querySelector('.onigimon-care-item-flow');
@@ -1049,8 +1126,9 @@ def _care_modal_html(payload: Dict[str, Any], companion: Optional[Dict[str, Any]
 def _category_button_html(category_id: str, label: str, icon_key: str, keys: tuple, inventory: Dict[str, int]) -> str:
     count = sum(int(inventory.get(key, 0)) for key in keys)
     disabled = "disabled" if count <= 0 else ""
+    status_cmd = f" pycmd('onigimon_category:{escape(category_id)}');" if category_id == "food" else ""
     return f"""
-    <button class="onigimon-category-chip" data-category="{escape(category_id)}" {_item_color_style(category_id)} {disabled} onclick="event.stopPropagation(); onigimonShowCategory('{escape(category_id)}');">
+    <button class="onigimon-category-chip" data-category="{escape(category_id)}" {_item_color_style(category_id)} {disabled} onclick="event.stopPropagation(); onigimonShowCategory('{escape(category_id)}');{status_cmd}">
         {_item_icon(icon_key)}
         <span>{escape(label)}</span>
         <b>{count}</b>
@@ -1085,8 +1163,19 @@ def _inventory_choice_html(item_key: str, action: str, count: int, companion: Di
             <small>{escape(hint)} · {count}</small>
         </div>
         """
+    if action == "feed":
+        onclick = (
+            "event.stopPropagation(); "
+            f"onigimonTriggerReaction({json.dumps(item_key)}); "
+            f"pycmd('onigimon_feed:' + {json.dumps(item_key)});"
+        )
+    else:
+        onclick = (
+            "event.stopPropagation(); "
+            f"onigimonSelectCareItem({json.dumps(item_key)}, {json.dumps(action)}, {json.dumps(label)});"
+        )
     return f"""
-    <button class="onigimon-inventory-choice" data-item="{escape(item_key)}" {_item_color_style(item_key)} title="{escape(hint)}" onclick="event.stopPropagation(); onigimonSelectCareItem({json.dumps(item_key)}, {json.dumps(action)}, {json.dumps(label)});">
+    <button class="onigimon-inventory-choice" data-item="{escape(item_key)}" {_item_color_style(item_key)} title="{escape(hint)}" onclick="{escape(onclick)}">
         {_item_icon(item_key)}
         <span>{escape(label)}</span>
         <small>{escape(hint)} · {count}</small>

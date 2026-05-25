@@ -4,7 +4,6 @@ from aqt import mw, gui_hooks
 from aqt.qt import QDialog, QVBoxLayout, QLabel, QPushButton, Qt, QPixmap, QEvent, QKeyEvent
 from PyQt6 import QtCore
 from aqt.reviewer import Reviewer
-from aqt.utils import showInfo
 from .. import config
 
 _focus_dango_enabled = False

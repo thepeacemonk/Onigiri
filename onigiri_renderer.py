@@ -676,35 +676,45 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             font-size: 15px;
         }}
 
+        .onigimon-body {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+
         .onigimon-header span,
         .onigimon-info span {{
             color: var(--fg-subtle, #757575);
             font-size: 12px;
         }}
-
+        
         .onigimon-ball-btn {{
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             display: grid;
             place-items: center;
-            flex: 0 0 22px;
+            flex: 0 0 24px;
             border: 1px solid var(--border, #e0e0e0);
             border-radius: 999px;
-            background: color-mix(in srgb, var(--fg, #222) 5%, transparent);
+            background: var(--canvas, #ffffff);
             padding: 0;
             cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
         }}
 
         .onigimon-ball-btn:hover {{
-            background: color-mix(in srgb, var(--accent-color, #007aff) 14%, transparent);
-            border-color: color-mix(in srgb, var(--accent-color, #007aff) 38%, var(--border, #e0e0e0));
+            background: var(--accent-color, #007aff);
+            border-color: var(--accent-color, #007aff);
+            box-shadow: 0 4px 8px color-mix(in srgb, var(--accent-color, #007aff) 30%, transparent);
+            transform: translateY(-1px);
         }}
 
         .onigimon-ball-icon {{
-            width: 13px;
-            height: 13px;
+            width: 14px;
+            height: 14px;
             display: inline-block;
-            background-color: var(--fg-subtle, #757575);
+            background-color: var(--fg, #222);
             mask-size: contain;
             -webkit-mask-size: contain;
             mask-repeat: no-repeat;
@@ -715,12 +725,64 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .onigimon-ball-btn:hover .onigimon-ball-icon {{
-            background-color: var(--accent-color, #007aff);
+            background-color: #ffffff;
         }}
 
         .onigimon-main {{
             gap: 12px;
             min-height: 52px;
+        }}
+
+        .onigimon-scene {{
+            position: relative;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 12px;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow: hidden;
+            isolation: isolate;
+        }}
+
+        .onigimon-scene::before {{
+            content: "";
+            position: absolute;
+            inset: -12px;
+            background-image: var(--onigimon-scene-image, none);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(var(--onigimon-scene-blur, 9px));
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: -2;
+            display: none;
+        }}
+
+        .onigimon-scene-bg {{
+            position: absolute;
+            inset: -12px;
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: 0;
+            pointer-events: none;
+        }}
+
+        .onigimon-scene::after {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 16%, transparent);
+            z-index: 1;
+        }}
+
+        .onigimon-scene > * {{
+            position: relative;
+            z-index: 2;
+        }}
+
+        .onigimon-scene > .onigimon-scene-bg {{
+            position: absolute;
+            z-index: 0;
         }}
 
         .onigimon-sprite {{
@@ -731,6 +793,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex: 0 0 58px;
             border-radius: 12px;
             background: color-mix(in srgb, var(--accent-color, #007aff) 10%, transparent);
+        }}
+
+        .onigimon-scene .onigimon-sprite {{
+            background: transparent;
         }}
 
         .onigimon-sprite img {{
@@ -750,6 +816,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: grid;
             gap: 2px;
             min-width: 0;
+            text-align: left;
+            justify-items: start;
         }}
 
         .onigimon-info strong {{
@@ -807,462 +875,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex: 0 0 auto;
         }}
 
-        .onigimon-care-modal {{
-            position: fixed;
-            inset: 0;
-            z-index: 10000;
-            display: none;
-            place-items: center;
-            padding: 18px;
-            background: rgba(0, 0, 0, 0.42);
-            box-sizing: border-box;
-        }}
-
-        .onigimon-care-modal.is-open {{
-            display: grid;
-        }}
-
-        .onigimon-care-dialog {{
-            position: relative;
-            width: min(720px, calc(100vw - 36px));
-            display: grid;
-            gap: 14px;
-            padding: 18px;
-            border-radius: 14px;
-            border: 1px solid var(--border, #e0e0e0);
-            background: var(--canvas, #ffffff);
-            color: var(--fg, #222);
-            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
-            box-sizing: border-box;
-        }}
-
-        .onigimon-care-dialog h3 {{
-            margin: 0;
-            padding-right: 34px;
-            font-size: 18px;
-        }}
-
-        #onigimon-care-modal .onigimon-modal-close {{
-            --onigimon-close-bg: rgba(20, 20, 20, 0.08);
-            --onigimon-close-fg: #222222;
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 28px;
-            height: 28px;
-            border: 0 !important;
-            border-radius: 999px;
-            background: var(--onigimon-close-bg) !important;
-            color: var(--onigimon-close-fg) !important;
-            cursor: pointer;
-            line-height: 1;
-            outline: none !important;
-            box-shadow: none !important;
-            transform: none !important;
-            transition: none !important;
-            animation: none !important;
-            -webkit-tap-highlight-color: transparent;
-        }}
-
-        #onigimon-care-modal .onigimon-modal-close:hover,
-        #onigimon-care-modal .onigimon-modal-close:active,
-        #onigimon-care-modal .onigimon-modal-close:focus,
-        #onigimon-care-modal .onigimon-modal-close:focus-visible {{
-            border: 0 !important;
-            background: var(--onigimon-close-bg) !important;
-            color: var(--onigimon-close-fg) !important;
-            outline: none !important;
-            box-shadow: none !important;
-            transform: none !important;
-            transition: none !important;
-            animation: none !important;
-        }}
-
-        .night #onigimon-care-modal .onigimon-modal-close,
-        .night-mode #onigimon-care-modal .onigimon-modal-close,
-        .nightMode #onigimon-care-modal .onigimon-modal-close {{
-            --onigimon-close-bg: rgba(255, 255, 255, 0.12);
-            --onigimon-close-fg: #f2f2f2;
-        }}
-
-        #onigimon-care-modal .onigimon-close-icon {{
-            width: 18px;
-            height: 18px;
-            display: block;
-            margin: auto;
-            pointer-events: none;
-            background-color: var(--onigimon-close-fg) !important;
-            mask-size: contain;
-            -webkit-mask-size: contain;
-            mask-repeat: no-repeat;
-            -webkit-mask-repeat: no-repeat;
-            mask-position: center;
-            -webkit-mask-position: center;
-            transform: none !important;
-            transition: none !important;
-            animation: none !important;
-        }}
-
-        #onigimon-care-modal .onigimon-modal-close:hover .onigimon-close-icon,
-        #onigimon-care-modal .onigimon-modal-close:active .onigimon-close-icon,
-        #onigimon-care-modal .onigimon-modal-close:focus .onigimon-close-icon {{
-            background-color: var(--onigimon-close-fg) !important;
-            transform: none !important;
-            transition: none !important;
-            animation: none !important;
-        }}
-
-        .onigimon-care-actions {{
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 10px;
-        }}
-
-        .onigimon-care-actions button {{
-            min-width: 0;
-            display: grid;
-            justify-items: center;
-            gap: 5px;
-            border: 1px solid var(--border, #e0e0e0);
-            border-radius: 10px;
-            padding: 10px 8px;
-            background: color-mix(in srgb, var(--accent-color, #007aff) 8%, var(--canvas-inset, #f6f6f6));
-            color: inherit;
-            cursor: pointer;
-        }}
-
-        .onigimon-care-actions button:disabled {{
-            opacity: 0.45;
-            cursor: default;
-        }}
-
-        .onigimon-care-actions .onigimon-item-icon {{
-            width: 30px;
-            height: 30px;
-        }}
-
-        .onigimon-care-actions span {{
-            font-weight: 600;
-            font-size: 13px;
-        }}
-
-        .onigimon-care-actions small {{
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: var(--fg-subtle, #757575);
-            font-size: 11px;
-        }}
-
-        .onigimon-category-grid {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }}
-
-        .onigimon-category-chip {{
-            min-width: 128px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: 1px solid transparent;
-            border-radius: 999px;
-            padding: 8px 11px;
-            background: color-mix(in srgb, var(--accent-color, #007aff) 11%, transparent);
-            color: inherit;
-            cursor: pointer;
-            font-size: 13px;
-        }}
-
-        .onigimon-category-chip:disabled {{
-            opacity: 0.45;
-            cursor: default;
-        }}
-
-        .onigimon-category-chip:not(:disabled):hover {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-        }}
-
-        .onigimon-category-chip.is-selected {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-            background: var(--onigimon-item-bg-light, color-mix(in srgb, var(--accent-color, #007aff) 18%, transparent));
-        }}
-
-        .onigimon-category-chip[data-category="treats"]:not(:disabled):hover {{
-            border-color: #ff6fc8;
-        }}
-
-        .onigimon-category-chip[data-category="treats"].is-selected {{
-            border-color: #ff6fc8;
-            background: #ffe0f3;
-        }}
-
-        .night .onigimon-category-chip[data-category="treats"].is-selected,
-        .night-mode .onigimon-category-chip[data-category="treats"].is-selected,
-        .nightMode .onigimon-category-chip[data-category="treats"].is-selected {{
-            background: #4a1735;
-        }}
-
-        .night .onigimon-category-chip.is-selected,
-        .night-mode .onigimon-category-chip.is-selected,
-        .nightMode .onigimon-category-chip.is-selected {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-            background: var(--onigimon-item-bg-dark, color-mix(in srgb, var(--accent-color, #007aff) 22%, transparent));
-        }}
-
-        .onigimon-category-chip span {{
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-weight: 600;
-        }}
-
-        .onigimon-category-chip b {{
-            margin-left: auto;
-            font-size: 14px;
-        }}
-
-        .onigimon-category-panels {{
-            display: grid;
-            gap: 8px;
-        }}
-
-        .onigimon-category-panel {{
-            display: none;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 8px;
-            padding: 10px;
-            border: 1px solid var(--border, #e0e0e0);
-            border-radius: 10px;
-            background: color-mix(in srgb, var(--fg, #222) 4%, transparent);
-        }}
-
-        .onigimon-category-panel.is-open {{
-            display: grid;
-        }}
-
-        .onigimon-inventory-choice {{
-            min-width: 0;
-            display: grid;
-            justify-items: center;
-            gap: 4px;
-            border: 1px solid var(--border, #e0e0e0);
-            border-radius: 9px;
-            padding: 8px 6px;
-            background: var(--canvas-inset, #f6f6f6);
-            color: inherit;
-            cursor: pointer;
-        }}
-
-        .onigimon-inventory-choice:disabled {{
-            opacity: 0.45;
-            cursor: default;
-        }}
-
-        .onigimon-inventory-choice:not(:disabled):hover {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-        }}
-
-        .onigimon-inventory-choice.is-selected {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-            background: var(--onigimon-item-bg-light, color-mix(in srgb, var(--accent-color, #007aff) 16%, var(--canvas-inset, #f6f6f6)));
-        }}
-
-        .onigimon-inventory-choice[data-item="poke_candies"]:hover {{
-            border-color: #ff6fc8;
-        }}
-
-        .onigimon-inventory-choice[data-item="poke_candies"].is-selected {{
-            border-color: #ff6fc8;
-            background: #ffe0f3;
-        }}
-
-        .night .onigimon-inventory-choice[data-item="poke_candies"].is-selected,
-        .night-mode .onigimon-inventory-choice[data-item="poke_candies"].is-selected,
-        .nightMode .onigimon-inventory-choice[data-item="poke_candies"].is-selected {{
-            background: #4a1735;
-        }}
-
-        .night .onigimon-inventory-choice.is-selected,
-        .night-mode .onigimon-inventory-choice.is-selected,
-        .nightMode .onigimon-inventory-choice.is-selected {{
-            border-color: var(--onigimon-item-color, var(--accent-color, #007aff));
-            background: var(--onigimon-item-bg-dark, color-mix(in srgb, var(--accent-color, #007aff) 18%, var(--canvas-inset, #2c2c2c)));
-        }}
-
-        .onigimon-inventory-choice.is-passive {{
-            cursor: default;
-        }}
-
-        .onigimon-inventory-choice span {{
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-size: 12px;
-            font-weight: 600;
-        }}
-
-        .onigimon-inventory-choice small {{
-            color: var(--fg-subtle, #757575);
-            font-size: 11px;
-            line-height: 1.25;
-            text-align: center;
-        }}
-
-        .onigimon-modal-inventory {{
-            display: grid;
-            gap: 8px;
-        }}
-
-        .onigimon-modal-inventory-title {{
-            color: var(--fg-subtle, #757575);
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }}
-
-        .onigimon-modal-inventory-title:not(:first-child) {{
-            margin-top: 4px;
-        }}
-
-        .onigimon-modal-inventory-grid {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 7px;
-        }}
-
-        .onigimon-empty-category {{
-            color: var(--fg-subtle, #757575);
-            font-size: 12px;
-            padding: 6px 2px;
-        }}
-
-        .onigimon-inventory-chip {{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            max-width: 170px;
-            padding: 7px 9px;
-            border-radius: 999px;
-            background: color-mix(in srgb, var(--accent-color, #007aff) 9%, transparent);
-            color: inherit;
-            font-size: 12px;
-        }}
-
-        .onigimon-inventory-chip span {{
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }}
-
-        .onigimon-inventory-chip b {{
-            font-size: 13px;
-        }}
-
-        .onigimon-berry-chip {{
-            display: grid;
-            grid-template-columns: 22px minmax(0, 1fr) auto;
-            align-items: center;
-            max-width: 230px;
-            border-radius: 12px;
-        }}
-
-        .onigimon-berry-chip small {{
-            grid-column: 2 / 4;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: var(--fg-subtle, #757575);
-            font-size: 10px;
-        }}
-
-        /* Care Modal Display & Animations */
-        .onigimon-care-display {{
-            position: relative;
-            height: 190px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: color-mix(in srgb, var(--accent-color, #007aff) 8%, var(--canvas-inset, #f6f6f6));
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid var(--border, #e0e0e0);
-        }}
-
-        .night .onigimon-care-display {{
-            background: color-mix(in srgb, var(--accent-color, #007aff) 12%, var(--canvas-inset, #2c2c2c));
-            border-color: var(--border, #444);
-        }}
-
-        .onigimon-care-sprite {{
-            width: 96px;
-            height: 96px;
-            display: grid;
-            place-items: center;
-            z-index: 2;
-        }}
-
-        .onigimon-care-sprite img {{
-            width: 92px;
-            height: 92px;
-            object-fit: contain;
-            image-rendering: pixelated;
-        }}
-
-        .onigimon-care-item-flow {{
-            position: absolute;
-            left: 25px;
-            top: 25px;
-            width: 32px;
-            height: 32px;
-            opacity: 0;
-            z-index: 4;
-            pointer-events: none;
-        }}
-
-        .onigimon-care-item-flow img {{
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            image-rendering: pixelated;
-        }}
-
-        .onigimon-care-modal.has-reaction.is-open .onigimon-care-sprite {{
-            animation: onigimon-bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.5s both;
-        }}
-
-        .onigimon-care-modal.has-reaction.is-open .onigimon-care-item-flow {{
-            animation: onigimon-item-flow 1.0s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s both;
-        }}
-
-        @keyframes onigimon-bounce {{
-            0% {{ transform: scale(1); }}
-            30% {{ transform: scale(1.2) translateY(-12px); }}
-            50% {{ transform: scale(0.9) translateY(0); }}
-            70% {{ transform: scale(1.05) translateY(-4px); }}
-            100% {{ transform: scale(1) translateY(0); }}
-        }}
-
-        @keyframes onigimon-item-flow {{
-            0% {{
-                opacity: 0;
-                transform: translate(0, 0) scale(0.6) rotate(0deg);
-            }}
-            20% {{
-                opacity: 1;
-                transform: translate(15px, -15px) scale(1.2) rotate(-20deg);
-            }}
-            80% {{
-                opacity: 1;
-                transform: translate(110px, 20px) scale(0.9) rotate(180deg);
-            }}
-            100% {{
-                opacity: 0;
-                transform: translate(125px, 25px) scale(0.1) rotate(220deg);
-            }}
-        }}
 
         /* Restaurant Level Widget Styles */
         .onigiri-restaurant-level-widget {{

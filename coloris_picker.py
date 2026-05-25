@@ -1,5 +1,8 @@
 # coloris_picker.py
+import json
 import os
+import re
+from aqt import mw
 from aqt.qt import (
     QDialog,
     QVBoxLayout,
@@ -44,6 +47,43 @@ class Bridge(QObject):
         """
         self.colorAccepted.emit(color_hex)
 
+    @pyqtSlot(result=str)
+    def getFavoriteColors(self):
+        try:
+            colors = mw.col.conf.get("onigiri_coloris_favorites", []) if mw and mw.col else []
+        except Exception:
+            colors = []
+        if not isinstance(colors, list):
+            colors = []
+        slots = []
+        for color in colors[:9]:
+            color = str(color).strip().upper()
+            slots.append(color if re.match(r"^#[0-9A-F]{6}$", color) else "")
+        while len(slots) < 9:
+            slots.append("")
+        return json.dumps(slots)
+
+    @pyqtSlot(str)
+    def setFavoriteColors(self, colors_json):
+        try:
+            colors = json.loads(colors_json)
+        except Exception:
+            colors = []
+        if not isinstance(colors, list):
+            colors = []
+        slots = []
+        for color in colors[:9]:
+            color = str(color).strip().upper()
+            slots.append(color if re.match(r"^#[0-9A-F]{6}$", color) else "")
+        while len(slots) < 9:
+            slots.append("")
+        try:
+            if mw and mw.col:
+                mw.col.conf["onigiri_coloris_favorites"] = slots
+                mw.col.setMod()
+        except Exception as exc:
+            print(f"Onigiri: Could not save Coloris favorites: {exc}")
+
 
 # --- The Custom Color Dialog ---
 # This dialog will replace QColorDialog
@@ -53,8 +93,8 @@ class ColorisColorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Select Color")
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        # Set a fixed size that fits the inline picker nicely
-        self.setFixedSize(300, 420) 
+        # Set a fixed size that fits the inline Coloris picker nicely.
+        self.setFixedSize(360, 405)
 
         # Store the selected color
         self.selected_color = initial_color
@@ -95,6 +135,31 @@ class ColorisColorDialog(QDialog):
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        self.button_box.setCenterButtons(True)
+        done_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = self.button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if done_button:
+            done_button.setText("Done")
+        if cancel_button:
+            cancel_button.setText("Cancel")
+        self.button_box.setStyleSheet("""
+            QDialogButtonBox {
+                qproperty-centerButtons: true;
+            }
+            QPushButton {
+                min-width: 86px;
+                min-height: 34px;
+                padding: 0 18px;
+                border-radius: 17px;
+                border: 1px solid rgba(128, 128, 128, 0.35);
+                background-color: rgba(128, 128, 128, 0.16);
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                border-color: rgba(10, 132, 255, 0.65);
+                background-color: rgba(10, 132, 255, 0.16);
+            }
+        """)
         self.button_box.accepted.connect(self.on_ok_clicked)
         self.button_box.rejected.connect(self.reject)
 
@@ -111,7 +176,10 @@ class ColorisColorDialog(QDialog):
         to get the current color from the picker.
         The JS will then call py_bridge.onColorSelected(color).
         """
-        self.page.runJavaScript("requestCurrentColor();")
+        self.page.runJavaScript(
+            "(window.currentColor ? window.currentColor() : null);",
+            lambda color: self.on_accept(color or self.selected_color),
+        )
 
     @pyqtSlot(str)
     def on_accept(self, color_hex):

@@ -53,6 +53,14 @@ html.night-mode .onigiri-notification-card,
     transform: translateY(0) scale(1);
 }
 
+.onigiri-notification-card.has-no-icon {
+    grid-template-columns: 1fr;
+}
+
+.onigiri-notification-card.is-centered {
+    text-align: center;
+}
+
 .onigiri-notification-icon {
     font-size: 24px;
     line-height: 1;
@@ -105,6 +113,10 @@ html.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notifi
     min-width: 0;
 }
 
+.onigiri-notification-card.is-centered .onigiri-notification-content {
+    justify-items: center;
+}
+
 .onigiri-notification-title {
     font-size: 15px;
     font-weight: 600;
@@ -119,4 +131,9 @@ html.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notifi
     margin: 0;
     color: inherit;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+.onigiri-notification-card.has-no-title .onigiri-notification-description {
+    font-size: 15px;
+    font-weight: 700;
 }

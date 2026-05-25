@@ -1,6 +1,7 @@
 from aqt import mw
 from aqt.qt import *
-from aqt.utils import showInfo, tooltip
+from .onigiri_notifications import notify as tooltip
+from .onigiri_notifications import notify_info as showInfo
 
 class CreateDeckDialog(QDialog):
     def __init__(self, parent=None):

@@ -2,9 +2,10 @@ import json
 import requests
 from aqt import mw
 from aqt.qt import *
-from aqt.utils import showInfo, tooltip
 from anki.hooks import addHook
 from .restaurant_level import manager as restaurant_manager
+from ..onigiri_notifications import notify as tooltip
+from ..onigiri_notifications import notify_info as showInfo
 
 
 

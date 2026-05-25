@@ -1,18 +1,21 @@
 import os
 import copy
+import re
+import shutil
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QWidget, QSpinBox, QPlainTextEdit, QScrollArea, QGridLayout, QPixmap, 
     Qt, QFrame, QSizePolicy, QButtonGroup, QAbstractButton, QSignalBlocker,
     QColor, QPointF, QRectF, QPainter, QPainterPath, QPropertyAnimation,
-    QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize
+    QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize,
+    QFileDialog, QSlider
 )
-from PyQt6.QtCore import pyqtSignal, pyqtProperty
+from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QImage
+from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
 from aqt import mw
 from aqt.theme import theme_manager
-from aqt.utils import showInfo
 from aqt.qt import (
     QDesktopServices, QUrl
 )
@@ -23,6 +26,8 @@ from .gamification import onigimon, restaurant_level
 from .themes import THEMES
 from .settings import FlowLayout
 from .translations import tr
+from .onigiri_notifications import notify_info as showInfo
+from .coloris_picker import ColorisColorDialog
 
 # --- UI COMPONENTS (Copied from settings.py for standalone functionality) ---
 
@@ -367,6 +372,7 @@ class GamificationSettingsDialog(QDialog):
         self.sidebar_scroll_area.setObjectName("sidebarNavScrollArea")
         self.sidebar_scroll_area.setWidgetResizable(True)
         self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_scroll_area.viewport().setObjectName("sidebarNavViewport")
         self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.sidebar_scroll_area.setMinimumWidth(164)
@@ -390,8 +396,8 @@ class GamificationSettingsDialog(QDialog):
         # Each item has (display_name, key, bg_color, text_color)
         gamification_items = [
             (tr("general"),             "General",           "",         ""),
-            (tr("restaurant_level"),   "Restaurant Level",  "#ffbd59",  "#000000"),
-            ("Onigimon",               "Onigimon",          "#70c6a6",  "#10231b"),
+            (tr("restaurant_level"),   "Restaurant Level",  "#B94632",  "#ffffff"),
+            ("Onigimon",               "Onigimon",          "#ffd45a",  "#1f1600"),
             (tr("focus_dango"),         "Focus Dango",       "#9d3d64",  "#ffffff"),
             (tr("mochi_messages_title"), "Mochi Messages",    "#00bf63",  "#000000"),
             (tr("coming_soon"),         "Coming Soon",       "",         ""),
@@ -469,14 +475,20 @@ class GamificationSettingsDialog(QDialog):
         mode_key = "dark" if theme_manager.night_mode else "light"
         palette = self.current_config.get("colors", {}).get(mode_key, {})
         defaults = DEFAULTS["colors"][mode_key]
+        def _safe_dark(value, fallback):
+            color = QColor(value or "")
+            if not color.isValid() or color.lightness() > 145:
+                return fallback
+            return value
+
         if theme_manager.night_mode:
             return {
-                "bg": palette.get("--bg", "#111827"),
-                "panel": palette.get("--canvas-inset", "#1f2937"),
-                "surface": palette.get("--highlight-bg", "#263040"),
+                "bg": _safe_dark(palette.get("--bg"), "#1f2329"),
+                "panel": _safe_dark(palette.get("--canvas-inset"), "#2b2b2b"),
+                "surface": _safe_dark(palette.get("--highlight-bg"), "#353a42"),
                 "fg": palette.get("--fg", "#f9fafb"),
                 "muted": palette.get("--fg-subtle", "#d1d5db"),
-                "border": palette.get("--border", "#374151"),
+                "border": _safe_dark(palette.get("--border"), "#454c58"),
                 "accent": palette.get("--accent-color", defaults["--accent-color"]),
             }
         return {
@@ -572,6 +584,42 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_sprite_motion_combo.addItem("GIF sprites", "gif")
         current_motion = str(self.onigimon_config.get("sprite_motion", "static"))
         self.onigimon_sprite_motion_combo.setCurrentIndex(1 if current_motion == "gif" else 0)
+        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#e8f4ff") or "#e8f4ff")
+        if not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color):
+            self.onigimon_scene_color = "#e8f4ff"
+        self.onigimon_scene_image = str(self.onigimon_config.get("scene_background_image", "") or "")
+        self.onigimon_scene_color_button = QPushButton("Scene color")
+        self.onigimon_scene_color_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_color_button.clicked.connect(self._choose_onigimon_scene_color)
+        self.onigimon_scene_import_button = QPushButton("Import image")
+        self.onigimon_scene_import_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_import_button.clicked.connect(self._import_onigimon_scene_background)
+        self.onigimon_scene_clear_button = QPushButton("Clear image")
+        self.onigimon_scene_clear_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_clear_button.clicked.connect(self._clear_onigimon_scene_background)
+        blur_value = int(self.onigimon_config.get("scene_background_blur", 9) or 0)
+        self.onigimon_scene_blur_slider = QSlider(Qt.Orientation.Horizontal)
+        self.onigimon_scene_blur_slider.setObjectName("onigimonSceneSlider")
+        self.onigimon_scene_blur_slider.setRange(0, 40)
+        self.onigimon_scene_blur_slider.setSingleStep(1)
+        self.onigimon_scene_blur_slider.setPageStep(4)
+        self.onigimon_scene_blur_slider.setValue(max(0, min(40, blur_value)))
+        self.onigimon_scene_blur_slider.valueChanged.connect(self._on_onigimon_scene_blur_changed)
+        self.onigimon_scene_blur_value_label = QLabel(f"{self.onigimon_scene_blur_slider.value()} px")
+        self.onigimon_scene_blur_value_label.setObjectName("onigimonSceneBlurValue")
+        self.onigimon_scene_blur_apply_timer = QTimer(self)
+        self.onigimon_scene_blur_apply_timer.setSingleShot(True)
+        self.onigimon_scene_blur_apply_timer.timeout.connect(self._persist_onigimon_scene_blur)
+        opacity_value = int(self.onigimon_config.get("scene_background_opacity", 90) or 0)
+        self.onigimon_scene_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.onigimon_scene_opacity_slider.setObjectName("onigimonSceneSlider")
+        self.onigimon_scene_opacity_slider.setRange(0, 100)
+        self.onigimon_scene_opacity_slider.setSingleStep(1)
+        self.onigimon_scene_opacity_slider.setPageStep(10)
+        self.onigimon_scene_opacity_slider.setValue(max(0, min(100, opacity_value)))
+        self.onigimon_scene_opacity_slider.valueChanged.connect(self._on_onigimon_scene_opacity_changed)
+        self.onigimon_scene_opacity_value_label = QLabel(f"{self.onigimon_scene_opacity_slider.value()}%")
+        self.onigimon_scene_opacity_value_label.setObjectName("onigimonSceneBlurValue")
         self.onigimon_selected_companion_id = onigimon.manager.load().active_companion_id
         active_companion = onigimon.manager.active_companion()
         self.onigimon_name_input = QLineEdit(onigimon.manager.companion_display_name(active_companion) if active_companion else "")
@@ -1084,6 +1132,7 @@ class GamificationSettingsDialog(QDialog):
             if str(pokemon.get("ankimon_id")) == self.onigimon_selected_companion_id:
                 current = onigimon.manager.load().companions.get(self.onigimon_selected_companion_id, {})
                 self.onigimon_name_input.setText(str(current.get("display_name") or pokemon.get("name") or ""))
+                self._update_onigimon_scene_controls()
                 break
 
     def _onigimon_sprite_local_path(self, sprite_url):
@@ -1098,6 +1147,212 @@ class GamificationSettingsDialog(QDialog):
             return os.path.join(mw.addonManager.addonsFolder(), addon_id, rel_path)
         except Exception:
             return ""
+
+    def _onigimon_background_dir(self):
+        path = os.path.join(self.addon_path, "user_files", "onigimon_backgrounds")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _onigimon_scene_image_abs_path(self):
+        if not self.onigimon_scene_image:
+            return ""
+        if os.path.isabs(self.onigimon_scene_image):
+            return self.onigimon_scene_image
+        return os.path.join(self.addon_path, self.onigimon_scene_image)
+
+    def _unique_onigimon_background_path(self, source_path):
+        directory = self._onigimon_background_dir()
+        base, ext = os.path.splitext(os.path.basename(source_path))
+        safe_base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip(".-") or "onigimon-background"
+        ext = ext.lower() if ext else ".png"
+        candidate = os.path.join(directory, safe_base + ext)
+        index = 2
+        while os.path.exists(candidate):
+            candidate = os.path.join(directory, f"{safe_base}-{index}{ext}")
+            index += 1
+        return candidate
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "onigimon_scene_preview", None) and event.type() == QEvent.Type.Resize:
+            self._update_onigimon_scene_preview_background()
+        return super().eventFilter(obj, event)
+
+    def _scaled_onigimon_scene_background(self, image_path):
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull() or not hasattr(self, "onigimon_scene_preview"):
+            return QPixmap()
+
+        size = self.onigimon_scene_preview.size()
+        width = max(1, size.width())
+        height = max(1, size.height())
+        scaled = pixmap.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = max(0, (scaled.width() - width) // 2)
+        y = max(0, (scaled.height() - height) // 2)
+        cropped = scaled.copy(x, y, width, height)
+        blur = self.onigimon_scene_blur_slider.value() if hasattr(self, "onigimon_scene_blur_slider") else 0
+        if blur <= 0:
+            return self._apply_onigimon_scene_opacity(cropped)
+        return self._apply_onigimon_scene_opacity(self._blur_onigimon_scene_pixmap(cropped, float(blur)))
+
+    def _apply_onigimon_scene_opacity(self, pixmap):
+        if pixmap.isNull():
+            return pixmap
+        opacity = self.onigimon_scene_opacity_slider.value() if hasattr(self, "onigimon_scene_opacity_slider") else 90
+        opacity = max(0.0, min(1.0, float(opacity) / 100.0))
+        if opacity >= 1.0:
+            return pixmap
+        target = QPixmap(pixmap.size())
+        target.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(target)
+        painter.setOpacity(opacity)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        return target
+
+    def _blur_onigimon_scene_pixmap(self, pixmap, radius):
+        if pixmap.isNull() or radius <= 0:
+            return pixmap
+
+        pad = max(16, int(radius * 2.5))
+        padded = QPixmap(pixmap.width() + pad * 2, pixmap.height() + pad * 2)
+        padded.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(padded)
+        painter.drawPixmap(pad, pad, pixmap)
+        painter.end()
+
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(padded)
+        effect = QGraphicsBlurEffect()
+        effect.setBlurRadius(radius)
+        item.setGraphicsEffect(effect)
+        scene.addItem(item)
+        scene.setSceneRect(QRectF(0, 0, padded.width(), padded.height()))
+
+        blurred = QPixmap(padded.size())
+        blurred.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(blurred)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        scene.render(
+            painter,
+            QRectF(0, 0, padded.width(), padded.height()),
+            QRectF(0, 0, padded.width(), padded.height()),
+        )
+        painter.end()
+        return blurred.copy(pad, pad, pixmap.width(), pixmap.height())
+
+    def _update_onigimon_scene_preview_background(self):
+        if not hasattr(self, "onigimon_scene_preview_bg"):
+            return
+
+        image_path = self._onigimon_scene_image_abs_path()
+        self.onigimon_scene_preview_bg.setGeometry(self.onigimon_scene_preview.rect())
+        if self.onigimon_scene_image and os.path.exists(image_path):
+            self.onigimon_scene_preview_bg.setPixmap(self._scaled_onigimon_scene_background(image_path))
+        else:
+            self.onigimon_scene_preview_bg.setPixmap(QPixmap())
+
+        self.onigimon_scene_preview_bg.lower()
+
+    def _on_onigimon_scene_blur_changed(self, value):
+        if hasattr(self, "onigimon_scene_blur_value_label"):
+            self.onigimon_scene_blur_value_label.setText(f"{int(value)} px")
+        self._update_onigimon_scene_preview_background()
+        oni_conf = self.current_config.setdefault("onigimon", {})
+        oni_conf["scene_background_blur"] = int(value)
+        if hasattr(self, "onigimon_scene_blur_apply_timer"):
+            self.onigimon_scene_blur_apply_timer.start(180)
+
+    def _on_onigimon_scene_opacity_changed(self, value):
+        if hasattr(self, "onigimon_scene_opacity_value_label"):
+            self.onigimon_scene_opacity_value_label.setText(f"{int(value)}%")
+        self._update_onigimon_scene_preview_background()
+        oni_conf = self.current_config.setdefault("onigimon", {})
+        oni_conf["scene_background_opacity"] = int(value)
+        if hasattr(self, "onigimon_scene_blur_apply_timer"):
+            self.onigimon_scene_blur_apply_timer.start(180)
+
+    def _persist_onigimon_scene_blur(self):
+        config.write_config(self.current_config)
+        try:
+            if mw and getattr(mw, "deckBrowser", None):
+                mw.deckBrowser.refresh()
+        except Exception as exc:
+            print(f"Warning: Could not refresh Onigimon widget after blur change: {exc}")
+        try:
+            for widget in mw.app.topLevelWidgets():
+                if widget.__class__.__name__ == "OnigimonCareDialog" and hasattr(widget, "refresh"):
+                    widget.refresh()
+        except Exception as exc:
+            print(f"Warning: Could not refresh Onigimon care after blur change: {exc}")
+
+    def _update_onigimon_scene_controls(self):
+        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#e8f4ff"
+        self.onigimon_scene_color_button.setStyleSheet(
+            f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111; border: 1px solid rgba(0,0,0,0.18); border-radius: 15px; padding: 4px 14px; min-height: 28px; }}"
+        )
+
+        if hasattr(self, "onigimon_scene_preview"):
+            self.onigimon_scene_preview.setStyleSheet(
+                "QFrame#onigimonScenePreview {"
+                "border: 1px solid rgba(120,120,120,0.42);"
+                "border-radius: 14px;"
+                f"background-color: {color};"
+                "}"
+            )
+            self._update_onigimon_scene_preview_background()
+        if hasattr(self, "onigimon_scene_preview_sprite"):
+            sprite_url = ""
+            selected_id = str(getattr(self, "onigimon_selected_companion_id", "") or "")
+            for pokemon in onigimon.manager.get_available_companions():
+                if str(pokemon.get("ankimon_id")) == selected_id:
+                    sprite_url = str(pokemon.get("sprite_url") or "")
+                    break
+            if not sprite_url:
+                companion = onigimon.manager.active_companion()
+                sprite_url = str(companion.sprite_url if companion else "")
+            sprite_path = self._onigimon_sprite_local_path(sprite_url)
+            pixmap = QPixmap(sprite_path) if sprite_path and os.path.exists(sprite_path) else QPixmap()
+            if not pixmap.isNull():
+                self.onigimon_scene_preview_sprite.setPixmap(
+                    pixmap.scaled(74, 74, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                )
+                self.onigimon_scene_preview_sprite.setText("")
+            else:
+                self.onigimon_scene_preview_sprite.setPixmap(QPixmap())
+                self.onigimon_scene_preview_sprite.setText("Onigimon")
+
+    def _choose_onigimon_scene_color(self):
+        chosen, ok = ColorisColorDialog.getColor(self.onigimon_scene_color, self)
+        if ok:
+            self.onigimon_scene_color = chosen
+            self._update_onigimon_scene_controls()
+
+    def _import_onigimon_scene_background(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Onigimon background",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.gif)"
+        )
+        if not path:
+            return
+        try:
+            dest = self._unique_onigimon_background_path(path)
+            shutil.copy2(path, dest)
+            self.onigimon_scene_image = os.path.relpath(dest, self.addon_path)
+            self._update_onigimon_scene_controls()
+        except Exception as exc:
+            showInfo(f"Could not import Onigimon background: {exc}")
+
+    def _clear_onigimon_scene_background(self):
+        self.onigimon_scene_image = ""
+        self._update_onigimon_scene_controls()
 
     def _create_onigimon_hero(self):
         hero = QFrame()
@@ -1182,6 +1437,50 @@ class GamificationSettingsDialog(QDialog):
         starter_note.setMinimumWidth(0)
         companion_layout.addWidget(starter_note)
         layout.addWidget(companion_group)
+
+        scene_group, scene_layout = self._create_inner_group("Scene")
+        self.onigimon_scene_preview = QFrame()
+        self.onigimon_scene_preview.setObjectName("onigimonScenePreview")
+        self.onigimon_scene_preview.setMinimumHeight(128)
+        self.onigimon_scene_preview.installEventFilter(self)
+        self.onigimon_scene_preview_bg = QLabel(self.onigimon_scene_preview)
+        self.onigimon_scene_preview_bg.setObjectName("onigimonScenePreviewBackground")
+        self.onigimon_scene_preview_bg.setScaledContents(False)
+        self.onigimon_scene_preview_bg.lower()
+        preview_layout = QVBoxLayout(self.onigimon_scene_preview)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.addStretch()
+        self.onigimon_scene_preview_sprite = QLabel()
+        self.onigimon_scene_preview_sprite.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.onigimon_scene_preview_sprite.setFixedHeight(82)
+        self.onigimon_scene_preview_sprite.setStyleSheet("font-weight: 700; background: transparent; color: rgba(0,0,0,0.58);")
+        preview_layout.addWidget(self.onigimon_scene_preview_sprite)
+        preview_layout.addStretch()
+        scene_layout.addWidget(self.onigimon_scene_preview)
+        image_row = QHBoxLayout()
+        image_row.addWidget(self.onigimon_scene_import_button)
+        image_row.addWidget(self.onigimon_scene_clear_button)
+        image_row.addStretch()
+        scene_layout.addLayout(image_row)
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("Background color"))
+        color_row.addWidget(self.onigimon_scene_color_button)
+        color_row.addStretch()
+        scene_layout.addLayout(color_row)
+        blur_row = QHBoxLayout()
+        blur_row.addWidget(QLabel("Blur intensity"))
+        blur_row.addWidget(self.onigimon_scene_blur_slider, 1)
+        blur_row.addWidget(self.onigimon_scene_blur_value_label)
+        blur_row.addStretch()
+        scene_layout.addLayout(blur_row)
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(QLabel("Background opacity"))
+        opacity_row.addWidget(self.onigimon_scene_opacity_slider, 1)
+        opacity_row.addWidget(self.onigimon_scene_opacity_value_label)
+        opacity_row.addStretch()
+        scene_layout.addLayout(opacity_row)
+        self._update_onigimon_scene_controls()
+        layout.addWidget(scene_group)
 
         rewards_group, rewards_layout = self._create_inner_group("Rewards")
         rewards_layout.addWidget(self._create_toggle_row(self.onigimon_notifications_toggle, "Show Onigimon notifications"))
@@ -1350,6 +1649,10 @@ class GamificationSettingsDialog(QDialog):
         oni_conf["reward_interval"] = self.onigimon_reward_interval_spinbox.value()
         oni_conf["widget_style"] = self.onigimon_widget_style_combo.currentText()
         oni_conf["sprite_motion"] = self.onigimon_sprite_motion_combo.currentData()
+        oni_conf["scene_background_color"] = self.onigimon_scene_color
+        oni_conf["scene_background_image"] = self.onigimon_scene_image
+        oni_conf["scene_background_blur"] = self.onigimon_scene_blur_slider.value()
+        oni_conf["scene_background_opacity"] = self.onigimon_scene_opacity_slider.value()
         if self.onigimon_selected_companion_id:
             onigimon.manager.set_active_companion(str(self.onigimon_selected_companion_id))
             onigimon.manager.rename_active_companion(self.onigimon_name_input.text().strip())
@@ -1367,6 +1670,10 @@ class GamificationSettingsDialog(QDialog):
 
         # Save config
         config.write_config(self.current_config)
+        try:
+            mw.deckBrowser.refresh()
+        except Exception:
+            pass
         self.accept()
         if mw:
             mw.reset()
@@ -1386,16 +1693,19 @@ class GamificationSettingsDialog(QDialog):
         self.setStyleSheet(f"""
             QDialog {{ background-color: {bg}; color: {fg}; }}
             QWidget#settingsSidebarWrapper {{
-                background-color: transparent;
+                background-color: {bg};
                 border: none;
             }}
             #sidebarContainer {{ 
-                background-color: transparent;
+                background-color: {bg};
                 border: none;
             }}
             QScrollArea#sidebarNavScrollArea {{
-                background-color: transparent;
+                background-color: {bg};
                 border: none;
+            }}
+            QWidget#sidebarNavViewport {{
+                background-color: {bg};
             }}
             QScrollArea#sidebarNavScrollArea QScrollBar:vertical {{
                 border: none;
@@ -1507,6 +1817,42 @@ class GamificationSettingsDialog(QDialog):
                 border: 2px solid #70c6a6;
                 background-color: rgba(112, 198, 166, 0.18);
             }}
+            QPushButton#onigimonSceneButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 15px;
+                padding: 4px 14px;
+                min-height: 28px;
+            }}
+            QPushButton#onigimonSceneButton:hover {{
+                border: 1px solid #70c6a6;
+                background-color: {hover_bg};
+            }}
+            QLabel#onigimonSceneBlurValue {{
+                color: {fg};
+                min-width: 42px;
+            }}
+            QSlider#onigimonSceneSlider {{
+                min-width: 180px;
+            }}
+            QSlider#onigimonSceneSlider::groove:horizontal {{
+                height: 6px;
+                border-radius: 3px;
+                background-color: {border};
+            }}
+            QSlider#onigimonSceneSlider::sub-page:horizontal {{
+                border-radius: 3px;
+                background-color: #70c6a6;
+            }}
+            QSlider#onigimonSceneSlider::handle:horizontal {{
+                width: 18px;
+                height: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+                background-color: #70c6a6;
+                border: 1px solid rgba(0,0,0,0.16);
+            }}
 
             QPushButton#notificationPositionButton {{
                 background-color: transparent;
@@ -1546,7 +1892,7 @@ class GamificationSettingsDialog(QDialog):
 
 _gamification_dialog = None
 
-def open_gamification_settings():
+def open_gamification_settings(page_name=None):
     global _gamification_dialog
     if _gamification_dialog is not None:
         _gamification_dialog.close()
@@ -1557,3 +1903,5 @@ def open_gamification_settings():
         addon_path=addon_path
     )
     _gamification_dialog.show()
+    if page_name:
+        _gamification_dialog.navigate_to_page(page_name)

@@ -6,9 +6,10 @@ from typing import Tuple, Any
 from aqt.deckbrowser import DeckBrowser
 from . import deck_tree_updater
 from . import create_deck_dialog
+from .onigiri_notifications import notify as tooltip
 from aqt import mw
 from aqt.qt import QApplication, QFileDialog, QInputDialog
-from aqt.utils import askUser, tooltip
+from aqt.utils import askUser
 from anki.decks import DeckId
 
 
@@ -200,26 +201,58 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
+    if cmd == "openGamificationSettings":
+        try:
+            from . import gamification_settings
+            gamification_settings.open_gamification_settings()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening gamification settings: {e}")
+            return (True, None)
+
+    if cmd == "openOnigimonSettings":
+        try:
+            from . import gamification_settings
+            gamification_settings.open_gamification_settings("Onigimon")
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Onigimon settings: {e}")
+            return (True, None)
+
     if cmd.startswith("onigimon_feed:"):
         try:
             from .gamification import onigimon
             item_key = cmd.split(":", 1)[1]
             message = onigimon.manager.use_item(item_key)
+            _refresh_deck_browser(context)
             if message:
-                tooltip(message)
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             else:
-                tooltip("No Onigimon item available.")
+                tooltip("No Onigimon item available.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error feeding Onigimon: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigimon_category:"):
+        try:
+            from .gamification import onigimon
+            category_id = cmd.split(":", 1)[1]
+            message = onigimon.manager.category_status_message(category_id)
+            if message:
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error reading Onigimon category: {e}")
             return (True, None)
 
     if cmd == "onigimon_play":
         try:
             from .gamification import onigimon
             message = onigimon.manager.play()
+            _refresh_deck_browser(context)
             if message:
-                tooltip(message)
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error playing with Onigimon: {e}")
@@ -229,7 +262,8 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
         try:
             from .gamification import onigimon
             message = onigimon.manager.claim_daily_gift()
-            tooltip(message or "Today's Onigimon gift is already claimed.")
+            _refresh_deck_browser(context)
+            tooltip(message or "Today's Onigimon gift is already claimed.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error claiming Onigimon gift: {e}")
@@ -243,9 +277,9 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 tooltip("Choose a name first.")
                 return (True, None)
             if onigimon.manager.rename_active_companion(name):
-                tooltip(f"Renamed to {name}.")
+                tooltip(f"Renamed to {name}.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             else:
-                tooltip("Choose an Onigimon companion first.")
+                tooltip("Choose an Onigimon companion first.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error renaming Onigimon: {e}")

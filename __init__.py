@@ -456,7 +456,7 @@ def on_sync_did_finish():
         if choice == 'cloud':
             onigiri_sync.unpack_user_files()
             # Reload Onigiri modules or notify user to restart? For now, just tool tip
-            from aqt.utils import showInfo
+            from .onigiri_notifications import notify_info as showInfo
             showInfo("Onigiri data has been updated from AnkiWeb. Some changes may require a restart to take effect.")
         elif choice == 'local':
             # User wants to keep local, so pack it again to set as definitive

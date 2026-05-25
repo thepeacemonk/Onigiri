@@ -104,6 +104,10 @@ DEFAULTS = {
         "widget_style": "care",
         "sprite_source": "ankimon_then_pokesprite",
         "sprite_motion": "static",
+        "scene_background_color": "#e8f4ff",
+        "scene_background_image": "",
+        "scene_background_blur": 9,
+        "scene_background_opacity": 90,
         "allow_ankimon_updates": False,
     },
     "heatmapShape": "square.svg",
@@ -428,6 +432,32 @@ def get_config():
     # Merge user settings into defaults
     if user_config:
         merge_config(clean_config, user_config)
+
+    # Main Background colors are stored in mw.col.conf and should not become the
+    # add-on's global theme background. Older builds accidentally copied them
+    # into colors[*]["--bg"], which made Anki flash/show the selected background
+    # color as soon as the profile opened.
+    try:
+        if mw.col:
+            bg_conf_by_mode = {
+                "light": mw.col.conf.get("modern_menu_bg_color_light"),
+                "dark": mw.col.conf.get("modern_menu_bg_color_dark"),
+            }
+            colors_conf = clean_config.get("colors", {})
+            for mode, main_bg_color in bg_conf_by_mode.items():
+                mode_colors = colors_conf.get(mode, {})
+                current_bg = mode_colors.get("--bg")
+                default_bg = DEFAULTS.get("colors", {}).get(mode, {}).get("--bg")
+                if (
+                    isinstance(current_bg, str)
+                    and isinstance(main_bg_color, str)
+                    and isinstance(default_bg, str)
+                    and current_bg.lower() == main_bg_color.lower()
+                    and current_bg.lower() != default_bg.lower()
+                ):
+                    mode_colors["--bg"] = default_bg
+    except Exception as e:
+        print(f"Error cleaning main background color from theme config: {e}")
     
     # Compatibility migrations (logic preserved from original)
     custom_goals_conf = clean_config.get("achievements", {}).get("custom_goals", {})
