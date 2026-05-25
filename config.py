@@ -110,6 +110,10 @@ DEFAULTS = {
         "scene_background_opacity": 90,
         "allow_ankimon_updates": False,
     },
+    "hexagon_world": {
+        "enabled": False,
+        "theme": "blue",
+    },
     "heatmapShape": "square.svg",
     "heatmapShowStreak": True,
     "heatmapShowMonths": True,

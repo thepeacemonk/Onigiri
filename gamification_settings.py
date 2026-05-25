@@ -400,7 +400,7 @@ class GamificationSettingsDialog(QDialog):
             ("Onigimon",               "Onigimon",          "#ffd45a",  "#1f1600"),
             (tr("focus_dango"),         "Focus Dango",       "#9d3d64",  "#ffffff"),
             (tr("mochi_messages_title"), "Mochi Messages",    "#00bf63",  "#000000"),
-            (tr("coming_soon"),         "Coming Soon",       "",         ""),
+            ("Hexagon World",           "Hexagon World",     "#2D8CFF",  "#ffffff"),
         ]
         self._item_colors = {key: (bg, fg_c) for (_, key, bg, fg_c) in gamification_items}
 
@@ -440,7 +440,7 @@ class GamificationSettingsDialog(QDialog):
             "Onigimon": self.create_onigimon_page,
             "Focus Dango": self.create_focus_dango_page,
             "Mochi Messages": self.create_mochi_messages_page,
-            "Coming Soon": self.create_coming_soon_page
+            "Hexagon World": self.create_hexagon_world_page
         }
         self.page_order = list(self.pages.keys())
 
@@ -685,6 +685,13 @@ class GamificationSettingsDialog(QDialog):
         dango_text = "\n".join([str(item).strip() for item in dango_messages if str(item).strip()])
         self.focus_dango_message_editor = QPlainTextEdit(dango_text)
         self.focus_dango_message_editor.setMinimumHeight(80)
+
+        # Hexagon World
+        self.hexagon_world_config = self.current_config.get("hexagon_world", {})
+        if not isinstance(self.hexagon_world_config, dict):
+            self.hexagon_world_config = {}
+        self.hexagon_world_toggle = AnimatedToggleButton(accent_color="#2D8CFF")
+        self.hexagon_world_toggle.setChecked(bool(self.hexagon_world_config.get("enabled", False)))
 
     def navigate_to_page(self, name):
         if not name: return
@@ -1568,34 +1575,66 @@ class GamificationSettingsDialog(QDialog):
         layout.addStretch()
         return page
 
-    def create_coming_soon_page(self):
+    def create_hexagon_world_page(self):
         page, layout = self._create_scrollable_page()
-        
-        container = QWidget()
-        c_layout = QVBoxLayout(container)
-        c_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.setSpacing(20)
 
-        icon_label = QLabel("🎮")
-        icon_label.setStyleSheet("font-size: 64px;")
+        hero = QFrame()
+        hero.setObjectName("hexagonWorldHero")
+        hero.setMinimumHeight(150)
+        hero.setStyleSheet("""
+            QFrame#hexagonWorldHero {
+                border-radius: 22px;
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #0B5FEA,
+                    stop: 0.55 #2D8CFF,
+                    stop: 1 #86D7FF
+                );
+            }
+        """)
+
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(22, 18, 22, 18)
+        hero_layout.setSpacing(18)
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(74, 74)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(icon_label)
+        icon_label.setStyleSheet("background: rgba(255,255,255,0.18); border-radius: 18px;")
+        icon_label.setPixmap(self._render_system_icon("hexagon.svg", 52, "#ffffff"))
+        hero_layout.addWidget(icon_label)
 
-        title = QLabel(tr("coming_soon"))
-        title.setStyleSheet("font-size: 32px; font-weight: bold;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(title)
+        text_container = QWidget()
+        text_container.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(6)
+        text_layout.addStretch()
 
-        desc = QLabel(tr("coming_soon_desc"))
+        title = QLabel("Hexagon World")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #ffffff; background: transparent;")
+        text_layout.addWidget(title)
+
+        desc = QLabel("A blue mini-game space for geometric challenges and future study rewards.")
         desc.setWordWrap(True)
-        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc.setStyleSheet("color: #888; font-size: 16px; max-width: 400px;")
-        c_layout.addWidget(desc)
+        desc.setStyleSheet("font-size: 13px; color: rgba(255,255,255,0.92); background: transparent;")
+        text_layout.addWidget(desc)
+        text_layout.addStretch()
+        hero_layout.addWidget(text_container, 1)
+        hero_layout.addWidget(self.hexagon_world_toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(hero)
 
-        layout.addStretch()
-        layout.addWidget(container)
+        settings_group, settings_layout = self._create_inner_group("Settings")
+        note = QLabel("Hexagon World is registered in Onigiri's gamification settings and ready for its game loop to be connected.")
+        note.setWordWrap(True)
+        settings_layout.addWidget(note)
+        layout.addWidget(settings_group)
+
         layout.addStretch()
         return page
+
+    def create_coming_soon_page(self):
+        return self.create_hexagon_world_page()
 
     # --- Actions ---
 
@@ -1667,6 +1706,11 @@ class GamificationSettingsDialog(QDialog):
         dango_conf = self.achievements_config.setdefault("focusDango", {})
         dango_conf["enabled"] = self.focus_dango_toggle.isChecked()
         dango_conf["messages"] = [l.strip() for l in self.focus_dango_message_editor.toPlainText().split("\n") if l.strip()]
+
+        # Hexagon World
+        hex_conf = self.current_config.setdefault("hexagon_world", {})
+        hex_conf["enabled"] = self.hexagon_world_toggle.isChecked()
+        hex_conf["theme"] = "blue"
 
         # Save config
         config.write_config(self.current_config)

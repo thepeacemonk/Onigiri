@@ -2301,15 +2301,16 @@ def generate_reviewer_top_bar_html_and_css():
             top: 0;
             left: 0;
             right: 0;
-            width: 35%;
-            margin: 10px auto;
-            margin-top: 5px;
+            width: max-content;
+            max-width: calc(100vw - 24px);
+            min-height: 40px;
+            margin: 5px auto 10px auto;
             border-radius: 12px;
-            height: 40px;
+            height: auto;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0 10px;
+            padding: 4px 10px;
             box-sizing: border-box;
             -webkit-font-smoothing: antialiased;
             pointer-events: auto;
@@ -2332,7 +2333,11 @@ def generate_reviewer_top_bar_html_and_css():
         
         .onigiri-reviewer-header-buttons {
             display: flex;
-            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-width: 0;
         }
 
         /* Target A tags specifically to override card template global a {} styles */
@@ -2351,6 +2356,8 @@ def generate_reviewer_top_bar_html_and_css():
             transition: background-color 0.2s ease, border-color 0.2s ease !important;
             display: inline-block !important;
             line-height: normal !important;
+            white-space: nowrap !important;
+            flex: 0 0 auto !important;
         }
 
         .night_mode #onigiri-reviewer-header a.onigiri-reviewer-button,
@@ -2373,7 +2380,7 @@ def generate_reviewer_top_bar_html_and_css():
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-left: 12px;
+            margin-left: 0;
             padding: 4px 10px;
             border-radius: 999px;
             background: rgba(0, 0, 0, 0.2);
@@ -2386,6 +2393,7 @@ def generate_reviewer_top_bar_html_and_css():
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             cursor: pointer;
+            flex: 0 0 auto;
         }
         
         .night_mode .restaurant-level-chip {

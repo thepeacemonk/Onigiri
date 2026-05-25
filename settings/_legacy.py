@@ -36,7 +36,7 @@ from ..constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THE
 from ..themes import THEMES 
 from aqt.qt import QRectF
 from PyQt6.QtGui import QImage, QBitmap, QPainter as _QPainter
-from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
+from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene, QListView
 from ..onigiri_notifications import notify_info as showInfo
 from ..coloris_picker import ColorisColorDialog
 from PyQt6.QtGui import QFontDatabase, QFont
@@ -500,6 +500,322 @@ class CircularColorButton(QPushButton):
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(rect)
+
+
+class LanguageSelectorButton(QPushButton):
+    """Always paints as a circle, independent of the native button style."""
+    def __init__(self, parent=None):
+        super().__init__("", parent)
+        self._accent_color = QColor("#007bff")
+        self._border_color = QColor("#e0e0e0")
+        self.setCheckable(True)
+        self.setFlat(True)
+        self.setFixedSize(22, 22)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet("QPushButton#languageSelector { background: transparent; border: none; padding: 0; margin: 0; }")
+
+    def setColors(self, accent_color, border_color):
+        self._accent_color = QColor(accent_color)
+        self._border_color = QColor(border_color)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(self.rect()).adjusted(2, 2, -2, -2)
+        border_color = self._accent_color if (self.isChecked() or self.underMouse() or self.isDown()) else self._border_color
+
+        painter.setPen(QPen(border_color, 2))
+        painter.setBrush(QBrush(self._accent_color if self.isChecked() else QColor(0, 0, 0, 0)))
+        painter.drawEllipse(rect)
+
+
+class LanguageOptionRow(QFrame):
+    """Rounded language option container with explicit hover painting."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._background_color = QColor("#ffffff")
+        self._hover_color = QColor("#e9e9e9")
+        self._border_color = QColor("#dcdde1")
+        self._hovered = False
+        self._radius = 14
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def setColors(self, background_color, hover_color, border_color):
+        self._background_color = QColor(background_color)
+        self._hover_color = QColor(hover_color)
+        self._border_color = QColor(border_color)
+        self.update()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+
+        path = QPainterPath()
+        path.addRoundedRect(rect, self._radius, self._radius)
+
+        painter.fillPath(path, QBrush(self._hover_color if self._hovered else self._background_color))
+        painter.setPen(QPen(self._border_color, 1))
+        painter.drawPath(path)
+
+
+def _font_popup_svg_icon(path, color_hex, size=16):
+    if not path or not os.path.exists(path):
+        return QIcon()
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            svg_data = f.read()
+        if "currentColor" in svg_data:
+            svg_data = svg_data.replace("currentColor", color_hex)
+        else:
+            svg_data = svg_data.replace("<svg", f'<svg fill="{color_hex}"', 1)
+
+        renderer = QSvgRenderer(svg_data.encode("utf-8"))
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
+    except Exception:
+        return QIcon()
+
+
+def _font_popup_svg_pixmap(path, color_hex, size=16, dpr=1.0):
+    if not path or not os.path.exists(path):
+        return QPixmap()
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            svg_data = f.read()
+        if "currentColor" in svg_data:
+            svg_data = svg_data.replace("currentColor", color_hex)
+        else:
+            svg_data = svg_data.replace("<svg", f'<svg fill="{color_hex}"', 1)
+
+        scale = max(float(dpr), 1.0)
+        pixel_size = max(int(size * scale), size)
+        renderer = QSvgRenderer(svg_data.encode("utf-8"))
+        pixmap = QPixmap(pixel_size, pixel_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        pixmap.setDevicePixelRatio(scale)
+        painter = QPainter(pixmap)
+        renderer.render(painter, QRectF(0, 0, size, size))
+        painter.end()
+        return pixmap
+    except Exception:
+        return QPixmap()
+
+
+class FontSelectorPopupRow(QWidget):
+    """Paints a rounded hover background inside the popup viewport."""
+    def __init__(self, hover_color, parent=None):
+        super().__init__(parent)
+        self._hover_color = QColor(hover_color)
+        self._hovered = False
+        self.setMouseTracking(True)
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        if self._hovered:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+            path = QPainterPath()
+            path.addRoundedRect(rect, 12, 12)
+            painter.fillPath(path, QBrush(self._hover_color))
+        super().paintEvent(event)
+
+
+class FontSelectorPopupPanel(QFrame):
+    """Inset rounded popup shell so the outer border is never clipped."""
+    def __init__(self, background_color, border_color, parent=None):
+        super().__init__(parent)
+        self._background_color = QColor(background_color)
+        self._border_color = QColor(border_color)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(2.0, 2.0, -2.0, -2.0)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 16, 16)
+        painter.fillPath(path, QBrush(self._background_color))
+        painter.setPen(QPen(self._border_color, 1.4))
+        painter.drawPath(path)
+        super().paintEvent(event)
+
+
+class FontSelectorComboBox(QComboBox):
+    """Combo box with a frameless popup so the font menu has one clean border."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._font_popup = None
+        self._addon_path = ""
+        self._font_family_resolver = None
+        self._delete_callback = None
+        self._check_icon_path = ""
+        self._minus_icon_path = ""
+        self._accent_color = "#007bff"
+        self._muted_color = "#8f9299"
+        self._text_color = "#202124"
+        self._hover_color = "#e9e9e9"
+        self._panel_color = "#ffffff"
+        self._border_color = "#dcdde1"
+
+    def setPopupContext(self, addon_path, font_family_resolver, delete_callback, check_icon_path, minus_icon_path, accent_color, muted_color, text_color, hover_color, panel_color, border_color):
+        self._addon_path = addon_path
+        self._font_family_resolver = font_family_resolver
+        self._delete_callback = delete_callback
+        self._check_icon_path = check_icon_path
+        self._minus_icon_path = minus_icon_path
+        self._accent_color = accent_color
+        self._muted_color = muted_color
+        self._text_color = text_color
+        self._hover_color = hover_color
+        self._panel_color = panel_color
+        self._border_color = border_color
+
+    def showPopup(self):
+        if self.count() <= 0:
+            return
+        if self._font_popup is not None:
+            self._font_popup.close()
+
+        popup = QFrame(self.window(), Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        popup.setObjectName("fontSelectorPopupFrame")
+        popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        if self.window() and self.window().styleSheet():
+            popup.setStyleSheet(self.window().styleSheet())
+        self._font_popup = popup
+
+        popup_layout = QVBoxLayout(popup)
+        popup_layout.setContentsMargins(4, 4, 4, 4)
+        popup_layout.setSpacing(0)
+
+        panel = FontSelectorPopupPanel(self._panel_color, self._border_color, popup)
+        panel.setObjectName("fontSelectorPopupPanel")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(2, 2, 2, 2)
+        panel_layout.setSpacing(0)
+
+        scroll = QScrollArea(panel)
+        scroll.setObjectName("fontSelectorPopupScroll")
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        scroll.viewport().setObjectName("fontSelectorPopupViewport")
+
+        content = QWidget(scroll)
+        content.setObjectName("fontSelectorPopupContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(6, 6, 14, 6)
+        content_layout.setSpacing(2)
+
+        all_fonts = get_all_fonts(self._addon_path) if self._addon_path else {}
+        minus_icon = _font_popup_svg_icon(self._minus_icon_path, self._muted_color, 14)
+
+        for row in range(self.count()):
+            font_key = self.itemData(row)
+            display_name = self.itemText(row)
+            font_info = all_fonts.get(font_key, {})
+            is_selected = row == self.currentIndex()
+            is_user_font = bool(font_info.get("user"))
+
+            row_widget = FontSelectorPopupRow(self._hover_color, content)
+            row_widget.setObjectName("fontSelectorPopupRow")
+            row_widget.setFixedHeight(38)
+
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(10, 0, 8, 0)
+            row_layout.setSpacing(8)
+
+            check_label = QLabel(row_widget)
+            check_label.setObjectName("fontSelectorCheckIcon")
+            check_label.setFixedSize(16, 16)
+            check_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            if is_selected:
+                check_label.setPixmap(_font_popup_svg_pixmap(self._check_icon_path, self._accent_color, 15, check_label.devicePixelRatioF()))
+            row_layout.addWidget(check_label)
+
+            name_label = QLabel(display_name, row_widget)
+            name_label.setObjectName("fontSelectorName")
+            name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            name_label.setStyleSheet(f"color: {self._text_color}; background: transparent;")
+            family = self._font_family_resolver(font_key) if self._font_family_resolver else ""
+            row_font = QFont(family, 14) if family else QFont()
+            row_font.setPointSize(14)
+            name_label.setFont(row_font)
+            row_layout.addWidget(name_label, 1)
+
+            if is_user_font:
+                delete_btn = QPushButton(row_widget)
+                delete_btn.setObjectName("fontSelectorDeleteButton")
+                delete_btn.setFixedSize(24, 24)
+                delete_btn.setIcon(minus_icon)
+                delete_btn.setIconSize(QSize(14, 14))
+                delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                delete_btn.setToolTip("Delete font")
+                delete_btn.clicked.connect(lambda checked=False, key=font_key: self._delete_popup_font(key, popup))
+                row_layout.addWidget(delete_btn)
+            else:
+                spacer = QLabel(row_widget)
+                spacer.setFixedSize(24, 24)
+                spacer.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                row_layout.addWidget(spacer)
+
+            def select_font(event, index=row):
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.setCurrentIndex(index)
+                    popup.close()
+
+            row_widget.mousePressEvent = select_font
+
+            content_layout.addWidget(row_widget)
+
+        popup.destroyed.connect(lambda: setattr(self, "_font_popup", None))
+        content_layout.addStretch(0)
+        scroll.setWidget(content)
+        panel_layout.addWidget(scroll)
+        popup_layout.addWidget(panel)
+
+        visible_rows = min(max(self.maxVisibleItems(), 1), self.count())
+        popup.resize(max(self.width(), 240) + 8, (visible_rows * 40) + 26)
+        popup.move(self.mapToGlobal(QPoint(-4, self.height())))
+        popup.show()
+
+    def _delete_popup_font(self, font_key, popup):
+        if self._delete_callback:
+            popup.close()
+            self._delete_callback(font_key)
 
 
 class AnimatedToggleButton(QAbstractButton):
@@ -3251,8 +3567,26 @@ class SettingsDialog(QDialog):
 
         control_layout = FlowLayout(margin=0, spacing=8)
 
-        font_combo = QComboBox()
+        font_combo = FontSelectorComboBox()
+        font_combo.setObjectName("fontSelectorCombo")
         font_combo.setMinimumWidth(220)
+        font_combo.setFixedHeight(36)
+        font_combo.setMaxVisibleItems(7)
+        palette = self._settings_palette()
+        icons_dir = os.path.join(self.addon_path, "system_files", "system_icons")
+        font_combo.setPopupContext(
+            self.addon_path,
+            self._font_family_for_key,
+            self._delete_user_font,
+            os.path.join(icons_dir, "check-simple.svg"),
+            os.path.join(icons_dir, "minus.svg"),
+            self.accent_color,
+            palette.get("--muted-fg", "#8f9299"),
+            palette.get("--fg", "#202124"),
+            palette.get("--hover-bg", "#e9e9e9"),
+            palette.get("--canvas-inset", "#ffffff"),
+            palette.get("--border", "#dcdde1"),
+        )
 
         all_fonts = get_all_fonts(self.addon_path)
         ordered_keys = ["system", "instrument_serif", "nunito", "montserrat", "space_mono"]
@@ -3265,9 +3599,10 @@ class SettingsDialog(QDialog):
             font_combo.addItem(display_name, font_key)
 
         size_spinbox = QSpinBox()
+        size_spinbox.setObjectName("fontSizeSpinBox")
         size_spinbox.setRange(8, 72)
         size_spinbox.setSuffix("px")
-        size_spinbox.setFixedWidth(92)
+        size_spinbox.setFixedSize(102, 36)
 
         if config_key == "main":
             default_size = 14
@@ -3283,13 +3618,14 @@ class SettingsDialog(QDialog):
         restore_btn = QPushButton(tr("restore_default"))
         restore_btn.setObjectName("fontRestoreButton")
         restore_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        restore_btn.setFixedHeight(36)
         restore_btn.setToolTip(f"{tr('restore_default')} {default_size}px")
         restore_btn.clicked.connect(lambda _, s=size_spinbox, d=default_size: s.setValue(d))
 
         add_button = QPushButton(tr("add_your_font"))
         add_button.setObjectName("fontAddButton")
         add_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_button.setFixedHeight(44)
+        add_button.setFixedHeight(36)
         add_button.clicked.connect(self._add_user_font)
 
         control_layout.addWidget(font_combo)
@@ -3368,10 +3704,14 @@ class SettingsDialog(QDialog):
         size = getattr(self, f"font_size_{config_key}").value()
         preview_font = QFont(family, size if family else -1)
         if family:
-            selector["preview_title"].setFont(QFont(family, max(size + 4, 15)))
+            title_font = QFont(family, max(size + 4, 15))
+            title_font.setBold(True)
+            selector["preview_title"].setFont(title_font)
             selector["preview_body"].setFont(preview_font)
         else:
-            selector["preview_title"].setFont(QFont())
+            title_font = QFont()
+            title_font.setBold(True)
+            selector["preview_title"].setFont(title_font)
             selector["preview_body"].setFont(QFont())
     
     def _populate_font_grid(self, config_key):
@@ -5440,9 +5780,9 @@ class SettingsDialog(QDialog):
                 border: 1px solid {border};
                 border-radius: 18px;
                 color: {fg_secondary};
-                padding: 6px 14px;
-                min-height: 30px;
-                max-height: 30px;
+                padding: 0px 16px;
+                min-height: 34px;
+                max-height: 34px;
                 text-align: center;
             }}
             QPushButton#fontAddButton:hover {{
@@ -5455,14 +5795,111 @@ class SettingsDialog(QDialog):
                 color: {fg_secondary};
                 border: 1px solid {border};
                 border-radius: 18px;
-                padding: 6px 14px;
-                min-height: 30px;
+                padding: 0px 16px;
+                min-height: 34px;
+                max-height: 34px;
                 font-weight: 600;
             }}
             QPushButton#fontRestoreButton:hover {{
                 background-color: {surface_hover};
                 border-color: {soft_border};
                 color: {fg};
+            }}
+            QComboBox#fontSelectorCombo {{
+                background-color: {input_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 18px;
+                padding: 0px 36px 0px 14px;
+                min-height: 34px;
+                max-height: 34px;
+                font-size: 13px;
+            }}
+            QComboBox#fontSelectorCombo:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+            }}
+            QComboBox#fontSelectorCombo:focus,
+            QComboBox#fontSelectorCombo:on {{
+                background-color: {panel_bg};
+                border-color: {accent_color};
+            }}
+            QComboBox#fontSelectorCombo::drop-down {{
+                border: none;
+                width: 34px;
+                border-top-right-radius: 18px;
+                border-bottom-right-radius: 18px;
+            }}
+            QSpinBox#fontSizeSpinBox {{
+                background-color: {input_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 18px;
+                padding: 0px 26px 0px 12px;
+                min-height: 34px;
+                max-height: 34px;
+                font-size: 13px;
+            }}
+            QSpinBox#fontSizeSpinBox:hover {{
+                background-color: {surface_hover};
+                border-color: {soft_border};
+            }}
+            QSpinBox#fontSizeSpinBox:focus {{
+                background-color: {panel_bg};
+                border-color: {accent_color};
+            }}
+            QSpinBox#fontSizeSpinBox::up-button {{
+                width: 20px;
+                border-left: 1px solid {border};
+                border-top-right-radius: 18px;
+                border-bottom-right-radius: 0px;
+                padding: 1px;
+            }}
+            QSpinBox#fontSizeSpinBox::down-button {{
+                width: 20px;
+                border-left: 1px solid {border};
+                border-bottom-right-radius: 18px;
+                border-top-right-radius: 0px;
+                padding: 1px;
+            }}
+            QFrame#fontSelectorPopupFrame {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#fontSelectorPopupPanel {{
+                background-color: transparent;
+                border: none;
+            }}
+            QScrollArea#fontSelectorPopupScroll {{
+                background-color: transparent;
+                color: {fg};
+                border: none;
+                outline: none;
+            }}
+            QWidget#fontSelectorPopupContent {{
+                background-color: transparent;
+                border: none;
+            }}
+            QWidget#fontSelectorPopupViewport {{
+                background-color: transparent;
+                border: none;
+                border-radius: 16px;
+            }}
+            QWidget#fontSelectorPopupRow {{
+                background: transparent;
+            }}
+            QPushButton#fontSelectorDeleteButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 12px;
+                padding: 0px;
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
+            }}
+            QPushButton#fontSelectorDeleteButton:hover {{
+                background-color: rgba(220, 38, 38, 0.12);
             }}
             QWidget#fontRoleControl {{
                 background-color: transparent;
@@ -9626,52 +10063,49 @@ class SettingsDialog(QDialog):
         border = accent if selected else ("#444" if theme_manager.night_mode else "#e0e0e0")
         background = accent if selected else "transparent"
 
+        if hasattr(selector, "setColors"):
+            selector.setColors(accent, border)
+            return
+
         selector.setStyleSheet(f"""
-            QPushButton {{
+            /* onigiri-rounded-button-fix */
+            QPushButton#languageSelector {{
                 background-color: {background};
                 border: 2px solid {border};
                 border-radius: 11px;
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 22px;
+                max-height: 22px;
                 padding: 0;
                 margin: 0;
             }}
-            QPushButton:hover {{
+            QPushButton#languageSelector:hover,
+            QPushButton#languageSelector:pressed,
+            QPushButton#languageSelector:checked {{
                 border-color: {accent};
+                border-radius: 11px;
             }}
         """)
 
     def _create_language_option_row(self, lang_name, flag, is_selected, button_group):
-        row = QFrame()
-        row.setObjectName("settingRow")
-        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row = LanguageOptionRow()
+        row.setObjectName("languageOptionRow")
         row.setCursor(Qt.CursorShape.PointingHandCursor)
         palette = self._settings_palette()
         row_bg = palette.get("--canvas-inset", "#ffffff")
         row_hover = palette.get("--hover-bg", "#e9e9e9")
         row_border = palette.get("--border", "#dcdde1")
-        row.setStyleSheet(f"""
-            QFrame#settingRow {{
-                background-color: {row_bg};
-                border: 1px solid {row_border};
-                border-radius: 26px;
-            }}
-            QFrame#settingRow:hover {{
-                background-color: {row_hover};
-                border: 1px solid {row_border};
-                border-radius: 26px;
-            }}
-        """)
+        row.setColors(row_bg, row_hover, row_border)
 
         layout = QHBoxLayout(row)
         layout.setContentsMargins(12, 9, 12, 9)
         layout.setSpacing(12)
 
-        selector = QPushButton()
-        selector.setCheckable(True)
-        selector.setCursor(Qt.CursorShape.PointingHandCursor)
+        selector = LanguageSelectorButton()
+        selector.setObjectName("languageSelector")
         selector.setAccessibleName(lang_name)
         selector.setToolTip(lang_name)
-        selector.setFixedSize(22, 22)
-        selector.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         button_group.addButton(selector)
         selector.setChecked(is_selected)
         selector.toggled.connect(
@@ -11601,6 +12035,9 @@ class SettingsDialog(QDialog):
             for button in (choose_button, delete_button):
                 button.setMaximumWidth(128)
                 button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            if gallery_button:
+                gallery_button.setMaximumWidth(176)
+                gallery_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         actions_widget = QWidget()
         actions_widget.setObjectName("galleryActions")
@@ -11663,9 +12100,12 @@ class SettingsDialog(QDialog):
         if is_background_gallery:
             preview_widget = QLabel()
             preview_widget.setObjectName("backgroundPreview")
-            preview_widget.setMinimumHeight(130)
+            preview_widget.setMinimumWidth(0)
+            preview_widget.setFixedHeight(130)
+            preview_widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             preview_widget.setCursor(Qt.CursorShape.PointingHandCursor)
             preview_widget.setProperty("gallery_import_key", key)
+            preview_widget.setProperty("last_preview_size", QSize())
             preview_widget.installEventFilter(self)
             preview_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(preview_widget)
@@ -11862,7 +12302,10 @@ class SettingsDialog(QDialog):
 
         if source.property("gallery_import_key") and event.type() == QEvent.Type.Resize:
             key = source.property("gallery_import_key")
-            QTimer.singleShot(0, lambda k=key: self._update_gallery_background_preview(k))
+            new_size = event.size()
+            if source.property("last_preview_size") != new_size:
+                source.setProperty("last_preview_size", new_size)
+                QTimer.singleShot(0, lambda k=key: self._update_gallery_background_preview(k))
             return False
 
         if hasattr(self, 'shape_scroll_content') and source is self.shape_scroll_content and event.type() == QEvent.Type.Resize:
