@@ -523,7 +523,6 @@
 
         const applyState = (isFocused) => {
             header.classList.toggle('deck-focus-active', isFocused);
-            label.classList.toggle('active', isFocused);
         };
 
         const toggleFocus = (e) => {

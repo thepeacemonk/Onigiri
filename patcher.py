@@ -3247,13 +3247,13 @@ def generate_icon_css(addon_package, conf):
     if closed_icon_file:
         closed_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", closed_icon_file))
     if not closed_icon_url:
-        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "right.svg"))
+        closed_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "chevron.svg"))
 
     open_icon_url = ""
     if open_icon_file:
         open_icon_url = get_data_uri(os.path.join(addon_dir, "user_files", "icons", open_icon_file))
     if not open_icon_url:
-        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "right.svg"))
+        open_icon_url = get_data_uri(os.path.join(addon_dir, "system_files", "system_icons", "chevron.svg"))
 
     # Create a list of selectors for the background color, EXCLUDING the star, filtered deck, and custom elements (filtered/custom have own colors)
     bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck", "search_icon", "cancel"]}

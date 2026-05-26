@@ -268,8 +268,7 @@ custom_body_template = """
     .onigiri-organise-toolbar-btn.is-open,
     .sidebar-top-right-controls .deck-focus-btn:hover,
     .sidebar-top-right-controls .deck-focus-btn:focus,
-    .sidebar-top-right-controls .deck-focus-btn:active,
-    .sidebar-top-right-controls .deck-focus-btn.active {
+    .sidebar-top-right-controls .deck-focus-btn:active {
         opacity: 1;
     }
     .sidebar-left .sidebar-toolbar .ellipsis-btn,
@@ -389,8 +388,7 @@ custom_body_template = """
     .onigiri-organise-toolbar-btn.is-open .organise-btn-icon,
     .sidebar-top-right-controls .deck-focus-btn:hover .icon,
     .sidebar-top-right-controls .deck-focus-btn:focus-visible .icon,
-    .sidebar-top-right-controls .deck-focus-btn:active .icon,
-    .sidebar-top-right-controls .deck-focus-btn.active .icon {
+    .sidebar-top-right-controls .deck-focus-btn:active .icon {
         background-color: rgba(0, 0, 0, 1) !important;
     }
     .night-mode #onigiri-search-toolbar-btn:hover .search-btn-icon,
@@ -399,8 +397,7 @@ custom_body_template = """
     .night-mode .onigiri-organise-toolbar-btn.is-open .organise-btn-icon,
     .night-mode .sidebar-top-right-controls .deck-focus-btn:hover .icon,
     .night-mode .sidebar-top-right-controls .deck-focus-btn:focus-visible .icon,
-    .night-mode .sidebar-top-right-controls .deck-focus-btn:active .icon,
-    .night-mode .sidebar-top-right-controls .deck-focus-btn.active .icon {
+    .night-mode .sidebar-top-right-controls .deck-focus-btn:active .icon {
         background-color: rgba(255, 255, 255, 1) !important;
     }
     .onigiri-organise-toolbar-btn .organise-btn-icon {
@@ -527,8 +524,8 @@ custom_body_template = """
         height: 14px;
         display: inline-block;
         background-color: currentColor;
-        mask-image: url("{system_icon_base}cancel.svg");
-        -webkit-mask-image: url("{system_icon_base}cancel.svg");
+        mask-image: url("{system_icon_base}cancel_circle.svg");
+        -webkit-mask-image: url("{system_icon_base}cancel_circle.svg");
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
@@ -679,8 +676,7 @@ custom_body_template = """
         margin-right: -2px !important;
         transition: opacity 0.15s ease !important;
     }
-    .sidebar-left .deck-header-focus-btn:hover,
-    .sidebar-left .deck-header-focus-btn.active {
+    .sidebar-left .deck-header-focus-btn:hover {
         background: transparent !important;
         border-color: transparent !important;
         box-shadow: none !important;
@@ -718,24 +714,6 @@ custom_body_template = """
     .night-mode .sidebar-left .deck-header-focus-btn:focus-visible .icon,
     .night-mode .sidebar-left .deck-header-focus-btn:active .icon {
         background-color: color-mix(in srgb, var(--icon-color) 20%, white 80%) !important;
-        opacity: 1;
-    }
-    .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn .icon {
-        background-color: var(--accent-color) !important;
-        opacity: 1;
-    }
-    .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:hover .icon,
-    .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:focus-visible .icon,
-    .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:active .icon,
-    .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn.active .icon {
-        background-color: var(--accent-color) !important;
-        opacity: 1;
-    }
-    .night-mode .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:hover .icon,
-    .night-mode .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:focus-visible .icon,
-    .night-mode .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn:active .icon,
-    .night-mode .sidebar-left #deck-list-header.deck-focus-active .deck-header-focus-btn.active .icon {
-        background-color: var(--accent-color) !important;
         opacity: 1;
     }
 
@@ -783,25 +761,6 @@ custom_body_template = """
     .night-mode .sidebar-top-right-controls .onigiri-ellipsis-toolbar-btn:active i,
     .night-mode .sidebar-top-right-controls .onigiri-ellipsis-toolbar-btn.is-open i {
         background-color: color-mix(in srgb, var(--icon-color) 20%, white 80%) !important;
-        opacity: 1;
-    }
-
-    .sidebar-top-right-controls .deck-focus-btn.active .icon {
-        background-color: var(--accent-color) !important;
-        opacity: 1;
-    }
-
-    .sidebar-top-right-controls .deck-focus-btn.active:hover .icon,
-    .sidebar-top-right-controls .deck-focus-btn.active:focus-visible .icon,
-    .sidebar-top-right-controls .deck-focus-btn.active:active .icon {
-        background-color: var(--accent-color) !important;
-        opacity: 1;
-    }
-
-    .night-mode .sidebar-top-right-controls .deck-focus-btn.active:hover .icon,
-    .night-mode .sidebar-top-right-controls .deck-focus-btn.active:focus-visible .icon,
-    .night-mode .sidebar-top-right-controls .deck-focus-btn.active:active .icon {
-        background-color:  var(--accent-color) !important;
         opacity: 1;
     }
 
@@ -873,8 +832,7 @@ custom_body_template = """
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .action-btn:active .action-icon,
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:hover .icon,
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:focus-visible .icon,
-    .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:active .icon,
-    .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn.active .icon {
+    .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:active .icon {
         background-color: rgba(0, 0, 0, 1) !important;
         opacity: 1;
     }
@@ -885,8 +843,7 @@ custom_body_template = """
     .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .action-btn:active .action-icon,
     .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:hover .icon,
     .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:focus-visible .icon,
-    .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:active .icon,
-    .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn.active .icon {
+    .night-mode .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn:active .icon {
         background-color: rgba(255, 255, 255, 1) !important;
         opacity: 1;
     }
@@ -1042,10 +999,6 @@ custom_body_template = """
     #deck-list-header h2.deck-focus-label:hover,
     #deck-list-header h2.deck-focus-label:focus-visible {
         color: color-mix(in srgb, var(--fg, currentColor) 78%, var(--accent-color, #007aff) 22%);
-        opacity: 1;
-    }
-    #deck-list-header.deck-focus-active h2.deck-focus-label {
-        color: var(--accent-color, #007aff);
         opacity: 1;
     }
     .deck-focus-btn,

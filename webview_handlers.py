@@ -740,7 +740,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                     marks[str(did)] = mark_key
             mw.col.conf["onigiri_deck_marks"] = marks
             mw.col.setMod()
+            # Sync JS state so next context-menu open reflects new mark
             if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    f"window.ONIGIRI_DECK_MARKS = {json.dumps(marks)};"
+                )
                 deck_tree_updater.refresh_deck_tree_state(context)
         except Exception as e:
             tooltip(f"Bulk mark failed: {e}")
