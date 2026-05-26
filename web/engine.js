@@ -81,11 +81,18 @@ window.OnigiriEngine = {
     },
 
     _isDeckTreeInteractionActive: function () {
-        const searchBar = document.getElementById('onigiri-deck-search-bar');
         return !!this._dnd ||
                this._multiSelectedDecks.size > 0 ||
-               !!(searchBar && searchBar.classList.contains('is-visible')) ||
+               this._isDeckSearchActive() ||
                this._hasOverrideState();
+    },
+
+    _isDeckSearchActive: function () {
+        const searchBar = document.getElementById('onigiri-deck-search-bar');
+        return !!(searchBar && (
+            searchBar.classList.contains('is-visible') ||
+            searchBar.classList.contains('is-closing')
+        ));
     },
 
     _flushDeferredTreeUpdate: function () {
@@ -166,20 +173,85 @@ window.OnigiriEngine = {
     },
 
     _clearAllRowVisualStates: function () {
+        const preserveMultiSelection = this._multiSelectedDecks.size > 0;
         document.querySelectorAll('tr.deck').forEach(row => {
-            row.classList.remove('is-hovered', 'is-multi-selected', 'ctx-row-active');
+            row.classList.remove('is-hovered', 'ctx-row-active');
+            if (!preserveMultiSelection) row.classList.remove('is-multi-selected');
         });
         this.currentHoveredRow = null;
+        if (preserveMultiSelection) this._applyMultiSelectionStyles();
     },
 
     _applyMultiSelectionStyles: function () {
-        document.querySelectorAll('tr.deck.is-multi-selected').forEach(r => r.classList.remove('is-multi-selected'));
+        if (this._multiSelectedDecks.size > 0) {
+            this._beginOverrideState('has-multi-select');
+        } else {
+            this._endOverrideState('has-multi-select');
+        }
+        this._syncMultiSelectionClasses(document);
+        this._updateMultiSelectBadge();
+    },
+
+    _syncMultiSelectionClasses: function (root) {
+        const scope = root || document;
+        if (!scope.querySelectorAll) return;
+
+        scope.querySelectorAll('tr.deck.is-multi-selected').forEach(row => {
+            const did = row.dataset ? row.dataset.did : null;
+            if (!did || !this._multiSelectedDecks.has(did)) {
+                row.classList.remove('is-multi-selected');
+            }
+        });
+
+        if (this._multiSelectedDecks.size === 0) return;
         this._multiSelectedDecks.forEach(did => {
-            const row = document.querySelector(`tr.deck[data-did="${this.escapeSelectorValue(did)}"]`);
-            if (!row) return;
+            const row = scope.querySelector(`tr.deck[data-did="${this.escapeSelectorValue(did)}"]`);
+            if (!row || row.classList.contains('is-multi-selected')) return;
             row.classList.add('is-multi-selected');
         });
-        this._updateMultiSelectBadge();
+    },
+
+    _isSelectionNeutralControl: function (target) {
+        if (!target || typeof target.closest !== 'function') return null;
+        return target.closest(
+            'a.collapse, .opts, .favorite-star-icon, .drag-handle, ' +
+            '.sidebar-top-right-controls, button, input, select, textarea, ' +
+            '[role="button"], .action-btn, .deck-focus-btn, .onigiri-ellipsis-item'
+        );
+    },
+
+    _ensureMultiSelectBadge: function (controls) {
+        let badge = document.getElementById('onigiri-multiselect-badge');
+        if (badge && badge.tagName !== 'BUTTON') {
+            const button = document.createElement('button');
+            button.id = badge.id;
+            button.className = badge.className;
+            badge.replaceWith(button);
+            badge = button;
+        }
+
+        if (!badge) {
+            badge = document.createElement('button');
+            badge.id = 'onigiri-multiselect-badge';
+            badge.className = 'onigiri-multiselect-badge';
+            controls.appendChild(badge);
+        } else if (badge.parentElement !== controls) {
+            controls.appendChild(badge);
+        }
+
+        badge.type = 'button';
+        badge.title = 'Deselect all decks';
+        badge.setAttribute('aria-label', 'Deselect all selected decks');
+        if (!badge.dataset.onigiriClearSelectionBound) {
+            badge.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.clearMultiSelection();
+            });
+            badge.dataset.onigiriClearSelectionBound = '1';
+        }
+
+        return badge;
     },
 
     _updateMultiSelectBadge: function () {
@@ -192,13 +264,13 @@ window.OnigiriEngine = {
         }
         const count = this._multiSelectedDecks.size;
         const text = count === 1 ? '1 selected' : `${count} selected`;
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.id = 'onigiri-multiselect-badge';
-            badge.className = 'onigiri-multiselect-badge';
-            controls.appendChild(badge);
-        }
+        const searchActive = this._isDeckSearchActive();
+        badge = this._ensureMultiSelectBadge(controls);
         badge.textContent = text;
+        badge.hidden = searchActive;
+        badge.style.display = '';
+        badge.style.opacity = '';
+        badge.style.pointerEvents = searchActive ? 'none' : '';
     },
 
     openDeck: function (event, did, row, alreadySelected) {
@@ -275,7 +347,10 @@ window.OnigiriEngine = {
         const urls = [
             'rename.svg',
             'add_subdeck.svg',
+            'move_deck.svg',
             'edit_icon.svg',
+            'search.svg',
+            'cancel.svg',
             'star_filled.svg',
             'star_outline.svg',
             'archive.svg',
@@ -291,6 +366,10 @@ window.OnigiriEngine = {
             'organise.svg',
             'drag_handle.svg',
             'right.svg',
+            'deck.svg',
+            'subdeck.svg',
+            'folder.svg',
+            'filtered_deck.svg',
         ].map(filename => this.systemIconUrl(filename));
 
         const visitAction = (action) => {
@@ -387,11 +466,15 @@ window.OnigiriEngine = {
      * preserving scroll position.
      * @param {string} newHtml The new HTML for the deck tree's <tbody>.
      */
-    updateDeckTree: function (newHtml) {
+    updateDeckTree: function (newHtml, options) {
         if (!this.deckListContainer) return;
-        if (this._isDeckTreeInteractionActive()) {
+        const opts = options || {};
+        if (!opts.force && this._isDeckTreeInteractionActive()) {
             this._pendingDeferredTreeHtml = newHtml;
             return;
+        }
+        if (opts.force) {
+            this._pendingDeferredTreeHtml = null;
         }
 
         const tableBody = this.deckListContainer.querySelector('table.deck-table tbody');
@@ -421,7 +504,18 @@ window.OnigiriEngine = {
             }
         });
 
-        tableBody.innerHTML = newHtml;
+        const stagedBody = document.createElement('tbody');
+        stagedBody.innerHTML = newHtml;
+        this._syncMultiSelectionClasses(stagedBody);
+
+        if (typeof tableBody.replaceChildren === 'function') {
+            tableBody.replaceChildren(...Array.from(stagedBody.childNodes));
+        } else {
+            tableBody.innerHTML = '';
+            while (stagedBody.firstChild) {
+                tableBody.appendChild(stagedBody.firstChild);
+            }
+        }
 
         // Animate rows that are genuinely new (expansion animation)
         tableBody.querySelectorAll('tr.deck[data-did]').forEach(row => {
@@ -672,10 +766,22 @@ window.OnigiriEngine = {
             if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
             const deckRow = event.target.closest('tr.deck[data-did]');
             if (!deckRow) return;
-            if (event.target.closest('a.collapse, .opts, .favorite-star-icon, .drag-handle')) return;
+            if (this._isSelectionNeutralControl(event.target)) {
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
+        }, { capture: true });
+
+        // Capture collapse clicks before the inline onclick so search state can be sent too.
+        this.deckListContainer.addEventListener('click', (event) => {
+            const collapseLink = event.target.closest('a.collapse');
+            if (!collapseLink) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            this.handleDeckCollapse(collapseLink, event);
         }, { capture: true });
 
         // --- Unified Click Handler for Deck List ---
@@ -689,30 +795,19 @@ window.OnigiriEngine = {
 
             const target = event.target;
 
-            // Case 1: Collapse icon - let onclick attribute fire.
-            const collapseLink = target.closest('a.collapse');
-            if (collapseLink) {
-                this._rememberPointer(event);
-                const willOpen = !collapseLink.classList.contains('state-open');
-                collapseLink.classList.toggle('state-open', willOpen);
-                collapseLink.classList.toggle('state-closed', !willOpen);
-                this.saveScrollPosition();
-                return;
-            }
-
-            // Case 2: Options/gear icon — ignore.
+            // Case 1: Options/gear icon — ignore.
             if (target.closest('.opts')) return;
 
-            // Case 3: Favorite star — ignore (has its own onclick).
+            // Case 2: Favorite star — ignore (has its own onclick).
             if (target.closest('.favorite-star-icon')) return;
 
-            // Case 4: Drag handle — ignore clicks (drag-only).
+            // Case 3: Drag handle — ignore clicks (drag-only).
             if (target.closest('.drag-handle')) return;
 
-            // Case 5: Deck row — double-click to study.
+            // Case 4: Deck row — double-click to study.
             const deckRow = target.closest('tr.deck');
             if (!deckRow) {
-                const skipClear = event.target.closest('.sidebar-top-right-controls');
+                const skipClear = this._isSelectionNeutralControl(event.target);
                 if (!skipClear && !event.ctrlKey && !event.metaKey && !event.shiftKey && this._multiSelectedDecks.size > 0) {
                     this.clearMultiSelection();
                 }
@@ -785,7 +880,7 @@ window.OnigiriEngine = {
             }
 
             // Plain left-click: clear any active multi-selection (skip toolbar/interactive elements)
-            const skipClear = event.target.closest('a.collapse, .opts, .favorite-star-icon, .drag-handle, .sidebar-top-right-controls');
+            const skipClear = this._isSelectionNeutralControl(event.target);
             if (!skipClear && this._multiSelectedDecks.size > 0) {
                 this.clearMultiSelection();
             }
@@ -2068,8 +2163,7 @@ window.OnigiriEngine = {
             if (headerLabel) { headerLabel.style.opacity = '0'; headerLabel.style.pointerEvents = 'none'; }
             const focusBtn = document.querySelector('.deck-header-focus-btn');
             if (focusBtn) { focusBtn.style.opacity = '0'; focusBtn.style.pointerEvents = 'none'; }
-            const badge = document.getElementById('onigiri-multiselect-badge');
-            if (badge) { badge.style.display = 'none'; badge.style.opacity = '0'; badge.style.pointerEvents = 'none'; }
+            this._updateMultiSelectBadge();
             const input = document.getElementById('onigiri-deck-search-input');
             if (input) { input.value = ''; input.focus({ preventScroll: true }); }
         }
@@ -2085,15 +2179,14 @@ window.OnigiriEngine = {
         if (headerLabel) { headerLabel.style.opacity = ''; headerLabel.style.pointerEvents = ''; }
         const focusBtn = document.querySelector('.deck-header-focus-btn');
         if (focusBtn) { focusBtn.style.opacity = ''; focusBtn.style.pointerEvents = ''; }
-        const badge = document.getElementById('onigiri-multiselect-badge');
-        if (badge) { badge.style.display = ''; badge.style.opacity = ''; badge.style.pointerEvents = ''; }
 
         const input = document.getElementById('onigiri-deck-search-input');
         if (input) input.value = '';
         this.saveScrollPosition(); // preserve position across the tree reload
-        this._filterDecks('');
+        this._filterDecks('', { force: true });
 
         if (!bar || !bar.classList.contains('is-visible')) {
+            this._updateMultiSelectBadge();
             if (this._pendingDeferredTreeHtml !== null) this._flushDeferredTreeUpdate();
             return;
         }
@@ -2102,6 +2195,7 @@ window.OnigiriEngine = {
         bar.classList.add('is-closing');
         bar.addEventListener('animationend', () => {
             bar.classList.remove('is-visible', 'is-closing');
+            this._updateMultiSelectBadge();
             if (this._pendingDeferredTreeHtml !== null) this._flushDeferredTreeUpdate();
         }, { once: true });
     },
@@ -2109,14 +2203,38 @@ window.OnigiriEngine = {
     _searchDebounceTimer: null,
     _lastDeckSearchQuery: null,
 
-    _filterDecks: function (query) {
+    _filterDecks: function (query, options) {
         const nextQuery = query.trim();
+        const opts = options || {};
         clearTimeout(this._searchDebounceTimer);
         this._searchDebounceTimer = setTimeout(() => {
-            if (nextQuery === this._lastDeckSearchQuery) return;
+            if (!opts.force && nextQuery === this._lastDeckSearchQuery) return;
             this._lastDeckSearchQuery = nextQuery;
-            pycmd('onigiri_deck_search:' + nextQuery);
+            pycmd('onigiri_deck_search:' + encodeURIComponent(nextQuery));
         }, 300);
+    },
+
+    handleDeckCollapse: function (collapseLink, event) {
+        if (!collapseLink) return false;
+        if (event) this._rememberPointer(event);
+
+        const deckRow = collapseLink.closest('tr.deck[data-did]');
+        const deckId = deckRow ? deckRow.dataset.did : '';
+        if (!deckId) return false;
+
+        const willOpen = !collapseLink.classList.contains('state-open');
+        collapseLink.classList.toggle('state-open', willOpen);
+        collapseLink.classList.toggle('state-closed', !willOpen);
+        this.saveScrollPosition();
+
+        const searchBar = document.getElementById('onigiri-deck-search-bar');
+        const searchInput = document.getElementById('onigiri-deck-search-input');
+        const query = (searchBar && searchBar.classList.contains('is-visible') && searchInput)
+            ? searchInput.value.trim()
+            : '';
+        const encodedQuery = query ? ':' + encodeURIComponent(query) : '';
+        pycmd('onigiri_collapse:' + encodeURIComponent(deckId) + encodedQuery);
+        return false;
     },
 
     /** Applies open/closed state classes to a collapse icon. */
@@ -2289,6 +2407,7 @@ window.OnigiriEngine = {
 
         const SVG_RENAME       = iconUrl('rename.svg');
         const SVG_ADD_SUBDECK  = iconUrl('add_subdeck.svg');
+        const SVG_MOVE_DECK    = iconUrl('move_deck.svg');
         const SVG_OPTIONS      = iconUrl('options.svg');
         const SVG_EXPORT       = iconUrl('export_deck.svg');
         const SVG_COPY_ID      = iconUrl('copy_id.svg');
@@ -2334,23 +2453,28 @@ window.OnigiriEngine = {
             // Group 1 — structural edits
             [
                 { label: 'Rename',       iconUrl: SVG_RENAME,       cmd: 'onigiri_ctx_rename:'      + did, isModal: true },
-                { label: 'Add Subdeck',  iconUrl: SVG_ADD_SUBDECK,  cmd: 'onigiri_ctx_subdeck:'     + did, isModal: true },
                 { label: 'Edit Icon',    iconUrl: SVG_EDIT_ICON,    cmd: 'onigiri_ctx_change_icon:' + did, isModal: true },
+            ],
+            [
+                { label: 'Add Subdeck',  iconUrl: SVG_ADD_SUBDECK,  cmd: 'onigiri_ctx_subdeck:'     + did, isModal: true },
+                { label: 'Move To',      iconUrl: SVG_MOVE_DECK,    cmd: 'onigiri_ctx_move_to:'     + did, isModal: true },
+            ],
+            [
                 {
-                    label:     isFav ? 'Unfavorite' : 'favorite',
+                    label:     isFav ? 'Unfavorite' : 'Favorite',
                     iconUrl:   isFav ? SVG_STAR : SVG_STAR_OUTLINE,
                     iconColor: isFav ? 'var(--accent-color)' : null,
                     cmd:       'onigiri_toggle_favorite:' + did,
-                },
-                {
-                    label:   isArchived ? 'Unarchive' : 'Archive',
-                    iconUrl: isArchived ? SVG_UNARCHIVE : SVG_ARCHIVE,
-                    cmd:     'onigiri_toggle_archive:' + did,
                 },
                 // Mark item — rendered as a special submenu row
                 { label: 'Mark', iconUrl: SVG_MARK,
                   iconColor: currentMark ? MARK_COLORS.find(c=>c.key===currentMark)?.hex : 'var(--fg-subtle,var(--fg))',
                   isMarkSubmenu: true, did: did, currentMark: currentMark },
+                {
+                    label:   isArchived ? 'Unarchive' : 'Archive',
+                    iconUrl: isArchived ? SVG_UNARCHIVE : SVG_ARCHIVE,
+                    cmd:     'onigiri_toggle_archive:' + did,
+                },
             ],
             // Group 2 — manage / info
             [
@@ -2601,7 +2725,7 @@ window.OnigiriEngine = {
         if (favMajority) {
             toggleGroup.push({ label: 'Unfavorite', iconUrl: SVG_STAR, iconColor: 'var(--accent-color)', cmd: 'onigiri_ctx_bulk_unfavorite' });
         } else {
-            toggleGroup.push({ label: 'Favourite', iconUrl: SVG_STAR_OUTLINE, cmd: 'onigiri_ctx_bulk_favorite' });
+            toggleGroup.push({ label: 'Favorite', iconUrl: SVG_STAR_OUTLINE, cmd: 'onigiri_ctx_bulk_favorite' });
         }
         if (arcMajority) {
             toggleGroup.push({ label: 'Unarchive', iconUrl: SVG_UNARCHIVE, cmd: 'onigiri_ctx_bulk_unarchive' });
@@ -4224,36 +4348,66 @@ window.OnigiriIconChooser = (function () {
         var sty = document.createElement('style');
         sty.id = 'onigiri-icon-modal-style';
         sty.textContent = [
-            '@keyframes onigiriModalIn{from{opacity:0;transform:scale(0.94) translateY(8px)}to{opacity:1;transform:none}}',
             '#onigiri-mark-submenu{pointer-events:auto;}',
-            '.oni-cell{position:relative;width:36px;height:36px;border-radius:8px;border:2px solid transparent;',
+            '#onigiri-icon-backdrop{contain:layout paint style;isolation:isolate;transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden;}',
+            '#onigiri-icon-backdrop.is-preparing{visibility:hidden;}',
+            '#onigiri-icon-backdrop *{box-sizing:border-box;}',
+            '#onigiri-icon-backdrop button,#onigiri-icon-backdrop input{appearance:none;-webkit-appearance:none;',
+            '  font-family:var(--font-main,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);}',
+            '#onigiri-icon-backdrop button{border:none !important;outline:none !important;box-shadow:none !important;background-image:none !important;}',
+            '.onigiri-icon-modal{width:500px;max-width:94vw;height:580px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;',
+            '  border-radius:16px;border:1px solid var(--border,rgba(255,255,255,0.14));background:var(--canvas-overlay,var(--canvas,#1e1e1e));',
+            '  color:var(--fg,#e8e8e8);box-shadow:0 24px 70px rgba(0,0,0,0.42);contain:layout paint style;isolation:isolate;',
+            '  transform:translateZ(0);backface-visibility:hidden;-webkit-backface-visibility:hidden;}',
+            '.onigiri-icon-header{display:flex;align-items:flex-start;gap:12px;padding:18px 18px 14px;border-bottom:1px solid var(--border,rgba(255,255,255,0.12));flex-shrink:0;}',
+            '.onigiri-icon-header-icon{width:34px;height:34px;min-width:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;',
+            '  color:var(--accent-color,#007aff);background:var(--highlight-bg,rgba(128,128,128,0.14));}',
+            '.onigiri-icon-title-wrap{min-width:0;flex:1;}',
+            '.onigiri-icon-title{font-size:16px;font-weight:700;line-height:1.2;margin:0 0 5px;color:var(--fg,#e8e8e8);}',
+            '.onigiri-icon-subtitle{font-size:13px;color:var(--fg-subtle,#9a9a9a);line-height:1.35;}',
+            '.onigiri-icon-close{width:30px;height:30px;min-width:30px;padding:0;border-radius:8px;background:transparent !important;color:var(--fg-subtle,#999);',
+            '  display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.72;transition:none;}',
+            '.onigiri-icon-close:hover,.onigiri-icon-close:focus,.onigiri-icon-close:active{background:transparent !important;color:var(--fg,#e8e8e8);opacity:1;}',
+            '.onigiri-icon-tabbar{display:flex;gap:4px;padding:12px 18px 0;flex-shrink:0;}',
+            '.onigiri-icon-body{flex:1;overflow:hidden;padding:12px 18px 8px;display:flex;flex-direction:column;min-height:0;}',
+            '.oni-grid{position:relative;contain:layout paint style;isolation:isolate;}',
+            '.oni-grid-hover-layer{position:absolute;top:0;left:0;border-radius:8px;background:var(--highlight-bg,rgba(128,128,128,0.12));',
+            '  pointer-events:none;opacity:0;transform:translate3d(0,0,0);will-change:transform,opacity,width,height;contain:paint;z-index:0;}',
+            '.oni-scroll-wrap{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--border,rgba(255,255,255,0.12));',
+            '  border-radius:12px;background:var(--canvas,rgba(255,255,255,0.04));padding:5px;contain:layout paint style;isolation:isolate;}',
+            '.oni-cell{position:relative;width:36px;height:36px;border-radius:8px;border:none;',
             '  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;',
-            '  background:var(--canvas-inset,rgba(255,255,255,0.06));',
-            '  box-sizing:border-box;overflow:hidden;}',
-            '.oni-cell.oni-selected{border-color:var(--accent-color,#007aff);}',
+            '  background:transparent;',
+            '  box-sizing:border-box;overflow:hidden;contain:layout paint style;z-index:1;}',
+            '.oni-cell.oni-selected{background:transparent;box-shadow:inset 0 0 0 2px var(--accent-color,#007aff);}',
             '.oni-cell .oni-del{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;',
             '  background:rgba(0,0,0,0.6);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;',
             '  cursor:pointer;line-height:1;opacity:0;pointer-events:none;}',
             '.oni-emoji-cell{font-size:18px;line-height:1;user-select:none;}',
-            '.oni-search{width:100%;box-sizing:border-box;padding:6px 12px;border-radius:9999px;',
-            '  border:1px solid var(--border,rgba(255,255,255,0.15));background:var(--canvas-inset,rgba(255,255,255,0.06));',
-            '  color:var(--fg,#e0e0e0);font-size:13px;outline:none;margin-bottom:10px;',
+            '.oni-search-wrap{position:relative;margin-bottom:10px;flex-shrink:0;}',
+            '.oni-search-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--fg-subtle,#888);pointer-events:none;}',
+            '.oni-search{width:100%;height:38px;box-sizing:border-box;padding:0 13px 0 38px;border-radius:9999px;',
+            '  border:1px solid var(--border,rgba(255,255,255,0.14));background:var(--canvas-inset,rgba(255,255,255,0.07));',
+            '  color:var(--fg,#e0e0e0);font-size:13px;outline:none;box-shadow:none;transition:none;',
             '  font-family:var(--font-main,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);}',
+            '.oni-search::placeholder{color:var(--fg-subtle,#888);}',
+            '.oni-search:hover{background:var(--canvas-inset,rgba(255,255,255,0.07));}',
             '.oni-search:focus{border-color:var(--accent-color,#007aff);}',
             '.oni-tab-btn{padding:6px 14px;border-radius:8px;border:none !important;cursor:pointer;font-size:13px;font-weight:500;',
-            '  outline:none !important;box-shadow:none !important;transform:none !important;transition:background 0.12s,color 0.12s;}',
+            '  outline:none !important;box-shadow:none !important;transform:none !important;transition:none;}',
             '.oni-tab-btn.active{background:var(--canvas-inset,rgba(255,255,255,0.1));color:var(--fg,#e0e0e0);}',
             '.oni-tab-btn:not(.active){background:none;color:var(--fg-subtle,#888);}',
             '.oni-tab-btn:hover,.oni-tab-btn:focus,.oni-tab-btn:active{border:none !important;outline:none !important;',
             '  box-shadow:none !important;transform:none !important;}',
-            '.oni-tab-btn:not(.active):hover{color:var(--fg,#e0e0e0);}',
+            '.oni-tab-btn:not(.active):hover{color:var(--fg-subtle,#888);}',
             '.oni-color-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}',
-            '.oni-color-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;flex-shrink:0;transition:transform 0.12s ease,box-shadow 0.12s ease;}',
-            '.oni-color-swatch:hover{transform:scale(1.12);}',
+            '.oni-color-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;flex-shrink:0;transition:none;}',
+            '.oni-color-swatch:hover{opacity:0.86;}',
             '.oni-color-plus{display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border-radius:50%;border:none !important;outline:none !important;',
             '  background:var(--canvas-inset,rgba(255,255,255,0.08));color:var(--fg-subtle,#888);cursor:pointer;flex-shrink:0;',
-            '  transition:background 0.12s ease,color 0.12s ease,transform 0.12s ease;appearance:none;-webkit-appearance:none;box-sizing:border-box;box-shadow:none !important;}',
-            '.oni-color-plus:hover,.oni-color-plus.is-active{background:var(--highlight-bg,rgba(128,128,128,0.16));color:var(--fg,#e0e0e0);transform:scale(1.08);}',
+            '  transition:none;appearance:none;-webkit-appearance:none;box-sizing:border-box;box-shadow:none !important;}',
+            '.oni-color-plus:hover{background:var(--canvas-inset,rgba(255,255,255,0.08));color:var(--fg-subtle,#888);}',
+            '.oni-color-plus.is-active{background:var(--highlight-bg,rgba(128,128,128,0.16));color:var(--fg,#e0e0e0);}',
             '.oni-color-picker-popover{display:none;position:fixed;width:300px;box-sizing:border-box;padding:12px;border-radius:14px;border:1px solid var(--border,rgba(255,255,255,0.14));',
             '  background:var(--canvas-overlay,#1e1e1e);box-shadow:0 18px 44px rgba(0,0,0,0.38);z-index:200002;}',
             '.oni-color-picker-popover.open{display:block;}',
@@ -4277,8 +4431,8 @@ window.OnigiriIconChooser = (function () {
             '.oni-slider-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:999px;background:#fff;',
             '  border:2px solid rgba(255,255,255,0.98);box-shadow:0 2px 6px rgba(0,0,0,0.22);transform:translate(-50%,-50%);pointer-events:none;}',
             '.oni-dropper-btn{width:48px;min-width:48px;border:none !important;outline:none !important;border-radius:12px;background:rgba(255,255,255,0.08);color:var(--fg,#e0e0e0);',
-            '  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.12s ease,transform 0.12s ease;appearance:none;-webkit-appearance:none;box-sizing:border-box;box-shadow:none !important;}',
-            '.oni-dropper-btn:hover{background:rgba(255,255,255,0.12);transform:translateY(-1px);}',
+            '  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:none;appearance:none;-webkit-appearance:none;box-sizing:border-box;box-shadow:none !important;}',
+            '.oni-dropper-btn:hover{background:rgba(255,255,255,0.08);}',
             '.oni-picker-inputs{display:flex;gap:5px;margin-top:10px;}',
             '.oni-picker-surface{display:flex;align-items:center;min-width:0;height:38px;padding:0 8px;border-radius:10px;',
             '  border:1px solid var(--border,rgba(255,255,255,0.14));background:rgba(255,255,255,0.08);box-sizing:border-box;}',
@@ -4290,45 +4444,101 @@ window.OnigiriIconChooser = (function () {
             '.oni-picker-input::placeholder{color:var(--fg-subtle,#888);}',
             '.oni-picker-input.percent{text-align:center;font-family:var(--font-main,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);}',
             '.oni-picker-format-label{font-size:13px;font-weight:600;color:var(--fg,#e0e0e0);}',
-            '#onigiri-icon-backdrop button{border:none !important;outline:none !important;box-shadow:none !important;appearance:none;-webkit-appearance:none;}',
             '.oni-upload-btn{display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;border:none !important;',
-            '  background:#353535;color:var(--fg-subtle,#888);font-size:13px;',
-            '  cursor:pointer;outline:none !important;box-shadow:none !important;transition:background 0.12s,color 0.12s;}',
-            '.oni-upload-btn:hover{background:#454545;color:var(--fg,#e0e0e0);}',
+            '  background:var(--canvas-inset,rgba(255,255,255,0.08));color:var(--fg-subtle,#888);font-size:13px;',
+            '  cursor:pointer;outline:none !important;box-shadow:none !important;transition:none;}',
+            '.oni-upload-btn:hover{background:var(--canvas-inset,rgba(255,255,255,0.08));color:var(--fg-subtle,#888);}',
+            '.oni-dialog-footer{display:flex;align-items:center;padding:12px 18px 16px;gap:8px;flex-shrink:0;border-top:1px solid var(--border,rgba(255,255,255,0.12));}',
+            '.oni-dialog-spacer{flex:1;}',
+            '.oni-dialog-btn{height:36px;padding:0 15px;border:none !important;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;',
+            '  cursor:pointer;font-size:13px;font-weight:650;outline:none !important;box-shadow:none !important;background-image:none !important;filter:none !important;',
+            '  transition:none;}',
+            '.oni-dialog-btn-secondary{background:var(--canvas-inset,rgba(255,255,255,0.08)) !important;color:var(--fg,#e8e8e8);}',
+            '.oni-dialog-btn-secondary:hover,.oni-dialog-btn-secondary:focus,.oni-dialog-btn-secondary:active{background:var(--canvas-inset,rgba(255,255,255,0.08)) !important;}',
+            '.oni-dialog-btn-primary{background:var(--accent-color,#007aff) !important;color:#fff;}',
+            '.oni-dialog-btn-primary:hover,.oni-dialog-btn-primary:focus,.oni-dialog-btn-primary:active{background:var(--accent-color,#007aff) !important;}',
+            '.oni-dialog-btn:not(:disabled):hover{opacity:0.92;}',
+            '.oni-dialog-btn:not(:disabled):active{opacity:0.84;}',
         ].join('');
         document.head.appendChild(sty);
     }
 
     function _bindCellHover(cell, delEl) {
         cell.addEventListener('mouseenter', function () {
-            cell.style.background = 'var(--highlight-bg,rgba(128,128,128,0.12))';
-            // Don't override the accent border when the cell is already selected
-            if (!cell.classList.contains('oni-selected')) {
-                cell.style.borderColor = 'var(--border,rgba(255,255,255,0.15))';
-            }
             if (delEl) { delEl.style.opacity = '1'; delEl.style.pointerEvents = 'auto'; }
         });
         cell.addEventListener('mouseleave', function () {
-            cell.style.background = '';
-            if (!cell.classList.contains('oni-selected')) cell.style.borderColor = '';
             if (delEl) { delEl.style.opacity = '0'; delEl.style.pointerEvents = 'none'; }
         });
     }
 
     function _makeGrid() {
         var g = document.createElement('div');
+        g.className = 'oni-grid';
         g.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:4px;';
+        var hoverLayer = document.createElement('div');
+        hoverLayer.className = 'oni-grid-hover-layer';
+        var hoverCell = null;
+        var hoverRaf = 0;
+
+        function ensureHoverLayer() {
+            if (hoverLayer.parentElement !== g) g.appendChild(hoverLayer);
+        }
+
+        function positionHoverLayer() {
+            hoverRaf = 0;
+            if (!hoverCell || hoverCell.offsetParent === null) {
+                hoverLayer.style.opacity = '0';
+                return;
+            }
+            ensureHoverLayer();
+            hoverLayer.style.width = hoverCell.offsetWidth + 'px';
+            hoverLayer.style.height = hoverCell.offsetHeight + 'px';
+            hoverLayer.style.transform = 'translate3d(' + hoverCell.offsetLeft + 'px,' + hoverCell.offsetTop + 'px,0)';
+            hoverLayer.style.opacity = '1';
+        }
+
+        function queueHoverLayer() {
+            if (hoverRaf) return;
+            hoverRaf = requestAnimationFrame(positionHoverLayer);
+        }
+
+        function hideHoverLayer() {
+            hoverCell = null;
+            hoverLayer.style.opacity = '0';
+        }
+
+        g.addEventListener('pointerover', function (evt) {
+            var cell = evt.target && evt.target.closest ? evt.target.closest('.oni-cell') : null;
+            if (!cell || cell.parentElement !== g) {
+                hideHoverLayer();
+                return;
+            }
+            if (cell !== hoverCell) {
+                hoverCell = cell;
+                queueHoverLayer();
+            }
+        });
+        g.addEventListener('pointerleave', hideHoverLayer);
         return g;
     }
 
     function _makeSearch(placeholder, onInput) {
+        var wrap = document.createElement('div');
+        wrap.className = 'oni-search-wrap';
+        wrap.appendChild(OnigiriEngine.createMaskIcon(OnigiriEngine.systemIconUrl('search.svg'), {
+            className: 'oni-search-icon',
+            size: 15,
+            color: 'currentColor'
+        }));
         var inp = document.createElement('input');
         inp.className = 'oni-search';
         inp.placeholder = placeholder;
         inp.autocomplete = 'off';
         inp.spellcheck = false;
         inp.addEventListener('input', function () { onInput(inp.value.trim().toLowerCase()); });
-        return inp;
+        wrap.appendChild(inp);
+        return wrap;
     }
 
     function _clampByte(value) {
@@ -4683,6 +4893,7 @@ window.OnigiriIconChooser = (function () {
         var grid = _makeGrid();
         // Scrollable wrapper so the grid can scroll while the search bar stays fixed
         var scrollWrap = document.createElement('div');
+        scrollWrap.className = 'oni-scroll-wrap';
         scrollWrap.style.cssText = 'flex:1;overflow-y:auto;min-height:0;';
         scrollWrap.appendChild(grid);
 
@@ -4800,8 +5011,11 @@ window.OnigiriIconChooser = (function () {
         }));
         uploadBtn.addEventListener('click', function () { pycmd('onigiri_icon_chooser_add_icon:' + state.deckId); });
         searchRow.appendChild(uploadBtn);
+        var scrollWrap = document.createElement('div');
+        scrollWrap.className = 'oni-scroll-wrap';
+        scrollWrap.appendChild(grid);
         pane.appendChild(searchRow);
-        pane.appendChild(grid);
+        pane.appendChild(scrollWrap);
         _renderIcons('');
         return pane;
     }
@@ -4814,9 +5028,9 @@ window.OnigiriIconChooser = (function () {
         function _makeUploadBtn(label, cmd) {
             var btn = document.createElement('button');
             btn.textContent = label;
-            btn.style.cssText = 'padding:14px 20px;border-radius:10px;border:1.5px dashed var(--border,rgba(255,255,255,0.2));background:none;color:var(--fg,#e0e0e0);font-size:14px;cursor:pointer;transition:border-color 0.15s,color 0.15s;text-align:left;outline:none !important;box-shadow:none !important;transform:none;';
-            btn.addEventListener('mouseenter', function () { btn.style.borderColor = 'var(--accent-color,#007aff)'; btn.style.color = 'var(--accent-color,#007aff)'; });
-            btn.addEventListener('mouseleave', function () { btn.style.borderColor = ''; btn.style.color = ''; });
+            btn.className = 'oni-dialog-btn oni-dialog-btn-secondary';
+            btn.style.justifyContent = 'flex-start';
+            btn.style.height = '44px';
             btn.addEventListener('click', function () { pycmd(cmd + ':' + state.deckId); });
             return btn;
         }
@@ -4830,11 +5044,10 @@ window.OnigiriIconChooser = (function () {
         // Deselect old cell
         var old = document.querySelector('.oni-cell.oni-selected');
         if (old) old.classList.remove('oni-selected');
-        // Select new cell and clear any inline border-color set by hover so CSS class takes over
+        // Select new cell; visual treatment is CSS-only to avoid hover-time style churn.
         var newCell = document.querySelector('.oni-cell[data-icon-name="' + CSS.escape(name) + '"]');
         if (newCell) {
             newCell.classList.add('oni-selected');
-            newCell.style.removeProperty('border-color');
         }
         state.selectedIcon = name;
         _updateColorPreview(state);
@@ -4875,8 +5088,72 @@ window.OnigiriIconChooser = (function () {
         }
     }
 
+    function _prewarmIconChooserAssets(data) {
+        if (typeof OnigiriEngine === 'undefined' || typeof OnigiriEngine.preloadMaskIcons !== 'function') return;
+        var urls = [
+            OnigiriEngine.systemIconUrl('edit_icon.svg'),
+            OnigiriEngine.systemIconUrl('cancel.svg'),
+            OnigiriEngine.systemIconUrl('search.svg'),
+            OnigiriEngine.systemIconUrl('add.svg'),
+            OnigiriEngine.systemIconUrl('dropper.svg'),
+            OnigiriEngine.systemIconUrl('down.svg')
+        ];
+        (data.icons || []).forEach(function (item) {
+            if (item && item.url) urls.push(item.url);
+        });
+        OnigiriEngine.preloadMaskIcons(urls);
+    }
+
+    function _revealIconDialogWhenStable(backdrop) {
+        if (!backdrop) return;
+        backdrop.getBoundingClientRect();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                backdrop.classList.remove('is-preparing');
+            });
+        });
+    }
+
+    function _warmIconDialogSurface() {
+        if (document.getElementById('onigiri-icon-dialog-warmup')) return;
+        var warmup = document.createElement('div');
+        warmup.id = 'onigiri-icon-dialog-warmup';
+        warmup.setAttribute('aria-hidden', 'true');
+        warmup.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:500px;height:580px;visibility:hidden;pointer-events:none;contain:layout paint style;overflow:hidden;';
+
+        var modal = document.createElement('div');
+        modal.className = 'onigiri-icon-modal';
+        var search = document.createElement('input');
+        search.className = 'oni-search';
+        var scrollWrap = document.createElement('div');
+        scrollWrap.className = 'oni-scroll-wrap';
+        var grid = document.createElement('div');
+        grid.className = 'oni-grid';
+        var cell = document.createElement('div');
+        cell.className = 'oni-cell oni-selected';
+        grid.appendChild(cell);
+        scrollWrap.appendChild(grid);
+        var footer = document.createElement('div');
+        footer.className = 'oni-dialog-footer';
+        var secondary = document.createElement('button');
+        secondary.className = 'oni-dialog-btn oni-dialog-btn-secondary';
+        secondary.textContent = 'Cancel';
+        var primary = document.createElement('button');
+        primary.className = 'oni-dialog-btn oni-dialog-btn-primary';
+        primary.textContent = 'Save';
+        footer.appendChild(secondary);
+        footer.appendChild(primary);
+        modal.appendChild(search);
+        modal.appendChild(scrollWrap);
+        modal.appendChild(footer);
+        warmup.appendChild(modal);
+        (document.body || document.documentElement).appendChild(warmup);
+        warmup.getBoundingClientRect();
+    }
+
     function _buildModal(data) {
         _ensureStyles();
+        _prewarmIconChooserAssets(data || {});
         _state = {
             deckId:        data.deckId,
             selectedIcon:  data.current && data.current.icon  ? data.current.icon  : '',
@@ -4894,25 +5171,50 @@ window.OnigiriIconChooser = (function () {
         // Backdrop
         var bd = document.createElement('div');
         bd.id = 'onigiri-icon-backdrop';
+        bd.className = 'is-preparing';
         _css(bd, 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200000;display:flex;align-items:center;justify-content:center;');
 
         // Modal
         var modal = document.createElement('div');
-        _css(modal, 'background:var(--canvas-overlay,#1e1e1e);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:16px;width:500px;max-width:94vw;height:580px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.45);animation:onigiriModalIn 0.22s cubic-bezier(0.16,1,0.3,1) both;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;');
+        modal.className = 'onigiri-icon-modal';
+        _css(modal, 'background:var(--canvas-overlay,#1e1e1e);border:1px solid var(--border,rgba(255,255,255,0.14));border-radius:16px;width:500px;max-width:94vw;height:580px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,0.42);backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);contain:layout paint style;isolation:isolate;');
         modal.addEventListener('click', function (e) { e.stopPropagation(); });
         modal.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
 
         // Header
         var header = document.createElement('div');
-        _css(header, 'display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;flex-shrink:0;');
-        var titleEl = document.createElement('span');
+        header.className = 'onigiri-icon-header';
+        var headerIcon = document.createElement('div');
+        headerIcon.className = 'onigiri-icon-header-icon';
+        headerIcon.appendChild(OnigiriEngine.createMaskIcon(OnigiriEngine.systemIconUrl('edit_icon.svg'), {
+            className: 'onigiri-icon-header-svg',
+            size: 18,
+            color: 'currentColor'
+        }));
+        header.appendChild(headerIcon);
+
+        var titleWrap = document.createElement('div');
+        titleWrap.className = 'onigiri-icon-title-wrap';
+        var titleEl = document.createElement('div');
+        titleEl.className = 'onigiri-icon-title';
         titleEl.textContent = 'Edit Icon';
-        _css(titleEl, 'font-weight:600;font-size:15px;color:var(--fg,#e0e0e0);');
+        titleWrap.appendChild(titleEl);
+        var subtitleEl = document.createElement('div');
+        subtitleEl.className = 'onigiri-icon-subtitle';
+        subtitleEl.textContent = 'Choose an icon and colour for this deck';
+        titleWrap.appendChild(subtitleEl);
+        header.appendChild(titleWrap);
+
         var closeBtn = document.createElement('button');
-        _css(closeBtn, 'background:none;border:none;cursor:pointer;color:var(--fg-subtle,#888);font-size:20px;line-height:1;padding:2px 4px;border-radius:6px;');
-        closeBtn.textContent = '×';
+        closeBtn.type = 'button';
+        closeBtn.className = 'onigiri-icon-close';
+        closeBtn.title = 'Close';
+        closeBtn.appendChild(OnigiriEngine.createMaskIcon(OnigiriEngine.systemIconUrl('cancel.svg'), {
+            className: 'onigiri-icon-close-svg',
+            size: 14,
+            color: 'currentColor'
+        }));
         closeBtn.addEventListener('click', _close);
-        header.appendChild(titleEl);
         header.appendChild(closeBtn);
         modal.appendChild(header);
 
@@ -4924,7 +5226,7 @@ window.OnigiriIconChooser = (function () {
         var activeTab = state.selectedIcon.startsWith('emoji:') ? 'emojis' : ((data.icons && data.icons.length) ? 'icons' : 'emojis');
 
         var tabBar = document.createElement('div');
-        _css(tabBar, 'display:flex;gap:2px;padding:10px 18px 0;flex-shrink:0;');
+        tabBar.className = 'onigiri-icon-tabbar';
 
         function _setTab(tabId) {
             activeTab = tabId;
@@ -4962,7 +5264,7 @@ window.OnigiriIconChooser = (function () {
         // Each pane gets flex:1+min-height:0 when active (via _setTab), so the
         // pane's inner scrollWrap handles scrolling and lazy-loads correctly.
         var body = document.createElement('div');
-        _css(body, 'flex:1;overflow:hidden;padding:12px 18px 8px;display:flex;flex-direction:column;min-height:0;');
+        body.className = 'onigiri-icon-body';
 
         var emojiPane  = _buildEmojiPane(state);
         var iconsPane  = _buildIconsPane(state, data);
@@ -5221,24 +5523,20 @@ window.OnigiriIconChooser = (function () {
 
         // Footer
         var footer = document.createElement('div');
-        _css(footer, 'display:flex;align-items:center;padding:10px 18px 14px;gap:8px;flex-shrink:0;');
+        footer.className = 'oni-dialog-footer';
         var resetBtn = document.createElement('button');
         resetBtn.textContent = 'Reset to Default';
-        _css(resetBtn, 'background:#353535;border:none;border-radius:10px;padding:7px 14px;cursor:pointer;font-size:13px;color:var(--fg,#e0e0e0);transition:background 0.15s ease;outline:none;box-shadow:none;');
-        resetBtn.addEventListener('mouseenter', function () { resetBtn.style.background = '#404040'; });
-        resetBtn.addEventListener('mouseleave', function () { resetBtn.style.background = '#353535'; });
+        resetBtn.className = 'oni-dialog-btn oni-dialog-btn-secondary';
         resetBtn.addEventListener('click', function () { pycmd('onigiri_icon_chooser_reset:' + state.deckId); _close(); });
         var spacer = document.createElement('div');
-        spacer.style.flex = '1';
+        spacer.className = 'oni-dialog-spacer';
         var cancelBtn = document.createElement('button');
         cancelBtn.textContent = 'Cancel';
-        _css(cancelBtn, 'background:#353535;border:none;border-radius:10px;padding:7px 14px;cursor:pointer;font-size:13px;color:var(--fg,#e0e0e0);transition:background 0.15s ease;outline:none;box-shadow:none;');
-        cancelBtn.addEventListener('mouseenter', function () { cancelBtn.style.background = '#404040'; });
-        cancelBtn.addEventListener('mouseleave', function () { cancelBtn.style.background = '#353535'; });
+        cancelBtn.className = 'oni-dialog-btn oni-dialog-btn-secondary';
         cancelBtn.addEventListener('click', _close);
         var saveBtn = document.createElement('button');
         saveBtn.textContent = 'Save';
-        _css(saveBtn, 'background:var(--accent-color,#007aff);border:none;border-radius:8px;padding:7px 18px;cursor:pointer;font-size:13px;font-weight:600;color:#fff;transition:opacity 0.15s;');
+        saveBtn.className = 'oni-dialog-btn oni-dialog-btn-primary';
         saveBtn.addEventListener('click', function () {
             var colorToSave = (state.selectedIcon === "" && !state.colorWasModified) ? "" : state.selectedColor;
             var payload = JSON.stringify({ icon: state.selectedIcon, color: colorToSave });
@@ -5301,8 +5599,13 @@ window.OnigiriIconChooser = (function () {
 
         _setTab(activeTab);
         _updateColorPreview(state);
+        _revealIconDialogWhenStable(bd);
         return bd;
     }
+
+    _ensureStyles();
+    _prewarmIconChooserAssets({ icons: [] });
+    _warmIconDialogSurface();
 
     return {
         open: function (data) {
@@ -5319,6 +5622,7 @@ window.OnigiriIconChooser = (function () {
         refreshData: function (data) {
             var state = _state;
             state.data = data;
+            _prewarmIconChooserAssets(data || {});
             var iconGrid = document.getElementById('onigiri-icon-grid-icons');
             if (iconGrid) {
                 var pane = document.getElementById('onigiri-tab-pane-icons');

@@ -2,10 +2,12 @@ import os
 import json
 import shutil
 from typing import Tuple, Any, List
+from urllib.parse import unquote
 from aqt.deckbrowser import DeckBrowser
 from . import deck_tree_updater
 from . import deck_drag_drop
 from . import create_deck_dialog
+from . import move_deck
 from aqt import mw
 from aqt.qt import QFileDialog
 from aqt.utils import tooltip
@@ -84,6 +86,50 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
+    if cmd.startswith("onigimon_feed:"):
+        try:
+            from .gamification import onigimon
+            item_key = cmd.split(":", 1)[1]
+            message = onigimon.manager.use_item(item_key)
+            tooltip(message or "No Onigimon item available.")
+        except Exception as e:
+            print(f"Onigiri: Error feeding Onigimon: {e}")
+        return (True, None)
+
+    if cmd == "onigimon_play":
+        try:
+            from .gamification import onigimon
+            message = onigimon.manager.play()
+            if message:
+                tooltip(message)
+        except Exception as e:
+            print(f"Onigiri: Error playing with Onigimon: {e}")
+        return (True, None)
+
+    if cmd == "onigimon_daily_gift":
+        try:
+            from .gamification import onigimon
+            message = onigimon.manager.claim_daily_gift()
+            tooltip(message or "Today's Onigimon gift is already claimed.")
+        except Exception as e:
+            print(f"Onigiri: Error claiming Onigimon gift: {e}")
+        return (True, None)
+
+    if cmd.startswith("onigimon_rename:"):
+        try:
+            from .gamification import onigimon
+            name = unquote(cmd.split(":", 1)[1]).strip()
+            if not name:
+                tooltip("Choose a name first.")
+                return (True, None)
+            if onigimon.manager.rename_active_companion(name):
+                tooltip(f"Renamed to {name}.")
+            else:
+                tooltip("Choose an Onigimon companion first.")
+        except Exception as e:
+            print(f"Onigiri: Error renaming Onigimon: {e}")
+        return (True, None)
+
     if cmd == "onigiri_create_deck":
         try:
              # tooltip("Debug: Opening Create Deck Dialog...")
@@ -161,9 +207,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd.startswith("onigiri_collapse:"):
         try:
-            deck_id = cmd.split(":", 1)[1]
+            parts = cmd.split(":", 2)
+            deck_id = unquote(parts[1]) if len(parts) > 1 else ""
+            search_query = unquote(parts[2]).strip() if len(parts) > 2 else ""
             if isinstance(context, DeckBrowser):
-                deck_tree_updater.on_deck_collapse(context, deck_id)
+                deck_tree_updater.on_deck_collapse(context, deck_id, search_query)
                 return (True, None)
         except Exception as e:
             print(f"Onigiri: Error handling deck collapse: {e}")
@@ -250,38 +298,108 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     # --- Deck right-click context menu actions ---
 
+    if cmd.startswith("onigiri_ctx_move_to:"):
+        try:
+            did = unquote(cmd.split(":", 1)[1])
+            payload = move_deck.build_move_to_payload(did)
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.open(%s);"
+                    % json.dumps(payload, ensure_ascii=True)
+                )
+        except Exception as e:
+            tooltip(f"Could not open Move Deck dialog: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
+        return (True, None)
+
+    if cmd.startswith("onigiri_move_deck:"):
+        try:
+            payload = unquote(cmd.split(":", 1)[1])
+            changed, message = move_deck.move_deck_from_payload(payload)
+            if changed and isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+                context.web.eval(
+                    "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.close();"
+                )
+                tooltip(message)
+            elif isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.showError(%s);"
+                    % json.dumps(message or "Could not move deck.")
+                )
+            else:
+                tooltip(message or "Could not move deck.")
+        except Exception as e:
+            tooltip(f"Move failed: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.showError(%s);"
+                    % json.dumps(f"Move failed: {e}")
+                )
+        return (True, None)
+
     if cmd.startswith("onigiri_ctx_rename:"):
         try:
-            from . import rename_dialog as _rd
-            did = cmd.split(":", 1)[1]
+            did = unquote(cmd.split(":", 1)[1])
             deck = mw.col.decks.get(int(did))
             if not deck:
                 return (True, None)
             current_name = deck["name"]
             leaf = current_name.split("::")[-1]
             parent_prefix = "::".join(current_name.split("::")[:-1])
+            payload = {
+                "deckId": str(did),
+                "leafName": leaf,
+                "fullName": current_name,
+                "parentPrefix": parent_prefix,
+            }
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriRenameDialog)OnigiriRenameDialog.open(%s);"
+                    % json.dumps(payload, ensure_ascii=True)
+                )
+        except Exception as e:
+            tooltip(f"Could not open Rename Deck dialog: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
+        return (True, None)
 
-            result = _rd.show_rename_dialog(mw, leaf, current_name, parent_prefix)
-            if result and result[0] and result[0].strip():
-                new_name = result[0].strip()
-                was_full_path = result[1]
-                if was_full_path:
-                    # Dialog was in full-path mode: use the user's text exactly as-is
-                    new_full = new_name
-                else:
-                    # Leaf mode: only re-append parent prefix if the user didn't type a separator
-                    if "::" in new_name:
-                        new_full = new_name
-                    else:
-                        new_full = (parent_prefix + "::" + new_name) if parent_prefix else new_name
-                mw.col.decks.rename(deck, new_full)
-                mw.col.setMod()
-                if isinstance(context, DeckBrowser):
-                    deck_tree_updater.refresh_deck_tree_state(context)
+    if cmd.startswith("onigiri_rename_deck:"):
+        try:
+            payload = json.loads(unquote(cmd.split(":", 1)[1]))
+            did = payload.get("deckId")
+            deck = mw.col.decks.get(int(did))
+            if not deck:
+                raise ValueError("Deck no longer exists.")
+            new_name = str(payload.get("name") or "").strip()
+            if not new_name:
+                raise ValueError("Enter a deck name.")
+
+            current_name = deck["name"]
+            parent_prefix = "::".join(current_name.split("::")[:-1])
+            if payload.get("fullPath"):
+                new_full = new_name
+            elif "::" in new_name:
+                new_full = new_name
+            else:
+                new_full = (parent_prefix + "::" + new_name) if parent_prefix else new_name
+
+            mw.col.decks.rename(deck, new_full)
+            mw.col.setMod()
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+                context.web.eval(
+                    "if(window.OnigiriRenameDialog)OnigiriRenameDialog.close();"
+                )
+                tooltip("Deck renamed.")
         except Exception as e:
             tooltip(f"Rename failed: {e}")
-        if isinstance(context, DeckBrowser):
-            context.web.eval("OnigiriEngine.clearDialogFocus();")
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriRenameDialog)OnigiriRenameDialog.showError(%s);"
+                    % json.dumps(f"Rename failed: {e}")
+                )
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_subdeck:"):
@@ -691,7 +809,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd.startswith("onigiri_deck_search:"):
         try:
             import json as _json
-            query = cmd.split(":", 1)[1].strip().lower()
+            query = unquote(cmd.split(":", 1)[1]).strip()
             if not isinstance(context, DeckBrowser):
                 return (True, None)
 
@@ -699,61 +817,14 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 # Empty query — restore the normal tree
                 new_html = deck_tree_updater._render_deck_tree_html_only(context)
                 context.web.eval(
-                    "OnigiriEngine.updateDeckTree({});".format(_json.dumps(new_html))
+                    "OnigiriEngine.updateDeckTree({}, {{force: true}});".format(_json.dumps(new_html))
                 )
                 return (True, None)
 
-            archived_ids = deck_tree_updater.archived_deck_ids()
-            show_archived_only = bool(mw.col.conf.get(deck_tree_updater.SHOW_ARCHIVED_CONF_KEY, False))
-
-            # Search ALL deck names (including collapsed children)
-            all_decks = mw.col.decks.all()
-            archived_names = [
-                d.get("name", "")
-                for d in all_decks
-                if str(d.get("id", "")) in archived_ids and d.get("name", "")
-            ]
-
-            def hidden_by_archived_parent(name):
-                return any(name == archived_name or name.startswith(archived_name + "::") for archived_name in archived_names)
-
-            matched_ids = set()
-            for d in all_decks:
-                did = str(d["id"])
-                name = d.get("name", "")
-                if show_archived_only:
-                    if did not in archived_ids:
-                        continue
-                elif did in archived_ids or hidden_by_archived_parent(name):
-                    continue
-                leaf = name.split("::")[-1]
-                if query in name.lower() or query in leaf.lower():
-                    matched_ids.add(did)
-
-            # Re-render the full tree but only emit rows whose deck_id is in matched_ids
-            from aqt.deckbrowser import RenderDeckNodeContext
-            from . import onigiri_renderer
-
-            tree_data = mw.col.sched.deck_due_tree()
-            deck_tree_updater.apply_archive_filter(
-                tree_data,
-                archived_ids=archived_ids,
-                show_archived_only=show_archived_only,
-            )
-            ctx = RenderDeckNodeContext(current_deck_id=mw.col.decks.get_current_id())
-
-            rows = []
-            def collect_matching(nodes):
-                for node in nodes:
-                    if str(node.deck_id) in matched_ids:
-                        rows.append(context._render_deck_node(node, ctx))
-                    collect_matching(node.children)
-
-            collect_matching(tree_data.children)
-            new_html = "".join(rows)
+            new_html = deck_tree_updater._render_deck_search_tree_html_only(context, query)
 
             context.web.eval(
-                "OnigiriEngine.updateDeckTree({});".format(_json.dumps(new_html))
+                "OnigiriEngine.updateDeckTree({}, {{force: true}});".format(_json.dumps(new_html))
             )
         except Exception as e:
             print(f"Onigiri: deck search error: {e}")

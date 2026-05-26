@@ -3,7 +3,8 @@
 from . import gamification
 from . import mochi_messages
 from . import mod_transfer_window
+from . import onigimon
 from . import restaurant_level
 
 # Make these available at the package level for easier imports
-__all__ = ['gamification', 'mochi_messages', 'mod_transfer_window', 'restaurant_level']
+__all__ = ['gamification', 'mochi_messages', 'mod_transfer_window', 'onigimon', 'restaurant_level']

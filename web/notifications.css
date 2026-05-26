@@ -82,6 +82,16 @@ html.night-mode .onigiri-notification-icon,
     background: transparent;
 }
 
+.onigiri-notification-card[data-variant="onigimon"] {
+    --notification-text-light: #243021;
+    --notification-text-dark: #f5ffe8;
+    border: 1px solid rgba(112, 198, 166, 0.35);
+}
+
+.onigiri-notification-card[data-variant="onigimon"] .onigiri-notification-icon {
+    background: rgba(112, 198, 166, 0.16);
+}
+
 body.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notification-icon,
 html.night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notification-icon,
 .night-mode .onigiri-notification-card[data-variant="mochi"] .onigiri-notification-icon,

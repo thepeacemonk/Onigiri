@@ -27,6 +27,7 @@ DEFAULTS = {
     "maxHide": False,
     "flowMode": False,
     "gamificationMode": False,
+    "ankiweb_sync_enabled": False,
     "fullHideMode": False, 
     "sidebarCollapsed": False,
     "showCongratsProfileBar": True,
@@ -95,12 +96,24 @@ DEFAULTS = {
             "Each review is a step closer to your goal. You've got this!",
         ],
     },
+    "onigimon": {
+        "enabled": False,
+        "notifications_enabled": True,
+        "daily_surprise_enabled": True,
+        "reward_interval": 4,
+        "reward_generosity": "normal",
+        "widget_style": "care",
+        "sprite_source": "ankimon_then_pokesprite",
+        "sprite_motion": "static",
+        "allow_ankimon_updates": False,
+    },
     "heatmapShape": "square.svg",
     "heatmapShowStreak": True,
     "heatmapShowMonths": True,
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
     "heatmapDefaultView": "year",
+    "heatmapWeekStart": "monday",
     "onigiriWidgetLayout": {
     "grid": {
         "studied": {"pos": 0, "row": 1, "col": 1},
@@ -109,7 +122,7 @@ DEFAULTS = {
         "retention": {"pos": 3, "row": 1, "col": 1},
         "heatmap": {"pos": 4, "row": 2, "col": 4}
         },
-    "archive": ["favorites"] 
+    "archive": ["favorites", "onigimon"]
     },
     "externalWidgetLayout": {}, 
 

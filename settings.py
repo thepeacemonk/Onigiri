@@ -527,9 +527,19 @@ class ProfileBarWidget(QWidget):
         self.pic_label.setStyleSheet("background: transparent;")
         self.name_label = QLabel(user_name)
         self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; color: white; background: transparent;")
+        self.subtitle_label = QLabel("Profile")
+        self.subtitle_label.setStyleSheet("font-weight: 600; font-size: 12px; color: rgba(255,255,255,0.82); background: transparent;")
+
+        self.text_stack = QWidget()
+        self.text_stack.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(self.text_stack)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(0)
+        text_layout.addWidget(self.name_label)
+        text_layout.addWidget(self.subtitle_label)
 
         layout.addWidget(self.pic_label)
-        layout.addWidget(self.name_label)
+        layout.addWidget(self.text_stack)
         layout.addStretch()
         self.update_background(bg_mode, bg_config)
         self.update_profile(user_name=user_name, pic_path=pic_path, avatar_size=avatar_size)
@@ -570,6 +580,9 @@ class ProfileBarWidget(QWidget):
             text_color = get_contrast_text_color(bg_qc)
         self.name_label.setStyleSheet(
             f"font-weight: bold; font-size: 14px; color: {text_color}; background: transparent;"
+        )
+        self.subtitle_label.setStyleSheet(
+            f"font-weight: 600; font-size: 12px; color: {text_color}; background: transparent;"
         )
 
     def update_background(self, bg_mode=None, bg_config=None):
@@ -2371,7 +2384,7 @@ class SettingsSearchPage(QWidget):
               ("Profile Bar Background", "Profile"), ("Level Bar Color", "Profile"),
               ("Profile Page Background", "Profile"), ("Profile Page Sections", "Profile"),
               ("Username", "Profile"), ("Avatar", "Profile")]),
-            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery"],
+            ("General", "Customize appearance, fonts, and themes.", ["Modes", "Fonts", "Palette", "Themes", "Gallery", "Sync"],
              [("Modes", "Modes"), ("Gamification Mode", "Modes"), ("Hide", "Modes"), ("Pro", "Modes"), ("Max", "Modes"),
               ("Fonts", "Fonts"), ("Text", "Fonts"), ("Typography", "Fonts"), ("Font Size", "Fonts"),
               ("Titles", "Fonts"), ("Title", "Fonts"),
@@ -2379,7 +2392,8 @@ class SettingsSearchPage(QWidget):
               ("Light Mode", "Palette"), ("Dark Mode", "Palette"), ("Colors", "Palette"),
               ("Official Themes", "Themes"), ("Your Themes", "Themes"), ("Themes", "Themes"),
               ("Gallery", "Gallery"), ("Colors Gallery", "Gallery"), ("Images Gallery", "Gallery"),
-              ("Images", "Gallery"), ("Backgrounds", "Gallery"), ("Pictures", "Gallery")]),
+              ("Images", "Gallery"), ("Backgrounds", "Gallery"), ("Pictures", "Gallery"),
+              ("Sync", "Sync"), ("AnkiWeb Sync", "Sync")]),
             ("Menu", "Configure main menu and sidebar options.", ["Main menu", "Sidebar"],
              [("Organize", "Main menu"), ("Widget Grid", "Main menu"), ("Title", "Main menu"),
               ("Stats Title", "Main menu"), ("Heatmap", "Main menu"), ("Main Background", "Main menu"),
@@ -2627,15 +2641,109 @@ class DonationDialog(QDialog):
         self.accept()
 
 class SettingsDialog(QDialog):
+    def _settings_palette(self):
+        conf = self.current_config if hasattr(self, "current_config") else config.get_config()
+        mode = "dark" if theme_manager.night_mode else "light"
+        return conf.get("colors", {}).get(mode, {})
+
+    def _settings_icon_color(self):
+        palette = self._settings_palette()
+        fallback = "#f9fafb" if theme_manager.night_mode else "#111827"
+        return palette.get("--icon-color", palette.get("--fg", fallback))
+
+    def _themed_icon(self, filename, color=None, size=18):
+        icon_path = os.path.join(self.addon_path, "system_files", "system_icons", filename)
+        if not os.path.exists(icon_path):
+            return QIcon()
+
+        icon = QIcon(icon_path)
+        pixmap = icon.pixmap(size, size)
+        if pixmap.isNull():
+            return icon
+
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color or self._settings_icon_color()))
+        painter.end()
+        return QIcon(pixmap)
+
+    def _decorate_button(self, button, icon_filename=None, icon_size=18):
+        if icon_filename:
+            button.setIcon(self._themed_icon(icon_filename, self._settings_icon_color(), icon_size))
+            button.setIconSize(QSize(icon_size, icon_size))
+            button.setProperty("onigiri_icon_filename", icon_filename)
+            button.setProperty("onigiri_icon_size", icon_size)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoDefault(False)
+
+    def _settings_pill_button_stylesheet(self, min_height=36):
+        palette = self._settings_palette()
+        if theme_manager.night_mode:
+            bg = palette.get("--highlight-bg", "#3d3d3d")
+            hover_bg = "#474747"
+            border = palette.get("--border", "#454545")
+            fg = palette.get("--fg", "#e0e0e0")
+            accent = palette.get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
+        else:
+            bg = palette.get("--highlight-bg", "#ececec")
+            hover_bg = "#dedede"
+            border = palette.get("--border", "#d6d6d6")
+            fg = palette.get("--fg", "#212121")
+            accent = palette.get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
+
+        radius = max(12, min_height // 2)
+        return f"""
+            QPushButton {{
+                min-height: {min_height}px;
+                padding: 0 18px;
+                border: 1px solid {border};
+                border-radius: {radius}px;
+                background-color: {bg};
+                color: {fg};
+                font-weight: 700;
+            }}
+            QPushButton:checked {{
+                background-color: {accent};
+                border-color: {accent};
+                color: #ffffff;
+                font-weight: 800;
+            }}
+            QPushButton:hover:!checked {{
+                background-color: {hover_bg};
+                border-color: {border};
+            }}
+        """
+
+    def _create_sidebar_section_label(self, title):
+        label = QLabel(title.upper())
+        label.setObjectName("sidebarSectionLabel")
+        label.setFixedHeight(24)
+        return label
+
+    def _add_sidebar_nav_section(self, layout, title, items):
+        layout.addWidget(self._create_sidebar_section_label(title))
+        for label, page_name, icon_filename in items:
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setObjectName("sidebarNavButton")
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setFixedHeight(34)
+            self._decorate_button(button, icon_filename, 17)
+            button.clicked.connect(lambda _, page=page_name: self.navigate_to_page(page))
+            self.sidebar_buttons[page_name] = button
+            self.sidebar_button_group.addButton(button)
+            layout.addWidget(button)
+        layout.addSpacing(12)
+
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.addon_path = addon_path
         # <<< IMPORT/EXPORT THEMES >>>
         self.user_themes_path = os.path.join(self.addon_path, "user_files", "user_themes")
         os.makedirs(self.user_themes_path, exist_ok=True)
         self.block_card_click = False
-        self.setWindowTitle("Onigiri Settings")
         self.setWindowTitle("Onigiri Settings")
         
         # --- Screen Proportional Sizing ---
@@ -2645,19 +2753,10 @@ class SettingsDialog(QDialog):
             screen_width = available_geometry.width()
             screen_height = available_geometry.height()
             
-            # Calculate dimensions
-            # Min: ~30% width, ~50% height (but at least 600px height if possible)
-            min_w = int(screen_width * 0.3)
-            min_h = int(screen_height * 0.5)
-            
-            # Default: ~45% width, ~60% height (Smaller default as requested)
-            default_w = int(screen_width * 0.55)
-            default_h = int(screen_height * 0.6)
-
-            # Ensure reasonable minimums (don't go too small on very small screens, 
-            # but respect the screen size if it's tiny)
-            min_w = max(600, min(min_w, screen_width)) 
-            min_h = max(600, min(min_h, screen_height))
+            min_w = min(max(760, int(screen_width * 0.36)), screen_width)
+            min_h = min(max(560, int(screen_height * 0.52)), screen_height)
+            default_w = min(max(1240, int(screen_width * 0.74)), screen_width)
+            default_h = min(max(780, int(screen_height * 0.78)), screen_height)
             
             self.setMinimumWidth(min_w)
             self.setMinimumHeight(min_h)
@@ -2667,9 +2766,9 @@ class SettingsDialog(QDialog):
             self.setMaximumHeight(screen_height)
         else:
             # Fallback if screen detection fails
-            self.setMinimumWidth(600)
-            self.setMinimumHeight(600)
-            self.resize(900, 700)
+            self.setMinimumWidth(760)
+            self.setMinimumHeight(560)
+            self.resize(1240, 780)
         
         self.current_config = config.get_config()
         self._original_config = copy.deepcopy(self.current_config)
@@ -2787,6 +2886,10 @@ class SettingsDialog(QDialog):
         self.full_hide_mode_checkbox.setChecked(self.current_config.get("fullHideMode", False))
         self.full_hide_mode_checkbox.setToolTip("Hides the top menu bar (File, Edit, View, Tools, Help) on Windows and Linux for the most immersive experience.")
 
+        self.ankiweb_sync_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.ankiweb_sync_toggle.setChecked(bool(self.current_config.get("ankiweb_sync_enabled", False)))
+        self.ankiweb_sync_toggle.setToolTip("Sync Onigiri user files through AnkiWeb media sync.")
+
         self.hide_native_header_checkbox.toggled.connect(self._on_hide_toggled)
         self.flow_mode_checkbox.toggled.connect(self._on_flow_toggled)
         self.max_hide_checkbox.toggled.connect(self._on_max_hide_toggled)
@@ -2817,69 +2920,79 @@ class SettingsDialog(QDialog):
         self.action_button_icon_widgets = []
         self.retention_star_widget = None
 
-        main_layout = QVBoxLayout(self); main_layout.setContentsMargins(0, 0, 0, 0); main_layout.setSpacing(0)
-        
+        self._page_nav_sections = {}
+        self._building_page_name = None
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
         content_area_layout = QHBoxLayout()
-        content_area_layout.setSpacing(5)
+        content_area_layout.setSpacing(0)
         content_area_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # This is the new wrapper that provides the margin/spacing
-        # This is the wrapper that provides margin and has a fixed width
+
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(215) # 185px sidebar + 15px left margin + 15px for scrollbar
+        sidebar_wrapper.setObjectName("settingsSidebarWrapper")
+        sidebar_wrapper.setFixedWidth(280)
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 0, 15) # 15px left margin, 0px right margin
+        sidebar_wrapper_layout.setContentsMargins(12, 14, 12, 14)
+        sidebar_wrapper_layout.setSpacing(8)
 
-        # --- Search Button (Separated) ---
-        self.search_button = QPushButton("Search")
-        self.search_button.setCheckable(True)
-        self.search_button.setObjectName("searchSidebarButton")
-        self.search_button.setFixedWidth(185) # Force fixed width
-        self.search_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.search_button.setAutoDefault(False)
-        self.search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
-        sidebar_wrapper_layout.addWidget(self.search_button, alignment=Qt.AlignmentFlag.AlignLeft)
-
-        # Add spacing between Search button and the rest of the sidebar
-        sidebar_wrapper_layout.addSpacing(10)
-
-        # --- Scroll Area for Sidebar Content (rounded pill) ---
-        self.sidebar_scroll_area = RoundedScrollArea(radius=25)
+        self.sidebar_scroll_area = QScrollArea()
+        self.sidebar_scroll_area.setObjectName("sidebarNavScrollArea")
         self.sidebar_scroll_area.setWidgetResizable(True)
         self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.sidebar_scroll_area.setFixedWidth(200) # 185px for content + 15px for scrollbar
-        
-        # Style the scroll area to be transparent
-        self.sidebar_scroll_area.setStyleSheet("""
-            QScrollArea { background: transparent; border: none; }
-        """)
+        self.sidebar_scroll_area.setStyleSheet("QScrollArea#sidebarNavScrollArea { background: transparent; border: none; }")
 
-        # This is the actual visible sidebar widget, which will be styled as the top floating pill
         sidebar_widget = QWidget()
-        sidebar_widget.setObjectName("sidebarContainer") # Name for the stylesheet
-        sidebar_widget.setFixedWidth(185) # Force fixed width so it doesn't shrink when scrollbar appears
-        
+        sidebar_widget.setObjectName("sidebarContainer")
         self.sidebar_scroll_area.setWidget(sidebar_widget)
-        
-        # Add the scroll area to the main wrapper
-        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        # The sidebar's internal content (buttons, etc.) goes into this layout
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 20, 10, 10) # Balanced margins to center elements
-        sidebar_layout.setSpacing(15)
+        sidebar_layout.setContentsMargins(0, 0, 8, 8)
+        sidebar_layout.setSpacing(4)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.content_stack = QStackedWidget()
         self.content_stack.setObjectName("contentStack")
         self.content_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        # Add the final widgets to the main layout
+        content_shell = QWidget()
+        content_shell.setObjectName("settingsContentShell")
+        content_shell_layout = QVBoxLayout(content_shell)
+        content_shell_layout.setContentsMargins(24, 24, 24, 0)
+        content_shell_layout.setSpacing(12)
+
+        header_row = QWidget()
+        header_row.setObjectName("settingsPageHeader")
+        header_layout = QHBoxLayout(header_row)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(12)
+
+        self.page_title_label = QLabel("Settings")
+        self.page_title_label.setObjectName("settingsPageTitle")
+        header_layout.addWidget(self.page_title_label)
+
+        self.page_nav_bar = QWidget()
+        self.page_nav_bar.setObjectName("pageNavBar")
+        self.page_nav_layout = FlowLayout(self.page_nav_bar, margin=0, spacing=8)
+        self.page_nav_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.addWidget(self.page_nav_bar, 1)
+
+        content_shell_layout.addWidget(header_row)
+        content_shell_layout.addWidget(self.content_stack)
+
+        content_shell_outer = QWidget()
+        content_shell_outer.setObjectName("settingsContentOuter")
+        content_shell_outer_layout = QVBoxLayout(content_shell_outer)
+        content_shell_outer_layout.setContentsMargins(8, 10, 8, 0)
+        content_shell_outer_layout.setSpacing(0)
+        content_shell_outer_layout.addWidget(content_shell)
+
         content_area_layout.addWidget(sidebar_wrapper)
-        content_area_layout.addWidget(self.content_stack)
-        content_area_layout.addSpacing(0) 
+        content_area_layout.addWidget(content_shell_outer, 1)
 
         self.pages = {
             "Search": self.create_search_page,
@@ -2894,6 +3007,7 @@ class SettingsDialog(QDialog):
             "Reviewer": self.create_reviewer_tab,
             "Palette": self.create_colors_page,
             "Gallery": self.create_gallery_page,
+            "Sync": self.create_sync_page,
         }
         self.page_order = list(self.pages.keys())
 
@@ -2922,68 +3036,81 @@ class SettingsDialog(QDialog):
             avatar_size=profile_bar_avatar_size,
             parent=self,
         )
-        sidebar_layout.addWidget(self.profile_bar)
+        self.profile_bar.setFixedWidth(256)
+        sidebar_wrapper_layout.addWidget(self.profile_bar, alignment=Qt.AlignmentFlag.AlignLeft)
 
+        self.sidebar_search_button = QPushButton("Search")
+        self.sidebar_search_button.setCheckable(True)
+        self.sidebar_search_button.setObjectName("sidebarSearchButton")
+        self.sidebar_search_button.setFixedWidth(256)
+        self.sidebar_search_button.setFixedHeight(38)
+        self._decorate_button(self.sidebar_search_button, "search.svg", 18)
+        self.sidebar_search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
+        sidebar_wrapper_layout.addWidget(self.sidebar_search_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
+        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area)
 
-        self.sidebar_buttons = {}
-        self.sidebar_buttons["Search"] = self.search_button
+        self.sidebar_buttons = {"Search": self.sidebar_search_button}
+        self.search_button = self.sidebar_search_button
         self.general_toggle_widget = None
+        self.menu_toggle_widget = None
+        self.study_zone_toggle_widget = None
 
         self.sidebar_button_group = QButtonGroup()
         self.sidebar_button_group.setExclusive(True)
+        self.sidebar_button_group.addButton(self.sidebar_search_button)
 
-        general_items = ["Modes", "Fonts", "Palette", "Themes", "Gallery"]
-        self.general_toggle_widget = SidebarToggleButton("General", general_items)
-        self.general_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.general_toggle_widget)
+        self._add_sidebar_nav_section(sidebar_layout, "General", [
+            ("Modes", "Modes", "modes.svg"),
+            ("Fonts", "Fonts", "fonts.svg"),
+            ("Palette", "Palette", "palette.svg"),
+            ("Themes", "Themes", "themes.svg"),
+            ("Gallery", "Gallery", "gallery.svg"),
+            ("Sync", "Sync", "sync.svg"),
+        ])
 
-        menu_items = ["Main menu", "Sidebar"]
-        self.menu_toggle_widget = SidebarToggleButton("Menu", menu_items)
-        self.menu_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.menu_toggle_widget)
+        self._add_sidebar_nav_section(sidebar_layout, "Menu", [
+            ("Main Menu", "Main menu", "main_menu.svg"),
+            ("Sidebar", "Sidebar", "sidebar.svg"),
+        ])
 
-        study_zone_items = ["Overviewer", "Reviewer"]
-        self.study_zone_toggle_widget = SidebarToggleButton("Study Pages", study_zone_items)
-        self.study_zone_toggle_widget.page_selected.connect(self.navigate_to_page)
-        sidebar_layout.addWidget(self.study_zone_toggle_widget)
-
-        # Connect toggle buttons to enable accordion behavior
-        self.general_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.general_toggle_widget, checked)
-        )
-        self.menu_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.menu_toggle_widget, checked)
-        )
-        self.study_zone_toggle_widget.toggle_button.toggled.connect(
-            lambda checked: self._on_section_toggled(self.study_zone_toggle_widget, checked)
-        )
-
+        self._add_sidebar_nav_section(sidebar_layout, "Study Pages", [
+            ("Overviewer", "Overviewer", "overviewer.svg"),
+            ("Reviewer", "Reviewer", "reviewer.svg"),
+        ])
+        sidebar_layout.addStretch()
 
         self.donate_button = QPushButton("Donate")
-        self.donate_button.setAutoDefault(False)
+        self.donate_button.setObjectName("sidebarActionButton")
+        self.donate_button.setFixedHeight(34)
+        self._decorate_button(self.donate_button, "donate.svg", 18)
         self.donate_button.clicked.connect(self._open_donate_link)
         self.report_bugs_button = QPushButton("Report Bugs")
-        self.report_bugs_button.setAutoDefault(False)
+        self.report_bugs_button.setObjectName("sidebarActionButton")
+        self.report_bugs_button.setFixedHeight(34)
+        self._decorate_button(self.report_bugs_button, "report_bugs.svg", 18)
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
-        self.save_button = QPushButton("Save"); self.save_button.clicked.connect(self.save_settings)
+        self.save_button = QPushButton("Save")
+        self.save_button.setObjectName("saveSidebarButton")
+        self.save_button.setFixedHeight(38)
+        self.save_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_button.setAutoDefault(False)
+        self.save_button.clicked.connect(self.save_settings)
         
-        # Second (bottom) floating pill for the save buttons
         bottom_widget = QWidget()
-        bottom_widget.setObjectName("sidebarContainer")
-        bottom_widget.setFixedWidth(185) # Force fixed width
+        bottom_widget.setObjectName("sidebarActionsContainer")
+        bottom_widget.setFixedWidth(256)
         
         sidebar_button_layout = QVBoxLayout(bottom_widget)
-        sidebar_button_layout.setSpacing(5)
-        sidebar_button_layout.setContentsMargins(10, 10, 10, 10)
+        sidebar_button_layout.setSpacing(6)
+        sidebar_button_layout.setContentsMargins(0, 8, 0, 0)
 
         sidebar_button_layout.addWidget(self.donate_button)
         sidebar_button_layout.addWidget(self.report_bugs_button)
+        sidebar_button_layout.addSpacing(6)
         sidebar_button_layout.addWidget(self.save_button)
 
-        # Add spacing and then the bottom pill outside the scroll area
-        sidebar_wrapper_layout.addSpacing(10)
         sidebar_wrapper_layout.addWidget(bottom_widget, alignment=Qt.AlignmentFlag.AlignLeft)
 
         main_layout.addLayout(content_area_layout)
@@ -2999,6 +3126,51 @@ class SettingsDialog(QDialog):
 
     def _open_bugs_link(self):
         QDesktopServices.openUrl(QUrl("https://github.com/thepeacemonk/Onigiri"))
+
+    def create_sync_page(self):
+        page, layout = self._create_scrollable_page()
+
+        sync_section = SectionGroup(
+            "AnkiWeb Sync",
+            self,
+            border=False,
+            description="Keep Onigiri user files in Anki media sync when AnkiWeb sync runs."
+        )
+        sync_section.add_widget(self._create_toggle_row(self.ankiweb_sync_toggle, "Enable Onigiri AnkiWeb sync"))
+
+        state_group, state_layout = self._create_inner_group("Current State")
+        try:
+            from .sync import onigiri_sync
+            local_time = onigiri_sync.get_local_mtime()
+            cloud_time = onigiri_sync.get_cloud_mtime()
+            sync_path = onigiri_sync.get_sync_file_path()
+        except Exception:
+            local_time = 0
+            cloud_time = 0
+            sync_path = ""
+
+        def _format_timestamp(timestamp):
+            if not timestamp:
+                return "Never"
+            return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+        local_label = QLabel(f"Local user files: {_format_timestamp(local_time)}")
+        local_label.setWordWrap(True)
+        state_layout.addWidget(local_label)
+
+        cloud_label = QLabel(f"AnkiWeb package: {_format_timestamp(cloud_time)}")
+        cloud_label.setWordWrap(True)
+        state_layout.addWidget(cloud_label)
+
+        if sync_path:
+            path_label = QLabel(os.path.basename(sync_path))
+            path_label.setWordWrap(True)
+            state_layout.addWidget(path_label)
+
+        sync_section.add_widget(state_group)
+        layout.addWidget(sync_section)
+        layout.addStretch()
+        return page
 
     def create_search_page(self):
         page = SettingsSearchPage(self)
@@ -3304,12 +3476,19 @@ class SettingsDialog(QDialog):
             btn.setChecked(False)
             btn.blockSignals(False)
         self._deselect_sidebar_navigation()
+        if hasattr(self, "page_title_label"):
+            self.page_title_label.setText("Profile")
+        self._clear_page_nav()
+        if hasattr(self, "page_nav_bar"):
+            self.page_nav_bar.setVisible(False)
         
         profile_index = self.page_order.index("Profile")
         
         if not self.tabs_loaded.get(profile_index):
             create_func = self.pages["Profile"]
+            self._building_page_name = "Profile"
             new_widget = create_func()
+            self._building_page_name = None
             
             old_widget = self.content_stack.widget(profile_index)
             self.content_stack.removeWidget(old_widget)
@@ -3318,6 +3497,7 @@ class SettingsDialog(QDialog):
             self.tabs_loaded[profile_index] = True
             
         self.content_stack.setCurrentIndex(profile_index)
+        self._animate_page_transition()
 
     def navigate_to_page(self, page_name):
         if not page_name: 
@@ -3325,37 +3505,39 @@ class SettingsDialog(QDialog):
 
         if page_name in self.sidebar_buttons:
             self.sidebar_buttons[page_name].setChecked(True)
-            self._deselect_sidebar_navigation()
-        elif self.general_toggle_widget.select_page(page_name):
+        else:
             if btn := self.sidebar_button_group.checkedButton():
                 btn.blockSignals(True)
                 btn.setChecked(False)
                 btn.blockSignals(False)
-            self.menu_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
-        elif self.menu_toggle_widget.select_page(page_name):
-            if btn := self.sidebar_button_group.checkedButton():
-                btn.blockSignals(True)
-                btn.setChecked(False)
-                btn.blockSignals(False)
-            self.general_toggle_widget.deselect_all()
-            self.study_zone_toggle_widget.deselect_all()
-        elif self.study_zone_toggle_widget.select_page(page_name):
-            if btn := self.sidebar_button_group.checkedButton():
-                btn.blockSignals(True)
-                btn.setChecked(False)
-                btn.blockSignals(False)
-            self.general_toggle_widget.deselect_all()
-            self.menu_toggle_widget.deselect_all()
 
         if page_name not in self.page_order:
             return
+
+        if hasattr(self, "page_title_label"):
+            title_map = {
+                "Search": "Settings",
+                "Profile": "Profile",
+                "Modes": "Modes",
+                "Fonts": "Fonts",
+                "Themes": "Themes",
+                "Main menu": "Main Menu",
+                "Sidebar": "Sidebar",
+                "Overviewer": "Overviewer",
+                "Reviewer": "Reviewer",
+                "Palette": "Palette",
+                "Gallery": "Gallery",
+                "Sync": "Sync",
+            }
+            self.page_title_label.setText(title_map.get(page_name, page_name))
             
         stack_index = self.page_order.index(page_name)
         
         if not self.tabs_loaded.get(stack_index):
             create_func = self.pages[page_name]
+            self._building_page_name = page_name
             new_widget = create_func()
+            self._building_page_name = None
             
             old_widget = self.content_stack.widget(stack_index)
             self.content_stack.removeWidget(old_widget)
@@ -3364,6 +3546,64 @@ class SettingsDialog(QDialog):
             self.tabs_loaded[stack_index] = True
         
         self.content_stack.setCurrentIndex(stack_index)
+        self._populate_page_nav(page_name)
+        self._animate_page_transition()
+
+    def _clear_page_nav(self):
+        if not hasattr(self, "page_nav_layout"):
+            return
+        while self.page_nav_layout.count():
+            item = self.page_nav_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def _populate_page_nav(self, page_name):
+        self._clear_page_nav()
+        sections = self._page_nav_sections.get(page_name, []) if hasattr(self, "_page_nav_sections") else []
+        if hasattr(self, "page_nav_bar"):
+            self.page_nav_bar.setVisible(bool(sections))
+        for title, target_widget in sections:
+            button = QPushButton(title)
+            button.setObjectName("pageNavButton")
+            button.setCheckable(True)
+            button.setFixedHeight(30)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(
+                lambda checked=False, b=button, w=target_widget: self._scroll_to_page_nav_target(
+                    b, self.content_stack.currentWidget().findChild(QScrollArea), w
+                )
+            )
+            self.page_nav_layout.addWidget(button)
+
+    def _scroll_to_page_nav_target(self, button, scroll_area, widget):
+        parent = button.parentWidget() if button else None
+        if parent:
+            for nav_button in parent.findChildren(QPushButton):
+                if nav_button.objectName() == "pageNavButton":
+                    nav_button.setChecked(nav_button is button)
+        if button:
+            button.setChecked(True)
+        self._scroll_to_widget(scroll_area, widget)
+
+    def _animate_page_transition(self):
+        current_widget = self.content_stack.currentWidget()
+        if not current_widget:
+            return
+        try:
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            effect = QGraphicsOpacityEffect(current_widget)
+            current_widget.setGraphicsEffect(effect)
+            animation = QPropertyAnimation(effect, b"opacity", self)
+            animation.setDuration(130)
+            animation.setStartValue(0.86)
+            animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            animation.finished.connect(lambda w=current_widget: w.setGraphicsEffect(None))
+            self._page_transition_animation = animation
+            animation.start()
+        except Exception:
+            current_widget.setGraphicsEffect(None)
     
     def _deselect_sidebar_navigation(self):
         """Clear the expandable sidebar groups without assuming obsolete widgets exist."""
@@ -3388,7 +3628,7 @@ class SettingsDialog(QDialog):
             self.study_zone_toggle_widget,
         ]
         for toggle in all_toggles:
-            if toggle is not toggled_widget and toggle.is_open:
+            if toggle is not None and toggle is not toggled_widget and toggle.is_open:
                 toggle.deselect_all()
         
     def _create_inner_group(self, title):
@@ -3412,13 +3652,21 @@ class SettingsDialog(QDialog):
     def apply_stylesheet(self):
         conf = config.get_config()
         if theme_manager.night_mode:
-            bg, fg, border, input_bg, button_bg, sidebar_bg = "#2c2c2c", "#e0e0e0", "#4a4a4a", "#3a3a3a", "#4a4a4a", "#3a3a3a"
+            bg, fg, border, input_bg, button_bg, sidebar_bg = "#2c2c2c", "#e0e0e0", "#454545", "#1f1f1f", "#3d3d3d", "#2c2c2c"
             separator_color, secondary_button_bg, secondary_button_fg = "#444444", "#555", "#e0e0e0"
             accent_color = conf.get("colors", {}).get("dark", {}).get("--accent-color", DEFAULTS["colors"]["dark"]["--accent-color"])
+            panel_bg = "#1f1f1f"
+            surface_bg = "#3d3d3d"
+            surface_hover = "#474747"
+            muted_fg = "#a8a8a8"
         else:
-            bg, fg, border, input_bg, button_bg, sidebar_bg = "#f3f3f3", "#212121", "#e0e0e0", "#f5f5f5", "#f0f0f0", "#dddddd"
+            bg, fg, border, input_bg, button_bg, sidebar_bg = "#f3f3f3", "#212121", "#d6d6d6", "#ffffff", "#ededed", "#f3f3f3"
             separator_color, secondary_button_bg, secondary_button_fg = "#e0e0e0", "#c9c9c9", "#ffffff"
             accent_color = conf.get("colors", {}).get("light", {}).get("--accent-color", DEFAULTS["colors"]["light"]["--accent-color"])
+            panel_bg = "#ffffff"
+            surface_bg = "#ececec"
+            surface_hover = "#dedede"
+            muted_fg = "#6f6f6f"
 
         mode_key = "dark" if theme_manager.night_mode else "light"
         fg_subtle = conf.get("colors", {}).get(mode_key, {}).get("--fg-subtle", DEFAULTS["colors"][mode_key]["--fg-subtle"])
@@ -3430,60 +3678,163 @@ class SettingsDialog(QDialog):
         up_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "up.svg").replace("\\", "/")
         down_icon_path = os.path.join(self.addon_path, "system_files", "system_icons", "down.svg").replace("\\", "/")
 
+        from .fonts import get_all_fonts
+        all_fonts = get_all_fonts(self.addon_path)
+        main_font_key = mw.col.conf.get("onigiri_font_main", "system")
+        main_font_family = all_fonts.get(main_font_key, {}).get("family", '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif')
+
         self.setStyleSheet(f"""
             QFrame#MenuSeparator {{
                 background-color: {border};
             }}
 
-            QDialog {{ background-color: {bg}; color: {fg}; }}
-            
-            /* This rule gives the page a solid background to prevent flickering */
-            #pageContainer {{
+            QDialog {{
+                background-color: {bg};
+                color: {fg};
+                font-size: 13px;
+            }}
+
+            QWidget#settingsSidebarWrapper {{
+                background-color: {sidebar_bg};
+                border: none;
+            }}
+
+            QWidget#settingsContentOuter {{
                 background-color: {bg};
             }}
 
-            #sidebarContainer {{
-                background-color: {sidebar_bg};
-                border-radius: 25px;
-            }}
-            #sidebarContainer QPushButton {{
-                padding: 12px;
-                border-radius: 20px;
-                text-align: left;
+            QWidget#settingsContentShell {{
+                background-color: {panel_bg};
                 border: none;
-                background-color: transparent;
+                border-top-left-radius: 28px;
+                border-top-right-radius: 28px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
             }}
-            #sidebarContainer QPushButton:checked {{
-                background-color: {sidebar_selected_bg};
+
+            QWidget#settingsPageHeader {{
+                background-color: transparent;
+                min-height: 42px;
+            }}
+
+            QLabel#settingsPageTitle {{
+                background: transparent;
+                color: {fg};
+                font-size: 20px;
+                font-weight: 800;
+                padding: 0px 8px 0px 0px;
+            }}
+
+            QWidget#pageNavBar {{
+                background-color: transparent;
+                border: none;
+            }}
+
+            QPushButton#pageNavButton {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 12px;
+                color: {muted_fg};
+                padding: 3px 14px;
+                font-weight: 700;
+                font-size: 12px;
+            }}
+            QPushButton#pageNavButton:hover:!checked {{
+                background-color: {surface_hover};
+                color: {fg};
+                border-radius: 12px;
+            }}
+            QPushButton#pageNavButton:checked,
+            QPushButton#pageNavButton:pressed {{
+                background-color: {accent_color};
+                border-color: {accent_color};
+                border-radius: 12px;
                 color: white;
             }}
-            QPushButton#searchSidebarButton {{
-                padding: 12px;
-                border-radius: 20px;
-                background-color: {sidebar_bg};
-                color: {fg};
-                text-align: center;
-                margin-bottom: 0px; /* Spacing handled by layout now */
+
+            #pageContainer, QWidget#settingsPageContent {{
+                background-color: transparent;
+            }}
+
+            QScrollArea#settingsPageScroll,
+            QScrollArea#sidebarNavScrollArea {{
+                background-color: transparent;
                 border: none;
             }}
-            QPushButton#searchSidebarButton:hover {{
-                background-color: {border}; /* Slightly lighter/darker on hover */
+
+            #sidebarContainer,
+            #sidebarActionsContainer {{
+                background-color: transparent;
+                border: none;
             }}
-            QPushButton#searchSidebarButton:checked {{
-                background-color: {sidebar_bg};
+
+            QLabel#sidebarSectionLabel {{
+                background: transparent;
+                color: {muted_fg};
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0px;
+                padding: 10px 4px 0px 8px;
+            }}
+
+            QPushButton#sidebarSearchButton {{
+                padding: 0;
+                border-radius: 12px;
+                background-color: {input_bg};
+                border: 1px solid {border};
+                color: {muted_fg};
+                text-align: left;
+                font-weight: 600;
+                font-size: 15px;
+            }}
+            QPushButton#sidebarSearchButton:hover {{
+                background-color: {surface_hover};
                 color: {fg};
             }}
-            QPushButton#searchSidebarButton:pressed {{
-                color: {sidebar_selected_bg};
+            QPushButton#sidebarSearchButton:checked {{
+                background-color: {surface_bg};
+                color: {fg};
+                border-color: {border};
             }}
-            #sidebarContainer QPushButton#subItemButton {{
+
+            QPushButton#sidebarNavButton,
+            QPushButton#sidebarActionButton {{
+                padding: 0px 14px;
+                border-radius: 12px;
+                text-align: left;
+                border: 1px solid transparent;
                 background-color: transparent;
+                color: {muted_fg};
+                font-weight: 700;
+                font-size: 14px;
+            }}
+            QPushButton#sidebarNavButton:hover,
+            QPushButton#sidebarActionButton:hover {{
+                background-color: {surface_bg};
                 color: {fg};
             }}
-            #sidebarContainer QPushButton#subItemButton:checked {{
-                background-color: transparent;
-                font-weight: bold;
-                color: {sidebar_selected_bg};
+            QPushButton#sidebarNavButton:checked {{
+                background-color: {surface_bg};
+                color: {fg};
+                border-color: transparent;
+            }}
+
+            QPushButton#saveSidebarButton {{
+                background-color: {accent_color};
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 0;
+                text-align: center;
+                font-size: 14px;
+                font-weight: 800;
+            }}
+            QPushButton#saveSidebarButton:hover {{
+                background-color: {accent_color};
+            }}
+            QPushButton#saveSidebarButton:pressed {{
+                background-color: {border};
+                color: white;
             }}
             #innerGroup {{ border: 1px solid {border}; border-radius: 12px; margin-top: 5px; }}
             QGroupBox {{ border-radius: 16px; margin-top: 8px; padding: 0px; }}
@@ -3501,7 +3852,7 @@ class SettingsDialog(QDialog):
                 background-color: {accent_color};
                 image: url();
             }}
-            QLineEdit, QSpinBox {{ background-color: {input_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
+            QLineEdit, QSpinBox {{ background-color: {input_bg}; color: {fg}; border: 1px solid {border}; border-radius: 8px; padding: 7px; }}
 
             QPushButton {{ background-color: {button_bg}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 4px; }}
             QPushButton:pressed {{ background-color: {border}; }}
@@ -3643,8 +3994,8 @@ class SettingsDialog(QDialog):
             }}
         """)
         self.save_button.setStyleSheet(
-            f"QPushButton{{background-color:{accent_color};color:white;border:none;padding:10px;border-radius:12px}}"
-            f"QPushButton:pressed{{background-color:{border};color:white}}"
+            f"QPushButton#saveSidebarButton{{background-color:{accent_color};color:white;border:none;padding:0;border-radius:12px;font-weight:800;text-align:center;}}"
+            f"QPushButton#saveSidebarButton:pressed{{background-color:{border};color:white}}"
         )
     
     def _create_toggle_row(self, toggle_widget, text_label, style_sheet=""):
@@ -4558,11 +4909,13 @@ class SettingsDialog(QDialog):
             height_group = QButtonGroup(custom_menu)
             height_group.setExclusive(True)
             # Set row constraints
-            min_rows = 2 if (is_heatmap or self.widget_id == 'restaurant_level') else 1
+            min_rows = 2 if (is_heatmap or self.widget_id in ('restaurant_level', 'onigimon')) else 1
             if is_heatmap:
                 max_rows = 2  # Heatmap: exactly 2 rows
             elif self.widget_id == 'restaurant_level':
                 max_rows = 2  # Restaurant Level: exactly 2 rows (for now)
+            elif self.widget_id == 'onigimon':
+                max_rows = 2  # Onigimon: companion card is two rows tall by default
             elif self.widget_id == 'favorites':
                 max_rows = 3  # Favorites: up to 3 rows
             else:
@@ -5157,7 +5510,7 @@ class SettingsDialog(QDialog):
                     "retention": {"pos": 3, "row": 1, "col": 1},
                     "heatmap": {"pos": 4, "row": 2, "col": 4},
                 },
-                "archive": ["favorites", "restaurant_level"] # <-- "favorites" and "restaurant_level" moved here
+                "archive": ["favorites", "restaurant_level", "onigimon"] # <-- optional widgets start archived
             }
 
             saved_layout = self.settings_dialog.current_config.get("onigiriWidgetLayout", DEFAULTS)
@@ -5202,7 +5555,8 @@ class SettingsDialog(QDialog):
                 "studied": "Studied Card", "time": "Time Card", 
                 "pace": "Pace Card", "retention": "Retention Card", "heatmap": "Heatmap",
                 "favorites": "Favorites Widget",
-                "restaurant_level": "Restaurant Level"
+                "restaurant_level": "Restaurant Level",
+                "onigimon": "Onigimon"
             }
 
             placed_widgets = set()
@@ -5214,6 +5568,8 @@ class SettingsDialog(QDialog):
                 if widget_id == "restaurant_level":
                     item.row_span = 2
                     item.col_span = 2
+                elif widget_id == "onigimon":
+                    item.row_span = 2
                 self.all_onigiri_items[widget_id] = item
 
             # Combine grid and archive configs to find all saved names
@@ -5266,6 +5622,10 @@ class SettingsDialog(QDialog):
             # Reset spans when archiving
             if item.widget_id == "heatmap":
                 item.row_span, item.col_span = 2, 4
+            elif item.widget_id == "restaurant_level":
+                item.row_span, item.col_span = 2, 2
+            elif item.widget_id == "onigimon":
+                item.row_span, item.col_span = 2, 1
             else:
                 item.row_span, item.col_span = 1, 1
 
@@ -5406,7 +5766,7 @@ class SettingsDialog(QDialog):
                 "retention": {"pos": 3, "row": 1, "col": 1},
                 "heatmap": {"pos": 4, "row": 2, "col": 4},
             },
-            "archive": ["favorites", "restaurant_level"]
+            "archive": ["favorites", "restaurant_level", "onigimon"]
         }
 
         # Default display names for Onigiri widgets
@@ -5414,7 +5774,8 @@ class SettingsDialog(QDialog):
             "studied": "Studied Card", "time": "Time Card", 
             "pace": "Pace Card", "retention": "Retention Card", "heatmap": "Heatmap",
             "favorites": "Favorites Widget",
-            "restaurant_level": "Restaurant Level"
+            "restaurant_level": "Restaurant Level",
+            "onigimon": "Onigimon"
         }
 
         def __init__(self, settings_dialog):
@@ -5634,6 +5995,8 @@ class SettingsDialog(QDialog):
                 if widget_id == "restaurant_level":
                     item.row_span = 2
                     item.col_span = 2
+                elif widget_id == "onigimon":
+                    item.row_span = 2
                 self.all_onigiri_items[widget_id] = item
 
             # Update display names from saved config
@@ -5754,6 +6117,8 @@ class SettingsDialog(QDialog):
                 item.row_span, item.col_span = 2, 4
             elif item.widget_id == "restaurant_level":
                 item.row_span, item.col_span = 2, 2
+            elif item.widget_id == "onigimon":
+                item.row_span, item.col_span = 2, 1
             else:
                 item.row_span, item.col_span = 1, 1
 
@@ -5957,53 +6322,9 @@ class SettingsDialog(QDialog):
             btn = QPushButton(view_option)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(40)
             btn.setProperty("view_mode", view_option.lower())
-            
-            # Modern styling mimicking a segmented control
-            # Note: We use dynamic properties or just check state in styling if needed, 
-            # but here we'll use a direct stylesheet for simplicity and consistency with the add-on's theme.
-            # Using specific object name to target with stylesheet if possible, or inline styles.
-            if theme_manager.night_mode:
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: #3a3a3a;
-                        border: 1px solid #555;
-                        border-radius: 6px;
-                        color: #eee;
-                        padding: 0 15px;
-                        font-weight: normal;
-                    }}
-                    QPushButton:checked {{
-                        background-color: {self.accent_color};
-                        border: 1px solid {self.accent_color};
-                        color: white;
-                        font-weight: bold;
-                    }}
-                    QPushButton:hover:!checked {{
-                        background-color: #454545;
-                    }}
-                """)
-            else:
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: #f5f5f5;
-                        border: 1px solid #dcdcdc;
-                        border-radius: 6px;
-                        color: #333;
-                        padding: 0 15px;
-                        font-weight: normal;
-                    }}
-                    QPushButton:checked {{
-                        background-color: {self.accent_color};
-                        border: 1px solid {self.accent_color};
-                        color: white;
-                        font-weight: bold;
-                    }}
-                    QPushButton:hover:!checked {{
-                        background-color: #e0e0e0;
-                    }}
-                """)
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=36))
             
             if view_option.lower() == current_view:
                 btn.setChecked(True)
@@ -6013,7 +6334,33 @@ class SettingsDialog(QDialog):
             
         view_layout.addStretch()
         form_layout.addRow("Default View:", view_container)
-        
+
+        # Heatmap Week Start - segmented control
+        self.heatmap_week_start_group = QButtonGroup(self)
+        self.heatmap_week_start_group.setExclusive(True)
+
+        week_start_container = QWidget()
+        week_start_layout = QHBoxLayout(week_start_container)
+        week_start_layout.setContentsMargins(0, 0, 0, 0)
+        week_start_layout.setSpacing(10)
+
+        current_week_start = self.current_config.get("heatmapWeekStart", "monday")
+
+        for ws_label, ws_value in [("Monday", "monday"), ("Sunday", "sunday")]:
+            btn = QPushButton(ws_label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(40)
+            btn.setProperty("week_start", ws_value)
+            btn.setStyleSheet(self._settings_pill_button_stylesheet(min_height=36))
+            if ws_value == current_week_start:
+                btn.setChecked(True)
+            self.heatmap_week_start_group.addButton(btn)
+            week_start_layout.addWidget(btn)
+
+        week_start_layout.addStretch()
+        form_layout.addRow("Week Start:", week_start_container)
+
         organize_section.add_layout(form_layout)
         
         # Create and add the layout editor widget
@@ -6228,6 +6575,96 @@ class SettingsDialog(QDialog):
         reset_bg_button.clicked.connect(self.reset_background_to_default)
         layout.addWidget(reset_bg_button)
 
+        # --- Widget Background Section ---
+        widget_bg_group, widget_bg_layout = self._create_inner_group("Widget Background")
+        widget_bg_mode_val = mw.col.conf.get("onigiri_widget_bg_mode", "solid")
+        widget_bg_mode_layout = QHBoxLayout()
+        self.widget_bg_main_radio = QRadioButton("Use Main Background")
+        self.widget_bg_solid_radio = QRadioButton("Solid Color")
+        self.widget_bg_main_radio.setChecked(widget_bg_mode_val == "main")
+        self.widget_bg_solid_radio.setChecked(widget_bg_mode_val != "main")
+        widget_bg_mode_layout.addWidget(self.widget_bg_main_radio)
+        widget_bg_mode_layout.addWidget(self.widget_bg_solid_radio)
+        widget_bg_mode_layout.addStretch()
+        widget_bg_layout.addLayout(widget_bg_mode_layout)
+
+        self.widget_bg_main_options_group = QWidget()
+        widget_bg_main_sub_layout = QVBoxLayout(self.widget_bg_main_options_group)
+        widget_bg_main_sub_layout.setContentsMargins(15, 10, 0, 0)
+        widget_effect_mode = mw.col.conf.get("onigiri_widget_bg_main_effect_mode", "glassmorphism")
+        widget_effect_mode_layout = QHBoxLayout()
+        self.widget_bg_effect_overlay_radio = QRadioButton("Color Overlay")
+        self.widget_bg_effect_glass_radio = QRadioButton("Glassmorphism")
+        self.widget_bg_effect_overlay_radio.setChecked(widget_effect_mode == "opaque")
+        self.widget_bg_effect_glass_radio.setChecked(widget_effect_mode == "glassmorphism")
+        widget_effect_mode_layout.addWidget(self.widget_bg_effect_overlay_radio)
+        widget_effect_mode_layout.addWidget(self.widget_bg_effect_glass_radio)
+        widget_bg_main_sub_layout.addLayout(widget_effect_mode_layout)
+
+        self.widget_bg_overlay_options_group = QWidget()
+        widget_overlay_sub_layout = QVBoxLayout(self.widget_bg_overlay_options_group)
+        widget_overlay_sub_layout.setContentsMargins(0, 5, 0, 0)
+        widget_overlay_intensity_layout = QHBoxLayout()
+        widget_overlay_intensity_label = QLabel("Overlay Opacity:")
+        self.widget_bg_overlay_intensity_spinbox = QSpinBox()
+        self.widget_bg_overlay_intensity_spinbox.setMinimum(0)
+        self.widget_bg_overlay_intensity_spinbox.setMaximum(100)
+        self.widget_bg_overlay_intensity_spinbox.setSuffix(" %")
+        self.widget_bg_overlay_intensity_spinbox.setValue(mw.col.conf.get("onigiri_widget_bg_main_tint_intensity", 30))
+        widget_overlay_intensity_layout.addWidget(widget_overlay_intensity_label)
+        widget_overlay_intensity_layout.addWidget(self.widget_bg_overlay_intensity_spinbox)
+        widget_overlay_intensity_layout.addStretch()
+        widget_overlay_sub_layout.addLayout(widget_overlay_intensity_layout)
+        self.widget_bg_overlay_light_color_row = self._create_color_picker_row("Overlay Color (Light Mode)", mw.col.conf.get("onigiri_widget_bg_main_tint_color_light", "#FFFFFF"), "widget_overlay_light")
+        self.widget_bg_overlay_dark_color_row = self._create_color_picker_row("Overlay Color (Dark Mode)", mw.col.conf.get("onigiri_widget_bg_main_tint_color_dark", "#2C2C2C"), "widget_overlay_dark")
+        widget_overlay_sub_layout.addLayout(self.widget_bg_overlay_light_color_row)
+        widget_overlay_sub_layout.addLayout(self.widget_bg_overlay_dark_color_row)
+        widget_bg_main_sub_layout.addWidget(self.widget_bg_overlay_options_group)
+
+        self.widget_bg_glass_intensity_group = QWidget()
+        widget_glass_intensity_layout = QHBoxLayout(self.widget_bg_glass_intensity_group)
+        widget_glass_intensity_layout.setContentsMargins(0, 5, 0, 0)
+        widget_glass_intensity_label = QLabel("Effect Intensity:")
+        self.widget_bg_effect_intensity_spinbox = QSpinBox()
+        self.widget_bg_effect_intensity_spinbox.setMinimum(0)
+        self.widget_bg_effect_intensity_spinbox.setMaximum(100)
+        self.widget_bg_effect_intensity_spinbox.setSuffix(" %")
+        self.widget_bg_effect_intensity_spinbox.setValue(mw.col.conf.get("onigiri_widget_bg_main_effect_intensity", 50))
+        widget_glass_intensity_layout.addWidget(widget_glass_intensity_label)
+        widget_glass_intensity_layout.addWidget(self.widget_bg_effect_intensity_spinbox)
+        widget_glass_intensity_layout.addStretch()
+        widget_bg_main_sub_layout.addWidget(self.widget_bg_glass_intensity_group)
+        self.widget_bg_effect_overlay_radio.toggled.connect(self._toggle_widget_bg_effect_options)
+        self.widget_bg_effect_glass_radio.toggled.connect(self._toggle_widget_bg_effect_options)
+        self._toggle_widget_bg_effect_options()
+        widget_bg_layout.addWidget(self.widget_bg_main_options_group)
+
+        self.widget_bg_solid_options_group = QWidget()
+        widget_bg_solid_sub_layout = QVBoxLayout(self.widget_bg_solid_options_group)
+        widget_bg_solid_sub_layout.setContentsMargins(15, 10, 0, 0)
+        current_light_canvas = self.current_config.get("colors", {}).get("light", {}).get("--canvas-inset", "#ffffff")
+        current_dark_canvas = self.current_config.get("colors", {}).get("dark", {}).get("--canvas-inset", "#2c2c2c")
+        self.widget_bg_light_color_row = self._create_color_picker_row("Widget Color (Light Mode)", current_light_canvas, "widget_bg_light")
+        self.widget_bg_dark_color_row = self._create_color_picker_row("Widget Color (Dark Mode)", current_dark_canvas, "widget_bg_dark")
+        widget_bg_solid_sub_layout.addLayout(self.widget_bg_light_color_row)
+        widget_bg_solid_sub_layout.addLayout(self.widget_bg_dark_color_row)
+        widget_bg_transparency_layout = QHBoxLayout()
+        widget_bg_transparency_label = QLabel("Transparency:")
+        self.widget_bg_transparency_spinbox = QSpinBox()
+        self.widget_bg_transparency_spinbox.setMinimum(0)
+        self.widget_bg_transparency_spinbox.setMaximum(100)
+        self.widget_bg_transparency_spinbox.setSuffix(" %")
+        self.widget_bg_transparency_spinbox.setValue(mw.col.conf.get("onigiri_widget_bg_solid_transparency", 0))
+        widget_bg_transparency_layout.addWidget(widget_bg_transparency_label)
+        widget_bg_transparency_layout.addWidget(self.widget_bg_transparency_spinbox)
+        widget_bg_transparency_layout.addStretch()
+        widget_bg_solid_sub_layout.addLayout(widget_bg_transparency_layout)
+        widget_bg_layout.addWidget(self.widget_bg_solid_options_group)
+        self.widget_bg_main_radio.toggled.connect(self._toggle_widget_bg_options)
+        self.widget_bg_solid_radio.toggled.connect(self._toggle_widget_bg_options)
+        self._toggle_widget_bg_options()
+        layout.addWidget(widget_bg_group)
+
         
 
 
@@ -6327,9 +6764,10 @@ class SettingsDialog(QDialog):
         # Add navigation buttons
         sections = {
             "Organize": organize_section,
-            "Main Background": mode_group,
+            "Background": mode_group,
+            "Widget Background": widget_bg_group,
             "Heatmap": heatmap_section,
-            "Star Icon": star_icon_section
+            "Star Icons": star_icon_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
 
@@ -8014,51 +8452,6 @@ class SettingsDialog(QDialog):
         # --- Add the Accent Color group to the General Palette section ---
         general_colors_section.add_widget(accent_group)
 
-        # --- START: New Boxes Color Effect Section ---
-        canvas_effect_group, canvas_effect_layout = self._create_inner_group("Boxes Color Effect")
-        canvas_effect_group.setToolTip("Apply a visual effect to the 'Boxes Color' background color.")
-
-        # Radio buttons for mode selection
-        mode_layout = QHBoxLayout()
-        self.canvas_effect_none_radio = QRadioButton("None")
-        self.canvas_effect_opacity_radio = QRadioButton("Opacity")
-        self.canvas_effect_glass_radio = QRadioButton("Glassmorphism")
-        mode_layout.addWidget(self.canvas_effect_none_radio)
-        mode_layout.addWidget(self.canvas_effect_opacity_radio)
-        mode_layout.addWidget(self.canvas_effect_glass_radio)
-        mode_layout.addStretch()
-        canvas_effect_layout.addLayout(mode_layout)
-
-        # Intensity control
-        intensity_layout = QHBoxLayout()
-        intensity_label = QLabel("Effect Intensity:")
-        self.canvas_effect_intensity_spinbox = QSpinBox()
-        self.canvas_effect_intensity_spinbox.setMinimum(0)
-        self.canvas_effect_intensity_spinbox.setMaximum(100)
-        self.canvas_effect_intensity_spinbox.setSuffix(" %")
-        intensity_layout.addWidget(intensity_label)
-        intensity_layout.addWidget(self.canvas_effect_intensity_spinbox)
-        intensity_layout.addStretch()
-        canvas_effect_layout.addLayout(intensity_layout)
-
-        # Load saved settings for canvas effects
-        saved_mode = mw.col.conf.get("onigiri_canvas_inset_effect_mode", "none")
-        if saved_mode == "opacity":
-            self.canvas_effect_opacity_radio.setChecked(True)
-        elif saved_mode == "glassmorphism":
-            self.canvas_effect_glass_radio.setChecked(True)
-        else:
-            self.canvas_effect_none_radio.setChecked(True)
-
-        saved_intensity = mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
-        self.canvas_effect_intensity_spinbox.setValue(saved_intensity)
-
-        # Connect signals
-        self.canvas_effect_none_radio.toggled.connect(self._toggle_canvas_intensity_spinbox)
-        self._toggle_canvas_intensity_spinbox() # Set initial state
-
-        general_colors_section.add_widget(canvas_effect_group)
-        # --- END: New Boxes Color Effect Section ---
                 
         general_modes_layout = QHBoxLayout()
 
@@ -8387,9 +8780,6 @@ class SettingsDialog(QDialog):
 
 
     
-    def _toggle_canvas_intensity_spinbox(self):
-        is_disabled = self.canvas_effect_none_radio.isChecked()
-        self.canvas_effect_intensity_spinbox.setEnabled(not is_disabled)
 
 
 
@@ -8397,10 +8787,20 @@ class SettingsDialog(QDialog):
         is_overlay = self.sidebar_effect_overlay_radio.isChecked()
         self.sidebar_overlay_options_group.setVisible(is_overlay)
         self.sidebar_effect_intensity_group.setVisible(not is_overlay)
+
+    def _toggle_widget_bg_options(self):
+        self.widget_bg_main_options_group.setVisible(self.widget_bg_main_radio.isChecked())
+        self.widget_bg_solid_options_group.setVisible(self.widget_bg_solid_radio.isChecked())
+
+    def _toggle_widget_bg_effect_options(self):
+        is_overlay = self.widget_bg_effect_overlay_radio.isChecked()
+        self.widget_bg_overlay_options_group.setVisible(is_overlay)
+        self.widget_bg_glass_intensity_group.setVisible(not is_overlay)
+
         
     def _build_color_sections(self, parent_layout, mode):
         sections = {
-            "General": ["--fg", "--fg-subtle", "--border", "--canvas-inset"],
+            "General": ["--fg", "--fg-subtle", "--border"],
         }
         
         handled_keys = {key for keys in sections.values() for key in keys}
@@ -9960,17 +10360,19 @@ class SettingsDialog(QDialog):
 
     def _create_scrollable_page(self):
         scroll = QScrollArea()
+        scroll.setObjectName("settingsPageScroll")
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         content_widget = QWidget()
+        content_widget.setObjectName("settingsPageContent")
         # This is the key fix: It tells Qt to efficiently handle filling the 
         # background, which prevents the flicker during redraws.
         content_widget.setAutoFillBackground(True)
         scroll.setWidget(content_widget)
         
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(12, 20, 12, 20)  # Added 20px bottom padding
+        content_layout.setContentsMargins(8, 10, 8, 28)
         
         page_container = QWidget()
         # We give the container a name so we can style it from the main stylesheet.
@@ -9992,6 +10394,11 @@ class SettingsDialog(QDialog):
         if not sections_map:
             return
 
+        building_page = getattr(self, "_building_page_name", None)
+        if building_page and hasattr(self, "_page_nav_sections"):
+            self._page_nav_sections[building_page] = list(sections_map.items())
+            return
+
         nav_widget = QWidget()
         nav_widget.setObjectName("navBar")
         
@@ -10010,32 +10417,36 @@ class SettingsDialog(QDialog):
         button_index = 0
         for title, target_widget in sections_map.items():
             btn = QPushButton(title)
+            btn.setObjectName("pageNavButton")
+            btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             # Style the button to look like a pill
-            btn.setStyleSheet("""
+            btn.setStyleSheet(f"""
                 QPushButton {
                     background-color: rgba(128, 128, 128, 0.1) !important;
                     border: 1px solid rgba(128, 128, 128, 0.2) !important;
-                    border-radius: 15px !important;
+                    border-radius: 12px !important;
                     padding: 5px 15px !important;
                     font-size: 13px !important;
                     font-weight: bold !important;
                     min-height: 20px !important;
                 }
-                QPushButton:hover {
+                QPushButton:hover:!checked {
                     background-color: rgba(128, 128, 128, 0.2) !important;
                     border: 1px solid rgba(128, 128, 128, 0.4) !important;
-                    border-radius: 15px !important;
+                    border-radius: 12px !important;
                 }
+                QPushButton:checked,
                 QPushButton:pressed {
-                    background-color: rgba(128, 128, 128, 0.3) !important;
-                    border: 1px solid rgba(128, 128, 128, 0.5) !important;
-                    border-radius: 15px !important;
+                    background-color: {self.accent_color} !important;
+                    border: 1px solid {self.accent_color} !important;
+                    border-radius: 12px !important;
+                    color: white !important;
                 }
             """)
             
             # Use a closure to capture the target widget
-            btn.clicked.connect(lambda checked, w=target_widget: self._scroll_to_widget(scroll_area, w))
+            btn.clicked.connect(lambda checked, b=btn, w=target_widget: self._scroll_to_page_nav_target(b, scroll_area, w))
             
             if buttons_per_row is not None:
                 # Grid layout: calculate row and column
@@ -12003,6 +12414,11 @@ class SettingsDialog(QDialog):
         self.current_config["heatmapShowMonths"] = self.heatmap_show_months_check.isChecked()
         self.current_config["heatmapShowWeekdays"] = self.heatmap_show_weekdays_check.isChecked()
         self.current_config["heatmapShowWeekHeader"] = self.heatmap_show_week_header_check.isChecked()
+
+        if hasattr(self, "heatmap_week_start_group"):
+            checked_btn = self.heatmap_week_start_group.checkedButton()
+            if checked_btn:
+                self.current_config["heatmapWeekStart"] = checked_btn.property("week_start")
         
         if hasattr(self, "hide_retention_stars_check"):
             self.current_config["hideRetentionStars"] = self.hide_retention_stars_check.isChecked()
@@ -12090,6 +12506,17 @@ class SettingsDialog(QDialog):
         
         mw.col.conf["modern_menu_background_blur"] = self.bg_blur_spinbox.value()
         mw.col.conf["modern_menu_background_opacity"] = self.bg_opacity_spinbox.value()
+
+        # --- Widget Background Settings ---
+        mw.col.conf["onigiri_widget_bg_mode"] = "main" if self.widget_bg_main_radio.isChecked() else "solid"
+        mw.col.conf["onigiri_widget_bg_main_effect_mode"] = "glassmorphism" if self.widget_bg_effect_glass_radio.isChecked() else "opaque"
+        mw.col.conf["onigiri_widget_bg_main_effect_intensity"] = self.widget_bg_effect_intensity_spinbox.value()
+        mw.col.conf["onigiri_widget_bg_main_tint_intensity"] = self.widget_bg_overlay_intensity_spinbox.value()
+        mw.col.conf["onigiri_widget_bg_main_tint_color_light"] = self.widget_overlay_light_color_input.text()
+        mw.col.conf["onigiri_widget_bg_main_tint_color_dark"] = self.widget_overlay_dark_color_input.text()
+        mw.col.conf["onigiri_widget_bg_solid_transparency"] = self.widget_bg_transparency_spinbox.value()
+        self.current_config["colors"]["light"]["--canvas-inset"] = self.widget_bg_light_color_input.text()
+        self.current_config["colors"]["dark"]["--canvas-inset"] = self.widget_bg_dark_color_input.text()
 
     def _save_organize_settings(self):
         """Saves the layout from the unified layout editor."""
@@ -12366,7 +12793,6 @@ class SettingsDialog(QDialog):
             "--fg",
             "--fg-subtle",
             "--border",
-            "--canvas-inset"
         }
         
         for mode in ["light", "dark"]:
@@ -12377,16 +12803,6 @@ class SettingsDialog(QDialog):
                     widget = self.color_widgets[mode][key]
                     self.current_config["colors"][mode][key] = widget.text()
 
-        # --- START: Save Boxes Color Effect Settings ---
-        effect_mode = "none"
-        if self.canvas_effect_opacity_radio.isChecked():
-            effect_mode = "opacity"
-        elif self.canvas_effect_glass_radio.isChecked():
-            effect_mode = "glassmorphism"
-        
-        mw.col.conf["onigiri_canvas_inset_effect_mode"] = effect_mode
-        mw.col.conf["onigiri_canvas_inset_effect_intensity"] = self.canvas_effect_intensity_spinbox.value()
-        # --- END: Save Boxes Color Effect Settings ---
 
 
 
@@ -12525,6 +12941,7 @@ class SettingsDialog(QDialog):
 
             # Always save hide mode settings
             self._save_hide_modes_settings()
+            self.current_config["ankiweb_sync_enabled"] = self.ankiweb_sync_toggle.isChecked()
 
             if self.tabs_loaded.get(page_indices.get("Main menu")):
                 self._save_main_menu_settings()

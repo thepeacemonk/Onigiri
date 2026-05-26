@@ -11,7 +11,7 @@ from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 
 from . import config, heatmap, deck_tree_updater, sidebar_api, profile_background
 from . import patcher
-from .gamification import restaurant_level
+from .gamification import onigimon, restaurant_level
 from .templates import custom_body_template
 
 
@@ -631,6 +631,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
         "restaurant_level": _get_onigiri_restaurant_level_html,
+        "onigimon": onigimon.render_widget_html,
     }
     
     if col_count > 0:
@@ -681,6 +682,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     unified_grid_html = onigiri_grid_html + external_widgets_html
 
     # [CHANGED] Updated CSS to force grid expansion and row height
+    onigimon_css = onigimon.widget_css()
+
     stats_block_html = f"""
     <style>
         .evolution-graph-main-wrapper {{
@@ -717,7 +720,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
-        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget {{
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget {{
             flex: 1;
             width: 100%;
             height: 100%;
@@ -1047,6 +1050,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             opacity: 0.5;
         }}
     </style>
+    {onigimon_css}
     {title_html}
     <div class="unified-grid">{unified_grid_html}</div>
     """
@@ -1456,6 +1460,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 24px;
             background: none !important;
             border: none !important;
+            border-radius: var(--onigiri-sidebar-header-radius, 8px);
             outline: none !important;
             cursor: pointer;
             padding: 0;
@@ -1489,13 +1494,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
         #deck-list-header h2 {{
             flex: 0 0 auto;
-            margin-left: 4px;
+            margin-left: 10px;
             transition: opacity 0.15s ease;
         }}
         .sidebar-left.sidebar-actions-full.deck-focus-mode #deck-list-header h2 {{
-            margin-left: 12px;
+            margin-left: 10px;
         }}
         .sidebar-top-right-controls {{
+            --onigiri-sidebar-header-radius: 8px;
             position: static;
             z-index: 11;
             display: flex;
@@ -1512,7 +1518,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 24px;
             background-color: transparent;
             border: none;
-            border-radius: 0;
+            border-radius: var(--onigiri-sidebar-header-radius, 8px);
             box-shadow: none;
         }}
         .sidebar-left.sidebar-actions-full {{
@@ -1557,7 +1563,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: none;
         }}
         .sidebar-welcome-heading {{
-            margin-left: 12px;
+            margin-left: 10px;
         }}
         .onigiri-ellipsis-toolbar-btn:hover,
         .onigiri-ellipsis-toolbar-btn.is-open {{
@@ -1644,6 +1650,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             -webkit-backface-visibility: hidden;
             transform: translateZ(0);
         }}
+        #onigiri-ctx-menu .onigiri-ellipsis-item,
+        #onigiri-mark-submenu .onigiri-ellipsis-item {{
+            padding: 7px 11px;
+        }}
         .item-danger {{
             color: var(--fg);
         }}
@@ -1698,7 +1708,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             padding-right: 0;
         }}
         .sidebar-mode-minimal #deck-list-header h2 {{
-            margin-left: 12px;
+            margin-left: 10px;
         }}
         .sidebar-left.sidebar-mode-minimal.deck-focus-mode #deck-list-container {{
             margin-top: 8px;
