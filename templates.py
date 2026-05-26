@@ -110,7 +110,7 @@ custom_body_template = """
         right: 0;
         top: -1px;
         bottom: -1px;
-        border-radius: 6px;
+        border-radius: 8px;
         background-color: var(--hover-deck-bg);
         pointer-events: none;
         z-index: 0;
@@ -408,18 +408,21 @@ custom_body_template = """
     #onigiri-deck-search-bar {
         display: none;
         position: absolute;
-        top: 13.5px;
+        top: 11.5px;
         left: 30px;
         right: 48px;
         z-index: 12;
         align-items: center;
         gap: 4px;
-        background: var(--hover-deck-bg);
+        background: #e5e5e5;
         border: 1px solid var(--border);
         border-radius: 10px;
-        padding: 5px 0px 5px 8px;
+        padding: 6px 6px 6px 8px;
         outline: none;
         transition: none;
+    }
+    .night-mode #onigiri-deck-search-bar {
+        background: #252525;
     }
     .sidebar-left.sidebar-mode-minimal #onigiri-deck-search-bar {
         top: 87.5px;
@@ -467,6 +470,8 @@ custom_body_template = """
     }
     #onigiri-deck-search-bar:focus-within {
         border-color: var(--accent-color, #007aff);
+        outline: none;
+        box-shadow: inset 0 0 0 1px var(--accent-color, #007aff);
     }
     #onigiri-deck-search-input::placeholder {
         color: var(--fg-subtle, rgba(255,255,255,0.35));
@@ -489,9 +494,9 @@ custom_body_template = """
         margin-right: 4px;
     }
     #onigiri-deck-search-close {
-        width: 20px;
-        height: 20px;
-        min-width: 20px;
+        width: 14px;
+        height: 14px;
+        min-width: 14px;
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -507,6 +512,7 @@ custom_body_template = """
         color: var(--fg-subtle, rgba(255,255,255,0.35));
         flex-shrink: 0;
         line-height: 0;
+        margin-left: 2px;
     }
     #onigiri-deck-search-close:hover,
     #onigiri-deck-search-close:focus,
@@ -524,8 +530,8 @@ custom_body_template = """
         height: 14px;
         display: inline-block;
         background-color: currentColor;
-        mask-image: url("{system_icon_base}cancel_circle.svg");
-        -webkit-mask-image: url("{system_icon_base}cancel_circle.svg");
+        mask-image: url("{system_icon_base}cancel.svg");
+        -webkit-mask-image: url("{system_icon_base}cancel.svg");
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
