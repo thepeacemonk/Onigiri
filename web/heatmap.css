@@ -5,10 +5,12 @@
 #onigiri-heatmap-container,
 #onigiri-profile-heatmap-container {
     --heatmap-ui-icon-size: 13px;
-    padding-top: 20px;
-    padding-bottom: 15px;
-    padding-left: 15px;
-    padding-right: 15px;
+    --heatmap-control-height: 26px;
+    --heatmap-control-radius: 8px;
+    --heatmap-control-bg: var(--highlight-bg);
+    --heatmap-control-fg: var(--fg);
+    --heatmap-control-muted: var(--fg-subtle);
+    padding: 15px;
     border-radius: 15px;
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
@@ -20,25 +22,54 @@
 }
 
 /* --- Nav bar — absolute top-left; year selector + streak sit side-by-side inside --- */
-.heatmap-nav {
-    position: absolute;
-    top: 16px;
-    left: 12px;
+.onigiri-heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: -20px;
+    margin-bottom: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    padding-top: 0;
+}
+
+.onigiri-heatmap-header .header-left,
+.onigiri-heatmap-header .header-right {
     display: flex;
     align-items: center;
-    gap: 8px;
-    z-index: 2;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.onigiri-heatmap-header .header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.onigiri-heatmap-header .header-right {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+
+.heatmap-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 /* --- Streak Counter — inline flex child of .heatmap-nav, to the right of year selector --- */
 .streak-counter {
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
     font-size: 12px;
     font-weight: 500;
     color: var(--fg-subtle);
     background-color: var(--highlight-bg);
-    border-radius: 8px;
-    height: 24px;
-    padding: 0 8px;
+    border-radius: var(--heatmap-control-radius);
+    height: var(--heatmap-control-height);
+    padding: 0 10px;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -68,12 +99,9 @@
     opacity: 0.45;
 }
 
-.heatmap-nav-icon-left {
-    transform: rotate(-90deg);
-}
-
+.heatmap-nav-icon-left,
 .heatmap-nav-icon-right {
-    transform: rotate(90deg);
+    transform: none;
 }
 
 .heatmap-year-chevron {
@@ -93,8 +121,8 @@
     top: calc(100% + 6px);
     left: 50%;
     transform: translateX(-50%);
-    background-color: var(--canvas-inset, #f0f0f0) !important;
-    color: var(--fg, #1a1a1a) !important;
+    background-color: var(--onigiri-tooltip-bg, var(--bg-elevated, #ffffff)) !important;
+    color: var(--onigiri-tooltip-fg, var(--fg, #1a1a1a)) !important;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
@@ -109,7 +137,7 @@
     font-weight: normal !important;
     line-height: 1.4 !important;
     text-align: center !important;
-    border: none !important;
+    border: 1px solid var(--onigiri-tooltip-border, var(--border, rgba(0, 0, 0, 0.12))) !important;
 }
 
 .streak-counter.onigiri-streak-tip:hover::after {
@@ -119,10 +147,12 @@
 
 .heatmap-filters {
     display: flex;
-    background-color: var(--heatmap-color-zero);
-    border-radius: 8px;
-    padding: 2px;
+    background-color: var(--highlight-bg);
+    border-radius: var(--heatmap-control-radius);
+    min-height: var(--heatmap-control-height);
+    padding: 0 4px;
     align-items: center;
+    gap: 2px;
 }
 
 /* --- Filter Buttons (Fixed Height) --- */
@@ -131,12 +161,13 @@
     background-color: transparent;
     border-radius: 6px;
     cursor: pointer;
-    font: var(--font-main);
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
     font-size: 12px;
     font-weight: 500;
-    color: var(--fg-subtle);
+    color: var(--heatmap-control-muted);
     box-shadow: none !important;
-    height: 24px;
+    height: calc(var(--heatmap-control-height) - 8px);
+    min-width: 0;
     padding: 0 8px;
     display: flex;
     align-items: center;
@@ -150,8 +181,9 @@
 }
 
 .filter-btn.active {
-    background-color: var(--canvas-inset);
-    color: var(--fg);
+    background-color: transparent;
+    color: var(--heatmap-control-fg);
+    font-weight: 600;
     box-shadow: none !important;
 }
 
@@ -159,10 +191,11 @@
     border: none;
     border-color: transparent;
     background-color: var(--highlight-bg);
-    color: var(--fg);
-    border-radius: 8px;
-    width: 24px;
-    height: 24px;
+    color: var(--heatmap-control-fg);
+    border-radius: 8px !important;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -170,6 +203,7 @@
     padding: 0;
     outline: none;
     box-shadow: none;
+    line-height: 0;
 }
 
 .nav-btn:hover,
@@ -178,8 +212,8 @@
     border: none;
     outline: none;
     box-shadow: none;
-    background-color: var(--heatmap-color-zero);
-    color: var(--fg);
+    background-color: var(--highlight-bg);
+    color: var(--heatmap-control-fg);
     opacity: 1;
     transform: none;
 }
@@ -192,12 +226,14 @@
 
 
 .nav-title {
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
     font-size: 13px;
     font-weight: 500;
-    color: var(--fg);
+    color: var(--heatmap-control-fg);
     background-color: var(--highlight-bg);
-    border-radius: 8px;
-    height: 24px;
+    border-radius: var(--heatmap-control-radius);
+    height: var(--heatmap-control-height);
+    min-width: 0;
     padding: 0 8px;
     display: flex;
     align-items: center;
@@ -303,7 +339,7 @@
 
 /* --- Grid — pushed down to clear the absolute nav bar --- */
 .heatmap-grid {
-    margin-top: 44px;
+    margin-top: 22px;
 }
 
 /* --- Base Grid and Cells --- */
@@ -454,8 +490,8 @@
     bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
-    background-color: var(--canvas-inset, #f0f0f0) !important;
-    color: var(--fg, #1a1a1a) !important;
+    background-color: var(--onigiri-tooltip-bg, var(--bg-elevated, #ffffff)) !important;
+    color: var(--onigiri-tooltip-fg, var(--fg, #1a1a1a)) !important;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 12px;
@@ -470,7 +506,7 @@
     font-weight: normal !important;
     line-height: 1.4 !important;
     text-align: center !important;
-    border: none !important;
+    border: 1px solid var(--onigiri-tooltip-border, var(--border, rgba(0, 0, 0, 0.12))) !important;
 }
 
 .year-view .heatmap-cells .heatmap-day-cell:nth-child(-n + 56)::after {

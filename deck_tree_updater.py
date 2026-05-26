@@ -157,7 +157,66 @@ def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     # Note: _render_deck_node is patched by Onigiri in patcher.py
     return "".join(deck_browser._render_deck_node(child, ctx) for child in tree_data.children)
 
-def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
+
+def _render_deck_search_tree_html_only(deck_browser: DeckBrowser, query: str) -> str:
+    """Render deck rows matching a search query, including collapsed descendants."""
+    normalized_query = (query or "").strip().lower()
+    if not normalized_query:
+        return _render_deck_tree_html_only(deck_browser)
+
+    archived_ids = archived_deck_ids()
+    show_archived_only = bool(mw.col.conf.get(SHOW_ARCHIVED_CONF_KEY, False))
+
+    all_decks = mw.col.decks.all()
+    archived_names = [
+        d.get("name", "")
+        for d in all_decks
+        if str(d.get("id", "")) in archived_ids and d.get("name", "")
+    ]
+
+    def hidden_by_archived_parent(name):
+        return any(
+            name == archived_name or name.startswith(archived_name + "::")
+            for archived_name in archived_names
+        )
+
+    matched_ids = set()
+    for deck in all_decks:
+        did = str(deck["id"])
+        name = deck.get("name", "")
+        if show_archived_only:
+            if did not in archived_ids:
+                continue
+        elif did in archived_ids or hidden_by_archived_parent(name):
+            continue
+
+        leaf = name.split("::")[-1]
+        if normalized_query in name.lower() or normalized_query in leaf.lower():
+            matched_ids.add(did)
+
+    tree_data = deck_browser.mw.col.sched.deck_due_tree()
+    deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
+    apply_archive_filter(
+        tree_data,
+        archived_ids=archived_ids,
+        show_archived_only=show_archived_only,
+    )
+
+    ctx = RenderDeckNodeContext(current_deck_id=deck_browser.mw.col.decks.get_current_id())
+    rows = []
+
+    def collect_matching(nodes):
+        for node in nodes:
+            if str(node.deck_id) in matched_ids:
+                rows.append(deck_browser._render_deck_node(node, ctx))
+            else:
+                collect_matching(node.children)
+
+    collect_matching(tree_data.children)
+    return "".join(rows)
+
+
+def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str, search_query: str = "") -> None:
     """
     Handles the collapse/expand action for a deck without a full page reload.
     Re-renders the tree HTML and uses JS to preserve checkbox *state*.
@@ -181,8 +240,12 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
         tree_data = deck_browser.mw.col.sched.deck_due_tree()
         deck_browser._render_data = onigiri_renderer.RenderData(tree=tree_data)
 
-        # Re-render only the deck tree
-        new_tree_html = _render_deck_tree_html_only(deck_browser)
+        # Re-render only the deck tree, preserving an active sidebar search.
+        new_tree_html = (
+            _render_deck_search_tree_html_only(deck_browser, search_query)
+            if search_query
+            else _render_deck_tree_html_only(deck_browser)
+        )
 
         # Escape the HTML for safe injection into a JavaScript string
         js_escaped_html = json.dumps(new_tree_html)
@@ -197,7 +260,7 @@ def on_deck_collapse(deck_browser: DeckBrowser, deck_id: str) -> None:
             const deckId = "{deck_id}";
 
             function doUpdate() {{
-                OnigiriEngine.updateDeckTree({new_tree_html});
+                OnigiriEngine.updateDeckTree({new_tree_html}, {{force: true}});
                 if (container) container.scrollTop = scrollTop;
             }}
 

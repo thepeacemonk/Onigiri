@@ -39,7 +39,7 @@ from . import config
 from . import onigiri_renderer
 from . import deck_tree_updater
 from . import profile_background
-from .color_utils import normalize_color_string, get_contrast_text_color
+from .color_utils import normalize_color_string, parse_color_string, get_contrast_text_color
 from .gamification import restaurant_level
 from . import settings, heatmap, fonts, gamification_settings
 from .gamification.gamification import get_gamification_manager
@@ -3029,9 +3029,9 @@ def generate_icon_size_css():
 
 def generate_icon_css(addon_package, conf):
     all_icon_selectors = {
-        "options": "td.opts a", "folder": "tr.is-folder a.deck::before",
-        "deck": "tr.is-deck a.deck::before", "subdeck": "tr.is-subdeck a.deck::before",
-        "filtered_deck": "tr.is-filtered a.deck::before", "add": ".action-add .icon",
+        "options": "td.opts a", "folder": "tr.is-folder a.deck::before, .onigiri-drag-preview.is-folder a.deck::before",
+        "deck": "tr.is-deck a.deck::before, .onigiri-drag-preview.is-deck a.deck::before", "subdeck": "tr.is-subdeck a.deck::before, .onigiri-drag-preview.is-subdeck a.deck::before",
+        "filtered_deck": "tr.is-filtered a.deck::before, .onigiri-drag-preview.is-filtered a.deck::before", "add": ".action-add .icon",
         "browse": ".action-browse .icon", "stats": ".action-stats .icon", "sync": ".action-sync .icon",
         "settings": ".action-settings .icon", "more": ".action-more .icon",
         "get_shared": ".action-get-shared .icon", "create_deck": ".action-create-deck .icon",
@@ -3281,7 +3281,8 @@ def generate_icon_css(addon_package, conf):
     }}
 
     /* Filtered Deck Specific Color */
-    tr.is-filtered a.deck::before {{
+    tr.is-filtered a.deck::before,
+    .onigiri-drag-preview.is-filtered a.deck::before {{
         background-color: var(--icon-color-filtered) !important;
         mask-size: contain;
         -webkit-mask-size: contain;
@@ -3372,7 +3373,7 @@ def generate_conditional_css(conf):
 	styles.append("""
         body.deck-browser .sidebar-left.deck-focus-mode .sidebar-expanded-content > #deck-list-header {
             display: flex !important;
-            margin-left: 8px !important;
+            margin-left: 0 !important;
         }
     """)
 	if conf.get("hideTodaysStats", False):
@@ -3491,6 +3492,15 @@ def _hex_to_rgba(hex_str: str, alpha: float) -> str:
 		return f"rgba(0,0,0,{alpha})"
 
 
+def _opaque_css_color(value: str, fallback: str) -> str:
+	qcolor = parse_color_string(value, fallback=fallback)
+	if not qcolor.isValid():
+		qcolor = parse_color_string(fallback)
+	if not qcolor.isValid():
+		return fallback
+	return f"#{qcolor.red():02X}{qcolor.green():02X}{qcolor.blue():02X}"
+
+
 def _hex_to_hsl(hex_str):
 	"""Convert a hex color to (H degrees, S 0-1, L 0-1)."""
 	hex_str = hex_str.lstrip('#')
@@ -3574,34 +3584,45 @@ def generate_dynamic_css(conf):
 	# ADDED to generate the font-specific CSS
 	font_css_block = generate_font_css(addon_package)
 
-	effect_mode = mw.col.conf.get("onigiri_canvas_inset_effect_mode", "none")
-	effect_intensity = mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
-
-	def _apply_canvas_inset_effect(colors: dict):
-		"""Applies opacity or glassmorphism effect to --canvas-inset color."""
-		if "--canvas-inset" not in colors:
-			return
-
-		if effect_mode in ["opacity", "glassmorphism"]:
-			original_hex = colors["--canvas-inset"]
-			
-			# Intensity to alpha mapping (0-100 -> 1.0-0.0)
-			# For glassmorphism, higher intensity means more transparency.
-			alpha = (100 - effect_intensity) / 100.0
-			
-			# For simple opacity, higher intensity means more opacity.
-			if effect_mode == "opacity":
-				alpha = effect_intensity / 100.0
-
-			colors["--canvas-inset"] = _hex_to_rgba(original_hex, alpha)
+	widget_bg_mode = mw.col.conf.get("onigiri_widget_bg_mode", "solid")
+	widget_bg_main_effect_mode = mw.col.conf.get("onigiri_widget_bg_main_effect_mode", "glassmorphism")
 
 	colors = conf.get("colors", {})
 	light_colors = colors.get("light", {}).copy()
 	dark_colors = colors.get("dark", {}).copy()
+	base_light_colors = colors.get("light", {})
+	base_dark_colors = colors.get("dark", {})
 
-	# Apply effects if enabled
-	_apply_canvas_inset_effect(light_colors)
-	_apply_canvas_inset_effect(dark_colors)
+	if widget_bg_mode == "solid":
+		transparency = mw.col.conf.get("onigiri_widget_bg_solid_transparency", 0)
+		if transparency > 0:
+			alpha = (100 - transparency) / 100.0
+			if "--canvas-inset" in light_colors:
+				light_colors["--canvas-inset"] = _hex_to_rgba(light_colors["--canvas-inset"], alpha)
+			if "--canvas-inset" in dark_colors:
+				dark_colors["--canvas-inset"] = _hex_to_rgba(dark_colors["--canvas-inset"], alpha)
+	elif widget_bg_mode == "main":
+		if widget_bg_main_effect_mode == "glassmorphism":
+			glass_intensity = mw.col.conf.get("onigiri_widget_bg_main_effect_intensity", 50)
+			glass_alpha = (glass_intensity / 100.0) * 0.3
+			light_colors["--canvas-inset"] = f"rgba(255, 255, 255, {glass_alpha:.2f})"
+			dark_colors["--canvas-inset"] = f"rgba(0, 0, 0, {glass_alpha:.2f})"
+		else:
+			tint_intensity = mw.col.conf.get("onigiri_widget_bg_main_tint_intensity", 30)
+			tint_alpha = tint_intensity / 100.0
+			light_color = mw.col.conf.get("onigiri_widget_bg_main_tint_color_light", "#FFFFFF")
+			dark_color = mw.col.conf.get("onigiri_widget_bg_main_tint_color_dark", "#2C2C2C")
+			light_colors["--canvas-inset"] = _hex_to_rgba(light_color, tint_alpha)
+			dark_colors["--canvas-inset"] = _hex_to_rgba(dark_color, tint_alpha)
+
+	light_tooltip_bg = base_light_colors.get("--bg-elevated", base_light_colors.get("--highlight-bg", "#ffffff"))
+	dark_tooltip_bg = base_dark_colors.get("--bg-elevated", base_dark_colors.get("--highlight-bg", "#2c2c2c"))
+	light_colors["--onigiri-tooltip-bg"] = _opaque_css_color(light_tooltip_bg, "#ffffff")
+	light_colors["--onigiri-tooltip-fg"] = base_light_colors.get("--fg", "#1a1a1a")
+	light_colors["--onigiri-tooltip-border"] = base_light_colors.get("--border", "rgba(0, 0, 0, 0.12)")
+	dark_colors["--onigiri-tooltip-bg"] = _opaque_css_color(dark_tooltip_bg, "#2c2c2c")
+	dark_colors["--onigiri-tooltip-fg"] = base_dark_colors.get("--fg", "#f5f5f5")
+	dark_colors["--onigiri-tooltip-border"] = base_dark_colors.get("--border", "rgba(255, 255, 255, 0.16)")
 
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
@@ -3760,13 +3781,11 @@ def generate_dynamic_css(conf):
 	dark_rules += f"\n    --onigiri-profile-initials-bg: {profile_initials_bg_dark} !important;"
 	dark_rules += "\n    --onigiri-profile-initials-fg: white !important;"
 
-	# --- New Glassmorphism Style Block ---
 	glass_style_block = ""
-	if effect_mode == "glassmorphism":
-		# Map intensity (0-100) to blur radius (0-20px)
-		blur_px = (effect_intensity / 100.0) * 20
-		# --- FIX: Added heatmap container IDs to the selectors ---
-		glass_selectors = ".stats-container, .congrats-card, .stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container"
+	if widget_bg_mode == "main" and widget_bg_main_effect_mode == "glassmorphism":
+		glass_intensity = mw.col.conf.get("onigiri_widget_bg_main_effect_intensity", 50)
+		blur_px = (glass_intensity / 100.0) * 15.0
+		glass_selectors = ".stats-container, .congrats-card, .stat-card, .onigiri-favorites-widget, .onigiri-restaurant-level-widget, #onigiri-heatmap-container, #onigiri-profile-heatmap-container"
 		glass_style_block = f"""
         <style id="onigiri-glass-effect">
         {glass_selectors} {{

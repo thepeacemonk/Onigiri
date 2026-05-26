@@ -39,6 +39,8 @@ try:
     from . import birthday_dialog
     from . import deck_tree_updater
     from . import webview_handlers
+    from .sync import onigiri_sync
+    from .sync_ui import show_sync_conflict_dialog
 except ImportError as e:
     print(f"Warning: Could not import local modules: {e}")
     # Continue with available modules
@@ -155,6 +157,8 @@ def inject_menu_files(web_content, context):
         web_content.head += deck_shortcut_js
         web_content.head += f'<script src="{web_assets_root}/injector.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/rename_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/move_to_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         
@@ -428,6 +432,9 @@ def on_profile_did_open():
     # Delayed to avoid conflicting with Anki's sync/conflict dialog on startup
     QTimer.singleShot(500, maybe_show_welcome_popup)
 
+    if onigiri_sync.is_enabled():
+        QTimer.singleShot(1000, on_sync_did_finish)
+
     # Show birthday popup if it's the user's birthday (requires mw.col)
     # Delay by 1s to ensure main window is fully rendered for screenshot blur
     QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
@@ -696,6 +703,30 @@ def update_sync_status_indicator():
     except Exception as e:
         pass
 
+def on_sync_will_start():
+    """Pack Onigiri user files before Anki syncs, if Onigiri sync is enabled."""
+    update_sync_status_indicator()
+    if onigiri_sync.is_enabled():
+        onigiri_sync.pack_user_files()
+
+def on_sync_did_finish():
+    """Resolve Onigiri user-file sync state after Anki sync completes."""
+    update_sync_status_indicator()
+    if not onigiri_sync.is_enabled():
+        return
+
+    conflict = onigiri_sync.check_conflict()
+    if conflict == "cloud_newer":
+        choice = show_sync_conflict_dialog(mw)
+        if choice == "cloud":
+            if onigiri_sync.unpack_user_files():
+                from aqt.utils import showInfo
+                showInfo("Onigiri data has been updated from AnkiWeb. Restart Anki if anything looks stale.")
+        elif choice == "local":
+            onigiri_sync.pack_user_files()
+    elif conflict == "local_newer":
+        onigiri_sync.pack_user_files()
+
 def on_state_change(new_state, old_state):
     """Called when Anki's state changes - update sync indicator."""
     update_sync_status_indicator()
@@ -742,11 +773,11 @@ gui_hooks.webview_did_receive_js_message.append(_onigiri_handle_qt_dismiss)
 # Update sync status when state changes
 gui_hooks.state_did_change.append(on_state_change)
 # Update sync status after sync completes
-gui_hooks.sync_did_finish.append(lambda: update_sync_status_indicator())
+gui_hooks.sync_did_finish.append(on_sync_did_finish)
 # Update sync status after operations that modify the collection
 gui_hooks.operation_did_execute.append(lambda *args: update_sync_status_indicator())
 # Update sync status when sync status changes
-gui_hooks.sync_will_start.append(lambda: update_sync_status_indicator())
+gui_hooks.sync_will_start.append(on_sync_will_start)
 gui_hooks.deck_browser_will_show_options_menu.append(on_deck_options_shown)
 # Menu styling disabled per user request
 # gui_hooks.theme_did_change.append(patcher.apply_menu_styling)

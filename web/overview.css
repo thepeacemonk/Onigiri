@@ -6,6 +6,16 @@ body {
     min-height: 100vh;
     margin: 0;
     position: relative;
+    scroll-behavior: auto;
+}
+
+.overview-center-container,
+.overview-container,
+.stats-container,
+.congrats-container,
+.congrats-card {
+    animation: none !important;
+    transform: none;
 }
 
 /* Corner icon buttons — top-left of the overview page */

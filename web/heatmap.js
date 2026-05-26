@@ -61,6 +61,29 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return `${year}-${month}-${day}`;
     }
 
+    function escapeAttr(value) {
+        return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function getWeekStartOffset(date, config) {
+        const startsSunday = (config.heatmapWeekStart || "monday") === "sunday";
+        return startsSunday ? date.getDay() : (date.getDay() + 6) % 7;
+    }
+
+    function orderedWeekdayLabels(config, longLabels) {
+        const labels = longLabels
+            ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            : ["S", "M", "T", "W", "T", "F", "S"];
+        if ((config.heatmapWeekStart || "monday") === "sunday") {
+            return labels;
+        }
+        return labels.slice(1).concat(labels[0]);
+    }
+
     function getCountsForDate(date, preparedData) {
         const dateKey = getLocalDateKey(date);
         return {
@@ -140,7 +163,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         gridContainer.innerHTML = `
             <div class="heatmap-months"></div>
-            <div class="heatmap-weekdays"><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div><div>S</div></div>
+            <div class="heatmap-weekdays">${orderedWeekdayLabels(config, false).map(label => `<div>${label}</div>`).join("")}</div>
             <div class="heatmap-cells"></div>
         `;
 
@@ -149,7 +172,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         let currentMonth = -1;
 
         for (let i = 0; i < 371; i++) {
-            const dayOfWeek = (firstDayOfYear.getDay() + 6) % 7;
+            const dayOfWeek = getWeekStartOffset(firstDayOfYear, config);
             const date = new Date(firstDayOfYear);
             date.setDate(firstDayOfYear.getDate() - dayOfWeek + i);
 
@@ -183,12 +206,12 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         const firstDayOfMonth = new Date(year, month, 1);
 
         gridContainer.innerHTML = `
-            <div class="month-weekdays-header"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+            <div class="month-weekdays-header">${orderedWeekdayLabels(config, true).map(label => `<div>${label}</div>`).join("")}</div>
             <div class="month-cells-grid"></div>
         `;
 
         const cellsContainer = gridContainer.querySelector(".month-cells-grid");
-        const firstDayOfWeek = (firstDayOfMonth.getDay() + 6) % 7;
+        const firstDayOfWeek = getWeekStartOffset(firstDayOfMonth, config);
 
         for (let i = 0; i < firstDayOfWeek; i++) {
             cellsContainer.appendChild(createEmptyCell());
@@ -209,7 +232,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         gridContainer.dataset.headerHidden = !config.heatmapShowWeekHeader;
 
         const startDate = new Date(state.targetDate);
-        const startDayOfWeek = (startDate.getDay() + 6) % 7;
+        const startDayOfWeek = getWeekStartOffset(startDate, config);
         startDate.setDate(startDate.getDate() - startDayOfWeek);
 
         gridContainer.innerHTML = `
@@ -256,26 +279,16 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return renderSystemIcon("heatmap-year-chevron", "down.svg");
     }
 
-    function buildYearNavContent(data) {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const selectedYear = state.targetDate.getFullYear();
-        const firstYear = data.firstYear && data.firstYear <= currentYear ? data.firstYear : currentYear;
-
-        let items = "";
-        for (let year = currentYear; year >= firstYear; year--) {
-            items += `<div class="year-dropdown-item${year === selectedYear ? " selected" : ""}" data-year="${year}">${year}</div>`;
-        }
-
-        return `<div class="year-select-wrapper"><button class="year-select-btn">${selectedYear}${renderYearChevron()}</button><div class="year-dropdown-menu">${items}</div></div>`;
-    }
-
-    function buildNavContent(data) {
-        const leftArrow = renderSystemIcon("heatmap-nav-icon-left", "down.svg");
-        const rightArrow = renderSystemIcon("heatmap-nav-icon-right", "down.svg");
+    function buildNavContent(config) {
+        const leftArrow = renderSystemIcon("heatmap-nav-icon-left", "left.svg");
+        const rightArrow = renderSystemIcon("heatmap-nav-icon-right", "right.svg");
 
         if (state.view === "year") {
-            return buildYearNavContent(data);
+            return `
+                <button class="nav-btn" data-nav="-1">${leftArrow}</button>
+                <span class="nav-title">${state.targetDate.getFullYear()}</span>
+                <button class="nav-btn" data-nav="1">${rightArrow}</button>
+            `;
         }
 
         if (state.view === "month") {
@@ -287,7 +300,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
 
         const startOfWeek = new Date(state.targetDate);
-        startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
+        startOfWeek.setDate(startOfWeek.getDate() - getWeekStartOffset(startOfWeek, config));
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
 
@@ -298,45 +311,6 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         `;
     }
 
-    function bindYearDropdown(navEl) {
-        const yearWrapper = navEl.querySelector(".year-select-wrapper");
-        if (!yearWrapper) {
-            return;
-        }
-
-        const yearBtn = yearWrapper.querySelector(".year-select-btn");
-        const yearMenu = yearWrapper.querySelector(".year-dropdown-menu");
-
-        yearBtn.addEventListener("click", (event) => {
-            event.stopPropagation();
-            const isOpen = yearMenu.classList.contains("open");
-            yearMenu.classList.toggle("open", !isOpen);
-            yearBtn.classList.toggle("open", !isOpen);
-
-            if (!isOpen) {
-                setTimeout(() => {
-                    document.addEventListener("click", function onDocClick(docEvent) {
-                        if (!yearWrapper.contains(docEvent.target)) {
-                            yearMenu.classList.remove("open");
-                            yearBtn.classList.remove("open");
-                        }
-                        document.removeEventListener("click", onDocClick);
-                    });
-                }, 0);
-            }
-        });
-
-        yearMenu.querySelectorAll(".year-dropdown-item").forEach((item) => {
-            item.addEventListener("click", (event) => {
-                event.stopPropagation();
-                state.targetDate.setFullYear(parseInt(item.dataset.year, 10));
-                yearMenu.classList.remove("open");
-                yearBtn.classList.remove("open");
-                renderCurrentView();
-            });
-        });
-    }
-
     function bindNavButtons(navEl) {
         navEl.addEventListener("click", (event) => {
             const btn = event.target.closest(".nav-btn");
@@ -345,7 +319,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             }
 
             const amount = parseInt(btn.dataset.nav, 10);
-            if (state.view === "month") {
+            if (state.view === "year") {
+                state.targetDate.setFullYear(state.targetDate.getFullYear() + amount);
+            } else if (state.view === "month") {
                 state.targetDate.setMonth(state.targetDate.getMonth() + amount);
             } else if (state.view === "week") {
                 state.targetDate.setDate(state.targetDate.getDate() + amount);
@@ -368,19 +344,29 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
 
         renderCurrentView = function () {
+            const i18n = config.i18n || {};
             const hasStreak = data.streak > 0;
             const longestStreak = data.longest_streak || 0;
-            const streakTooltip = longestStreak > 0
+            const longestStreakTip = longestStreak > 0
                 ? `Longest streak: ${longestStreak} day${longestStreak !== 1 ? "s" : ""}`
                 : "No streak yet";
             const streakMarkup = config.heatmapShowStreak
-                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${streakTooltip}">${renderFlameIcon(hasStreak)}${data.streak}</div>`
+                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(longestStreakTip)}">${renderFlameIcon(hasStreak)}<span>${data.streak}</span></div>`
                 : "";
 
             container.innerHTML = `
-                <div class="heatmap-nav">
-                    ${buildNavContent(data)}
-                    ${streakMarkup}
+                <div class="onigiri-heatmap-header">
+                    <div class="header-left">
+                        <div class="heatmap-nav">${buildNavContent(config)}</div>
+                    </div>
+                    <div class="header-right">
+                        ${streakMarkup}
+                        <div class="heatmap-filters">
+                            <button class="filter-btn ${state.view === "year" ? "active" : ""}" data-view="year">${i18n.year || "Year"}</button>
+                            <button class="filter-btn ${state.view === "month" ? "active" : ""}" data-view="month">${i18n.month || "Month"}</button>
+                            <button class="filter-btn ${state.view === "week" ? "active" : ""}" data-view="week">${i18n.week || "Week"}</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="heatmap-grid"></div>
             `;
@@ -395,8 +381,18 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             }
 
             const navEl = container.querySelector(".heatmap-nav");
-            bindYearDropdown(navEl);
             bindNavButtons(navEl);
+
+            const filters = container.querySelector(".heatmap-filters");
+            filters.addEventListener("click", (event) => {
+                const btn = event.target.closest(".filter-btn");
+                if (!btn) {
+                    return;
+                }
+                state.view = btn.dataset.view;
+                state.targetDate = new Date();
+                renderCurrentView();
+            });
         };
 
         renderCurrentView();

@@ -81,12 +81,47 @@ custom_body_template = """
     tr.deck.ctx-row-active {
         background-color: var(--edit-deck-bg) !important;
     }
-    /* Multi-selection: accent left border + hover background */
+    /* Multi-selection: detached accent marker + preserved row surface */
     tr.deck.is-multi-selected {
-        border-left: 2px solid var(--accent-color, #6366f1) !important;
-        background-color: var(--hover-deck-bg) !important;
+        background: transparent !important;
+        background-color: transparent !important;
         box-shadow: none !important;
+        isolation: isolate;
         transition: none !important;
+    }
+    tr.deck.is-multi-selected::before {
+        content: "";
+        display: block;
+        position: absolute;
+        left: -1px;
+        top: 3px;
+        bottom: 3px;
+        width: 4px;
+        border-radius: 999px;
+        background-color: var(--accent-color, #6366f1);
+        pointer-events: none;
+        z-index: 2;
+    }
+    tr.deck.is-multi-selected::after {
+        content: "";
+        display: block;
+        position: absolute;
+        left: 6px;
+        right: 0;
+        top: -1px;
+        bottom: -1px;
+        border-radius: 6px;
+        background-color: var(--hover-deck-bg);
+        pointer-events: none;
+        z-index: 0;
+    }
+    tr.deck.is-multi-selected > * {
+        position: relative;
+        z-index: 1;
+    }
+    tr.deck.is-multi-selected.ctx-row-active::after {
+        left: 0;
+        background-color: var(--edit-deck-bg) !important;
     }
     /* Ensure right-click highlight always wins */
     tr.deck.ctx-row-active {
@@ -167,6 +202,7 @@ custom_body_template = """
 
     /* --- Deck header controls --- */
     .sidebar-top-right-controls {
+        --onigiri-sidebar-header-radius: 8px;
         position: static;
         z-index: 11;
         display: flex;
@@ -187,7 +223,7 @@ custom_body_template = """
         z-index: auto;
         background: transparent !important;
         border: none !important;
-        border-radius: 0 !important;
+        border-radius: var(--onigiri-sidebar-header-radius, 8px) !important;
         box-shadow: none !important;
         outline: none !important;
         appearance: none !important;
@@ -217,7 +253,7 @@ custom_body_template = """
     .onigiri-organise-toolbar-btn:focus-visible {
         background: transparent !important;
         border: none !important;
-        border-radius: 0 !important;
+        border-radius: var(--onigiri-sidebar-header-radius, 8px) !important;
         box-shadow: none !important;
         outline: none !important;
         transform: none !important;
@@ -291,7 +327,7 @@ custom_body_template = """
         display: none;
     }
     .sidebar-welcome-heading {
-        margin-left: 12px;
+        margin-left: 10px;
     }
     #onigiri-search-toolbar-btn .search-btn-icon,
     .onigiri-search-icon,
@@ -372,17 +408,17 @@ custom_body_template = """
         display: none;
         position: absolute;
         top: 13.5px;
-        left: 18px;
-        right: 45px;
+        left: 30px;
+        right: 48px;
         z-index: 12;
         align-items: center;
         gap: 4px;
         background: var(--hover-deck-bg);
         border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 4px 0px 4px 8px;
+        border-radius: 12px;
+        padding: 5px 0px 5px 8px;
         outline: none;
-        transition: border-color 0.15s ease;
+        transition: none;
     }
     .sidebar-left.sidebar-mode-minimal #onigiri-deck-search-bar {
         top: 87.5px;
@@ -396,33 +432,25 @@ custom_body_template = """
     }
     #onigiri-deck-search-bar.is-visible {
         display: flex;
-        animation: oniSearchReveal 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation: oniSearchReveal 0.12s ease-out both;
     }
     #onigiri-deck-search-bar.is-closing {
-        animation: oniSearchDismiss 0.1s cubic-bezier(0.55, 0, 1, 0.45) both !important;
+        animation: oniSearchDismiss 0.09s ease-in both !important;
     }
     @keyframes oniSearchReveal {
         from {
             opacity: 0;
-            transform: translateX(10px);
-            clip-path: inset(0 0 0 70% round 8px);
         }
         to {
             opacity: 1;
-            transform: translateX(0);
-            clip-path: inset(-5px -5px -5px -5px round 8px);
         }
     }
     @keyframes oniSearchDismiss {
         from {
             opacity: 1;
-            transform: translateX(0);
-            clip-path: inset(-5px -5px -5px -5px round 8px);
         }
         to {
             opacity: 0;
-            transform: translateX(10px);
-            clip-path: inset(0 0 0 70% round 8px);
         }
     }
     #onigiri-deck-search-input {
@@ -460,6 +488,9 @@ custom_body_template = """
         margin-right: 4px;
     }
     #onigiri-deck-search-close {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -468,9 +499,10 @@ custom_body_template = """
         appearance: none !important;
         -webkit-appearance: none !important;
         cursor: pointer;
-        padding: 2px;
+        padding: 0;
         display: flex;
         align-items: center;
+        justify-content: center;
         color: var(--fg-subtle, rgba(255,255,255,0.35));
         flex-shrink: 0;
         line-height: 0;
@@ -487,8 +519,8 @@ custom_body_template = """
         color: var(--fg);
     }
     .search-close-icon {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         display: inline-block;
         background-color: currentColor;
         mask-image: url("{system_icon_base}cancel.svg");
@@ -633,7 +665,7 @@ custom_body_template = """
         height: 24px;
         background: transparent !important;
         border: none !important;
-        border-radius: 0 !important;
+        border-radius: var(--onigiri-sidebar-header-radius, 8px) !important;
         box-shadow: none !important;
         transform: none !important;
         opacity: 0;
@@ -773,6 +805,13 @@ custom_body_template = """
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-secondary .deck-focus-btn .icon,
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-secondary .action-more .action-icon,
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-secondary .ellipsis-btn svg {
+        width: 16px !important;
+        height: 16px !important;
+        min-width: 16px !important;
+        max-width: 16px !important;
+        min-height: 16px !important;
+        max-height: 16px !important;
+        flex: 0 0 16px !important;
         background-color: var(--icon-color) !important;
         stroke: var(--icon-color) !important;
         opacity: 1;
@@ -807,6 +846,13 @@ custom_body_template = """
 
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .action-btn .action-icon,
     .sidebar-left.sidebar-actions-compact .sidebar-toolbar .toolbar-group-primary .deck-focus-btn .icon {
+        width: 16px !important;
+        height: 16px !important;
+        min-width: 16px !important;
+        max-width: 16px !important;
+        min-height: 16px !important;
+        max-height: 16px !important;
+        flex: 0 0 16px !important;
         background-color: rgba(0, 0, 0, 0.8) !important;
         opacity: 1;
     }
@@ -846,7 +892,7 @@ custom_body_template = """
     .deck-table .decktd {
         display: flex;
         align-items: center;
-        padding: 0 8px 0 2px !important;
+        padding: 0 8px 0 0 !important;
         pointer-events: auto !important;
     }
 
@@ -929,8 +975,20 @@ custom_body_template = """
         flex: 0 0 var(--collapse-icon-size, 12px) !important;
         margin-right: 2px !important;
         box-sizing: border-box !important;
+        position: relative !important;
+        overflow: visible !important;
         transform-box: fill-box !important;
         aspect-ratio: 1 / 1 !important;
+    }
+    .deck-table a.collapse::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: -10px;
+        top: -3px;
+        bottom: -3px;
+        background: transparent;
+        pointer-events: auto;
     }
     .deck-table a.collapse.is-hover-expanding {
         position: relative !important;
@@ -966,11 +1024,11 @@ custom_body_template = """
     }
     #deck-list-header h2 {
         flex: 0 0 auto;
-        margin-left: 4px;
+        margin-left: 10px;
         transition: opacity 0.15s ease;
     }
     .sidebar-left.sidebar-actions-full.deck-focus-mode #deck-list-header h2 {
-        margin-left: 12px;
+        margin-left: 10px;
     }
 
     /* --- Deck List Scrolling Fix --- */
@@ -1055,21 +1113,49 @@ custom_body_template = """
     }
     /* --- Multi-select badge --- */
     #onigiri-multiselect-badge {
+        appearance: none;
+        -webkit-appearance: none;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: auto;
         min-width: 22px;
         height: 22px;
+        border: 0;
         border-radius: 999px;
-        background: var(--accent-color, #007aff);
+        background-color: var(--accent-color, #007aff);
         color: #ffffff;
+        cursor: pointer;
         font-size: 11px;
         font-weight: 600;
         padding: 0 8px;
         margin: 0 2px;
         line-height: 1;
+        font-family: inherit;
         white-space: nowrap;
+        transition: background-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+    }
+    #onigiri-multiselect-badge:hover,
+    #onigiri-multiselect-badge:focus-visible {
+        background-color: color-mix(in srgb, var(--accent-color, #007aff) 86%, #000 14%);
+    }
+    .night-mode #onigiri-multiselect-badge:hover,
+    .night-mode #onigiri-multiselect-badge:focus-visible {
+        background-color: color-mix(in srgb, var(--accent-color, #007aff) 82%, #fff 18%);
+    }
+    #onigiri-multiselect-badge:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #007aff) 35%, transparent);
+    }
+    #onigiri-multiselect-badge:active {
+        transform: translateY(1px);
+    }
+    #onigiri-multiselect-badge[hidden] {
+        display: none !important;
+    }
+    #onigiri-deck-search-bar.is-visible ~ .sidebar-expanded-content #onigiri-multiselect-badge,
+    #onigiri-deck-search-bar.is-closing ~ .sidebar-expanded-content #onigiri-multiselect-badge {
+        display: none !important;
     }
     /* --- End Multi-select badge --- */
 
