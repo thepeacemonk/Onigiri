@@ -214,7 +214,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     # External entries render through sidebar_api; standard buttons get their CSS here.
 
     # 3. Collapsible "More" Menu Chevron
-    chevron_url = f"{icon_base}right.svg"
+    chevron_url = f"{icon_base}chevron.svg"
     chevron_css = f"""
     details.menu-group > summary.menu-item::after {{
         content: '' !important;
@@ -1507,11 +1507,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
         #deck-list-header h2.deck-focus-label:hover,
         #deck-list-header h2.deck-focus-label:focus-visible {{
-            color: color-mix(in srgb, var(--fg, currentColor) 78%, var(--accent-color, #007aff) 22%);
+            color: color-mix(in srgb, var(--fg, currentColor) 82%, black 18%);
             opacity: 1;
         }}
-        #deck-list-header.deck-focus-active h2.deck-focus-label {{
-            color: var(--accent-color, #007aff);
+        .night-mode #deck-list-header h2.deck-focus-label:hover,
+        .night-mode #deck-list-header h2.deck-focus-label:focus-visible {{
+            color: color-mix(in srgb, var(--fg, currentColor) 78%, white 22%);
             opacity: 1;
         }}
         .deck-focus-btn,

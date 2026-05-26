@@ -2465,7 +2465,7 @@ window.OnigiriEngine = {
             majorityMarked,
             sharedMark,
             sharedColor,
-            actionLabel: majorityMarked ? 'Remove Mark' : 'Mark',
+            actionLabel: 'Mark',
         };
     },
 
@@ -2539,7 +2539,7 @@ window.OnigiriEngine = {
                 },
                 // Mark item — rendered as a special submenu row
                 { label: markState.actionLabel,
-                  iconUrl: markState.majorityMarked ? SVG_REMOVE_MARK : SVG_MARK,
+                  iconUrl: SVG_MARK,
                   iconColor: markState.sharedColor ? markState.sharedColor.hex : 'var(--fg-subtle,var(--fg))',
                   isMarkSubmenu: true,
                   dids: [did],
@@ -2644,8 +2644,8 @@ window.OnigiriEngine = {
                             });
                             sub.appendChild(si);
                         });
-                        // Remove mark
-                        if (item.currentMark && !(item.markState && item.markState.majorityMarked)) {
+                        // Remove mark at bottom of submenu
+                        if (item.currentMark) {
                             const hr2 = document.createElement('hr');
                             hr2.className = 'onigiri-ellipsis-divider';
                             sub.appendChild(hr2);
@@ -2656,7 +2656,17 @@ window.OnigiriEngine = {
                             slbl.textContent = 'Remove Mark';
                             si.appendChild(slbl);
                             si.addEventListener('click', () => {
-                                this.applyDeckMark(item.did, 'none');
+                                // Update local JS state immediately for responsiveness
+                                window.ONIGIRI_DECK_MARKS = window.ONIGIRI_DECK_MARKS || {};
+                                delete window.ONIGIRI_DECK_MARKS[String(item.did)];
+                                const row = document.querySelector(`tr.deck[data-did="${CSS.escape(String(item.did))}"]`);
+                                if (row) {
+                                    const deckLink = row.querySelector('a.deck');
+                                    if (deckLink) {
+                                        const dot = deckLink.querySelector('.deck-mark-dot');
+                                        if (dot) dot.remove();
+                                    }
+                                }
                                 _menuCleanup();
                                 pycmd('onigiri_ctx_mark:' + item.did + ':none');
                             });
@@ -2686,13 +2696,6 @@ window.OnigiriEngine = {
                         if (sub && sub.contains(e.relatedTarget)) return;
                         _markSubTimer = setTimeout(removeMarkSub, 120);
                     });
-                    if (item.markState && item.markState.majorityMarked) {
-                        el.addEventListener('click', () => {
-                            this.applyDeckMark(item.did, 'none');
-                            _menuCleanup();
-                            pycmd('onigiri_ctx_mark:' + item.did + ':none');
-                        });
-                    }
                     menu.appendChild(el);
                     return;
                 }
@@ -2813,7 +2816,7 @@ window.OnigiriEngine = {
         }
         toggleGroup.push({
             label: markState.actionLabel,
-            iconUrl: markState.majorityMarked ? SVG_REMOVE_MARK : SVG_MARK,
+            iconUrl: SVG_MARK,
             iconColor: markState.sharedColor ? markState.sharedColor.hex : null,
             isMarkSubmenu: true,
             markState: markState,
@@ -2879,24 +2882,6 @@ window.OnigiriEngine = {
                         const sub = document.createElement('div');
                         sub.id = 'onigiri-mark-submenu';
                         sub.style.cssText = 'position:fixed;z-index:100001;min-width:160px;border-radius:12px;padding:5px;background:var(--canvas-overlay);border:1px solid var(--border);box-shadow:0 6px 24px rgba(0,0,0,0.18);will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);';
-                        // Remove mark option at top
-                        if (markState.anyMarked && !markState.majorityMarked) {
-                            const rm = document.createElement('div');
-                            rm.className = 'onigiri-ellipsis-item';
-                            const rmIcon = document.createElement('span');
-                            rmIcon.style.cssText = 'width:12px;height:12px;min-width:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
-                            rmIcon.appendChild(makeCtxIcon(SVG_REMOVE_MARK, null));
-                            rm.appendChild(rmIcon);
-                            const rmLbl = document.createElement('span');
-                            rmLbl.textContent = 'Remove Mark';
-                            rm.appendChild(rmLbl);
-                            rm.addEventListener('click', () => {
-                                _menuCleanup();
-                                this.clearMultiSelection();
-                                pycmd('onigiri_ctx_bulk_mark:' + JSON.stringify({ dids, mark: 'none' }));
-                            });
-                            sub.appendChild(rm);
-                        }
                         MARK_COLORS.forEach(mc => {
                             const si = document.createElement('div');
                             si.className = 'onigiri-ellipsis-item';
@@ -2920,6 +2905,40 @@ window.OnigiriEngine = {
                             });
                             sub.appendChild(si);
                         });
+                        // Remove mark at bottom of submenu
+                        if (markState.anyMarked) {
+                            const hr2 = document.createElement('hr');
+                            hr2.className = 'onigiri-ellipsis-divider';
+                            sub.appendChild(hr2);
+                            const rm = document.createElement('div');
+                            rm.className = 'onigiri-ellipsis-item';
+                            const rmIcon = document.createElement('span');
+                            rmIcon.style.cssText = 'width:12px;height:12px;min-width:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+                            rmIcon.appendChild(makeCtxIcon(SVG_REMOVE_MARK, null));
+                            rm.appendChild(rmIcon);
+                            const rmLbl = document.createElement('span');
+                            rmLbl.textContent = 'Remove Mark';
+                            rm.appendChild(rmLbl);
+                            rm.addEventListener('click', () => {
+                                // Update local JS state immediately for responsiveness
+                                dids.forEach(did => {
+                                    window.ONIGIRI_DECK_MARKS = window.ONIGIRI_DECK_MARKS || {};
+                                    delete window.ONIGIRI_DECK_MARKS[String(did)];
+                                    const row = document.querySelector(`tr.deck[data-did="${CSS.escape(String(did))}"]`);
+                                    if (row) {
+                                        const deckLink = row.querySelector('a.deck');
+                                        if (deckLink) {
+                                            const dot = deckLink.querySelector('.deck-mark-dot');
+                                            if (dot) dot.remove();
+                                        }
+                                    }
+                                });
+                                _menuCleanup();
+                                this.clearMultiSelection();
+                                pycmd('onigiri_ctx_bulk_mark:' + JSON.stringify({ dids, mark: 'none' }));
+                            });
+                            sub.appendChild(rm);
+                        }
                         const elR = el.getBoundingClientRect();
                         sub.style.top = elR.top + 'px';
                         sub.style.left = (elR.right + 4) + 'px';
@@ -2936,13 +2955,6 @@ window.OnigiriEngine = {
                         if (sub && sub.contains(e.relatedTarget)) return;
                         _markSubTimer = setTimeout(removeMarkSub, 120);
                     });
-                    if (item.markState && item.markState.majorityMarked) {
-                        el.addEventListener('click', () => {
-                            _menuCleanup();
-                            this.clearMultiSelection();
-                            pycmd('onigiri_ctx_bulk_mark:' + JSON.stringify({ dids, mark: 'none' }));
-                        });
-                    }
                     menu.appendChild(el);
                     return;
                 }
