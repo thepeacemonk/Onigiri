@@ -449,7 +449,7 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser, force: bool = False) -> N
                 if (did) checkboxStateMap.set(did, cb.checked);
             }});
 
-            OnigiriEngine.updateDeckTree({new_tree_html});
+            OnigiriEngine.updateDeckTree({new_tree_html}, {{force: {force_js}}});
 
             if (typeof OnigiriEditor !== 'undefined' && OnigiriEditor.EDIT_MODE) {{
                 checkboxStateMap.forEach((isChecked, did) => {{
@@ -461,7 +461,7 @@ def refresh_deck_tree_state(deck_browser: DeckBrowser, force: bool = False) -> N
 
             if (container) container.scrollTop = scrollTop;
         }})(10);
-        '''.format(new_tree_html=js_escaped_html)
+        '''.format(new_tree_html=js_escaped_html, force_js="true" if force else "false")
 
         deck_browser.web.eval(js)
 

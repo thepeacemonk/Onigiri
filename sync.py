@@ -1,11 +1,49 @@
 import os
 import zipfile
 import shutil
-import time
 import json
-from pathlib import Path
 from aqt import mw
 from . import config
+
+
+def get_collection_sync_status():
+    """
+    Return Onigiri's lightweight collection sync indicator state.
+
+    Values:
+      'upload' - Anki is likely to require a full upload
+      'sync'   - local collection changes are newer than the last sync marker
+      'none'   - no actionable collection sync state could be detected
+    """
+    try:
+        if not mw.col:
+            return 'none'
+
+        try:
+            ls = mw.col.db.scalar("select ls from col")
+            scm = mw.col.db.scalar("select scm from col")
+            mod = mw.col.mod if hasattr(mw.col, 'mod') else 0
+
+            try:
+                has_sync_auth = bool(mw.pm.sync_auth())
+            except Exception:
+                has_sync_auth = False
+
+            if ls is None or ls == 0:
+                return 'upload' if has_sync_auth else 'none'
+
+            if has_sync_auth and scm is not None and scm > ls:
+                return 'upload'
+
+            if mod > ls:
+                return 'sync'
+        except Exception:
+            pass
+
+        return 'none'
+    except Exception:
+        return 'none'
+
 
 class SyncManager:
     """

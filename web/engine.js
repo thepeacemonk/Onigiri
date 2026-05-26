@@ -7,6 +7,7 @@ window.OnigiriEngine = {
     _suppressNextHoverRestore: false,
     _preloadedIconUrls: new Set(),
     _deckOpenFallbackTimer: null,
+    _deckSingleOpenTimer: null,
     _multiSelectedDecks: new Set(),
     _lastMultiAnchorDid: null,
     _collapsePointerActive: false,
@@ -73,6 +74,11 @@ window.OnigiriEngine = {
         return text.replace(/["\\]/g, '\\$&');
     },
 
+    closestElement: function (target, selector) {
+        const el = target && target.nodeType === 1 ? target : (target && target.parentElement);
+        return el && typeof el.closest === 'function' ? el.closest(selector) : null;
+    },
+
     _hasOverrideState: function () {
         return document.body.classList.contains('is-dragging') ||
                document.body.classList.contains('ctx-menu-open') ||
@@ -121,6 +127,10 @@ window.OnigiriEngine = {
     },
 
     clearDeckOpenTimers: function () {
+        if (this._deckSingleOpenTimer) {
+            clearTimeout(this._deckSingleOpenTimer);
+            this._deckSingleOpenTimer = null;
+        }
         if (this._deckOpenFallbackTimer) {
             clearTimeout(this._deckOpenFallbackTimer);
             this._deckOpenFallbackTimer = null;
@@ -216,7 +226,7 @@ window.OnigiriEngine = {
         return target.closest(
             'a.collapse, .opts, .favorite-star-icon, .drag-handle, ' +
             '.sidebar-top-right-controls, button, input, select, textarea, ' +
-            '[role="button"], .action-btn, .deck-focus-btn, .onigiri-ellipsis-item'
+            '[role="button"], .action-btn, .deck-focus-label, .onigiri-ellipsis-item'
         );
     },
 
@@ -273,7 +283,7 @@ window.OnigiriEngine = {
         badge.style.pointerEvents = searchActive ? 'none' : '';
     },
 
-    openDeck: function (event, did, row, alreadySelected) {
+    navigateDeck: function (event, did, commandPrefix) {
         if (event) {
             event.preventDefault();
             event.stopPropagation();
@@ -297,11 +307,42 @@ window.OnigiriEngine = {
         this._deckOpenFallbackTimer = setTimeout(() => this.clearDeckOpeningState(), 5000);
 
         if (typeof pycmd === 'function') {
-            pycmd('onigiri_open_deck:' + did);
+            pycmd(commandPrefix + did);
         } else {
             this.clearDeckOpeningState();
         }
         return false;
+    },
+
+    openDeck: function (event, did, row, alreadySelected) {
+        return this.navigateDeck(event, did, 'onigiri_open_deck:');
+    },
+
+    studyDeck: function (event, did, row) {
+        return this.navigateDeck(event, did, 'onigiri_study_deck:');
+    },
+
+    scheduleSingleDeckOpen: function (did, row) {
+        if (!did || document.body.classList.contains('deck-open-pending')) return false;
+        this.clearDeckOpenTimers();
+        this._lastMultiAnchorDid = did;
+        this._deckSingleOpenTimer = setTimeout(() => {
+            this._deckSingleOpenTimer = null;
+            this.openDeck(null, did, row);
+        }, 220);
+        return true;
+    },
+
+    studyDeckFromRowEvent: function (event, row) {
+        if (!row || !row.dataset || !row.dataset.did) return false;
+        if (this._isSelectionNeutralControl(event && event.target)) return false;
+        if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) return false;
+        if (document.body.classList.contains('deck-open-pending')) return false;
+
+        this.clearDeckOpenTimers();
+        this._lastMultiAnchorDid = row.dataset.did;
+        this.studyDeck(event, row.dataset.did, row);
+        return true;
     },
 
     preloadMaskIcons: function (urls) {
@@ -740,12 +781,12 @@ window.OnigiriEngine = {
 
         this.deckListContainer.addEventListener('selectstart', (event) => {
             // Ignore search input to allow text selection inside search bar
-            if (event.target && event.target.closest('#onigiri-deck-search')) return;
+            if (this.closestElement(event.target, '#onigiri-deck-search')) return;
             event.preventDefault();
         }, true);
 
         this.deckListContainer.addEventListener('mouseenter', (event) => {
-            const deckRow = event.target.closest('tr.deck');
+            const deckRow = this.closestElement(event.target, 'tr.deck');
             if (deckRow) {
                 this._rememberPointer(event);
                 this.currentHoveredRow = deckRow;
@@ -754,7 +795,7 @@ window.OnigiriEngine = {
         }, true);
 
         this.deckListContainer.addEventListener('mouseleave', (event) => {
-            const deckRow = event.target.closest('tr.deck');
+            const deckRow = this.closestElement(event.target, 'tr.deck');
             if (deckRow && deckRow === this.currentHoveredRow) {
                 deckRow.classList.remove('is-hovered');
                 this.currentHoveredRow = null;
@@ -764,7 +805,7 @@ window.OnigiriEngine = {
         // --- Capture-phase interceptor: block inline onclick on a.deck during modifier clicks ---
         this.deckListContainer.addEventListener('click', (event) => {
             if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return;
-            const deckRow = event.target.closest('tr.deck[data-did]');
+            const deckRow = this.closestElement(event.target, 'tr.deck[data-did]');
             if (!deckRow) return;
             if (this._isSelectionNeutralControl(event.target)) {
                 return;
@@ -776,7 +817,7 @@ window.OnigiriEngine = {
 
         // Capture collapse clicks before the inline onclick so search state can be sent too.
         this.deckListContainer.addEventListener('click', (event) => {
-            const collapseLink = event.target.closest('a.collapse');
+            const collapseLink = this.closestElement(event.target, 'a.collapse');
             if (!collapseLink) return;
             event.preventDefault();
             event.stopPropagation();
@@ -784,8 +825,26 @@ window.OnigiriEngine = {
             this.handleDeckCollapse(collapseLink, event);
         }, { capture: true });
 
+        // Capture deck-link clicks before the inline onclick so double-click can study.
+        this.deckListContainer.addEventListener('click', (event) => {
+            if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+            const deckLink = this.closestElement(event.target, 'a.deck');
+            if (!deckLink || !this.deckListContainer.contains(deckLink)) return;
+            const row = deckLink.closest('tr.deck[data-did]');
+            if (!row || !row.dataset.did) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+
+            if (event.detail >= 2) {
+                this.studyDeckFromRowEvent(event, row);
+            } else {
+                this.scheduleSingleDeckOpen(row.dataset.did, row);
+            }
+        }, { capture: true });
+
         // --- Unified Click Handler for Deck List ---
-        let clickTimer = null;
         this.deckListContainer.addEventListener('click', (event) => {
             if (document.body.classList.contains('deck-open-pending')) {
                 event.preventDefault();
@@ -796,16 +855,16 @@ window.OnigiriEngine = {
             const target = event.target;
 
             // Case 1: Options/gear icon — ignore.
-            if (target.closest('.opts')) return;
+            if (this.closestElement(target, '.opts')) return;
 
             // Case 2: Favorite star — ignore (has its own onclick).
-            if (target.closest('.favorite-star-icon')) return;
+            if (this.closestElement(target, '.favorite-star-icon')) return;
 
             // Case 3: Drag handle — ignore clicks (drag-only).
-            if (target.closest('.drag-handle')) return;
+            if (this.closestElement(target, '.drag-handle')) return;
 
-            // Case 4: Deck row — double-click to study.
-            const deckRow = target.closest('tr.deck');
+            // Case 4: Deck row — keep row clicks under Onigiri's pointer/double-click handlers.
+            const deckRow = this.closestElement(target, 'tr.deck');
             if (!deckRow) {
                 const skipClear = this._isSelectionNeutralControl(event.target);
                 if (!skipClear && !event.ctrlKey && !event.metaKey && !event.shiftKey && this._multiSelectedDecks.size > 0) {
@@ -814,23 +873,19 @@ window.OnigiriEngine = {
                 return;
             }
 
-            event.preventDefault();
-
-            if (!clickTimer) {
-                clickTimer = setTimeout(() => { clickTimer = null; }, 300);
-            } else {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-                if (this._multiSelectedDecks.size === 0) {
-                    const mainLink = deckRow.querySelector('a.deck');
-                    if (mainLink) mainLink.click();
-                }
+            if (event.detail >= 2 && this.studyDeckFromRowEvent(event, deckRow)) {
+                return;
             }
+            event.preventDefault();
         });
+
+        this.deckListContainer.addEventListener('dblclick', (event) => {
+            this.studyDeckFromRowEvent(event, this.closestElement(event.target, 'tr.deck[data-did]'));
+        }, { capture: true });
 
         // --- Pointer down: left-click opens deck; right-click suppresses :active flash ---
         this.deckListContainer.addEventListener('pointerdown', (event) => {
-            if (event.button === 2 && event.target.closest('tr.deck')) {
+            if (event.button === 2 && this.closestElement(event.target, 'tr.deck')) {
                 event.preventDefault();
                 document.body.classList.add('ctx-right-down');
                 return;
@@ -838,7 +893,7 @@ window.OnigiriEngine = {
             if (event.button !== 0) return;
 
             // --- Multi-select: Ctrl/Shift+click on any deck row ---
-            const multiRow = event.target.closest('tr.deck[data-did]');
+            const multiRow = this.closestElement(event.target, 'tr.deck[data-did]');
             if (multiRow && multiRow.dataset.did && (event.ctrlKey || event.metaKey || event.shiftKey)) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -886,13 +941,6 @@ window.OnigiriEngine = {
             }
 
             if (document.body.classList.contains('deck-open-pending')) return;
-            const deckLink = event.target.closest('a.deck');
-            if (!deckLink || !this.deckListContainer.contains(deckLink)) return;
-            const row = deckLink.closest('tr.deck[data-did]');
-            if (row && row.dataset.did) {
-                this._lastMultiAnchorDid = row.dataset.did;
-                this.openDeck(event, row.dataset.did, row);
-            }
         }, { capture: true });
         document.addEventListener('pointerup', (event) => {
             if (event.button === 2) document.body.classList.remove('ctx-right-down');
@@ -900,7 +948,7 @@ window.OnigiriEngine = {
 
         // --- Right-click context menu on deck rows ---
         this.deckListContainer.addEventListener('contextmenu', (event) => {
-            const deckRow = event.target.closest('tr.deck');
+            const deckRow = this.closestElement(event.target, 'tr.deck');
             if (!deckRow) return;
             event.preventDefault();
             const did = deckRow.dataset.did;
@@ -2391,6 +2439,36 @@ window.OnigiriEngine = {
         dot.style.backgroundColor = colors[markKey] || colors.red;
     },
 
+    getDeckMarkColors: function () {
+        return [
+            { key: 'red',    label: 'Red',    hex: '#FF4B4B' },
+            { key: 'blue',   label: 'Blue',   hex: '#4488FF' },
+            { key: 'green',  label: 'Green',  hex: '#44BB66' },
+            { key: 'yellow', label: 'Yellow', hex: '#FFB800' },
+        ];
+    },
+
+    getMarkSelectionState: function (dids) {
+        const ids = (dids || []).map(did => String(did)).filter(Boolean);
+        const markMap = window.ONIGIRI_DECK_MARKS || {};
+        const colors = this.getDeckMarkColors();
+        const markCount = ids.filter(did => !!markMap[did]).length;
+        const majorityMarked = ids.length > 0 && markCount > ids.length / 2;
+        const firstMark = ids.length ? (markMap[ids[0]] || null) : null;
+        const sharedMark = firstMark && ids.every(did => markMap[did] === firstMark) ? firstMark : null;
+        const sharedColor = sharedMark ? colors.find(color => color.key === sharedMark) || null : null;
+        return {
+            dids: ids,
+            colors,
+            markCount,
+            anyMarked: markCount > 0,
+            majorityMarked,
+            sharedMark,
+            sharedColor,
+            actionLabel: majorityMarked ? 'Remove Mark' : 'Mark',
+        };
+    },
+
     showDeckContextMenu: function (x, y, did) {
         this.closeEllipsisMenu();
         this.closeOrganiseMenu();
@@ -2438,16 +2516,9 @@ window.OnigiriEngine = {
         }
         makeCtxIcon = makeCtxIcon.bind(this);
 
-        // Current mark state for this deck
-        const _markMap   = window.ONIGIRI_DECK_MARKS || {};
-        const currentMark = _markMap[did] || null;
-        const MARK_COLORS = [
-            { key: 'red',    label: 'Red',    hex: '#FF4B4B' },
-            { key: 'blue',   label: 'Blue',   hex: '#4488FF' },
-            { key: 'green',  label: 'Green',  hex: '#44BB66' },
-            { key: 'yellow', label: 'Yellow', hex: '#FFB800' },
-        ];
-        // SVG_DOT retained for color-dot sub-items (not used for main Mark icon)
+        const markState = this.getMarkSelectionState([did]);
+        const currentMark = markState.sharedMark;
+        const MARK_COLORS = markState.colors;
 
         const groups = [
             // Group 1 — structural edits
@@ -2467,9 +2538,14 @@ window.OnigiriEngine = {
                     cmd:       'onigiri_toggle_favorite:' + did,
                 },
                 // Mark item — rendered as a special submenu row
-                { label: 'Mark', iconUrl: SVG_MARK,
-                  iconColor: currentMark ? MARK_COLORS.find(c=>c.key===currentMark)?.hex : 'var(--fg-subtle,var(--fg))',
-                  isMarkSubmenu: true, did: did, currentMark: currentMark },
+                { label: markState.actionLabel,
+                  iconUrl: markState.majorityMarked ? SVG_REMOVE_MARK : SVG_MARK,
+                  iconColor: markState.sharedColor ? markState.sharedColor.hex : 'var(--fg-subtle,var(--fg))',
+                  isMarkSubmenu: true,
+                  dids: [did],
+                  did: did,
+                  currentMark: currentMark,
+                  markState: markState },
                 {
                     label:   isArchived ? 'Unarchive' : 'Archive',
                     iconUrl: isArchived ? SVG_UNARCHIVE : SVG_ARCHIVE,
@@ -2517,11 +2593,11 @@ window.OnigiriEngine = {
                     el.style.cssText = 'position:relative;';
                     el.appendChild(makeCtxIcon(item.iconUrl, false, false, item.iconColor));
                     const lbl = document.createElement('span');
-                    lbl.textContent = 'Mark';
+                    lbl.textContent = item.label;
                     el.appendChild(lbl);
-                    if (item.currentMark) {
+                    if (item.markState && item.markState.sharedColor) {
                         const badge = document.createElement('span');
-                        badge.textContent = MARK_COLORS.find(c=>c.key===item.currentMark)?.label || '';
+                        badge.textContent = item.markState.sharedColor.label || '';
                         badge.style.cssText = 'margin-left:auto;font-size:11px;opacity:0.6;padding-right:2px;';
                         el.appendChild(badge);
                     }
@@ -2569,7 +2645,7 @@ window.OnigiriEngine = {
                             sub.appendChild(si);
                         });
                         // Remove mark
-                        if (item.currentMark) {
+                        if (item.currentMark && !(item.markState && item.markState.majorityMarked)) {
                             const hr2 = document.createElement('hr');
                             hr2.className = 'onigiri-ellipsis-divider';
                             sub.appendChild(hr2);
@@ -2610,6 +2686,13 @@ window.OnigiriEngine = {
                         if (sub && sub.contains(e.relatedTarget)) return;
                         _markSubTimer = setTimeout(removeMarkSub, 120);
                     });
+                    if (item.markState && item.markState.majorityMarked) {
+                        el.addEventListener('click', () => {
+                            this.applyDeckMark(item.did, 'none');
+                            _menuCleanup();
+                            pycmd('onigiri_ctx_mark:' + item.did + ':none');
+                        });
+                    }
                     menu.appendChild(el);
                     return;
                 }
@@ -2680,6 +2763,7 @@ window.OnigiriEngine = {
         const iconUrl = (filename) => this.systemIconUrl(filename);
         const SVG_STAR         = iconUrl('star_filled.svg');
         const SVG_STAR_OUTLINE = iconUrl('star_outline.svg');
+        const SVG_MOVE_DECK    = iconUrl('move_deck.svg');
         const SVG_ARCHIVE      = iconUrl('archive.svg');
         const SVG_UNARCHIVE    = iconUrl('unarchive.svg');
         const SVG_MARK         = iconUrl('mark.svg');
@@ -2687,7 +2771,7 @@ window.OnigiriEngine = {
         const SVG_DELETE       = iconUrl('delete.svg');
 
         const dids = Array.from(this._multiSelectedDecks);
-        const _markMap = window.ONIGIRI_DECK_MARKS || {};
+        const movePayload = encodeURIComponent(JSON.stringify({ dids, anchorDid }));
 
         // Majority-rule scan of selected decks
         const favCount = dids.filter(did => {
@@ -2702,16 +2786,8 @@ window.OnigiriEngine = {
         }).length;
         const arcMajority = arcCount > dids.length / 2;
 
-        const markCount = dids.filter(did => !!_markMap[did]).length;
-        const markMajority = markCount > dids.length / 2;
-        const markAny = markCount > 0;
-
-        const MARK_COLORS = [
-            { key: 'red',    label: 'Red',    hex: '#FF4B4B' },
-            { key: 'blue',   label: 'Blue',   hex: '#4488FF' },
-            { key: 'green',  label: 'Green',  hex: '#44BB66' },
-            { key: 'yellow', label: 'Yellow', hex: '#FFB800' },
-        ];
+        const markState = this.getMarkSelectionState(dids);
+        const MARK_COLORS = markState.colors;
 
         function makeCtxIcon(iconSrc, iconColor) {
             return OnigiriEngine.createMaskIcon(iconSrc, {
@@ -2721,6 +2797,9 @@ window.OnigiriEngine = {
         }
 
         // Build groups dynamically based on majority rule
+        const moveGroup = [
+            { label: 'Move To', iconUrl: SVG_MOVE_DECK, cmd: 'onigiri_ctx_move_to:' + movePayload, isModal: true },
+        ];
         const toggleGroup = [];
         if (favMajority) {
             toggleGroup.push({ label: 'Unfavorite', iconUrl: SVG_STAR, iconColor: 'var(--accent-color)', cmd: 'onigiri_ctx_bulk_unfavorite' });
@@ -2732,9 +2811,16 @@ window.OnigiriEngine = {
         } else {
             toggleGroup.push({ label: 'Archive', iconUrl: SVG_ARCHIVE, cmd: 'onigiri_ctx_bulk_archive' });
         }
-        toggleGroup.push({ label: markMajority ? 'Change Mark' : 'Mark', iconUrl: SVG_MARK, isMarkSubmenu: true });
+        toggleGroup.push({
+            label: markState.actionLabel,
+            iconUrl: markState.majorityMarked ? SVG_REMOVE_MARK : SVG_MARK,
+            iconColor: markState.sharedColor ? markState.sharedColor.hex : null,
+            isMarkSubmenu: true,
+            markState: markState,
+        });
 
         const groups = [
+            moveGroup,
             toggleGroup,
             [{ label: 'Delete', iconUrl: SVG_DELETE, danger: true, cmd: 'onigiri_ctx_bulk_delete' }],
         ];
@@ -2765,10 +2851,16 @@ window.OnigiriEngine = {
                     const el = document.createElement('div');
                     el.className = 'onigiri-ellipsis-item has-submenu';
                     el.style.cssText = 'position:relative;';
-                    el.appendChild(makeCtxIcon(item.iconUrl, null));
+                    el.appendChild(makeCtxIcon(item.iconUrl, item.iconColor));
                     const lbl = document.createElement('span');
                     lbl.textContent = item.label;
                     el.appendChild(lbl);
+                    if (item.markState && item.markState.sharedColor) {
+                        const badge = document.createElement('span');
+                        badge.textContent = item.markState.sharedColor.label || '';
+                        badge.style.cssText = 'margin-left:auto;font-size:11px;opacity:0.6;padding-right:2px;';
+                        el.appendChild(badge);
+                    }
                     const chev = document.createElement('span');
                     chev.className = 'submenu-chevron';
                     chev.textContent = '›';
@@ -2788,7 +2880,7 @@ window.OnigiriEngine = {
                         sub.id = 'onigiri-mark-submenu';
                         sub.style.cssText = 'position:fixed;z-index:100001;min-width:160px;border-radius:12px;padding:5px;background:var(--canvas-overlay);border:1px solid var(--border);box-shadow:0 6px 24px rgba(0,0,0,0.18);will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);';
                         // Remove mark option at top
-                        if (markAny) {
+                        if (markState.anyMarked && !markState.majorityMarked) {
                             const rm = document.createElement('div');
                             rm.className = 'onigiri-ellipsis-item';
                             const rmIcon = document.createElement('span');
@@ -2796,7 +2888,7 @@ window.OnigiriEngine = {
                             rmIcon.appendChild(makeCtxIcon(SVG_REMOVE_MARK, null));
                             rm.appendChild(rmIcon);
                             const rmLbl = document.createElement('span');
-                            rmLbl.textContent = 'Remove mark';
+                            rmLbl.textContent = 'Remove Mark';
                             rm.appendChild(rmLbl);
                             rm.addEventListener('click', () => {
                                 _menuCleanup();
@@ -2809,11 +2901,18 @@ window.OnigiriEngine = {
                             const si = document.createElement('div');
                             si.className = 'onigiri-ellipsis-item';
                             const dot = document.createElement('span');
-                            dot.style.cssText = `width:12px;height:12px;min-width:12px;border-radius:50%;background:${mc.hex};flex-shrink:0;`;
+                            dot.style.cssText = `width:12px;height:12px;min-width:12px;border-radius:50%;background:${mc.hex};flex-shrink:0;` +
+                                (markState.sharedMark === mc.key ? `box-shadow:0 0 0 2px var(--canvas-overlay),0 0 0 3.5px ${mc.hex};` : '');
                             si.appendChild(dot);
                             const slbl = document.createElement('span');
                             slbl.textContent = mc.label;
                             si.appendChild(slbl);
+                            if (markState.sharedMark === mc.key) {
+                                const ck = document.createElement('span');
+                                ck.textContent = '✓';
+                                ck.style.cssText = `margin-left:auto;color:${mc.hex};font-size:12px;`;
+                                si.appendChild(ck);
+                            }
                             si.addEventListener('click', () => {
                                 _menuCleanup();
                                 this.clearMultiSelection();
@@ -2837,6 +2936,13 @@ window.OnigiriEngine = {
                         if (sub && sub.contains(e.relatedTarget)) return;
                         _markSubTimer = setTimeout(removeMarkSub, 120);
                     });
+                    if (item.markState && item.markState.majorityMarked) {
+                        el.addEventListener('click', () => {
+                            _menuCleanup();
+                            this.clearMultiSelection();
+                            pycmd('onigiri_ctx_bulk_mark:' + JSON.stringify({ dids, mark: 'none' }));
+                        });
+                    }
                     menu.appendChild(el);
                     return;
                 }
@@ -2847,9 +2953,20 @@ window.OnigiriEngine = {
                 span.textContent = item.label;
                 el.appendChild(span);
                 el.addEventListener('click', () => {
-                    _menuCleanup();
-                    this.clearMultiSelection();
-                    pycmd(item.cmd + ':' + JSON.stringify({ dids }));
+                    if (item.isModal) {
+                        menu.remove();
+                        const ms = document.getElementById('onigiri-mark-submenu');
+                        if (ms) ms.remove();
+                        document.body.classList.remove('ctx-menu-open');
+                        this._clearHoveredRow();
+                        this._suppressNextHoverRestore = true;
+                        this._beginOverrideState('dialog-focus');
+                        pycmd(item.cmd);
+                    } else {
+                        _menuCleanup();
+                        this.clearMultiSelection();
+                        pycmd(item.cmd + ':' + JSON.stringify({ dids }));
+                    }
                 });
                 menu.appendChild(el);
             });

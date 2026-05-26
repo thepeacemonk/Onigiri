@@ -696,21 +696,20 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
 def update_sync_status_indicator():
     """Updates the sync status indicator in the Onigiri menu."""
     try:
-        sync_status = patcher.get_sync_status()
-        # Update in deck browser
-        if hasattr(mw, 'deckBrowser') and hasattr(mw.deckBrowser, 'web') and mw.deckBrowser.web:
-            mw.deckBrowser.web.eval(f"if (typeof SyncStatusManager !== 'undefined') {{ SyncStatusManager.setSyncStatus('{sync_status}'); }}")
+        patcher.set_sync_status_indicator()
     except Exception as e:
         pass
 
 def on_sync_will_start():
     """Pack Onigiri user files before Anki syncs, if Onigiri sync is enabled."""
+    patcher.set_syncing_indicator(True)
     update_sync_status_indicator()
     if onigiri_sync.is_enabled():
         onigiri_sync.pack_user_files()
 
 def on_sync_did_finish():
     """Resolve Onigiri user-file sync state after Anki sync completes."""
+    patcher.set_syncing_indicator(False)
     update_sync_status_indicator()
     if not onigiri_sync.is_enabled():
         return

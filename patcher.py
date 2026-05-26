@@ -164,39 +164,51 @@ def get_sync_status():
       'none'   - collection is up to date
     """
     try:
-        if not mw.col:
-            return 'none'
+        from .sync import get_collection_sync_status
+        return get_collection_sync_status()
+    except Exception:
+        return 'none'
 
+
+def _iter_onigiri_webviews():
+    seen = set()
+    for attr in ("deckBrowser", "overview", "reviewer"):
+        owner = getattr(mw, attr, None)
+        web = getattr(owner, "web", None)
+        if not web or id(web) in seen:
+            continue
+        seen.add(id(web))
+        yield web
+
+
+def eval_sync_ui_script(script: str) -> None:
+    for web in _iter_onigiri_webviews():
         try:
-            ls = mw.col.db.scalar("select ls from col")
-            scm = mw.col.db.scalar("select scm from col")
-            mod = mw.col.mod if hasattr(mw.col, 'mod') else 0
-
-            try:
-                has_sync_auth = bool(mw.pm.sync_auth())
-            except Exception:
-                has_sync_auth = False
-
-            # ls == 0: never synced or full-upload required.
-            # Only show 'upload' indicator when AnkiWeb credentials are configured.
-            if ls is None or ls == 0:
-                if has_sync_auth:
-                    return 'upload'
-                return 'none'
-
-            # A schema change requires a full sync, which is Anki's red state.
-            if has_sync_auth and scm is not None and scm > ls:
-                return 'upload'
-
-            # Normal incremental sync needed
-            if mod > ls:
-                return 'sync'
+            web.eval(script)
         except Exception:
             pass
 
-        return 'none'
-    except Exception:
-        return 'none'
+
+def set_syncing_indicator(is_syncing: bool) -> None:
+    eval_sync_ui_script(
+        "if (typeof SyncStatusManager !== 'undefined') { "
+        f"SyncStatusManager.setSyncing({json.dumps(bool(is_syncing))}); "
+        "}"
+    )
+
+
+def set_sync_status_indicator(status: str = None) -> None:
+    sync_status = status if status is not None else get_sync_status()
+    eval_sync_ui_script(
+        "if (typeof SyncStatusManager !== 'undefined') { "
+        f"SyncStatusManager.setSyncStatus({json.dumps(sync_status)}); "
+        "}"
+    )
+
+
+def start_anki_sync() -> None:
+    set_syncing_indicator(True)
+    mw.onSync()
 
 
 def _get_profile_initials(user_name: str) -> str:
@@ -1182,6 +1194,24 @@ def on_webview_js_message(handled, message, context):
                 restore_deck_open_busy_cursor()
                 print(f"Onigiri: Error opening deck {cmd}: {e}")
             return (True, None)
+        if cmd.startswith("onigiri_study_deck:"):
+            try:
+                deck_id = int(cmd.split(":", 1)[1])
+                set_deck_open_busy_cursor()
+
+                def _study_selected_deck():
+                    try:
+                        mw.col.decks.select(deck_id)
+                        mw.moveToState("review")
+                    except Exception as e:
+                        restore_deck_open_busy_cursor()
+                        print(f"Onigiri: Error studying deck {deck_id}: {e}")
+
+                QTimer.singleShot(0, _study_selected_deck)
+            except Exception as e:
+                restore_deck_open_busy_cursor()
+                print(f"Onigiri: Error studying deck {cmd}: {e}")
+            return (True, None)
         if cmd == "add":
             mw.onAddCard()
             return (True, None)
@@ -1192,14 +1222,10 @@ def on_webview_js_message(handled, message, context):
             mw.onStats()
             return (True, None)
         if cmd == "sync":
-            if hasattr(mw.deckBrowser, 'web') and mw.deckBrowser.web:
-                mw.deckBrowser.web.eval("SyncStatusManager.setSyncing(true);")
-            mw.onSync()
+            start_anki_sync()
             return (True, None)
         if cmd == "onigiri_check_sync_status":
-            sync_status = get_sync_status()
-            if hasattr(mw.deckBrowser, 'web') and mw.deckBrowser.web:
-                mw.deckBrowser.web.eval(f"SyncStatusManager.setSyncStatus('{sync_status}');")
+            set_sync_status_indicator()
             return (True, None)
         if cmd == "openOnigiriSettings":
             settings.open_settings(0)
@@ -1283,12 +1309,10 @@ def on_webview_js_message(handled, message, context):
             mw.onStats()
             return (True, None)
         if cmd == "sync":
-            context.web.eval("SyncStatusManager.setSyncing(true);")
-            mw.onSync()
+            start_anki_sync()
             return (True, None)
         if cmd == "onigiri_check_sync_status":
-            sync_status = get_sync_status()
-            context.web.eval(f"SyncStatusManager.setSyncStatus('{sync_status}');")
+            set_sync_status_indicator()
             return (True, None)
         if cmd == "onigiri_overview_due_later":
             later_count = 0
@@ -1349,12 +1373,10 @@ def on_webview_js_message(handled, message, context):
             mw.onStats()
             return (True, None)
         if cmd == "sync":
-            context.web.eval("SyncStatusManager.setSyncing(true);")
-            mw.onSync()
+            start_anki_sync()
             return (True, None)
         if cmd == "onigiri_check_sync_status":
-            sync_status = get_sync_status()
-            context.web.eval(f"SyncStatusManager.setSyncStatus('{sync_status}');")
+            set_sync_status_indicator()
             return (True, None)
 
     return handled
@@ -4216,18 +4238,6 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
 
     return "".join(buf) # Join the list into a single string at the end
     
-def _on_sync_did_finish():
-    """Removes the syncing animation from the sync button."""
-    try:
-        if mw.state == "deckBrowser" and hasattr(mw.deckBrowser, 'web') and mw.deckBrowser.web:
-            mw.deckBrowser.web.eval("SyncStatusManager.setSyncing(false);")
-        elif mw.state == "overview" and hasattr(mw.overview, 'web') and mw.overview.web:
-             mw.overview.web.eval("SyncStatusManager.setSyncing(false);")
-        elif mw.state == "review" and hasattr(mw.reviewer, 'web') and mw.reviewer.web:
-             mw.reviewer.web.eval("SyncStatusManager.setSyncing(false);")
-    except Exception as e:
-        print(f"Onigiri: Error stopping sync animation: {e}")
-
 def apply_patches():
     """
     Applies all legacy method patches (wrapping).
@@ -4242,7 +4252,6 @@ def apply_patches():
     """Apply all patches to Anki's UI."""
     # Register the reviewer_did_answer_card hook
     from aqt import gui_hooks
-    gui_hooks.sync_did_finish.append(_on_sync_did_finish)
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_did_answer_card)
     
     # NOTE: DeckBrowser._render_deck_node is patched at top-level in __init__.py
