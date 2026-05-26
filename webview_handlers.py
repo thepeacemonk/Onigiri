@@ -183,6 +183,10 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             (function(){{
                 var s=document.querySelector('.sidebar-left');
                 if(s) s.classList.toggle('deck-focus-mode',{str(new_state).lower()});
+                var h=document.getElementById('deck-list-header');
+                if(h) h.classList.toggle('deck-focus-active',{str(new_state).lower()});
+                var l=h?h.querySelector('h2.deck-focus-label'):null;
+                if(l) l.classList.toggle('active',{str(new_state).lower()});
                 var cfg=window.ONIGIRI_CONFIG;
                 if(cfg&&Array.isArray(cfg.ellipsisActions)){{
                     cfg.ellipsisActions.forEach(function(action){{
@@ -300,8 +304,18 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd.startswith("onigiri_ctx_move_to:"):
         try:
-            did = unquote(cmd.split(":", 1)[1])
-            payload = move_deck.build_move_to_payload(did)
+            raw_payload = unquote(cmd.split(":", 1)[1])
+            try:
+                decoded = json.loads(raw_payload)
+            except json.JSONDecodeError:
+                decoded = raw_payload
+
+            if isinstance(decoded, dict):
+                source_dids = decoded.get("dids") or decoded.get("source_dids") or decoded.get("source_did")
+            else:
+                source_dids = decoded
+
+            payload = move_deck.build_move_to_payload(source_dids)
             if isinstance(context, DeckBrowser):
                 context.web.eval(
                     "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.open(%s);"
@@ -318,7 +332,10 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             payload = unquote(cmd.split(":", 1)[1])
             changed, message = move_deck.move_deck_from_payload(payload)
             if changed and isinstance(context, DeckBrowser):
-                deck_tree_updater.refresh_deck_tree_state(context)
+                context.web.eval(
+                    "if(window.OnigiriEngine)OnigiriEngine.clearMultiSelection();"
+                )
+                deck_tree_updater.refresh_deck_tree_state(context, force=True)
                 context.web.eval(
                     "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.close();"
                 )

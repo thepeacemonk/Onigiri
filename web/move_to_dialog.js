@@ -86,7 +86,7 @@
             '.onigiri-move-highlight{position:absolute;top:0;left:5px;right:5px;height:0;border-radius:9px;pointer-events:none;opacity:0;',
             '  transform:translate3d(0,0,0);will-change:transform,opacity,height;contain:paint;}',
             '.onigiri-move-hover-layer{z-index:0;background:var(--canvas-inset,rgba(255,255,255,0.08));}',
-            '.onigiri-move-selected-layer{z-index:1;background:var(--highlight-bg,rgba(128,128,128,0.14));box-shadow:inset 3px 0 0 var(--accent-color,#007aff);}',
+            '.onigiri-move-selected-layer{z-index:1;background:transparent;box-shadow:inset 0 0 0 2px var(--accent-color,#007aff);}',
             '.onigiri-move-row{width:100%;display:flex;align-items:center;gap:11px;padding:10px;border-radius:9px;border:none;',
             '  color:var(--fg,#e8e8e8);cursor:pointer;user-select:none;background:transparent;position:relative;z-index:2;transition:none;}',
             '.onigiri-move-row + .onigiri-move-row{margin-top:3px;}',
@@ -227,25 +227,12 @@
     }
 
     function preloadIcons() {
-        var seen = {};
-        var iconRefs = ['move_deck.svg', 'cancel.svg', 'search.svg'];
-        state.destinations.forEach(function (dest) {
-            iconRefs.push(dest.iconUrl || (dest.kind === 'root' ? 'folder.svg' : 'deck.svg'));
-        });
-        var urls = iconRefs.map(resolveIconUrl).filter(Boolean);
+        var urls = ['move_deck.svg', 'cancel.svg', 'search.svg', 'deck.svg', 'subdeck.svg', 'folder.svg', 'filtered_deck.svg']
+            .map(resolveIconUrl)
+            .filter(Boolean);
         if (window.OnigiriEngine && typeof OnigiriEngine.preloadMaskIcons === 'function') {
             OnigiriEngine.preloadMaskIcons(urls);
         }
-        state.preloadedIcons = iconRefs.reduce(function (images, iconRef) {
-            var url = resolveIconUrl(iconRef);
-            if (!url || seen[url]) return images;
-            seen[url] = true;
-            var img = new Image();
-            img.decoding = 'async';
-            img.src = url;
-            images.push(img);
-            return images;
-        }, []);
     }
 
     ensureStyles();
@@ -442,6 +429,10 @@
         ensureStyles();
 
         state.source = data.source || {};
+        if (!Array.isArray(state.source.ids) || !state.source.ids.length) {
+            state.source.ids = state.source.id ? [state.source.id] : [];
+        }
+        state.source.count = state.source.ids.length || state.source.count || 1;
         state.destinations = Array.isArray(data.destinations) ? data.destinations : [];
         state.selectedId = null;
         state.cleanupFns = [];
@@ -471,7 +462,7 @@
         titleWrap.className = 'onigiri-move-title-wrap';
         var title = document.createElement('div');
         title.className = 'onigiri-move-title';
-        title.textContent = 'Move Deck';
+        title.textContent = state.source.count > 1 ? 'Move Decks' : 'Move Deck';
         titleWrap.appendChild(title);
 
         var subtitle = document.createElement('div');
@@ -481,8 +472,10 @@
         subtitle.appendChild(subtitleLabel);
         var sourceName = document.createElement('span');
         sourceName.className = 'onigiri-move-source';
-        sourceName.title = state.source.name || '';
-        sourceName.textContent = state.source.name || 'Selected deck';
+        sourceName.title = state.source.count > 1 && Array.isArray(state.source.names)
+            ? state.source.names.join('\n')
+            : (state.source.name || '');
+        sourceName.textContent = state.source.label || state.source.name || 'Selected deck';
         subtitle.appendChild(sourceName);
         titleWrap.appendChild(subtitle);
         header.appendChild(titleWrap);
@@ -573,7 +566,7 @@
             state.busy = true;
             updateConfirmState();
             var payload = {
-                source_did: state.source.id,
+                source_dids: state.source.ids || (state.source.id ? [state.source.id] : []),
                 target_did: state.selectedId
             };
             pycmd('onigiri_move_deck:' + encodeURIComponent(JSON.stringify(payload)));
@@ -613,12 +606,18 @@
             if (window.OnigiriEngine) {
                 OnigiriEngine._clearAllRowVisualStates();
                 OnigiriEngine._beginOverrideState('dialog-focus');
-                var sourceId = String(data.source && data.source.id || '');
-                var selectorId = typeof OnigiriEngine.escapeSelectorValue === 'function'
-                    ? OnigiriEngine.escapeSelectorValue(sourceId)
-                    : sourceId.replace(/["\\]/g, '\\$&');
-                var row = document.querySelector('tr.deck[data-did="' + selectorId + '"]');
-                if (row) row.classList.add('ctx-row-active');
+                var sourceIds = data.source && Array.isArray(data.source.ids)
+                    ? data.source.ids
+                    : [data.source && data.source.id || ''];
+                sourceIds.forEach(function (sourceId) {
+                    sourceId = String(sourceId || '');
+                    if (!sourceId) return;
+                    var selectorId = typeof OnigiriEngine.escapeSelectorValue === 'function'
+                        ? OnigiriEngine.escapeSelectorValue(sourceId)
+                        : sourceId.replace(/["\\]/g, '\\$&');
+                    var row = document.querySelector('tr.deck[data-did="' + selectorId + '"]');
+                    if (row) row.classList.add('ctx-row-active');
+                });
             }
             buildModal(data || {});
             if (typeof pycmd === 'function') pycmd('onigiri_ui_open');

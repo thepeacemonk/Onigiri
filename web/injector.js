@@ -1,5 +1,5 @@
 // This file now only handles static UI elements like the sidebar,
-// resize handle, and focus button. The high-performance deck list
+// resize handle, and focus label. The high-performance deck list
 // logic has been moved to engine.js.
 
 (function () {
@@ -506,55 +506,36 @@
         document.addEventListener('mouseleave', clearManagedHoverStates);
     }
 
-    function setupDeckFocusButton() {
+    function setupDeckFocusLabel() {
         const sidebar = document.querySelector('.sidebar-left');
         if (!sidebar) return;
 
-        const pkg = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage
-            ? window.ONIGIRI_CONFIG.addonPackage
-            : '1011095603';
         const header = document.getElementById('deck-list-header');
         if (!header) return;
+        const label = header.querySelector('h2');
+        if (!label) return;
 
-        document.querySelectorAll('.sidebar-toolbar .deck-focus-btn').forEach(btn => btn.remove());
-
-        let focusBtn = header.querySelector('.deck-focus-btn');
-        if (focusBtn) {
-            setupDeckFocusToggle(sidebar, header, focusBtn);
-            return;
-        }
-
-        focusBtn = document.createElement('div');
-        focusBtn.className = 'deck-focus-btn deck-header-focus-btn';
-        focusBtn.title = 'Focus on Decks';
-        focusBtn.innerHTML = `<i class="icon" style="mask-image: url('/_addons/${pkg}/system_files/system_icons/focus.svg'); -webkit-mask-image: url('/_addons/${pkg}/system_files/system_icons/focus.svg');"></i>`;
-
-        const controls = header.querySelector('.sidebar-top-right-controls');
-        header.insertBefore(focusBtn, controls || null);
-
-        setupDeckFocusToggle(sidebar, header, focusBtn);
-    }
-
-    function setupDeckFocusToggle(sidebar, header, focusBtn) {
-        if (!sidebar || !focusBtn) return;
-
-        if (header) {
-            header.classList.add('has-deck-focus-toggle');
-            header.classList.toggle('deck-focus-active', sidebar.classList.contains('deck-focus-mode'));
-        }
+        document.querySelectorAll('.deck-focus-btn, .deck-header-focus-btn').forEach(btn => btn.remove());
+        label.classList.add('deck-focus-label');
+        label.setAttribute('role', 'button');
+        label.setAttribute('tabindex', '0');
+        label.title = 'Focus on Decks';
 
         const applyState = (isFocused) => {
-            focusBtn.classList.toggle('active', isFocused);
-            if (header) header.classList.toggle('deck-focus-active', isFocused);
+            header.classList.toggle('deck-focus-active', isFocused);
+            label.classList.toggle('active', isFocused);
         };
 
         const toggleFocus = (e) => {
-            e.stopPropagation();
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             const isFocused = sidebar.classList.toggle('deck-focus-mode');
             applyState(isFocused);
-            if (typeof focusBtn.blur === 'function') focusBtn.blur();
+            if (typeof label.blur === 'function') label.blur();
 
-            updateDeckFocusLayout(); // Ensure header visibility is updated on click
+            updateDeckFocusLayout();
             requestAnimationFrame(alignSidebarToolbarToDeckHeader);
 
             if (typeof pycmd === 'function') {
@@ -562,9 +543,13 @@
             }
         };
 
-        if (!focusBtn.dataset.onigiriFocusToggleBound) {
-            focusBtn.dataset.onigiriFocusToggleBound = 'true';
-            focusBtn.addEventListener('click', toggleFocus);
+        if (!label.dataset.onigiriFocusToggleBound) {
+            label.dataset.onigiriFocusToggleBound = 'true';
+            label.addEventListener('click', toggleFocus);
+            label.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                toggleFocus(e);
+            });
         }
 
         applyState(sidebar.classList.contains('deck-focus-mode'));
@@ -819,7 +804,7 @@
         }
 
         setupResizeHandle();
-        setupDeckFocusButton();
+        setupDeckFocusLabel();
         // Edit mode and Transfer buttons removed — drag-and-drop is always-on
         setupActionButtons();
         setupManagedHoverStates();

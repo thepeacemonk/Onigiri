@@ -1497,6 +1497,36 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             margin-left: 10px;
             transition: opacity 0.15s ease;
         }}
+        #deck-list-header h2.deck-focus-label {{
+            cursor: pointer;
+            user-select: none;
+            border-radius: 6px;
+            padding: 0 2px;
+            outline: none;
+            transition: color 0.15s ease, opacity 0.15s ease;
+        }}
+        #deck-list-header h2.deck-focus-label:hover,
+        #deck-list-header h2.deck-focus-label:focus-visible {{
+            color: color-mix(in srgb, var(--fg, currentColor) 78%, var(--accent-color, #007aff) 22%);
+            opacity: 1;
+        }}
+        #deck-list-header.deck-focus-active h2.deck-focus-label {{
+            color: var(--accent-color, #007aff);
+            opacity: 1;
+        }}
+        .deck-focus-btn,
+        .deck-header-focus-btn,
+        .sidebar-left .deck-focus-btn,
+        .sidebar-left .deck-header-focus-btn,
+        .sidebar-top-right-controls .deck-focus-btn {{
+            display: none !important;
+            width: 0 !important;
+            min-width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            pointer-events: none !important;
+        }}
         .sidebar-left.sidebar-actions-full.deck-focus-mode #deck-list-header h2 {{
             margin-left: 10px;
         }}
@@ -1509,17 +1539,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             justify-content: flex-end;
             gap: 0;
             margin-left: auto;
-        }}
-        .sidebar-top-right-controls .deck-focus-btn {{
-            position: relative !important;
-            top: auto !important;
-            left: auto !important;
-            width: 24px;
-            height: 24px;
-            background-color: transparent;
-            border: none;
-            border-radius: var(--onigiri-sidebar-header-radius, 8px);
-            box-shadow: none;
         }}
         .sidebar-left.sidebar-actions-full {{
             padding-top: 15px !important;

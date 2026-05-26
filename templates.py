@@ -119,14 +119,18 @@ custom_body_template = """
         position: relative;
         z-index: 1;
     }
-    tr.deck.is-multi-selected.ctx-row-active::after {
-        left: 0;
-        background-color: var(--edit-deck-bg) !important;
-    }
     /* Ensure right-click highlight always wins */
     tr.deck.ctx-row-active {
         background-color: var(--edit-deck-bg) !important;
         outline: none !important;
+    }
+    tr.deck.is-multi-selected.ctx-row-active {
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+    tr.deck.is-multi-selected.ctx-row-active::after {
+        left: 6px;
+        background-color: var(--edit-deck-bg) !important;
     }
     /* Suppress :active pseudo-class flash while right mouse is held */
     body.ctx-right-down tr.deck:has(a.deck:active) {
@@ -415,7 +419,7 @@ custom_body_template = """
         gap: 4px;
         background: var(--hover-deck-bg);
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 10px;
         padding: 5px 0px 5px 8px;
         outline: none;
         transition: none;
@@ -1027,6 +1031,36 @@ custom_body_template = """
         margin-left: 10px;
         transition: opacity 0.15s ease;
     }
+    #deck-list-header h2.deck-focus-label {
+        cursor: pointer;
+        user-select: none;
+        border-radius: 6px;
+        padding: 0 2px;
+        outline: none;
+        transition: color 0.15s ease, opacity 0.15s ease;
+    }
+    #deck-list-header h2.deck-focus-label:hover,
+    #deck-list-header h2.deck-focus-label:focus-visible {
+        color: color-mix(in srgb, var(--fg, currentColor) 78%, var(--accent-color, #007aff) 22%);
+        opacity: 1;
+    }
+    #deck-list-header.deck-focus-active h2.deck-focus-label {
+        color: var(--accent-color, #007aff);
+        opacity: 1;
+    }
+    .deck-focus-btn,
+    .deck-header-focus-btn,
+    .sidebar-left .deck-focus-btn,
+    .sidebar-left .deck-header-focus-btn,
+    .sidebar-top-right-controls .deck-focus-btn {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+    }
     .sidebar-left.sidebar-actions-full.deck-focus-mode #deck-list-header h2 {
         margin-left: 10px;
     }
@@ -1175,7 +1209,7 @@ custom_body_template = """
             {sidebar_buttons}
             {compact_toolbar_html}
             <div id="deck-list-header">
-                <h2>DECKS</h2>
+                <h2 class="deck-focus-label" role="button" tabindex="0" title="Focus on Decks">DECKS</h2>
                 <div class="sidebar-top-right-controls">
                     <button id="onigiri-search-toolbar-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="Filter decks" type="button">
                         <i class="search-btn-icon"></i>
