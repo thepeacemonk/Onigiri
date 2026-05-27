@@ -150,38 +150,52 @@
     background-color: var(--highlight-bg);
     border-radius: var(--heatmap-control-radius);
     min-height: var(--heatmap-control-height);
-    padding: 0 4px;
+    padding: 0px;
     align-items: center;
-    gap: 2px;
+    gap: 0;
 }
 
 /* --- Filter Buttons (Fixed Height) --- */
 .filter-btn {
     border: none;
     background-color: transparent;
-    border-radius: 6px;
+    background-image: none !important;
+    border-radius: 6px !important;
     cursor: pointer;
     font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
     font-size: 12px;
     font-weight: 500;
     color: var(--heatmap-control-muted);
     box-shadow: none !important;
+    filter: none !important;
+    text-shadow: none !important;
     height: calc(var(--heatmap-control-height) - 8px);
     min-width: 0;
     padding: 0 8px;
     display: flex;
     align-items: center;
     justify-content: center;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
-.filter-btn:hover {
+.filter-btn:hover,
+.filter-btn:focus,
+.filter-btn:focus-visible,
+.filter-btn:active {
     border: none;
+    background-color: rgba(128, 128, 128, 0.18);
+    background-image: none !important;
     color: var(--fg);
+    box-shadow: none !important;
+    filter: none !important;
+    text-shadow: none !important;
     opacity: 1;
 }
 
 .filter-btn.active {
-    background-color: transparent;
+    background-color: rgba(128, 128, 128, 0.18);
     color: var(--heatmap-control-fg);
     font-weight: 600;
     box-shadow: none !important;
@@ -191,6 +205,7 @@
     border: none;
     border-color: transparent;
     background-color: var(--highlight-bg);
+    background-image: none !important;
     color: var(--heatmap-control-fg);
     border-radius: 8px !important;
     width: 26px;
@@ -202,20 +217,28 @@
     justify-content: center;
     padding: 0;
     outline: none;
-    box-shadow: none;
+    box-shadow: none !important;
+    filter: none !important;
+    text-shadow: none !important;
     line-height: 0;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .nav-btn:hover,
 .nav-btn:focus,
+.nav-btn:focus-visible,
 .nav-btn:active {
     border: none;
     outline: none;
-    box-shadow: none;
-    background-color: var(--highlight-bg);
+    background-color: rgba(128, 128, 128, 0.18);
+    background-image: none !important;
+    box-shadow: none !important;
     color: var(--heatmap-control-fg);
     opacity: 1;
     transform: none;
+    filter: none !important;
+    text-shadow: none !important;
 }
 
 .nav-btn .heatmap-ui-icon,

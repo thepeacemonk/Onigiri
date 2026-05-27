@@ -3340,7 +3340,7 @@ def generate_icon_css(addon_package, conf):
         min-width: 0 !important;
         max-width: 100% !important;
         overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        text-overflow: clip !important;
         white-space: nowrap !important;
     }}
     
@@ -3353,9 +3353,18 @@ def generate_icon_css(addon_package, conf):
         flex: 0 1 auto !important;
         min-width: 0 !important;
         overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        text-overflow: clip !important;
         white-space: nowrap !important;
         display: block !important;
+    }}
+
+    .deck-table a.deck .deck-name.is-overflowing {{
+        -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - var(--onigiri-deck-name-fade-width, 24px)), transparent 100%) !important;
+        mask-image: linear-gradient(to right, #000 0, #000 calc(100% - var(--onigiri-deck-name-fade-width, 24px)), transparent 100%) !important;
+        -webkit-mask-repeat: no-repeat !important;
+        mask-repeat: no-repeat !important;
+        -webkit-mask-size: 100% 100% !important;
+        mask-size: 100% 100% !important;
     }}
     
     /* Ensure indentation span works as expected */

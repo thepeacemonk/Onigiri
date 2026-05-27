@@ -530,8 +530,8 @@ custom_body_template = """
         height: 14px;
         display: inline-block;
         background-color: currentColor;
-        mask-image: url("{system_icon_base}cancel.svg");
-        -webkit-mask-image: url("{system_icon_base}cancel.svg");
+        mask-image: url("{system_icon_base}cancel_circle.svg");
+        -webkit-mask-image: url("{system_icon_base}cancel_circle.svg");
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
@@ -886,10 +886,10 @@ custom_body_template = """
         flex-shrink: 1;
         min-width: 0;
         padding: 6px 8px;
-        border-radius: 8px;
+        border-radius: var(--onigiri-deck-row-radius, 8px);
         display: block;
         overflow: hidden;
-        text-overflow: ellipsis;
+        text-overflow: clip;
         white-space: nowrap;
         pointer-events: auto !important;
     }
@@ -1106,18 +1106,20 @@ custom_body_template = """
     }
     /* --- Multi-select badge --- */
     #onigiri-multiselect-badge {
-        appearance: none;
-        -webkit-appearance: none;
+        appearance: none !important;
+        -webkit-appearance: none !important;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: auto;
         min-width: 22px;
         height: 22px;
-        border: 0;
+        min-height: 0 !important;
+        border: 0 !important;
         border-radius: 999px;
-        background-color: var(--accent-color, #007aff);
-        color: #ffffff;
+        background: var(--accent-color, #007aff) !important;
+        background-image: none !important;
+        color: #ffffff !important;
         cursor: pointer;
         font-size: 11px;
         font-weight: 600;
@@ -1126,21 +1128,33 @@ custom_body_template = """
         line-height: 1;
         font-family: inherit;
         white-space: nowrap;
+        outline: none !important;
+        box-shadow: none !important;
+        filter: none !important;
+        text-decoration: none !important;
+        box-sizing: border-box;
         transition: background-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
     }
     #onigiri-multiselect-badge:hover,
     #onigiri-multiselect-badge:focus-visible {
-        background-color: color-mix(in srgb, var(--accent-color, #007aff) 86%, #000 14%);
+        border: 0 !important;
+        background: color-mix(in srgb, var(--accent-color, #007aff) 86%, #000 14%) !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        filter: none !important;
     }
     .night-mode #onigiri-multiselect-badge:hover,
     .night-mode #onigiri-multiselect-badge:focus-visible {
-        background-color: color-mix(in srgb, var(--accent-color, #007aff) 82%, #fff 18%);
+        background: color-mix(in srgb, var(--accent-color, #007aff) 82%, #fff 18%) !important;
     }
     #onigiri-multiselect-badge:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #007aff) 35%, transparent);
+        outline: none !important;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #007aff) 32%, transparent) !important;
     }
     #onigiri-multiselect-badge:active {
+        border: 0 !important;
+        background-image: none !important;
+        box-shadow: none !important;
         transform: translateY(1px);
     }
     #onigiri-multiselect-badge[hidden] {

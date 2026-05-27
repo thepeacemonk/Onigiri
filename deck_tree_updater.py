@@ -96,6 +96,55 @@ def apply_archive_filter(tree_data, archived_ids=None, show_archived_only=None):
         _prune_archived_descendants(tree_data.children, archived_ids)
 
 
+def _organise_filter_matcher(archived_ids):
+    """Return a direct-match predicate for the active Organise filters."""
+    show_favorites = bool(mw.col.conf.get("onigiri_show_favorites", False))
+    show_marked = bool(mw.col.conf.get("onigiri_show_marked", False))
+    show_archived = bool(mw.col.conf.get(SHOW_ARCHIVED_CONF_KEY, False))
+
+    favorites = set(str(f) for f in mw.col.conf.get("onigiri_favorite_decks", [])) if show_favorites else set()
+    marks = dict(mw.col.conf.get("onigiri_deck_marks", {})) if show_marked else {}
+    marked_ids = set(str(k) for k, v in marks.items() if v) if show_marked else set()
+
+    def _matches(deck_id: str) -> bool:
+        return (
+            (show_favorites and deck_id in favorites)
+            or (show_marked and deck_id in marked_ids)
+            or (show_archived and deck_id in archived_ids)
+        )
+
+    return _matches, (show_favorites or show_marked or show_archived), show_archived
+
+
+def _collect_direct_organise_matches(nodes, direct_match, archived_ids, allow_archived_nodes):
+    """Return matching nodes only, preserving original tree order and depth."""
+    matches = []
+    for node in list(nodes):
+        deck_id = str(node.deck_id)
+        if deck_id in archived_ids and not allow_archived_nodes:
+            continue
+        if direct_match(deck_id):
+            matches.append(node)
+        matches.extend(
+            _collect_direct_organise_matches(
+                node.children,
+                direct_match,
+                archived_ids,
+                allow_archived_nodes,
+            )
+        )
+    return matches
+
+
+def _render_direct_deck_row_html(deck_browser: DeckBrowser, node, ctx: RenderDeckNodeContext) -> str:
+    """Render only the row for a deck node, excluding any descendant rows."""
+    html = deck_browser._render_deck_node(node, ctx)
+    row_end = html.find("</tr>")
+    if row_end == -1:
+        return html
+    return html[:row_end + len("</tr>")]
+
+
 def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     """
     Renders just the HTML for the deck tree's <tbody> content.
@@ -113,47 +162,23 @@ def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
         saved_order = [str(x) for x in mw.col.conf.get("onigiri_custom_deck_order", [])]
         _apply_sort_recursive(tree_data.children, sort_mode, saved_order, is_top_level=True)
 
-    show_archived_only = bool(mw.col.conf.get(SHOW_ARCHIVED_CONF_KEY, False))
-    apply_archive_filter(tree_data, show_archived_only=show_archived_only)
-
-    # Apply favorites filter if active — strict: only directly-favorited decks shown.
-    # Parents that are not themselves favorited are excluded even if a child is.
-    show_favorites_only = bool(mw.col.conf.get("onigiri_show_favorites", False))
-    if show_favorites_only:
-        favorites = set(str(f) for f in mw.col.conf.get("onigiri_favorite_decks", []))
-
-        def _filter_strictly(nodes):
-            """Keep only nodes that are directly in favorites; recurse into kept nodes."""
-            kept = [n for n in nodes if str(n.deck_id) in favorites]
-            # Children of a kept (favorited) node are shown in full — no further pruning.
-            return kept
-
-        try:
-            kept = _filter_strictly(list(tree_data.children))
-            del tree_data.children[:]
-            tree_data.children.extend(kept)
-        except Exception:
-            pass
-
-    # Apply marked filter if active — only decks that have an Onigiri colour mark.
-    # Marks are stored in mw.col.conf["onigiri_deck_marks"] as {deck_id_str: colour_key}.
-    show_marked_only = bool(mw.col.conf.get("onigiri_show_marked", False))
-    if show_marked_only:
-        try:
-            marks = dict(mw.col.conf.get("onigiri_deck_marks", {}))
-            # Any non-empty colour value counts as marked
-            marked_deck_ids = set(str(k) for k, v in marks.items() if v)
-
-            def _filter_marked(nodes):
-                return [n for n in nodes if str(n.deck_id) in marked_deck_ids]
-
-            kept = _filter_marked(list(tree_data.children))
-            del tree_data.children[:]
-            tree_data.children.extend(kept)
-        except Exception:
-            pass
-
+    archived_ids = archived_deck_ids()
+    direct_match, has_active_filters, allow_archived_nodes = _organise_filter_matcher(archived_ids)
     ctx = RenderDeckNodeContext(current_deck_id=deck_browser.mw.col.decks.get_current_id())
+    if has_active_filters:
+        matching_nodes = _collect_direct_organise_matches(
+            tree_data.children,
+            direct_match,
+            archived_ids,
+            allow_archived_nodes,
+        )
+        return "".join(
+            _render_direct_deck_row_html(deck_browser, node, ctx)
+            for node in matching_nodes
+        )
+    else:
+        apply_archive_filter(tree_data, archived_ids=archived_ids, show_archived_only=False)
+
     # Note: _render_deck_node is patched by Onigiri in patcher.py
     return "".join(deck_browser._render_deck_node(child, ctx) for child in tree_data.children)
 
