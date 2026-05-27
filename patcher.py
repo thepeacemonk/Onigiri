@@ -1657,13 +1657,17 @@ def patch_overview():
             font-size: 12px !important;
             font-weight: 600 !important;
             letter-spacing: 0.01em;
-            transition: opacity 0.15s ease;
+            transition: opacity 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
             border: none !important;
             box-shadow: none !important;
             -webkit-appearance: none !important;
         }
         #onigiri-reveal-btn:hover {
             opacity: 0.8;
+        }
+        #onigiri-reveal-btn:active {
+            opacity: 0.65;
+            transform: translateY(1px);
         }
         .night-mode #onigiri-reveal-btn {
             color: #e1e1e1 !important;

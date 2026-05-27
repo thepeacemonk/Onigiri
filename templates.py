@@ -417,7 +417,7 @@ custom_body_template = """
         background: #e5e5e5;
         border: 1px solid var(--border);
         border-radius: 10px;
-        padding: 6px 6px 6px 8px;
+        padding: 6px 6px 6px 12px;
         outline: none;
         transition: none;
     }
@@ -530,8 +530,8 @@ custom_body_template = """
         height: 14px;
         display: inline-block;
         background-color: currentColor;
-        mask-image: url("{system_icon_base}cancel_circle.svg");
-        -webkit-mask-image: url("{system_icon_base}cancel_circle.svg");
+        mask-image: url("{system_icon_base}cancel.svg");
+        -webkit-mask-image: url("{system_icon_base}cancel.svg");
         mask-size: contain;
         mask-repeat: no-repeat;
         mask-position: center;
@@ -1059,6 +1059,7 @@ custom_body_template = """
         overflow-y: auto;
         overflow-x: hidden;
         min-height: 0;
+        border-right: 1px solid transparent;
         /* Let the scrollbar reach the sidebar edge while preserving the current
            deck-row content width and horizontal position. */
         margin-right: calc(-1 * var(--onigiri-sidebar-right-pad, 18px));

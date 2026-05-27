@@ -13,6 +13,11 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         targetDate: new Date(),
     };
 
+    const TRANSITION_DURATION_MS = 500;
+    const TRANSITION_FALLBACK_MS = TRANSITION_DURATION_MS + 200;
+
+    let isTransitioning = false;
+
     function prepareData(rawData) {
         return {
             reviewsByDay: new Map(Object.entries(rawData.calendar || {})),
@@ -314,20 +319,11 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
     function bindNavButtons(navEl) {
         navEl.addEventListener("click", (event) => {
             const btn = event.target.closest(".nav-btn");
-            if (!btn) {
-                return;
-            }
+            if (!btn) return;
+            if (isTransitioning) return;
 
             const amount = parseInt(btn.dataset.nav, 10);
-            if (state.view === "year") {
-                state.targetDate.setFullYear(state.targetDate.getFullYear() + amount);
-            } else if (state.view === "month") {
-                state.targetDate.setMonth(state.targetDate.getMonth() + amount);
-            } else if (state.view === "week") {
-                state.targetDate.setDate(state.targetDate.getDate() + amount);
-            }
-
-            renderCurrentView();
+            renderCurrentView(amount > 0 ? 'right' : 'left');
         });
     }
 
@@ -343,7 +339,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             state.view = config.heatmapDefaultView;
         }
 
-        renderCurrentView = function () {
+        function buildHeaderHTML() {
             const i18n = config.i18n || {};
             const hasStreak = data.streak > 0;
             const longestStreak = data.longest_streak || 0;
@@ -354,24 +350,24 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(longestStreakTip)}">${renderFlameIcon(hasStreak)}<span>${data.streak}</span></div>`
                 : "";
 
-            container.innerHTML = `
-                <div class="onigiri-heatmap-header">
-                    <div class="header-left">
-                        <div class="heatmap-nav">${buildNavContent(config)}</div>
-                    </div>
-                    <div class="header-right">
-                        ${streakMarkup}
-                        <div class="heatmap-filters">
-                            <button class="filter-btn ${state.view === "year" ? "active" : ""}" data-view="year">${i18n.year || "Year"}</button>
-                            <button class="filter-btn ${state.view === "month" ? "active" : ""}" data-view="month">${i18n.month || "Month"}</button>
-                            <button class="filter-btn ${state.view === "week" ? "active" : ""}" data-view="week">${i18n.week || "Week"}</button>
-                        </div>
+            return `
+                <div class="header-left">
+                    <div class="heatmap-nav">${buildNavContent(config)}</div>
+                </div>
+                <div class="header-right">
+                    ${streakMarkup}
+                    <div class="heatmap-filters">
+                        <div class="filter-indicator"></div>
+                        <button class="filter-btn ${state.view === "year" ? "active" : ""}" data-view="year">${i18n.year || "Year"}</button>
+                        <button class="filter-btn ${state.view === "month" ? "active" : ""}" data-view="month">${i18n.month || "Month"}</button>
+                        <button class="filter-btn ${state.view === "week" ? "active" : ""}" data-view="week">${i18n.week || "Week"}</button>
                     </div>
                 </div>
-                <div class="heatmap-grid"></div>
             `;
+        }
 
-            const gridContainer = container.querySelector(".heatmap-grid");
+        function renderGrid(gridContainer) {
+            gridContainer.innerHTML = '';
             if (state.view === "year") {
                 drawYearView(gridContainer, preparedData, config);
             } else if (state.view === "month") {
@@ -379,20 +375,200 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             } else {
                 drawWeekView(gridContainer, preparedData, config);
             }
+        }
 
+        function positionIndicator() {
+            const filters = container.querySelector(".heatmap-filters");
+            if (!filters) return;
+            const indicator = filters.querySelector(".filter-indicator");
+            const activeBtn = filters.querySelector(".filter-btn.active");
+            if (!indicator || !activeBtn) return;
+
+            const filterRect = filters.getBoundingClientRect();
+            const btnRect = activeBtn.getBoundingClientRect();
+
+            indicator.style.left = (btnRect.left - filterRect.left) + 'px';
+            indicator.style.width = btnRect.width + 'px';
+        }
+
+        function bindEvents() {
             const navEl = container.querySelector(".heatmap-nav");
             bindNavButtons(navEl);
 
             const filters = container.querySelector(".heatmap-filters");
             filters.addEventListener("click", (event) => {
+                if (isTransitioning) return;
                 const btn = event.target.closest(".filter-btn");
-                if (!btn) {
-                    return;
-                }
+                if (!btn) return;
                 state.view = btn.dataset.view;
                 state.targetDate = new Date();
                 renderCurrentView();
             });
+        }
+
+        renderCurrentView = function (direction) {
+            const existingHeader = container.querySelector(".onigiri-heatmap-header");
+
+            // Case 1: Initial render — full DOM build
+            if (!existingHeader) {
+                container.innerHTML = `
+                    <div class="onigiri-heatmap-header">${buildHeaderHTML()}</div>
+                    <div class="heatmap-viewport">
+                        <div class="heatmap-grid"></div>
+                    </div>
+                `;
+                renderGrid(container.querySelector(".heatmap-grid"));
+                bindEvents();
+                // Double rAF ensures layout is settled before measuring indicator position
+                requestAnimationFrame(() => requestAnimationFrame(positionIndicator));
+                return;
+            }
+
+            // Case 2: Filter click — update header in-place to preserve button DOM for CSS transitions
+            if (!direction) {
+                const navEl = existingHeader.querySelector(".heatmap-nav");
+                if (navEl) {
+                    navEl.innerHTML = buildNavContent(config);
+                    bindNavButtons(navEl);
+                }
+
+                const filterBtns = existingHeader.querySelectorAll(".filter-btn");
+                filterBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.view === state.view));
+
+                positionIndicator();
+
+                const gridContainer = container.querySelector(".heatmap-grid");
+                if (gridContainer) renderGrid(gridContainer);
+                return;
+            }
+
+            // Case 3: Nav click — slide transition
+            if (isTransitioning) return;
+            isTransitioning = true;
+
+            const amount = direction === 'right' ? 1 : -1;
+            if (state.view === "year") {
+                state.targetDate.setFullYear(state.targetDate.getFullYear() + amount);
+            } else if (state.view === "month") {
+                state.targetDate.setMonth(state.targetDate.getMonth() + amount);
+            } else {
+                state.targetDate.setDate(state.targetDate.getDate() + amount);
+            }
+
+            const headerEl = container.querySelector(".onigiri-heatmap-header");
+            if (headerEl) {
+                const navEl = headerEl.querySelector(".heatmap-nav");
+                if (navEl) {
+                    navEl.innerHTML = buildNavContent(config);
+                    bindNavButtons(navEl);
+                }
+            }
+
+            const viewport = container.querySelector(".heatmap-viewport");
+            if (!viewport) {
+                isTransitioning = false;
+                renderCurrentView();
+                return;
+            }
+
+            const oldGrid = viewport.querySelector(".heatmap-grid");
+            if (!oldGrid) {
+                isTransitioning = false;
+                renderCurrentView();
+                return;
+            }
+
+            const gridRect = oldGrid.getBoundingClientRect();
+            const viewportRect = viewport.getBoundingClientRect();
+            const gridTop = gridRect.top - viewportRect.top;
+            const gridLeft = gridRect.left - viewportRect.left;
+            const gridWidth = gridRect.width;
+            const gridHeight = gridRect.height;
+            const slideDistance = viewportRect.width;
+
+            viewport.style.height = gridHeight + 'px';
+
+            // Freeze old grid at its exact original position and size
+            oldGrid.style.position = 'absolute';
+            oldGrid.style.top = gridTop + 'px';
+            oldGrid.style.left = gridLeft + 'px';
+            oldGrid.style.width = gridWidth + 'px';
+            oldGrid.style.height = gridHeight + 'px';
+
+            const newGrid = document.createElement("div");
+            newGrid.className = "heatmap-grid";
+            newGrid.style.position = 'absolute';
+            newGrid.style.top = gridTop + 'px';
+            newGrid.style.left = gridLeft + 'px';
+            newGrid.style.width = gridWidth + 'px';
+            newGrid.style.height = gridHeight + 'px';
+            renderGrid(newGrid);
+
+            if (direction === 'right') {
+                newGrid.style.transform = `translate3d(${slideDistance}px, 0, 0)`;
+            } else {
+                newGrid.style.transform = `translate3d(-${slideDistance}px, 0, 0)`;
+            }
+
+            viewport.appendChild(newGrid);
+
+            // Let the browser paint the new grid's initial position first,
+            // then start the transition on the next frame to avoid jank
+            requestAnimationFrame(() => {
+                void oldGrid.offsetHeight;
+
+                const easing = 'cubic-bezier(0.3, 0.3, 0.2, 1)';
+                const duration = `${TRANSITION_DURATION_MS}ms`;
+
+                oldGrid.style.willChange = 'transform';
+                newGrid.style.willChange = 'transform';
+
+                oldGrid.style.transition = `transform ${duration} ${easing}`;
+                newGrid.style.transition = `transform ${duration} ${easing}`;
+
+                if (direction === 'right') {
+                    oldGrid.style.transform = `translate3d(-${slideDistance}px, 0, 0)`;
+                    newGrid.style.transform = 'translate3d(0, 0, 0)';
+                } else {
+                    oldGrid.style.transform = `translate3d(${slideDistance}px, 0, 0)`;
+                    newGrid.style.transform = 'translate3d(0, 0, 0)';
+                }
+            });
+
+            let cleanedUp = false;
+
+            function resetGridStyles(grid) {
+                grid.style.willChange = '';
+                grid.style.position = '';
+                grid.style.top = '';
+                grid.style.left = '';
+                grid.style.width = '';
+                grid.style.height = '';
+                grid.style.transform = '';
+                grid.style.transition = '';
+            }
+
+            function cleanup() {
+                if (cleanedUp) return;
+                cleanedUp = true;
+
+                newGrid.removeEventListener('transitionend', onTransitionEnd);
+                clearTimeout(fallbackTimer);
+
+                oldGrid.remove();
+                resetGridStyles(newGrid);
+                viewport.style.height = '';
+                isTransitioning = false;
+            }
+
+            function onTransitionEnd(e) {
+                if (e.target !== newGrid || e.propertyName !== 'transform') return;
+                cleanup();
+            }
+
+            newGrid.addEventListener('transitionend', onTransitionEnd);
+
+            const fallbackTimer = setTimeout(cleanup, TRANSITION_FALLBACK_MS);
         };
 
         renderCurrentView();
