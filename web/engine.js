@@ -12,8 +12,16 @@ window.OnigiriEngine = {
     _lastMultiAnchorDid: null,
     _collapsePointerActive: false,
     _pendingDeferredTreeHtml: null,
+    _hoverSubmenuCleanups: [],
     DND_INSERTION_LINE_PX: 2,
     HOVER_EXPAND_MS: 2000,
+    MENU_SUBMENU_HIDE_MS: 220,
+    MENU_SUBMENU_OVERLAP_PX: 4,
+    MENU_VIEWPORT_GAP_PX: 8,
+    DND_EDGE_SCROLL_ZONE_PX: 56,
+    DND_EDGE_SCROLL_RELEASE_PX: 84,
+    DND_EDGE_SCROLL_OUTSIDE_PX: 52,
+    DND_EDGE_SCROLL_X_TOLERANCE_PX: 28,
 
     _addonPackage: function () {
         return (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '';
@@ -64,6 +72,30 @@ window.OnigiriEngine = {
         const icon = document.createElement(opts.tagName || 'span');
         icon.className = opts.className || 'ctx-icon';
         return this.applyMaskIcon(icon, iconUrl, opts);
+    },
+
+    deckRowRadiusCssValue: function () {
+        return 'var(--onigiri-deck-row-radius, 8px)';
+    },
+
+    deckNameFadeMaskCssValue: function () {
+        return 'linear-gradient(to right,#000 0,#000 calc(100% - var(--onigiri-deck-name-fade-width, 24px)),transparent 100%)';
+    },
+
+    applyDeckNameFadeMask: function (nameEl) {
+        if (!nameEl) return;
+        const mask = this.deckNameFadeMaskCssValue();
+        nameEl.classList.add('is-overflowing');
+        nameEl.style.webkitMaskImage = mask;
+        nameEl.style.maskImage = mask;
+        nameEl.style.webkitMaskRepeat = 'no-repeat';
+        nameEl.style.maskRepeat = 'no-repeat';
+        nameEl.style.webkitMaskSize = '100% 100%';
+        nameEl.style.maskSize = '100% 100%';
+    },
+
+    deckNameNeedsFade: function (nameEl) {
+        return !!(nameEl && nameEl.scrollWidth - nameEl.clientWidth > 2);
     },
 
     escapeSelectorValue: function (value) {
@@ -186,6 +218,14 @@ window.OnigiriEngine = {
         if (this._pendingDeferredTreeHtml !== null) this._flushDeferredTreeUpdate();
     },
 
+    clearDeckSelection: function () {
+        const hadMultiSelection = this._multiSelectedDecks.size > 0;
+        const hadHoveredRow = !!this.currentHoveredRow;
+        if (hadMultiSelection) this.clearMultiSelection();
+        if (hadHoveredRow) this._clearHoveredRow();
+        return hadMultiSelection || hadHoveredRow;
+    },
+
     _clearAllRowVisualStates: function () {
         const preserveMultiSelection = this._multiSelectedDecks.size > 0;
         document.querySelectorAll('tr.deck').forEach(row => {
@@ -285,6 +325,204 @@ window.OnigiriEngine = {
         badge.style.display = '';
         badge.style.opacity = '';
         badge.style.pointerEvents = searchActive ? 'none' : '';
+    },
+
+    _positionHoverSubmenu: function (triggerEl, submenuEl) {
+        if (!triggerEl || !submenuEl) return;
+        const triggerRect = triggerEl.getBoundingClientRect();
+        const overlap = this.MENU_SUBMENU_OVERLAP_PX;
+        const gap = this.MENU_VIEWPORT_GAP_PX;
+
+        submenuEl.style.position = 'fixed';
+        submenuEl.style.top = triggerRect.top + 'px';
+        submenuEl.style.left = (triggerRect.right - overlap) + 'px';
+
+        requestAnimationFrame(() => {
+            if (!submenuEl.isConnected) return;
+            const subRect = submenuEl.getBoundingClientRect();
+            let top = triggerRect.top;
+            let left = triggerRect.right - overlap;
+
+            if (subRect.right > window.innerWidth - gap) {
+                left = triggerRect.left - subRect.width + overlap;
+            }
+            if (left < gap) {
+                left = gap;
+            }
+            if (subRect.bottom > window.innerHeight - gap) {
+                top = Math.max(gap, triggerRect.bottom - subRect.height);
+            }
+            if (top < gap) {
+                top = gap;
+            }
+
+            submenuEl.style.top = top + 'px';
+            submenuEl.style.left = left + 'px';
+        });
+    },
+
+    _attachHoverSubmenu: function (triggerEl, options) {
+        if (!triggerEl) return null;
+        const opts = options || {};
+        const submenuId = opts.submenuId;
+        const buildSubmenu = opts.buildSubmenu;
+        if (!submenuId || typeof buildSubmenu !== 'function') return null;
+
+        let cleanup = null;
+        let hideTimer = null;
+        let submenuEl = null;
+
+        const clearHideTimer = () => {
+            if (!hideTimer) return;
+            clearTimeout(hideTimer);
+            hideTimer = null;
+        };
+
+        const isInHoverRegion = (target) => {
+            if (!target || !(target instanceof Element)) return false;
+            if (triggerEl.contains(target)) return true;
+            if (submenuEl && submenuEl.contains(target)) return true;
+            return false;
+        };
+
+        const removeSubmenu = () => {
+            clearHideTimer();
+            submenuEl = null;
+            const existing = document.getElementById(submenuId);
+            if (existing) existing.remove();
+        };
+
+        const scheduleHide = (event) => {
+            clearHideTimer();
+            const relatedTarget = event && event.relatedTarget ? event.relatedTarget : null;
+            if (isInHoverRegion(relatedTarget)) return;
+            hideTimer = setTimeout(() => {
+                removeSubmenu();
+            }, opts.hideDelayMs || this.MENU_SUBMENU_HIDE_MS);
+        };
+
+        const openSubmenu = () => {
+            clearHideTimer();
+            if (typeof opts.closeOtherSubmenus === 'function') {
+                opts.closeOtherSubmenus(cleanup, true);
+            }
+            const existing = document.getElementById(submenuId);
+            if (existing) {
+                submenuEl = existing;
+                this._positionHoverSubmenu(triggerEl, submenuEl);
+                return submenuEl;
+            }
+            const nextSubmenu = buildSubmenu();
+            if (!nextSubmenu) return null;
+            nextSubmenu.id = submenuId;
+            document.body.appendChild(nextSubmenu);
+            submenuEl = nextSubmenu;
+            this._positionHoverSubmenu(triggerEl, submenuEl);
+            submenuEl.addEventListener('mouseenter', () => {
+                clearHideTimer();
+            });
+            submenuEl.addEventListener('mouseleave', (event) => {
+                scheduleHide(event);
+            });
+            return submenuEl;
+        };
+
+        triggerEl.addEventListener('mouseenter', () => {
+            openSubmenu();
+        });
+        triggerEl.addEventListener('mouseleave', (event) => {
+            scheduleHide(event);
+        });
+
+        cleanup = {
+            openSubmenu,
+            removeSubmenu,
+        };
+        this._hoverSubmenuCleanups.push(cleanup);
+        return cleanup;
+    },
+
+    _clearHoverSubmenus: function (exceptCleanup, preserveRegistry) {
+        const remaining = [];
+        while (this._hoverSubmenuCleanups.length) {
+            const cleanup = this._hoverSubmenuCleanups.pop();
+            if (cleanup === exceptCleanup) {
+                remaining.push(cleanup);
+            } else if (cleanup && typeof cleanup.removeSubmenu === 'function') {
+                cleanup.removeSubmenu();
+                if (preserveRegistry) remaining.push(cleanup);
+            }
+        }
+        this._hoverSubmenuCleanups = remaining;
+        document.querySelectorAll('#onigiri-mark-submenu, #onigiri-ellipsis-submenu')
+            .forEach(sub => sub.remove());
+    },
+
+    _dndPointerWithinScrollBand: function (rect, clientX, clientY) {
+        const xTolerance = this.DND_EDGE_SCROLL_X_TOLERANCE_PX;
+        const yTolerance = this.DND_EDGE_SCROLL_OUTSIDE_PX;
+        return clientX >= rect.left - xTolerance
+            && clientX <= rect.right + xTolerance
+            && clientY >= rect.top - yTolerance
+            && clientY <= rect.bottom + yTolerance;
+    },
+
+    selectAllDecks: function () {
+        if (!this.deckListContainer || this._dnd) return false;
+        const rows = this._dndRows().filter(row => row.dataset && row.dataset.did);
+        if (!rows.length) return false;
+
+        this._multiSelectedDecks.clear();
+        rows.forEach(row => this._multiSelectedDecks.add(row.dataset.did));
+        this._lastMultiAnchorDid = rows[0].dataset.did;
+        this._beginOverrideState('has-multi-select');
+        this._applyMultiSelectionStyles();
+        return true;
+    },
+
+    _isEmptySelectionClickIgnored: function (target) {
+        if (!target || typeof target.closest !== 'function') return false;
+        return !!target.closest([
+            'tr.deck',
+            '#onigiri-ctx-menu',
+            '#onigiri-mark-submenu',
+            '#onigiri-ellipsis-menu',
+            '#onigiri-ellipsis-submenu',
+            '#onigiri-organise-menu',
+            '#onigiri-deck-search-bar',
+            '.sidebar-top-right-controls',
+            '.sidebar-toolbar',
+            '.resize-handle',
+            '#onigiri-sidebar-edge-toggle',
+            '.sidebar-edge-toggle-zone',
+            '.profile-bar',
+            '.add-button-dashed',
+            '.menu-item',
+            '.menu-group',
+            'button',
+            'input',
+            'select',
+            'textarea',
+            'a',
+            '[role="button"]',
+            '[contenteditable="true"]',
+            '.action-btn',
+            '.deck-focus-label',
+            '.onigiri-ellipsis-item',
+            '.favorite-star-icon',
+            '.drag-handle',
+            '.collapse',
+            '.opts',
+        ].join(','));
+    },
+
+    _handleDocumentEmptySelectionClick: function (event) {
+        if (event.defaultPrevented || event.button !== 0) return;
+        if (!this.deckListContainer || this._dnd) return;
+        if (document.body.classList.contains('deck-open-pending')) return;
+        if (this._multiSelectedDecks.size === 0 && !this.currentHoveredRow) return;
+        if (this._isEmptySelectionClickIgnored(event.target)) return;
+        this.clearDeckSelection();
     },
 
     navigateDeck: function (event, did, commandPrefix) {
@@ -462,11 +700,15 @@ window.OnigiriEngine = {
         this.processNewNodes(document.querySelectorAll('tr.deck, a.collapse'));
         this.preloadMaskIcons(this.collectMenuIconUrls());
         this.restoreScrollPosition();
+        this.scheduleDeckNameOverflowRefresh();
 
         // Initial fade state (handles page load at a non-zero scroll position)
         this.updateDeckFade();
         // Deck tree may not be fully painted yet — run again after first render
-        setTimeout(() => this.updateDeckFade(), 300);
+        setTimeout(() => {
+            this.updateDeckFade();
+            this.scheduleDeckNameOverflowRefresh();
+        }, 300);
 
         // Signal the native startup overlay: engine is ready.
         // The multi-signal controller in templates.py also waits for heatmap
@@ -486,10 +728,21 @@ window.OnigiriEngine = {
                 || tagName === 'textarea'
                 || tagName === 'select'
                 || (target && target.isContentEditable);
-            if (event.key === 'Escape' && this._multiSelectedDecks.size > 0) {
+            if (event.key === 'Escape' && this.clearDeckSelection()) {
                 event.preventDefault();
                 event.stopPropagation();
-                this.clearMultiSelection();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
+                return;
+            }
+            const isSelectAllShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'a';
+            if (isSelectAllShortcut && !isTyping && this.selectAllDecks()) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
                 return;
             }
             if (isTyping || event.ctrlKey || event.altKey || event.metaKey) return;
@@ -612,6 +865,7 @@ window.OnigiriEngine = {
         if (typeof window.updateDeckLayouts === 'function') {
             window.updateDeckLayouts();
         }
+        this.scheduleDeckNameOverflowRefresh();
 
         // Update fade gradient after content changes (scrollHeight may differ)
         requestAnimationFrame(() => this.updateDeckFade());
@@ -658,6 +912,28 @@ window.OnigiriEngine = {
 
         container.style.webkitMaskImage = mask;
         container.style.maskImage       = mask;
+    },
+
+    scheduleDeckNameOverflowRefresh: function () {
+        if (this._deckNameOverflowRaf) {
+            cancelAnimationFrame(this._deckNameOverflowRaf);
+        }
+        this._deckNameOverflowRaf = requestAnimationFrame(() => {
+            this._deckNameOverflowRaf = null;
+            this.refreshDeckNameOverflowState();
+        });
+    },
+
+    refreshDeckNameOverflowState: function (root) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('.deck-table a.deck .deck-name').forEach((nameEl) => {
+            const shouldFade = this.deckNameNeedsFade(nameEl);
+            nameEl.classList.toggle('is-overflowing', shouldFade);
+            if (!shouldFade) {
+                nameEl.style.webkitMaskImage = '';
+                nameEl.style.maskImage = '';
+            }
+        });
     },
 
     /** Saves the current scroll position to session storage. */
@@ -765,6 +1041,17 @@ window.OnigiriEngine = {
 
         // --- Listener: Update fade gradient on native scroll (e.g. scrollbar drag) ---
         this.deckListContainer.addEventListener('scroll', () => this.updateDeckFade(), { passive: true });
+        window.addEventListener('resize', () => this.scheduleDeckNameOverflowRefresh(), { passive: true });
+        document.addEventListener('click', (event) => this._handleDocumentEmptySelectionClick(event));
+
+        if (typeof ResizeObserver === 'function') {
+            this._deckNameOverflowObserver = new ResizeObserver(() => this.scheduleDeckNameOverflowRefresh());
+            this._deckNameOverflowObserver.observe(this.deckListContainer);
+            const sidebarEl = document.querySelector('.sidebar-left');
+            if (sidebarEl) {
+                this._deckNameOverflowObserver.observe(sidebarEl);
+            }
+        }
 
         // --- Listener: Keep row hovered while mouse is over it ---
         this.deckListContainer.addEventListener('pointermove', (event) => {
@@ -988,7 +1275,7 @@ window.OnigiriEngine = {
             `top:${opts.top !== undefined ? opts.top : origRect.top}px`,
             `left:${opts.left !== undefined ? opts.left : origRect.left}px`,
             'background:var(--canvas,var(--frame-bg,#1e1e1e))',
-            'border-radius:6px',
+            'border-radius:' + this.deckRowRadiusCssValue(),
             'overflow:hidden',
             'display:flex',
             'align-items:center',
@@ -1050,11 +1337,14 @@ window.OnigiriEngine = {
             'flex:1 1 auto',
             'min-width:0',
             'overflow:hidden',
-            'text-overflow:ellipsis',
+            'text-overflow:clip',
             'white-space:nowrap',
             'font-size:15px',
             'color:var(--fg)',
         ].join(';');
+        if (this.deckNameNeedsFade(originalName)) {
+            this.applyDeckNameFadeMask(name);
+        }
 
         card.appendChild(handle);
         card.appendChild(icon);
@@ -1079,7 +1369,7 @@ window.OnigiriEngine = {
             `top:${opts.top !== undefined ? opts.top : origRect.top}px`,
             `left:${opts.left !== undefined ? opts.left : origRect.left}px`,
             'background:var(--canvas,var(--frame-bg,#1e1e1e))',
-            'border-radius:6px',
+            'border-radius:' + this.deckRowRadiusCssValue(),
             'overflow:hidden',
         ].join(';');
         const tbody = document.createElement('tbody');
@@ -1141,9 +1431,12 @@ window.OnigiriEngine = {
                 'flex:1 1 auto',
                 'min-width:0',
                 'overflow:hidden',
-                'text-overflow:ellipsis',
+                'text-overflow:clip',
                 'white-space:nowrap',
             ].join(';');
+            if (this.deckNameNeedsFade(originalName)) {
+                this.applyDeckNameFadeMask(name);
+            }
 
             deckLink.appendChild(name);
             deckTd.appendChild(handle);
@@ -1152,7 +1445,7 @@ window.OnigiriEngine = {
         const nameAnchor = clone.querySelector('a.deck');
         if (nameAnchor) {
             nameAnchor.style.overflow = 'hidden';
-            nameAnchor.style.textOverflow = 'ellipsis';
+            nameAnchor.style.textOverflow = 'clip';
             nameAnchor.style.whiteSpace = 'nowrap';
         }
         tbody.appendChild(clone);
@@ -1191,7 +1484,7 @@ window.OnigiriEngine = {
                 'top:' + off.y + 'px',
                 'width:' + (GHOST_W - off.x * 2) + 'px',
                 'height:' + ROW_H + 'px',
-                'border-radius:6px',
+                'border-radius:' + this.deckRowRadiusCssValue(),
                 'background:var(--canvas,var(--frame-bg,#1e1e1e))',
                 'box-shadow:0 4px 14px rgba(0,0,0,0.28)',
                 'opacity:' + off.opacity,
@@ -1411,70 +1704,69 @@ window.OnigiriEngine = {
         const container = this.deckListContainer;
         if (!container || !container.isConnected) return;
         const rect = container.getBoundingClientRect();
-        // Suppress auto-scroll when cursor is outside the sidebar
         const y = this._dnd.lastClientY;
         const x = this._dnd.lastClientX || 0;
-        const insideSidebar = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-        if (!insideSidebar) {
+        if (!this._dndPointerWithinScrollBand(rect, x, y)) {
             this._autoScrollRaf = requestAnimationFrame(() => this._dndAutoScroll());
             return;
         }
-        const ACTIVATE_ZONE   = 56;
-        const DEACTIVATE_ZONE = 76;
         const maxSpeed = 14;
         let scrolled = false;
+        const prevScrollTop = container.scrollTop;
 
         const distTop    = y - rect.top;
         const distBottom = rect.bottom - y;
 
-        // Hysteresis: activate on entering zone, deactivate only after leaving wider zone
-        if (distTop >= 0 && distTop < ACTIVATE_ZONE)    this._dnd.scrollActiveTop = true;
-        if (distTop > DEACTIVATE_ZONE)                  this._dnd.scrollActiveTop = false;
-        if (distBottom >= 0 && distBottom < ACTIVATE_ZONE) this._dnd.scrollActiveBottom = true;
-        if (distBottom > DEACTIVATE_ZONE)               this._dnd.scrollActiveBottom = false;
-
-        if (this._dnd.scrollActiveTop && distTop >= 0) {
-            const intensity = 1 - Math.min(distTop, ACTIVATE_ZONE) / ACTIVATE_ZONE;
-            container.scrollTop -= Math.ceil(maxSpeed * intensity);
-            scrolled = true;
-        } else if (this._dnd.scrollActiveBottom && distBottom >= 0) {
-            const intensity = 1 - Math.min(distBottom, ACTIVATE_ZONE) / ACTIVATE_ZONE;
-            container.scrollTop += Math.ceil(maxSpeed * intensity);
-            scrolled = true;
+        // Hysteresis: activate on entering zone, deactivate only after leaving a wider band.
+        if (distTop < this.DND_EDGE_SCROLL_ZONE_PX && distTop >= -this.DND_EDGE_SCROLL_OUTSIDE_PX) {
+            this._dnd.scrollActiveTop = true;
+        }
+        if (distTop > this.DND_EDGE_SCROLL_RELEASE_PX || distTop < -this.DND_EDGE_SCROLL_OUTSIDE_PX) {
+            this._dnd.scrollActiveTop = false;
+        }
+        if (distBottom < this.DND_EDGE_SCROLL_ZONE_PX && distBottom >= -this.DND_EDGE_SCROLL_OUTSIDE_PX) {
+            this._dnd.scrollActiveBottom = true;
+        }
+        if (distBottom > this.DND_EDGE_SCROLL_RELEASE_PX || distBottom < -this.DND_EDGE_SCROLL_OUTSIDE_PX) {
+            this._dnd.scrollActiveBottom = false;
         }
 
-        // Keep the drop indicator in sync when the list scrolls
-        if (scrolled && this._dnd.lastTargetRow && !this._dnd.lastTargetRow.isConnected) {
-            if (this._dnd.nestOverlay) this._dnd.nestOverlay.style.opacity = '0';
-            if (this._dnd.placeholder) this._dnd.placeholder.style.opacity = '0';
-            this._dnd.lastTargetRow = null;
-            this._dnd.lastInsertType = null;
-        } else if (scrolled && this._dnd.nestOverlay && this._dnd.lastTargetRow && this._dnd.lastInsertType === 'nest') {
-            this._dndUpdateNestOverlay(this._dnd.lastTargetRow);
-        } else if (scrolled && this._dnd.placeholder && this._dnd.lastTargetRow && this._dnd.lastInsertType !== 'nest') {
-            const rowRect = this._dnd.lastTargetRow.getBoundingClientRect();
-            let barTop;
-            if (this._dnd.lastInsertType === 'before') {
-                const prevRow = this._dndPrevVisibleRow(this._dnd.lastTargetRow);
-                barTop = prevRow
-                    ? this._dndInsertionLineTop((prevRow.getBoundingClientRect().bottom + rowRect.top) / 2)
-                    : this._dndInsertionLineTop(rowRect.top);
-            } else {
-                const nextRow = this._dndNextVisibleRow(this._dnd.lastTargetRow);
-                barTop = nextRow
-                    ? this._dndInsertionLineTop((rowRect.bottom + nextRow.getBoundingClientRect().top) / 2)
-                    : this._dndInsertionLineTop(rowRect.bottom);
-            }
-            this._dndUpdatePlaceholder(barTop, this._dnd.lastTargetRow);
+        if (this._dnd.scrollActiveTop) {
+            const clampedTop = Math.max(-this.DND_EDGE_SCROLL_OUTSIDE_PX, Math.min(distTop, this.DND_EDGE_SCROLL_ZONE_PX));
+            const intensity = 1 - ((clampedTop + this.DND_EDGE_SCROLL_OUTSIDE_PX) / (this.DND_EDGE_SCROLL_ZONE_PX + this.DND_EDGE_SCROLL_OUTSIDE_PX));
+            container.scrollTop -= Math.ceil(maxSpeed * intensity);
+        } else if (this._dnd.scrollActiveBottom) {
+            const clampedBottom = Math.max(-this.DND_EDGE_SCROLL_OUTSIDE_PX, Math.min(distBottom, this.DND_EDGE_SCROLL_ZONE_PX));
+            const intensity = 1 - ((clampedBottom + this.DND_EDGE_SCROLL_OUTSIDE_PX) / (this.DND_EDGE_SCROLL_ZONE_PX + this.DND_EDGE_SCROLL_OUTSIDE_PX));
+            container.scrollTop += Math.ceil(maxSpeed * intensity);
+        }
+        scrolled = Math.abs(container.scrollTop - prevScrollTop) > 0.5;
+
+        // Re-run drop targeting against the newly scrolled layout even when the pointer
+        // itself has not moved, otherwise the ghost can jitter at the edge.
+        if (scrolled) {
+            this._dndMove(
+                {
+                    clientX: this._dnd.lastClientX,
+                    clientY: this._dnd.lastClientY,
+                    preventDefault() {},
+                },
+                {
+                    skipGhostPosition: true,
+                    skipVelocityTracking: true,
+                    forceRefreshLayout: true,
+                }
+            );
         }
 
         this._autoScrollRaf = requestAnimationFrame(() => this._dndAutoScroll());
     },
 
     /** Handles pointer movement during drag — moves ghost and shows drop indicator via CSS classes. */
-    _dndMove: function (e) {
+    _dndMove: function (e, options) {
         if (!this._dnd) return;
         e.preventDefault();
+        const opts = options || {};
 
         // Refresh sourceRow(s) if DOM was re-rendered by hover-expand
         if (this._dnd.sourceRow && !this._dnd.sourceRow.isConnected) {
@@ -1500,14 +1792,14 @@ window.OnigiriEngine = {
         this._dnd.lastClientY = e.clientY;
 
         // Ghost follows cursor freely in both axes
-        ghostEl.style.top  = (e.clientY - offsetY) + 'px';
-        ghostEl.style.left = (e.clientX - offsetX) + 'px';
+        if (!opts.skipGhostPosition) {
+            ghostEl.style.top  = (e.clientY - offsetY) + 'px';
+            ghostEl.style.left = (e.clientX - offsetX) + 'px';
+        }
 
         // If cursor is outside the sidebar, suppress all drop indicators
         const containerRect = this.deckListContainer.getBoundingClientRect();
-        const insideSidebar = e.clientX >= containerRect.left && e.clientX <= containerRect.right &&
-                              e.clientY >= containerRect.top  && e.clientY <= containerRect.bottom;
-        if (!insideSidebar) {
+        if (!this._dndPointerWithinScrollBand(containerRect, e.clientX, e.clientY)) {
             document.body.classList.remove('fast-dragging');
             this._dndEnterNoOpState();
             return;
@@ -1516,13 +1808,15 @@ window.OnigiriEngine = {
         const GAP = 22; // must match CSS padding value
 
         // --- Velocity: fast drags get instant gap snap, slow drags get easing ---
-        const now = performance.now();
-        const dt  = now - this._dnd.lastMoveTime;
-        const vel = dt > 0 ? Math.abs(e.clientY - this._dnd.lastMoveY) / dt * 1000 : 0;
-        this._dnd.lastMoveTime = now;
-        this._dnd.lastMoveY    = e.clientY;
-        if (vel > 220) { document.body.classList.add('fast-dragging'); }
-        else           { document.body.classList.remove('fast-dragging'); }
+        if (!opts.skipVelocityTracking) {
+            const now = performance.now();
+            const dt  = now - this._dnd.lastMoveTime;
+            const vel = dt > 0 ? Math.abs(e.clientY - this._dnd.lastMoveY) / dt * 1000 : 0;
+            this._dnd.lastMoveTime = now;
+            this._dnd.lastMoveY    = e.clientY;
+            if (vel > 220) { document.body.classList.add('fast-dragging'); }
+            else           { document.body.classList.remove('fast-dragging'); }
+        }
 
         // --- Find target row ---
         const allRows = this.deckListContainer.querySelectorAll('tr.deck[data-did]');
@@ -1653,7 +1947,7 @@ window.OnigiriEngine = {
         }
 
         // Skip if nothing changed
-        if (targetRow === this._dnd.lastTargetRow && insertType === this._dnd.lastInsertType) return;
+        if (!opts.forceRefreshLayout && targetRow === this._dnd.lastTargetRow && insertType === this._dnd.lastInsertType) return;
 
         if (this._dndIsNoOpDrop(targetRow, insertType)) {
             this._dndEnterNoOpState();
@@ -1742,6 +2036,7 @@ window.OnigiriEngine = {
             `left:${anchorLeft - 2}px`,
             `width:${containerRect.right - anchorLeft - 4}px`,
             `height:${targetRect.height}px`,
+            `border-radius:${this.deckRowRadiusCssValue()}`,
             'opacity:1',
         ].join(';');
         return true;
@@ -1885,10 +2180,11 @@ window.OnigiriEngine = {
         const lineWidth = this._dndSnapCssPixel(width);
         const lineHeight = this._dndInsertionLineHeight();
         if (this._dnd.placeholder) {
-            this._dnd.placeholder.style.top   = lineTop + 'px';
-            this._dnd.placeholder.style.left  = lineLeft + 'px';
+            this._dnd.placeholder.style.top = lineTop + 'px';
+            this._dnd.placeholder.style.left = lineLeft + 'px';
             this._dnd.placeholder.style.width = lineWidth + 'px';
             this._dnd.placeholder.style.height = lineHeight + 'px';
+            this._dnd.placeholder.style.borderRadius = '2px';
             this._dnd.placeholder.style.opacity = '1';
         } else {
             this._dnd.placeholder = this._dndMakePlaceholder(lineTop, targetRow);
@@ -1905,7 +2201,7 @@ window.OnigiriEngine = {
         const lineHeight = this._dndInsertionLineHeight();
         const line = document.createElement('div');
         line.className = 'dnd-placeholder';
-        line.style.cssText = `left:${lineLeft}px;width:${lineWidth}px;top:${lineTop}px;height:${lineHeight}px;`;
+        line.style.cssText = `left:${lineLeft}px;width:${lineWidth}px;top:${lineTop}px;height:${lineHeight}px;border-radius:2px;`;
         document.body.appendChild(line);
         return line;
     },
@@ -2103,6 +2399,7 @@ window.OnigiriEngine = {
             if (typeof window.updateDeckLayouts === 'function') {
                 window.updateDeckLayouts();
             }
+            this.scheduleDeckNameOverflowRefresh();
         });
 
         observer.observe(this.deckListContainer, {
@@ -2313,13 +2610,11 @@ window.OnigiriEngine = {
         if (typeof window.closeOnigiriCollapsedMoreMenu === 'function') {
             window.closeOnigiriCollapsedMoreMenu();
         }
+        this._clearHoverSubmenus();
 
         const menu = document.getElementById('onigiri-ellipsis-menu');
         const wasOpen = !!menu;
         if (menu) menu.remove();
-
-        const sub = document.getElementById('onigiri-ellipsis-submenu');
-        if (sub) sub.remove();
 
         document.querySelectorAll('.onigiri-ellipsis-toolbar-btn.is-open').forEach(b => b.classList.remove('is-open'));
         if (wasOpen) pycmd('onigiri_ui_close');
@@ -2398,13 +2693,11 @@ window.OnigiriEngine = {
         if (typeof window.closeOnigiriCollapsedMoreMenu === 'function') {
             window.closeOnigiriCollapsedMoreMenu();
         }
+        this._clearHoverSubmenus();
 
         const menu = document.getElementById('onigiri-ctx-menu');
         const wasOpen = !!menu || document.body.classList.contains('ctx-menu-open');
         if (menu) menu.remove();
-
-        const sub = document.getElementById('onigiri-mark-submenu');
-        if (sub) sub.remove();
 
         document.querySelectorAll('tr.deck.ctx-row-active').forEach(r => r.classList.remove('ctx-row-active'));
         this._clearHoveredRow();
@@ -2572,9 +2865,8 @@ window.OnigiriEngine = {
         menu.id = 'onigiri-ctx-menu';
 
         const _menuCleanup = () => {
+            this._clearHoverSubmenus();
             menu.remove();
-            const ms = document.getElementById('onigiri-mark-submenu');
-            if (ms) ms.remove();
             document.querySelectorAll('tr.deck.ctx-row-active').forEach(r => r.classList.remove('ctx-row-active'));
             this._clearHoveredRow();
             this._suppressNextHoverRestore = true;
@@ -2610,19 +2902,10 @@ window.OnigiriEngine = {
                     chev.textContent = '›';
                     el.appendChild(chev);
 
-                    // Build sub-panel
-                    let _markSubTimer = null;
-                    const removeMarkSub = () => {
-                        if (_markSubTimer) { clearTimeout(_markSubTimer); _markSubTimer = null; }
-                        const s = document.getElementById('onigiri-mark-submenu');
-                        if (s) s.remove();
-                    };
-                    const buildMarkSub = () => {
-                        if (_markSubTimer) { clearTimeout(_markSubTimer); _markSubTimer = null; }
-                        const existing = document.getElementById('onigiri-mark-submenu');
-                        if (existing) return;
+                    this._attachHoverSubmenu(el, {
+                        submenuId: 'onigiri-mark-submenu',
+                        buildSubmenu: () => {
                         const sub = document.createElement('div');
-                        sub.id = 'onigiri-mark-submenu';
                         sub.style.cssText = 'position:fixed;z-index:100001;min-width:160px;border-radius:12px;padding:5px;background:var(--canvas-overlay);border:1px solid var(--border);box-shadow:0 6px 24px rgba(0,0,0,0.18);will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);';
                         // Colour items
                         MARK_COLORS.forEach(mc => {
@@ -2676,29 +2959,8 @@ window.OnigiriEngine = {
                             });
                             sub.appendChild(si);
                         }
-                        // Cancel hide-timer when cursor enters submenu
-                        sub.addEventListener('mouseenter', () => {
-                            if (_markSubTimer) { clearTimeout(_markSubTimer); _markSubTimer = null; }
-                        });
-                        sub.addEventListener('mouseleave', () => {
-                            _markSubTimer = setTimeout(removeMarkSub, 120);
-                        });
-                        // Position: right of the menu item
-                        const elR = el.getBoundingClientRect();
-                        sub.style.top  = elR.top + 'px';
-                        sub.style.left = (elR.right + 4) + 'px';
-                        document.body.appendChild(sub);
-                        requestAnimationFrame(() => {
-                            const sr = sub.getBoundingClientRect();
-                            if (sr.right > window.innerWidth) sub.style.left = (elR.left - sr.width - 4) + 'px';
-                            if (sr.bottom > window.innerHeight) sub.style.top = (elR.bottom - sr.height) + 'px';
-                        });
-                    };
-                    el.addEventListener('mouseenter', buildMarkSub);
-                    el.addEventListener('mouseleave', (e) => {
-                        const sub = document.getElementById('onigiri-mark-submenu');
-                        if (sub && sub.contains(e.relatedTarget)) return;
-                        _markSubTimer = setTimeout(removeMarkSub, 120);
+                        return sub;
+                        },
                     });
                     menu.appendChild(el);
                     return;
@@ -2712,9 +2974,8 @@ window.OnigiriEngine = {
                 el.appendChild(span);
                 el.addEventListener('click', () => {
                     if (item.isModal) {
+                        this._clearHoverSubmenus();
                         menu.remove();
-                        const ms = document.getElementById('onigiri-mark-submenu');
-                        if (ms) ms.remove();
                         document.body.classList.remove('ctx-menu-open');
                         this._clearHoveredRow();
                         this._suppressNextHoverRestore = true;
@@ -2836,9 +3097,8 @@ window.OnigiriEngine = {
         menu.id = 'onigiri-ctx-menu';
 
         const _menuCleanup = () => {
+            this._clearHoverSubmenus();
             menu.remove();
-            const ms = document.getElementById('onigiri-mark-submenu');
-            if (ms) ms.remove();
             document.querySelectorAll('tr.deck.ctx-row-active').forEach(r => r.classList.remove('ctx-row-active'));
             this._clearHoveredRow();
             this._suppressNextHoverRestore = true;
@@ -2873,18 +3133,10 @@ window.OnigiriEngine = {
                     chev.textContent = '›';
                     el.appendChild(chev);
 
-                    let _markSubTimer = null;
-                    const removeMarkSub = () => {
-                        if (_markSubTimer) { clearTimeout(_markSubTimer); _markSubTimer = null; }
-                        const s = document.getElementById('onigiri-mark-submenu');
-                        if (s) s.remove();
-                    };
-                    const buildMarkSub = () => {
-                        if (_markSubTimer) { clearTimeout(_markSubTimer); _markSubTimer = null; }
-                        const existing = document.getElementById('onigiri-mark-submenu');
-                        if (existing) return;
+                    this._attachHoverSubmenu(el, {
+                        submenuId: 'onigiri-mark-submenu',
+                        buildSubmenu: () => {
                         const sub = document.createElement('div');
-                        sub.id = 'onigiri-mark-submenu';
                         sub.style.cssText = 'position:fixed;z-index:100001;min-width:160px;border-radius:12px;padding:5px;background:var(--canvas-overlay);border:1px solid var(--border);box-shadow:0 6px 24px rgba(0,0,0,0.18);will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);';
                         MARK_COLORS.forEach(mc => {
                             const si = document.createElement('div');
@@ -2943,21 +3195,8 @@ window.OnigiriEngine = {
                             });
                             sub.appendChild(rm);
                         }
-                        const elR = el.getBoundingClientRect();
-                        sub.style.top = elR.top + 'px';
-                        sub.style.left = (elR.right + 4) + 'px';
-                        document.body.appendChild(sub);
-                        requestAnimationFrame(() => {
-                            const sr = sub.getBoundingClientRect();
-                            if (sr.right > window.innerWidth) sub.style.left = (elR.left - sr.width - 4) + 'px';
-                            if (sr.bottom > window.innerHeight) sub.style.top = (elR.bottom - sr.height) + 'px';
-                        });
-                    };
-                    el.addEventListener('mouseenter', buildMarkSub);
-                    el.addEventListener('mouseleave', (e) => {
-                        const sub = document.getElementById('onigiri-mark-submenu');
-                        if (sub && sub.contains(e.relatedTarget)) return;
-                        _markSubTimer = setTimeout(removeMarkSub, 120);
+                        return sub;
+                        },
                     });
                     menu.appendChild(el);
                     return;
@@ -2970,9 +3209,8 @@ window.OnigiriEngine = {
                 el.appendChild(span);
                 el.addEventListener('click', () => {
                     if (item.isModal) {
+                        this._clearHoverSubmenus();
                         menu.remove();
-                        const ms = document.getElementById('onigiri-mark-submenu');
-                        if (ms) ms.remove();
                         document.body.classList.remove('ctx-menu-open');
                         this._clearHoveredRow();
                         this._suppressNextHoverRestore = true;
@@ -3160,9 +3398,8 @@ window.OnigiriEngine = {
         }
         makeIcon = makeIcon.bind(this);
 
-        function closeSubmenus() {
-            const s = document.getElementById('onigiri-ellipsis-submenu');
-            if (s) s.remove();
+        function closeSubmenus(exceptCleanup, preserveRegistry) {
+            OnigiriEngine._clearHoverSubmenus(exceptCleanup, preserveRegistry);
         }
 
         function closeAll() {
@@ -3211,13 +3448,11 @@ window.OnigiriEngine = {
                 chevron.textContent = '›';
                 item.appendChild(chevron);
 
-                let hideTimer = null;
-                function showSub() {
-                    clearTimeout(hideTimer);
-                    closeSubmenus();
-
+                this._attachHoverSubmenu(item, {
+                    submenuId: 'onigiri-ellipsis-submenu',
+                    closeOtherSubmenus: closeSubmenus,
+                    buildSubmenu: () => {
                     const sub = document.createElement('div');
-                    sub.id = 'onigiri-ellipsis-submenu';
 
                     action.children.forEach(function(child) {
                         if (child.type === 'divider') {
@@ -3250,24 +3485,8 @@ window.OnigiriEngine = {
                         sub.appendChild(ci);
                     });
 
-                    const r = item.getBoundingClientRect();
-                    sub.style.position = 'fixed';
-                    sub.style.top  = r.top + 'px';
-                    sub.style.left = (r.right + 6) + 'px';
-                    document.body.appendChild(sub);
-
-                    sub.addEventListener('mouseenter', function() { clearTimeout(hideTimer); });
-                    sub.addEventListener('mouseleave', function() {
-                        hideTimer = setTimeout(closeSubmenus, 120);
-                    });
-                }
-
-                item.addEventListener('mouseenter', showSub);
-                item.addEventListener('mouseleave', function(e) {
-                    hideTimer = setTimeout(function() {
-                        const sub = document.getElementById('onigiri-ellipsis-submenu');
-                        if (sub && !sub.matches(':hover')) closeSubmenus();
-                    }, 120);
+                    return sub;
+                    },
                 });
             } else {
                 item.addEventListener('click', function() {

@@ -514,6 +514,13 @@
         if (!header) return;
         const label = header.querySelector('h2');
         if (!label) return;
+        const container = document.querySelector('.container.modern-main-menu');
+        if (!container) return;
+        const CYCLE_STATE_KEY = 'onigiri_decks_header_cycle_state';
+
+        if (!sidebar.dataset.onigiriBaseSidebarOnly) {
+            sidebar.dataset.onigiriBaseSidebarOnly = sidebar.classList.contains('sidebar-only-mode') ? '1' : '0';
+        }
 
         document.querySelectorAll('.deck-focus-btn, .deck-header-focus-btn').forEach(btn => btn.remove());
         label.classList.add('deck-focus-label');
@@ -521,37 +528,89 @@
         label.setAttribute('tabindex', '0');
         label.title = 'Focus on Decks';
 
-        const applyState = (isFocused) => {
-            header.classList.toggle('deck-focus-active', isFocused);
+        const saveCycleState = (state) => {
+            try {
+                sessionStorage.setItem(CYCLE_STATE_KEY, String(state));
+            } catch (_) {}
         };
 
-        const toggleFocus = (e) => {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            const isFocused = sidebar.classList.toggle('deck-focus-mode');
-            applyState(isFocused);
-            if (typeof label.blur === 'function') label.blur();
+        const restoreBaseSidebarOnly = () => {
+            sidebar.classList.toggle('sidebar-only-mode', sidebar.dataset.onigiriBaseSidebarOnly === '1');
+        };
 
-            updateDeckFocusLayout();
-            requestAnimationFrame(alignSidebarToolbarToDeckHeader);
-
+        const saveFocusState = (isFocused) => {
             if (typeof pycmd === 'function') {
                 pycmd(`saveDeckFocusState:${isFocused}`);
             }
         };
 
+        const applyDeckHeaderState = (state, options) => {
+            const opts = options || {};
+            const nextState = Number.isFinite(state) ? Math.max(0, Math.min(3, state)) : 0;
+            const isFocusMode = nextState === 1 || nextState === 2;
+            const isTemporarySidebarOnly = nextState === 2 || nextState === 3;
+
+            sidebar.classList.toggle('deck-focus-mode', isFocusMode);
+            container.classList.toggle('onigiri-cycle-sidebar-only', isTemporarySidebarOnly);
+            if (isTemporarySidebarOnly) {
+                sidebar.classList.add('sidebar-only-mode');
+            } else {
+                restoreBaseSidebarOnly();
+            }
+
+            header.classList.toggle('deck-focus-active', isFocusMode);
+            header.dataset.onigiriDeckCycleState = String(nextState);
+            saveCycleState(nextState);
+
+            if (typeof label.blur === 'function') label.blur();
+            updateDeckFocusLayout();
+            requestAnimationFrame(alignSidebarToolbarToDeckHeader);
+            requestAnimationFrame(updateSidebarOverflowState);
+            if (window.OnigiriEngine && typeof window.OnigiriEngine.scheduleDeckNameOverflowRefresh === 'function') {
+                window.OnigiriEngine.scheduleDeckNameOverflowRefresh();
+            }
+
+            if (opts.persistFocus !== false) {
+                saveFocusState(isFocusMode);
+            }
+        };
+
+        const currentDeckHeaderState = () => {
+            if (container.classList.contains('onigiri-cycle-sidebar-only')) {
+                return sidebar.classList.contains('deck-focus-mode') ? 2 : 3;
+            }
+            return sidebar.classList.contains('deck-focus-mode') ? 1 : 0;
+        };
+
+        const cycleDeckHeaderState = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            applyDeckHeaderState((currentDeckHeaderState() + 1) % 4);
+        };
+
         if (!label.dataset.onigiriFocusToggleBound) {
             label.dataset.onigiriFocusToggleBound = 'true';
-            label.addEventListener('click', toggleFocus);
+            label.addEventListener('click', cycleDeckHeaderState);
             label.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
-                toggleFocus(e);
+                cycleDeckHeaderState(e);
             });
         }
 
-        applyState(sidebar.classList.contains('deck-focus-mode'));
+        let restoredState = sidebar.classList.contains('deck-focus-mode') ? 1 : 0;
+        try {
+            const storedState = Number.parseInt(sessionStorage.getItem(CYCLE_STATE_KEY) || '', 10);
+            if (storedState === 2 || storedState === 3) {
+                restoredState = storedState;
+            } else if (storedState === 1 && sidebar.classList.contains('deck-focus-mode')) {
+                restoredState = 1;
+            } else if (storedState === 0 && !sidebar.classList.contains('deck-focus-mode')) {
+                restoredState = 0;
+            }
+        } catch (_) {}
+        applyDeckHeaderState(restoredState, { persistFocus: false });
     }
 
     function setupResizeHandle() {
@@ -592,6 +651,12 @@
                 lastWidth = newWidth;
                 if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
                     window.onigiriUpdateSidebarEdgeToggle();
+                }
+                if (typeof window.updateDeckLayouts === 'function') {
+                    window.updateDeckLayouts();
+                }
+                if (window.OnigiriEngine && typeof window.OnigiriEngine.scheduleDeckNameOverflowRefresh === 'function') {
+                    window.OnigiriEngine.scheduleDeckNameOverflowRefresh();
                 }
             }
             animationFrameId = null;
@@ -645,6 +710,12 @@
                 setSidebarFixedWidth(finalWidth);
                 if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
                     window.onigiriUpdateSidebarEdgeToggle();
+                }
+                if (typeof window.updateDeckLayouts === 'function') {
+                    window.updateDeckLayouts();
+                }
+                if (window.OnigiriEngine && typeof window.OnigiriEngine.scheduleDeckNameOverflowRefresh === 'function') {
+                    window.OnigiriEngine.scheduleDeckNameOverflowRefresh();
                 }
                 if (typeof pycmd === 'function') pycmd(`saveSidebarWidth:${finalWidth}`);
             }
