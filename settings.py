@@ -25,7 +25,6 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtCore import QUrl, QPropertyAnimation, QEasingCurve, QRegularExpression
 from PyQt6.QtGui import QDesktopServices, QLinearGradient, QRegularExpressionValidator, QMouseEvent, QRegion, QGuiApplication, QCursor, QIntValidator
 
-from aqt import mw
 from aqt import mw, gui_hooks   
 from aqt.theme import theme_manager
 from typing import Union

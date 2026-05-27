@@ -15,7 +15,6 @@ DEFAULTS = {
 from aqt import mw, gui_hooks
 from aqt.qt import *
 import aqt
-from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
 from aqt.webview import AnkiWebView
 from aqt.deckbrowser import DeckBrowser
@@ -23,12 +22,7 @@ from aqt.main import MainWebView
 from aqt.utils import tr
 from aqt.overview import Overview
 from aqt.reviewer import Reviewer
-import os
-import json
 import time
-import re
-import html
-import base64
 import random
 import math
 import webbrowser
@@ -44,7 +38,6 @@ from .gamification import restaurant_level
 from . import settings, heatmap, fonts, gamification_settings
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
-from . import deck_tree_updater
 from .gamification import focus_dango
 from .constants import COLOR_LABELS
 from .gamification.restaurant_level_ui import RestaurantLevelWidget
