@@ -886,7 +886,7 @@ custom_body_template = """
         flex-shrink: 1;
         min-width: 0;
         padding: 6px 8px;
-        border-radius: 4px;
+        border-radius: 8px;
         display: block;
         overflow: hidden;
         text-overflow: ellipsis;

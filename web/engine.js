@@ -124,6 +124,10 @@ window.OnigiriEngine = {
         this._endOverrideState('dialog-focus');
         this._clearHoveredRow();
         this._suppressNextHoverRestore = true;
+        // Reset the flag immediately to allow hover to work after dialog closes
+        requestAnimationFrame(() => {
+            this._suppressNextHoverRestore = false;
+        });
     },
 
     clearDeckOpenTimers: function () {
@@ -3334,8 +3338,11 @@ window.OnigiriIconChooser = (function () {
         if (bd) {
             bd.remove();
             document.querySelectorAll('tr.deck.ctx-row-active').forEach(function (r) { r.classList.remove('ctx-row-active'); });
-            if (!skipRestore && typeof OnigiriEngine !== 'undefined') {
-                OnigiriEngine._applyMultiSelectionStyles();
+            if (typeof OnigiriEngine !== 'undefined') {
+                if (!skipRestore) {
+                    OnigiriEngine._applyMultiSelectionStyles();
+                }
+                OnigiriEngine.clearDialogFocus();
             }
             pycmd('onigiri_ui_close');
         }
@@ -5741,6 +5748,7 @@ window.OnigiriIconChooser = (function () {
             _close(true);
             if (typeof OnigiriEngine !== 'undefined') {
                 OnigiriEngine._clearAllRowVisualStates();
+                OnigiriEngine._beginOverrideState('dialog-focus');
                 var row = document.querySelector('tr.deck[data-did="' + data.deckId + '"]');
                 if (row) row.classList.add('ctx-row-active');
             }
