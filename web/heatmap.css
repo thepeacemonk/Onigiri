@@ -21,18 +21,16 @@
     justify-content: center;
 }
 
-/* --- Nav bar — absolute top-left; year selector + streak sit side-by-side inside --- */
+/* --- Nav bar — absolute top, fixed position for all views --- */
 .onigiri-heatmap-header {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    right: 15px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: -20px;
-    margin-bottom: 0;
-    flex-wrap: nowrap;
     gap: 6px;
-    width: 100%;
-    min-width: 0;
-    padding-top: 0;
 }
 
 .onigiri-heatmap-header .header-left,
@@ -40,7 +38,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: nowrap;
 }
 
 .onigiri-heatmap-header .header-left {
@@ -50,7 +47,6 @@
 
 .onigiri-heatmap-header .header-right {
     flex: 0 0 auto;
-    margin-left: auto;
 }
 
 
@@ -156,7 +152,26 @@
 }
 
 /* --- Filter Buttons (Fixed Height) --- */
+.heatmap-filters {
+    position: relative;
+}
+
+.filter-indicator {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: calc(var(--heatmap-control-height) - 8px);
+    background-color: rgba(128, 128, 128, 0.18);
+    border-radius: 6px;
+    pointer-events: none;
+    transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+}
+
 .filter-btn {
+    position: relative;
+    z-index: 1;
     border: none;
     background-color: transparent;
     background-image: none !important;
@@ -185,17 +200,15 @@
 .filter-btn:focus-visible,
 .filter-btn:active {
     border: none;
-    background-color: rgba(128, 128, 128, 0.18);
+    background-color: transparent;
     background-image: none !important;
     color: var(--fg);
     box-shadow: none !important;
     filter: none !important;
     text-shadow: none !important;
-    opacity: 1;
 }
 
 .filter-btn.active {
-    background-color: rgba(128, 128, 128, 0.18);
     color: var(--heatmap-control-fg);
     font-weight: 600;
     box-shadow: none !important;
@@ -223,6 +236,7 @@
     line-height: 0;
     -webkit-appearance: none;
     appearance: none;
+    transition: background-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
 }
 
 .nav-btn:hover,
@@ -236,9 +250,12 @@
     box-shadow: none !important;
     color: var(--heatmap-control-fg);
     opacity: 1;
-    transform: none;
     filter: none !important;
     text-shadow: none !important;
+}
+
+.nav-btn:active {
+    transform: translateY(1px);
 }
 
 .nav-btn .heatmap-ui-icon,
@@ -360,9 +377,12 @@
     font-weight: 600;
 }
 
-/* --- Grid — pushed down to clear the absolute nav bar --- */
-.heatmap-grid {
-    margin-top: 22px;
+/* --- Viewport — wraps grid and enables slide transitions --- */
+.heatmap-viewport {
+    margin-top: 40px;
+    overflow: hidden;
+    position: relative;
+    width: 100%;
 }
 
 /* --- Base Grid and Cells --- */
