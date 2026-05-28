@@ -11,11 +11,6 @@
         highlightRaf: 0
     };
 
-    function css(el, value) {
-        el.style.cssText = value;
-        return el;
-    }
-
     function addCleanup(fn) {
         state.cleanupFns.push(fn);
     }
@@ -27,11 +22,19 @@
         }
     }
 
+    function resolveIconUrl(iconRef) {
+        var url = String(iconRef || '');
+        if (!url) return '';
+        if (url.indexOf('/') !== -1) return url;
+        if (window.OnigiriEngine && typeof OnigiriEngine.systemIconUrl === 'function') {
+            return OnigiriEngine.systemIconUrl(url);
+        }
+        return url;
+    }
+
     function makeIcon(iconRef, className, size, color) {
         if (window.OnigiriEngine && typeof OnigiriEngine.createMaskIcon === 'function') {
-            var iconUrl = String(iconRef || '');
-            if (iconUrl.indexOf('/') === -1) iconUrl = OnigiriEngine.systemIconUrl(iconUrl);
-            return OnigiriEngine.createMaskIcon(iconUrl, {
+            return OnigiriEngine.createMaskIcon(resolveIconUrl(iconRef), {
                 className: className || 'onigiri-move-icon',
                 size: size || 16,
                 color: color || 'currentColor'
@@ -226,15 +229,6 @@
         warmup.getBoundingClientRect();
     }
 
-    function preloadIcons() {
-        var urls = ['move_deck.svg', 'cancel.svg', 'search.svg', 'deck.svg', 'subdeck.svg', 'folder.svg', 'filtered_deck.svg']
-            .map(resolveIconUrl)
-            .filter(Boolean);
-        if (window.OnigiriEngine && typeof OnigiriEngine.preloadMaskIcons === 'function') {
-            OnigiriEngine.preloadMaskIcons(urls);
-        }
-    }
-
     ensureStyles();
     state.preloadedIcons = preloadCommonIcons();
     warmDialogSurface();
@@ -337,11 +331,6 @@
             var row = document.createElement('div');
             row.className = 'onigiri-move-row';
             row.dataset.destinationId = String(dest.id);
-            row.dataset.searchText = [
-                dest.name || '',
-                dest.path || '',
-                dest.reason || ''
-            ].join(' ').toLowerCase();
             if (dest.disabled) row.classList.add('is-disabled');
 
             var iconWrap = document.createElement('div');
@@ -439,7 +428,6 @@
         state.busy = false;
         state.hoverId = null;
         state.highlightRaf = 0;
-        preloadIcons();
 
         var backdrop = document.createElement('div');
         backdrop.id = 'onigiri-move-backdrop';

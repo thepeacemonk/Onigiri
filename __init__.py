@@ -159,6 +159,8 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/rename_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/move_to_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/add_subdeck_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/create_deck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         

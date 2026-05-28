@@ -6,7 +6,6 @@ from urllib.parse import unquote
 from aqt.deckbrowser import DeckBrowser
 from . import deck_tree_updater
 from . import deck_drag_drop
-from . import create_deck_dialog
 from . import move_deck
 from aqt import mw
 from aqt.qt import QFileDialog
@@ -80,6 +79,72 @@ def _conf_list(key: str) -> List[str]:
     return [str(value) for value in mw.col.conf.get(key, [])]
 
 
+def _build_create_deck_payload() -> dict:
+    """Build the data payload for the Create New Deck web dialog."""
+    from .constants import ICON_DEFAULTS
+
+    deck_names = deck_drag_drop._deck_names_by_id()
+    addon_package = mw.addonManager.addonFromModule(__name__)
+    icon_cache = {}
+
+    def icon_url(icon_key: str) -> str:
+        if icon_key not in icon_cache:
+            filename = mw.col.conf.get(f"modern_menu_icon_{icon_key}", "")
+            if filename:
+                icon_cache[icon_key] = f"/_addons/{addon_package}/user_files/icons/{filename}"
+            else:
+                system_filename = ICON_DEFAULTS.get(icon_key, f"{icon_key}.svg")
+                icon_cache[icon_key] = f"/_addons/{addon_package}/system_files/system_icons/{system_filename}"
+        return icon_cache[icon_key]
+
+    # Build folder names set
+    folder_names = set()
+    for name in deck_names.values():
+        parts = name.split("::")
+        for i in range(1, len(parts)):
+            folder_names.add("::".join(parts[:i]))
+
+    # Filter out filtered decks
+    filtered_ids = set()
+    try:
+        for deck in mw.col.decks.all():
+            if deck.get("dyn", 0):
+                did = str(int(deck.get("id", 0)))
+                if did and did != "0":
+                    filtered_ids.add(did)
+    except Exception:
+        pass
+
+    destinations = []
+    # Root destination
+    destinations.append({
+        "id": "__root__",
+        "name": "Top level",
+        "path": "Top level",
+        "depth": 0,
+        "kind": "root",
+        "iconUrl": icon_url("folder"),
+    })
+
+    for did, name in sorted(deck_names.items(), key=lambda item: (item[1].count("::"), item[1].lower())):
+        if did in filtered_ids:
+            continue
+        if "::" in name:
+            icon_key = "subdeck"
+        else:
+            icon_key = "deck"
+        if name in folder_names:
+            icon_key = "folder"
+        destinations.append({
+            "id": did,
+            "name": deck_drag_drop._leaf_name(name),
+            "path": name,
+            "depth": name.count("::"),
+            "kind": "deck",
+            "iconUrl": icon_url(icon_key),
+        })
+
+    return {"destinations": destinations}
 
 
 def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bool, Any]:
@@ -132,20 +197,17 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd == "onigiri_create_deck":
         try:
-             # tooltip("Debug: Opening Create Deck Dialog...")
-             if not hasattr(create_deck_dialog, 'CreateDeckDialog'):
-                 tooltip("Error: CreateDeckDialog class not found in module.")
-                 return (True, None)
-
-             dialog = create_deck_dialog.CreateDeckDialog(mw)
-             dialog.exec()
-             return (True, None) # Handled
+            payload = _build_create_deck_payload()
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriCreateDeckDialog)OnigiriCreateDeckDialog.open(%s);"
+                    % json.dumps(payload, ensure_ascii=True)
+                )
         except Exception as e:
-             import traceback
-             error_msg = f"Onigiri Error: {str(e)}\n{traceback.format_exc()}"
-             print(error_msg)
-             tooltip(f"Error showing create deck dialog: {e}")
-             return (True, None)
+            tooltip(f"Could not open Create Deck dialog: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
+        return (True, None)
 
     if cmd == "onigiri_show_sort_dialog":
         sort_dialog.show_sort_dialog()
@@ -421,23 +483,85 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd.startswith("onigiri_ctx_subdeck:"):
         try:
-            from aqt.qt import QInputDialog
             did = cmd.split(":", 1)[1]
             deck = mw.col.decks.get(int(did))
             if not deck:
                 return (True, None)
+            payload = {
+                "deckId": str(did),
+                "parentName": deck["name"],
+            }
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriAddSubdeckDialog)OnigiriAddSubdeckDialog.open(%s);"
+                    % json.dumps(payload, ensure_ascii=True)
+                )
+        except Exception as e:
+            tooltip(f"Could not open Add Subdeck dialog: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
+        return (True, None)
+
+    if cmd.startswith("onigiri_create_subdeck:"):
+        try:
+            payload = json.loads(unquote(cmd.split(":", 1)[1]))
+            did = payload.get("deckId")
+            sub_name = str(payload.get("name") or "").strip()
+            if not sub_name:
+                raise ValueError("Enter a subdeck name.")
+            deck = mw.col.decks.get(int(did))
+            if not deck:
+                raise ValueError("Parent deck no longer exists.")
             parent_name = deck["name"]
-            sub_name, ok = QInputDialog.getText(mw, "Add Subdeck", f"Subdeck name under '{parent_name}':")
-            if ok and sub_name.strip():
-                full_name = parent_name + "::" + sub_name.strip()
-                mw.col.decks.id(full_name)
-                mw.col.setMod()
-                if isinstance(context, DeckBrowser):
-                    deck_tree_updater.refresh_deck_tree_state(context)
+            full_name = parent_name + "::" + sub_name
+            deck_id = mw.col.decks.id(full_name)
+            mw.col.setMod()
+            mw.col.decks.select(deck_id)
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+                context.web.eval(
+                    "if(window.OnigiriAddSubdeckDialog)OnigiriAddSubdeckDialog.close();"
+                )
+                tooltip(f"Created deck: {full_name}")
         except Exception as e:
             tooltip(f"Create subdeck failed: {e}")
-        if isinstance(context, DeckBrowser):
-            context.web.eval("OnigiriEngine.clearDialogFocus();")
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriAddSubdeckDialog)OnigiriAddSubdeckDialog.showError(%s);"
+                    % json.dumps(f"Create subdeck failed: {e}")
+                )
+        return (True, None)
+
+    if cmd.startswith("onigiri_create_deck_submit:"):
+        try:
+            payload = json.loads(unquote(cmd.split(":", 1)[1]))
+            name = str(payload.get("name") or "").strip()
+            if not name:
+                raise ValueError("Enter a deck name.")
+            parent_did = payload.get("parentDid")
+            if not parent_did or parent_did == "__root__":
+                full_name = name
+            else:
+                parent_deck = mw.col.decks.get(int(parent_did))
+                if not parent_deck:
+                    raise ValueError("Parent deck no longer exists.")
+                full_name = parent_deck["name"] + "::" + name
+            deck_id = mw.col.decks.id(full_name)
+            mw.col.setMod()
+            mw.col.decks.select(deck_id)
+            if isinstance(context, DeckBrowser):
+                deck_tree_updater.refresh_deck_tree_state(context)
+                context.web.eval(
+                    "if(window.OnigiriCreateDeckDialog)OnigiriCreateDeckDialog.close();"
+                )
+                tooltip(f"Created deck: {full_name}")
+        except Exception as e:
+            tooltip(f"Create deck failed: {e}")
+            if isinstance(context, DeckBrowser):
+                context.web.eval(
+                    "if(window.OnigiriCreateDeckDialog)OnigiriCreateDeckDialog.showError(%s);"
+                    % json.dumps(f"Create deck failed: {e}")
+                )
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_copy_id:"):
