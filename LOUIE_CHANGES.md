@@ -36,16 +36,17 @@ Deck actions have been expanded and moved into a cleaner right-click/context men
 
 Supported actions include:
 
-- Add subdeck.
+- Add subdeck using a modern web-based dialog.
+- Create deck using a searchable modern web-based dialog
 - Rename deck using a modern web-based dialog.
 - Move deck using drag-and-drop.
-- Move deck using a searchable web-based destination dialog.
+- Move deck using a searchable modern web-based destination dialog.
 - Edit deck icon using a modern icon picker.
 - Mark decks with coloured dots.
 - Favourite decks, with the favourite limit increased to 10.
 - Archive decks (potential use case: User want to delete deck without losing heatmap history)
 - Copy deck ID.
-- Export deck.
+- Export deck (uses native Anki dialog at present)
 - Delete deck.
 
 ### Deck Organisation
@@ -61,7 +62,7 @@ Added organisation tools:
 - Filter marked decks.
 - Filter favourited decks.
 - Search decks from the sidebar.
-- Search bar padding adjusted for better visual balance.
+- Search bar to search deck names
 
 ### Multi-Select Deck Editing
 
@@ -152,7 +153,7 @@ Changes include:
 - Moved longest streak information into the tooltip.
 - Added smooth transitions between viewing heatmaps for different Years, Months and Days
 - Added a sliding "pill" indicator behind the buttons that physically animates its position and width to the newly active button
-- Navigation arrows now have a tactile `translateY(1px)` press effect on click, matching the `* selected` badge feel.
+- Navigation arrows now have a tactile `translateY(1px)` press effect on click
 
 ---
 
@@ -165,7 +166,7 @@ Changes include:
 - Removed native Anki styling from the Study button.
 - Normalised Study button border radius and text sizing
 - Normalised Click to reveal/hide description button.
-- Study button and reveal/hide button now share the same tactile `translateY(1px)` press effect as the `* selected` badge.
+- Study button and reveal/hide button now share the same tactile `translateY(1px)`
 - Moved study options, description, and deck options into plain top-corner icon buttons.
 - Optimised deck left-click behaviour so opening the overview feels faster.
 
@@ -232,7 +233,7 @@ Areas tested include:
 - Deck searching, sorting, and filtering.
 - Single-deck and multi-deck drag-and-drop.
 - Right-click deck actions.
-- Move, rename, and edit-icon dialogs.
+- Move, rename, create deck, add subdeck and edit-icon dialogs.
 - Heatmap display.
 - Overview page controls.
 - Settings layout and colour/profile/sidebar options
