@@ -24,6 +24,7 @@ from . import heatmap
 from . import sidebar_api
 from .sync import onigiri_sync
 from .sync_ui import show_sync_conflict_dialog
+from . import learner_stats_widget
 
 # --- SHOP INTEGRATION IMPORT ---
 from .gamification.taiyaki_store import open_taiyaki_store
@@ -359,6 +360,9 @@ def setup_global_hooks():
     
     # Install the toolbar bridge AFTER other addons have loaded their hooks
     sidebar_api.ensure_capture_hook_is_last()
+    
+    # Initialize learner stats widgets
+    learner_stats_widget.init()
 
 def on_profile_did_open():
     """

@@ -1,0 +1,104 @@
+# --- Onigiri ---
+# Handles the creation of the top-level Onigiri menu.
+
+import os
+import json
+from aqt import mw
+from . import welcome_dialog
+from aqt.qt import QAction, QMenu
+
+# Import the necessary components from other add-on files
+from . import settings
+from . import patcher
+from .gamification.taiyaki_store import open_taiyaki_store
+from . import credits_dialog
+from .translations import tr
+
+# A module-level variable to hold the addon path, set once on setup.
+_addon_path = None
+
+def get_onigiri_version():
+    """Reads the version from manifest.json file."""
+    global _addon_path
+    if not _addon_path:
+        return "Unknown"
+
+    manifest_path = os.path.join(_addon_path, "manifest.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+            return manifest.get("version", "Unknown")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return "Unknown"
+
+def open_settings(page_index=0):
+    """
+    Opens the Onigiri settings dialog to a specific page and resets the UI upon save.
+    This function now accepts a page_index to open to a specific tab.
+    """
+    global _addon_path
+    if not _addon_path:
+        # This should not happen if setup_onigiri_menu is called correctly.
+        print("Onigiri Error: addon_path not set. Cannot open settings.")
+        return
+        
+    dialog = settings.SettingsDialog(mw, _addon_path, initial_page_index=page_index)
+    if dialog.exec():
+        mw.reset()
+
+def setup_onigiri_menu(addon_path):
+    """
+    Creates and adds the 'Onigiri' top-level menu to Anki's main window.
+    This menu will contain actions for general settings, profile settings, and viewing the profile.
+    """
+    global _addon_path
+    _addon_path = addon_path
+
+    # The function to open the profile page is already defined in the patcher module.
+    open_profile = patcher.show_profile_page
+
+    # Create the top-level menu with the Onigiri icon
+    onigiri_menu = QMenu(tr("onigiri_menu"), mw)
+
+    profile_action = QAction(tr("profile"), mw)
+    profile_action.triggered.connect(open_profile)
+    onigiri_menu.addAction(profile_action)
+
+    # Create Gamification submenu
+    gamification_menu = QMenu(tr("gamification"), mw)
+
+    restaurant_action = QAction(tr("restaurant_level"), mw)
+    restaurant_action.triggered.connect(patcher.open_restaurant_level_dialog)
+    gamification_menu.addAction(restaurant_action)
+
+    store_action = QAction(tr("taiyaki_store"), mw)
+    store_action.triggered.connect(open_taiyaki_store)
+    gamification_menu.addAction(store_action)
+    
+    # Add the Gamification submenu to the main menu
+    onigiri_menu.addMenu(gamification_menu)
+
+    # Create the 'Settings' action (opens settings to General tab, index 0)
+    settings_action = QAction(tr("onigiri_settings"), mw)
+    settings_action.triggered.connect(lambda _: open_settings(0))
+    onigiri_menu.addAction(settings_action)
+
+    onigiri_menu.addSeparator()
+
+    # --- ADD THIS BLOCK ---
+    welcome_action = QAction(tr("welcome_screen"), mw)
+    welcome_action.triggered.connect(welcome_dialog.show_welcome_dialog)
+    onigiri_menu.addAction(welcome_action)
+
+    credits_action = QAction(tr("credits"), mw)
+    credits_action.triggered.connect(credits_dialog.show_credits_dialog)
+    onigiri_menu.addAction(credits_action)
+    # --- END: ADD THIS BLOCK ---
+
+    # Add version info at the bottom (disabled)
+    version_action = QAction(f"{tr('version_label')}: {get_onigiri_version()}", mw)
+    version_action.setEnabled(False)  # Make it non-clickable
+    onigiri_menu.addAction(version_action)
+
+    # Add the newly created menu to the main window's menubar
+    mw.form.menubar.addMenu(onigiri_menu)

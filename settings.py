@@ -5168,8 +5168,9 @@ class SettingsDialog(QDialog):
 
 
         def dragMoveEvent(self, event):
+            source_widget = event.source()
             # Check if the item is allowed before processing the move
-            if not self.is_item_allowed(event.source()):
+            if not self.is_item_allowed(source_widget):
                 event.ignore()
                 return
 
@@ -5177,13 +5178,56 @@ class SettingsDialog(QDialog):
                 self.highlighted_shelf.set_highlight(False)
                 self.highlighted_shelf = None
             
+            hovered_shelf = None
+            hovered_pos = -1
             for shelf in self.shelves.values():
                 # --- FIX: Use event.position() instead of event.pos() ---
                 if shelf.geometry().contains(event.position().toPoint()):
                     shelf.set_highlight(True)
                     self.highlighted_shelf = shelf
+                    hovered_shelf = shelf
+                    for pos, s in self.shelves.items():
+                        if s is shelf:
+                            hovered_pos = pos
+                            break
                     break
-            event.acceptProposedAction()
+
+            if hovered_shelf:
+                event.acceptProposedAction()
+                
+                # Determine target row span and col span on the grid
+                target_row_span = source_widget.row_span
+                target_col_span = source_widget.col_span
+                if not source_widget.property("isOnGrid"):
+                    if isinstance(source_widget, SettingsDialog.OnigiriDraggableItem):
+                        if source_widget.widget_id == "heatmap":
+                            target_row_span, target_col_span = 2, 4
+                        elif source_widget.widget_id == "restaurant_level":
+                            target_row_span, target_col_span = 2, 2
+                        elif source_widget.widget_id == "onigimon":
+                            target_row_span, target_col_span = 2, 1
+                        else:
+                            target_row_span, target_col_span = 1, 1
+                    else:
+                        target_row_span, target_col_span = 2, 1
+                
+                # Condition 1: Placed at hovered shelf would overflow the grid vertically
+                row, col = divmod(hovered_pos, self.col_count)
+                if row + target_row_span > self.row_count:
+                    needed_rows = row + target_row_span
+                    if needed_rows <= 200:
+                        if hasattr(self.main_editor, "row_spin"):
+                            self.main_editor.row_spin.setValue(needed_rows)
+                            return
+                
+                # Condition 2: No slot is available anywhere on the grid that can fit this widget
+                if not self.can_fit_anywhere(target_row_span, target_col_span, ignored_widget=source_widget):
+                    needed_rows = self.row_count + target_row_span
+                    if needed_rows <= 200:
+                        if hasattr(self.main_editor, "row_spin"):
+                            self.main_editor.row_spin.setValue(needed_rows)
+            else:
+                event.ignore()
 
         def dragLeaveEvent(self, event):
             if self.highlighted_shelf:
@@ -5230,6 +5274,14 @@ class SettingsDialog(QDialog):
                     if pos not in self.shelves: return False
                     if self.shelves[pos].child_widget and self.shelves[pos].child_widget is not ignored_widget: return False
             return True
+
+        def can_fit_anywhere(self, row_span, col_span, ignored_widget=None):
+            grid_size = self.row_count * self.col_count
+            for i in range(grid_size):
+                r, c = divmod(i, self.col_count)
+                if self.is_region_free(r, c, row_span, col_span, ignored_widget=ignored_widget):
+                    return True
+            return False
 
         def place_item(self, item, pos, silent=False):
             # First, uncover any shelves this item was previously covering
@@ -5439,6 +5491,45 @@ class SettingsDialog(QDialog):
         def is_item_allowed(self, item):
             # Accept both Onigiri and External draggable items
             return isinstance(item, (SettingsDialog.OnigiriDraggableItem, SettingsDialog.DraggableItem))
+
+        def _handle_drop(self, widget, event):
+            if widget.widget_id == "learner_stats_widget" and not widget.property("isOnGrid"):
+                # Clean highlights
+                if self.highlighted_shelf:
+                    self.highlighted_shelf.set_highlight(False)
+                    self.highlighted_shelf = None
+                
+                target_pos = -1
+                for pos, shelf in self.shelves.items():
+                    # --- FIX: Use event.position() instead of event.pos() ---
+                    if shelf.geometry().contains(event.position().toPoint()):
+                        target_pos = pos
+                        break
+                
+                if target_pos != -1:
+                    import time
+                    unique_id = f"learner_stats_widget_instance_{int(time.time() * 1000)}"
+                    style_colors = self.main_editor.settings_dialog._layout_editor_style_colors()
+                    
+                    # Fetch display name from translations
+                    from . import learner_stats_widget
+                    labels = learner_stats_widget.get_translated_labels()
+                    display_name = labels.get("title", "Learning Stats")
+                    
+                    new_widget = SettingsDialog.DraggableItem(display_name, unique_id, style_colors)
+                    new_widget.archive_requested.connect(self.main_editor._archive_external_item)
+                    self.main_editor.all_external_items[unique_id] = new_widget
+                    
+                    new_widget.row_span = 2
+                    new_widget.col_span = 1
+                    self.place_item(new_widget, target_pos)
+                    
+                    # Keep the template widget in the archive
+                    widget.show()
+                else:
+                    widget.show()
+            else:
+                super()._handle_drop(widget, event)
     
     class OnigiriGridDropZone(GridDropZone):
         def __init__(self, main_editor, parent=None, col_count=4):
@@ -6158,7 +6249,11 @@ class SettingsDialog(QDialog):
 
             # Create and store all external addon items
             for hook_id in external_hooks:
-                item = SettingsDialog.DraggableItem(hook_id.split('.')[0], hook_id, style_colors)
+                display_name = hook_id.split('.')[0]
+                if "learner_stats_widget" in hook_id:
+                    idx = hook_id.split("_")[-1]
+                    display_name = f"Learner Stats {idx}"
+                item = SettingsDialog.DraggableItem(display_name, hook_id, style_colors)
                 item.archive_requested.connect(self._archive_item)
                 self.all_external_items[hook_id] = item
 
@@ -6258,7 +6353,7 @@ class SettingsDialog(QDialog):
             row_label = QLabel(tr("unified_grid_rows")) # User friendly label
             row_control_layout.addWidget(row_label)
             self.row_spin = QSpinBox()
-            self.row_spin.setRange(0, 20)
+            self.row_spin.setRange(0, 200)
             # Get saved row count or default to 6
             current_rows = self.settings_dialog.current_config.get("unifiedGridRows", 6)
             self.row_spin.setValue(current_rows)
@@ -6278,6 +6373,14 @@ class SettingsDialog(QDialog):
             row_control_layout.addStretch()
             main_layout.addLayout(row_control_layout)
 
+            # Scroll Area Stylesheet
+            scroll_style = """
+                QScrollArea { border: none; background: transparent; }
+                QScrollBar:vertical { background: transparent; width: 10px; margin: 0px; }
+                QScrollBar::handle:vertical { background: rgba(128, 128, 128, 0.5); min-height: 20px; border-radius: 5px; }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            """
+
             # --- Unified Grid ---
             grid_group = QGroupBox(tr("widget_grid_title"))
             grid_group.setObjectName("LayoutGroup")
@@ -6295,7 +6398,15 @@ class SettingsDialog(QDialog):
             self.grid_zone.update_grid_dimensions(current_rows, effective_cols)
                 
             grid_group_layout = QVBoxLayout(grid_group)
-            grid_group_layout.addWidget(self.grid_zone)
+            
+            # Wrap Grid in ScrollArea
+            self.grid_scroll = QScrollArea()
+            self.grid_scroll.setWidgetResizable(True)
+            self.grid_scroll.setFixedHeight(400)
+            self.grid_scroll.setStyleSheet(scroll_style)
+            self.grid_scroll.setWidget(self.grid_zone)
+            
+            grid_group_layout.addWidget(self.grid_scroll)
             main_layout.addWidget(grid_group)
 
             # --- Archive Zones Container (side by side) ---
@@ -6303,14 +6414,6 @@ class SettingsDialog(QDialog):
             archives_layout = QHBoxLayout(archives_container)
             archives_layout.setContentsMargins(0, 0, 0, 0)
             archives_layout.setSpacing(15)
-
-            # Scroll Area Stylesheet
-            scroll_style = """
-                QScrollArea { border: none; background: transparent; }
-                QScrollBar:vertical { background: transparent; width: 10px; margin: 0px; }
-                QScrollBar::handle:vertical { background: rgba(128, 128, 128, 0.5); min-height: 20px; border-radius: 5px; }
-                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
-            """
 
             # Archived Onigiri Widgets
             onigiri_archive_group = QGroupBox(tr("archived_onigiri_widgets"))
@@ -6517,6 +6620,10 @@ class SettingsDialog(QDialog):
             # Create all external items
             debug_shown = False
             for hook_id in external_hooks:
+                # Skip any legacy learner stats widget hook registrations
+                if "learner_stats_widget" in hook_id:
+                    continue
+
                 # Try to get friendly name from addonManager
                 addon_id = hook_id.split('.')[0]
                 try:
@@ -6527,6 +6634,23 @@ class SettingsDialog(QDialog):
                 item = SettingsDialog.DraggableItem(display_name or addon_id, hook_id, style_colors)
                 item.archive_requested.connect(self._archive_external_item)
                 self.all_external_items[hook_id] = item
+
+            # Add the single template widget to the archive list
+            from . import learner_stats_widget
+            labels = learner_stats_widget.get_translated_labels()
+            template_name = labels.get("title", "Learning Stats")
+            
+            template_id = "learner_stats_widget"
+            template_item = SettingsDialog.DraggableItem(template_name, template_id, style_colors)
+            template_item.archive_requested.connect(self._archive_external_item)
+            self.all_external_items[template_id] = template_item
+
+            # Recreate any saved dynamic instances of learner stats widgets
+            for hook_id in external_grid_config.keys():
+                if hook_id.startswith("learner_stats_widget_instance_"):
+                    item = SettingsDialog.DraggableItem(template_name, hook_id, style_colors)
+                    item.archive_requested.connect(self._archive_external_item)
+                    self.all_external_items[hook_id] = item
 
             # Combine grid and archive configs for display names
             all_saved_external = {**external_grid_config, **external_archive_config}
@@ -6560,9 +6684,15 @@ class SettingsDialog(QDialog):
 
             # Place any new/unplaced external add-ons in the archive
             for hook_id in external_hooks:
+                if "learner_stats_widget" in hook_id:
+                    continue
                 if hook_id not in placed_external:
                     item = self.all_external_items[hook_id]
                     self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+
+            # Also place the template in the archive
+            if template_id not in placed_external:
+                self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, template_item)
 
         def _archive_onigiri_item(self, item):
             """Moves an Onigiri item from the grid to the Onigiri archive zone."""
@@ -6588,16 +6718,22 @@ class SettingsDialog(QDialog):
                 item.row_span, item.col_span = 1, 1
 
         def _archive_external_item(self, item):
-            """Moves an external item from the grid to the external archive zone."""
+            """Moves an external item from the grid to the external archive zone, or deletes dynamic clones."""
             for shelf in self.grid_zone.shelves.values():
                 if shelf.child_widget is item:
                     shelf.child_widget = None
                     shelf.show() # Make the shelf visible again
-            self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
-            item.setProperty("isOnGrid", False)
-            item.grid_zone = None
-            item._update_size() # Apply compact size
-            item.show()
+            
+            if item.widget_id.startswith("learner_stats_widget_instance_"):
+                item.setParent(None)
+                item.deleteLater()
+                self.all_external_items.pop(item.widget_id, None)
+            else:
+                self.external_archive_zone.layout.insertWidget(self.external_archive_zone.layout.count() - 1, item)
+                item.setProperty("isOnGrid", False)
+                item.grid_zone = None
+                item._update_size() # Apply compact size
+                item.show()
 
         def get_layout_config(self):
             """Returns separate configs for Onigiri and External layouts."""

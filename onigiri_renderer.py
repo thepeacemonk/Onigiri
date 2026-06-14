@@ -584,7 +584,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     if col_count > 0:
         for hook_id, widget_config in grid_config.items():
-            if hook_html := external_widgets_data.get(hook_id):
+            hook_html = None
+            if "learner_stats_widget" in hook_id:
+                try:
+                    from . import learner_stats_widget
+                    hook_html = learner_stats_widget._render_widget(self, hook_id)
+                except Exception as e:
+                    hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
+            else:
+                hook_html = external_widgets_data.get(hook_id)
+
+            if hook_html:
                 pos = widget_config.get("grid_position", 0)
                 row = pos // col_count + 1
                 col = pos % col_count + 1
