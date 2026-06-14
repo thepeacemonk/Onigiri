@@ -131,6 +131,16 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     # Get statistics
     (new_cnt, learn_cnt, mature_cnt, young_cnt, learned_cnt, unseen_cnt, buried_cnt, suspended_cnt, total_cnt) = get_card_stats(selected_did, all_decks)
 
+    # Calculate percentages for the stacked bar: Mature, Young, New, Unseen
+    bar_total = mature_cnt + young_cnt + new_cnt + unseen_cnt
+    if bar_total > 0:
+        mature_pct = (mature_cnt / bar_total) * 100
+        young_pct = (young_cnt / bar_total) * 100
+        new_pct = (new_cnt / bar_total) * 100
+        unseen_pct = (unseen_cnt / bar_total) * 100
+    else:
+        mature_pct = young_pct = new_pct = unseen_pct = 0
+
     # Render deck selection dropdown options
     options_html = []
     
@@ -258,6 +268,36 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     .learner-stat-buried .learner-stat-val { color: #9b59b6; }
     .learner-stat-suspended .learner-stat-val { color: #e67e22; }
     .learner-stat-total .learner-stat-val { color: var(--fg, #222222); font-size: 15px; }
+    .learner-stats-stacked-bar {
+        display: flex;
+        width: 100%;
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background-color: color-mix(in srgb, var(--fg, #222) 8%, transparent);
+        margin-top: 4px;
+        box-sizing: border-box;
+    }
+    .learner-stats-stacked-segment {
+        height: 100%;
+        transition: width 0.3s ease, opacity 0.2s ease;
+        cursor: pointer;
+    }
+    .learner-stats-stacked-segment:hover {
+        opacity: 0.8;
+    }
+    .learner-stats-stacked-mature {
+        background-color: #2ecc71;
+    }
+    .learner-stats-stacked-young {
+        background-color: #3498db;
+    }
+    .learner-stats-stacked-new {
+        background-color: var(--accent-color, #007aff);
+    }
+    .learner-stats-stacked-unseen {
+        background-color: var(--fg-subtle, #757575);
+    }
     </style>
     """
 
@@ -268,6 +308,12 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         <div class="learner-stats-header">
             <h3>{labels["title"]}</h3>
             {select_html}
+            <div class="learner-stats-stacked-bar">
+                <div class="learner-stats-stacked-segment learner-stats-stacked-mature" style="width: {mature_pct}%;" title="{labels["mature"]}: {mature_cnt}"></div>
+                <div class="learner-stats-stacked-segment learner-stats-stacked-young" style="width: {young_pct}%;" title="{labels["young"]}: {young_cnt}"></div>
+                <div class="learner-stats-stacked-segment learner-stats-stacked-new" style="width: {new_pct}%;" title="{labels["new"]}: {new_cnt}"></div>
+                <div class="learner-stats-stacked-segment learner-stats-stacked-unseen" style="width: {unseen_pct}%;" title="{labels["unseen"]}: {unseen_cnt}"></div>
+            </div>
         </div>
         <div class="learner-stats-grid">
             <div class="learner-stat-card learner-stat-new">
