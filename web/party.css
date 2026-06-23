@@ -1,0 +1,80 @@
+/* Onigiri "party mode" — special-day visuals on the deck browser.
+   Injected only on a special day (see inject_menu_files / special_days.py).
+   Loaded AFTER heatmap.css, so the @keyframes glow defined there is reused. */
+
+/* --- Confetti overlay --- */
+.onigiri-party-confetti {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 9000;
+}
+
+.onigiri-party-piece {
+    position: absolute;
+    top: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    animation-name: onigiri-party-drift;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+    animation-iteration-count: 1;
+}
+
+@keyframes onigiri-party-drift {
+    0% {
+        transform: translate(0, -24px) rotate(0deg);
+        opacity: 0;
+    }
+    8% {
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--drift, 0px), 105vh) rotate(540deg);
+        opacity: 1;
+    }
+}
+
+/* --- Festive glow on today's heatmap cell (reuses @keyframes glow from heatmap.css) --- */
+body.onigiri-party-mode .heatmap-day-cell.today {
+    position: relative;
+    overflow: visible;
+}
+
+body.onigiri-party-mode .heatmap-day-cell.today .day-shape {
+    animation: glow 2.4s ease-in-out infinite;
+}
+
+/* --- Emoji badge on today's cell --- */
+.onigiri-party-emoji {
+    position: absolute;
+    top: -9px;
+    right: -7px;
+    font-size: 13px;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 3;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+    animation: onigiri-party-bob 2.2s ease-in-out infinite;
+}
+
+@keyframes onigiri-party-bob {
+    0%, 100% {
+        transform: translateY(0) rotate(-6deg);
+    }
+    50% {
+        transform: translateY(-3px) rotate(6deg);
+    }
+}
+
+/* Respect reduced-motion: keep the festive look, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+    .onigiri-party-piece,
+    .onigiri-party-emoji,
+    body.onigiri-party-mode .heatmap-day-cell.today .day-shape {
+        animation: none !important;
+    }
+}

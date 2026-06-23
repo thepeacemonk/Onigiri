@@ -33,7 +33,25 @@ DEFAULTS = {
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
     "userBirthday": "",  # Format: YYYY-MM-DD, empty = not set
-    "lastBirthdayShown": "",  # Year when birthday popup was last shown 
+    "lastBirthdayShown": "",  # Year when birthday popup was last shown
+    # --- Special Days / Party Mode ---
+    # Generalizes the birthday popup into a multi-occasion engine (birthday,
+    # study anniversary, New Year, lifetime review milestones) plus "party mode"
+    # visuals. See special_days.py.
+    "special_days": {
+        "enabled": True,          # Master toggle for detection + party visuals
+        "confetti": True,         # All-day confetti drift on the deck browser
+        "festive_accent": False,  # Temporarily recolor the accent (opt-in: changes the user's theme color)
+        "heatmap_effect": True,   # Festive glow + emoji on today's heatmap cell
+        # Per-occasion "already celebrated" guards.
+        # Year-string for date occasions; highest int milestone celebrated.
+        "last_shown": {
+            "birthday": "",
+            "study_anniversary": "",
+            "new_year": "",
+            "review_milestone": 0,
+        },
+    },
     "hideRetentionStars": False,
     "showHeatmapOnProfile": True,
     "achievements": {
@@ -478,6 +496,14 @@ def get_config():
     if "showHeatmapOnProfile" not in user_config:
          if mw.col and "onigiri_profile_show_stats" in mw.col.conf:
             clean_config["showHeatmapOnProfile"] = mw.col.conf.get("onigiri_profile_show_stats", True)
+
+    # Compatibility: fold the legacy top-level lastBirthdayShown guard into the
+    # new special_days.last_shown.birthday slot (preserve "already shown this year").
+    special_days_conf = clean_config.setdefault("special_days", copy.deepcopy(DEFAULTS["special_days"]))
+    last_shown_conf = special_days_conf.setdefault("last_shown", {})
+    legacy_birthday_shown = clean_config.get("lastBirthdayShown", "")
+    if legacy_birthday_shown and not last_shown_conf.get("birthday"):
+        last_shown_conf["birthday"] = legacy_birthday_shown
         
     # Compatibility: Migrate restaurant_level and daily_special from achievements to top-level
     if "achievements" in clean_config:

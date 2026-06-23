@@ -20,6 +20,7 @@ from . import deck_tree_updater
 from . import webview_handlers
 from .gamification import focus_dango
 from . import birthday_dialog
+from . import special_days
 from . import heatmap
 from . import sidebar_api
 from .sync import onigiri_sync
@@ -149,7 +150,25 @@ def inject_menu_files(web_content, context):
                 """
             except Exception:
                 pass
-        
+
+        # --- Special Days / Party Mode ---
+        # get_party_state() is cached (built once at profile open), so this adds
+        # no per-render SQL. Assets + the festive accent override are injected
+        # ONLY on a special day; on any normal render nothing here runs, so the
+        # accent auto-reverts to the user's saved theme.
+        try:
+            special_days_conf = conf.get("special_days", {})
+            if special_days_conf.get("enabled", True):
+                party = special_days.get_party_state()
+                if party:
+                    web_content.head += f"<script>window.ONIGIRI_PARTY_MODE = {json.dumps(party)};</script>"
+                    web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/party.css">'
+                    web_content.head += f'<script src="{web_assets_root}/party.js"></script>'
+                    if special_days_conf.get("festive_accent", False):
+                        web_content.head += special_days.generate_party_accent_css(party.get("accent", "#FFD700"))
+        except Exception:
+            pass
+
     elif is_reviewer:
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
         web_content.head += f'<script>window.onigiriSilentNotifications = {silent_notifs};</script>'
@@ -385,9 +404,14 @@ def on_profile_did_open():
     if onigiri_sync.is_enabled():
         QTimer.singleShot(1000, on_sync_did_finish)
 
-    # Show birthday popup if it's the user's birthday (requires mw.col)
-    # Delay by 1s to ensure main window is fully rendered for screenshot blur
-    QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
+    # Special days: birthday, study anniversary, New Year, review milestones.
+    # Warm the once-per-open cache now (two cheap revlog scalars) so later
+    # render-time party-mode checks are pure dict access. Then run the one-shot
+    # celebration path after 1s so the main window is fully rendered (the
+    # birthday modal blurs a screenshot of it).
+    special_days.invalidate_cache()
+    special_days.get_context()
+    QTimer.singleShot(1000, special_days.check_and_celebrate)
 
     # Menu styling disabled per user request
     # patcher.apply_menu_styling()
@@ -491,6 +515,8 @@ def on_deck_options_shown(menu, deck_id):
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
 gui_hooks.profile_did_open.append(on_profile_did_open)
+# Drop the special-days cache when switching profiles so the next profile recomputes.
+gui_hooks.profile_will_close.append(special_days.invalidate_cache)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)

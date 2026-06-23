@@ -31,6 +31,7 @@ from aqt import mw, gui_hooks
 from aqt.theme import theme_manager
 from typing import Union
 from . import config
+from . import special_days
 from .config import DEFAULTS
 from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
 from .themes import THEMES 
@@ -8531,6 +8532,34 @@ class SettingsDialog(QDialog):
         details_section.add_layout(form_layout)
         layout.addWidget(details_section)
 
+        # --- Special Days & Party Mode ---
+        special_days_conf = self.current_config.get("special_days", {})
+        sd_section = SectionGroup(
+            tr("special_days_section", "Special Days & Party Mode"),
+            self,
+            description=tr(
+                "special_days_desc",
+                "Celebrate your birthday, study anniversary, New Year, and lifetime review milestones with confetti and festive touches.",
+            ),
+        )
+        self.special_days_enabled_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.special_days_enabled_check.setChecked(bool(special_days_conf.get("enabled", True)))
+        sd_section.add_widget(self._create_toggle_row(self.special_days_enabled_check, tr("special_days_enable", "Enable special days & party mode")))
+
+        self.party_confetti_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.party_confetti_check.setChecked(bool(special_days_conf.get("confetti", True)))
+        sd_section.add_widget(self._create_toggle_row(self.party_confetti_check, tr("party_confetti", "All-day confetti")))
+
+        self.party_heatmap_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.party_heatmap_check.setChecked(bool(special_days_conf.get("heatmap_effect", True)))
+        sd_section.add_widget(self._create_toggle_row(self.party_heatmap_check, tr("party_heatmap", "Festive heatmap effect")))
+
+        self.party_accent_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.party_accent_check.setChecked(bool(special_days_conf.get("festive_accent", False)))
+        sd_section.add_widget(self._create_toggle_row(self.party_accent_check, tr("party_accent", "Festive accent color for the day")))
+
+        layout.addWidget(sd_section)
+
         pic_section = SectionGroup(tr("profile_picture"), self)
         self.galleries["profile_pic"] = {} 
         profile_pic_gallery = self._create_image_gallery_group(
@@ -8642,6 +8671,7 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         sections = {
             tr("user_details"): details_section,
+            tr("special_days_section", "Special Days & Party Mode"): sd_section,
             tr("profile_picture"): pic_section,
             tr("profile_bar_background"): bg_section,
             tr("profile_page_background"): page_bg_section,
@@ -12769,6 +12799,19 @@ class SettingsDialog(QDialog):
                  self.current_config["userBirthday"] = birthday_date.toString("yyyy-MM-dd")
             else:
                  self.current_config["userBirthday"] = ""
+
+        # Save Special Days / Party Mode toggles
+        if hasattr(self, 'special_days_enabled_check'):
+            sd = self.current_config.setdefault("special_days", {})
+            sd["enabled"] = self.special_days_enabled_check.isChecked()
+            sd["confetti"] = self.party_confetti_check.isChecked()
+            sd["heatmap_effect"] = self.party_heatmap_check.isChecked()
+            sd["festive_accent"] = self.party_accent_check.isChecked()
+            # Recompute party state on the next render so toggles apply immediately.
+            try:
+                special_days.invalidate_cache()
+            except Exception:
+                pass
 
         if 'profile_pic' in self.galleries:
             mw.col.conf["modern_menu_profile_picture"] = self.galleries['profile_pic']['selected']

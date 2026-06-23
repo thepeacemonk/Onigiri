@@ -13,6 +13,20 @@ LANGUAGES = {
 TRANSLATIONS = {
     'en': {
         'general': 'General',
+        # --- Special Days / Party Mode ---
+        'birthday': 'Birthday',
+        'special_days_section': 'Special Days & Party Mode',
+        'special_days_desc': 'Celebrate your birthday, study anniversary, New Year, and lifetime review milestones with confetti and festive touches.',
+        'special_days_enable': 'Enable special days & party mode',
+        'party_confetti': 'All-day confetti',
+        'party_heatmap': 'Festive heatmap effect',
+        'party_accent': 'Festive accent color for the day',
+        'anniversary_toast_title': '🎓 Study Anniversary!',
+        'anniversary_toast_desc': '{years} years since your very first review. Look how far you\'ve come!',
+        'new_year_toast_title': '🎉 Happy New Year!',
+        'new_year_toast_desc': 'Welcome to {year} — a fresh year of learning awaits!',
+        'milestone_toast_title': '🏆 Milestone reached!',
+        'milestone_toast_desc': '{count} lifetime reviews — incredible dedication!',
         'languages': 'Languages',
         'modes': 'Modes',
         'fonts': 'Fonts',
