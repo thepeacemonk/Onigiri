@@ -73,8 +73,8 @@ window.OnigiriRenameDeckModal = (function () {
                 justify-content: center;
             }
             .onigiri-rename-close:hover {
-                color: var(--fg, #e8e8e8) !important;
-                background: var(--highlight-bg, rgba(128, 128, 128, 0.14)) !important;
+                color: var(--fg-subtle, #999) !important;
+                background: transparent !important;
             }
             .onigiri-rename-close svg {
                 width: 15px;
@@ -151,7 +151,7 @@ window.OnigiriRenameDeckModal = (function () {
                 color: white !important;
             }
             .onigiri-rename-btn:hover {
-                filter: brightness(1.04);
+                filter: none !important;
                 box-shadow: none !important;
                 transform: none !important;
             }
@@ -192,9 +192,10 @@ window.OnigiriRenameDeckModal = (function () {
         const title = document.createElement("div");
         title.className = "onigiri-rename-title";
         title.textContent = "Rename Deck";
-        const closeBtn = document.createElement("button");
+        const closeBtn = document.createElement("span");
         closeBtn.className = "onigiri-rename-close";
-        closeBtn.type = "button";
+        closeBtn.setAttribute('role', 'button');
+        closeBtn.tabIndex = 0;
         closeBtn.setAttribute("aria-label", "Close");
         closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
         closeBtn.addEventListener("click", close);
@@ -234,14 +235,16 @@ window.OnigiriRenameDeckModal = (function () {
 
         const footer = document.createElement("div");
         footer.className = "onigiri-rename-footer";
-        const cancel = document.createElement("button");
+        const cancel = document.createElement("span");
         cancel.className = "onigiri-rename-btn secondary";
-        cancel.type = "button";
+        cancel.setAttribute('role', 'button');
+        cancel.tabIndex = 0;
         cancel.textContent = "Cancel";
         cancel.addEventListener("click", close);
-        const save = document.createElement("button");
+        const save = document.createElement("span");
         save.className = "onigiri-rename-btn primary";
-        save.type = "button";
+        save.setAttribute('role', 'button');
+        save.tabIndex = 0;
         save.textContent = "Save";
         save.addEventListener("click", submit);
         footer.appendChild(cancel);

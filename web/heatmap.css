@@ -71,7 +71,6 @@
 }
 
 .streak-counter .streak-icon.active {
-    color: #ff6b35;
     opacity: 1;
 }
 
@@ -108,6 +107,7 @@
 }
 
 .heatmap-filters {
+    position: relative;
     display: flex;
     background-color: var(--heatmap-color-zero);
     border-radius: 8px;
@@ -115,8 +115,23 @@
     align-items: center;
 }
 
+.heatmap-filter-pill {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 0;
+    width: 0;
+    border-radius: 6px;
+    background-color: var(--accent-color);
+    pointer-events: none;
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 0;
+}
+
 /* --- Filter Buttons (Fixed Height) --- */
 .filter-btn {
+    position: relative;
+    z-index: 1;
     border: none;
     background-color: transparent;
     border-radius: 6px;
@@ -135,6 +150,21 @@
     justify-content: center;
 }
 
+.heatmap-grid.is-entering {
+    animation: onigiri-heatmap-enter 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes onigiri-heatmap-enter {
+    from {
+        opacity: 0.55;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .filter-btn:hover {
     border: none;
     color: var(--fg-subtle - 0.2);
@@ -142,8 +172,8 @@
 }
 
 .filter-btn.active {
-    background-color: var(--canvas-inset);
-    color: var(--fg);
+    background-color: transparent;
+    color: #fff;
     box-shadow: none !important;
 }
 

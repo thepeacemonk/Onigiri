@@ -1,7 +1,28 @@
 import json
+import os
 from typing import Any, Iterable, Optional
 
 from aqt import mw
+from aqt.qt import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPainter,
+    QPixmap,
+    QPushButton,
+    QVBoxLayout,
+    Qt,
+)
+from aqt.theme import theme_manager
+
+try:
+    from PyQt6.QtSvg import QSvgRenderer
+except Exception:
+    try:
+        from PyQt5.QtSvg import QSvgRenderer
+    except Exception:
+        QSvgRenderer = None
 
 
 _FALLBACK_JS = r"""
@@ -10,6 +31,13 @@ _FALLBACK_JS = r"""
   window.OnigiriNotifications = {
     show: function(data) {
       data = data || {};
+      var displayDuration = function() {
+        var configured = Number(window.onigiriNotificationDuration);
+        if (isFinite(configured) && configured > 0) return Math.max(1000, Math.min(30000, configured));
+        var payloadDuration = Number(data.duration);
+        if (isFinite(payloadDuration) && payloadDuration > 0) return Math.max(1000, Math.min(30000, payloadDuration));
+        return 4200;
+      };
       var stack = document.getElementById('onigiri-notification-stack');
       if (!stack) {
         stack = document.createElement('div');
@@ -98,9 +126,10 @@ _FALLBACK_JS = r"""
           if (!stack.children.length) stack.remove();
         }, 230);
       };
-      var timer = setTimeout(hide, data.duration || 4200);
+      var duration = displayDuration();
+      var timer = setTimeout(hide, duration);
       card.addEventListener('mouseenter', function(){ clearTimeout(timer); });
-      card.addEventListener('mouseleave', function(){ timer = setTimeout(hide, data.duration || 4200); });
+      card.addEventListener('mouseleave', function(){ timer = setTimeout(hide, duration); });
       card.addEventListener('click', hide);
     }
   };
@@ -108,10 +137,27 @@ _FALLBACK_JS = r"""
 """
 
 
-def _candidate_webviews(context: Any = None) -> Iterable[Any]:
+def _configured_duration(fallback: int = 4200) -> int:
+    try:
+        from . import config
+        duration = int(config.get_config().get("onigiri_notification_duration_ms", fallback))
+    except Exception:
+        duration = fallback
+    return max(1000, min(30000, duration))
+
+
+def _candidate_webviews(context: Any = None, *, gamification: bool = False) -> Iterable[Any]:
+    if not gamification or getattr(mw, "state", None) != "review":
+        return
+
     seen = set()
 
+    def is_reviewer_owner(owner: Any) -> bool:
+        return type(owner).__name__ == "Reviewer"
+
     def add(owner: Any):
+        if not is_reviewer_owner(owner):
+            return
         web = getattr(owner, "web", None)
         if web is not None and id(web) not in seen:
             seen.add(id(web))
@@ -120,12 +166,198 @@ def _candidate_webviews(context: Any = None) -> Iterable[Any]:
     if context is not None:
         yield from add(context)
 
-    for owner in (
-        getattr(mw, "deckBrowser", None),
-        getattr(mw, "overview", None),
-        getattr(mw, "reviewer", None),
-    ):
-        yield from add(owner)
+    yield from add(getattr(mw, "reviewer", None))
+
+
+def _native_tooltip(message: str) -> None:
+    try:
+        from aqt.utils import tooltip
+        tooltip(str(message or ""))
+    except Exception:
+        print(f"Onigiri notification: {message}")
+
+
+def _info_dialog_palette() -> dict[str, str]:
+    is_dark = bool(theme_manager.night_mode)
+    defaults = {
+        "panel": "#1b1c1f" if is_dark else "#ffffff",
+        "panel_alt": "#24262b" if is_dark else "#f6f7f9",
+        "border": "rgba(255,255,255,.12)" if is_dark else "rgba(17,24,39,.12)",
+        "fg": "#f4f4f5" if is_dark else "#111827",
+        "muted": "#c9ccd3" if is_dark else "#5b6472",
+        "accent": "#70c6a6",
+        "accent_soft": "rgba(112,198,166,.18)",
+        "button_hover": "#2e3137" if is_dark else "#eef1f4",
+    }
+    try:
+        from . import config
+
+        mode_key = "dark" if is_dark else "light"
+        colors = config.get_config().get("colors", {}).get(mode_key, {})
+        if isinstance(colors, dict):
+            defaults["panel"] = colors.get("--canvas-inset", defaults["panel"])
+            defaults["panel_alt"] = colors.get("--highlight-bg", defaults["panel_alt"])
+            defaults["border"] = colors.get("--border", defaults["border"])
+            defaults["fg"] = colors.get("--fg", defaults["fg"])
+            defaults["muted"] = colors.get("--fg-subtle", defaults["muted"])
+            defaults["accent"] = colors.get("--accent-color", defaults["accent"])
+    except Exception:
+        pass
+    return defaults
+
+
+def _info_dialog_icon_pixmap(color: str, size: int = 24) -> QPixmap:
+    icon_path = os.path.join(
+        os.path.dirname(__file__),
+        "system_files",
+        "system_icons",
+        "unavailable_for_users",
+        "info-circle.svg",
+    )
+    if QSvgRenderer is None or not os.path.exists(icon_path):
+        return QPixmap()
+
+    try:
+        with open(icon_path, "r", encoding="utf-8") as icon_file:
+            svg_data = icon_file.read().replace("currentColor", color)
+        renderer = QSvgRenderer(svg_data.encode("utf-8"))
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
+    except Exception:
+        return QPixmap()
+
+
+class OnigiriInfoDialog(QDialog):
+    def __init__(self, message: str, title: str = "Onigiri", parent: Any = None):
+        super().__init__(parent)
+        self.setWindowTitle(title or "Onigiri")
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setModal(True)
+        self.setMinimumWidth(390)
+        self.setMaximumWidth(520)
+
+        palette = _info_dialog_palette()
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: transparent;
+            }}
+            QFrame#onigiriInfoPanel {{
+                background-color: {palette["panel"]};
+                border: 1px solid {palette["border"]};
+                border-radius: 18px;
+            }}
+            QLabel {{
+                background: transparent;
+                color: {palette["fg"]};
+            }}
+            QLabel#onigiriInfoTitle {{
+                font-size: 13px;
+                font-weight: 400;
+                color: {palette["muted"]};
+            }}
+            QLabel#onigiriInfoMessage {{
+                font-size: 18px;
+                font-weight: 400;
+                line-height: 1.3;
+            }}
+            QLabel#onigiriInfoIcon {{
+                background-color: {palette["accent_soft"]};
+                color: {palette["accent"]};
+                border: 1px solid {palette["accent"]};
+                border-radius: 20px;
+                font-size: 22px;
+                font-weight: 400;
+            }}
+            QPushButton#onigiriInfoOk {{
+                background-color: {palette["panel_alt"]};
+                color: {palette["fg"]};
+                border: 1px solid {palette["border"]};
+                border-radius: 14px;
+                min-width: 88px;
+                min-height: 34px;
+                padding: 0 18px;
+                font-size: 13px;
+                font-weight: 400;
+            }}
+            QPushButton#onigiriInfoOk:hover {{
+                background-color: {palette["button_hover"]};
+                border-color: {palette["accent"]};
+            }}
+        """)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        panel = QFrame()
+        panel.setObjectName("onigiriInfoPanel")
+        outer.addWidget(panel)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(18)
+
+        content = QHBoxLayout()
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(16)
+
+        icon = QLabel()
+        icon.setObjectName("onigiriInfoIcon")
+        icon.setFixedSize(42, 42)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_pixmap = _info_dialog_icon_pixmap(palette["accent"], 24)
+        if icon_pixmap.isNull():
+            icon.setText("i")
+        else:
+            icon.setPixmap(icon_pixmap)
+        content.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_stack = QVBoxLayout()
+        text_stack.setContentsMargins(0, 0, 0, 0)
+        text_stack.setSpacing(6)
+
+        title_label = QLabel(title or "Onigiri")
+        title_label.setObjectName("onigiriInfoTitle")
+        title_label.setWordWrap(True)
+        text_stack.addWidget(title_label)
+
+        message_label = QLabel(str(message or ""))
+        message_label.setObjectName("onigiriInfoMessage")
+        message_label.setWordWrap(True)
+        text_stack.addWidget(message_label)
+
+        content.addLayout(text_stack, 1)
+        layout.addLayout(content)
+
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.addStretch()
+        ok_button = QPushButton("OK")
+        ok_button.setObjectName("onigiriInfoOk")
+        ok_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_button.clicked.connect(self.accept)
+        ok_button.setDefault(True)
+        buttons.addWidget(ok_button)
+        layout.addLayout(buttons)
+
+
+def _native_show_info(message: str, title: str = "Onigiri") -> None:
+    try:
+        parent = mw if mw is not None else None
+        dialog = OnigiriInfoDialog(str(message or ""), title=title, parent=parent)
+        dialog.exec()
+    except Exception:
+        try:
+            from aqt.utils import showInfo
+            showInfo(str(message or ""), title=title)
+        except Exception:
+            _native_tooltip(message)
 
 
 def notification_script(
@@ -135,7 +367,7 @@ def notification_script(
     variant: str = "onigiri",
     icon: str = "On",
     icon_image: str = "",
-    duration: int = 4200,
+    duration: Optional[int] = None,
     hide_icon: bool = False,
     hide_title: bool = False,
     centered: bool = False,
@@ -146,7 +378,7 @@ def notification_script(
         "variant": variant,
         "icon": icon,
         "iconImage": icon_image,
-        "duration": duration,
+        "duration": _configured_duration() if duration is None else duration,
         "hideIcon": hide_icon,
         "hideTitle": hide_title,
         "centered": centered,
@@ -167,11 +399,16 @@ def notify(
     variant: str = "onigiri",
     icon: str = "On",
     icon_image: str = "",
-    duration: int = 4200,
+    duration: Optional[int] = None,
     hide_icon: bool = False,
     hide_title: bool = False,
     centered: bool = False,
+    gamification: bool = False,
 ) -> None:
+    if not gamification:
+        _native_tooltip(message)
+        return
+
     script = notification_script(
         message,
         title=title,
@@ -183,14 +420,16 @@ def notify(
         hide_title=hide_title,
         centered=centered,
     )
-    for web in _candidate_webviews(context):
+    for web in _candidate_webviews(context, gamification=gamification):
         try:
             web.eval(script)
             return
         except Exception as exc:
             print(f"Onigiri: Could not show custom notification: {exc}")
-    print(f"Onigiri notification: {title}: {message}")
 
 
 def notify_info(message: str, *args: Any, context: Optional[Any] = None, title: str = "Onigiri", **kwargs: Any) -> None:
-    notify(message, title=title, context=context)
+    if kwargs.get("gamification"):
+        notify(message, title=title, context=context, **kwargs)
+        return
+    _native_show_info(message, title=title)

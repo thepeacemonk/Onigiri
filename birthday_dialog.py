@@ -1,4 +1,5 @@
 import os
+import platform
 from datetime import datetime
 from aqt import mw
 from aqt.qt import QDialog, QVBoxLayout, Qt, QPoint, QUrl, QPixmap
@@ -6,6 +7,9 @@ from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
 from aqt.webview import AnkiWebView
 from aqt.theme import theme_manager
 from . import config
+
+def _use_stable_native_dialog() -> bool:
+    return platform.system() == "Darwin"
 
 
 class BirthdayDialog(QDialog):
@@ -16,11 +20,13 @@ class BirthdayDialog(QDialog):
 
     def __init__(self, user_name: str, user_age: int, parent=None):
         super().__init__(parent)
+        stable_native_dialog = _use_stable_native_dialog()
         self.setWindowTitle("🎂 Happy Birthday!")
         
-        # Make the dialog frameless and transparent
+        # Frameless translucent QDialogs can crash Qt repainting on recent macOS/Anki.
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        if not stable_native_dialog:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         if parent:
             self.resize(parent.width(), parent.height())

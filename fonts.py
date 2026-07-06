@@ -39,6 +39,11 @@ FONTS = {
         "family": "SpaceMono",
         "file": "SpaceMono.ttf",
     },
+    "silkscreen": {
+        "name": "Silkscreen",
+        "family": "Silkscreen",
+        "file": "Silkscreen.ttf",
+    },
 }
 
 _USER_FONTS_CACHE = {}

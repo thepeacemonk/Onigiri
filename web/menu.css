@@ -17,6 +17,14 @@ body {
     animation: none !important;
 }
 
+.container.modern-main-menu.onigiri-sidebar-right {
+    flex-direction: row-reverse;
+}
+
+.container.modern-main-menu:not(.onigiri-cycle-stacked) .sidebar-left {
+    height: auto !important;
+}
+
 .main-content,
 .unified-grid,
 .sidebar-expanded-content,
@@ -32,13 +40,13 @@ body {
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    min-width: 325px;
+    min-width: 345px;
     /* max-width: 800px; REMOVED to allow full resizing */
     z-index: 2;
     transition: none !important;
     overflow: hidden;
     box-sizing: border-box;
-    margin: 15px;
+    margin: 10px 15px;
     border-radius: 15px;
     /* NEW: positioning + smoother collapse transition */
     position: relative;
@@ -58,66 +66,465 @@ body {
     flex-grow: 0;
 }
 
-.sidebar-left h2 {
+.sidebar-left .sidebar-welcome-heading {
     font-size: 14px;
     text-transform: uppercase;
     color: var(--fg-subtle);
-    margin-top: 30px;
+    margin-top: 0;
     margin-bottom: 15px;
 }
 
-/* --- New Resize Handle Styles --- */
-.resize-handle {
-    width: 15px;
-    cursor: col-resize;
-    flex-shrink: 0;
-    z-index: 2;
-    position: relative;
+/* --- Sidebar Edge Pill Controls --- */
+#onigiri-sidebar-edge-pill {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 32px;
+    height: 72px;
+    padding: 5px 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
+    box-shadow: none;
     display: flex;
-    justify-content: center;
-    --handle-top: 50%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2000;
+    transform: translate(-50%, -50%);
+    transform-origin: center;
+    overflow: hidden;
+    transition: opacity 0.08s ease;
 }
 
-.resize-handle-indicator {
+#onigiri-sidebar-edge-pill.is-edge-horizontal {
+    width: 88px;
+    height: 32px;
+    padding: 0 8px;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal:not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-edge-horizontal:not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) .resize-handle {
     position: absolute;
-    top: var(--handle-top);
+    top: 5px;
+    width: 22px !important;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    max-height: 22px !important;
+    flex: 0 0 22px !important;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal:not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) #onigiri-sidebar-edge-toggle {
+    left: 16px;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal:not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) .resize-handle {
+    right: 16px;
+}
+
+#onigiri-sidebar-edge-pill:not(.is-edge-horizontal):not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill:not(.is-edge-horizontal):not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) .resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    transform: none;
+    width: 22px !important;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    max-height: 22px !important;
+    flex: 0 0 22px !important;
+}
+
+#onigiri-sidebar-edge-pill:not(.is-edge-horizontal):not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) #onigiri-sidebar-edge-toggle {
+    top: 8px;
+}
+
+#onigiri-sidebar-edge-pill:not(.is-edge-horizontal):not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) #onigiri-sidebar-edge-toggle .sidebar-edge-toggle-icon {
+    transform: none;
+}
+
+#onigiri-sidebar-edge-pill:not(.is-edge-horizontal):not(.is-collapsed):not(.is-resize-armed):not(.is-resizing) .resize-handle {
+    bottom: 8px;
+}
+
+#onigiri-sidebar-edge-pill::before {
+    content: "";
+    position: absolute;
     left: 50%;
-    width: 2px;
-    height: 28px;
-    background-color: var(--border);
-    border-radius: 4px;
+    top: 50%;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--onigiri-sidebar-bg, var(--bg, #fff));
     box-shadow: none;
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    transform-origin: center;
+    z-index: 0;
+    will-change: width, height, opacity;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-hover,
+#onigiri-sidebar-edge-pill.is-resize-armed,
+#onigiri-sidebar-edge-pill.is-resizing,
+#onigiri-sidebar-edge-pill.is-collapsed {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-    transition: background-color 0.2s ease, box-shadow 0.2s ease, top 0.05s ease, transform 0.2s ease;
+    pointer-events: auto;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-hover::before {
+    animation: onigiri-edge-pill-open 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal.is-edge-hover::before {
+    animation: onigiri-edge-pill-open-horizontal 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-closing {
+    opacity: 1;
     pointer-events: none;
 }
 
-.resize-handle:hover .resize-handle-indicator,
-.resize-handle.is-resizing .resize-handle-indicator {
-    background-color: var(--accent-color);
-    width: 4px;
+#onigiri-sidebar-edge-pill.is-edge-closing::before {
+    animation: onigiri-edge-pill-close 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal.is-edge-closing::before {
+    animation: onigiri-edge-pill-close-horizontal 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes onigiri-edge-pill-open {
+    0% {
+        opacity: 0;
+        width: 24px;
+        height: 24px;
+    }
+    24% {
+        opacity: 1;
+        width: 24px;
+        height: 24px;
+    }
+    62% {
+        opacity: 1;
+        width: 32px;
+        height: 42px;
+    }
+    100% {
+        opacity: 1;
+        width: 32px;
+        height: 72px;
+    }
+}
+
+@keyframes onigiri-edge-pill-close {
+    0% {
+        opacity: 1;
+        width: 32px;
+        height: 72px;
+    }
+    62% {
+        opacity: 1;
+        width: 32px;
+        height: 42px;
+    }
+    82% {
+        opacity: 1;
+        width: 24px;
+        height: 24px;
+    }
+    100% {
+        opacity: 0;
+        width: 24px;
+        height: 24px;
+    }
+}
+
+@keyframes onigiri-edge-pill-open-horizontal {
+    0% {
+        opacity: 0;
+        width: 24px;
+        height: 24px;
+    }
+    24% {
+        opacity: 1;
+        width: 24px;
+        height: 24px;
+    }
+    62% {
+        opacity: 1;
+        width: 42px;
+        height: 32px;
+    }
+    100% {
+        opacity: 1;
+        width: 88px;
+        height: 32px;
+    }
+}
+
+@keyframes onigiri-edge-pill-close-horizontal {
+    0% {
+        opacity: 1;
+        width: 88px;
+        height: 32px;
+    }
+    62% {
+        opacity: 1;
+        width: 42px;
+        height: 32px;
+    }
+    82% {
+        opacity: 1;
+        width: 24px;
+        height: 24px;
+    }
+    100% {
+        opacity: 0;
+        width: 24px;
+        height: 24px;
+    }
+}
+
+#onigiri-sidebar-edge-pill.is-collapsed {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
     box-shadow: none;
-    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.66;
+    animation: none;
+}
+
+#onigiri-sidebar-edge-pill.is-collapsed.is-edge-horizontal {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+}
+
+#onigiri-sidebar-edge-pill.is-collapsed::before {
+    display: none;
+}
+
+#onigiri-sidebar-edge-pill.is-collapsed:hover,
+#onigiri-sidebar-edge-pill.is-collapsed.is-edge-hover {
+    opacity: 0.86;
+}
+
+#onigiri-sidebar-edge-pill.is-resizing {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    animation: none;
+}
+
+#onigiri-sidebar-edge-pill.is-resizing::before {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+    animation: none;
+}
+
+#onigiri-sidebar-edge-pill.is-resize-armed {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    animation: none;
+}
+
+#onigiri-sidebar-edge-pill.is-resize-armed::before {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+    animation: none;
+}
+
+#onigiri-sidebar-edge-pill.is-resize-armed #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-resizing #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-collapsed .resize-handle {
+    display: none !important;
+}
+
+#onigiri-sidebar-edge-pill .resize-handle {
+    width: 22px;
+    min-width: 22px;
+    max-width: 22px;
+    height: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    flex: 0 0 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+    z-index: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    border-radius: 50%;
+    color: inherit;
+    touch-action: none;
+    transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+#onigiri-sidebar-edge-toggle {
+    z-index: 1;
+}
+
+#onigiri-sidebar-edge-pill #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill .resize-handle {
+    opacity: 0;
+    transition: opacity 0.08s ease, background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-hover #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-edge-hover .resize-handle,
+#onigiri-sidebar-edge-pill.is-collapsed #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-resize-armed .resize-handle,
+#onigiri-sidebar-edge-pill.is-resizing .resize-handle {
+    opacity: 1;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-hover #onigiri-sidebar-edge-toggle,
+#onigiri-sidebar-edge-pill.is-edge-hover .resize-handle {
+    transition-delay: 0.24s, 0s, 0s, 0s;
+}
+
+#onigiri-sidebar-edge-pill.is-resizing .resize-handle {
+    background: rgba(128, 128, 128, 0.16);
+    color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
+    cursor: var(--onigiri-sidebar-resize-cursor, col-resize);
+    transform: scale(1.04);
+}
+
+#onigiri-sidebar-edge-pill.is-resize-armed .resize-handle {
+    background: rgba(128, 128, 128, 0.14);
+    color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
+    cursor: var(--onigiri-sidebar-resize-cursor, col-resize);
+    transform: scale(1.02);
+}
+
+#onigiri-sidebar-edge-pill .resize-handle-hitbox {
+    position: absolute;
+    inset: -6px;
+    cursor: pointer;
+    touch-action: none;
+    z-index: 2;
+}
+
+#onigiri-sidebar-edge-pill.is-edge-horizontal .resize-handle-hitbox {
+    inset: -4px;
+}
+
+#onigiri-sidebar-edge-pill.is-resize-armed .resize-handle-hitbox,
+#onigiri-sidebar-edge-pill.is-resizing .resize-handle-hitbox {
+    cursor: var(--onigiri-sidebar-resize-cursor, col-resize);
+}
+
+#onigiri-sidebar-edge-pill .resize-handle-indicator {
+    width: 15px;
+    height: 15px;
+    display: block;
+    background-color: currentColor;
+    mask: var(--onigiri-resize-icon-url) center / contain no-repeat;
+    -webkit-mask: var(--onigiri-resize-icon-url) center / contain no-repeat;
+    opacity: 1;
+    pointer-events: none;
+}
+
+#onigiri-sidebar-edge-pill.is-sidebar-right .resize-handle-indicator {
+    transform: scaleX(-1);
+}
+
+.sidebar-left.is-resize-armed .sidebar-expanded-content,
+.sidebar-left.is-resize-armed .collapsed-content-wrapper,
+.sidebar-left.is-resizing .sidebar-expanded-content,
+.sidebar-left.is-resizing .collapsed-content-wrapper {
+    opacity: 0.32;
+}
+
+.sidebar-left.is-resize-armed,
+.sidebar-left.is-resizing {
+    border-style: dashed !important;
+    border-color: var(--onigiri-edge-icon-color, var(--fg-subtle, var(--border))) !important;
 }
 
 /* Profile Bar Styles */
 .profile-bar {
-    display: flex;
+    display: grid;
+    grid-template-areas: "content";
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
+    justify-content: stretch;
+    justify-items: stretch;
+    width: var(--onigiri-deck-header-width, 100%);
+    max-width: 100%;
+    min-width: 0;
     padding: 6px;
     border-radius: 50px;
     margin-bottom: 20px;
     background-color: var(--highlight-bg);
-    transition: background-color 0.2s;
+    transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1), min-height 0.42s cubic-bezier(0.22, 1, 0.36, 1), padding 0.42s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.42s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.2s ease, background-color 0.2s;
     position: relative;
     overflow: hidden;
     cursor: pointer;
+    box-sizing: border-box;
+    align-self: flex-start;
+    will-change: width;
 }
 
 .profile-bar>* {
     position: relative;
     z-index: 2;
+}
+
+.container.modern-main-menu.onigiri-sidebar-right .profile-bar {
+    align-self: flex-end;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .profile-bar,
+.container.modern-main-menu.onigiri-sidebar-center .profile-bar {
+    align-self: center;
+}
+
+.profile-content {
+    grid-area: content;
+    justify-self: stretch;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    gap: 0;
+    color: inherit;
+    transition: opacity 0.24s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.profile-content-main {
+    width: 100%;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.profile-bar .profile-bg-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .profile-bar .restaurant-level-chip {
@@ -132,6 +539,7 @@ body {
     color: inherit;
     font-size: 12px;
     transition: background 0.2s ease;
+    flex: 0 0 auto;
 }
 
 .night-mode .profile-bar .restaurant-level-chip {
@@ -157,7 +565,7 @@ body {
 
 .profile-bar .restaurant-level-chip .rl-chip-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #ffb347, #ff6b6b);
+    background: var(--profile-level-bar-bg, linear-gradient(90deg, #ffb347, #ff6b6b));
     border-radius: inherit;
     transition: width 0.3s ease;
 }
@@ -187,12 +595,22 @@ body {
     flex-shrink: 0;
 }
 
+.profile-pic-generated {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+}
+
 .profile-name {
     font-size: 16px;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
 }
 
 /* Styles for when the profile bar has an image background */
@@ -203,7 +621,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--overlay-light);
+    background-color: var(--profile-image-overlay-bg, transparent);
     border-radius: 50px;
     z-index: 1;
     display: none;
@@ -223,25 +641,201 @@ body {
     box-sizing: border-box;
 }
 
-/* --- Action Buttons & Menu Items --- */
-.add-button-dashed {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 10px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
-    border: 2px dashed var(--border);
-    color: var(--fg);
-    font-size: 15px;
+/* Sidebar Profile Panel */
+.onigiri-sidebar-profile {
+    display: none;
 }
 
-.add-button-dashed:hover {
-    background-color: var(--highlight-bg);
-    border-color: var(--fg);
+.sidebar-left.profile-panel-open .sidebar-expanded-content {
+    overflow-y: auto;
+    border-radius: inherit;
 }
+
+.sidebar-left.profile-panel-open,
+.sidebar-left.profile-panel-switching {
+    padding: 0 !important;
+    transition: none !important;
+}
+
+.sidebar-left.profile-panel-open .sidebar-expanded-content > :not(.onigiri-sidebar-profile) {
+    display: none !important;
+}
+
+.sidebar-left.profile-panel-open .onigiri-sidebar-profile {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    color: var(--fg);
+    background: var(--canvas, #f4f4f4);
+    background: color-mix(in srgb, var(--canvas, #f4f4f4) 86%, var(--bg, #ffffff));
+    overflow: hidden auto;
+    border-radius: inherit;
+}
+
+.onigiri-sidebar-profile-back {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    border-radius: 50% !important;
+    background: rgba(0, 0, 0, 0.12) !important;
+    color: #fff;
+    cursor: pointer;
+    padding: 0 !important;
+    box-shadow: none !important;
+    opacity: 0.72;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.onigiri-sidebar-profile-back:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.onigiri-sidebar-profile-back::before,
+.onigiri-sidebar-profile-back::after {
+    content: "";
+    position: absolute;
+    top: 12px;
+    left: 7px;
+    width: 12px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.onigiri-sidebar-profile-back::before {
+    transform: rotate(45deg);
+}
+
+.onigiri-sidebar-profile-back::after {
+    transform: rotate(-45deg);
+}
+
+.onigiri-sidebar-profile-cover {
+    position: relative;
+    min-height: 176px;
+    overflow: hidden;
+    background-color: var(--accent-color);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    flex-shrink: 0;
+}
+
+.onigiri-sidebar-profile-bg-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+.onigiri-sidebar-profile-body {
+    position: relative;
+    padding: 0 24px 24px;
+}
+
+.onigiri-sidebar-profile-avatar {
+    width: 110px;
+    height: 110px;
+    margin-top: -58px;
+    margin-bottom: 14px;
+    border-radius: 50%;
+    border: 7px solid var(--canvas, #f4f4f4);
+    border: 7px solid color-mix(in srgb, var(--canvas, #f4f4f4) 86%, var(--bg, #ffffff));
+    background: var(--accent-color);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+}
+
+.onigiri-sidebar-profile-img,
+.onigiri-sidebar-profile-img.profile-pic-generated {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0;
+    font-size: 36px;
+}
+
+.onigiri-sidebar-profile-body h2 {
+    margin: 0 0 8px;
+    font-size: 24px;
+    line-height: 1.12;
+    color: var(--fg);
+}
+
+.onigiri-sidebar-profile-bio,
+.onigiri-sidebar-profile-status {
+    margin: 0 0 12px;
+    font-size: 16px;
+    line-height: 1.38;
+    color: var(--fg);
+    overflow-wrap: anywhere;
+}
+
+.onigiri-sidebar-profile-status {
+    padding-left: 12px;
+    border-left: 3px solid var(--accent-color);
+    color: var(--fg-subtle);
+}
+
+.onigiri-sidebar-profile-music,
+.onigiri-sidebar-profile-music-link {
+    display: block;
+    width: 100%;
+    margin: 18px 0 10px;
+    border-radius: 20px;
+    background: transparent;
+    overflow: hidden;
+    border: none;
+    min-height: 80px;
+    line-height: 0;
+}
+
+.onigiri-sidebar-profile-music iframe {
+    display: block;
+    width: 100%;
+    height: 80px;
+    border: 0;
+}
+
+.onigiri-sidebar-profile-music-link {
+    box-sizing: border-box;
+    padding: 16px;
+    color: #fff;
+    text-decoration: none;
+    background: #16b9d0;
+    line-height: normal;
+}
+
+.onigiri-sidebar-profile-music-link span {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    opacity: 0.78;
+    margin-bottom: 6px;
+}
+
+.onigiri-sidebar-profile-music-link strong {
+    display: block;
+    font-size: 14px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Action Buttons & Menu Items --- */
+/* The sidebar "Add" button is now a standard `.menu-item action-add` (see
+   onigiri_renderer.py) so it shares the unified styling and the Settings-driven
+   `.action-add` icon/color customization. The old `.add-button-dashed` dashed-outline
+   treatment has been retired here. */
 
 .menu-item {
     display: flex;
@@ -316,6 +910,8 @@ details.menu-group[open]>summary.menu-item::after {
     overflow: hidden;
     flex-grow: 1;
     min-height: 0;
+    padding-bottom: 28px;
+    box-sizing: border-box;
     contain: layout style paint;
     scroll-behavior: auto;
     background-color: transparent !important;
@@ -392,11 +988,11 @@ tr.deck {
 }
 
 tr.deck.current {
-    background-color: var(--canvas-inset);
+    background-color: transparent;
 }
 
 .night-mode tr.deck.current {
-    background-color: var(--highlight-bg);
+    background-color: transparent;
 }
 
 tr.deck:hover,
@@ -935,6 +1531,14 @@ tr.deck.drag-over-nest {
     margin-top: 0;
 }
 
+.retention-card.retention-stars-hidden {
+    justify-content: center;
+}
+
+.retention-card.retention-stars-hidden p {
+    margin-bottom: 0;
+}
+
 /* Fill main number space on non-retention cards */
 .stat-card:not(.retention-card) p {
     flex-grow: 1;
@@ -1126,8 +1730,8 @@ td.count {
     transition: none;
 }
 
-.deck-focus-btn .icon,
-.deck-edit-btn .icon {
+.sidebar-left .deck-focus-btn .icon,
+.sidebar-left .deck-edit-btn .icon {
     margin-right: 0 !important;
     background-color: var(--fg-subtle);
     width: 16px;
@@ -1159,7 +1763,33 @@ td.count {
     color: inherit;
 }
 
-#onigiri-search-toolbar-btn:hover {
+#onigiri-home-toolbar-btn {
+    display: none;
+    position: static;
+    z-index: auto;
+    flex: 0 0 auto;
+    color: inherit;
+}
+
+#onigiri-home-toolbar-btn .home-btn-icon {
+    display: block;
+    width: 15px;
+    height: 15px;
+    background-color: currentColor;
+    mask-position: center;
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+}
+
+.sidebar-actions-archived #onigiri-home-toolbar-btn {
+    display: flex;
+}
+
+#onigiri-search-toolbar-btn:hover,
+#onigiri-home-toolbar-btn:hover {
     color: var(--accent-color);
     background: transparent !important;
     border: none !important;
@@ -1177,6 +1807,16 @@ td.count {
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
+#deck-list-header {
+    height: 24px;
+    min-height: 24px;
+    box-sizing: border-box;
+}
+
+#deck-list-header h2 {
+    line-height: 24px;
+}
+
 #onigiri-deck-search-bar {
     display: none;
     position: relative;
@@ -1187,7 +1827,8 @@ td.count {
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 4px 4px 4px 10px;
+    height: 24px;
+    padding: 0 4px 0 10px;
     border: 1px solid var(--border);
     border-radius: 999px;
     background: var(--canvas-inset);
@@ -1232,8 +1873,8 @@ td.count {
 }
 
 #onigiri-deck-search-close {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: 0;
     border-radius: 999px;
@@ -1293,6 +1934,19 @@ td.count {
     transition: all 0.3s ease;
 }
 
+.sidebar-toolbar.sidebar-actions-inline {
+    position: static;
+    top: auto;
+    left: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    margin: -12px 0 14px 0;
+    z-index: 1;
+}
+
 /* Base style for all toolbar buttons */
 .sidebar-toolbar .sidebar-toggle-btn,
 .sidebar-toolbar .deck-focus-btn,
@@ -1321,6 +1975,13 @@ td.count {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.sidebar-toolbar.sidebar-actions-inline .action-btn {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    box-sizing: border-box;
 }
 
 /* Mask-based action icon — color controlled by background-color */
@@ -1354,6 +2015,11 @@ td.count {
     background-color: var(--accent-color);
 }
 
+.menu-item.action-sync.is-syncing .icon {
+    animation: spin 1s linear infinite;
+    background-color: var(--accent-color);
+}
+
 @keyframes spin {
     100% {
         transform: rotate(360deg);
@@ -1361,6 +2027,10 @@ td.count {
 }
 
 .action-btn.sync-needed .action-icon {
+    background-color: var(--accent-color);
+}
+
+.menu-item.action-sync.sync-needed .icon {
     background-color: var(--accent-color);
 }
 
@@ -1388,6 +2058,182 @@ td.count {
     display: none;
 }
 
+.container.modern-main-menu.onigiri-cycle-sidebar-only {
+    justify-content: center !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-sidebar-only .main-content {
+    display: none !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-sidebar-only .resize-handle {
+    flex: 0 0 15px;
+}
+
+.container.modern-main-menu.onigiri-cycle-sidebar-only #onigiri-sidebar-edge-pill .resize-handle {
+    flex: 0 0 30px;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    scroll-behavior: auto;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked::before,
+.container.modern-main-menu.onigiri-cycle-stacked::after {
+    position: fixed !important;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .sidebar-left {
+    width: min(var(--onigiri-sidebar-width, 620px), calc(100% - 30px)) !important;
+    max-width: calc(100% - 30px) !important;
+    height: min(var(--onigiri-sidebar-height, 520px), calc(100vh - 30px)) !important;
+    min-width: 320px !important;
+    min-height: 0;
+    margin: 15px auto 10px auto !important;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .sidebar-left.sidebar-collapsed {
+    height: 0 !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .sidebar-expanded-content {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked #deck-list-container {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    contain: none !important;
+    padding-bottom: 0 !important;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked #deck-list-container::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .resize-handle {
+    display: flex !important;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked #onigiri-sidebar-edge-pill,
+.container.modern-main-menu.onigiri-cycle-stacked #onigiri-sidebar-edge-toggle,
+.container.modern-main-menu.onigiri-cycle-stacked .sidebar-edge-toggle-zone {
+    position: fixed;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .main-content {
+    display: flex !important;
+    width: 100%;
+    min-height: auto;
+    flex: 0 0 auto;
+    overflow: visible !important;
+    padding: 12px 40px 40px;
+}
+
+.container.modern-main-menu.onigiri-cycle-stacked .main-content > * {
+    max-width: none;
+}
+
+.deck-focus-label {
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+}
+
+.deck-focus-mode-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.deck-focus-mode-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transform: translateX(-6px);
+    transition:
+        max-width 0.22s ease,
+        opacity 0.16s ease,
+        transform 0.18s ease;
+}
+
+.deck-focus-mode-group:hover .deck-focus-mode-icons,
+.deck-focus-mode-group:focus-within .deck-focus-mode-icons {
+    max-width: 150px;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+}
+
+.deck-focus-mode-icon-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--fg-subtle);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: none !important;
+    outline: none !important;
+    opacity: 0.72;
+}
+
+.deck-focus-mode-icon-btn:hover,
+.deck-focus-mode-icon-btn:focus-visible,
+.deck-focus-mode-icon-btn.active {
+    color: var(--accent-color);
+    opacity: 1;
+}
+
+.deck-focus-mode-icon {
+    width: 15px;
+    height: 15px;
+    display: block;
+    background-color: currentColor;
+    mask: var(--deck-focus-mode-icon-url) center / contain no-repeat;
+    -webkit-mask: var(--deck-focus-mode-icon-url) center / contain no-repeat;
+}
+
+.deck-focus-label:hover,
+.deck-focus-label:focus-visible,
+#deck-list-header.deck-focus-active .deck-focus-label {
+    color: var(--accent-color);
+}
+
 
 /* --- Collapsed State Logic --- */
 .sidebar-left.sidebar-collapsed {
@@ -1409,44 +2255,60 @@ td.count {
     display: none;
 }
 
-/* --- Sidebar Reveal Button --- */
-#onigiri-sidebar-reveal-btn {
-    position: fixed;
-    top: 15px;
-    left: 15px;
-    display: none;
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-    opacity: 0.55;
-    z-index: 1000;
-    background: none !important;
-    border: none !important;
+#onigiri-sidebar-edge-toggle {
+    width: 22px;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    height: 22px;
+    min-height: 22px !important;
+    max-height: 22px !important;
     padding: 0 !important;
     margin: 0 !important;
-    box-shadow: none !important;
-    outline: none !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: inherit;
+    display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--fg);
-    transition: opacity 0.15s ease;
-}
-
-#onigiri-sidebar-reveal-btn:hover,
-#onigiri-sidebar-reveal-btn:focus,
-#onigiri-sidebar-reveal-btn:active {
+    cursor: pointer;
+    z-index: 1;
     opacity: 1;
-    background: none !important;
-    border: none !important;
     box-shadow: none !important;
-    outline: none !important;
+    transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease, transform 0.12s ease;
 }
 
-#onigiri-sidebar-reveal-btn svg {
+#onigiri-sidebar-edge-toggle:hover,
+#onigiri-sidebar-edge-toggle:active {
+    color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
+    background: rgba(128, 128, 128, 0.12) !important;
+}
+
+.sidebar-edge-toggle-icon {
+    width: 15px;
+    height: 15px;
     display: block;
-    width: 20px;
-    height: 20px;
+    background-color: currentColor;
+    mask: var(--onigiri-collapse-icon-url) center / contain no-repeat;
+    -webkit-mask: var(--onigiri-collapse-icon-url) center / contain no-repeat;
     pointer-events: none;
+}
+
+#onigiri-sidebar-edge-pill.is-collapsed #onigiri-sidebar-edge-toggle {
+    width: 30px;
+    height: 30px;
+    color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
+    background: var(--onigiri-sidebar-bg, var(--bg, #fff)) !important;
+}
+
+.sidebar-edge-toggle-zone {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 48px;
+    height: 100px;
+    z-index: 1999;
+    pointer-events: auto;
 }
 
 /* Individual Positioning (Collapsed Sidebar) */
@@ -1506,7 +2368,8 @@ td.count {
 }
 
 .collapsed-profile-pic,
-.collapsed-profile-pic-placeholder {
+.collapsed-profile-pic-placeholder,
+.collapsed-profile-pic.profile-pic-generated {
     width: 100%;
     height: 100%;
     border-radius: 50%;
@@ -1516,7 +2379,8 @@ td.count {
     object-fit: cover;
 }
 
-.collapsed-profile-pic-placeholder {
+.collapsed-profile-pic-placeholder,
+.collapsed-profile-pic.profile-pic-generated {
     background-color: var(--accent-color);
     color: white;
     display: flex;
@@ -1551,7 +2415,7 @@ td.count {
 .sidebar-left.deck-focus-mode .sidebar-expanded-content .add-button-dashed,
 .sidebar-left.deck-focus-mode .sidebar-expanded-content .menu-item,
 .sidebar-left.deck-focus-mode .sidebar-expanded-content .menu-group,
-.sidebar-left.deck-focus-mode .sidebar-expanded-content h2:first-of-type {
+.sidebar-left.deck-focus-mode .sidebar-expanded-content .sidebar-welcome-heading {
     display: none !important;
 }
 
@@ -1584,33 +2448,42 @@ td.count {
 tr.deck .new-count-bubble,
 tr.deck .review-count-bubble,
 tr.deck .learn-count-bubble {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    font-size: 0.75em !important;
     font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 10px;
-    min-width: 16px;
+    padding: 0 0.6em;
+    height: 1.5em;
+    border-radius: 999px;
+    min-width: 1.5em;
     text-align: center;
-    line-height: 1.5;
+    line-height: 1;
     max-width: 5ch;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
+/* Sidebar count bubbles follow whatever the Overviewer's card count colors
+   currently resolve to (--overview-*-count-*, set in patcher.py from
+   Overview Style, itself falling back to these --*-count-bubble-* theme
+   colors), so editing either Overview Style or Deck Settings updates both. */
 .new-count-bubble {
-    background-color: var(--new-count-bubble-bg);
-    color: var(--new-count-bubble-fg);
+    background-color: var(--overview-new-bubble-bg, var(--new-count-bubble-bg));
+    color: var(--overview-new-count-fg, var(--new-count-bubble-fg));
 }
 
 .review-count-bubble {
-    background-color: var(--review-count-bubble-bg);
-    color: var(--review-count-bubble-fg);
+    background-color: var(--overview-review-bubble-bg, var(--review-count-bubble-bg));
+    color: var(--overview-review-count-fg, var(--review-count-bubble-fg));
 }
 
 .learn-count-bubble {
-    background-color: var(--learn-count-bubble-bg);
-    color: var(--learn-count-bubble-fg);
+    background-color: var(--overview-learn-bubble-bg, var(--learn-count-bubble-bg));
+    color: var(--overview-learn-count-fg, var(--learn-count-bubble-fg));
 }
 
 /* Zero count styling - more subtle appearance */
@@ -1634,49 +2507,6 @@ tr.deck .learn-count-bubble.zero {
 #deck-list-container {
     contain: layout style paint;
     overflow: hidden;
-}
-
-/* --- Sync Status Indicator --- */
-.sync-status-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-left: 12px;
-    margin-top: 3.5px;
-    flex-shrink: 0;
-    display: none;
-    /* Hidden by default when no sync is needed */
-}
-
-/* --- Sync Animation --- */
-@keyframes onigiri-sync-pulse {
-
-    0%,
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-
-    50% {
-        transform: scale(1.50);
-        opacity: 0.7;
-    }
-}
-
-/* Apply the animation only to the indicator dot when syncing */
-.action-sync.is-syncing .sync-status-indicator {
-    display: block;
-    /* Ensure it's visible */
-    animation: onigiri-sync-pulse 1.3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    background-color: var(--accent-color);
-    /* Ensure it has the accent color */
-}
-
-/* Sync needed - accent color circle */
-.action-sync.sync-needed .sync-status-indicator {
-    display: block;
-    background-color: var(--accent-color);
-    /* Accent color */
 }
 
 /* Located at: menu.css */
@@ -1867,6 +2697,10 @@ tr.deck .learn-count-bubble.zero {
     transition: width 0.2s ease, opacity 0.2s ease, margin-left 0.2s ease, border-width 0.15s ease;
 }
 
+.sidebar-toolbar.sidebar-actions-inline .action-btn.more-item {
+    display: none;
+}
+
 /* When More button has .more-expanded, reveal the 3 buttons */
 .sidebar-toolbar .action-more.more-expanded~.action-btn.more-item {
     width: 24px;
@@ -1877,6 +2711,12 @@ tr.deck .learn-count-bubble.zero {
     margin-left: 0;
 }
 
+.sidebar-toolbar.sidebar-actions-inline .action-more.more-expanded~.action-btn.more-item {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+}
+
 /* Highlight the More button itself when expanded */
 .sidebar-toolbar .action-more.more-expanded {
     background-color: var(--canvas-inset);
@@ -1885,4 +2725,75 @@ tr.deck .learn-count-bubble.zero {
 
 .sidebar-toolbar .action-more.more-expanded .action-icon {
     background-color: var(--icon-color);
+}
+tr.deck.is-multi-selected {
+    position: relative;
+}
+
+tr.deck.is-multi-selected > td {
+    background: color-mix(in srgb, var(--accent-color, #007aff) 14%, transparent) !important;
+}
+
+tr.deck.is-multi-selected::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--accent-color, #007aff);
+    pointer-events: none;
+    z-index: 2;
+}
+
+#onigiri-multiselect-badge {
+    position: static;
+    display: none;
+    z-index: 200001;
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+    border-radius: 999px;
+    background: var(--canvas-overlay, var(--canvas, #1f1f1f));
+    color: var(--fg, #e8e8e8);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    font: 650 12px var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+}
+
+.deck-header-actions #onigiri-multiselect-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    height: 24px;
+    padding: 0 9px;
+    box-shadow: none;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#onigiri-multiselect-badge:active {
+    transform: translateY(1px);
+}
+
+.onigiri-drag-preview.is-multi-drag {
+    padding-bottom: 24px;
+}
+
+.onigiri-drag-count {
+    position: absolute;
+    right: 10px;
+    bottom: 7px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--accent-color, #007aff);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.fancy button {
+    box-shadow: none !important;
 }

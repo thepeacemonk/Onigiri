@@ -12,6 +12,7 @@ COLOR_LABELS = {
     "--icon-color": {"label": "icon_label", "tooltip": "icon_tooltip"},
     "--icon-color-filtered": {"label": "filtered_icon_label", "tooltip": "filtered_icon_tooltip"},
     "--fg-subtle": {"label": "fg_subtle_label", "tooltip": "fg_subtle_tooltip"},
+    "--font-small-title-color": {"label": "font_small_title_color_label", "tooltip": "font_small_title_color_tooltip"},
     "--border": {"label": "border_label", "tooltip": "border_tooltip"},
     "--highlight-bg": {"label": "hover_highlight_label", "tooltip": "hover_highlight_tooltip"},
     "--button-primary-bg": {"label": "study_button_label", "tooltip": "study_button_tooltip"},
@@ -35,13 +36,8 @@ COLOR_LABELS = {
     "--overlay-dark": {"label": "overlay_dark_label", "tooltip": "overlay_dark_tooltip"},
     "--overlay-light": {"label": "overlay_light_label", "tooltip": "overlay_light_tooltip"},
     
-    # Profile page specific colors
-    "--profile-page-bg": {"label": "profile_page_bg_label", "tooltip": "profile_page_bg_tooltip"},
-    "--profile-card-bg": {"label": "profile_card_bg_label", "tooltip": "profile_card_bg_tooltip"},
+    # Profile bar and overlay colors
     "--profile-pill-placeholder-bg": {"label": "profile_pill_placeholder_bg_label", "tooltip": "profile_pill_placeholder_bg_tooltip"},
-    "--profile-export-btn-bg": {"label": "profile_export_btn_bg_label", "tooltip": "profile_export_btn_bg_tooltip"},
-    "--profile-export-btn-fg": {"label": "profile_export_btn_fg_label", "tooltip": "profile_export_btn_fg_tooltip"},
-    "--profile-export-btn-border": {"label": "profile_export_btn_border_label", "tooltip": "profile_export_btn_border_tooltip"},
     "--overlay-close-btn-bg": {"label": "overlay_close_btn_bg_label", "tooltip": "overlay_close_btn_bg_tooltip"},
     "--overlay-close-btn-fg": {"label": "overlay_close_btn_fg_label", "tooltip": "overlay_close_btn_fg_tooltip"},
     
@@ -75,8 +71,8 @@ ICON_DEFAULTS = {
     "create_deck": "add-deck.svg",
     "import_file": "import_file.svg",
     "gamification": "gamepad.svg",
-    "retention_star": "star_filled.svg",
-    "star_filled": "star_filled.svg",
+    "retention_star": "star.svg",
+    "star_filled": "star.svg",
     "focus": "focus.svg",
     "edit": "edit.svg",
 }
@@ -88,6 +84,7 @@ ALL_THEME_KEYS = [
     "--bg",
     "--fg",
     "--fg-subtle",
+    "--font-small-title-color",
     "--border",
     "--canvas-inset",
 
@@ -122,13 +119,8 @@ ALL_THEME_KEYS = [
     "--overlay-dark",
     "--overlay-light",
     
-    # Profile page specific colors
-    "--profile-page-bg",
-    "--profile-card-bg",
+    # Profile bar and overlay colors
     "--profile-pill-placeholder-bg",
-    "--profile-export-btn-bg",
-    "--profile-export-btn-fg",
-    "--profile-export-btn-border",
     "--overlay-close-btn-bg",
     "--overlay-close-btn-fg",
     

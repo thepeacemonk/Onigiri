@@ -29,9 +29,62 @@ except ImportError:
 import random
 
 
-SHOP_API_URL = "https://script.google.com/macros/s/AKfycbwg5HMxT9FWQIbPIVRrI6u8k_JheZBRUWWI0q5Jcl-ecRrPB4L25FJDh65YFjv__i4k/exec"
+SHOP_API_URL = "https://script.google.com/macros/s/AKfycbxTGeWG088ZNkCYeyR2EnDiAKmlaInNbqCw0VAU2vlUmUAc8PW2JVMywGIyFS-bDb8C/exec"
+
+# Flat dark theme for the store window/cards (see Tayiaki Shop redesign mockup).
+# True neutral grays (equal R/G/B) - the previous values had the blue channel
+# running a few points hotter than red/green, giving everything a cool/bluish cast.
+def get_store_theme():
+    dark = bool(mw and getattr(mw, 'pm', None) and mw.pm.night_mode())
+    return {
+        "STORE_BG": "#1A1A1A" if dark else "#F4F6F8",
+        "NAV_PILL_BG": "#2A2A2A" if dark else "#E2E6EA",
+        "NAV_ACTIVE_BG": "#EAEAEA" if dark else "#FFFFFF",
+        "NAV_ACTIVE_TEXT": "#1A1A1A" if dark else "#2C3E50",
+        "NAV_INACTIVE_TEXT": "#A8A8A8" if dark else "#7F8C8D",
+        "NAV_HOVER_BG": "rgba(255, 255, 255, 0.08)" if dark else "rgba(0, 0, 0, 0.05)",
+        "NAV_HOVER_TEXT": "#FFFFFF" if dark else "#2C3E50",
+        "CARD_BACK_BG": "#242424" if dark else "#FFFFFF",
+        "PANEL_BG": "#242424" if dark else "#FFFFFF",
+        "ACCENT_GOLD": "#E8B23D",
+        "ACCENT_GOLD_HOVER": "#F0C463",
+        "TEXT_PRIMARY": "#FFFFFF" if dark else "#2C3E50",
+        "TEXT_SECONDARY": "rgba(255, 255, 255, 0.65)" if dark else "rgba(44, 62, 80, 0.65)",
+        "WALLET_BG": "rgba(255, 255, 255, 0.07)" if dark else "rgba(0, 0, 0, 0.05)",
+        "CARD_DESC_TEXT": "rgba(255, 255, 255, 0.85)" if dark else "#4A5568",
+        "BACK_BTN_BG": "rgba(255, 255, 255, 0.1)" if dark else "rgba(0, 0, 0, 0.08)",
+        "BACK_BTN_HOVER": "rgba(255, 255, 255, 0.18)" if dark else "rgba(0, 0, 0, 0.15)",
+        "ACTION_LOCKED_BG": "rgba(255, 255, 255, 0.35)" if dark else "rgba(0, 0, 0, 0.1)",
+        "ACTION_LOCKED_TEXT": "rgba(255, 255, 255, 0.8)" if dark else "rgba(0, 0, 0, 0.4)",
+        "ACTION_CANNOT_AFFORD_BG": "rgba(255, 255, 255, 0.35)" if dark else "rgba(0, 0, 0, 0.1)",
+        "ACTION_CANNOT_AFFORD_TEXT": "rgba(60, 60, 60, 0.7)" if dark else "rgba(0, 0, 0, 0.4)",
+        "BTN_TEXT_ON_GOLD": "#1A1A1A" if dark else "#FFFFFF",
+    }
 
 
+def _styled(widget):
+    """Plain QWidget/QStackedWidget instances ignore a stylesheet background-color
+    (opaque or transparent) unless WA_StyledBackground is set - without this they
+    fall back to painting Anki's native palette background, hiding whatever
+    color/transparency the stylesheet asked for."""
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    return widget
+
+
+def _load_scaled_pixmap(path, width, height):
+    """Load an image and scale it for display at the screen's actual device
+    pixel ratio, so sprites stay crisp on HiDPI/Retina displays instead of
+    rendering soft (scaling to literal width/height treats them as physical
+    pixels, which is roughly half the needed resolution on a 2x screen)."""
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        return pixmap
+    screen = QApplication.primaryScreen()
+    ratio = screen.devicePixelRatio() if screen else 1.0
+    target = QSize(int(width * ratio), int(height * ratio))
+    scaled = pixmap.scaled(target, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+    scaled.setDevicePixelRatio(ratio)
+    return scaled
 
 
 _COIN_SALT = "onigiri_secret_salt_2024"  # Simple salt for basic integrity
@@ -52,6 +105,7 @@ class StoreItemCard(QWidget):
     
     def __init__(self, item_id, item_data, is_owned, is_equipped, coins, addon_path, store_window, parent=None):
         super().__init__(parent)
+        self.theme = get_store_theme()
         self.item_id = item_id
         self.item_data = item_data
         self.is_owned = is_owned
@@ -59,491 +113,303 @@ class StoreItemCard(QWidget):
         self.user_coins = coins
         self.addon_path = addon_path
         self.store_window = store_window # Reference to main window for callbacks
-        self.is_night_mode = mw.pm.night_mode()
+        self.theme_color = item_data.get('theme') or '#888888'
         self.is_flipped = False  # Track flip state
-        
+
         self.setup_ui()
-    
+
     def setup_ui(self):
         """Create the card UI with front and back sides"""
+        _styled(self)
+
         # Main container for stacking front and back
-        self.stack = QStackedWidget()
-        
+        self.stack = _styled(QStackedWidget())
+        self.stack.setStyleSheet("QStackedWidget { background: transparent; }")
+
         # Create front side
         self.front_widget = self.create_front_side()
         self.stack.addWidget(self.front_widget)
-        
+
         # Create back side (description)
         self.back_widget = self.create_back_side()
         self.stack.addWidget(self.back_widget)
-        
+
         # Set up main layout
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(self.stack)
-        
+
         self.setLayout(main_layout)
-        
-        # Card container styling
-        card_bg = "#3F2B13" if self.is_night_mode else "#5F411C"
-        border_color = "#2A1E0D" if self.is_night_mode else "#4A3015"
-        
+
+        # Card container styling: flat, fully colored with the restaurant's theme color
         self.setStyleSheet(f"""
             StoreItemCard {{
-                background-color: {card_bg};
+                background-color: {self.theme_color};
                 border-radius: 20px;
-                border: 2px solid {border_color};
             }}
         """)
-    
+
     def create_front_side(self):
-        """Create the front side of the card"""
-        front = QWidget()
+        """Create the front side of the card: name pill on top, image in the
+        middle, and a price/action pill at the bottom (the mockup's flat-color
+        card with white pill badges)."""
+        front = _styled(QWidget())
+        front.setStyleSheet("background: transparent;")
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        # Preview area (colored background + image)
-        preview = QWidget()
-        preview.setFixedHeight(150)
-        theme_color = self.item_data.get('theme', '#eee')
-        
-        # Create a layout for the preview to center the image
-        preview_layout = QGridLayout()
-        preview_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Image
-        image_name = self.item_data.get('image')
-        if image_name:
-            # Try to find the image in restaurant folder
-            img_path = os.path.join(
-                self.addon_path,
-                "system_files/gamification_images/restaurant_folder",
-                image_name
-            )
-            
-            if os.path.exists(img_path):
-                image_label = QLabel()
-                pixmap = QPixmap(img_path)
-                # Scale pixmap to fit
-                scaled_pixmap = pixmap.scaled(130, 130, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                image_label.setPixmap(scaled_pixmap)
-                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                preview_layout.addWidget(image_label, 0, 0, Qt.AlignmentFlag.AlignCenter)
-        
-        # Info icon button (top-right corner) using SVG
+        layout.setContentsMargins(14, 14, 14, 16)
+        layout.setSpacing(10)
+
+        # --- Top row: name pill + info button ---
+        top_row = _styled(QWidget())
+        top_row.setStyleSheet("background: transparent;")
+        top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(6)
+
+        name_pill = QLabel(self.item_data['name'])
+        name_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_pill.setWordWrap(True)
+        name_pill.setStyleSheet(f"""
+            QLabel {{
+                background-color: #FFFFFF;
+                color: {self.theme_color};
+                border-radius: 14px;
+                font-size: 13px;
+                font-weight: 700;
+                padding: 7px 12px;
+            }}
+        """)
+        top_layout.addWidget(name_pill, 1)
+
+        # Info icon button using SVG, tinted white for visibility on any theme color
         info_btn = QPushButton()
-        info_btn.setFixedSize(30, 30)
+        info_btn.setFixedSize(28, 28)
         info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        # Load and color the SVG icon
-        svg_path = os.path.join(self.addon_path, "system_files/system_icons/info-circle.svg")
+
+        svg_path = os.path.join(self.addon_path, "system_files/system_icons/unavailable_for_users/info-circle.svg")
         if os.path.exists(svg_path):
-            # Read SVG content
             with open(svg_path, 'r', encoding='utf-8') as f:
                 svg_content = f.read()
-            
-            # Get the card background color for the icon
-            card_bg = "#3F2B13" if self.is_night_mode else "#5F411C"
-            
-            # Replace the fill color in the SVG
-            svg_colored = svg_content.replace('<path d=', f'<path fill="{card_bg}" d=')
-            
-            # Create an image from the SVG
+
+            # This icon is drawn with stroke="currentColor" (not fill) - recolor that,
+            # since currentColor has no meaning outside a CSS context and renders invisible.
+            svg_colored = svg_content.replace('currentColor', '#FFFFFF')
+
             renderer = QSvgRenderer(svg_colored.encode('utf-8'))
-            image = QImage(30, 30, QImage.Format.Format_ARGB32)
+            image = QImage(28, 28, QImage.Format.Format_ARGB32)
             image.fill(Qt.GlobalColor.transparent)
-            
+
             painter = QPainter(image)
             renderer.render(painter)
             painter.end()
-            
-            # Set the icon
+
             info_btn.setIcon(QIcon(QPixmap.fromImage(image)))
-            info_btn.setIconSize(QSize(24, 24))
-        
+            info_btn.setIconSize(QSize(20, 20))
+
         info_btn.setStyleSheet("""
             QPushButton {
-                background-color: transparent;
+                background-color: rgba(255, 255, 255, 0.25);
                 border: none;
-                border-radius: 15px;
+                border-radius: 14px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.4);
             }
         """)
         info_btn.clicked.connect(self.flip_card)
-        
-        # Add info button to preview at top-right
-        preview_layout.addWidget(info_btn, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-        
-        preview.setLayout(preview_layout)
-        preview.setStyleSheet(f"""
-            QWidget {{
-                background-color: {theme_color};
-                border-top-left-radius: 20px;
-                border-top-right-radius: 20px;
-            }}
-        """)
-        
-        layout.addWidget(preview)
-        
-        # Info section
-        info_widget = QWidget()
-        info_layout = QVBoxLayout()
-        info_layout.setContentsMargins(15, 10, 15, 15)
-        
-        # Colors based on mode
-        text_color = "#FFFFFF"
-        
-        # Item name
-        name_label = QLabel(self.item_data['name'])
-        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 18px;
-                font-weight: 600;
-                color: {text_color};
-                margin-bottom: 5px;
-            }}
-        """)
-        info_layout.addWidget(name_label)
-        
-        # Price row
-        price_widget = QWidget()
-        price_layout = QHBoxLayout()
-        price_layout.setContentsMargins(0, 0, 0, 0)
-        price_layout.setSpacing(5)
-        price_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+        top_layout.addWidget(info_btn)
+
+        top_row.setLayout(top_layout)
+        layout.addWidget(top_row)
+
+        # --- Middle: item image, sitting directly on the theme-colored card ---
+        image_label = QLabel()
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image_label.setStyleSheet("background: transparent;")
+        image_name = self.item_data.get('image')
+        if image_name:
+            img_path = os.path.join(
+                self.addon_path,
+                "system_files/gamification_images/nook_folder",
+                image_name
+            )
+            if os.path.exists(img_path):
+                image_label.setPixmap(_load_scaled_pixmap(img_path, 150, 150))
+        layout.addWidget(image_label, 1)
+
+        # --- Bottom: price/action pill (also the click target) ---
+        self.action_btn = QPushButton()
+        self.action_btn.setFixedHeight(36)
+        self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refresh_action_button()
+        layout.addWidget(self.action_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        front.setLayout(layout)
+        return front
+
+    def refresh_action_button(self):
+        """(Re)style the bottom pill based on owned/equipped/affordability state."""
         price_value = self.item_data['price']
         is_special_price = isinstance(price_value, str)
-        
-        price_label = QLabel(str(price_value))
-        if is_special_price:
-            price_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    font-weight: bold;
-                    color: #CFA13D;
-                }
-            """)
-            price_label.setWordWrap(True)
-            price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        else:
-            price_label.setStyleSheet("""
-                QLabel {
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: #CFA13D;
-                }
-            """)
-        
-        price_layout.addWidget(price_label)
-        
-        # Coin Icon for Price (only if numeric)
-        if not is_special_price:
-            coin_label = QLabel()
-            coin_label.setFixedSize(20, 20)
-            coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
-            if os.path.exists(coin_path):
-                pixmap = QPixmap(coin_path)
-                scaled = pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                coin_label.setPixmap(scaled)
-            else:
-                coin_label.setStyleSheet("background-color: #CFA13D; border-radius: 10px;")
-            price_layout.addWidget(coin_label)
-        
-        price_widget.setLayout(price_layout)
-        info_layout.addWidget(price_widget)
-        info_layout.addStretch()
-        
-        # Action button (inside info section)
-        self.action_btn = QPushButton()
-        self.action_btn.setFixedHeight(44)
-        self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
+
+        try:
+            self.action_btn.clicked.disconnect()
+        except TypeError:
+            pass
+
+        self.action_btn.setIcon(QIcon())
+
+        pill_style = """
+            QPushButton {{
+                border: none;
+                border-radius: 18px;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 0 18px;
+                {extra}
+            }}
+        """
+
         if self.is_equipped:
             self.action_btn.setText(tr("close_restaurant"))
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #8B6F47;
-                    color: white;
-                    border: none;
-                    border-radius: 12px;
-                    font-weight: 600;
-                    font-size: 15px;
-                    margin: 0 20px 20px 20px;
-                }
-                QPushButton:hover {
-                    background-color: #6B5437;
-                }
-            """)
+            self.action_btn.setEnabled(True)
+            self.action_btn.setStyleSheet(pill_style.format(extra=f"background-color: {self.theme_color}; color: #FFFFFF; border: 2px solid #FFFFFF;"))
             self.action_btn.clicked.connect(lambda: self.store_window.equip_item('default'))
         elif self.is_owned:
             self.action_btn.setText(tr("open_restaurant"))
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #A0714F;
-                    color: white;
-                    border: none;
-                    border-radius: 12px;
-                    font-weight: 600;
-                    font-size: 15px;
-                    margin: 0 20px 20px 20px;
-                }
-                QPushButton:hover {
-                    background-color: #8B5E3C;
-                }
-            """)
+            self.action_btn.setEnabled(True)
+            self.action_btn.setStyleSheet(pill_style.format(extra=f"background-color: #FFFFFF; color: {self.theme_color};"))
             self.action_btn.clicked.connect(lambda: self.store_window.equip_item(self.item_id))
+        elif is_special_price:
+            self.action_btn.setText(tr("locked"))
+            self.action_btn.setEnabled(False)
+            self.action_btn.setStyleSheet(pill_style.format(extra=f"background-color: {self.theme['ACTION_LOCKED_BG']}; color: {self.theme['ACTION_LOCKED_TEXT']};"))
         else:
-            if is_special_price:
-                self.action_btn.setText(tr("locked"))
-                self.action_btn.setEnabled(False)
-                self.action_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #6B5437;
-                        color: #A89080;
-                        border: none;
-                        border-radius: 12px;
-                        font-weight: 600;
-                        font-size: 15px;
-                        margin: 0 20px 20px 20px;
-                    }
-                """)
+            coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+            if os.path.exists(coin_path):
+                self.action_btn.setIcon(QIcon(coin_path))
+                self.action_btn.setIconSize(QSize(16, 16))
+            self.action_btn.setText(f" {price_value}")
+            can_afford = self.user_coins >= price_value
+
+            if can_afford:
+                self.action_btn.setEnabled(True)
+                self.action_btn.setStyleSheet(pill_style.format(extra="background-color: #FFFFFF; color: #2c2c2c;"))
+                self.action_btn.clicked.connect(lambda: self.store_window.buy_item(self.item_id))
             else:
-                self.action_btn.setText(tr("buy"))
-                can_afford = self.user_coins >= price_value
-                
-                if can_afford:
-                    self.action_btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #CFA13D;
-                            color: white;
-                            border: none;
-                            border-radius: 12px;
-                            font-weight: 600;
-                            font-size: 15px;
-                            margin: 0 20px 20px 20px;
-                        }
-                        QPushButton:hover {
-                            background-color: #e67e22;
-                        }
-                    """)
-                    self.action_btn.clicked.connect(lambda: self.store_window.buy_item(self.item_id))
-                else:
-                    self.action_btn.setEnabled(False)
-                    self.action_btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #6B5437;
-                            color: #A89080;
-                            border: none;
-                            border-radius: 12px;
-                            font-weight: 600;
-                            font-size: 15px;
-                            margin: 0 20px 20px 20px;
-                        }
-                    """)
-        
-        info_layout.addWidget(self.action_btn)
-        
-        info_widget.setLayout(info_layout)
-        # Set background for info section to match card
-        info_bg = "#3F2B13" if self.is_night_mode else "#5F411C"
-        info_widget.setStyleSheet(f"""
-            QWidget {{
-                background-color: {info_bg};
-                border-bottom-left-radius: 20px;
-                border-bottom-right-radius: 20px;
+                self.action_btn.setEnabled(False)
+                self.action_btn.setStyleSheet(pill_style.format(extra=f"background-color: {self.theme['ACTION_CANNOT_AFFORD_BG']}; color: {self.theme['ACTION_CANNOT_AFFORD_TEXT']};"))
+    
+    def _back_note(self, text, text_color, bg_rgba):
+        """A small rounded note pill for the back of the card (flavor text,
+        lock requirements, etc.) - same pill language as the front side."""
+        note = QLabel(text)
+        note.setWordWrap(True)
+        note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        note.setStyleSheet(f"""
+            QLabel {{
+                font-size: 12px;
+                color: {text_color};
+                background-color: {bg_rgba};
+                padding: 10px 14px;
+                border-radius: 14px;
+                font-weight: 700;
             }}
         """)
-        layout.addWidget(info_widget)
-        
-        front.setLayout(layout)
-        return front
-    
+        return note
+
     def create_back_side(self):
-        """Create the back side of the card with description"""
-        back = QWidget()
+        """Create the back side of the card with the item's description."""
+        back = _styled(QWidget())
         layout = QVBoxLayout()
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
-        
-        # Back button to flip back
-        back_btn = QPushButton(f"← {tr('back')}")
-        back_btn.setFixedHeight(30)
+        layout.setContentsMargins(16, 14, 16, 18)
+        layout.setSpacing(12)
+
+        # Back button (mirrors the front side's circular info button)
+        top_row = _styled(QWidget())
+        top_row.setStyleSheet("background: transparent;")
+        top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(0, 0, 0, 0)
+
+        back_btn = QPushButton("←")
+        back_btn.setFixedSize(28, 28)
         back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        back_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: #FFFFFF;
+        back_btn.setToolTip(tr('back'))
+        back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme['BACK_BTN_BG']};
+                color: {self.theme_color};
                 border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: 600;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-            }
+                border-radius: 14px;
+                font-size: 15px;
+                font-weight: 800;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme['BACK_BTN_HOVER']};
+            }}
         """)
         back_btn.clicked.connect(self.flip_card)
-        layout.addWidget(back_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        
-        # Title
+        top_layout.addWidget(back_btn)
+        top_layout.addStretch()
+        top_row.setLayout(top_layout)
+        layout.addWidget(top_row)
+
+        # Title, colored with the restaurant's own theme color so the back
+        # side still reads as "the same card" rather than a generic panel
         title = QLabel(self.item_data['name'])
+        title.setWordWrap(True)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("""
-            QLabel {
-                font-size: 20px;
-                font-weight: 700;
-                color: #FFFFFF;
-                margin-bottom: 5px;
-            }
+        title.setStyleSheet(f"""
+            QLabel {{
+                font-size: 18px;
+                font-weight: 800;
+                color: {self.theme_color};
+            }}
         """)
         layout.addWidget(title)
-        
+
         # Description
         description = self.item_data.get('description', tr("no_description_available"))
         desc_label = QLabel(description)
         desc_label.setWordWrap(True)
         desc_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        desc_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                color: rgba(255, 255, 255, 0.9);
-                line-height: 1.5;
-            }
+        desc_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 13px;
+                color: {self.theme['CARD_DESC_TEXT']};
+            }}
         """)
-        layout.addWidget(desc_label)
-        
-        # Special note for Santa's Coffee
-        if self.item_id == "santas_coffee":
-            special_note = QLabel(tr("santas_coffee_special"))
-            special_note.setWordWrap(True)
-            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            special_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #A8D8FF;
-                    background-color: rgba(168, 216, 255, 0.15);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                }
-            """)
-            layout.addWidget(special_note)
-        
-        # Special note for Focus Dango
-        if self.item_id == "focus_dango":
-            special_note = QLabel(tr("focus_dango_special"))
-            special_note.setWordWrap(True)
-            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            special_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #DC90B8;
-                    background-color: rgba(220, 144, 184, 0.15);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                }
-            """)
-            layout.addWidget(special_note)
-        
-        # Special note for Motivated Mochi
-        if self.item_id == "motivated_mochi":
-            special_note = QLabel(tr("motivated_mochi_special"))
-            special_note.setWordWrap(True)
-            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            special_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #6EC170;
-                    background-color: rgba(110, 193, 112, 0.15);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                }
-            """)
-            layout.addWidget(special_note)
-        
-        # Special note for Lunar New Year Feast
-        if self.item_id == "lunar_new_year":
-            special_note = QLabel(tr("lunar_new_year_special"))
-            special_note.setWordWrap(True)
-            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            special_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #FFD700;
-                    background-color: rgba(178, 34, 34, 0.3);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                    border: 1px solid #FFD700;
-                }
-            """)
-            layout.addWidget(special_note)
+        layout.addWidget(desc_label, 1)
 
-        # Special note for Astronigiri
-        if self.item_id == "astronigiri":
-            special_note = QLabel(tr("astronigiri_special"))
-            special_note.setWordWrap(True)
-            special_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            special_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #A8D8FF;
-                    background-color: rgba(116, 130, 155, 0.2);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                    border: 1px solid #74829B;
-                }
-            """)
-            layout.addWidget(special_note)
+        # Special flavor note, one per item id that has one
+        special_notes = {
+            "santas_coffee": ("santas_coffee_special", "#A8D8FF", "rgba(168, 216, 255, 0.16)"),
+            "focus_dango": ("focus_dango_special", "#DC90B8", "rgba(220, 144, 184, 0.16)"),
+            "motivated_mochi": ("motivated_mochi_special", "#6EC170", "rgba(110, 193, 112, 0.16)"),
+            "lunar_new_year": ("lunar_new_year_special", "#FFD166", "rgba(210, 43, 43, 0.22)"),
+            "astronigiri": ("astronigiri_special", "#A8D8FF", "rgba(116, 130, 155, 0.22)"),
+        }
+        if self.item_id in special_notes:
+            key, text_color, bg_rgba = special_notes[self.item_id]
+            layout.addWidget(self._back_note(tr(key), text_color, bg_rgba))
 
-        # Special note for Motivated Mochi
-        
-        # Special note for locked evolutions
+        # Lock requirement note for evolutions with unmet prerequisites
         prerequisite_info = self.item_data.get('prerequisite_info')
         if prerequisite_info:
-            locked_note = QLabel(f"{prerequisite_info}")
-            locked_note.setWordWrap(True)
-            locked_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            locked_note.setStyleSheet("""
-                QLabel {
-                    font-size: 13px;
-                    color: #FFB347;
-                    background-color: rgba(255, 179, 71, 0.15);
-                    padding: 10px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    margin-top: 10px;
-                }
-            """)
-            layout.addWidget(locked_note)
-        
-        layout.addStretch()
-        
+            layout.addWidget(self._back_note(prerequisite_info, "#FFB347", "rgba(255, 179, 71, 0.16)"))
+
         back.setLayout(layout)
-        
-        # Set background for back side
-        info_bg = "#3F2B13" if self.is_night_mode else "#5F411C"
+
         back.setStyleSheet(f"""
             QWidget {{
-                background-color: {info_bg};
+                background-color: {self.theme['CARD_BACK_BG']};
                 border-radius: 20px;
             }}
         """)
-        
+
         return back
-    
+
     def flip_card(self):
         """Toggle between front and back of card"""
         self.is_flipped = not self.is_flipped
@@ -551,366 +417,184 @@ class StoreItemCard(QWidget):
             self.stack.setCurrentIndex(1)  # Show back
         else:
             self.stack.setCurrentIndex(0)  # Show front
-    
+
     def update_state(self, is_owned, is_equipped, user_coins):
         """Update the card's state without recreating the widget"""
         self.is_owned = is_owned
         self.is_equipped = is_equipped
         self.user_coins = user_coins
-        
-        # Update the action button
-        if self.is_equipped:
-            self.action_btn.setText(tr("close_restaurant"))
-            self.action_btn.setEnabled(True)
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #8B6F47;
-                    color: white;
-                    border: none;
-                    border-radius: 12px;
-                    font-weight: 600;
-                    font-size: 15px;
-                    margin: 0 20px 20px 20px;
-                }
-                QPushButton:hover {
-                    background-color: #6B5437;
-                }
-            """)
-            # Reconnect the click handler
-            try:
-                self.action_btn.clicked.disconnect()
-            except:
-                pass
-            self.action_btn.clicked.connect(lambda: self.store_window.equip_item('default'))
-        elif self.is_owned:
-            self.action_btn.setText(tr("open_restaurant"))
-            self.action_btn.setEnabled(True)
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #A0714F;
-                    color: white;
-                    border: none;
-                    border-radius: 12px;
-                    font-weight: 600;
-                    font-size: 15px;
-                    margin: 0 20px 20px 20px;
-                }
-                QPushButton:hover {
-                    background-color: #8B5E3C;
-                }
-            """)
-            # Reconnect the click handler
-            try:
-                self.action_btn.clicked.disconnect()
-            except:
-                pass
-            self.action_btn.clicked.connect(lambda: self.store_window.equip_item(self.item_id))
-        else:
-            price_value = self.item_data['price']
-            is_special_price = isinstance(price_value, str)
-            
-            if is_special_price:
-                self.action_btn.setText(tr("locked"))
-                self.action_btn.setEnabled(False)
-                self.action_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #6B5437;
-                        color: #A89080;
-                        border: none;
-                        border-radius: 12px;
-                        font-weight: 600;
-                        font-size: 15px;
-                        margin: 0 20px 20px 20px;
-                    }
-                """)
-            else:
-                self.action_btn.setText(tr("buy"))
-                can_afford = self.user_coins >= price_value
-                
-                if can_afford:
-                    self.action_btn.setEnabled(True)
-                    self.action_btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #CFA13D;
-                            color: white;
-                            border: none;
-                            border-radius: 12px;
-                            font-weight: 600;
-                            font-size: 15px;
-                            margin: 0 20px 20px 20px;
-                        }
-                        QPushButton:hover {
-                            background-color: #e67e22;
-                        }
-                    """)
-                    # Reconnect the click handler
-                    try:
-                        self.action_btn.clicked.disconnect()
-                    except:
-                        pass
-                    self.action_btn.clicked.connect(lambda: self.store_window.buy_item(self.item_id))
-                else:
-                    self.action_btn.setEnabled(False)
-                    self.action_btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #6B5437;
-                            color: #A89080;
-                            border: none;
-                            border-radius: 12px;
-                            font-weight: 600;
-                            font-size: 15px;
-                            margin: 0 20px 20px 20px;
-                        }
-                    """)
+        self.refresh_action_button()
 
 
 class CoinRedemptionDialog(QDialog):
     """Custom dialog for coin redemption"""
-    def __init__(self, parent=None, is_night_mode=False):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.is_night_mode = is_night_mode
         self.setWindowTitle(tr("get_more_coins"))
-        self.setFixedWidth(450)
+        self.setFixedWidth(420)
+        self.addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.setup_ui()
-        
+
     def setup_ui(self):
+        dark = bool(mw and mw.pm and mw.pm.night_mode())
+        theme = get_store_theme()
+        bg = "#1b1f24" if dark else "#f4f6f8"
+        panel = "#22272e" if dark else "#ffffff"
+        border = "#33393f" if dark else "#e3e7ea"
+        text = "#eef1f4" if dark else "#1c2530"
+        muted = "#8b94a0" if dark else "#69727e"
+        accent_bg = "rgba(232, 178, 61, 0.18)" if dark else "rgba(232, 178, 61, 0.12)"
+
         layout = QVBoxLayout()
-        layout.setSpacing(20)
-        layout.setContentsMargins(25, 25, 25, 25)
-        
-        # Title (Top Right)
-        title = QLabel(tr("get_more_coins"))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("""
-            QLabel {
-                font-size: 22px;
-                font-weight: 800;
-                color: #CFA13D;
-            }
-        """)
-        layout.addWidget(title)
-        
-        # Info Container
-        info_container = QWidget()
-        info_layout = QHBoxLayout()
-        info_layout.setContentsMargins(15, 15, 15, 15)
-        
-        info_label = QLabel(tr("coin_level_tip"))
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #FFFFFF; font-size: 15px; font-weight: 500;")
-        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        info_layout.addWidget(info_label)
-        info_container.setLayout(info_layout)
-        
-        bg_color = "#5F411C" if not self.is_night_mode else "#3F2B13"
-        info_container.setStyleSheet(f"""
-            QWidget {{
-                background-color: {bg_color};
-                border-radius: 12px;
+        layout.setContentsMargins(24, 24, 24, 22)
+        layout.setSpacing(16)
+
+        hero = _styled(QWidget())
+        hero.setObjectName("coinHeroCard")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 16, 16, 16)
+        hero_layout.setSpacing(8)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
+        coin_icon = QLabel()
+        coin_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        coin_icon.setFixedSize(40, 40)
+        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+        if os.path.exists(coin_path):
+            coin_icon.setPixmap(_load_scaled_pixmap(coin_path, 26, 26))
+        coin_icon.setStyleSheet(f"""
+            QLabel {{
+                background: {accent_bg};
+                border-radius: 10px;
             }}
         """)
-        layout.addWidget(info_container)
-        
-        # Support Container
-        support_container = QWidget()
-        support_layout = QVBoxLayout()
-        support_layout.setContentsMargins(15, 15, 15, 15)
-        support_layout.setSpacing(10)
-        
+        top_row.addWidget(coin_icon)
+
+        title = QLabel(tr("get_more_coins"))
+        title.setStyleSheet(f"color: {text}; font-size: 16px; font-weight: 600;")
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        top_row.addWidget(title, 1)
+        hero_layout.addLayout(top_row)
+
+        subtitle = QLabel(tr("coin_level_tip"))
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(f"color: {muted}; font-size: 13px; font-weight: 400;")
+        hero_layout.addWidget(subtitle)
+
+        # Support tip, then the buy-codes button on its own row underneath,
+        # both folded into the hero card so the dialog reads as two zones
+        # (info card, then the code form) instead of loose floating lines.
         support_text = QLabel(tr("support_onigiri_coins"))
         support_text.setWordWrap(True)
-        support_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        support_text.setStyleSheet("color: rgba(255, 255, 255, 0.9); font-size: 14px;")
-        support_layout.addWidget(support_text)
-        
-        # Link Container
-        link_container = QWidget()
-        link_layout = QHBoxLayout()
-        link_layout.setContentsMargins(0, 0, 0, 0)
-        link_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # We use a label with a link, styled to look nice
-        link_label = QLabel(f'<a href="https://buymeacoffee.com/peacemonk/extras" style="color: #CFA13D; text-decoration: none; font-weight: bold; font-size: 15px;"> {tr("buy_coin_codes")}</a>')
-        link_label.setOpenExternalLinks(True)
-        link_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        bg_color = "#5F411C" if not self.is_night_mode else "#3F2B13"
-        link_label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {bg_color};
-                padding: 10px 20px;
-                border-radius: 12px;
+        support_text.setStyleSheet(f"color: {muted}; font-size: 12px; font-weight: 400;")
+        hero_layout.addWidget(support_text)
+
+        buy_row = QHBoxLayout()
+        buy_row.addStretch(1)
+        buy_btn = QPushButton(tr("buy_coin_codes"))
+        buy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        buy_btn.setFixedHeight(32)
+        buy_btn.setMinimumWidth(220)
+        buy_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://buymeacoffee.com/peacemonk/extras"))
+        )
+        buy_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {theme['ACCENT_GOLD']};
+                border: 1px solid {border};
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 500;
             }}
-            QLabel:hover {{
-                background-color: transparent;
-                border-radius: 12px;
-                border: 2px solid #CFA13D;
-            }}
+            QPushButton:hover {{ background: {accent_bg}; }}
         """)
-        
-        link_layout.addWidget(link_label)
-        link_container.setLayout(link_layout)
-        support_layout.addWidget(link_container)
-        
-        support_container.setLayout(support_layout)
-        
-        support_bg = "#4A3215" if not self.is_night_mode else "#2A1E0D"
-        support_container.setStyleSheet(f"""
-            QWidget {{
-                background-color: {support_bg};
+        buy_row.addWidget(buy_btn)
+        buy_row.addStretch(1)
+        hero_layout.addLayout(buy_row)
+
+        hero.setStyleSheet(f"""
+            QWidget#coinHeroCard {{
+                background: {panel};
+                border: 1px solid {border};
                 border-radius: 12px;
             }}
         """)
-        layout.addWidget(support_container)
-        
-        # Input Section
-        input_label = QLabel(tr("have_a_code"))
-        input_label.setStyleSheet("color: #CFA13D; font-weight: 600; margin-top: 10px;")
-        layout.addWidget(input_label)
-        
+        layout.addWidget(hero)
+
+        # Code controls
+        code_label = QLabel(tr("have_a_code"))
+        code_label.setStyleSheet(f"color: {text}; font-size: 13px; font-weight: 500;")
+        layout.addWidget(code_label)
+
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText(tr("paste_code_here"))
-        self.input_field.setFixedHeight(45)
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                padding: 0 15px;
-                border-radius: 10px;
-                border: 2px solid #CFA13D;
-                background-color: rgba(255, 255, 255, 0.1);
-                color: white;
+        self.input_field.setFixedHeight(40)
+        self.input_field.setStyleSheet(f"""
+            QLineEdit {{
+                background: {panel};
+                color: {text};
+                border: 1px solid {border};
+                border-radius: 8px;
+                padding: 0 12px;
                 font-size: 14px;
-            }
-            QLineEdit:focus {
-                background-color: rgba(255, 255, 255, 0.15);
-            }
-        """)
-        layout.addWidget(self.input_field)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(15)
-        
-        cancel_btn = QPushButton(tr("cancel"))
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setFixedHeight(40)
-        cancel_btn.clicked.connect(self.reject)
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: rgba(255, 255, 255, 0.7);
-                border: none;
-                border-radius: 12px;
-                font-weight: 600;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                color: white;
-            }
-        """)
-        
-        redeem_btn = QPushButton(tr("redeem_code"))
-        redeem_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        redeem_btn.setFixedHeight(40)
-        redeem_btn.clicked.connect(self.accept)
-        redeem_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #CFA13D;
-                color: white;
-                border: none;
-                border-radius: 12px;
-                font-weight: 800;
-                font-size: 15px;
-                padding: 0 30px;
-            }
-            QPushButton:hover {
-                border: 2px solid #CFA13D;
-                background-color: transparent;
-            }
-        """)
-        
-        btn_layout.addWidget(cancel_btn)
-        btn_layout.addWidget(redeem_btn)
-        layout.addLayout(btn_layout)
-        
-        self.setLayout(layout)
-        
-        # Dialog styling
-        dialog_bg = "#623C1B" if self.is_night_mode else "#7D5524"
-        self.setStyleSheet(f"""
-            QDialog {{
-                background-color: {dialog_bg};
+                font-weight: 400;
+            }}
+            QLineEdit:focus {{
+                border-color: {theme['ACCENT_GOLD']};
             }}
         """)
+        layout.addWidget(self.input_field)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        buttons.addStretch(1)
+
+        cancel_btn = QPushButton(tr("cancel"))
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setFixedHeight(34)
+        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {muted};
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 0 12px;
+            }}
+            QPushButton:hover {{ color: {text}; }}
+        """)
+
+        redeem_btn = QPushButton(tr("redeem_code"))
+        redeem_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        redeem_btn.setFixedHeight(34)
+        redeem_btn.clicked.connect(self.accept)
+        redeem_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {theme['ACCENT_GOLD']};
+                color: {theme['BTN_TEXT_ON_GOLD']};
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 0 16px;
+            }}
+            QPushButton:hover {{ background: {theme['ACCENT_GOLD_HOVER']}; }}
+        """)
+
+        buttons.addWidget(cancel_btn)
+        buttons.addWidget(redeem_btn)
+        layout.addLayout(buttons)
+
+        self.setLayout(layout)
+        self.setStyleSheet(f"QDialog {{ background: {bg}; }}")
 
     def get_code(self):
         return self.input_field.text().strip()
-
-
-class CustomTooltip(QWidget):
-    """Custom tooltip widget that appears on hover"""
-    def __init__(self, text, is_night_mode, parent=None):
-        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
-        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
-        # Enable translucent background for custom painting
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        
-        self.bg_color = "#623C1B" if is_night_mode else "#7D5524"
-        self.text = text
-        
-        # Auto-hide timer to prevent tooltip from getting stuck
-        self.auto_hide_timer = QTimer(self)
-        self.auto_hide_timer.setSingleShot(True)
-        self.auto_hide_timer.timeout.connect(self.hide)
-        self.auto_hide_timer.start(5000)  # Auto-hide after 5 seconds
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 8, 12, 8)
-        
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet("""
-            QLabel {
-                font-size: 13px;
-                color: #FFFFFF;
-                background: transparent;
-                font-weight: 500;
-            }
-        """)
-        label.setMaximumWidth(250)
-        
-        layout.addWidget(label)
-        self.setLayout(layout)
-    
-    def paintEvent(self, event):
-        """Custom paint event for smooth rounded corners"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        
-        # Draw rounded rectangle background with float precision for smoother curves
-        from aqt.qt import QPainterPath, QColor, QPen, QRectF
-        
-        # Use QRectF for floating point precision
-        rect = QRectF(1.5, 1.5, self.width() - 3, self.height() - 3)  # Inset by border width
-        path = QPainterPath()
-        path.addRoundedRect(rect, 15, 15)
-        
-        # Fill background
-        painter.fillPath(path, QColor(self.bg_color))
-        
-        # Draw border with antialiasing
-        pen = QPen(QColor(207, 161, 61, int(0.3 * 255)))
-        pen.setWidthF(2.0)  # Use float width
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.drawPath(path)
-    
-    def mousePressEvent(self, event):
-        """Close tooltip when clicked"""
-        self.hide()
-        event.accept()
 
 
 class CoinRainOverlay(QWidget):
@@ -981,117 +665,111 @@ class CoinRainOverlay(QWidget):
 
 class CoinSuccessDialog(QDialog):
     """Custom dialog for successful coin redemption"""
-    def __init__(self, added_coins, new_total, addon_path, parent=None, is_night_mode=False):
+    def __init__(self, added_coins, new_total, addon_path, parent=None):
         super().__init__(parent)
+        self.theme = get_store_theme()
         self.added_coins = added_coins
         self.new_total = new_total
         self.addon_path = addon_path
-        self.is_night_mode = is_night_mode
         self.setWindowTitle(tr("success"))
         self.setFixedWidth(400)
         self.setup_ui()
-        
+
         # Setup rain animation
         coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
         if os.path.exists(coin_path):
             pixmap = QPixmap(coin_path)
             self.overlay = CoinRainOverlay(self, pixmap)
             self.overlay.raise_()
-        
+
     def resizeEvent(self, event):
         if hasattr(self, 'overlay'):
             self.overlay.resize(self.size())
         super().resizeEvent(event)
-        
+
     def setup_ui(self):
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(30, 30, 30, 30)
-        
+
         # Spacer instead of celebration icon
         layout.addSpacing(20)
-        
+
         # Title
         title = QLabel(tr("coins_received"))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("""
-            QLabel {
+        title.setStyleSheet(f"""
+            QLabel {{
                 font-size: 24px;
                 font-weight: 800;
-                color: #CFA13D;
-            }
+                color: {self.theme['ACCENT_GOLD']};
+            }}
         """)
         layout.addWidget(title)
-        
+
         # Added Coins Container
-        coins_container = QWidget()
+        coins_container = _styled(QWidget())
         coins_layout = QVBoxLayout()
         coins_layout.setContentsMargins(20, 20, 20, 20)
-        
+
         amount_label = QLabel(f"+{self.added_coins}")
         amount_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        amount_label.setStyleSheet("""
-            QLabel {
+        amount_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 42px;
                 font-weight: 900;
-                color: #FFFFFF;
+                color: {self.theme['ACCENT_GOLD']};
                 border: none;
-            }
+            }}
         """)
         coins_layout.addWidget(amount_label)
-        
+
         label_text = QLabel(tr("coins_added"))
         label_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label_text.setStyleSheet("color: rgba(255, 255, 255, 0.6); font-size: 12px; font-weight: 700; letter-spacing: 1px; border: none")
+        label_text.setStyleSheet(f"color: {self.theme['TEXT_SECONDARY']}; font-size: 12px; font-weight: 700; letter-spacing: 1px; border: none")
         coins_layout.addWidget(label_text)
-        
+
         coins_container.setLayout(coins_layout)
-        
-        # Container styling
-        bg_color = "#5F411C" if not self.is_night_mode else "#3F2B13"
         coins_container.setStyleSheet(f"""
             QWidget {{
-                background-color: {bg_color};
-                border-radius: 15px;
+                background-color: {self.theme['PANEL_BG']};
+                border-radius: 16px;
             }}
         """)
         layout.addWidget(coins_container)
-        
+
         # New Balance
         balance_label = QLabel(f"{tr('new_balance')}: {self.new_total}")
         balance_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        balance_label.setStyleSheet("color: rgba(255, 255, 255, 0.8); font-size: 15px; font-weight: 600; margin-top: 10px;")
+        balance_label.setStyleSheet(f"color: {self.theme['TEXT_SECONDARY']}; font-size: 15px; font-weight: 600; margin-top: 10px;")
         layout.addWidget(balance_label)
-        
+
         # Close Button
         close_btn = QPushButton(tr("awesome"))
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setFixedHeight(45)
         close_btn.clicked.connect(self.accept)
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #CFA13D;
-                color: white;
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme['ACCENT_GOLD']};
+                color: {self.theme['BTN_TEXT_ON_GOLD']};
                 border: none;
-                border-radius: 12px;
+                border-radius: 14px;
                 font-weight: 800;
                 font-size: 16px;
                 margin-top: 10px;
-            }
-            QPushButton:hover {
-                border: 2px solid #CFA13D;
-                background-color: transparent;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme['ACCENT_GOLD_HOVER']};
+            }}
         """)
         layout.addWidget(close_btn)
-        
+
         self.setLayout(layout)
-        
-        # Dialog styling
-        dialog_bg = "#623C1B" if self.is_night_mode else "#7D5524"
+
         self.setStyleSheet(f"""
             QDialog {{
-                background-color: {dialog_bg};
+                background-color: {self.theme['STORE_BG']};
             }}
         """)
 
@@ -1101,6 +779,7 @@ class TaiyakiStoreWindow(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.theme = get_store_theme()
         self.setWindowTitle(tr("mr_taiyaki_store"))
         
         # Calculate adaptive window size based on screen geometry
@@ -1116,25 +795,25 @@ class TaiyakiStoreWindow(QDialog):
             screen_height = available_geometry.height()
             
             # Use 85% of available screen size, with maximum limits
-            target_width = min(int(screen_width * 0.85), 1050)
+            target_width = min(int(screen_width * 0.85), 1150)
             target_height = min(int(screen_height * 0.85), 700)
-            
-            # Ensure we don't go below minimum size
-            target_width = max(target_width, 600)
+
+            # Ensure we don't go below minimum size (the header row - mascot,
+            # title, 3 nav pills, and the wallet - needs ~1000px to never clip)
+            target_width = max(target_width, 1100)
             target_height = max(target_height, 500)
-            
+
             self.resize(target_width, target_height)
         except:
             # Fallback to default size if screen detection fails
             self.resize(1050, 700)
-        
+
         # Allow resizing for smaller displays
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(1100, 500)
         
         # Get addon path for images
         self.addon_package = mw.addonManager.addonFromModule(__name__)
         self.addon_path = os.path.dirname(os.path.dirname(__file__))
-        self.is_night_mode = mw.pm.night_mode()
         
         # Load data
         self.load_store_data()
@@ -1209,145 +888,21 @@ class TaiyakiStoreWindow(QDialog):
 
         self.owned_items = owned_items
         self.current_theme_id = current_theme_id
-        
-        # Store items data with correct image filenames
-        self.restaurants = {
-            "focus_dango": {
-                "name": tr("focus_dango_name"), 
-                "price": tr("check_info"), 
-                "theme": "#DC90B8", 
-                "image": "focus_dango_restaurant.png",
-                "description": tr("focus_dango_desc"),
-                "prerequisite_info": tr("focus_dango_special")
-            },
-            "motivated_mochi": {
-                "name": tr("motivated_mochi_name"), 
-                "price": tr("check_info"), 
-                "theme": "#6EC170", 
-                "image": "mochi_msg_restaurant.png",
-                "description": tr("motivated_mochi_desc"),
-                "prerequisite_info": tr("motivated_mochi_special")
-            },
-            "macha_delights": {
-                "name": tr("macha_delights_name"), 
-                "price": 400, 
-                "theme": "#517C58", 
-                "image": "Macha Delights.png",
-                "description": tr("macha_delights_desc")
-            },
-            "macaron_maison": {
-                "name": tr("macaron_maison_name"), 
-                "price": 500, 
-                "theme": "#AFC3D6", 
-                "image": "Macaron Maison.png",
-                "description": tr("macaron_maison_desc")
-            },
-            "coffee_co": {
-                "name": tr("coffee_co_name"), 
-                "price": 600, 
-                "theme": "#98693A", 
-                "image": "CoffeeAndCake.png",
-                "description": tr("coffee_co_desc")
-            },
-            "grocery_store": {
-                "name": tr("grocery_store_name"), 
-                "price": 700, 
-                "theme": "#AD6131", 
-                "image": "Grocery Store.png",
-                "description": tr("grocery_store_desc")
-            },
-            "bakery_heaven": {
-                "name": tr("bakery_heaven_name"), 
-                "price": 800, 
-                "theme": "#CD9C57", 
-                "image": "Bakery.png",
-                "description": tr("bakery_heaven_desc")
-            },
-            "awesome_boba": {
-                "name": tr("awesome_boba_name"), 
-                "price": 850, 
-                "theme": "#CD8DCA", 
-                "image": "Awesome Boba.png",
-                "description": tr("awesome_boba_desc")
-            },
-            "awesome_shiny_boba": {
-                "name": tr("awesome_shiny_boba_name"), 
-                "price": 1000, 
-                "theme": "#41A59D", 
-                "image": "Awesome Boba (Shiny).png",
-                "description": tr("awesome_shiny_boba_desc")
-            },
-            "santas_coffee": {
-                "name": tr("santas_coffee_name"), 
-                "price": 1225, 
-                "theme": "#CA4D44", 
-                "image": "Santa's Coffee.png",
-                "description": tr("santas_coffee_desc"),
-                "prerequisite_info": tr("santas_coffee_special")
-            },
-            "lunar_new_year": {
-                "name": tr("lunar_new_year_name"), 
-                "price": 888, 
-                "theme": "#D22B2B", 
-                "image": "lunar_new_year_feast.png",
-                "description": tr("lunar_new_year_desc"),
-                "prerequisite_info": tr("lunar_new_year_special")
-            },
-            "astronigiri": {
-                "name": tr("astronigiri_name"), 
-                "price": 5000, 
-                "theme": "#74829B", 
-                "image": "space_onigiri.png",
-                "description": tr("astronigiri_desc"),
-                "prerequisite_info": tr("astronigiri_special")
-            },
-        }
-        
-        self.evolutions = {
-            "restaurant_evo_i": {
-                "name": tr("restaurant_evo_i_name"), 
-                "price": 700, 
-                "theme": "#D07A5F", 
-                "image": "Restaurant Evo I.png",
-                "description": tr("restaurant_evo_i_desc")
-            },
-            "restaurant_evo_ii": {
-                "name": tr("restaurant_evo_ii_name"), 
-                "price": 800, 
-                "theme": "#D07A5F", 
-                "image": "Restaurant Evo II.png",
-                "description": tr("restaurant_evo_ii_desc")
-            },
-            "restaurant_evo_iii": {
-                "name": tr("restaurant_evo_iii_name"), 
-                "price": 900, 
-                "theme": "#D07A5F", 
-                "image": "Restaurant Evo III.png",
-                "description": tr("restaurant_evo_iii_desc")
-            },
-            "restaurant_evo_iv": {
-                "name": tr("restaurant_evo_iv_name"), 
-                "price": 1000, 
-                "theme": "#D07A5F", 
-                "image": "Restaurant Evo IV.png",
-                "description": tr("restaurant_evo_iv_desc")
-            },
-            "restaurant_evo_legendary": {
-                "name": tr("restaurant_evo_legendary_name"), 
-                "price": 2000, 
-                "theme": "#445A78", 
-                "image": "Restaurant Evo Legendary.png",
-                "description": tr("restaurant_evo_legendary_desc")
-            },
-            "restaurant_evo_garden": {
-                "name": tr("restaurant_evo_garden_name"), 
-                "price": 3000, 
-                "theme": "#2F553D", 
-                "image": "Restaurant Evo Garden Palace.png",
-                "description": tr("restaurant_evo_garden_desc")
-            }
-        }
-        
+
+        # Pull restaurant/sushi-evolution/shop data from the single source of
+        # truth in nook_level.py (keeps the store, the level chip color,
+        # and Nook Rush all in sync).
+        from .nook_level import get_localized_restaurants, get_localized_evolutions, get_localized_shops
+        self.restaurants = get_localized_restaurants()
+        self.evolutions = get_localized_evolutions()
+        self.shops = get_localized_shops()
+
+        # Focus Dango / Motivated Mochi aren't bought with coins - they're
+        # unlocked by enabling the matching toggle in Settings.
+        for special_id in ("focus_dango", "motivated_mochi"):
+            if special_id in self.restaurants:
+                self.restaurants[special_id]["price"] = tr("check_info")
+
         # Apply difficulty multiplier to prices
         diff = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
         multiplier = 1
@@ -1355,22 +910,21 @@ class TaiyakiStoreWindow(QDialog):
             multiplier = 2
         elif diff == "Chef":
             multiplier = 4
-            
-        for r_id, r_data in self.restaurants.items():
-            if isinstance(r_data.get("price"), int):
-                r_data["price"] *= multiplier
-                
-        for e_id, e_data in self.evolutions.items():
-            if isinstance(e_data.get("price"), int):
-                e_data["price"] *= multiplier
-        
+
+        for items in (self.restaurants, self.evolutions, self.shops):
+            for item_data in items.values():
+                if isinstance(item_data.get("price"), int):
+                    item_data["price"] *= multiplier
+
         # Evolution prerequisites: each evolution requires the previous one to be owned
         self.evolution_prerequisites = {
             "restaurant_evo_ii": "restaurant_evo_i",
             "restaurant_evo_iii": "restaurant_evo_ii",
             "restaurant_evo_iv": "restaurant_evo_iii",
             "restaurant_evo_legendary": "restaurant_evo_iv",
-            "restaurant_evo_garden": "restaurant_evo_legendary"
+            "restaurant_evo_garden": "restaurant_evo_legendary",
+            "restaurant_evo_heaven": "restaurant_evo_garden",
+            "restaurant_evo_paradise": "restaurant_evo_heaven"
         }
     
     def check_evolution_unlocked(self, item_id):
@@ -1390,455 +944,226 @@ class TaiyakiStoreWindow(QDialog):
     def setup_ui(self):
         """Create the main UI"""
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(20)
-        
-        # Header
-        header = self.create_header()
-        main_layout.addWidget(header)
-        
-        # Navigation tabs
-        nav = self.create_navigation()
-        main_layout.addWidget(nav)
-        
+        main_layout.setContentsMargins(24, 24, 24, 20)
+        main_layout.setSpacing(16)
+
+        main_layout.addWidget(self.create_header())
+
         # Content area (stacked widget for tabs)
-        self.content_stack = QStackedWidget()
-        
-        # Restaurants tab
-        restaurants_scroll = self.create_items_grid(self.restaurants)
-        self.content_stack.addWidget(restaurants_scroll)
-        
-        # Evolutions tab
-        evolutions_scroll = self.create_items_grid(self.evolutions)
-        self.content_stack.addWidget(evolutions_scroll)
-        
+        self.content_stack = _styled(QStackedWidget())
+        self.content_stack.setStyleSheet("QStackedWidget { background: transparent; }")
+        self.content_stack.addWidget(self.create_items_grid(self.restaurants))
+        self.content_stack.addWidget(self.create_items_grid(self.evolutions))
+        self.content_stack.addWidget(self.create_items_grid(self.shops))
         main_layout.addWidget(self.content_stack)
-        
-        # Set main layout
+
         self.setLayout(main_layout)
-        
-        # Overall window styling
-        bg_color = "#623C1B" if self.is_night_mode else "#7D5524"
+
         self.setStyleSheet(f"""
             QDialog {{
-                background-color: {bg_color};
+                background-color: {self.theme['STORE_BG']};
             }}
         """)
-    
+
     def create_header(self):
-        """Create the wooden header with title and wallet"""
-        header = QWidget()
-        header.setFixedHeight(170)
-        
-        # Load wooden background
-        wooden_bg_path = os.path.join(
-            self.addon_path,
-            "system_files/gamification_images/restaurant_folder/wooden_bg.png"
-        )
-        
-        if os.path.exists(wooden_bg_path):
-            # We need to escape the path for CSS
-            wooden_bg_path = wooden_bg_path.replace('\\', '/')
-            header.setStyleSheet(f"""
-                QWidget {{
-                    background-image: url("{wooden_bg_path}");
-                    background-position: center;
-                    background-repeat: no-repeat;
-                    background-size: cover;
-                    border-radius: 20px;
-                }}
-            """)
-        else:
-            header.setStyleSheet("""
-                QWidget {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #8B4513, stop:1 #A0522D);
-                    border-radius: 20px;
-                }
-            """)
-        
+        """Single row: mascot+title on the left, nav pills + wallet on the right."""
+        header = _styled(QWidget())
+        header.setStyleSheet("background: transparent;")
+
         layout = QHBoxLayout()
-        layout.setContentsMargins(30, 30, 30, 30)
-        
-        # Title group - horizontal layout with image on left, text stack on right
-        title_widget = QWidget()
-        # Make transparent
-        title_widget.setStyleSheet("background: transparent;")
-        
-        title_main_layout = QHBoxLayout()
-        title_main_layout.setContentsMargins(0, 0, 0, 0)
-        title_main_layout.setSpacing(-10)  # Negative spacing to pull text closer
-        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+
         # Mr. Taiyaki image
         mr_taiyaki_label = QLabel()
         mr_taiyaki_label.setStyleSheet("background: transparent;")
         mr_taiyaki_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         mr_taiyaki_path = os.path.join(self.addon_path, "system_files/gamification_images/mr_taiyaki.png")
         if os.path.exists(mr_taiyaki_path):
-            pixmap = QPixmap(mr_taiyaki_path)
-            scaled_pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            mr_taiyaki_label.setPixmap(scaled_pixmap)
-            mr_taiyaki_label.setFixedSize(100, 100)
-        
+            mr_taiyaki_label.setPixmap(_load_scaled_pixmap(mr_taiyaki_path, 64, 64))
+            mr_taiyaki_label.setFixedSize(64, 64)
+
         # Text stack (title + subtitle)
-        text_stack = QWidget()
+        text_stack = _styled(QWidget())
         text_stack.setStyleSheet("background: transparent;")
         text_layout = QVBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(0)
-        
+        text_layout.setSpacing(2)
+
         title = QLabel(tr("mr_taiyaki_store"))
-        title.setContentsMargins(0, 0, 0, 0)
-        title.setIndent(0)  # Remove any text indentation
-        title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        title.setStyleSheet("""
-            QLabel {
-                font-size: 36px;
+        title.setStyleSheet(f"""
+            QLabel {{
+                font-size: 30px;
                 font-weight: 800;
-                color: white;
+                color: {self.theme['TEXT_PRIMARY']};
                 background: transparent;
-                padding: 0px;
-                margin: 0px;
-            }
+            }}
         """)
-        
+
         subtitle = QLabel(tr("upgrade_restaurant_themes"))
-        subtitle.setContentsMargins(0, 0, 0, 0)
-        subtitle.setIndent(0)  # Remove any text indentation
-        subtitle.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                color: rgba(255, 255, 255, 0.9);
+        subtitle.setStyleSheet(f"""
+            QLabel {{
+                font-size: 14px;
+                color: {self.theme['TEXT_SECONDARY']};
                 background: transparent;
-                padding: 0px;
-                margin: 0px;
-            }
+            }}
         """)
-        
+
         text_layout.addWidget(title)
         text_layout.addWidget(subtitle)
-        # Don't add stretch - we want text to be compact
         text_stack.setLayout(text_layout)
-        
-        # Add image and text stack to main layout with vertical centering
-        title_main_layout.addWidget(mr_taiyaki_label, 0, Qt.AlignmentFlag.AlignVCenter)
-        title_main_layout.addWidget(text_stack, 0, Qt.AlignmentFlag.AlignVCenter)
-        title_main_layout.addStretch()
-        title_widget.setLayout(title_main_layout)
-        
-        layout.addWidget(title_widget)
+
+        layout.addWidget(mr_taiyaki_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(text_stack, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addStretch()
-        
-        # Wallet display
-        wallet = self.create_wallet_widget()
-        layout.addWidget(wallet)
-        
+        layout.addWidget(self.create_navigation(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.create_wallet_widget(), 0, Qt.AlignmentFlag.AlignVCenter)
+
         header.setLayout(layout)
         return header
-    
+
     def create_wallet_widget(self):
-        """Create the wallet display with coins and button"""
-        wallet = QWidget()
-        # Transparent background as requested
-        wallet.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        wallet.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border-radius: 15px;
-            }
+        """Create the compact coin wallet chip (balance + get-more-coins button)"""
+        wallet = _styled(QWidget())
+        wallet.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.theme['WALLET_BG']};
+                border-radius: 18px;
+            }}
         """)
-        wallet.setMinimumWidth(220)
-        wallet.setFixedHeight(100)  # Fixed height to ensure space
-        
-        layout = QVBoxLayout()
-        layout.setSpacing(5)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Coin balance row
-        balance_widget = QWidget()
-        balance_widget.setStyleSheet("background: transparent;")
-        balance_widget.setFixedHeight(40)
-        
-        balance_layout = QHBoxLayout()
-        balance_layout.setContentsMargins(0, 0, 0, 0)
-        balance_layout.setSpacing(10)
-        balance_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(16, 6, 8, 6)
+        layout.setSpacing(10)
+
         # Coin Icon
         coin_icon = QLabel()
         coin_icon.setStyleSheet("background: transparent;")
-        coin_icon.setFixedSize(36, 36)
-        
+        coin_icon.setFixedSize(26, 26)
+
         coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
         if os.path.exists(coin_path):
-            pixmap = QPixmap(coin_path)
-            scaled = pixmap.scaled(36, 36, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            coin_icon.setPixmap(scaled)
-        
+            coin_icon.setPixmap(_load_scaled_pixmap(coin_path, 26, 26))
+
         self.balance_label = QLabel(str(self.coins))
-        self.balance_label.setStyleSheet("""
-            QLabel {
-                font-size: 28px;
+        self.balance_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 20px;
                 font-weight: 800;
-                color: #CFA13D;
+                color: {self.theme['ACCENT_GOLD']};
                 background: transparent;
-            }
+            }}
         """)
-        self.balance_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        
-        balance_layout.addStretch()
-        balance_layout.addWidget(coin_icon)
-        balance_layout.addWidget(self.balance_label)
-        balance_layout.addStretch()
-        
-        balance_widget.setLayout(balance_layout)
-        layout.addWidget(balance_widget)
-        
-        # Get More Coins button container for centering
-        btn_container = QWidget()
-        btn_container.setStyleSheet("background: transparent;")
-        btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         # Use QToolButton instead of QPushButton for better styling control on macOS
         self.coins_btn = QToolButton()
         self.coins_btn.setText(tr("get_more_coins"))
         self.coins_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.coins_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.coins_btn.setFixedSize(160, 34)
+        self.coins_btn.setFixedHeight(30)
         self.coins_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        
-        self.coins_btn.setStyleSheet("""
-            QToolButton {
-                background-color: #523112;
-                color: #D4AE5E;
-                border: 2px solid #523112;
-                border-radius: 17px;
+
+        self.coins_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {self.theme['ACCENT_GOLD']};
+                color: {self.theme['BTN_TEXT_ON_GOLD']};
+                border: none;
+                border-radius: 15px;
                 font-weight: 800;
-                font-size: 14px;
-                padding: 0px;
-            }
-            QToolButton:hover {
-                background-color: #523112;
-                color: #D4AE5E;
-            }
-            QToolButton:pressed {
-                background-color: #523112;
-                color: #D4AE5E;
-            }
+                font-size: 12px;
+                padding: 0 14px;
+            }}
+            QToolButton:hover {{
+                background-color: {self.theme['ACCENT_GOLD_HOVER']};
+            }}
         """)
         self.coins_btn.clicked.connect(self.redeem_code)
-        
-        btn_layout.addWidget(self.coins_btn)
-        btn_container.setLayout(btn_layout)
-        
-        layout.addWidget(btn_container)
-        
+
+        layout.addWidget(coin_icon)
+        layout.addWidget(self.balance_label)
+        layout.addSpacing(4)
+        layout.addWidget(self.coins_btn)
+
         wallet.setLayout(layout)
         return wallet
-    
+
     def create_navigation(self):
-        """Create the navigation tabs"""
-        nav = QWidget()
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 10)
-        layout.setSpacing(20)
-        
-        text_color = "#ecf0f1" if self.is_night_mode else "#7f8c8d"
-        
-        # Restaurants button
-        self.restaurants_btn = QPushButton(tr("restaurants_header"))
-        self.restaurants_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.restaurants_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 159, 67, 0.1);
-                color: #CFA13D;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 10px;
-                font-size: 18px;
-                font-weight: 600;
-            }
-        """)
-        self.restaurants_btn.clicked.connect(lambda: self.switch_tab(0))
-        # Install event filter for tooltip
-        self.restaurants_btn.installEventFilter(self)
-        self.restaurants_btn.setProperty("tooltip_text", tr("restaurants_tooltip"))
-        
-        # Evolutions button
-        self.evolutions_btn = QPushButton(tr("evolutions_header"))
-        self.evolutions_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.evolutions_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {text_color};
-                border: none;
-                padding: 10px 20px;
-                border-radius: 10px;
-                font-size: 18px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(0, 0, 0, 0.03);
-                color: #CFA13D;
+        """Segmented-pill nav with 3 tabs: Restaurants / Sushi Evolutions / Shops"""
+        pill = _styled(QWidget())
+        pill.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.theme['NAV_PILL_BG']};
+                border-radius: 22px;
             }}
         """)
-        self.evolutions_btn.clicked.connect(lambda: self.switch_tab(1))
-        # Install event filter for tooltip
-        self.evolutions_btn.installEventFilter(self)
-        self.evolutions_btn.setProperty("tooltip_text", tr("evolutions_tooltip"))
-        
-        layout.addStretch()
-        layout.addWidget(self.restaurants_btn)
-        layout.addWidget(self.evolutions_btn)
-        layout.addStretch()
-        
-        # Initialize tooltip tracking
-        self.current_tooltip = None
-        self.tooltip_timer = QTimer()
-        self.tooltip_timer.setSingleShot(True)
-        self.tooltip_timer.timeout.connect(self.show_tooltip)
-        self.pending_tooltip_widget = None
-        
-        # Install event filter on self to detect window events
-        self.installEventFilter(self)
-        
-        nav.setLayout(layout)
-        return nav
-    
-    def eventFilter(self, obj, event):
-        """Handle events for tooltip display"""
-        # Hide tooltip when window loses focus or is minimized
-        if obj == self:
-            if event.type() in [event.Type.WindowDeactivate, event.Type.FocusOut, event.Type.Hide]:
-                self.hide_tooltip()
-        
-        # Only handle events for our navigation buttons
-        # Check that buttons exist before accessing them
-        buttons_to_check = []
-        if hasattr(self, 'restaurants_btn'):
-            buttons_to_check.append(self.restaurants_btn)
-        if hasattr(self, 'evolutions_btn'):
-            buttons_to_check.append(self.evolutions_btn)
-        
-        if obj in buttons_to_check:
-            if event.type() == event.Type.Enter:
-                # Mouse entered the button
-                self.pending_tooltip_widget = obj
-                self.tooltip_timer.start(500)  # 500ms delay before showing tooltip
-            elif event.type() == event.Type.Leave:
-                # Mouse left the button
-                self.tooltip_timer.stop()
-                self.pending_tooltip_widget = None
-                self.hide_tooltip()
-        
-        return super().eventFilter(obj, event)
-    
-    def show_tooltip(self):
-        """Show the custom tooltip"""
-        if self.pending_tooltip_widget is None:
-            return
-        
-        tooltip_text = self.pending_tooltip_widget.property("tooltip_text")
-        if not tooltip_text:
-            return
-        
-        # Hide any existing tooltip
-        self.hide_tooltip()
-        
-        # Create new tooltip
-        self.current_tooltip = CustomTooltip(tooltip_text, self.is_night_mode, self)
-        
-        # Position tooltip below the button
-        button_pos = self.pending_tooltip_widget.mapToGlobal(self.pending_tooltip_widget.rect().bottomLeft())
-        tooltip_x = button_pos.x() + (self.pending_tooltip_widget.width() - self.current_tooltip.sizeHint().width()) // 2
-        tooltip_y = button_pos.y() + 10  # 10px spacing from button
-        
-        self.current_tooltip.move(tooltip_x, tooltip_y)
-        self.current_tooltip.show()
-    
-    def hide_tooltip(self):
-        """Hide the current tooltip"""
-        if self.current_tooltip is not None:
-            try:
-                self.current_tooltip.hide()
-                self.current_tooltip.deleteLater()
-            except:
-                pass  # Ignore errors during cleanup
-            finally:
-                self.current_tooltip = None
-    
-    def closeEvent(self, event):
-        """Ensure tooltip is cleaned up when dialog closes"""
-        self.hide_tooltip()
-        self.tooltip_timer.stop()
-        super().closeEvent(event)
-    
+        pill_layout = QHBoxLayout()
+        pill_layout.setContentsMargins(6, 6, 6, 6)
+        pill_layout.setSpacing(4)
+
+        nav_labels = [
+            tr("restaurants_header"),
+            tr("evolutions_header"),
+            tr("shops_header"),
+        ]
+        # Match the font used in _apply_nav_styles so the measured width is accurate,
+        # then lock it in as a minimum - so a growing coin balance (or a narrower
+        # window) compresses elsewhere instead of ever clipping these labels.
+        nav_font = QFont()
+        nav_font.setPixelSize(14)
+        nav_font.setWeight(QFont.Weight.Bold)
+        nav_metrics = QFontMetrics(nav_font)
+
+        self.nav_buttons = []
+        for index, label in enumerate(nav_labels):
+            btn = QPushButton(label)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, i=index: self.switch_tab(i))
+            btn.setMinimumWidth(nav_metrics.horizontalAdvance(label) + 40)
+            pill_layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+
+        pill.setLayout(pill_layout)
+        self._apply_nav_styles(0)
+
+        return pill
+
+    def _apply_nav_styles(self, active_index):
+        """Highlight the active tab in the segmented pill control."""
+        for i, btn in enumerate(self.nav_buttons):
+            if i == active_index:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {self.theme['NAV_ACTIVE_BG']};
+                        color: {self.theme['NAV_ACTIVE_TEXT']};
+                        border: none;
+                        padding: 9px 18px;
+                        border-radius: 16px;
+                        font-size: 14px;
+                        font-weight: 700;
+                    }}
+                """)
+            else:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: transparent;
+                        color: {self.theme['NAV_INACTIVE_TEXT']};
+                        border: none;
+                        padding: 9px 18px;
+                        border-radius: 16px;
+                        font-size: 14px;
+                        font-weight: 700;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {self.theme['NAV_HOVER_BG']};
+                        color: {self.theme['NAV_HOVER_TEXT']};
+                    }}
+                """)
+
     def switch_tab(self, index):
         """Switch between tabs"""
         self.content_stack.setCurrentIndex(index)
-        
-        text_color = "#ecf0f1" if self.is_night_mode else "#7f8c8d"
-        
-        if index == 0:
-            # Restaurants active
-            self.restaurants_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(255, 159, 67, 0.1);
-                    color: #CFA13D;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 18px;
-                    font-weight: 600;
-                }
-            """)
-            self.evolutions_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    color: {text_color};
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 18px;
-                    font-weight: 600;
-                }}
-                QPushButton:hover {{
-                    background-color: rgba(0, 0, 0, 0.03);
-                    color: #CFA13D;
-                }}
-            """)
-        else:
-            # Evolutions active
-            self.evolutions_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(255, 159, 67, 0.1);
-                    color: #CFA13D;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 18px;
-                    font-weight: 600;
-                }
-            """)
-            self.restaurants_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    color: {text_color};
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 10px;
-                    font-size: 18px;
-                    font-weight: 600;
-                }}
-                QPushButton:hover {{
-                    background-color: rgba(0, 0, 0, 0.03);
-                    color: #CFA13D;
-                }}
-            """)
-    
+        self._apply_nav_styles(index)
+
     def create_items_grid(self, items_dict):
         """Create a scrollable grid of items"""
         scroll = QScrollArea()
@@ -1850,61 +1175,61 @@ class TaiyakiStoreWindow(QDialog):
                 border: none;
             }
         """)
-        
-        container = QWidget()
+
+        container = _styled(QWidget())
         container.setStyleSheet("background-color: transparent;")
-        
+
         grid = QGridLayout()
-        grid.setSpacing(25)
+        grid.setSpacing(22)
         grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         row = 0
         col = 0
-        max_cols = 3
-        
+        max_cols = 4
+
         for item_id, item_data in items_dict.items():
             is_owned = item_id in self.owned_items
             is_equipped = item_id == self.current_theme_id
-            
+
             # Check if this is an evolution with unmet prerequisites
             is_unlocked = self.check_evolution_unlocked(item_id)
-            
+
             # Create a copy of item_data to potentially modify
             display_data = item_data.copy()
-            
+
             # If the evolution is locked, override the price to show "Check info"
             if not is_unlocked and not is_owned:
                 prerequisite = self.evolution_prerequisites.get(item_id)
                 if prerequisite:
                     prerequisite_name = self.evolutions[prerequisite]['name']
-                    display_data['price'] = "Check info"
+                    display_data['price'] = tr("check_info")
                     # Store the prerequisite info for the back of the card
-                    display_data['prerequisite_info'] = f"Requires {prerequisite_name}"
-            
+                    display_data['prerequisite_info'] = f"{tr('requires_prefix', 'Requires')} {prerequisite_name}"
+
             # Pass self (the store window) to the card
             card = StoreItemCard(item_id, display_data, is_owned, is_equipped, self.coins, self.addon_path, self)
-            card.setFixedSize(280, 300)
-            
+            card.setFixedSize(230, 300)
+
             grid.addWidget(card, row, col)
-            
+
             col += 1
             if col >= max_cols:
                 col = 0
                 row += 1
-        
+
         # Add stretch to push items to top
         grid.setRowStretch(row + 1, 1)
-        
+
         container.setLayout(grid)
         scroll.setWidget(container)
-        
+
         return scroll
-    
+
     def buy_item(self, item_id):
         """Handle item purchase"""
-        # Find item in either category
-        item = self.restaurants.get(item_id) or self.evolutions.get(item_id)
-        
+        # Find item in any of the 3 categories
+        item = self.restaurants.get(item_id) or self.evolutions.get(item_id) or self.shops.get(item_id)
+
         if not item:
             showInfo("Item not found.")
             return
@@ -1942,7 +1267,7 @@ class TaiyakiStoreWindow(QDialog):
             self.refresh_store()
             
             # Refresh manager state
-            from .restaurant_level import manager
+            from .nook_level import manager
             manager.refresh_state()
             
             tooltip(f"Successfully bought {item['name']}!")
@@ -1968,13 +1293,13 @@ class TaiyakiStoreWindow(QDialog):
         self.refresh_store()
         
         # Refresh manager state
-        from .restaurant_level import manager
+        from .nook_level import manager
         manager.refresh_state()
         
         if item_id == 'default':
             tooltip("Restaurant closed!")
         else:
-            item = self.restaurants.get(item_id) or self.evolutions.get(item_id)
+            item = self.restaurants.get(item_id) or self.evolutions.get(item_id) or self.shops.get(item_id)
             tooltip(f"Opened {item['name']}!")
         
         # Refresh the main window (deck browser) to update the widget
@@ -1983,7 +1308,7 @@ class TaiyakiStoreWindow(QDialog):
     def redeem_code(self):
         """Handle code redemption"""
         # Use custom dialog for code redemption
-        dialog = CoinRedemptionDialog(self, self.is_night_mode)
+        dialog = CoinRedemptionDialog(self)
         if dialog.exec():
             code = dialog.get_code()
         else:
@@ -2033,12 +1358,12 @@ class TaiyakiStoreWindow(QDialog):
                 self.refresh_store()
                 
                 # Refresh manager state
-                from .restaurant_level import manager
+                from .nook_level import manager
                 manager.refresh_state()
                 
                 self.reset_coins_button()
                 # Show success dialog
-                CoinSuccessDialog(added_coins, self.coins, self.addon_path, self, self.is_night_mode).exec()
+                CoinSuccessDialog(added_coins, self.coins, self.addon_path, self).exec()
             else:
                 error_msg = data.get("message", "Invalid Code")
                 print(f"[ONIGIRI DEBUG] Redemption failed: {error_msg}")
@@ -2102,7 +1427,7 @@ class TaiyakiStoreWindow(QDialog):
                 
                 # 4. Atomic rename
                 os.replace(tmp_path, gamification_file)
-                print(f"[ONIGIRI DEBUG] Atomic sync to gamification.json: {self.coins} coins (token: {security_token[:16]}...)")
+                print(f"[ONIGIRI DEBUG] Atomic sync to gamification.json: {self.coins} coins")
                 
             except Exception as e:
                 # Clean up temp file if something went wrong

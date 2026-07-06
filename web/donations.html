@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        :root {
+            --ink: #252525;
+            --paper: #f7f7f5;
+            --blue: #7ea8ca;
+            --red: #ff555d;
+            --gold: #ffbd5b;
+            --border: #202020;
+        }
+
+        @font-face {
+            font-family: "Montserrat";
+            src:
+                url("/_addons/%%ADDON_PACKAGE%%/system_files/fonts/system_fonts/Montserrat.ttf") format("truetype"),
+                url("../system_files/fonts/system_fonts/Montserrat.ttf") format("truetype");
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
+            background: #242424;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+        }
+
+        .donations-page {
+            width: 100vw;
+            height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            border-radius: 0;
+            background: var(--paper);
+            border: 0;
+            box-shadow: none;
+            scrollbar-width: none;
+        }
+
+        .donations-page::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+
+        .hero {
+            min-height: 52vh;
+            padding: 7vh 7vw 9vh;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            background: var(--blue);
+        }
+
+        .hero h1 {
+            max-width: 1080px;
+            margin: 0;
+            color: #fff;
+            font-size: clamp(36px, 6.2vw, 76px);
+            line-height: 1.28;
+            font-weight: 500;
+            letter-spacing: 0;
+        }
+
+        .content {
+            margin-top: -44px;
+            background: var(--paper);
+            border-top-left-radius: 48px;
+            border-top-right-radius: 48px;
+            padding: clamp(28px, 3.6vh, 46px) clamp(16px, 1.5vw, 24px) 34px;
+        }
+
+        .first-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding-bottom: clamp(18px, 3vh, 34px);
+        }
+
+        .creator-card {
+            width: 100%;
+            padding: clamp(34px, 4vh, 52px) clamp(36px, 7vw, 86px) clamp(34px, 4.4vh, 56px);
+            border: 2px solid var(--border);
+            border-radius: 56px;
+            text-align: center;
+            background: var(--paper);
+        }
+
+        .creator-name {
+            margin: 0 0 26px;
+            font-size: clamp(46px, 6.4vw, 82px);
+            line-height: 1;
+            font-weight: 400;
+            letter-spacing: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(10px, 1.4vw, 18px);
+        }
+
+        .inhabitant-slot {
+            width: clamp(34px, 4.6vw, 58px);
+            height: clamp(34px, 4.6vw, 58px);
+            flex: 0 0 auto;
+            display: inline-grid;
+            place-items: center;
+            font-size: clamp(22px, 3vw, 38px);
+            line-height: 1;
+        }
+
+        .inhabitant-slot img,
+        .inhabitant-slot svg {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .inhabitant-crop {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .inhabitant-fallback[hidden] {
+            display: none;
+        }
+
+        .creator-copy {
+            max-width: 920px;
+            margin: 0 auto clamp(32px, 4vh, 48px);
+            font-size: clamp(18px, 2.55vw, 32px);
+            line-height: 1.34;
+            font-weight: 500;
+            letter-spacing: 0;
+        }
+
+        .creator-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(32px, 6vw, 74px);
+        }
+
+        button {
+            appearance: none;
+            border: 0;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        .big-button {
+            min-height: clamp(72px, 9vh, 104px);
+            border-radius: 999px;
+            background: transparent;
+            color: #050505;
+            font-size: clamp(18px, 2.1vw, 28px);
+            font-weight: 400;
+            letter-spacing: 0;
+            border: clamp(3px, 0.32vw, 4px) solid var(--red);
+            transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+        }
+
+        .big-button.buy {
+            border-color: var(--gold);
+        }
+
+        .big-button:hover,
+        .small-button:hover {
+            transform: translateY(-1px);
+        }
+
+        .big-button.kofi:hover {
+            background: var(--red);
+            color: #050505;
+        }
+
+        .big-button.buy:hover {
+            background: var(--gold);
+            color: #050505;
+        }
+
+        .scroll-cue {
+            width: fit-content;
+            max-width: calc(100% - 28px);
+            margin: clamp(26px, 3.4vh, 44px) auto 0;
+            padding: clamp(10px, 1.2vh, 14px) clamp(18px, 2.7vw, 32px);
+            text-align: center;
+            color: #3f6384;
+            font-size: clamp(18px, 2.4vw, 30px);
+            line-height: 1.2;
+            font-weight: 400;
+            letter-spacing: 0;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            border: 1px solid rgba(63, 99, 132, 0.22);
+            border-radius: 999px;
+            background: rgba(126, 168, 202, 0.10);
+        }
+
+        .scroll-chevron {
+            flex: 0 0 auto;
+            width: clamp(12px, 1.5vw, 18px);
+            height: clamp(12px, 1.5vw, 18px);
+            border-right: 2px solid #3f6384;
+            border-bottom: 2px solid #3f6384;
+            transform: rotate(45deg);
+            opacity: 0.82;
+            animation: scrollChevronFloat 1.45s ease-in-out infinite;
+        }
+
+        .collaborators {
+            margin-top: clamp(4px, 1vh, 12px);
+            padding: clamp(18px, 3vh, 30px) clamp(14px, 2vw, 24px) clamp(20px, 3.4vh, 34px);
+            border-radius: 30px;
+            background: rgba(126, 168, 202, 0.13);
+            opacity: 0;
+            transform: translateY(34px);
+            transition: opacity 520ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .collaborators.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .collaborators::before {
+            content: "";
+            display: block;
+            width: 58px;
+            height: 5px;
+            margin: 0 auto clamp(18px, 2.6vh, 26px);
+            border-radius: 999px;
+            background: rgba(63, 99, 132, 0.45);
+        }
+
+        .collab-list {
+            display: grid;
+            gap: 9px;
+        }
+
+        .collab-row {
+            min-height: 72px;
+            display: grid;
+            grid-template-columns: minmax(190px, 0.82fr) minmax(210px, 1.2fr) minmax(118px, 0.54fr);
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px 6px 14px;
+            border: 2px solid var(--border);
+            border-radius: 999px;
+            background: var(--paper);
+            opacity: 0;
+            transform: translateY(16px);
+            transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .collaborators.is-visible .collab-row {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .collaborators.is-visible .collab-row:nth-child(1) {
+            transition-delay: 80ms;
+        }
+
+        .collaborators.is-visible .collab-row:nth-child(2) {
+            transition-delay: 150ms;
+        }
+
+        .collaborators.is-visible .collab-row:nth-child(3) {
+            transition-delay: 220ms;
+        }
+
+        .collaborators.is-visible .collab-row:nth-child(4) {
+            transition-delay: 290ms;
+        }
+
+        .collab-name {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            font-size: clamp(20px, 3.3vw, 29px);
+            line-height: 1;
+            font-weight: 400;
+            letter-spacing: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .collab-name .inhabitant-slot {
+            width: clamp(42px, 5.4vw, 60px);
+            height: clamp(42px, 5.4vw, 60px);
+            font-size: clamp(17px, 2vw, 24px);
+        }
+
+        .collab-role {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            font-size: clamp(14px, 2.2vw, 20px);
+            line-height: 1.1;
+            font-weight: 400;
+            letter-spacing: 0;
+        }
+
+        .small-button {
+            min-width: 112px;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: transparent;
+            color: #050505;
+            border: 2px solid var(--border);
+            font-size: clamp(15px, 2.1vw, 19px);
+            line-height: 1;
+            font-weight: 400;
+            letter-spacing: 0;
+            transition: transform 120ms ease, background 120ms ease;
+        }
+
+        .small-button:hover {
+            background: rgba(126, 168, 202, 0.13);
+        }
+
+        @keyframes scrollChevronFloat {
+            0%,
+            100% {
+                transform: translateY(-2px) rotate(45deg);
+            }
+
+            50% {
+                transform: translateY(4px) rotate(45deg);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .scroll-chevron {
+                animation: none;
+            }
+
+            .collaborators,
+            .collab-row {
+                opacity: 1;
+                transform: none;
+                transition: none;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .donations-page {
+                width: 100vw;
+                height: 100vh;
+                border-radius: 0;
+                border: 0;
+            }
+
+            .hero {
+                min-height: 50vh;
+                padding: 44px 18px 64px;
+            }
+
+            .hero h1 {
+                font-size: clamp(32px, 8vw, 46px);
+            }
+
+            .content {
+                margin-top: -34px;
+                padding: 26px 14px 24px;
+                border-top-left-radius: 34px;
+                border-top-right-radius: 34px;
+            }
+
+            .first-panel {
+                padding-bottom: 22px;
+            }
+
+            .creator-card {
+                padding: 22px 18px 24px;
+                border-width: 2px;
+                border-radius: 34px;
+            }
+
+            .creator-name {
+                margin-bottom: 16px;
+                font-size: clamp(38px, 11vw, 54px);
+            }
+
+            .creator-copy {
+                margin-bottom: 22px;
+                font-size: clamp(16px, 4.3vw, 22px);
+            }
+
+            .creator-actions {
+                gap: 12px;
+            }
+
+            .big-button {
+                min-height: 60px;
+                font-size: 19px;
+                border-width: 3px;
+            }
+
+            .scroll-cue {
+                margin-top: 22px;
+                padding: 10px 15px;
+                font-size: clamp(15px, 4vw, 19px);
+                gap: 10px;
+            }
+
+            .collaborators {
+                margin-top: 6px;
+                padding: 16px 10px 20px;
+                border-radius: 24px;
+            }
+
+            .collab-row {
+                grid-template-columns: minmax(134px, 0.76fr) minmax(116px, 0.95fr) minmax(86px, 0.52fr);
+                min-height: 58px;
+                gap: 6px;
+                padding: 4px 6px 4px 9px;
+            }
+
+            .collab-name .inhabitant-slot {
+                width: 38px;
+                height: 38px;
+            }
+
+            .small-button {
+                min-width: 90px;
+                min-height: 38px;
+                padding: 0 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="donations-page">
+        <section class="hero">
+            <h1 id="opening-phrase">Super happy to know you want to support Onigiri!</h1>
+        </section>
+
+        <section class="content">
+            <div class="first-panel">
+                <div class="creator-card">
+                    <h2 class="creator-name">
+                        <span class="inhabitant-slot" aria-hidden="true">
+                            <img src="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/peace_inhabitant.svg" alt="" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                            <span class="inhabitant-fallback" hidden>🍙</span>
+                        </span>
+                        <span>Peace</span>
+                    </h2>
+                    <p class="creator-copy">Creator of Onigiri, Senchadō, Bento Widgets Collection, lofi.town and focumon add-ons integrations.</p>
+                    <div class="creator-actions">
+                        <button class="big-button buy" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk');">Buy me a Coffee</button>
+                        <button class="big-button kofi" onclick="pycmd('open_link:https://ko-fi.com/peacemonk');">Ko-Fi</button>
+                    </div>
+                </div>
+                <p class="scroll-cue">
+                    Scroll down to support other developers!
+                    <span class="scroll-chevron" aria-hidden="true"></span>
+                </p>
+            </div>
+
+            <section class="collaborators">
+                <div class="collab-list">
+                    <div class="collab-row">
+                        <div class="collab-name">
+                            <span class="inhabitant-slot" aria-hidden="true">
+                                <svg class="inhabitant-crop" viewBox="18 568 56 72">
+                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
+                                </svg>
+                                <span class="inhabitant-fallback" hidden>🍙</span>
+                            </span>
+                            <span>loui4raw</span>
+                        </div>
+                        <div class="collab-role">creator of the new sidebar</div>
+                        <button class="small-button" onclick="pycmd('open_link:https://ko-fi.com/loui4raw');">Ko-Fi</button>
+                    </div>
+                    <div class="collab-row">
+                        <div class="collab-name">
+                            <span class="inhabitant-slot" aria-hidden="true">
+                                <svg class="inhabitant-crop" viewBox="78 568 56 72">
+                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
+                                </svg>
+                                <span class="inhabitant-fallback" hidden>🍙</span>
+                            </span>
+                            <span>unlucky</span>
+                        </div>
+                        <div class="collab-role">original creator of Ankimon</div>
+                        <button class="small-button" onclick="pycmd('open_link:https://ko-fi.com/unlucky99');">Ko-Fi</button>
+                    </div>
+                    <div class="collab-row">
+                        <div class="collab-name">
+                            <span class="inhabitant-slot" aria-hidden="true">
+                                <svg class="inhabitant-crop" viewBox="138 568 56 72">
+                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
+                                </svg>
+                                <span class="inhabitant-fallback" hidden>🍙</span>
+                            </span>
+                            <span>h0tp</span>
+                        </div>
+                        <div class="collab-role">core contributor for Onigiri</div>
+                        <button class="small-button" onclick="pycmd('open_link:https://github.com/h0tp-ftw');">GitHub Fund</button>
+                    </div>
+                    <div class="collab-row">
+                        <div class="collab-name">
+                            <span class="inhabitant-slot" aria-hidden="true">
+                                <svg class="inhabitant-crop" viewBox="198 568 56 72">
+                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
+                                </svg>
+                                <span class="inhabitant-fallback" hidden>🍙</span>
+                            </span>
+                            <span>Ouranos</span>
+                        </div>
+                        <div class="collab-role">king of feedbacks of Onigiri</div>
+                        <button class="small-button" onclick="pycmd('open_link:https://github.com/OuraN2O');">GitHub</button>
+                    </div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        (function () {
+            const phrases = [
+                "Super happy to know you want to support Onigiri!",
+                "Your support keeps Onigiri warm and shipping!",
+                "Tiny donation, huge bowl of motivation!",
+                "Thanks for helping Onigiri keep growing!",
+                "You are feeding the next Onigiri update!",
+                "Support received with maximum monk gratitude!"
+            ];
+            const storageKey = "onigiriDonationPhraseIndex";
+            let last = Number(window.localStorage.getItem(storageKey));
+            if (!Number.isFinite(last)) {
+                last = -1;
+            }
+            let next = Math.floor(Math.random() * phrases.length);
+            if (phrases.length > 1 && next === last) {
+                next = (next + 1) % phrases.length;
+            }
+            window.localStorage.setItem(storageKey, String(next));
+            document.getElementById("opening-phrase").textContent = phrases[next];
+
+            const collaborators = document.querySelector(".collaborators");
+            const scrollRoot = document.querySelector(".donations-page");
+            if (!collaborators || !scrollRoot) {
+                return;
+            }
+            if (!("IntersectionObserver" in window)) {
+                collaborators.classList.add("is-visible");
+                return;
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        collaborators.classList.add("is-visible");
+                        observer.unobserve(collaborators);
+                    }
+                });
+            }, {
+                root: scrollRoot,
+                threshold: 0.18,
+                rootMargin: "0px 0px -8% 0px"
+            });
+            observer.observe(collaborators);
+        })();
+    </script>
+</body>
+
+</html>

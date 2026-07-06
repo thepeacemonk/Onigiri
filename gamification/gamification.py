@@ -40,7 +40,7 @@ class RestaurantLevelData:
     last_updated: str = ""
     level: int = 0
     total_xp: int = 0
-    name: str = "Restaurant Level"
+    name: str = "Nook Level"
     # Settings
     enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
@@ -126,7 +126,7 @@ class GamificationData:
                 last_updated=r_data.get('last_updated', ""),
                 level=r_data.get('level', 0),
                 total_xp=r_data.get('total_xp', 0),
-                name=r_data.get('name', "Restaurant Level"),
+                name=r_data.get('name', "Nook Level"),
                 enabled=r_data.get('enabled', None),
                 notifications_enabled=r_data.get('notifications_enabled', None),
                 show_profile_bar_progress=r_data.get('show_profile_bar_progress', None),

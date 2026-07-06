@@ -8,7 +8,7 @@ custom_body_template = """
         align-items: center;
         gap: 8px;
         padding-right: 10px;
-        margin-top: 30px;
+        margin-top: 0;
         margin-bottom: 15px;
         min-height: 24px;
         position: relative;
@@ -18,6 +18,9 @@ custom_body_template = """
         margin: 0;
         line-height: 24px;
         flex: 0 0 auto;
+        font-size: 14px;
+        text-transform: uppercase;
+        color: var(--fg-subtle);
     }
 
     .deck-header-actions {
@@ -60,14 +63,6 @@ custom_body_template = """
         pointer-events: none;
     }
 
-    #onigiri-focus-home-btn {
-        display: none;
-    }
-
-    .sidebar-left.deck-focus-mode #onigiri-focus-home-btn {
-        display: inline-flex;
-    }
-
     @keyframes deckRowAppear {
         from { opacity: 0.72; }
         to { opacity: 1; }
@@ -75,21 +70,6 @@ custom_body_template = """
     tr.deck.deck-row-appear {
         animation: deckRowAppear 0.06s linear both;
     }
-    /* --- Active State for Sidebar Toggle --- */
-    .sidebar-toggle-btn.active {
-        background-color: var(--highlight-bg) !important;
-        border-color: var(--border) !important;
-        box-shadow: none !important;
-    }
-    
-    /* --- End Focus Button Style --- */
-
-    /* --- Sidebar Button Icon Centering Fix --- */
-    .sidebar-left .deck-focus-btn .icon {
-        margin-right: 0 !important;
-    }
-    /* --- End Sidebar Button Icon Centering Fix --- */
-
     /* --- Sidebar Button Fix --- */
     .sidebar-left .menu-item,
     .sidebar-left .add-button-dashed,
@@ -100,7 +80,7 @@ custom_body_template = """
         padding: 8px 12px !important;
         margin-bottom: 4px !important;
         box-sizing: border-box !important;
-        border-radius: 6px !important;s
+        border-radius: 6px !important;
         cursor: pointer !important;
         pointer-events: auto !important;
         flex-shrink: 0;
@@ -116,6 +96,9 @@ custom_body_template = """
     .sidebar-left .icon {
         margin-right: 12px !important;
         flex-shrink: 0;
+    }
+    .sidebar-left .deck-focus-btn .icon {
+        margin-right: 0 !important;
     }
     
     /* --- Deck List Click Area Fix --- */
@@ -155,19 +138,9 @@ custom_body_template = """
 <div class="container modern-main-menu {container_extra_class}">
     <div class="sidebar-left skeleton-loading {sidebar_initial_class}" style="{sidebar_style}">
         
-        <div class="sidebar-toggle-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
-                <g fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M2 12c0-3.69 0-5.534.814-6.841a4.8 4.8 0 0 1 1.105-1.243C5.08 3 6.72 3 10 3h4c3.28 0 4.919 0 6.081.916c.43.338.804.759 1.105 1.243C22 6.466 22 8.31 22 12s0 5.534-.814 6.841a4.8 4.8 0 0 1-1.105 1.243C18.92 21 17.28 21 14 21h-4c-3.28 0-4.919 0-6.081-.916a4.8 4.8 0 0 1-1.105-1.243C2 17.534 2 15.69 2 12Z" />
-                    <path stroke-linejoin="round" d="M9.5 3v18" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 7h1m-1 3h1" />
-                </g>
-            </svg>
-        </div>
-
         <div class="sidebar-expanded-content">
-            <h2>{welcome_message}</h2>
             {sidebar_buttons}
+            {profile_sidebar}
             
             <div id="deck-list-header">
                 <h2>{tr_decks}</h2>
@@ -182,11 +155,8 @@ custom_body_template = """
                     <button id="onigiri-search-toolbar-btn" class="deck-header-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="Search decks" type="button">
                         <i class="search-btn-icon"></i>
                     </button>
-                    <button class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
+                    <button id="onigiri-sort-toolbar-btn" class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><path d="M8 5.5h12M8 12h12M8 18.5h12"/><path stroke-linejoin="round" d="M4.375 5.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0"/></svg>
-                    </button>
-                    <button id="onigiri-focus-home-btn" class="deck-header-btn" type="button" title="Home actions" onclick="OnigiriEngine.showHomeMenu(this, event)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
                     </button>
                 </div>
             </div>
@@ -202,7 +172,7 @@ custom_body_template = """
         <div class="collapsed-content-wrapper">
             <div class="sidebar-collapsed-content">
                 <div class="collapsed-placeholder welcome-placeholder"></div>
-                <div class="collapsed-profile-item" onclick="pycmd('showUserProfile')">
+                <div class="collapsed-profile-item" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.open(event)">
                     {profile_pic_html_collapsed}
                 </div>
                 <div class="collapsed-actions-placeholder">
@@ -217,16 +187,15 @@ custom_body_template = """
             </div>
         </div>
     </div>
-    <button id="onigiri-sidebar-reveal-btn" title="Show sidebar" type="button">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
-            <g fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M2 12c0-3.69 0-5.534.814-6.841a4.8 4.8 0 0 1 1.105-1.243C5.08 3 6.72 3 10 3h4c3.28 0 4.919 0 6.081.916c.43.338.804.759 1.105 1.243C22 6.466 22 8.31 22 12s0 5.534-.814 6.841a4.8 4.8 0 0 1-1.105 1.243C18.92 21 17.28 21 14 21h-4c-3.28 0-4.919 0-6.081-.916a4.8 4.8 0 0 1-1.105-1.243C2 17.534 2 15.69 2 12Z" />
-                <path stroke-linejoin="round" d="M9.5 3v18" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 7h1m-1 3h1" />
-            </g>
-        </svg>
-    </button>
-    <div class="resize-handle"></div>
+    <div class="sidebar-edge-toggle-zone" aria-hidden="true"></div>
+    <div id="onigiri-sidebar-edge-pill" aria-hidden="false">
+        <button id="onigiri-sidebar-edge-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" type="button">
+            <span class="sidebar-edge-toggle-icon" aria-hidden="true"></span>
+        </button>
+        <div class="resize-handle" aria-label="Select resize mode" role="button" tabindex="0">
+            <span class="resize-handle-indicator" aria-hidden="true"></span>
+        </div>
+    </div>
     <div class="main-content">
         <div class="injected-stats-block">
             {stats}
@@ -265,28 +234,27 @@ const OnigiriEditor = {
 // Sync Status Manager
 const SyncStatusManager = {
     setSyncStatus: function(status) {
-        const syncButton = document.querySelector('.action-sync');
-        if (!syncButton) return;
+        const syncButtons = document.querySelectorAll('.action-sync');
+        if (!syncButtons.length) return;
         
-        // Remove existing sync status classes
-        syncButton.classList.remove('sync-needed');
+        syncButtons.forEach(function(syncButton) {
+            syncButton.classList.remove('sync-needed');
         
-        // Add sync-needed class if any sync is required
-        if (status === 'sync') {
-            syncButton.classList.add('sync-needed');
-        }
-        // If status is 'none', no class is added (indicator stays hidden)
+            if (status === 'sync') {
+                syncButton.classList.add('sync-needed');
+            }
+        });
+        // If status is 'none', no class is added.
     }, 
-    // ADD THIS NEW FUNCTION:
     setSyncing: function(isSyncing) {
-        const syncButton = document.querySelector('.action-sync');
-        if (syncButton) {
+        const syncButtons = document.querySelectorAll('.action-sync');
+        syncButtons.forEach(function(syncButton) {
             if (isSyncing) {
                 syncButton.classList.add('is-syncing');
             } else {
                 syncButton.classList.remove('is-syncing');
             }
-        }
+        });
     }
 };
 

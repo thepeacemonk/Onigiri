@@ -289,6 +289,17 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return cell;
     }
 
+    function updateFilterPill(container) {
+        const filters = container.querySelector('.heatmap-filters');
+        const pill = filters ? filters.querySelector('.heatmap-filter-pill') : null;
+        const active = filters ? filters.querySelector('.filter-btn.active') : null;
+        if (!filters || !pill || !active) return;
+        const filterRect = filters.getBoundingClientRect();
+        const activeRect = active.getBoundingClientRect();
+        pill.style.width = `${activeRect.width}px`;
+        pill.style.transform = `translateX(${activeRect.left - filterRect.left}px)`;
+    }
+
     // --- MAIN RENDER FUNCTION ---
     exports.render = function (containerId, data, config) {
         const container = document.getElementById(containerId);
@@ -304,9 +315,17 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         function draw() {
             const i18n = config.i18n || {};
             const hasStreak = data.streak > 0;
-            const fireSvg = hasStreak
-                ? `<svg class="streak-icon active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`
-                : `<svg class="streak-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`;
+            const streakIconColor = hasStreak
+                ? (config.heatmapStreakIconColor || '#ff6b35')
+                : (config.heatmapStreakIconZeroColor || '#8f8f8f');
+            const defaultStreakSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>`;
+            const configuredStreakSvg = (config.heatmapStreakIconSvgContent || defaultStreakSvg)
+                .replace(/<path\b([^>]*?)fill=["']none["'][^>]*>\s*<\/path>/gi, '')
+                .replace(/<path\b([^>]*?)fill=["']none["'][^>]*\/>/gi, '');
+            const fireSvg = configuredStreakSvg.replace(
+                /<svg\b/i,
+                `<svg class="streak-icon${hasStreak ? ' active' : ''}" style="color:${escapeAttr(streakIconColor)};fill:currentColor;"`
+            );
             const longestStreak = data.longest_streak || 0;
             const streakTip = longestStreak > 0
                 ? `Longest streak: ${longestStreak} day${longestStreak !== 1 ? 's' : ''}`
@@ -350,6 +369,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                     <div class="header-right">
                         ${streakHTML}
                         <div class="heatmap-filters">
+                            <span class="heatmap-filter-pill"></span>
                             <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">${i18n.year || 'Year'}</button>
                             <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">${i18n.month || 'Month'}</button>
                             <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">${i18n.week || 'Week'}</button>
@@ -367,6 +387,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             } else if (state.view === 'week') {
                 drawWeekView(gridContainer, preparedData, config);
             }
+            gridContainer.classList.add('is-entering');
+            window.setTimeout(() => gridContainer.classList.remove('is-entering'), 180);
+            requestAnimationFrame(() => updateFilterPill(container));
 
             container.querySelector('.heatmap-filters').addEventListener('click', (e) => {
                 if (e.target.classList.contains('filter-btn')) {
@@ -390,6 +413,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                     draw();
                 }
             });
+            if (!container.dataset.heatmapPillResizeBound) {
+                container.dataset.heatmapPillResizeBound = 'true';
+                window.addEventListener('resize', () => updateFilterPill(container), { passive: true });
+            }
         }
 
         draw();

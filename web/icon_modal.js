@@ -1,15 +1,66 @@
 window.OnigiriIconChooser = (function () {
     const EMOJIS = [
-        "📘", "📗", "📙", "📕", "📓", "📔", "📚", "📝", "✏️", "🧠",
-        "⭐", "✨", "🔥", "⚡", "🎯", "🏆", "💡", "🔬", "🧪", "🧮",
-        "🌎", "🌙", "☀️", "🌈", "🍙", "🍜", "🍵", "🎨", "🎵", "🎮",
-        "💻", "⌨️", "📐", "📏", "🔎", "🧭", "🗂️", "📌", "🔖", "✅",
+        { value: "🤍", label: "White Heart", asset: "heart_white.svg" },
+        { value: "🧼", label: "Soap", asset: "soap.svg" },
+        { value: "💀", label: "Skull", asset: "skull.svg" },
+        { value: "📄", label: "Paper", asset: "paper.svg" },
+        { value: "📝", label: "Memo", asset: "memo.svg" },
+        { value: "📖", label: "Open Book", asset: "open_book.svg" },
+        { value: "🍙", label: "Onigiri", asset: "onigiri.svg" },
+        { value: "🩷", label: "Light Pink Heart", asset: "heart_light_pink.svg" },
+        { value: "💕", label: "Two Hearts", asset: "two_hearts.svg" },
+        { value: "🌸", label: "Cherry Blossom", asset: "cherry_blossom.svg" },
+        { value: "🌷", label: "Tulip", asset: "tulip.svg" },
+        { value: "🪷", label: "Lotus", asset: "lotus.svg" },
+        { value: "🧠", label: "Brain", asset: "brain.svg" },
+        { value: "🦑", label: "Squid", asset: "squid.svg" },
+        { value: "❤️", label: "Red Heart", asset: "heart_red.svg" },
+        { value: "🫀", label: "Anatomical Heart", asset: "anatomical_heart.svg" },
+        { value: "📕", label: "Red Book", asset: "red_book.svg" },
+        { value: "🔥", label: "Fire", asset: "fire.svg" },
+        { value: "🍉", label: "Watermelon", asset: "watermelon.svg" },
+        { value: "🧡", label: "Orange Heart", asset: "heart_orange.svg" },
+        { value: "🍊", label: "Tangerine", asset: "tangerine.svg" },
+        { value: "🍹", label: "Tropical Drink", asset: "tropical_drink.svg" },
+        { value: "🧇", label: "Waffle", asset: "waffle.svg" },
+        { value: "🍍", label: "Pineapple", asset: "pineapple.svg" },
+        { value: "⭐", label: "Star", asset: "star.svg" },
+        { value: "✨", label: "Sparkle", asset: "sparkle.svg" },
+        { value: "⚡", label: "Bolt", asset: "bolt.svg" },
+        { value: "🏆", label: "Trophy", asset: "trophy.svg" },
+        { value: "💛", label: "Yellow Heart", asset: "heart_yellow.svg" },
+        { value: "📙", label: "Yellow Book", asset: "yellow_book.svg" },
+        { value: "✏️", label: "Pen", asset: "pen.svg" },
+        { value: "🍋‍🟩", label: "Lime", asset: "lime.svg" },
+        { value: "💚", label: "Green Heart", asset: "heart_green.svg" },
+        { value: "📗", label: "Green Book", asset: "green_book.svg" },
+        { value: "🌱", label: "Plant", asset: "emoji.svg" },
+        { value: "🍀", label: "Four Leaf Clover", asset: "four_leaf_clover.svg" },
+        { value: "🍃", label: "Leaf Fluttering In Wind", asset: "leaf_fluttering_in_wind.svg" },
+        { value: "🌳", label: "Deciduous Tree", asset: "deciduous_tree.svg" },
+        { value: "🌲", label: "Evergreen Tree", asset: "evergreen_tree.svg" },
+        { value: "🎄", label: "Christmas Tree", asset: "christmas_tree.svg" },
+        { value: "🍵", label: "Teacup", asset: "teacup_without_handle.svg" },
+        { value: "💙", label: "Blue Heart", asset: "blue_heart.svg" },
+        { value: "📘", label: "Blue Book", asset: "blue_book.svg" },
+        { value: "💧", label: "Droplet", asset: "droplet.svg" },
+        { value: "💎", label: "Gem Stone", asset: "gem_stone.svg" },
+        { value: "🧪", label: "Test Tube", asset: "test_tube.svg" },
+        { value: "🍇", label: "Grapes", asset: "grapes.svg" },
+        { value: "🔬", label: "Microscope", asset: "microscope.svg" },
+        { value: "💻", label: "Computer", asset: "computer.svg" },
+        { value: "📟", label: "Pager", asset: "pager.svg" },
+        { value: "🎮", label: "Videogame", asset: "videogame.svg" },
+        { value: "🍡", label: "Dango", asset: "dango.svg" },
+        { value: "📚", label: "Books", asset: "books.svg" },
+        { value: "🗺️", label: "World Map", asset: "world_map.svg" },
     ];
 
     const state = {
         deckId: "",
         selectedIcon: "",
         selectedColor: "#888888",
+        emojiBaseUrl: "/_addons/1011095603/system_files/emojis",
         data: {},
     };
 
@@ -114,6 +165,9 @@ window.OnigiriIconChooser = (function () {
                 flex-shrink: 0;
             }
             .onigiri-icon-tab {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
                 height: 32px !important;
                 min-width: 72px !important;
                 padding: 0 12px !important;
@@ -176,6 +230,14 @@ window.OnigiriIconChooser = (function () {
                 overflow: auto;
                 padding: 2px 2px 12px;
             }
+            .onigiri-icon-section-title {
+                grid-column: 1 / -1;
+                color: var(--fg-subtle, #888);
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                padding: 8px 2px 2px;
+            }
             .onigiri-icon-cell {
                 position: relative;
                 height: 60px;
@@ -217,6 +279,49 @@ window.OnigiriIconChooser = (function () {
             .onigiri-icon-emoji {
                 font-size: 26px;
                 line-height: 1;
+            }
+            .onigiri-icon-emoji-img {
+                width: 40px;
+                height: 40px;
+                max-width: 40px;
+                max-height: 40px;
+                aspect-ratio: 1 / 1;
+                object-fit: contain;
+                pointer-events: none;
+            }
+            .onigiri-icon-custom-emoji {
+                grid-column: 1 / -1;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-height: 48px;
+                padding: 10px;
+                border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+                border-radius: 12px;
+                background: var(--canvas-inset, rgba(128, 128, 128, 0.07));
+            }
+            .onigiri-icon-custom-emoji button {
+                height: 32px !important;
+                min-width: 118px !important;
+                padding: 0 12px !important;
+                border: 1px solid var(--border, rgba(128, 128, 128, 0.24)) !important;
+                border-radius: 10px !important;
+                background: var(--highlight-bg, rgba(128, 128, 128, 0.14)) !important;
+                color: var(--fg, #e8e8e8) !important;
+                cursor: pointer;
+                font-size: 13px !important;
+                font-weight: 600 !important;
+            }
+            .onigiri-icon-custom-emoji input {
+                flex: 1;
+                min-width: 80px;
+                height: 32px;
+                border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+                border-radius: 10px;
+                background: var(--canvas-overlay, rgba(128, 128, 128, 0.08));
+                color: var(--fg, #e8e8e8);
+                padding: 0 10px;
+                font-size: 18px;
             }
             .onigiri-icon-delete {
                 position: absolute;
@@ -288,6 +393,9 @@ window.OnigiriIconChooser = (function () {
                 outline: none;
             }
             .onigiri-icon-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
                 height: 34px !important;
                 min-width: 76px !important;
                 padding: 0 14px !important;
@@ -313,6 +421,7 @@ window.OnigiriIconChooser = (function () {
                 opacity: 0.88;
             }
             .onigiri-icon-upload {
+                box-sizing: border-box !important;
                 width: 100% !important;
                 height: 56px !important;
                 min-height: 56px !important;
@@ -321,7 +430,10 @@ window.OnigiriIconChooser = (function () {
                 border-radius: 10px !important;
                 background: transparent !important;
                 color: var(--fg, #e8e8e8) !important;
-                text-align: left !important;
+                text-align: center !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
                 cursor: pointer;
                 font-size: 14px !important;
                 font-weight: 500 !important;
@@ -366,9 +478,17 @@ window.OnigiriIconChooser = (function () {
 
     function renderSvgGrid(grid, items, filter) {
         grid.innerHTML = "";
-        items
-            .filter(item => !filter || (item.label || item.name).toLowerCase().includes(filter))
-            .forEach(item => {
+        [
+            ["User Icons", items.filter(item => !item.system)],
+            ["System Icons", items.filter(item => item.system)],
+        ].forEach(([title, groupItems]) => {
+            const visibleItems = groupItems.filter(item => !filter || (item.label || item.name).toLowerCase().includes(filter));
+            if (!visibleItems.length) return;
+            const sectionTitle = document.createElement("div");
+            sectionTitle.className = "onigiri-icon-section-title";
+            sectionTitle.textContent = title;
+            grid.appendChild(sectionTitle);
+            visibleItems.forEach(item => {
                 const cell = document.createElement("div");
                 cell.className = "onigiri-icon-cell" + (state.selectedIcon === item.name ? " selected" : "");
                 cell.dataset.iconName = item.name;
@@ -394,6 +514,7 @@ window.OnigiriIconChooser = (function () {
                 cell.addEventListener("click", () => selectIcon(item.name));
                 grid.appendChild(cell);
             });
+        });
     }
 
     function buildIconsPane(data) {
@@ -447,18 +568,49 @@ window.OnigiriIconChooser = (function () {
         pane.className = "onigiri-icon-pane";
         pane.dataset.tabPane = "emoji";
         const grid = makeGrid();
-        EMOJIS.forEach(emoji => {
-            const name = `emoji:${emoji}`;
+        EMOJIS.forEach(item => {
+            const name = `emoji:${item.value}`;
             const cell = document.createElement("div");
             cell.className = "onigiri-icon-cell" + (state.selectedIcon === name ? " selected" : "");
             cell.dataset.iconName = name;
-            const span = document.createElement("span");
-            span.className = "onigiri-icon-emoji";
-            span.textContent = emoji;
-            cell.appendChild(span);
+            cell.title = item.label;
+            const img = document.createElement("img");
+            img.className = "onigiri-icon-emoji-img";
+            img.alt = item.label;
+            img.src = `${state.emojiBaseUrl}/${item.asset}`;
+            cell.appendChild(img);
             cell.addEventListener("click", () => selectIcon(name));
             grid.appendChild(cell);
         });
+        const custom = document.createElement("div");
+        custom.className = "onigiri-icon-custom-emoji";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Type your own:";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = state.selectedIcon.indexOf("emoji:") === 0 && !EMOJIS.some(item => `emoji:${item.value}` === state.selectedIcon)
+            ? state.selectedIcon.replace(/^emoji:/, "")
+            : "";
+        const selectCustomEmoji = () => {
+            const emoji = input.value.trim();
+            if (!emoji) return;
+            selectIcon(`emoji:${emoji}`);
+        };
+        button.addEventListener("click", () => {
+            input.focus();
+            selectCustomEmoji();
+        });
+        input.addEventListener("input", selectCustomEmoji);
+        input.addEventListener("keydown", event => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                selectCustomEmoji();
+            }
+        });
+        custom.appendChild(button);
+        custom.appendChild(input);
+        grid.appendChild(custom);
         pane.appendChild(grid);
         return pane;
     }
@@ -469,7 +621,7 @@ window.OnigiriIconChooser = (function () {
         pane.dataset.tabPane = "upload";
         pane.style.gap = "10px";
         ["Upload SVG icon", "Upload PNG image"].forEach((label, index) => {
-            const button = document.createElement("button");
+            const button = document.createElement("span");
             button.className = "onigiri-icon-upload";
             button.textContent = label;
             button.addEventListener("click", () => {
@@ -537,6 +689,7 @@ window.OnigiriIconChooser = (function () {
         state.deckId = String(data.deckId || "");
         state.selectedIcon = (data.current && data.current.icon) || "";
         state.selectedColor = (data.current && data.current.color) || "#888888";
+        state.emojiBaseUrl = data.emojiBaseUrl || state.emojiBaseUrl;
         state.data = data;
         document.documentElement.style.setProperty("--onigiri-selected-icon-color", state.selectedColor);
 
@@ -553,7 +706,7 @@ window.OnigiriIconChooser = (function () {
         const title = document.createElement("div");
         title.className = "onigiri-icon-modal-title";
         title.textContent = "Edit Icon";
-        const closeBtn = document.createElement("button");
+        const closeBtn = document.createElement("span");
         closeBtn.className = "onigiri-icon-modal-close";
         closeBtn.innerHTML = xIconSvg(15);
         closeBtn.setAttribute("aria-label", "Close");
@@ -571,7 +724,7 @@ window.OnigiriIconChooser = (function () {
             ["images", "Images"],
             ["upload", "Upload"],
         ].forEach(([id, label]) => {
-            const btn = document.createElement("button");
+            const btn = document.createElement("span");
             btn.className = "onigiri-icon-tab";
             btn.dataset.tab = id;
             btn.textContent = label;
@@ -591,7 +744,7 @@ window.OnigiriIconChooser = (function () {
 
         const footer = document.createElement("div");
         footer.className = "onigiri-icon-modal-footer";
-        const reset = document.createElement("button");
+        const reset = document.createElement("span");
         reset.className = "onigiri-icon-btn";
         reset.textContent = "Reset to Default";
         reset.addEventListener("click", () => {
@@ -600,11 +753,11 @@ window.OnigiriIconChooser = (function () {
         });
         const spacer = document.createElement("div");
         spacer.style.flex = "1";
-        const cancel = document.createElement("button");
+        const cancel = document.createElement("span");
         cancel.className = "onigiri-icon-btn";
         cancel.textContent = "Cancel";
         cancel.addEventListener("click", close);
-        const save = document.createElement("button");
+        const save = document.createElement("span");
         save.className = "onigiri-icon-btn primary";
         save.textContent = "Save";
         save.addEventListener("click", () => {

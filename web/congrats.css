@@ -12,23 +12,32 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    max-width: 500px;
+    max-width: 420px;
     width: 90%;
     padding: 0;
 }
 
-/* --- ADD THIS ENTIRE CSS BLOCK --- */
-/* Header styles copied from overview.css */
+/* Pin the nav header to the top-center of the viewport (matches
+   #onigiri-overview-header on the normal overview page). The header is rendered as a
+   direct child of <body> (a sibling of .congrats-container, not nested inside it) so
+   `position: fixed` resolves against the viewport rather than the narrow, centered
+   container. Horizontal centering uses auto margins instead of a transform so the
+   element itself stays untransformed. */
 .overview-header {
-    position: absolute;
-    width: 100%;
-    top: 10px;
+    position: fixed;
+    top: 5px;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    transform: none;
+    width: max-content;
+    max-width: calc(100vw - 24px);
     display: flex;
+    align-items: center;
     justify-content: center;
     gap: 10px;
-    z-index: 1000;
+    z-index: 2000;
 }
-/* --- END OF ADDED BLOCK --- */
 
 /* Re-using profile bar styles from menu.css, but making it a bit wider */
 .profile-bar {
@@ -51,6 +60,14 @@ body {
 .profile-bar > * {
     position: relative;
     z-index: 2;
+}
+
+.profile-bar .profile-bg-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .profile-pic {
@@ -77,6 +94,14 @@ body {
     flex-shrink: 0;
 }
 
+.profile-pic-generated {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+}
+
 .profile-name {
     font-size: 16px;
     font-weight: 500;
@@ -90,7 +115,7 @@ body {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background-color: var(--overlay-light);
+    background-color: var(--profile-image-overlay-bg, transparent);
     border-radius: 50px;
     z-index: 1;
     display: none;
@@ -104,23 +129,27 @@ body {
 }
 
 .congrats-card {
-    background-color: var(--canvas-inset);
+    background-color: var(--overview-box-bg, var(--canvas-inset));
     color: var(--fg);
-    border-radius: 20px;
+    border-radius: var(--overview-box-radius, 20px);
     padding: 40px;
     padding-bottom: 25px; /* Less padding at the bottom */
     text-align: center;
     width: 100%;
     box-sizing: border-box;
     box-shadow: 0 4px 15px var(--shadow-md);
-    border: 1px solid var(--border);
+    border: var(--overview-box-stroke, 1px) solid var(--overview-box-border, var(--border));
     margin-top: -20px; /* Pull the card up */
+    backdrop-filter: blur(var(--overview-box-blur, 0px));
+    -webkit-backdrop-filter: blur(var(--overview-box-blur, 0px));
 }
 
 .congrats-card h1 {
     margin: 0;
-    font-size: 1.5em;
-    font-weight: 500;
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: var(--font-size-main, 25px);
+    font-weight: inherit;
+    color: var(--fg);
     line-height: 1.4;
 }
 

@@ -1,10 +1,23 @@
-# This file makes the gamification directory a Python package
-# Import all gamification modules to make them available when importing the package
-from . import gamification
-from . import mochi_messages
-from . import mod_transfer_window
-from . import onigimon
-from . import restaurant_level
+import importlib
 
-# Make these available at the package level for easier imports
-__all__ = ['gamification', 'mochi_messages', 'mod_transfer_window', 'onigimon', 'restaurant_level']
+__all__ = [
+    'gamification',
+    'mochi_messages',
+    'mod_transfer_window',
+    'onigimon',
+    'nook_level',
+    'hexagon_land',
+    'focus_dango',
+    'taiyaki_store',
+    'onigimon_sandbox',
+    'reward_redemption',
+    'nook_level_ui',
+]
+
+
+def __getattr__(name):
+    if name in __all__:
+        module = importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

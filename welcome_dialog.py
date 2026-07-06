@@ -96,8 +96,7 @@ class WelcomeDialog(QDialog):
         # Open Settings when the welcome dialog is closed (via "Got it" or "X")
         addon_path = os.path.dirname(__file__)
         dialog = settings.SettingsDialog(mw, addon_path, initial_page_index=0)
-        if dialog.exec():
-            mw.reset()
+        dialog.exec()
 
     def accept(self):
         super().accept()

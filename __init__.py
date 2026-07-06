@@ -10,25 +10,15 @@ from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
 from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
 from . import patcher
-from . import settings
 from . import config
 from . import menu_buttons
-from .gamification import mochi_messages
-from .gamification import mod_transfer_window
-from . import welcome_dialog
-from . import deck_tree_updater
 from . import webview_handlers
-from .gamification import focus_dango
-from . import birthday_dialog
+from .decks import tree_updater as deck_tree_updater
 from . import heatmap
-from . import sidebar_api
+from .api import sidebar as sidebar_api
+from .api import bento as bento_api
+from . import learner_stats_widget
 from .sync import onigiri_sync
-from .sync_ui import show_sync_conflict_dialog
-
-# --- SHOP INTEGRATION IMPORT ---
-from .gamification.taiyaki_store import open_taiyaki_store
-
-
 
 addon_path = os.path.dirname(__file__)
 addon_package = mw.addonManager.addonFromModule(__name__)
@@ -38,8 +28,8 @@ web_assets_root = f"/_addons/{addon_package}/web"
 # Make addon_path available to other modules
 sys.modules[__name__].addon_path = addon_path
 
-def generate_notification_position_css(conf):
-    """Generates CSS for notification positioning logic."""
+def generate_notification_position_css_text(conf):
+    """Generates CSS text for notification positioning logic."""
     pos = conf.get("onigiri_reviewer_notification_position", "top-right")
     
     css = ".onigiri-notification-stack { "
@@ -67,7 +57,21 @@ def generate_notification_position_css(conf):
         css += f"top: {top_offset}; right: 20px; align-items: flex-end; flex-direction: column; "
         
     css += "}"
+    return css
+
+def generate_notification_position_css(conf):
+    """Generates CSS for notification positioning logic."""
+    css = generate_notification_position_css_text(conf)
     return f"<style>{css}</style>"
+
+def notification_duration_script(conf):
+    """Injects the global notification duration chosen in settings."""
+    try:
+        duration = int(conf.get("onigiri_notification_duration_ms", 5200))
+    except (TypeError, ValueError):
+        duration = 5200
+    duration = max(1000, min(30000, duration))
+    return f"<script>window.onigiriNotificationDuration = {duration};</script>"
 
 
 def quiet_state_change_css() -> str:
@@ -104,12 +108,23 @@ def inject_menu_files(web_content, context):
     is_top_toolbar = isinstance(context, Toolbar)
     is_bottom_toolbar = isinstance(context, BottomBar)
     is_reviewer_bottom_bar = type(context).__name__ == "ReviewerBottomBar"
-    # Inject global Onigiri CSS only for deck browser and overview, NOT reviewer
-    # Reviewer has its own dedicated CSS and doesn't need text-related global styles
+    if is_overview:
+        patcher.ensure_synapsepro_overview_bridge_hook()
+    # Inject global Onigiri CSS only for deck browser and overview.
+    # The reviewer card webview owns Anki's question/answer element; Onigiri
+    # must not inject CSS, JS, or DOM there so card templates remain untouched.
     if is_deck_browser or is_overview:
         web_content.head += quiet_state_change_css()
         web_content.head += patcher.generate_dynamic_css(conf)
+        web_content.head += patcher.generate_box_effect_button_vars_css(conf)
     if is_deck_browser:
+        def versioned_web_asset(filename: str) -> str:
+            try:
+                version = int(os.path.getmtime(os.path.join(addon_path, "web", filename)))
+                return f"{web_assets_root}/{filename}?v={version}"
+            except Exception:
+                return f"{web_assets_root}/{filename}"
+
         css_path = os.path.join(addon_path, "web", "menu.css")
         try:
             with open(css_path, "r", encoding="utf-8") as f:
@@ -128,12 +143,15 @@ def inject_menu_files(web_content, context):
         web_content.head += patcher.generate_conditional_css(conf)
         web_content.head += patcher.generate_icon_size_css()
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
-        web_content.head += f'<script src="{web_assets_root}/injector.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
+        web_content.head += notification_duration_script(conf)
+        web_content.head += f'<script src="{versioned_web_asset("injector.js")}"></script>'
+        web_content.head += f'<script src="{versioned_web_asset("engine.js")}"></script>'
         web_content.head += f'<script src="{web_assets_root}/rename_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/icon_modal.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/profile_page.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/profile_modal.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/rename_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/move_to_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/add_subdeck_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/create_deck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         
@@ -152,32 +170,100 @@ def inject_menu_files(web_content, context):
         
     elif is_reviewer:
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
-        web_content.head += f'<script>window.onigiriSilentNotifications = {silent_notifs};</script>'
-        web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
-        web_content.head += generate_notification_position_css(conf)
+        web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
-        web_content.head += patcher.generate_reviewer_buttons_css(conf)
-        top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
-        web_content.head += top_bar_css
-        escaped_top_bar_html = top_bar_html.replace("`", "\\`")
+        top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css(include_overview_class=False)
+        reviewer_shadow_css = (
+            patcher.generate_scoped_main_font_css(addon_package, "#onigiri-reviewer-header")
+            + patcher.generate_box_effect_button_vars_css(
+                conf,
+                selector="#onigiri-reviewer-header",
+                night_selector=":host(.night-mode) #onigiri-reviewer-header",
+            )
+            + top_bar_css
+        )
+        reviewer_shadow_css = reviewer_shadow_css.replace(
+            ".night_mode #onigiri-reviewer-header",
+            ":host(.night-mode) #onigiri-reviewer-header",
+        )
+        notification_css_text = ""
+        try:
+            with open(os.path.join(addon_path, "web", "notifications.css"), "r", encoding="utf-8") as f:
+                notification_css_text = f.read()
+        except FileNotFoundError:
+            pass
         js_injector = f"""
         <script>
+            window.onigiriIsReviewerCardWebview = true;
+            window.onigiriSilentNotifications = {silent_notifs};
+            window.onigiriNotificationCssText = {json.dumps(notification_css_text)};
+            window.onigiriNotificationPositionCssText = {json.dumps(generate_notification_position_css_text(conf))};
+
             document.addEventListener('DOMContentLoaded', function() {{
-                if (!document.getElementById('onigiri-background-div')) {{
-                    const bgDiv = document.createElement('div');
-                    bgDiv.id = 'onigiri-background-div';
-                    document.body.prepend(bgDiv);
-                }}
+                const hostId = 'onigiri-reviewer-ui-host';
+                const topBarHtml = {json.dumps(top_bar_html)};
+                const topBarCss = {json.dumps(reviewer_shadow_css)};
+
+                const isNightMode = () => {{
+                    const root = document.documentElement;
+                    const body = document.body;
+                    return [root, body].some((el) => el && (
+                        el.classList.contains('night-mode') ||
+                        el.classList.contains('nightMode') ||
+                        el.classList.contains('night_mode')
+                    ));
+                }};
+
+                const ensureHost = () => {{
+                    let host = document.getElementById(hostId);
+                    if (!host) {{
+                        host = document.createElement('div');
+                        host.id = hostId;
+                        document.body.appendChild(host);
+                    }}
+                    host.style.cssText = [
+                        'all: initial !important',
+                        'position: fixed !important',
+                        'inset: 0 !important',
+                        'display: block !important',
+                        'width: auto !important',
+                        'height: auto !important',
+                        'margin: 0 !important',
+                        'padding: 0 !important',
+                        'border: 0 !important',
+                        'background: transparent !important',
+                        'z-index: 2147483000 !important',
+                        'pointer-events: none !important',
+                        'contain: layout style paint !important'
+                    ].join(';');
+                    host.classList.toggle('night-mode', isNightMode());
+                    return host;
+                }};
 
                 const insertTopBar = () => {{
-                    const topBarHtml = `{escaped_top_bar_html}`;
                     if (!topBarHtml.trim()) {{
                         return null;
                     }}
-                    let headerEl = document.getElementById('onigiri-reviewer-header');
+                    const host = ensureHost();
+                    const shadow = host.shadowRoot || host.attachShadow({{ mode: 'open' }});
+                    let headerEl = shadow.getElementById('onigiri-reviewer-header');
                     if (!headerEl) {{
-                        document.body.insertAdjacentHTML('afterbegin', topBarHtml);
-                        headerEl = document.getElementById('onigiri-reviewer-header');
+                        shadow.innerHTML = `
+                            <style id="onigiri-reviewer-shadow-host-style">
+                                :host {{
+                                    all: initial;
+                                    position: fixed !important;
+                                    inset: 0 !important;
+                                    display: block !important;
+                                    z-index: 2147483000 !important;
+                                    pointer-events: none !important;
+                                    contain: layout style paint !important;
+                                }}
+                            </style>
+                            ${{topBarCss}}
+                            ${{topBarHtml}}
+                        `;
+                        headerEl = shadow.getElementById('onigiri-reviewer-header');
                     }}
                     return headerEl;
                 }};
@@ -188,7 +274,9 @@ def inject_menu_files(web_content, context):
                 }}
 
                 const updateHeaderOffset = () => {{
-                    const header = document.getElementById('onigiri-reviewer-header');
+                    const host = document.getElementById(hostId);
+                    const shadow = host && host.shadowRoot;
+                    const header = shadow && shadow.getElementById('onigiri-reviewer-header');
                     if (!header) {{
                         return;
                     }}
@@ -196,19 +284,60 @@ def inject_menu_files(web_content, context):
                     const marginTop = parseFloat(styles.marginTop) || 0;
                     const marginBottom = parseFloat(styles.marginBottom) || 0;
                     const offset = header.offsetHeight + marginTop + marginBottom;
-                    document.body.style.setProperty('--onigiri-reviewer-header-offset', `${{Math.ceil(offset)}}px`);
+                    window.onigiriReviewerHeaderOffsetPx = Math.ceil(offset);
+                    window.dispatchEvent(new CustomEvent('onigiri-reviewer-header-offset', {{
+                        detail: {{ offset: window.onigiriReviewerHeaderOffsetPx }}
+                    }}));
+                    applyQaOffset(window.onigiriReviewerHeaderOffsetPx);
+                }};
+                window.onigiriRefreshReviewerHeaderOffset = updateHeaderOffset;
+
+                const applyQaOffset = (offset) => {{
+                    const qa = document.getElementById('qa');
+                    if (!qa) {{
+                        return;
+                    }}
+                    if (!qa.dataset.onigiriBaseMarginTop) {{
+                        const marginTop = parseFloat(window.getComputedStyle(qa).marginTop) || 0;
+                        qa.dataset.onigiriBaseMarginTop = `${{marginTop}}px`;
+                    }}
+                    qa.style.setProperty(
+                        'margin-top',
+                        `calc(${{qa.dataset.onigiriBaseMarginTop}} + ${{Math.max(0, offset)}}px)`,
+                        'important'
+                    );
                 }};
 
+                const updateHostTheme = () => {{
+                    const host = document.getElementById(hostId);
+                    if (host) {{
+                        host.classList.toggle('night-mode', isNightMode());
+                    }}
+                }};
+
+                updateHostTheme();
                 updateHeaderOffset();
                 window.addEventListener('resize', updateHeaderOffset);
 
                 if ('ResizeObserver' in window) {{
                     const resizeObserver = new ResizeObserver(updateHeaderOffset);
                     resizeObserver.observe(headerEl);
-                }} else {{
-                    // As a fallback, re-run after layout-affecting mutations.
-                    const mutationObserver = new MutationObserver(updateHeaderOffset);
-                    mutationObserver.observe(document.body, {{ attributes: true, childList: false, subtree: false }});
+                }}
+
+                const themeObserver = new MutationObserver(() => {{
+                    updateHostTheme();
+                    updateHeaderOffset();
+                }});
+                themeObserver.observe(document.documentElement, {{ attributes: true, attributeFilter: ['class'] }});
+                if (document.body) {{
+                    themeObserver.observe(document.body, {{ attributes: true, attributeFilter: ['class'] }});
+                }}
+
+                const qaObserver = new MutationObserver(() => {{
+                    applyQaOffset(window.onigiriReviewerHeaderOffsetPx || 0);
+                }});
+                if (document.body) {{
+                    qaObserver.observe(document.body, {{ childList: true, subtree: true }});
                 }}
             }});
         </script>
@@ -217,6 +346,7 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     elif is_overview:
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+        web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_overview_background_css(addon_path)
         _top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
@@ -226,10 +356,9 @@ def inject_menu_files(web_content, context):
                 web_content.head += f"<style>{f.read()}</style>"
         except FileNotFoundError:
             pass
-        web_content.head += f'<script src="{web_assets_root}/profile_page.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/profile_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     if is_reviewer_bottom_bar:
+        patcher.apply_reviewer_bottom_bar_height(conf)
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
         web_content.head += patcher.generate_reviewer_buttons_css(conf)
     elif (is_top_toolbar or is_bottom_toolbar):
@@ -240,18 +369,8 @@ def inject_menu_files(web_content, context):
 _on_webview_cmd = webview_handlers.handle_webview_cmd
 
 def maybe_show_welcome_popup():
-    """Shows the welcome pop-up if it hasn't been disabled by the user."""
-    conf = config.get_config()
-    
-    # Check if we should force show based on version
-    last_seen_version = conf.get("lastSeenWelcomeVersion", "")
-    current_version = welcome_dialog.CURRENT_WELCOME_VERSION
-    
-    # Force show if version doesn't match, OR if user hasn't opted out
-    should_show = (last_seen_version != current_version) or conf.get("showWelcomePopup", True)
-    
-    if should_show:
-        welcome_dialog.show_welcome_dialog()
+    """Legacy welcome popup disabled."""
+    return
 
 # --- SHOP MENU SETUP ---
 def setup_shop_menu():
@@ -260,10 +379,44 @@ def setup_shop_menu():
     
 
 
+def initialize_enabled_gamification_hooks():
+    """Load gamification modules with answer/state hooks only when they are enabled."""
+    try:
+        conf = config.get_config()
+        restaurant_conf = conf.get("restaurant_level", {})
+        if not restaurant_conf:
+            restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
+        if restaurant_conf.get("enabled", False):
+            from .gamification import nook_level  # noqa: F401
+
+        onigimon_conf = conf.get("onigimon", {})
+        if onigimon_conf.get("enabled", False):
+            from .gamification import onigimon  # noqa: F401
+
+        mochi_conf = conf.get("mochi_messages", {})
+        if mochi_conf.get("enabled", False):
+            from .gamification import mochi_messages  # noqa: F401
+
+        focus_conf = conf.get("achievements", {}).get("focusDango", {})
+        if focus_conf.get("enabled", False):
+            from .gamification import focus_dango
+
+            focus_dango.setup_focus_dango()
+    except Exception as e:
+        print(f"Onigiri: Error initializing enabled gamification hooks: {e}")
+
+
 def verify_coin_integrity():
     """Verify coin integrity on startup to prevent cheating."""
     try:
-        from .gamification.taiyaki_store import verify_coin_data, generate_coin_token
+        import hashlib
+
+        def generate_coin_token(coins: int) -> str:
+            data = f"{coins}:onigiri_secret_salt_2024"
+            return hashlib.sha256(data.encode()).hexdigest()
+
+        def verify_coin_data(coins: int, token: str) -> bool:
+            return token == generate_coin_token(coins)
 
         # Resolve the profile-specific gamification file (same logic as GamificationData)
         try:
@@ -355,10 +508,13 @@ def setup_global_hooks():
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
+    bento_api.register_api()
+    bento_api.ensure_bento_shortcut()
     menu_buttons.setup_onigiri_menu(addon_path)
     
     # Install the toolbar bridge AFTER other addons have loaded their hooks
     sidebar_api.ensure_capture_hook_is_last()
+    learner_stats_widget.init()
 
 def on_profile_did_open():
     """
@@ -367,27 +523,40 @@ def on_profile_did_open():
     """
     # Now it is safe to patch overview since mw.col is available
     patcher.patch_overview()
+    patcher.ensure_synapsepro_overview_bridge_hook()
+    QTimer.singleShot(700, patcher.ensure_synapsepro_overview_bridge_hook)
+    QTimer.singleShot(1500, patcher.ensure_synapsepro_overview_bridge_hook)
+    QTimer.singleShot(3000, patcher.ensure_synapsepro_overview_bridge_hook)
+    QTimer.singleShot(6000, patcher.ensure_synapsepro_overview_bridge_hook)
+    patcher.apply_synapsepro_sidebar_visibility()
 
     # Apply Full Hide Mode (hide menu bar on Windows/Linux)
     apply_full_hide_mode()
 
-    # Verify coin integrity on startup (requires mw.col)
-    verify_coin_integrity()
+    # Verify coin integrity after the initial UI has had a chance to render.
+    QTimer.singleShot(1500, verify_coin_integrity)
     
     # Initialize the Shop Menu Item (requires mw.col)
     setup_shop_menu()
 
-    # Show welcome popup if needed (requires mw.col)
-    # Delayed to avoid conflicting with Anki's sync/conflict dialog on startup
-    QTimer.singleShot(500, maybe_show_welcome_popup)
+    # Register optional game hooks after startup, and only for enabled features.
+    QTimer.singleShot(1000, initialize_enabled_gamification_hooks)
 
     # Check for sync conflicts on startup
     if onigiri_sync.is_enabled():
         QTimer.singleShot(1000, on_sync_did_finish)
 
     # Show birthday popup if it's the user's birthday (requires mw.col)
-    # Delay by 1s to ensure main window is fully rendered for screenshot blur
-    QTimer.singleShot(1000, lambda: birthday_dialog.maybe_show_birthday_popup())
+    # Delay to ensure the main window is fully rendered before opening a dialog.
+    def maybe_show_birthday_popup():
+        from . import birthday_dialog
+
+        try:
+            birthday_dialog.maybe_show_birthday_popup()
+        except Exception as e:
+            print(f"[Onigiri] Could not show birthday popup: {e}")
+
+    QTimer.singleShot(6500, maybe_show_birthday_popup)
 
     # Menu styling disabled per user request
     # patcher.apply_menu_styling()
@@ -451,6 +620,8 @@ def on_sync_did_finish():
 
     conflict = onigiri_sync.check_conflict()
     if conflict == 'cloud_newer':
+        from .sync_ui import show_sync_conflict_dialog
+
         # Cloud data is newer, ask user what to do
         choice = show_sync_conflict_dialog(mw)
         if choice == 'cloud':
@@ -468,6 +639,8 @@ def on_sync_did_finish():
 
 def on_state_change(new_state, old_state):
     """Called when Anki's state changes - update sync indicator."""
+    if new_state == "overview":
+        patcher.ensure_synapsepro_overview_bridge_hook()
     update_sync_status_indicator()
       
 def on_deck_browser_will_show(deck_browser: DeckBrowser):
@@ -491,6 +664,15 @@ def on_deck_options_shown(menu, deck_id):
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
 gui_hooks.profile_did_open.append(on_profile_did_open)
+
+def _hashi_notes_purge():
+    """Runs the Hashi Notes retention/trash sweep once per collection load."""
+    try:
+        from . import hashi_notes
+        hashi_notes.purge_expired()
+    except Exception as e:
+        print(f"Hashi Notes: purge hook error: {e}")
+gui_hooks.profile_did_open.append(_hashi_notes_purge)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)

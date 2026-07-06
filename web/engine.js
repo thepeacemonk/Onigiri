@@ -1,9 +1,86 @@
 // Onigiri Performance Engine
+const ONIGIRI_EMOJI_SPRITE_ASSETS = {
+    "🤍": "heart_white.svg",
+    "🧼": "soap.svg",
+    "💀": "skull.svg",
+    "📄": "paper.svg",
+    "📝": "memo.svg",
+    "📖": "open_book.svg",
+    "🍙": "onigiri.svg",
+    "🩷": "heart_light_pink.svg",
+    "💕": "two_hearts.svg",
+    "🌸": "cherry_blossom.svg",
+    "🌷": "tulip.svg",
+    "🪷": "lotus.svg",
+    "🧠": "brain.svg",
+    "🦑": "squid.svg",
+    "❤️": "heart_red.svg",
+    "🫀": "anatomical_heart.svg",
+    "📕": "red_book.svg",
+    "🔥": "fire.svg",
+    "🍉": "watermelon.svg",
+    "🧡": "heart_orange.svg",
+    "🍊": "tangerine.svg",
+    "🍹": "tropical_drink.svg",
+    "🧇": "waffle.svg",
+    "🍍": "pineapple.svg",
+    "⭐": "star.svg",
+    "✨": "sparkle.svg",
+    "⚡": "bolt.svg",
+    "🏆": "trophy.svg",
+    "💛": "heart_yellow.svg",
+    "📙": "yellow_book.svg",
+    "✏️": "pen.svg",
+    "🍋‍🟩": "lime.svg",
+    "💚": "heart_green.svg",
+    "📗": "green_book.svg",
+    "🌱": "emoji.svg",
+    "🍀": "four_leaf_clover.svg",
+    "🍃": "leaf_fluttering_in_wind.svg",
+    "🌳": "deciduous_tree.svg",
+    "🌲": "evergreen_tree.svg",
+    "🎄": "christmas_tree.svg",
+    "🍵": "teacup_without_handle.svg",
+    "💙": "blue_heart.svg",
+    "📘": "blue_book.svg",
+    "💧": "droplet.svg",
+    "💎": "gem_stone.svg",
+    "🧪": "test_tube.svg",
+    "🍇": "grapes.svg",
+    "🔬": "microscope.svg",
+    "💻": "computer.svg",
+    "📟": "pager.svg",
+    "🎮": "videogame.svg",
+    "🍡": "dango.svg",
+    "📚": "books.svg",
+    "🗺️": "world_map.svg",
+};
+
+function onigiriEmojiSpriteUrl(iconVal) {
+    if (!iconVal || !iconVal.startsWith('emoji:')) return '';
+    const emoji = iconVal.replace('emoji:', '');
+    const normalizedEmoji = emoji.replace(/[\ufe0e\ufe0f]/g, '');
+    let asset = ONIGIRI_EMOJI_SPRITE_ASSETS[emoji] || ONIGIRI_EMOJI_SPRITE_ASSETS[normalizedEmoji];
+    if (!asset) {
+        for (const [key, value] of Object.entries(ONIGIRI_EMOJI_SPRITE_ASSETS)) {
+            if (key.replace(/[\ufe0e\ufe0f]/g, '') === normalizedEmoji) {
+                asset = value;
+                break;
+            }
+        }
+    }
+    if (!asset) return '';
+    const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '1011095603';
+    return `/_addons/${pkg}/system_files/emojis/${asset}`;
+}
 
 window.OnigiriEngine = {
     currentHoveredRow: null,
     _dnd: null,
     _searchDebounceTimer: null,
+    _multiSelectedDecks: new Set(),
+    _lastSelectedDid: null,
+    _profileResizeTimer: null,
 
     init: function () {
         this.deckListContainer = document.getElementById('deck-list-container');
@@ -14,10 +91,88 @@ window.OnigiriEngine = {
         this.bindEvents();
         this.bindDeckSearchControls();
         this.observeMutations();
+        this.bindGlobalSelectionKeys();
+        this.initSidebarProfileMetrics();
 
         // Initial processing of already loaded nodes
         this.processNewNodes(document.querySelectorAll('tr.deck, a.collapse'));
         this.restoreScrollPosition();
+    },
+
+    systemIconUrl: function (filename) {
+        const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '';
+        if (!pkg || !filename) return '';
+        const aliases = {
+            'add_subdeck.svg': 'add-subdeck.svg',
+            'create_deck.svg': 'add-deck.svg',
+            'filtered_deck.svg': 'filtered-deck.svg',
+        };
+        return `/_addons/${pkg}/system_files/system_icons/unavailable_for_users/${aliases[filename] || filename}`;
+    },
+
+    createMaskIcon: function (iconUrl, options = {}) {
+        const icon = document.createElement('span');
+        icon.className = options.className || '';
+        const size = options.size || 16;
+        icon.style.cssText = [
+            'display:inline-block',
+            `width:${size}px`,
+            `height:${size}px`,
+            'flex:0 0 auto',
+            `background:${options.color || 'currentColor'}`,
+            `mask:url("${iconUrl}") center / contain no-repeat`,
+            `-webkit-mask:url("${iconUrl}") center / contain no-repeat`,
+        ].join(';');
+        return icon;
+    },
+
+    preloadMaskIcons: function (urls) {
+        (urls || []).forEach((url) => {
+            if (!url) return;
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = url;
+        });
+    },
+
+    escapeSelectorValue: function (value) {
+        if (window.CSS && typeof CSS.escape === 'function') return CSS.escape(String(value));
+        return String(value).replace(/["\\]/g, '\\$&');
+    },
+
+    _beginOverrideState: function (className) {
+        if (className) document.body.classList.add(className);
+    },
+
+    _endOverrideState: function (className) {
+        if (className) document.body.classList.remove(className);
+    },
+
+    _clearAllRowVisualStates: function () {
+        document.querySelectorAll('tr.deck').forEach(row => {
+            row.classList.remove(
+                'is-hovered',
+                'ctx-row-active',
+                'drag-over-target',
+                'drop-before',
+                'drop-after',
+                'is-dragging',
+                'dragging',
+                'drag-over-before',
+                'drag-over-after',
+                'drag-over-nest'
+            );
+        });
+        this.currentHoveredRow = null;
+    },
+
+    clearDialogFocus: function () {
+        this._clearAllRowVisualStates();
+        document.body.classList.remove('dialog-focus');
+    },
+
+    closestElement: function (target, selector) {
+        return target && target.closest ? target.closest(selector) : null;
     },
 
     /**
@@ -47,6 +202,7 @@ window.OnigiriEngine = {
 
         this.restoreScrollPosition();
         this.processNewNodes(tableBody.children); // Process new nodes (for collapse icons etc.)
+        this.updateMultiSelectionVisuals();
 
         if (typeof window.updateDeckLayouts === 'function') {
             window.updateDeckLayouts();
@@ -55,6 +211,47 @@ window.OnigiriEngine = {
         setTimeout(() => {
             this.deckListContainer.classList.remove('scroll-restoring');
         }, 50);
+    },
+
+    getSidebarProfileBar: function () {
+        return document.querySelector('.sidebar-expanded-content > .profile-bar, .sidebar-expanded-content .profile-bar');
+    },
+
+    updateSidebarProfileMetrics: function () {
+        const profileBar = this.getSidebarProfileBar();
+        if (!profileBar) return;
+
+        const header = document.getElementById('deck-list-header');
+        const fallbackWidth = profileBar.parentElement ? profileBar.parentElement.clientWidth : profileBar.offsetWidth;
+        const headerWidth = header ? Math.floor(header.getBoundingClientRect().width) : fallbackWidth;
+        const width = Math.max(0, headerWidth || fallbackWidth || 0);
+        profileBar.style.setProperty('--onigiri-deck-header-width', `${width}px`);
+        if (width) profileBar.style.width = `${width}px`;
+    },
+
+    initSidebarProfileMetrics: function () {
+        this.updateSidebarProfileMetrics();
+        window.addEventListener('resize', () => {
+            window.clearTimeout(this._profileResizeTimer);
+            this._profileResizeTimer = window.setTimeout(() => this.updateSidebarProfileMetrics(), 80);
+        });
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(() => {
+                window.clearTimeout(this._profileResizeTimer);
+                this._profileResizeTimer = window.setTimeout(() => this.updateSidebarProfileMetrics(), 16);
+            });
+            
+            window.setTimeout(() => {
+                const sidebar = document.querySelector('.sidebar-left');
+                if (sidebar) observer.observe(sidebar);
+                
+                const header = document.getElementById('deck-list-header');
+                if (header) observer.observe(header);
+            }, 0);
+        }
+
+        window.setTimeout(() => this.updateSidebarProfileMetrics(), 120);
     },
 
     /** Saves the current scroll position to session storage. */
@@ -137,16 +334,150 @@ window.OnigiriEngine = {
         }
     },
 
+    bindGlobalSelectionKeys: function () {
+        if (document.body.dataset.onigiriMultiSelectKeysBound) return;
+        document.body.dataset.onigiriMultiSelectKeysBound = 'true';
+        document.addEventListener('keydown', (event) => {
+            const target = event.target;
+            const isTyping = target && (
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.isContentEditable
+            );
+            if (isTyping) return;
+            if (event.key === 'Escape' && this._multiSelectedDecks.size > 0) {
+                event.preventDefault();
+                this.clearMultiSelection();
+            }
+            if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'a') {
+                if (this.selectAllDecks()) event.preventDefault();
+            }
+        }, true);
+    },
+
+    visibleDeckRows: function () {
+        if (!this.deckListContainer) return [];
+        return Array.from(this.deckListContainer.querySelectorAll('tr.deck[data-did]'));
+    },
+
+    selectAllDecks: function () {
+        const rows = this.visibleDeckRows();
+        if (!rows.length) return false;
+        this._multiSelectedDecks.clear();
+        rows.forEach(row => this._multiSelectedDecks.add(row.dataset.did));
+        this._lastSelectedDid = rows[rows.length - 1].dataset.did;
+        this.updateMultiSelectionVisuals();
+        return true;
+    },
+
+    clearMultiSelection: function () {
+        this._multiSelectedDecks.clear();
+        this._lastSelectedDid = null;
+        this.updateMultiSelectionVisuals();
+    },
+
+    toggleMultiSelection: function (row, event) {
+        if (!row || !row.dataset.did) return;
+        const rows = this.visibleDeckRows();
+        const did = row.dataset.did;
+
+        if (event.shiftKey && this._lastSelectedDid) {
+            const start = rows.findIndex(item => item.dataset.did === this._lastSelectedDid);
+            const end = rows.indexOf(row);
+            if (start !== -1 && end !== -1) {
+                const lo = Math.min(start, end);
+                const hi = Math.max(start, end);
+                for (let index = lo; index <= hi; index += 1) {
+                    this._multiSelectedDecks.add(rows[index].dataset.did);
+                }
+            }
+        } else if (this._multiSelectedDecks.has(did)) {
+            this._multiSelectedDecks.delete(did);
+        } else {
+            this._multiSelectedDecks.add(did);
+        }
+
+        this._lastSelectedDid = did;
+        this.updateMultiSelectionVisuals();
+    },
+
+    updateMultiSelectionVisuals: function () {
+        const selected = this._multiSelectedDecks;
+        document.querySelectorAll('tr.deck[data-did]').forEach(row => {
+            row.classList.toggle('is-multi-selected', selected.has(row.dataset.did));
+        });
+        document.body.classList.toggle('has-multi-select', selected.size > 0);
+        this.updateMultiSelectBadge();
+    },
+
+    updateMultiSelectBadge: function () {
+        let badge = document.getElementById('onigiri-multiselect-badge');
+        if (this._multiSelectedDecks.size === 0) {
+            if (badge) badge.remove();
+            return;
+        }
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'onigiri-multiselect-badge';
+            badge.setAttribute('role', 'button');
+        badge.tabIndex = 0;
+        // Set tabindex for accessibility
+        try { arguments[0].tabIndex = 0; } catch(e){};
+            badge.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.clearMultiSelection();
+            });
+        }
+        const actions = document.querySelector('#deck-list-header .deck-header-actions');
+        const searchBtn = document.getElementById('onigiri-search-toolbar-btn');
+        if (actions && badge.parentElement !== actions) {
+            actions.insertBefore(badge, searchBtn && searchBtn.parentElement === actions ? searchBtn : actions.firstChild);
+        } else if (!actions && badge.parentElement !== document.body) {
+            document.body.appendChild(badge);
+        }
+        badge.textContent = `${this._multiSelectedDecks.size} selected`;
+    },
+
+    handleOrganizingDeckClick: function (event) {
+        if (!event || !(event.ctrlKey || event.metaKey || event.shiftKey)) return false;
+        const target = event.target;
+        if (!target || !target.closest) return false;
+        if (target.closest('a.collapse, .opts, .drag-handle, button, input, textarea')) return false;
+
+        const deckRow = target.closest('tr.deck[data-did]');
+        if (!deckRow || !this.deckListContainer || !this.deckListContainer.contains(deckRow)) {
+            return false;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+        this.toggleMultiSelection(deckRow, event);
+        return true;
+    },
+
     /** Binds event listeners to handle interactions. */
     bindEvents: function () {
         if (this.deckListContainer.dataset.engineBound) return;
         this.deckListContainer.dataset.engineBound = 'true';
         this.applyFilterButtonStates();
 
+        // Modifier-key deck selection must run in capture phase so inline deck
+        // link handlers never open a deck while the user is organizing rows.
+        this.deckListContainer.addEventListener('click', (event) => {
+            this.handleOrganizingDeckClick(event);
+        }, true);
+
         // --- Listener: Keep row hovered while mouse is over it ---
         this.deckListContainer.addEventListener('mouseenter', (event) => {
             const deckRow = event.target.closest('tr.deck');
             if (deckRow) {
+                if (this.currentHoveredRow && this.currentHoveredRow !== deckRow) {
+                    this.currentHoveredRow.classList.remove('is-hovered');
+                }
                 this.currentHoveredRow = deckRow;
                 deckRow.classList.add('is-hovered');
             }
@@ -159,6 +490,23 @@ window.OnigiriEngine = {
                 this.currentHoveredRow = null;
             }
         }, true);
+
+        this.deckListContainer.addEventListener('mousemove', (event) => {
+            const deckRow = event.target.closest('tr.deck');
+            if (deckRow === this.currentHoveredRow) return;
+            if (this.currentHoveredRow) {
+                this.currentHoveredRow.classList.remove('is-hovered');
+            }
+            this.currentHoveredRow = deckRow || null;
+            if (deckRow) deckRow.classList.add('is-hovered');
+        });
+
+        this.deckListContainer.addEventListener('mouseleave', () => {
+            if (this.currentHoveredRow) {
+                this.currentHoveredRow.classList.remove('is-hovered');
+                this.currentHoveredRow = null;
+            }
+        });
 
         // --- Unified Click Handler for Deck List ---
         // This single listener handles both deck collapse and double-click-to-study.
@@ -191,6 +539,17 @@ window.OnigiriEngine = {
             const deckRow = target.closest('tr.deck');
             if (!deckRow) return;
 
+            if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleMultiSelection(deckRow, event);
+                return;
+            }
+
+            if (this._multiSelectedDecks.size > 0) {
+                this.clearMultiSelection();
+            }
+
             // Prevent the default link navigation, as we are managing it with a timer.
             event.preventDefault();
 
@@ -206,12 +565,22 @@ window.OnigiriEngine = {
             }
         });
 
+        document.addEventListener('click', (event) => {
+            if (this._multiSelectedDecks.size === 0) return;
+            if (event.target.closest('#deck-list-container, .onigiri-quick-menu, #onigiri-multiselect-badge')) return;
+            this.clearMultiSelection();
+        });
+
         // --- Quick deck context menu ---
         this.deckListContainer.addEventListener('contextmenu', (event) => {
             const deckRow = event.target.closest('tr.deck[data-did]');
             if (!deckRow) return;
             event.preventDefault();
             event.stopPropagation();
+            if (this._multiSelectedDecks.size > 1 && this._multiSelectedDecks.has(deckRow.dataset.did)) {
+                this.showBulkDeckContextMenu(event.clientX, event.clientY);
+                return;
+            }
             this.showDeckContextMenu(event.clientX, event.clientY, deckRow.dataset.did);
         });
 
@@ -323,13 +692,26 @@ window.OnigiriEngine = {
         }
 
         const rect = row.getBoundingClientRect();
-        row.classList.add('is-dragging');
+        const sourceRows = (this._multiSelectedDecks.size > 1 && this._multiSelectedDecks.has(row.dataset.did))
+            ? this.visibleDeckRows().filter(item => this._multiSelectedDecks.has(item.dataset.did))
+            : [row];
+        const sourceIds = sourceRows.map(item => item.dataset.did);
+        sourceRows.forEach(item => item.classList.add('is-dragging'));
         document.body.classList.add('onigiri-is-dragging');
         const ghost = this._dndCreateGhost(row);
+        if (sourceIds.length > 1) {
+            ghost.classList.add('is-multi-drag');
+            const count = document.createElement('span');
+            count.className = 'onigiri-drag-count';
+            count.textContent = `${sourceIds.length} decks`;
+            ghost.appendChild(count);
+        }
         document.body.appendChild(ghost);
 
         this._dnd = {
             sourceRow: row,
+            sourceRows,
+            sourceIds,
             ghostEl: ghost,
             offsetX: Math.max(18, Math.min(event.clientX - rect.left, rect.width - 18)),
             offsetY: event.clientY - rect.top,
@@ -373,8 +755,9 @@ window.OnigiriEngine = {
         state.ghostEl.style.top = `${event.clientY - state.offsetY}px`;
         state.ghostEl.style.left = `${event.clientX - state.offsetX}px`;
 
+        const sourceSet = new Set(state.sourceIds || [state.sourceRow.dataset.did]);
         const rows = Array.from(this.deckListContainer.querySelectorAll('tr.deck[data-did]'))
-            .filter(row => row !== state.sourceRow);
+            .filter(row => !sourceSet.has(row.dataset.did));
         let targetRow = null;
         for (const row of rows) {
             const rect = row.getBoundingClientRect();
@@ -451,7 +834,7 @@ window.OnigiriEngine = {
 
         state.ghostEl.remove();
         document.body.classList.remove('onigiri-is-dragging');
-        state.sourceRow.classList.remove('is-dragging');
+        (state.sourceRows || [state.sourceRow]).forEach(row => row.classList.remove('is-dragging'));
         if (state.placeholder) state.placeholder.remove();
         this.deckListContainer.querySelectorAll('.drag-over-target, .drop-before, .drop-after')
             .forEach(row => row.classList.remove('drag-over-target', 'drop-before', 'drop-after'));
@@ -473,25 +856,34 @@ window.OnigiriEngine = {
         const targetRow = state.lastTargetRow;
         if (!targetRow || targetRow === state.sourceRow) return;
 
-        const sourceDid = state.sourceRow.dataset.did;
+        const sourceDids = state.sourceIds || [state.sourceRow.dataset.did];
+        const sourceDid = sourceDids[0];
         const targetDid = targetRow.dataset.did;
         if (!sourceDid || !targetDid) return;
 
         if (state.lastInsertType === 'nest') {
-            pycmd('onigiri_drag_drop:' + JSON.stringify({ source_did: sourceDid, target_did: targetDid, type: 'nest' }));
+            pycmd('onigiri_drag_drop:' + JSON.stringify({
+                source_did: sourceDid,
+                source_dids: sourceDids,
+                target_did: targetDid,
+                type: 'nest',
+            }));
             return;
         }
 
         const allIds = Array.from(this.deckListContainer.querySelectorAll('tr.deck[data-did]'))
             .map(row => row.dataset.did);
-        const newOrder = allIds.filter(id => id !== sourceDid);
+        const sourceSet = new Set(sourceDids);
+        const newOrder = allIds.filter(id => !sourceSet.has(id));
         const targetIndex = newOrder.indexOf(targetDid);
         if (targetIndex === -1) return;
-        newOrder.splice(state.lastInsertType === 'before' ? targetIndex : targetIndex + 1, 0, sourceDid);
+        newOrder.splice(state.lastInsertType === 'before' ? targetIndex : targetIndex + 1, 0, ...sourceDids);
         pycmd('onigiri_drag_drop:' + JSON.stringify({
             source_did: sourceDid,
+            source_dids: sourceDids,
             target_did: targetDid,
             type: state.lastInsertType,
+            original_order: allIds,
             new_order: newOrder,
         }));
     },
@@ -554,11 +946,12 @@ window.OnigiriEngine = {
                 }
             });
         });
+        this.updateMultiSelectionVisuals();
     },
 
     iconUrl: function (name) {
         const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '';
-        return pkg ? `/_addons/${pkg}/system_files/system_icons/${name}.svg` : '';
+        return pkg ? `/_addons/${pkg}/system_files/system_icons/unavailable_for_users/${name}.svg` : '';
     },
 
     closeQuickMenus: function () {
@@ -593,7 +986,11 @@ window.OnigiriEngine = {
     appendMenuItem: function (menu, item) {
         const row = document.createElement('div');
         row.className = 'quick-menu-item' + (item.danger ? ' danger' : '');
-        row.appendChild(item.color ? this.makeMenuDot(item.color) : this.makeMenuIcon(item.icon));
+        if (item.customNode) {
+            row.appendChild(item.customNode);
+        } else {
+            row.appendChild(item.color ? this.makeMenuDot(item.color) : this.makeMenuIcon(item.icon));
+        }
         const label = document.createElement('span');
         label.textContent = item.label;
         row.appendChild(label);
@@ -676,10 +1073,11 @@ window.OnigiriEngine = {
         [
             { label: 'Rename', icon: 'rename', command: `onigiri_ctx_rename:${did}` },
             { label: 'Add Subdeck', icon: 'add-subdeck', command: `onigiri_ctx_subdeck:${did}` },
+            { label: 'Move To', icon: 'move_deck', command: `onigiri_ctx_move_to:${did}` },
             { label: 'Change Icon', icon: 'edit_icon', command: `onigiri_ctx_change_icon:${did}` },
             {
                 label: isFavorite ? 'Remove Favorite' : 'Favorite',
-                icon: isFavorite ? 'star_filled' : 'star_outline',
+                icon: isFavorite ? 'star_cancel' : 'star_outline',
                 command: `onigiri_toggle_favorite:${did}`,
             },
         ].forEach(item => this.appendMenuItem(menu, item));
@@ -687,22 +1085,75 @@ window.OnigiriEngine = {
         menu.appendChild(document.createElement('hr'));
 
         const markerColors = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerColors) || {};
-        const markerDefaults = {
-            red: '#ff4d4f',
-            blue: '#4f95ff',
-            green: '#45c878',
-            yellow: '#ffc629',
+        const markerIcons = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerIcons) || {};
+        const markerNames = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerNames) || {};
+        const markerDefaults = { red: '#ff4d4f', blue: '#4f95ff', green: '#45c878', yellow: '#ffc629' };
+        const nameDefaults = { red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow' };
+        
+        const makeMarkerCustomNode = (key, color) => {
+            const iconVal = markerIcons[key] || 'default';
+            if (iconVal !== 'default') {
+                const el = document.createElement('span');
+                el.className = 'quick-menu-color-dot';
+                if (iconVal.startsWith('emoji:')) {
+                    const spriteUrl = onigiriEmojiSpriteUrl(iconVal);
+                    if (spriteUrl) {
+                        el.style.backgroundColor = 'transparent';
+                        el.style.backgroundImage = `url("${spriteUrl}")`;
+                        el.style.backgroundSize = 'contain';
+                        el.style.backgroundPosition = 'center';
+                        el.style.backgroundRepeat = 'no-repeat';
+                        el.style.borderRadius = '0';
+                        el.style.boxShadow = 'none';
+                    } else {
+                        el.style.backgroundColor = 'transparent';
+                        el.style.color = color;
+                        el.style.fontSize = '14px';
+                        el.style.lineHeight = '1';
+                        el.style.display = 'inline-flex';
+                        el.style.alignItems = 'center';
+                        el.style.justifyContent = 'center';
+                        el.style.boxShadow = 'none';
+                        el.style.width = 'auto';
+                        el.style.height = 'auto';
+                        el.style.minWidth = 'auto';
+                        el.style.minHeight = 'auto';
+                        el.textContent = iconVal.replace('emoji:', '');
+                    }
+                } else {
+                    const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '1011095603';
+                    const iconUrl = iconVal.startsWith('system:') 
+                        ? `/_addons/${pkg}/system_files/system_icons/unavailable_for_users/${iconVal.replace('system:', '')}`
+                        : `/_addons/${pkg}/user_files/icons/${iconVal}`;
+                    el.style.backgroundColor = color;
+                    el.style.maskImage = `url("${iconUrl}")`;
+                    el.style.webkitMaskImage = `url("${iconUrl}")`;
+                    el.style.maskSize = 'contain';
+                    el.style.webkitMaskSize = 'contain';
+                    el.style.maskPosition = 'center';
+                    el.style.webkitMaskPosition = 'center';
+                    el.style.maskRepeat = 'no-repeat';
+                    el.style.webkitMaskRepeat = 'no-repeat';
+                    el.style.borderRadius = '0';
+                }
+                return el;
+            }
+            return null;
         };
 
         this.appendMenuGroup(menu, {
             label: 'Markers',
             icon: 'mark_circle',
-            items: [
-                { label: 'Red', color: markerColors.red || markerDefaults.red, selected: currentMark === 'red', command: `onigiri_ctx_mark:${did}:red` },
-                { label: 'Blue', color: markerColors.blue || markerDefaults.blue, selected: currentMark === 'blue', command: `onigiri_ctx_mark:${did}:blue` },
-                { label: 'Green', color: markerColors.green || markerDefaults.green, selected: currentMark === 'green', command: `onigiri_ctx_mark:${did}:green` },
-                { label: 'Yellow', color: markerColors.yellow || markerDefaults.yellow, selected: currentMark === 'yellow', command: `onigiri_ctx_mark:${did}:yellow` },
-            ],
+            items: ['red', 'blue', 'green', 'yellow'].map(key => {
+                const color = markerColors[key] || markerDefaults[key];
+                return {
+                    label: markerNames[key] || nameDefaults[key],
+                    color: color,
+                    customNode: makeMarkerCustomNode(key, color),
+                    selected: currentMark === key,
+                    command: `onigiri_ctx_mark:${did}:${key}`
+                };
+            }),
         });
 
         if (currentMark) {
@@ -711,13 +1162,113 @@ window.OnigiriEngine = {
 
         menu.appendChild(document.createElement('hr'));
 
-        [
+        const deckActions = [];
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.decklineAvailable) {
+            deckActions.push({ label: 'Deadline', icon: 'bolt', command: `deadlineSettings:${did}` });
+        }
+        deckActions.push(
             { label: 'Deck Options', icon: 'options', command: `onigiri_ctx_options:${did}` },
             { label: 'Export Deck', icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
             { label: 'Copy Deck ID', icon: 'copy_id', command: `onigiri_ctx_copy_id:${did}` },
             { label: 'Delete Deck', icon: 'delete', danger: true, command: `onigiri_ctx_delete:${did}` },
+        );
+        deckActions.forEach(item => this.appendMenuItem(menu, item));
+
+        this.positionMenu(menu, x, y);
+    },
+
+    showBulkDeckContextMenu: function (x, y) {
+        this.closeQuickMenus();
+        const dids = Array.from(this._multiSelectedDecks);
+        if (dids.length < 2) return;
+        document.body.classList.add('ctx-menu-open');
+        const encodedDids = encodeURIComponent(JSON.stringify(dids));
+        const bulkPayload = encodeURIComponent(JSON.stringify({ dids }));
+
+        const menu = document.createElement('div');
+        menu.className = 'onigiri-quick-menu';
+
+        [
+            { label: `Move ${dids.length} Decks`, icon: 'move_deck', command: `onigiri_ctx_move_to:${encodedDids}` },
+            { label: 'Favorite Selected', icon: 'star_filled', command: `onigiri_ctx_bulk_favorite:${bulkPayload}` },
+            { label: 'Remove Favorites', icon: 'star_cancel', command: `onigiri_ctx_bulk_unfavorite:${bulkPayload}` },
         ].forEach(item => this.appendMenuItem(menu, item));
 
+        menu.appendChild(document.createElement('hr'));
+        const markerColors = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerColors) || {};
+        const markerIcons = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerIcons) || {};
+        const markerNames = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerNames) || {};
+        const markerDefaults = { red: '#ff4d4f', blue: '#4f95ff', green: '#45c878', yellow: '#ffc629' };
+        const nameDefaults = { red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow' };
+        
+        const makeMarkerCustomNodeBulk = (key, color) => {
+            const iconVal = markerIcons[key] || 'default';
+            if (iconVal !== 'default') {
+                const el = document.createElement('span');
+                el.className = 'quick-menu-color-dot';
+                if (iconVal.startsWith('emoji:')) {
+                    const spriteUrl = onigiriEmojiSpriteUrl(iconVal);
+                    if (spriteUrl) {
+                        el.style.backgroundColor = 'transparent';
+                        el.style.backgroundImage = `url("${spriteUrl}")`;
+                        el.style.backgroundSize = 'contain';
+                        el.style.backgroundPosition = 'center';
+                        el.style.backgroundRepeat = 'no-repeat';
+                        el.style.borderRadius = '0';
+                        el.style.boxShadow = 'none';
+                    } else {
+                        el.style.backgroundColor = 'transparent';
+                        el.style.color = color;
+                        el.style.fontSize = '14px';
+                        el.style.lineHeight = '1';
+                        el.style.display = 'inline-flex';
+                        el.style.alignItems = 'center';
+                        el.style.justifyContent = 'center';
+                        el.style.boxShadow = 'none';
+                        el.style.width = 'auto';
+                        el.style.height = 'auto';
+                        el.style.minWidth = 'auto';
+                        el.style.minHeight = 'auto';
+                        el.textContent = iconVal.replace('emoji:', '');
+                    }
+                } else {
+                    const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '1011095603';
+                    const iconUrl = iconVal.startsWith('system:') 
+                        ? `/_addons/${pkg}/system_files/system_icons/unavailable_for_users/${iconVal.replace('system:', '')}`
+                        : `/_addons/${pkg}/user_files/icons/${iconVal}`;
+                    el.style.backgroundColor = color;
+                    el.style.maskImage = `url("${iconUrl}")`;
+                    el.style.webkitMaskImage = `url("${iconUrl}")`;
+                    el.style.maskSize = 'contain';
+                    el.style.webkitMaskSize = 'contain';
+                    el.style.maskPosition = 'center';
+                    el.style.webkitMaskPosition = 'center';
+                    el.style.maskRepeat = 'no-repeat';
+                    el.style.webkitMaskRepeat = 'no-repeat';
+                    el.style.borderRadius = '0';
+                }
+                return el;
+            }
+            return null;
+        };
+
+        this.appendMenuGroup(menu, {
+            label: 'Markers',
+            icon: 'mark_circle',
+            items: ['red', 'blue', 'green', 'yellow'].map(key => {
+                const color = markerColors[key] || markerDefaults[key];
+                return {
+                    label: markerNames[key] || nameDefaults[key],
+                    color: color,
+                    customNode: makeMarkerCustomNodeBulk(key, color),
+                    command: `onigiri_ctx_bulk_mark:${encodeURIComponent(JSON.stringify({ dids, mark: key }))}`
+                };
+            }),
+        });
+        this.appendMenuItem(menu, { label: 'Remove Marker', icon: 'remove_mark', command: `onigiri_ctx_bulk_mark:${encodeURIComponent(JSON.stringify({ dids, mark: 'none' }))}` });
+
+        menu.appendChild(document.createElement('hr'));
+        this.appendMenuItem(menu, { label: 'Delete Selected', icon: 'delete', danger: true, command: `onigiri_ctx_bulk_delete:${bulkPayload}` });
         this.positionMenu(menu, x, y);
     },
 
@@ -736,6 +1287,7 @@ window.OnigiriEngine = {
             { label: 'Stats', icon: 'stats', command: 'stats' },
             { label: 'Sync', icon: 'sync', command: 'sync' },
             { label: 'Settings', icon: 'settings', command: 'openOnigiriSettings' },
+            { label: 'Hashi Notes', icon: 'hashi_notes', command: 'openHashiNotes:planner' },
             { label: 'Onigiri Games', icon: 'gamepad', command: 'openGamificationSettings' },
             { label: 'Get Shared', icon: 'get_shared', command: 'shared' },
             { label: 'Create Deck', icon: 'add-deck', command: 'onigiri_create_deck' },
@@ -764,7 +1316,7 @@ window.OnigiriEngine = {
             { label: 'Most due', icon: 'sort_most_reviews', mode: 'most_due' },
             { label: 'Most new', icon: 'sort_most_new', mode: 'most_new' },
             { label: 'Most reviews', icon: 'stats', mode: 'most_reviews' },
-            { label: 'Favorites first', icon: 'star_filled', mode: 'favorites_first' },
+            { label: 'Favorites first', icon: 'star_outline', mode: 'favorites_first' },
             { label: 'Custom order', icon: 'sort_custom', mode: 'custom' },
         ].forEach(item => this.appendMenuItem(menu, {
             label: item.label,

@@ -35,6 +35,134 @@ body {
     box-sizing: border-box;
 }
 
+.overview-profile-bar {
+    width: max-content;
+    max-width: min(520px, calc(100% - 40px));
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-radius: 999px;
+    margin: 0 0 -18px 0;
+    background-color: var(--highlight-bg);
+    position: relative;
+    z-index: 3;
+    overflow: hidden;
+    box-shadow: none !important;
+    gap: 0;
+}
+
+.overview-profile-bar > * {
+    position: relative;
+    z-index: 2;
+}
+
+.overview-profile-bar .profile-bg-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.overview-profile-bar .profile-pic,
+.overview-profile-bar .profile-pic-placeholder {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.overview-profile-bar .profile-pic {
+    object-fit: cover;
+}
+
+.overview-profile-bar .profile-pic-placeholder {
+    background-color: var(--accent-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.overview-profile-bar .profile-name {
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
+.overview-profile-bar .restaurant-level-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 10px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: inherit;
+    flex: 0 0 auto;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.night-mode .overview-profile-bar .restaurant-level-chip,
+.nightMode .overview-profile-bar .restaurant-level-chip {
+    background: rgba(0, 0, 0, 0.24);
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-level {
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-progress {
+    width: 54px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+    overflow: hidden;
+}
+
+.night-mode .overview-profile-bar .restaurant-level-chip .rl-chip-progress,
+.nightMode .overview-profile-bar .restaurant-level-chip .rl-chip-progress {
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--profile-level-bar-bg, linear-gradient(90deg, #ffb347, #ff6b6b));
+    transition: width 0.3s ease;
+}
+
+.overview-profile-bar.with-image-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: var(--profile-image-overlay-bg, transparent);
+    z-index: 1;
+}
+
+.overview-profile-bar.with-image-bg .profile-name {
+    color: white;
+    text-shadow: 1px 1px 3px var(--text-shadow-light);
+}
+
+.overview-profile-bar.with-image-bg .restaurant-level-chip {
+    color: white;
+}
+
 /* New header for buttons */
 .overview-header {
     position: absolute;
@@ -45,6 +173,23 @@ body {
     justify-content: center;
     gap: 10px;
     z-index: 1000;
+}
+
+#onigiri-overview-header {
+    position: fixed !important;
+    top: 5px !important;
+    left: 50% !important;
+    right: auto !important;
+    width: max-content !important;
+    max-width: calc(100vw - 24px) !important;
+    min-height: 40px;
+    margin: 0 !important;
+    transform: translateX(-50%) !important;
+    align-items: center;
+    box-sizing: border-box;
+    padding: 4px 10px;
+    pointer-events: auto;
+    z-index: 2000 !important;
 }
 
 .overview-button {
@@ -98,7 +243,7 @@ body {
     font-size: 2em;
     /* Bigger title */
     font-weight: 600;
-    margin-bottom: 20px;
+    margin-bottom: 8px;
     /* Space between title and stats */
 }
 
@@ -116,31 +261,37 @@ body {
 
 /* Stats box styling */
 .stats-container {
-    background-color: var(--canvas-inset);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background-color: var(--overview-box-bg, var(--canvas-inset));
+    border: var(--overview-box-stroke, 1px) solid var(--overview-box-border, var(--border));
+    border-radius: var(--overview-box-radius, 12px);
     /* Rounded borders */
-    padding: 15px 25px;
+    padding: 32px 25px 15px 25px;
     margin-bottom: 20px;
+    backdrop-filter: blur(var(--overview-box-blur, 0px));
+    -webkit-backdrop-filter: blur(var(--overview-box-blur, 0px));
 }
 
 .stats-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 1.1em;
-    padding: 14px 0;
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: var(--font-size-main, 16px);
+    color: var(--fg);
+    padding: 9px 0;
 }
 
 /* Add separators between rows, but not after the last one */
 .stats-row:not(:last-child) {
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--overview-box-border, var(--border));
 }
 
 /* Styling for the colored number bubbles */
 .new-count-bubble,
 .learn-count-bubble,
 .review-count-bubble {
+    font-family: inherit;
+    font-size: inherit;
     font-weight: 500;
     padding: 4px 12px;
     border-radius: 16px;
@@ -151,43 +302,58 @@ body {
 
 /* Set bubble colors using CSS variables from the config */
 .new-count-bubble {
-    background-color: var(--new-count-bubble-bg);
-    color: var(--new-count-bubble-fg);
+    background-color: var(--overview-new-bubble-bg, var(--new-count-bubble-bg));
+    color: var(--fg);
 }
 
 .learn-count-bubble {
-    background-color: var(--learn-count-bubble-bg);
-    color: var(--learn-count-bubble-fg);
+    background-color: var(--overview-learn-bubble-bg, var(--learn-count-bubble-bg));
+    color: var(--fg);
 }
 
 .review-count-bubble {
-    background-color: var(--review-count-bubble-bg);
-    color: var(--review-count-bubble-fg);
+    background-color: var(--overview-review-bubble-bg, var(--review-count-bubble-bg));
+    color: var(--fg);
 }
 
 
-/* Study Now button styling */
+/* Study Now button styling — pill-shaped, synced with the box color & effect */
+#study.add-button-dashed,
 .add-button-dashed {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
-    border: 2px dashed var(--border);
-    color: var(--fg-subtle);
-    font-size: 1.1em;
-    font-weight: 500;
-    width: 100%;
-    box-sizing: border-box;
-    background: transparent;
-    margin: 0px;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px 22px !important;
+    /* Pill shape */
+    border-radius: var(--overview-study-button-radius, 999px) !important;
+    cursor: pointer !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
+    border: var(--overview-study-button-stroke-width, 0px)
+            var(--overview-study-button-stroke-style, solid)
+            var(--overview-study-button-stroke-color, transparent) !important;
+    color: var(--fg) !important;
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-size: var(--font-size-main, 16px) !important;
+    font-weight: inherit !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background: var(--overview-study-button-bg, var(--button-primary-bg)) !important;
+    /* Frosted look, only present when synced with the box effect blur */
+    backdrop-filter: blur(var(--overview-study-button-blur, 0px)) !important;
+    -webkit-backdrop-filter: blur(var(--overview-study-button-blur, 0px)) !important;
+    margin: 0px !important;
     box-shadow: none !important;
 }
 
+#study.add-button-dashed:hover,
 .add-button-dashed:hover {
-    background-color: var(--highlight-bg);
-    border-color: var(--fg-subtle);
-    box-shadow: none !important;
+    transform: translateY(var(--overview-study-button-hover-lift, 0px)) !important;
+    box-shadow: var(--overview-study-button-hover-shadow, none) !important;
+    filter: brightness(1.03) !important;
+}
+
+#study.add-button-dashed:active,
+.add-button-dashed:active {
+    transform: translateY(0) !important;
+    filter: brightness(0.97) !important;
 }

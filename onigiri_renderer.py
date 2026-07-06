@@ -4,16 +4,85 @@ import html
 import json
 import os
 from dataclasses import dataclass
+from datetime import date, datetime
 from aqt import mw
 from . import patcher
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
-from . import config, heatmap, deck_tree_updater, sidebar_api
-from .gamification import onigimon, restaurant_level
+from . import config, heatmap
+from .api import sidebar as sidebar_api
+from .decks import tree_updater as deck_tree_updater
 from .templates import custom_body_template
 from .translations import tr
 import copy
 import re
+
+DECKLINE_ADDON_ID = "1517382883"
+DECKLINE_HOOK_MARKERS = (DECKLINE_ADDON_ID, "deckline")
+SHIGE_LEADERBOARD_ADDON_ID = "175794613"
+SHIGE_LEADERBOARD_HOOK_MARKERS = (
+    SHIGE_LEADERBOARD_ADDON_ID,
+    "lb_on_homescreen.on_deck_browser_will_render_content",
+)
+
+
+def _nook_level():
+    from .gamification import nook_level
+
+    return nook_level
+
+
+def _hexagon_land():
+    from .gamification import hexagon_land
+
+    return hexagon_land
+
+
+def _onigimon():
+    from .gamification import onigimon
+
+    return onigimon
+
+
+def _learner_stats_widget():
+    from . import learner_stats_widget
+
+    return learner_stats_widget
+
+
+def _prep_station():
+    from . import prep_station
+
+    return prep_station
+
+
+def _is_deckline_hook_id(hook_id: str) -> bool:
+    normalized = str(hook_id or "").lower()
+    return any(marker in normalized for marker in DECKLINE_HOOK_MARKERS)
+
+
+def _is_shige_leaderboard_hook_id(hook_id: str) -> bool:
+    normalized = str(hook_id or "").lower()
+    return all(marker.lower() in normalized for marker in SHIGE_LEADERBOARD_HOOK_MARKERS)
+
+
+def _layout_item_ids(layout_section) -> set[str]:
+    if isinstance(layout_section, dict):
+        return {str(key) for key in layout_section.keys()}
+    if isinstance(layout_section, (list, tuple, set)):
+        return {str(value) for value in layout_section}
+    return set()
+
+
+def _normalize_external_layout(external_layout: dict) -> tuple[dict, object]:
+    if not isinstance(external_layout, dict):
+        return {}, {}
+    if "grid" not in external_layout and "archive" not in external_layout:
+        return dict(external_layout), {}
+    grid_config = external_layout.get("grid", {})
+    archive_config = external_layout.get("archive", {})
+    return (dict(grid_config) if isinstance(grid_config, dict) else {}, archive_config)
+
 
 def process_tr_markers(html_str: str) -> str:
     """
@@ -35,11 +104,44 @@ class RenderData:
     """Wrapper for deck tree data that Anki's context menu expects."""
     tree: object  # DeckDueTreeNode from Anki
 
+
+def _col_conf_get(key, default=None):
+    """Read collection config without triggering Anki 26 deprecation warnings."""
+    col = getattr(mw, "col", None)
+    if not col:
+        return default
+    try:
+        value = col.get_config(key)
+        return default if value is None else value
+    except Exception:
+        try:
+            return col.conf.get(key, default)
+        except Exception:
+            return default
+
+
+def _col_conf_set(key, value) -> None:
+    """Write collection config using the modern API when available."""
+    col = getattr(mw, "col", None)
+    if not col:
+        return
+    try:
+        col.set_config(key, value)
+        return
+    except Exception:
+        pass
+    try:
+        col.conf[key] = value
+        col.setMod()
+    except Exception:
+        pass
+
+
 # --- ADDED: Button HTML definitions ---
 BUTTON_HTML = {
     "profile": "{profile_bar}", # This is a placeholder for the dynamic profile bar
     "add": """
-        <div class="add-button-dashed action-add" onclick="pycmd('add')">
+        <div class="menu-item action-add" onclick="pycmd('add')">
             <i class="icon"></i>
             <span>{tr("add")}</span>
         </div>
@@ -60,7 +162,6 @@ BUTTON_HTML = {
         <div class="menu-item action-sync" onclick="pycmd('sync')">
             <i class="icon"></i>
             <span>{tr("sync")}</span>
-            <span class="sync-status-indicator"></span>
         </div>
     """,
     "settings": """
@@ -146,7 +247,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     Generates CSS to apply custom or default icons to the sidebar list items.
     """
     css_lines = []
-    icon_base = f"/_addons/{addon_package}/system_files/system_icons/"
+    icon_base = f"/_addons/{addon_package}/system_files/system_icons/unavailable_for_users/"
     user_icon_base = f"/_addons/{addon_package}/user_files/icons/"
     
     # Map action id -> default system icon filename
@@ -166,15 +267,23 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     # 1. Standard Actions
     for action_id, filename in default_icons.items():
         # Check for custom icon
-        custom_file = mw.col.conf.get(f"modern_menu_icon_{action_id}", "")
+        custom_file = _col_conf_get(f"modern_menu_icon_{action_id}", "")
         
         if custom_file:
             icon_url = f"{user_icon_base}{custom_file}"
         else:
             icon_url = f"{icon_base}{filename}"
-            
+
+        # Per-button icon color (set from Action Button Customization); falls
+        # back to the shared --icon-color when none is configured.
+        custom_color = _col_conf_get(f"modern_menu_icon_color_{action_id}", "")
+        icon_color_css = custom_color if custom_color else "var(--icon-color)"
+
         css = f"""
         .action-{action_id} .icon {{
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
             mask-image: url('{icon_url}') !important;
             -webkit-mask-image: url('{icon_url}') !important;
             mask-size: contain !important;
@@ -183,7 +292,7 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
             -webkit-mask-repeat: no-repeat !important;
             mask-position: center !important;
             -webkit-mask-position: center !important;
-            background-color: var(--icon-color); 
+            background-color: {icon_color_css};
         }}
         """
         css_lines.append(css)
@@ -199,16 +308,193 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
 
 # --- Helper functions (copied from patcher.py for self-containment) ---
 
-def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "profile-pic") -> str:    
-    profile_pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
+def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "profile-pic") -> str:
+    try:
+        is_dark = bool(mw.pm.night_mode())
+    except Exception:
+        is_dark = False
+    mode = _col_conf_get("modern_menu_profile_picture_mode", "image")
+    dynamic = bool(_col_conf_get("modern_menu_profile_picture_dynamic_mode", True))
+    theme_key = "dark" if is_dark else "light"
+    color = _col_conf_get(f"modern_menu_profile_picture_color_{theme_key}", "#B8BDC3" if is_dark else "#8CACB4")
+    if mode == "accent":
+        color = "var(--accent-color)"
+    if mode in {"accent", "custom"}:
+        initial = html.escape((user_name[:1] or "U").upper(), quote=False)
+        return f'<span class="{css_class} profile-pic-generated" style="background-color: {color};">{initial}</span>'
+
+    if dynamic:
+        profile_pic_filename = _col_conf_get(f"modern_menu_profile_picture_{theme_key}", "") or _col_conf_get("modern_menu_profile_picture", "")
+    else:
+        profile_pic_filename = _col_conf_get("modern_menu_profile_picture", "")
+
     if profile_pic_filename and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile", profile_pic_filename)):
         pic_url = f"/_addons/{addon_package}/user_files/profile/{profile_pic_filename}"
-        return f'<img src="{pic_url}" class="{css_class}">'
     else:
-        # Use default profile picture when none is selected or file doesn't exist
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
-        return f'<img src="{pic_url}" class="{css_class}">'
+
+    blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_picture_blur", 0) or 0)))
+    opacity_value = _col_conf_get("modern_menu_profile_picture_opacity", 100)
+    opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
+    style = f"filter: blur({blur * 0.2}px); opacity: {opacity};" if blur or opacity < 1.0 else ""
+    style_attr = f' style="{style}"' if style else ""
+    return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
+
+
+def _profile_background_render_parts(addon_package, include_default_image=True):
+    container_style = ""
+    layer_style = ""
+    bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "accent")
+    if bg_mode == "image":
+        bg_image_file = _col_conf_get("modern_menu_profile_bg_image", "")
+        if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
+            bg_url = f"/_addons/{addon_package}/user_files/profile_bg/{bg_image_file}"
+        elif include_default_image:
+            bg_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
+        else:
+            bg_url = ""
+        container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
+        if bg_url:
+            blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_bg_blur", 0) or 0)))
+            opacity_value = _col_conf_get("modern_menu_profile_bg_opacity", 100)
+            opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
+            blur_px = blur * 0.2
+            scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
+            layer_style = (
+                f"background-image: url('{bg_url}'); background-size: cover; background-position: center; "
+                f"filter: blur({blur_px}px); opacity: {opacity}; transform: scale({scale});"
+            )
+    elif bg_mode == "custom":
+        container_style = "background-color: var(--profile-bg-custom-color);"
+    else:
+        container_style = "background-color: var(--accent-color);"
+    return container_style, layer_style
+
+
+def _spotify_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if text.startswith("spotify:"):
+        parts = text.split(":")
+        if len(parts) >= 3 and parts[1] in {"track", "album", "playlist", "episode", "show"}:
+            return f"https://open.spotify.com/embed/{parts[1]}/{parts[2]}?utm_source=generator"
+    if not text or "spotify.com" not in text:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(text)
+        parts = [part for part in parsed.path.split("/") if part]
+        if parts and parts[0].startswith("intl-"):
+            parts = parts[1:]
+        if len(parts) >= 2 and parts[0] in {"track", "album", "playlist", "episode", "show"}:
+            return f"https://open.spotify.com/embed/{parts[0]}/{parts[1]}?utm_source=generator"
+    except Exception:
+        return ""
+    return ""
+
+
+def _apple_music_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if not text or "music.apple.com" not in text:
+        return ""
+    try:
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(text)
+        host = parsed.netloc.lower()
+        if host not in {"music.apple.com", "embed.music.apple.com"}:
+            return ""
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 3 or parts[1] not in {"album", "song", "playlist"}:
+            return ""
+        return urlunparse(("https", "embed.music.apple.com", parsed.path, "", parsed.query, ""))
+    except Exception:
+        return ""
+
+
+def _youtube_music_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if not text or "music.youtube.com" not in text:
+        return ""
+    try:
+        from urllib.parse import parse_qs, urlparse
+        parsed = urlparse(text)
+        if parsed.netloc.lower() != "music.youtube.com" or parsed.path != "/watch":
+            return ""
+        video_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        if not re.fullmatch(r"[\w-]{6,20}", video_id):
+            return ""
+        return f"https://www.youtube-nocookie.com/embed/{video_id}?controls=1&modestbranding=1&rel=0"
+    except Exception:
+        return ""
+
+
+def _music_embed_url(url: str) -> str:
+    return _spotify_embed_url(url) or _apple_music_embed_url(url) or _youtube_music_embed_url(url)
+
+
+def _music_link_service_label(url: str) -> str:
+    text = str(url or "").lower()
+    if "music.apple.com" in text:
+        return "Apple Music"
+    if "music.youtube.com" in text:
+        return "YouTube Music"
+    if "spotify.com" in text or text.startswith("spotify:"):
+        return "Spotify"
+    return "Music"
+
+
+def _profile_sidebar_config(conf: dict) -> dict:
+    profile = conf.get("onigiriProfile", {})
+    if not isinstance(profile, dict):
+        profile = {}
+    return {
+        "bio": str(profile.get("bio") or "").strip(),
+        "status": str(profile.get("status") or "").strip(),
+        "musicLink": str(profile.get("spotifyLink") or profile.get("musicLink") or "").strip(),
+    }
+
+
+def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, profile_pic_html: str) -> str:
+    profile = _profile_sidebar_config(conf)
+    bg_style, layer_style = _profile_background_render_parts(addon_package)
+    bg_layer_html = f'<div class="onigiri-sidebar-profile-bg-layer" style="{layer_style}"></div>' if layer_style else ""
+
+    bio_html = f'<p class="onigiri-sidebar-profile-bio">{html.escape(profile["bio"], quote=False)}</p>' if profile["bio"] else ""
+    status_html = f'<p class="onigiri-sidebar-profile-status">{html.escape(profile["status"], quote=False)}</p>' if profile["status"] else ""
+    music_link = profile["musicLink"]
+    music_html = ""
+    if music_link:
+        embed_url = _music_embed_url(music_link)
+        if embed_url:
+            music_html = f"""
+            <section class="onigiri-sidebar-profile-music">
+                <iframe src="{html.escape(embed_url, quote=True)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+            </section>
+            """
+        else:
+            music_html = f"""
+            <a class="onigiri-sidebar-profile-music-link" href="{html.escape(music_link, quote=True)}">
+                <span>{html.escape(_music_link_service_label(music_link), quote=False)}</span>
+                <strong>{html.escape(music_link, quote=False)}</strong>
+            </a>
+            """
+
+    return f"""
+    <section class="onigiri-sidebar-profile" data-profile-sidebar>
+        <button type="button" class="onigiri-sidebar-profile-back" aria-label="Back" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.close(event)"></button>
+        <div class="onigiri-sidebar-profile-cover" style="{bg_style}">
+            {bg_layer_html}
+        </div>
+        <div class="onigiri-sidebar-profile-body">
+            <div class="onigiri-sidebar-profile-avatar">{profile_pic_html}</div>
+            <h2>{html.escape(user_name, quote=False)}</h2>
+            {status_html}
+            {bio_html}
+            {music_html}
+        </div>
+    </section>
+    """
+
 
 def _get_onigiri_stat_card_html(label: str, value: str, widget_id: str) -> str:
     return f"""<div class="stat-card {widget_id}-card"><h3>{label}</h3><p>{value}</p></div>"""
@@ -261,14 +547,15 @@ def _get_onigiri_heatmap_html() -> str:
         <div class="heatmap-grid-skeleton">{skeleton_cells}</div>
     </div>"""
 
-# --- ADD THIS NEW FUNCTION ---
+
+
 def _get_onigiri_favorites_html() -> str:
     """
     Generates the HTML for the favorites widget.
     Automatically cleans up deleted decks from the favorites list.
     """
     try:
-        favorite_dids = mw.col.conf.get("onigiri_favorite_decks", [])
+        favorite_dids = _col_conf_get("onigiri_favorite_decks", [])
         if not favorite_dids:
             fav_placeholder = """
             <div class="onigiri-favorites-widget">
@@ -331,8 +618,7 @@ def _get_onigiri_favorites_html() -> str:
         
         # Clean up deleted decks from favorites if any were found
         if len(valid_dids) != len(favorite_dids):
-            mw.col.conf["onigiri_favorite_decks"] = valid_dids
-            mw.col.setMod()
+            _col_conf_set("onigiri_favorite_decks", valid_dids)
             removed_count = len(favorite_dids) - len(valid_dids)
             print(f"Onigiri: Cleaned up {removed_count} deleted/ghost deck(s) from favorites")
         
@@ -366,16 +652,17 @@ def _get_onigiri_favorites_html() -> str:
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
 
-def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
+def _get_onigiri_nook_level_html(orientation: str = "horizontal") -> str:
     """
-    Generates the HTML for the Restaurant Level widget.
+    Generates the HTML for the Nook Level widget.
     """
     # Invalidate cache to ensure fresh data when deck browser is rendered
     # REVERTED: Do NOT invalidate here. It causes lag on every render.
-    # restaurant_level.manager.invalidate_daily_cache()
-    
-    # Get Restaurant Level Data
-    rl_payload = restaurant_level.manager.get_progress_payload()
+    # nook_level.manager.invalidate_daily_cache()
+    nook_level = _nook_level()
+
+    # Get Nook Level Data
+    rl_payload = nook_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):
         return process_tr_markers("""
         <div class="onigiri-restaurant-level-widget disabled">
@@ -387,7 +674,7 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
         """)
     
     level = rl_payload.get("level", 0)
-    name = rl_payload.get("name", "Restaurant Level")
+    name = rl_payload.get("name", "Nook Level")
     
     # Level Progress
     xp_into = rl_payload.get("xpIntoLevel", 0)
@@ -400,7 +687,7 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
         xp_text = f"{xp_into} / {xp_next} {tr('xp_label')}"
 
     # Theme Color
-    theme_color = restaurant_level.manager.get_current_theme_color()
+    theme_color = nook_level.manager.get_current_theme_color()
     bar_color = theme_color if theme_color else "var(--accent-color, #007bff)"
     
     # Background for expanded view
@@ -410,12 +697,12 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
         bg_style_value = "linear-gradient(135deg, #ff6b6b, #ffb347)"
     
     # Get Image and check if it's Santa's Coffee
-    image_file = restaurant_level.manager.get_current_theme_image()
+    image_file = nook_level.manager.get_current_theme_image()
     if not image_file:
-        image_file = "restaurant_level.png" # Default
-    
+        image_file = "sushi/onigiri_stand.png" # Default
+
     # Check if Santa's Coffee is active
-    is_santas_coffee = (image_file == "Santa's Coffee.png")
+    is_santas_coffee = image_file.endswith("santas_coffee.png")
     snow_class = "with-snow" if is_santas_coffee else ""
     
     # Generate snowflakes HTML if Santa's Coffee is active
@@ -433,7 +720,7 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
         snowflakes_html = ''.join(snowflakes)
         
     addon_package = mw.addonManager.addonFromModule(__name__)
-    image_path = f"/_addons/{addon_package}/system_files/gamification_images/restaurant_folder/{image_file}"
+    image_path = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/{image_file}"
     
     # Navigation buttons with inline SVGs (using currentColor for --fg-subtle inheritance)
     shop_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="M24,10a.988.988,0,0,0-.024-.217l-1.3-5.868A4.968,4.968,0,0,0,17.792,0H6.208a4.968,4.968,0,0,0-4.88,3.915L.024,9.783A.988.988,0,0,0,0,10v1a3.984,3.984,0,0,0,1,2.643V19a5.006,5.006,0,0,0,5,5H18a5.006,5.006,0,0,0,5-5V13.643A3.984,3.984,0,0,0,24,11ZM2,10.109l1.28-5.76A2.982,2.982,0,0,1,6.208,2H7V5A1,1,0,0,0,9,5V2h6V5a1,1,0,0,0,2,0V2h.792A2.982,2.982,0,0,1,20.72,4.349L22,10.109V11a2,2,0,0,1-2,2H19a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H11a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H4a2,2,0,0,1-2-2ZM18,22H6a3,3,0,0,1-3-3V14.873A3.978,3.978,0,0,0,4,15H5a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,11,15h2a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,19,15h1a3.978,3.978,0,0,0,1-.127V19A3,3,0,0,1,18,22Z"/></svg>'''
@@ -451,8 +738,8 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
     </div>
     """
     
-    # Get Daily Special Data
-    daily_special = restaurant_level.manager.get_daily_special_status()
+    # Get Nook Rush data. The storage key remains daily_special for migration compatibility.
+    daily_special = nook_level.manager.get_daily_special_status()
     ds_enabled = daily_special.get("enabled", False)
     ds_progress = daily_special.get("current_progress", 0)
     ds_target = daily_special.get("target", 100)
@@ -460,10 +747,11 @@ def _get_onigiri_restaurant_level_html(orientation: str = "horizontal") -> str:
     ds_html = ""
     if ds_enabled:
         percent = min(100, int((ds_progress / ds_target) * 100)) if ds_target > 0 else 0
+        rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
         ds_html = f"""
         <div class="daily-special-section">
             <div class="ds-header">
-                <div class="ds-label">{tr("daily_special")}</div>
+                <div class="ds-label">{rush_name}</div>
                 <div class="ds-text">{ds_progress} / {ds_target}</div>
             </div>
             <div class="ds-progress-bar">
@@ -547,33 +835,68 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, 
-        "onigimon": onigimon.render_widget_html,
+        "restaurant_level": _get_onigiri_nook_level_html,
+        "onigimon": lambda: _onigimon().render_widget_html(),
+        "hexagon_land": lambda: _hexagon_land().render_widget_html(),
+        "deck_stats": lambda: _learner_stats_widget()._render_widget(self, "deck_stats"),
+        "prep_station": lambda: _prep_station().render_widget_html(),
     }
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
-            if widget_id in widget_generators or widget_id == "restaurant_level":
+            if widget_id in widget_generators:
                 pos = widget_config.get("pos", 0)
                 row_span = widget_config.get("row", 1)
                 col_span = widget_config.get("col", 1)
+                if widget_id == "deck_stats":
+                    try:
+                        row_span = max(1, min(2, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(2, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 1
+
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
                 if widget_id == "restaurant_level":
-                    widget_html = _get_onigiri_restaurant_level_html(widget_config.get("orientation", "horizontal"))
+                    widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"))
+                elif widget_id == "prep_station":
+                    widget_html = _prep_station().render_widget_html(slot_count=col_span)
                 else:
                     widget_html = widget_generators[widget_id]()
+                if not str(widget_html or "").strip():
+                    continue
                 onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_html}</div>'
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
+    deckline_available = any(
+        _is_deckline_hook_id(patcher._get_hook_name(hook))
+        for hook in external_hooks
+    )
     external_layout = conf.get("externalWidgetLayout", {})
-    grid_config = external_layout.get("grid", {})
+    grid_config, archive_config = _normalize_external_layout(external_layout)
+    archived_external_hook_ids = _layout_item_ids(archive_config)
     external_widgets_html = ""
+    deckline_compat_html = ""
     
     external_widgets_data = {}
+    grid_hook_ids = set(grid_config.keys())
+    deckline_auto_embed = conf.get("onigiriDecklineAutoEmbed", True)
     for hook in external_hooks:
         hook_id = patcher._get_hook_name(hook)
+        should_render_grid_hook = hook_id in grid_hook_ids
+        should_render_deckline_compat = (
+            deckline_auto_embed
+            and _is_deckline_hook_id(hook_id)
+            and hook_id not in grid_hook_ids
+            and hook_id not in archived_external_hook_ids
+        )
+        if not (should_render_grid_hook or should_render_deckline_compat):
+            continue
         class TempContent: stats = ""
         temp_content = TempContent()
         try:
@@ -584,23 +907,117 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     if col_count > 0:
         for hook_id, widget_config in grid_config.items():
-            if hook_html := external_widgets_data.get(hook_id):
-                pos = widget_config.get("grid_position", 0)
+            hook_html = None
+            if "learner_stats_widget" in hook_id:
+                try:
+                    from . import learner_stats_widget
+                    hook_html = learner_stats_widget._render_widget(self, hook_id)
+                except Exception as e:
+                    hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
+            else:
+                hook_html = external_widgets_data.get(hook_id)
+
+            if hook_html:
+                try:
+                    pos = int(widget_config.get("grid_position", 0))
+                except (TypeError, ValueError):
+                    pos = 0
                 row = pos // col_count + 1
                 col = pos % col_count + 1
-                row_span = widget_config.get("row_span", 1)
-                col_span = widget_config.get("column_span", 1)
+                try:
+                    row_span = int(widget_config.get("row_span", 2))
+                except (TypeError, ValueError):
+                    row_span = 2
+                row_span = max(2, row_span)
+                try:
+                    col_span = int(widget_config.get("column_span", 1))
+                except (TypeError, ValueError):
+                    col_span = 1
+                col_span = min(col_count, max(1, col_span))
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
+                class_name = "external-widget-container"
+                if _is_shige_leaderboard_hook_id(hook_id):
+                    class_name += " shige-leaderboard-widget"
                 # Add external widgets to the same grid as Onigiri widgets
-                external_widgets_html += f'<div class="external-widget-container" style="{style}">{hook_html}</div>'
+                external_widgets_html += f'<div class="{class_name}" style="{style}">{hook_html}</div>'
+
+    if deckline_auto_embed:
+        for hook_id, hook_html in external_widgets_data.items():
+            if (
+                _is_deckline_hook_id(hook_id)
+                and hook_id not in grid_config
+                and hook_id not in archived_external_hook_ids
+                and str(hook_html or "").strip()
+            ):
+                deckline_compat_html += (
+                    '<div class="external-widget-container onigiri-deckline-compat-container" '
+                    f'data-onigiri-external-hook="{html.escape(hook_id, quote=True)}">'
+                    f"{hook_html}"
+                    "</div>"
+                )
+        if deckline_compat_html:
+            deckline_compat_html += """
+            <style id="onigiri-deckline-compat-style">
+                .onigiri-deckline-compat-container {
+                    display: block !important;
+                    width: 100%;
+                    max-width: min(100%, 1180px);
+                    height: auto !important;
+                    min-height: 0 !important;
+                    margin: 0 auto 15px auto;
+                    overflow: visible !important;
+                    flex: 0 0 auto !important;
+                    box-sizing: border-box;
+                }
+
+                .onigiri-deckline-compat-container .deckline-cards,
+                .onigiri-deckline-compat-container .deckline-cards-embedded {
+                    height: auto !important;
+                    max-height: none !important;
+                    min-height: 0 !important;
+                    width: 100%;
+                }
+
+                .onigiri-deckline-compat-container .deckline-list {
+                    max-height: none !important;
+                    overflow: visible !important;
+                }
+
+                .onigiri-deckline-compat-container .deckline-bottom-bar-shell {
+                    margin-top: 10px;
+                }
+            </style>
+            """
 
     # --- Part 3: Assemble the Final Stats Block ---
-    stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
+    stats_title = _col_conf_get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
     title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
 
     # Combine both Onigiri and External widgets into a single unified grid
     unified_grid_html = onigiri_grid_html + external_widgets_html
-    grid_max_width = max(1180, min(1800, col_count * 390)) if col_count > 0 else 1180
+    grid_gap = 15
+    widget_layout_conf = conf.get("onigiriWidgetLayout", {})
+    try:
+        saved_grid_width = int(widget_layout_conf.get("grid_width", 230))
+    except (TypeError, ValueError):
+        saved_grid_width = 230
+    grid_column_width = max(200, min(340, saved_grid_width))
+    try:
+        saved_widget_height = int(widget_layout_conf.get("widget_height", 120))
+    except (TypeError, ValueError):
+        saved_widget_height = 120
+    grid_widget_height = max(120, min(320, saved_widget_height))
+    grid_alignment = widget_layout_conf.get("grid_alignment", "center")
+    if grid_alignment not in {"left", "center", "right"}:
+        grid_alignment = "center"
+    grid_justify_content = {"left": "start", "center": "center", "right": "end"}[grid_alignment]
+    grid_align_items = {"left": "flex-start", "center": "center", "right": "flex-end"}[grid_alignment]
+    grid_content_width = (col_count * grid_column_width) + (max(col_count - 1, 0) * grid_gap) if col_count > 0 else 1180
+    grid_max_width = (
+        max(1180, min(1800, grid_content_width))
+        if col_count > 0
+        else 1180
+    )
 
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
@@ -619,14 +1036,26 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .unified-grid {{
             display: grid;
-            gap: 15px;
-            /* grid-auto-rows ensures every '1 row' has a fixed minimum height (e.g. 110px) */
-            grid-auto-rows: minmax(110px, auto);
-            grid-template-columns: repeat({col_count}, 1fr);
+            gap: {grid_gap}px;
+            grid-auto-rows: {grid_widget_height}px;
+            grid-template-columns: repeat({col_count}, minmax(0, {grid_column_width}px));
+            justify-content: {grid_justify_content};
             width: 100%;
             max-width: {grid_max_width}px;
             box-sizing: border-box;
             overflow: visible;
+        }}
+
+        .injected-stats-block {{
+            display: flex;
+            flex-direction: column;
+            align-items: {grid_align_items};
+        }}
+
+        .onigiri-widget-title {{
+            width: 100%;
+            max-width: {grid_content_width}px;
+            box-sizing: border-box;
         }}
         
         /* Make the container expand to fill the grid area (rows/cols) */
@@ -639,12 +1068,379 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             position: relative;
         }}
 
+        .external-widget-container.shige-leaderboard-widget {{
+            overflow: visible;
+            min-height: 100%;
+            z-index: 2;
+        }}
+
+        .external-widget-container.shige-leaderboard-widget #shige-lb-container {{
+            width: 100%;
+        }}
+
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
-        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget {{
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget {{
             flex: 1;
             width: 100%;
             height: 100%;
             box-sizing: border-box;
+        }}
+
+        /* Prep Station widget */
+        .prep-station-widget {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px 12px 12px 12px;
+            cursor: pointer;
+            overflow: hidden;
+            font-family: inherit;
+            /* background + border-radius/width fall back here, then get
+               overridden !important by the Box Color & Effect settings */
+            background-color: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+            border-radius: 15px;
+        }}
+        .prep-widget-header {{
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-shrink: 0;
+        }}
+        .prep-widget-title {{
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            opacity: 0.55;
+        }}
+        .prep-widget-count {{
+            font-size: 9px;
+            opacity: 0.45;
+            margin-right: auto;
+        }}
+        .prep-widget-empty {{
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            opacity: 0.45;
+            font-style: italic;
+        }}
+
+        /* Mini exam-card previews, echoing the Prep Station dialog's ExamCard.
+           grid-template-columns is set inline per-instance to the widget's
+           configured slot count, so a card only ever occupies one column's
+           width even when fewer plans than slots are active. */
+        .prep-plan-cards {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+        }}
+        .prep-plan-card {{
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+        }}
+        .prep-card-band {{
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 0 0 auto;
+            padding: 6px 7px;
+            min-height: 40%;
+            color: #ffffff;
+        }}
+        .prep-card-band-top {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+        }}
+        .prep-card-name-row {{
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 4px;
+            min-width: 0;
+        }}
+        .prep-card-icon {{
+            font-size: 13px;
+            line-height: 1;
+            flex-shrink: 0;
+        }}
+        img.prep-card-icon {{
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+        }}
+        .prep-card-badge {{
+            font-size: 7px;
+            font-weight: 700;
+            white-space: nowrap;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 2px 5px;
+            border-radius: 8px;
+        }}
+        .prep-card-name {{
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: -0.01em;
+            text-align: left;
+        }}
+        .prep-card-body {{
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 1;
+            min-height: 0;
+            padding: 6px 7px 7px 7px;
+            gap: 4px;
+        }}
+        .prep-card-pace {{
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+            min-width: 0;
+        }}
+        .prep-card-pace-num {{
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1;
+        }}
+        .prep-card-pace-unit {{
+            font-size: 8px;
+            opacity: 0.55;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .prep-card-progress {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .prep-card-progress-track {{
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border, rgba(128, 128, 128, 0.25));
+            overflow: hidden;
+        }}
+        .prep-card-progress-fill {{
+            height: 100%;
+            border-radius: 2px;
+        }}
+        .prep-card-progress-label {{
+            font-size: 8px;
+            opacity: 0.55;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }}
+
+        .hex-land-widget {{
+            display: grid;
+            grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
+            gap: 14px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--border, #e0e0e0);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            overflow: hidden;
+            cursor: pointer;
+        }}
+
+        .hex-land-widget.land-only {{
+            display: block;
+            padding: 10px;
+        }}
+
+        .hex-land-widget.disabled {{
+            display: flex;
+            align-items: center;
+            background: var(--canvas-inset, #ffffff);
+        }}
+
+        .hex-land-preview {{
+            position: relative;
+            min-width: 0;
+            min-height: 120px;
+            height: 100%;
+            border-radius: 14px;
+            overflow: hidden;
+            background-color: var(--hl-bottom, #1597d1);
+            background-image: linear-gradient(180deg, var(--hl-top, #48c0ee), var(--hl-bottom, #1597d1));
+        }}
+
+        .hex-land-widget.land-only .hex-land-preview {{
+            min-height: 100%;
+        }}
+
+        .hex-land-preview-stage {{
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(var(--hl-scale, .72));
+            transform-origin: center;
+        }}
+
+        .hex-land-preview img,
+        .hex-land-preview svg {{
+            position: absolute;
+            user-select: none;
+            -webkit-user-drag: none;
+        }}
+
+        .hex-land-preview .hl-tile {{
+            width: 65px;
+        }}
+
+        .hex-land-copy {{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            min-width: 0;
+        }}
+
+        .hex-land-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }}
+
+        .hex-land-header h3,
+        .hex-land-copy h3 {{
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.15;
+            font-weight: 900;
+            color: var(--fg, #111);
+        }}
+
+        .hex-land-header button {{
+            width: 25px;
+            height: 25px;
+            border: 0;
+            border-radius: 999px;
+            background: #f5bf36;
+            color: #3b2604;
+            font-weight: 900;
+            cursor: pointer;
+        }}
+
+        .hex-land-stats {{
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            min-width: 0;
+        }}
+
+        .hex-land-stat-row {{
+            display: grid;
+            grid-template-columns: 36px 1fr;
+            align-items: center;
+            min-height: 34px;
+            padding: 4px 10px 4px 6px;
+            border: 1px solid var(--fg, #161616);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 92%, transparent);
+            box-sizing: border-box;
+            overflow: hidden;
+        }}
+
+        .hex-land-stat-icon {{
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }}
+
+        .hex-land-stat-sprite {{
+            display: block;
+            max-width: 31px;
+            max-height: 31px;
+            object-fit: contain;
+        }}
+
+        .hex-land-stat-sprite.tree {{
+            max-height: 34px;
+        }}
+
+        .hex-land-stat-text {{
+            min-width: 0;
+            text-align: center;
+            font-size: 15px;
+            line-height: 1.1;
+            font-weight: 900;
+            color: var(--fg, #111);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .hex-land-coin-fallback {{
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 32% 28%, #fff4a8 0 18%, #f8c94d 19% 62%, #d18a19 63% 100%);
+            color: #593a04;
+            font-size: 9px;
+            font-weight: 900;
+            box-shadow: inset 0 -2px 0 rgba(89, 58, 4, .22);
+        }}
+
+        .hex-land-coins {{
+            font-size: 18px;
+            font-weight: 900;
+            color: #1f6f87;
+        }}
+
+        .hex-land-meta,
+        .hex-land-copy p {{
+            margin: 0;
+            color: var(--fg-subtle, #757575);
+            font-size: 12px;
+            line-height: 1.35;
+        }}
+
+        .hex-land-mats {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: auto;
+        }}
+
+        .hex-land-mats span {{
+            padding: 5px 7px;
+            border-radius: 999px;
+            background: color-mix(in srgb, #58af82 14%, transparent);
+            font-size: 11px;
+            font-weight: 800;
+        }}
+
+        .onigimon-widget, .onigimon-widget * {{
+            font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
         }}
 
         .onigimon-widget {{
@@ -657,6 +1453,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             background: var(--canvas-inset, #ffffff);
             color: var(--fg, #222);
             overflow: hidden;
+            position: relative;
+            cursor: pointer;
         }}
 
         .onigimon-header,
@@ -828,10 +1626,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .onigimon-meter {{
             display: grid;
-            grid-template-columns: 54px 1fr;
+            grid-template-columns: 80px 40px minmax(0, 1fr);
             gap: 8px;
             align-items: center;
             font-size: 12px;
+        }}
+
+        .onigimon-meter b {{
+            color: var(--fg, #222);
+            font-weight: 800;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
         }}
 
         .onigimon-meter > div {{
@@ -881,7 +1686,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: row;
             background: var(--canvas-inset, #f5f5f5);
-            border-radius: 15px;
+            border-radius: var(--onigiri-box-effect-radius, 15px);
             overflow: hidden;
             height: 100%;
             border: 1px solid var(--border, #e0e0e0);
@@ -893,7 +1698,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .onigiri-restaurant-level-widget.orientation-vertical {{
             flex-direction: column;
         }}
-        
+
         .onigiri-restaurant-level-widget.expanded-view {{
             background: var(--theme-bg) !important;
             border-color: transparent;
@@ -920,14 +1725,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .onigiri-restaurant-level-widget.orientation-vertical .restaurant-image-container {{
-            flex: 0 0 auto;
+            flex: 1 1 0;
             width: 100%;
             height: auto;
-            aspect-ratio: 1 / 1;
+            aspect-ratio: auto;
             min-height: 0;
             padding: 8px 10px 0 10px;
         }}
-        
+
         /* Unrestricted Sidebar resizing */
         .sidebar-left {{
             max-width: none !important;
@@ -973,7 +1778,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
-            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
             transition: transform 0.3s ease;
         }}
         
@@ -983,7 +1787,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image {{
             transform: scale(1.0);
-            filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));
         }}
 
         .restaurant-info {{
@@ -998,10 +1801,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {{
+            flex: 0 0 auto;
             padding: 10px 16px 14px 16px;
             gap: 10px;
         }}
-        
+
         .onigiri-restaurant-level-widget.expanded-view .restaurant-info {{
             display: none;
             opacity: 0;
@@ -1158,6 +1962,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             justify-content: flex-start;
             transition: all 0.2s ease;
             color: var(--fg-subtle, #757575);
+            box-shadow: none !important;
         }}
         
         .night .rl-nav-btn {{
@@ -1191,6 +1996,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             opacity: 0.5;
         }}
     </style>
+    {deckline_compat_html}
     {title_html}
     <div class="unified-grid">{unified_grid_html}</div>
     """
@@ -1336,8 +2142,21 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     """
     
     # --- Part 5: Populate the Main Template ---
-    is_collapsed = mw.col.conf.get("onigiri_sidebar_collapsed", False)
-    is_focused = mw.col.conf.get("onigiri_deck_focus_mode", False)
+    is_collapsed = _col_conf_get("onigiri_sidebar_collapsed", False)
+    try:
+        deck_cycle_state = int(_col_conf_get("onigiri_deck_cycle_state", -1))
+    except (TypeError, ValueError):
+        deck_cycle_state = -1
+    if deck_cycle_state < 0 or deck_cycle_state > 4:
+        deck_cycle_state = 1 if _col_conf_get("onigiri_deck_focus_mode", False) else 0
+    sidebar_position = _col_conf_get("modern_menu_sidebar_position", conf.get("sidebarPosition", "left"))
+    if sidebar_position not in {"left", "right", "center"}:
+        sidebar_position = "left"
+    if sidebar_position == "center":
+        deck_cycle_state = 4
+    is_focused = deck_cycle_state in (1, 2)
+    is_cycle_sidebar_only = deck_cycle_state in (2, 3, 4)
+    is_cycle_stacked = deck_cycle_state == 4
     
     # Check for Sidebar Only Mode (0 columns or 0 rows)
     is_sidebar_only = (col_count == 0 or conf.get('unifiedGridRows', 6) == 0)
@@ -1347,7 +2166,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         sidebar_initial_class += "sidebar-collapsed"
     if is_focused:
         sidebar_initial_class += " deck-focus-mode" if sidebar_initial_class else "deck-focus-mode"
-    if is_sidebar_only:
+    if is_sidebar_only or is_cycle_sidebar_only:
         sidebar_initial_class += " sidebar-only-mode" if sidebar_initial_class else "sidebar-only-mode"
 
     # --- MODIFICATION START ---
@@ -1355,28 +2174,29 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # Build the dynamic profile bar HTML
     user_name = conf.get("userName", "USER")
     
-    profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
-    profile_bg_image = mw.col.conf.get("modern_menu_profile_bg_image", "")
-    bg_style_str = ""
+    profile_bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "accent")
     bg_class_str = ""
-
+    bg_style_str, bg_layer_style = _profile_background_render_parts(addon_package)
+    bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
     if profile_bg_mode == "image":
-        if profile_bg_image and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", profile_bg_image)):
-            bg_image_url = f"/_addons/{addon_package}/user_files/profile_bg/{profile_bg_image}"
-        else:
-            # Use default background image when none is selected or file doesn't exist
-            bg_image_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
-        bg_style_str = f"background-image: url('{bg_image_url}'); background-size: cover; background-position: center;"
         bg_class_str = "with-image-bg"
-    elif profile_bg_mode == "custom":
-        bg_style_str = "background-color: var(--profile-bg-custom-color);"
-    else: # accent
-        bg_style_str = "background-color: var(--accent-color);"
     
     profile_pic_html_expanded = _get_profile_pic_html(user_name, addon_package)
 
-    rl_payload = restaurant_level.manager.get_progress_payload()
     rl_chip = ""
+    rl_theme_color = ""
+    restaurant_conf = conf.get("restaurant_level", {})
+    if not restaurant_conf:
+        restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
+    show_profile_bar_progress = restaurant_conf.get(
+        "show_profile_bar_progress",
+        restaurant_conf.get("show_profile_bar", restaurant_conf.get("showProfileBar", True)),
+    )
+    if restaurant_conf.get("enabled") and show_profile_bar_progress:
+        nook_level = _nook_level()
+        rl_payload = nook_level.manager.get_progress_payload()
+    else:
+        rl_payload = {}
     if rl_payload.get("enabled") and rl_payload.get("showProfileBar"):
         percent = rl_payload.get("progressFraction") or 0.0
         percent = max(0.0, min(1.0, float(percent))) * 100
@@ -1398,20 +2218,24 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         </div>
         """.strip()
 
+    safe_user_name = html.escape(str(user_name), quote=False)
     profile_bar_contents = (
+        '<div class="profile-content profile-content-main">'
         f"{profile_pic_html_expanded}"
-        f"<span class=\"profile-name\">{user_name}</span>"
+        f"<span class=\"profile-name\">{safe_user_name}</span>"
     )
     if rl_chip:
         profile_bar_contents += rl_chip
+    profile_bar_contents += "</div>"
     
     # Inject CSS for theme colors if a theme is active
     theme_css = ""
-    bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
-    if bar_mode == "custom":
-        rl_theme_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
-    else:
-        rl_theme_color = restaurant_level.manager.get_current_theme_color()
+    if rl_chip:
+        bar_mode = _col_conf_get("onigiri_profile_level_bar_mode", "theme")
+        if bar_mode == "custom":
+            rl_theme_color = _col_conf_get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+        else:
+            rl_theme_color = nook_level.manager.get_current_theme_color()
 
     if rl_theme_color:
         theme_css = f"""
@@ -1440,7 +2264,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     profile_bar_html = (
         f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
-        f"onclick=\"pycmd('showUserProfile')\">{profile_bar_contents}</div>"
+        f"onclick=\"window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)\">"
+        f"{bg_layer_html}{profile_bar_contents}"
+        f"</div>"
+    )
+    profile_sidebar_html = _build_profile_sidebar_html(
+        conf,
+        addon_package,
+        user_name,
+        _get_profile_pic_html(user_name, addon_package, "onigiri-sidebar-profile-img"),
     )
     
     # 1. Build the dynamic sidebar HTML from the layout config
@@ -1453,12 +2285,32 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # --- This logic remains the same ---
     profile_pic_html_collapsed = _get_profile_pic_html(user_name, addon_package, "collapsed-profile-pic")
     
-    # [LOCALIZED] Use tr("welcome_profile") for the sidebar welcome message
-    welcome_message = tr("welcome_profile").format(name=user_name.upper()) if not conf.get("hideWelcomeMessage", False) else ""
-    
-    saved_width = mw.col.conf.get("modern_menu_sidebar_width", 300)
-    sidebar_style = f"width: {saved_width}px;"
-    container_extra_class = ""
+    try:
+        saved_width = max(320, int(float(_col_conf_get("modern_menu_sidebar_width", 345))))
+    except (TypeError, ValueError):
+        saved_width = 345
+    try:
+        saved_height = max(260, int(float(_col_conf_get("modern_menu_sidebar_height", 520))))
+    except (TypeError, ValueError):
+        saved_height = 520
+    sidebar_style_parts = [
+        f"--onigiri-sidebar-width: {saved_width}px",
+        f"width: {saved_width}px",
+    ]
+    if sidebar_position == "center":
+        sidebar_style_parts.extend([
+            f"--onigiri-sidebar-height: {saved_height}px",
+            f"height: {saved_height}px",
+        ])
+    sidebar_style = "; ".join(sidebar_style_parts) + ";"
+    container_extra_classes = []
+    if is_cycle_stacked:
+        container_extra_classes.append("onigiri-cycle-stacked")
+    if sidebar_position == "right" and not is_cycle_stacked:
+        container_extra_classes.append("onigiri-sidebar-right")
+    if sidebar_position == "center":
+        container_extra_classes.append("onigiri-sidebar-center")
+    container_extra_class = " ".join(container_extra_classes)
 
     # 3. Use the new {sidebar_buttons} placeholder in the template
     #    and remove the old {profile_bar} placeholder.
@@ -1469,18 +2321,31 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "get_shared", "create_deck", "import_file"
     ]
     collapsed_icons = {
-        key: mw.col.conf.get(f"modern_menu_icon_{key}", "")
+        key: _col_conf_get(f"modern_menu_icon_{key}", "")
         for key in action_icon_keys
     }
+    sidebar_button_layout = conf.get(
+        "sidebarButtonLayout",
+        copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]),
+    )
     js_config = {
         "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
+        "sidebarButtonLayout": {
+            "visible": sidebar_button_layout.get("visible", []),
+            "archived": sidebar_button_layout.get("archived", []),
+        },
         "addonPackage": mw.addonManager.addonFromModule(__name__),
         "collapsedIcons": collapsed_icons,
-        "deckSortMode": mw.col.conf.get("onigiri_sort_mode", "default"),
+        "deckCycleState": deck_cycle_state,
+        "sidebarPosition": sidebar_position,
+        "deckSortMode": _col_conf_get("onigiri_sort_mode", "default"),
+        "decklineAvailable": deckline_available,
         "markerColors": conf.get("markerColors", config.DEFAULTS.get("markerColors", {})),
+        "markerIcons": conf.get("markerIcons", {}),
+        "markerNames": conf.get("markerNames", {}),
         "filters": {
-            "favorites": bool(mw.col.conf.get("onigiri_show_favourites", False) or mw.col.conf.get("onigiri_show_favorites", False)),
-            "marked": bool(mw.col.conf.get("onigiri_show_marked", False)),
+            "favorites": bool(_col_conf_get("onigiri_show_favourites", False) or _col_conf_get("onigiri_show_favorites", False)),
+            "marked": bool(_col_conf_get("onigiri_show_marked", False)),
         },
     }
     
@@ -1501,9 +2366,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .replace("{container_extra_class}", container_extra_class) \
         .replace("{sidebar_initial_class}", sidebar_initial_class) \
         .replace("{sidebar_style}", sidebar_style) \
-        .replace("{welcome_message}", welcome_message) \
         .replace("{tr_decks}", tr("decks_header")) \
         .replace("{sidebar_buttons}", sidebar_buttons_html) \
+        .replace("{profile_sidebar}", profile_sidebar_html) \
         .replace("{profile_pic_html_collapsed}", profile_pic_html_collapsed)
     
     # --- MODIFICATION END ---

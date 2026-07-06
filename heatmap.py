@@ -1,5 +1,6 @@
 import time
 import os
+import base64
 from datetime import datetime
 from aqt import mw
 from . import config
@@ -160,26 +161,68 @@ def get_heatmap_and_config():
     conf = config.get_config()
     heatmap_data = get_heatmap_data()
 
-    # Read selected SVG shape file
     addon_path = os.path.dirname(__file__)
     shape_filename = conf.get("heatmapShape", DEFAULTS["heatmapShape"])
-    shape_path = os.path.join(addon_path, "system_files", "heatmap_system_icons", shape_filename)
 
-    svg_content = ""
-    try:
-        with open(shape_path, 'r', encoding='utf-8') as f:
-            svg_content = f.read()
-    except (FileNotFoundError, IOError):
-        fallback_path = os.path.join(addon_path, "system_files", "heatmap_system_icons", "square.svg")
-        try:
-            with open(fallback_path, 'r', encoding='utf-8') as f:
-                svg_content = f.read()
-        except (FileNotFoundError, IOError):
-            svg_content = '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>'
+    def system_icon_path(filename):
+        filename = os.path.basename(str(filename or ""))
+        for folder in ("available_for_users", "unavailable_for_users"):
+            path = os.path.join(addon_path, "system_files", "system_icons", folder, filename)
+            if os.path.exists(path):
+                return path
+        return ""
+
+    def shape_file_path(value):
+        value = str(value or "")
+        if value.startswith("system:"):
+            return system_icon_path(value[len("system:"):])
+        for folder in ("custom_deck_icons", "icons"):
+            path = os.path.join(addon_path, "user_files", folder, value)
+            if os.path.exists(path):
+                return path
+        return system_icon_path(value)
+
+    def icon_svg_content(icon_value, fallback_filename):
+        icon_value = str(icon_value or "")
+        icon_path = shape_file_path(icon_value)
+        svg = ""
+        if icon_value.startswith("emoji:"):
+            emoji = icon_value[len("emoji:"):]
+            svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text x="16" y="24" text-anchor="middle" font-size="24">{emoji}</text></svg>'
+        elif icon_path and icon_path.lower().endswith(".png"):
+            try:
+                with open(icon_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("ascii")
+                svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><image href="data:image/png;base64,{encoded}" width="32" height="32" preserveAspectRatio="xMidYMid meet"/></svg>'
+            except (FileNotFoundError, IOError):
+                svg = ""
+        elif icon_path:
+            try:
+                with open(icon_path, 'r', encoding='utf-8') as f:
+                    svg = f.read()
+            except (FileNotFoundError, IOError):
+                svg = ""
+        if not svg:
+            fallback_path = system_icon_path(fallback_filename)
+            try:
+                with open(fallback_path, 'r', encoding='utf-8') as f:
+                    svg = f.read()
+            except (FileNotFoundError, IOError):
+                svg = '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>'
+        return svg
+
+    svg_content = icon_svg_content(shape_filename, "square.svg")
+    streak_icon_filename = conf.get("heatmapStreakIcon", DEFAULTS.get("heatmapStreakIcon", "system:fire.svg"))
+    if str(streak_icon_filename).startswith("emoji:"):
+        streak_icon_filename = DEFAULTS.get("heatmapStreakIcon", "system:fire.svg")
+    streak_svg_content = icon_svg_content(streak_icon_filename, "fire.svg")
 
     from .translations import tr
     heatmap_config = {
         "heatmapSvgContent": svg_content,
+        "heatmapStreakIconSvgContent": streak_svg_content,
+        "heatmapStreakIconColor": conf.get("heatmapStreakIconColor", DEFAULTS.get("heatmapStreakIconColor", "#ff6b35")),
+        "heatmapStreakIconZeroColor": conf.get("heatmapStreakIconZeroColor", DEFAULTS.get("heatmapStreakIconZeroColor", "#8f8f8f")),
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
         "heatmapShowMonths": conf.get("heatmapShowMonths", DEFAULTS["heatmapShowMonths"]),
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),

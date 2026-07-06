@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #f5f5f4; --surface: #ffffff; --border: #e5e7eb;
+    --fg: #1f2933; --fg2: #4b5563; --fg3: #8a9099;
+    --accent: #00A982; --chip: #eef0f2; --hover: #f1f3f5;
+  }
+  * { box-sizing: border-box; }
+  /* kill native button chrome + Anki's injected base button styles. stdHtml
+     adds a box-shadow to <button>; the extra `html body` specificity is needed
+     so we win regardless of whether Anki's rule is injected before or after. */
+  html body button { appearance: none !important; -webkit-appearance: none !important;
+    box-shadow: none !important; background-image: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
+  #wrap { padding: 18px 22px 30px; }
+  #pbar { position: relative; display: flex; align-items: center; gap: 12px;
+    padding: 16px 18px; border-radius: 16px; margin-bottom: 16px; overflow: hidden; color: #fff; }
+  #pbar .pbg { position: absolute; inset: 0; z-index: 0; }
+  #pbar .pavatar { position: relative; z-index: 1; width: 48px; height: 48px; border-radius: 50%;
+    object-fit: cover; border: 2px solid rgba(255,255,255,.7); background: rgba(0,0,0,.2); }
+  #pbar .pinfo { position: relative; z-index: 1; }
+  #pbar .pname { font-weight: 700; font-size: 16px; }
+  #pbar .psub { font-size: 12px; opacity: .85; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  header h1 { font-size: 20px; margin: 0; flex: 1 1 auto; }
+  /* gooey pill toggle */
+  .seg { position: relative; display: inline-flex; padding: 3px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border); }
+  .seg .goo-layer { position: absolute; inset: 3px; z-index: 0; pointer-events: none; }
+  /* goo only while sliding — at rest the pill is clean, no halo/outline */
+  .seg.gooing .goo-layer { filter: url(#hashiGooey); }
+  .seg .seg-goo { position: absolute; top: 0; height: 100%; border-radius: 999px; background: var(--accent);
+    transition: left .32s cubic-bezier(.68,-0.4,.27,1.4), width .32s cubic-bezier(.68,-0.4,.27,1.4); }
+  .seg button { position: relative; z-index: 1; border: none; background: transparent; color: var(--fg2);
+    padding: 6px 18px; font-size: 12.5px; cursor: pointer; border-radius: 999px; transition: color .2s; }
+  .seg button.on { color: #fff; }
+
+  /* click-to-open sort */
+  .sortwrap { position: relative; }
+  .sortbtn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; color: var(--fg2); font-size: 12.5px;
+    padding: 6px 14px; cursor: pointer; }
+  .sortbtn:hover { border-color: var(--accent); }
+  .sortpop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: none;
+    gap: 4px; padding: 5px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; }
+  .sortpop.open { display: inline-flex; }
+  .sortpop .sopt { border: 1px solid transparent; background: transparent; color: var(--fg2);
+    border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .sortpop .sopt:hover { border-color: var(--accent); }
+  .sortpop .sopt.on { background: var(--accent); color: #fff; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px; min-height: 150px; display: flex; flex-direction: column; position: relative;
+    cursor: pointer; transition: box-shadow .15s, transform .15s; overflow: hidden; }
+  .card:hover { box-shadow: 0 10px 24px rgba(0,0,0,.10); transform: translateY(-2px); }
+  .card .band { position: absolute; left: 9px; top: 16px; bottom: 16px; width: 5px;
+    background: var(--accent); border-radius: 999px; }
+  .card .title { font-weight: 700; font-size: 14px; margin-bottom: 6px; padding-left: 4px; }
+  .card .body { color: var(--fg2); font-size: 12.5px; line-height: 1.4; flex: 1 1 auto;
+    overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent); padding-left: 4px; }
+  .card .body .hl { background: #fff3b0; border-radius: 3px; color: #1f2933; }
+  .card .meta { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-left: 4px; flex-wrap: wrap; }
+  .pill { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 8px;
+    background: var(--chip); color: var(--fg2); text-transform: uppercase; letter-spacing: .03em; }
+  .pill.high { background: #fee2e2; color: #b91c1c; }
+  .pill.med { background: #fef3c7; color: #92600a; }
+  .pill.low { background: #e0f2fe; color: #075985; }
+  .age { font-size: 11px; color: var(--fg3); margin-left: auto; }
+  .actions { position: absolute; top: 8px; right: 8px; display: none; gap: 4px; }
+  .card:hover .actions { display: flex; }
+  .actions button { border: none; background: rgba(0,0,0,.06); color: var(--fg2); width: 24px; height: 24px;
+    border-radius: 7px; cursor: pointer; font-size: 12px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .actions button:hover { background: rgba(0,0,0,.14); }
+  .actions button svg { display: block; width: 14px; height: 14px; }
+  .newcard { border: 2px dashed var(--border); background: transparent; align-items: center;
+    justify-content: center; color: var(--fg3); font-weight: 600; }
+  .newcard:hover { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+  .empty { color: var(--fg3); padding: 40px; text-align: center; grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="pbar">
+    <div class="pbg" id="pbg"></div>
+    <img class="pavatar" id="pavatar">
+    <div class="pinfo">
+      <div class="pname" id="pname">You</div>
+      <div class="psub">Hashi Notes</div>
+    </div>
+  </div>
+  <header>
+    <h1>Hashi Notes</h1>
+    <div class="seg" id="viewseg">
+      <div class="goo-layer"><span class="seg-goo" id="segGoo"></span></div>
+      <button data-view="active" class="on">Notes</button>
+      <button data-view="trash">Trash</button>
+    </div>
+    <div class="sortwrap">
+      <button class="sortbtn" id="sortBtn">Sort: <span id="sortLabel">Recent</span> ▾</button>
+      <div class="sortpop" id="sortPop">
+        <button class="sopt" data-v="age">Recent</button>
+        <button class="sopt" data-v="tags">Tags</button>
+        <button class="sopt" data-v="priority">Priority</button>
+        <button class="sopt" data-v="title">Title</button>
+      </div>
+    </div>
+  </header>
+  <div id="grid"></div>
+</div>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="hashiGooey">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -11" result="goo"/>
+      <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
+    </filter>
+  </defs>
+</svg>
+
+<script>
+const HASHI_CTX = /*__HASHI_CONTEXT__*/null;
+const HASHI_DATA = /*__HASHI_DATA__*/null;
+
+(function () {
+  "use strict";
+  const ctx = HASHI_CTX || {};
+  const pal = ctx.palette || {};
+  const accent = ctx.accent || "#00A982";
+  const data = HASHI_DATA || { notes: [], trashed: [] };
+  const trashed = (data.trashed || []).filter((n) => n.trashed_at);
+  const active = data.notes || [];
+
+  const r = document.documentElement.style;
+  const map = { "--bg": pal.bg, "--surface": pal.shell || pal.surface, "--border": pal.border,
+    "--fg": pal.fg, "--fg2": pal.fg2, "--fg3": pal.fg3, "--chip": pal.chip, "--hover": pal.hover,
+    "--accent": accent };
+  for (const k in map) { if (map[k]) r.setProperty(k, map[k]); }
+  if (ctx.customCss) { const s = document.createElement("style"); s.textContent = ctx.customCss; document.head.appendChild(s); }
+
+  // ---- profile bar (mirrors the sidebar / Prep Station header) ----
+  function readableOn(hex) {
+    try {
+      const c = (hex || "").replace("#", "");
+      const rr = parseInt(c.substr(0, 2), 16), gg = parseInt(c.substr(2, 2), 16), bb = parseInt(c.substr(4, 2), 16);
+      return (0.299 * rr + 0.587 * gg + 0.114 * bb) > 150 ? "#1f2933" : "#ffffff";
+    } catch (e) { return "#ffffff"; }
+  }
+  (function () {
+    const bg = ctx.profileBg || {};
+    const pbg = document.getElementById("pbg");
+    const opacity = (bg.opacity == null ? 100 : bg.opacity) / 100;
+    if (bg.image) {
+      pbg.style.backgroundImage = "linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,.28)), url('" + bg.image + "')";
+      pbg.style.backgroundSize = "cover"; pbg.style.backgroundPosition = "center";
+      pbg.style.opacity = opacity;
+      document.getElementById("pbar").style.color = "#fff";
+    } else {
+      pbg.style.background = bg.color || accent;
+      pbg.style.opacity = opacity;
+      document.getElementById("pbar").style.color = readableOn(bg.color || accent);
+    }
+    const av = document.getElementById("pavatar");
+    if (ctx.avatar) av.src = ctx.avatar; else av.style.display = "none";
+    document.getElementById("pname").textContent = ctx.profileName || "You";
+  })();
+
+  const grid = document.getElementById("grid");
+  let sortKey = ctx.defaultSort || "age";
+  let view = "active";
+
+  function stripHtml(h) { const d = document.createElement("div"); d.innerHTML = h || ""; return d.textContent || ""; }
+  function daysAgo(iso) {
+    if (!iso) return "";
+    const then = new Date(iso); const diff = (Date.now() - then.getTime()) / 86400000;
+    if (diff < 1) return "today"; if (diff < 2) return "yesterday";
+    return Math.floor(diff) + "d ago";
+  }
+  function sortNotes(list) {
+    const key = sortKey; const arr = list.slice();
+    if (key === "age") arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    else if (key === "title") arr.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    else if (key === "tags") arr.sort((a, b) => ((a.tags || [])[0] || "~").localeCompare((b.tags || [])[0] || "~"));
+    else if (key === "priority") {
+      const ord = { high: 0, med: 1, low: 2, none: 3 };
+      arr.sort((a, b) => (ord[a.priority] ?? 3) - (ord[b.priority] ?? 3));
+    }
+    return arr;
+  }
+  function safe(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+  function iconHtml(icon) {
+    if (!icon) return "";
+    const base = ctx.addonBase || "";
+    if (icon.indexOf("emoji:") === 0) {
+      const em = icon.slice(6);
+      const asset = (ctx.emojiSprites || {})[em];
+      if (asset) return '<img src="' + base + "system_files/emojis/" + asset + '" style="width:1.1em;height:1.1em;vertical-align:-2px;margin-right:5px">';
+      return '<span style="margin-right:5px">' + em + "</span>";
+    }
+    if (icon.indexOf("system:") === 0) {
+      const src = base + "system_files/system_icons/available_for_users/" + icon.slice(7);
+      return '<span style="display:inline-block;width:1.1em;height:1.1em;vertical-align:-2px;margin-right:5px;background-color:currentColor;-webkit-mask:url(\'' + src + '\') center/contain no-repeat;mask:url(\'' + src + '\') center/contain no-repeat"></span>';
+    }
+    return '<img src="' + base + "user_files/custom_deck_icons/" + icon + '" style="width:1.1em;height:1.1em;vertical-align:-2px;margin-right:5px">';
+  }
+
+  // per-note fill tint (post-it background), matched to the editor's tint math
+  const isDark = !!ctx.dark;
+  function hexToRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)]; }
+  function rgbToHex(r, g, b) { return "#" + [r, g, b].map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join(""); }
+  function mixHex(a, b, t) { const x = hexToRgb(a), y = hexToRgb(b); return rgbToHex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); }
+  function fillTint(base) { return isDark ? mixHex(base, "#161616", 0.80) : mixHex(base, "#ffffff", 0.80); }
+
+  // trash.svg (currentColor stroke) inlined so it tints with the button color
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 11v6m-4-6v6M6 7v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M4 7h16M7 7l2-4h6l2 4"/></svg>';
+
+  function noteCard(n) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.setProperty("--accent", n.color || accent);
+    if (n.bg_color) card.style.background = fillTint(n.bg_color);
+    const bodyText = safe(stripHtml(n.body_md).slice(0, 240)) || "<span style='color:var(--fg3)'>Empty note</span>";
+    const prio = n.priority && n.priority !== "none"
+      ? '<span class="pill ' + n.priority + '">' + n.priority + "</span>" : "";
+    const tags = (n.tags || []).slice(0, 3).map((t) => '<span class="pill">' + safe(t) + "</span>").join("");
+    const ret = n.retention ? (n.retention + "d keep") : "kept";
+    let actions;
+    if (view === "trash") {
+      actions = '<button data-act="restore" title="Restore">↩</button><button data-act="delete" title="Delete forever">' + TRASH_SVG + '</button>';
+    } else {
+      actions = '<button data-act="trash" title="Move to trash">' + TRASH_SVG + '</button>';
+    }
+    card.innerHTML =
+      '<div class="band"></div>' +
+      '<div class="actions">' + actions + "</div>" +
+      '<div class="title">' + iconHtml(n.icon) + (safe(n.title) || "Untitled") + "</div>" +
+      '<div class="body">' + bodyText + "</div>" +
+      '<div class="meta">' + prio + tags +
+        '<span class="pill">' + ret + "</span>" +
+        '<span class="age">' + daysAgo(n.created_at) + "</span></div>";
+    card.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-act]");
+      if (b) { e.stopPropagation(); const act = b.getAttribute("data-act");
+        if (act === "trash") pycmd("hashi:trash:" + n.id);
+        else if (act === "restore") pycmd("hashi:restore:" + n.id);
+        else if (act === "delete") pycmd("hashi:delete:" + n.id);
+        return;
+      }
+      if (view === "active") pycmd("hashi:open:" + n.id);
+    });
+    return card;
+  }
+
+  function render() {
+    grid.innerHTML = "";
+    const list = view === "trash" ? trashed : active;
+    if (view === "active") {
+      const nc = document.createElement("div");
+      nc.className = "card newcard"; nc.textContent = "+  New note";
+      nc.addEventListener("click", () => pycmd("hashi:new"));
+      grid.appendChild(nc);
+    }
+    if (!list.length && view === "trash") { grid.innerHTML = '<div class="empty">Trash is empty.</div>'; return; }
+    sortNotes(list).forEach((n) => grid.appendChild(noteCard(n)));
+  }
+
+  // ---- gooey Notes/Trash toggle ----
+  const viewseg = document.getElementById("viewseg");
+  const segBtns = Array.from(viewseg.querySelectorAll("button"));
+  const segGoo = document.getElementById("segGoo");
+  let gooTimer = null;
+  function placeGoo(btn, from) {
+    if (from && from !== btn) {
+      // stretch to cover both, then settle on the target → gooey slide
+      const l = Math.min(from.offsetLeft, btn.offsetLeft);
+      const rgt = Math.max(from.offsetLeft + from.offsetWidth, btn.offsetLeft + btn.offsetWidth);
+      segGoo.style.left = (l - 3) + "px"; segGoo.style.width = (rgt - l) + "px";
+      setTimeout(() => { segGoo.style.left = (btn.offsetLeft - 3) + "px"; segGoo.style.width = btn.offsetWidth + "px"; }, 150);
+    } else {
+      segGoo.style.left = (btn.offsetLeft - 3) + "px"; segGoo.style.width = btn.offsetWidth + "px";
+    }
+  }
+  viewseg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const prev = segBtns.find((x) => x.classList.contains("on"));
+    if (b === prev) return;
+    segBtns.forEach((x) => x.classList.toggle("on", x === b));
+    view = b.getAttribute("data-view");
+    viewseg.classList.add("gooing");
+    placeGoo(b, prev);
+    clearTimeout(gooTimer);
+    gooTimer = setTimeout(() => viewseg.classList.remove("gooing"), 520);
+    render();
+  });
+
+  // ---- click-to-open sort ----
+  const SORT_LABELS = { age: "Recent", tags: "Tags", priority: "Priority", title: "Title" };
+  const sortBtn = document.getElementById("sortBtn");
+  const sortPop = document.getElementById("sortPop");
+  const sortLabel = document.getElementById("sortLabel");
+  function refreshSort() {
+    sortLabel.textContent = SORT_LABELS[sortKey] || "Recent";
+    sortPop.querySelectorAll(".sopt").forEach((b) => b.classList.toggle("on", b.getAttribute("data-v") === sortKey));
+  }
+  sortBtn.addEventListener("click", (e) => { e.stopPropagation(); sortPop.classList.toggle("open"); });
+  sortPop.addEventListener("click", (e) => {
+    const b = e.target.closest(".sopt"); if (!b) return;
+    sortKey = b.getAttribute("data-v"); refreshSort(); sortPop.classList.remove("open");
+    pycmd("hashi:set_sort:" + sortKey); render();
+  });
+  document.addEventListener("click", () => sortPop.classList.remove("open"));
+  refreshSort();
+
+  render();
+  // position the goo blob once layout is known
+  requestAnimationFrame(() => placeGoo(segBtns.find((x) => x.classList.contains("on"))));
+})();
+</script>
+</body>
+</html>
