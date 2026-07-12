@@ -1,6 +1,6 @@
 # Auto-split from the historical settings/_legacy.py. Do not hand-edit alongside _legacy.
 from ._common import *
-from ._common import _contrast_icon_color, _font_popup_svg_icon
+from ._common import _contrast_icon_color, _font_popup_svg_icon, _font_popup_svg_pixmap
 
 
 class AnimatedRadioButton(QRadioButton):
