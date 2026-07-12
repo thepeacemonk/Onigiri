@@ -130,10 +130,10 @@ class PageProfileMixin:
         segment_layout.addStretch()
         self.profile_picture_segment_button = self._create_profile_segment_button(tr("profile_picture"))
         self.profile_background_segment_button = self._create_profile_segment_button(tr("profile_bar_bg"))
-        self.profile_page_background_segment_button = self._create_profile_segment_button(tr("profile_page_background"))
-        self.profile_page_background_segment_button.setVisible(False)
+        self.profile_name_color_segment_button = self._create_profile_segment_button(tr("profile_name_color", "Name Color"))
         segment_layout.addWidget(self.profile_picture_segment_button)
         segment_layout.addWidget(self.profile_background_segment_button)
+        segment_layout.addWidget(self.profile_name_color_segment_button)
         segment_layout.addStretch()
         outer.addWidget(segment_shell)
 
@@ -147,13 +147,16 @@ class PageProfileMixin:
         self.profile_asset_controls_stack = QStackedWidget()
         self.profile_asset_controls_stack.addWidget(self._create_profile_picture_controls())
         self.profile_asset_controls_stack.addWidget(self._create_profile_background_controls())
+        self.profile_asset_controls_stack.addWidget(self._create_profile_name_color_controls())
         outer.addWidget(self.profile_asset_controls_stack)
 
         self.profile_picture_segment_button.clicked.connect(lambda: self._set_profile_asset_page(0))
         self.profile_background_segment_button.clicked.connect(lambda: self._set_profile_asset_page(1))
+        self.profile_name_color_segment_button.clicked.connect(lambda: self._set_profile_asset_page(2))
         self._set_profile_asset_page(0)
         self._update_profile_picture_controls()
         self._update_profile_background_controls()
+        self._update_profile_name_color_controls()
         return designer
 
     def _create_profile_picture_controls(self):
@@ -306,7 +309,7 @@ class PageProfileMixin:
 
         self.profile_bg_opacity_slider = MainBackgroundEffectSlider(self.accent_color, slider_track, slider_border)
         self.profile_bg_opacity_slider.setRange(0, 100)
-        saved_profile_opacity = mw.col.conf.get("modern_menu_profile_bg_opacity", 100)
+        saved_profile_opacity = mw.col.conf.get("modern_menu_profile_bg_opacity", 50)
         self.profile_bg_opacity_slider.setValue(max(0, min(100, int(100 if saved_profile_opacity is None else saved_profile_opacity))))
         self.profile_bg_opacity_value_label = QLabel(f"{self.profile_bg_opacity_slider.value()}%")
         self.profile_bg_opacity_value_label.setObjectName("mainBackgroundValueLabel")
@@ -321,7 +324,7 @@ class PageProfileMixin:
         self.profile_bg_dynamic_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.profile_bg_color_only_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.profile_bg_accent_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+        bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
         self.profile_bg_dynamic_toggle.setChecked(bool(mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True)))
         self.profile_bg_color_only_toggle.setChecked(bg_mode != "image")
         self.profile_bg_accent_toggle.setChecked(bg_mode == "accent")
@@ -368,8 +371,6 @@ class PageProfileMixin:
         return QWidget()
 
     def _set_profile_asset_page(self, index):
-        if index == 2:
-            index = 1
         if hasattr(self, "profile_asset_controls_stack"):
             for i in range(self.profile_asset_controls_stack.count()):
                 widget = self.profile_asset_controls_stack.widget(i)
@@ -380,12 +381,11 @@ class PageProfileMixin:
             self.profile_asset_controls_stack.setCurrentIndex(index)
         self.profile_picture_segment_button.setChecked(index == 0)
         self.profile_background_segment_button.setChecked(index == 1)
-        if hasattr(self, "profile_page_background_segment_button"):
-            self.profile_page_background_segment_button.setChecked(False)
         self._style_profile_segment_button(self.profile_picture_segment_button, index == 0)
         self._style_profile_segment_button(self.profile_background_segment_button, index == 1)
-        if hasattr(self, "profile_page_background_segment_button"):
-            self._style_profile_segment_button(self.profile_page_background_segment_button, False)
+        if hasattr(self, "profile_name_color_segment_button"):
+            self.profile_name_color_segment_button.setChecked(index == 2)
+            self._style_profile_segment_button(self.profile_name_color_segment_button, index == 2)
         self._update_profile_asset_preview()
 
     def _profile_pic_color_for_input(self, line_edit, fallback="#8CACB4"):
@@ -457,7 +457,117 @@ class PageProfileMixin:
         self.profile_pic_opacity_value_label.setText(f"{self.profile_pic_opacity_slider.value()}%")
         self._update_profile_asset_preview()
 
+    def _create_profile_name_color_controls(self):
+        widget = QWidget()
+        outer = QVBoxLayout(widget)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(12)
+
+        self.profile_name_light_color_button = self._create_main_bg_button("Color")
+        self.profile_name_light_color_value_button = self._create_main_bg_button("")
+        self.profile_name_light_color_value_button.setObjectName("mainBackgroundColorButton")
+        self.profile_name_dark_color_button = self._create_main_bg_button("Dark Color")
+        self.profile_name_dark_color_value_button = self._create_main_bg_button("")
+        self.profile_name_dark_color_value_button.setObjectName("mainBackgroundColorButton")
+
+        self.profile_name_light_color_card = self._create_color_selector_card(self.profile_name_light_color_button, self.profile_name_light_color_value_button)
+        self.profile_name_dark_color_card = self._create_color_selector_card(self.profile_name_dark_color_button, self.profile_name_dark_color_value_button)
+
+        self.profile_name_dynamic_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_name_dynamic_toggle.setChecked(bool(mw.col.conf.get("modern_menu_profile_name_dynamic_mode", True)))
+        dynamic_card = self._create_profile_name_toggle_card("Dynamic mode", self.profile_name_dynamic_toggle)
+
+        # Stacked full-width rows so the toggle reads as part of the group
+        # rather than a lone control floating in an empty column.
+        cards_row = QWidget()
+        cards_layout = QHBoxLayout(cards_row)
+        cards_layout.setContentsMargins(0, 0, 0, 0)
+        cards_layout.setSpacing(12)
+        cards_layout.addWidget(self.profile_name_light_color_card, 1)
+        cards_layout.addWidget(self.profile_name_dark_color_card, 1)
+
+        outer.addWidget(dynamic_card)
+        outer.addWidget(cards_row)
+
+        self.profile_name_light_color_input = QLineEdit(mw.col.conf.get("modern_menu_profile_name_color_light", "#111827"))
+        self.profile_name_single_color_input = self.profile_name_light_color_input
+        self.profile_name_dark_color_input = QLineEdit(mw.col.conf.get("modern_menu_profile_name_color_dark", "#f9fafb"))
+
+        self.profile_name_light_color_button.clicked.connect(lambda: self._choose_profile_name_color("light"))
+        self.profile_name_light_color_value_button.clicked.connect(lambda: self._choose_profile_name_color("light"))
+        self.profile_name_dark_color_button.clicked.connect(lambda: self._choose_profile_name_color("dark"))
+        self.profile_name_dark_color_value_button.clicked.connect(lambda: self._choose_profile_name_color("dark"))
+        self.profile_name_dynamic_toggle.toggled.connect(self._update_profile_name_color_controls)
+        for line_edit in (self.profile_name_light_color_input, self.profile_name_dark_color_input):
+            line_edit.textChanged.connect(lambda _=None: self._update_profile_name_color_controls())
+
+        return widget
+
+    def _create_profile_name_toggle_card(self, label_text, toggle):
+        # Wraps a toggle in the same bordered container used by the color
+        # selector cards, so the row doesn't read as a bare floating control.
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#242424" if theme_manager.night_mode else "#ffffff")
+        card_border = palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+        fg = palette.get("--fg", "#f9fafb" if theme_manager.night_mode else "#111827")
+        card = QFrame()
+        card.setObjectName("colorSelectorCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setStyleSheet(f"""
+            QFrame#colorSelectorCard {{
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 16px;
+            }}
+        """)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 8, 14, 8)
+        layout.setSpacing(12)
+        label = QLabel(label_text)
+        label.setStyleSheet(f"background: transparent; border: none; color: {fg}; font-size: 13px; font-weight: 700;")
+        label.setFixedHeight(36)
+        layout.addWidget(label, 1)
+        layout.addWidget(toggle, 0)
+        return card
+
+    def _profile_name_color_for_input(self, line_edit, fallback="#111827"):
+        color = line_edit.text() if line_edit else fallback
+        return color if QColor(color).isValid() else fallback
+
+    def _profile_name_color_settings(self):
+        # Name color is always active (no on/off) — returns (enabled, light, dark, dynamic).
+        dynamic = bool(self.profile_name_dynamic_toggle.isChecked()) if getattr(self, "profile_name_dynamic_toggle", None) else True
+        light = self._profile_name_color_for_input(getattr(self, "profile_name_light_color_input", None), "#111827")
+        dark = self._profile_name_color_for_input(getattr(self, "profile_name_dark_color_input", None), "#f9fafb")
+        if not dynamic:
+            dark = light
+        return True, light, dark, dynamic
+
+    def _profile_name_color_for_mode(self, mode):
+        _enabled, light, dark, _dynamic = self._profile_name_color_settings()
+        return dark if mode == "dark" else light
+
+    def _choose_profile_name_color(self, target):
+        line_edit = self.profile_name_dark_color_input if target == "dark" else self.profile_name_light_color_input
+        chosen, ok = OnigiriColorDialog.getColor(line_edit.text(), self, anchor=self.sender() if isinstance(self.sender(), QWidget) else None)
+        if ok:
+            line_edit.setText(chosen)
+            self._update_profile_name_color_controls()
+
+    def _update_profile_name_color_controls(self, *args):
+        if not hasattr(self, "profile_name_light_color_card"):
+            return
+        dynamic = self.profile_name_dynamic_toggle.isChecked()
+        self.profile_name_light_color_button.setText("Light Color" if dynamic else "Color")
+        self._set_dynamic_mode_widgets_dimmed([self.profile_name_dark_color_card], not dynamic)
+        light = self._profile_name_color_for_input(self.profile_name_light_color_input, "#111827")
+        dark = self._profile_name_color_for_input(self.profile_name_dark_color_input, "#f9fafb")
+        self._style_main_background_color_button(self.profile_name_light_color_value_button, light)
+        self._style_main_background_color_button(self.profile_name_dark_color_value_button, dark)
+        self._update_profile_asset_preview()
+
     def _profile_bg_color_for_input(self, line_edit, fallback="#ffffff"):
+        color = line_edit.text() if line_edit else fallback
         color = line_edit.text() if line_edit else fallback
         return color if QColor(color).isValid() else fallback
 
@@ -677,11 +787,61 @@ class PageProfileMixin:
         dialog.exec()
 
     def _update_profile_asset_preview(self):
+        self._sync_profile_bar_widget()
         if not hasattr(self, "profile_asset_preview"):
             return
         self.profile_asset_preview.setStyleSheet("QLabel#mainBackgroundPreview { background: transparent; border: none; }")
         self.profile_asset_preview.setPixmap(self._render_profile_asset_preview_pixmap())
         self.profile_asset_preview.setText("")
+
+    def _sync_profile_bar_widget(self):
+        """Keeps the real ProfileBarWidget (dialog sidebar + Sidebar
+        Customization preview mockup, which reuses it) in step with unsaved
+        edits made on this tab, instead of only reflecting values as of dialog
+        open."""
+        profile_bar = getattr(self, "profile_bar", None)
+        if profile_bar is None:
+            return
+        is_dark = theme_manager.night_mode
+        user_name = self.name_input.text() if hasattr(self, "name_input") else self.current_config.get("userName", DEFAULTS["userName"])
+
+        if getattr(self, "profile_pic_accent_toggle", None) and self.profile_pic_accent_toggle.isChecked():
+            pic_mode = "accent"
+        elif getattr(self, "profile_pic_color_only_toggle", None) and self.profile_pic_color_only_toggle.isChecked():
+            pic_mode = "custom"
+        else:
+            pic_mode = "image"
+        pic_light_color, pic_dark_color = self._profile_pic_colors() if hasattr(self, "_profile_pic_colors") else ("#8CACB4", "#B8BDC3")
+        pic_filename = self._profile_pic_image_name("dark" if is_dark else "light") if hasattr(self, "_profile_pic_image_name") else ""
+        pic_path = self._profile_asset_image_path("profile_pic", pic_filename) if pic_filename else ""
+
+        if getattr(self, "profile_bg_accent_toggle", None) and self.profile_bg_accent_toggle.isChecked():
+            bg_mode = "accent"
+        elif getattr(self, "profile_bg_color_only_toggle", None) and self.profile_bg_color_only_toggle.isChecked():
+            bg_mode = "custom"
+        else:
+            bg_mode = "image"
+        bg_light_color, bg_dark_color = self._profile_bg_colors() if hasattr(self, "_profile_bg_colors") else ("#EEEEEE", "#3C3C3C")
+        bg_image_filename = self.galleries.get("profile_bg", {}).get("selected", "") if hasattr(self, "galleries") else ""
+        bg_image_path = self._profile_asset_image_path("profile_bg", bg_image_filename) if bg_image_filename else ""
+
+        bg_config = {
+            "color": bg_dark_color if is_dark else bg_light_color,
+            "image": bg_image_path,
+            "blur": self.profile_bg_blur_slider.value() if hasattr(self, "profile_bg_blur_slider") else 0,
+            "opacity": self.profile_bg_opacity_slider.value() if hasattr(self, "profile_bg_opacity_slider") else 100,
+        }
+        pic_config = {
+            "mode": pic_mode,
+            "color": pic_dark_color if is_dark else pic_light_color,
+            "blur": 0,
+            "opacity": self.profile_pic_opacity_slider.value() if hasattr(self, "profile_pic_opacity_slider") else 100,
+        }
+        profile_bar.update_profile(user_name, pic_path, bg_mode, bg_config, pic_config)
+        if hasattr(self, "_profile_name_color_settings") and hasattr(profile_bar, "set_name_color_override"):
+            profile_bar.set_name_color_override(*self._profile_name_color_settings())
+        if self._modern_background_spec("sidebar"):
+            self._update_modern_background_preview("sidebar")
 
     def _render_profile_asset_preview_pixmap(self):
         preview = self.profile_asset_preview
@@ -737,7 +897,7 @@ class PageProfileMixin:
         if active_index == 0:
             dynamic_preview = self.profile_pic_dynamic_toggle.isChecked()
         elif active_index == 2:
-            dynamic_preview = self.profile_page_bg_dynamic_toggle.isChecked()
+            dynamic_preview = self.profile_name_dynamic_toggle.isChecked()
         else:
             dynamic_preview = self.profile_bg_dynamic_toggle.isChecked()
         if dynamic_preview:
@@ -853,7 +1013,11 @@ class PageProfileMixin:
                 painter.drawEllipse(avatar_rect.adjusted(0.75, 0.75, -0.75, -0.75))
             text_x = rect.x() + avatar_size + 27
             text_rect = QRectF(text_x, rect.y(), max(10, rect.right() - text_x - 18), rect.height())
-            text_color = QColor("#ffffff") if image_path or QColor(color).lightness() < 145 else QColor("#111827")
+            custom_name_color = self._profile_name_color_for_mode(mode) if hasattr(self, "_profile_name_color_for_mode") else None
+            if custom_name_color and QColor(custom_name_color).isValid():
+                text_color = QColor(custom_name_color)
+            else:
+                text_color = QColor("#ffffff") if image_path or QColor(color).lightness() < 145 else QColor("#111827")
             painter.setPen(text_color)
             font = painter.font()
             font.setBold(False)
@@ -890,6 +1054,38 @@ class PageProfileMixin:
             pill_path = QPainterPath()
             pill_path.addRoundedRect(bar_rect, radius, radius)
             painter.fillPath(pill_path, QBrush(bg_color))
+
+            bg_pixmap = getattr(profile_bar, "_bg_pixmap", None)
+            if (
+                (getattr(profile_bar, "_bg_mode", None) == "image" or getattr(profile_bar, "_using_default_bg", False))
+                and bg_pixmap is not None
+                and not bg_pixmap.isNull()
+            ):
+                try:
+                    width = max(1, int(round(bar_rect.width())))
+                    height = max(1, int(round(bar_rect.height())))
+                    blur = getattr(profile_bar, "_bg_blur", 0)
+                    scale_factor = 1.0 + (blur * 0.2 / 50.0) if blur > 0 else 1.0
+                    scaled = bg_pixmap.scaled(
+                        int(width * scale_factor),
+                        int(height * scale_factor),
+                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    x = (scaled.width() - width) // 2
+                    y = (scaled.height() - height) // 2
+                    cropped = scaled.copy(x, y, width, height)
+                    if blur > 0:
+                        cropped = profile_bar._blur_pixmap(cropped, blur * 0.2)
+                    painter.save()
+                    painter.setClipPath(pill_path)
+                    painter.setOpacity(max(0.0, min(1.0, getattr(profile_bar, "_bg_opacity", 1.0))))
+                    painter.drawPixmap(QRectF(bar_rect.x(), bar_rect.y(), width, height), cropped, QRectF(cropped.rect()))
+                    painter.setOpacity(1.0)
+                    painter.fillPath(pill_path, QColor(0, 0, 0, PROFILE_BAR_IMAGE_OVERLAY_ALPHA))
+                    painter.restore()
+                except Exception:
+                    pass
 
             inset = bar_rect.height() * 0.12
             avatar_d = max(1.0, bar_rect.height() - 2 * inset)
@@ -1028,6 +1224,18 @@ class PageProfileMixin:
     def _save_profile_settings(self):
         self.current_config["userName"] = self.name_input.text()
         mw.col.conf["modern_menu_userName"] = self.name_input.text()
+
+        if hasattr(self, "profile_name_dynamic_toggle"):
+            dynamic = self.profile_name_dynamic_toggle.isChecked()
+            mw.col.conf["modern_menu_profile_name_color_enabled"] = True
+            mw.col.conf["modern_menu_profile_name_dynamic_mode"] = dynamic
+            if dynamic:
+                mw.col.conf["modern_menu_profile_name_color_light"] = self.profile_name_light_color_input.text()
+                mw.col.conf["modern_menu_profile_name_color_dark"] = self.profile_name_dark_color_input.text()
+            else:
+                single_name_color = self.profile_name_light_color_input.text()
+                mw.col.conf["modern_menu_profile_name_color_light"] = single_name_color
+                mw.col.conf["modern_menu_profile_name_color_dark"] = single_name_color
         
         # Save birthday in ISO format (YYYY-MM-DD)
         if hasattr(self, 'birthday_input'):
@@ -1180,10 +1388,10 @@ class PageProfileMixin:
         else:
             bg_light = mw.col.conf.get("modern_menu_profile_bg_color_light", "#6D3E96")
             bg_dark = mw.col.conf.get("modern_menu_profile_bg_color_dark", bg_light)
-            bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+            bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
             bg_image_name = mw.col.conf.get("modern_menu_profile_bg_image", "")
             bg_blur = int(mw.col.conf.get("modern_menu_profile_bg_blur", 0) or 0)
-            bg_opacity = int(mw.col.conf.get("modern_menu_profile_bg_opacity", 100) or 100)
+            bg_opacity = int(mw.col.conf.get("modern_menu_profile_bg_opacity", 50) or 50)
             if bg_mode == "accent":
                 bg_light = bg_dark = self.accent_color
 

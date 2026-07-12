@@ -1333,7 +1333,7 @@ class MrTaiyakiStoreDialog(QDialog):
         nook_level = _nook_level()
         store_data = nook_level.manager.get_store_data()
         store_data["image_base_path"] = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/"
-        store_data["coin_image_path"] = f"/_addons/{addon_package}/system_files/gamification_images/Tayaki_coin.png"
+        store_data["coin_image_path"] = f"/_addons/{addon_package}/system_files/gamification_images/Tayaki_coin.webp"
         
         data_script = f"<script>window.ONIGIRI_STORE_DATA = {json.dumps(store_data, ensure_ascii=False)};</script>"
         head_html = generate_dynamic_css(conf) + data_script
@@ -1706,7 +1706,7 @@ def _get_nook_level_profile_html() -> str:
     custom_name = html.escape(payload.get("name") or "Nook Level", quote=False)
 
     current_id = nook_level.manager.get_current_theme_id()
-    current_image = nook_level.manager.get_current_theme_image() or "sushi/onigiri_stand.png"
+    current_image = nook_level.manager.get_current_theme_image() or "sushi/onigiri_stand.webp"
     addon_package = mw.addonManager.addonFromModule(__name__)
     image_url = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/{html.escape(current_image, quote=True)}"
     current_restaurant_name = custom_name
@@ -1756,7 +1756,7 @@ def _get_nook_level_profile_html() -> str:
 def _profile_background_render_parts(addon_package, include_default_image=True):
     container_style = ""
     layer_style = ""
-    bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+    bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
     if bg_mode == "image":
         bg_image_file = mw.col.conf.get("modern_menu_profile_bg_image", "")
         if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
@@ -1769,7 +1769,7 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
         container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
         if bg_url:
             blur = max(0, min(100, int(mw.col.conf.get("modern_menu_profile_bg_blur", 0) or 0)))
-            opacity_value = mw.col.conf.get("modern_menu_profile_bg_opacity", 100)
+            opacity_value = mw.col.conf.get("modern_menu_profile_bg_opacity", 50)
             opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
             blur_px = blur * 0.2
             scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
@@ -1794,6 +1794,12 @@ def on_webview_js_message(handled, message, context):
         parts = message.split(":", 1)
         hn_context = parts[1] if len(parts) > 1 and parts[1] else "reviewer"
         hashi_notes.open_hashi_note_popup(hn_context, mw)
+        return (True, None)
+
+    if message == "togglePomodoro":
+        from . import pomodoro
+
+        pomodoro.toggle_widget(mw)
         return (True, None)
 
     if isinstance(context, Reviewer):
@@ -2143,8 +2149,10 @@ def patch_overview():
 		user_name = conf.get("userName", "USER")
 		profile_pic_html = _get_profile_pic_html(user_name, mw.addonManager.addonFromModule(__name__), "profile-pic")
 		restaurant_chip_html = _get_nook_level_chip_html()
-		profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+		profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
 		bg_class_str = "with-image-bg" if profile_bg_mode == "image" else ""
+		if profile_bg_mode == "image" and not mw.col.conf.get("modern_menu_profile_bg_image", "") and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
+			bg_class_str += " dynamic-default-bg"
 		bg_style_str, bg_layer_style = _profile_background_render_parts(mw.addonManager.addonFromModule(__name__))
 		bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
 		profile_bar_html = f"""
@@ -2444,12 +2452,14 @@ def patch_congrats_page():
             profile_pic_html = _get_profile_pic_html(user_name, addon_package, "profile-pic")
             restaurant_chip_html = _get_nook_level_chip_html()
 
-            profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+            profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
             bg_class_str = ""
             bg_style_str, bg_layer_style = _profile_background_render_parts(addon_package)
             bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
             if profile_bg_mode == "image":
                 bg_class_str = "with-image-bg"
+                if not mw.col.conf.get("modern_menu_profile_bg_image", "") and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
+                    bg_class_str += " dynamic-default-bg"
             
             profile_bar_html = f"""
             <div class="profile-bar {bg_class_str}" style="{bg_style_str}">
@@ -2726,6 +2736,22 @@ def generate_deck_browser_backgrounds(addon_path):
         side_opacity_alpha = side_opacity_percent / 100.0
         addon_name = os.path.basename(addon_path)
 
+        if mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True):
+            box_colors = conf.get("colors", {})
+            side_light_color = box_colors.get("light", {}).get("--canvas-inset", side_light_color)
+            side_dark_color = box_colors.get("dark", {}).get("--canvas-inset", side_dark_color)
+            try:
+                side_blur = float(mw.col.conf.get("onigiri_canvas_inset_effect_blur", side_blur) or 0)
+            except (TypeError, ValueError):
+                pass
+            try:
+                side_opacity_percent = max(0.0, min(100.0, float(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", side_opacity_percent) or 100)))
+            except (TypeError, ValueError):
+                pass
+            side_opacity_alpha = side_opacity_percent / 100.0
+            if side_mode not in ("color", "accent"):
+                side_mode = "color"
+
         if side_mode == "color" or side_mode == "accent":
             alpha = side_opacity_alpha
             backdrop_blur_px = side_blur * 0.2
@@ -2935,6 +2961,20 @@ def generate_deck_browser_backgrounds(addon_path):
             </style>
             """
         
+    if sidebar_mode == 'custom' and side_mode == 'accent':
+        ring_light_color = ring_dark_color = "var(--accent-color)"
+    elif sidebar_mode == 'custom':
+        ring_light_color, ring_dark_color = side_light_color, side_dark_color
+    else:
+        ring_light_color, ring_dark_color = main_light_color, main_dark_color
+
+    ring_color_css = f"""
+    <style id='modern-menu-sidebar-ring-style'>
+        :root {{ --onigiri-profile-ring-color: {ring_light_color}; }}
+        .night-mode {{ --onigiri-profile-ring-color: {ring_dark_color}; }}
+    </style>
+    """
+
     def _sidebar_int_setting(key, default):
         try:
             return max(0, int(float(mw.col.conf.get(key, default))))
@@ -2944,6 +2984,9 @@ def generate_deck_browser_backgrounds(addon_path):
     sidebar_radius = _sidebar_int_setting("modern_menu_sidebar_radius", 15)
     sidebar_stroke = _sidebar_int_setting("modern_menu_sidebar_stroke", 1)
     sidebar_margin = _sidebar_int_setting("modern_menu_sidebar_margin", 10)
+    if mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True):
+        sidebar_radius = _sidebar_int_setting("onigiri_canvas_inset_border_radius", sidebar_radius)
+        sidebar_stroke = _sidebar_int_setting("onigiri_canvas_inset_border_width", sidebar_stroke)
     sidebar_frame_css = f"""
     <style id='modern-menu-sidebar-frame-style'>
         .sidebar-left {{
@@ -2962,7 +3005,7 @@ def generate_deck_browser_backgrounds(addon_path):
     </style>
     """
 
-    return main_container_css + sidebar_css + sidebar_frame_css
+    return main_container_css + sidebar_css + sidebar_frame_css + ring_color_css
 
 def generate_reviewer_background_css(addon_path):
     """Generates CSS for the reviewer - exact copy of overview implementation with reviewer config keys."""
@@ -3467,6 +3510,7 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
         <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
         <a href="#" onclick="pycmd('openHashiNotes:reviewer'); return false;" class="onigiri-reviewer-button onigiri-hashi-notes-button">Hashi Notes</a>
+        <a href="#" onclick="pycmd('togglePomodoro'); return false;" class="onigiri-reviewer-button onigiri-pomodoro-button">Pomodoro</a>
         {}
     </div>
     """.format(restaurant_chip_html if show_restaurant_chip else "")
@@ -6408,6 +6452,22 @@ def generate_reviewer_buttons_css(conf):
             min-height: 100% !important;
             align-items: center !important;
             justify-content: space-between !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            border: 0 !important;
+        }}
+
+        /* Catch-all: vertically center EVERY top-level cell (including buttons
+           injected by other add-ons such as Ankimon's "Defeat/Catch Pokemon"),
+           so they line up with Show Answer instead of floating to the top of the
+           row. Scoped to direct row children so nested tables inside the ease
+           buttons are left untouched. */
+        #outer > table > tbody > tr > td {{
+            display: flex !important;
+            flex: 0 0 auto !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 100% !important;
             background: transparent !important;
             background-color: transparent !important;
             border: 0 !important;

@@ -16,13 +16,13 @@ from aqt.theme import theme_manager
 from aqt.qt import (
     QWidget, QFrame, QLabel, QPushButton, QToolButton, QLineEdit, QTextEdit,
     QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea, QApplication,
-    QTreeWidget, QTreeWidgetItem, QDialog, QSizePolicy, QCheckBox,
+    QDialog, QSizePolicy, QCheckBox,
     Qt, QSize, QRectF, QPointF, QColor, QPainter, QPainterPath, QPen, QBrush,
     QPropertyAnimation, QEasingCurve, QIcon, QPixmap, QFont,
     QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
 )
-from PyQt6.QtCore import pyqtSignal, pyqtProperty, QDate
-from PyQt6.QtGui import QImage, QLinearGradient, QConicalGradient, QFontMetrics, QFontDatabase
+from PyQt6.QtCore import pyqtSignal, pyqtProperty, QDate, QTimer
+from PyQt6.QtGui import QImage, QLinearGradient, QConicalGradient, QFontMetrics, QFontDatabase, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 
 from . import config
@@ -32,6 +32,8 @@ from .settings._widgets import AnimatedToggleButton, MainBackgroundEffectSlider
 
 PLAN_COLORS = ["#3B82F6", "#10B981", "#FBBF24", "#a855f7", "#F472B6", "#F97316", "#EF4444"]
 DEFAULT_ICON = "emoji:📚"
+DEFAULT_PLAN_LIGHT_COLOR = "#60A5FA"
+DEFAULT_PLAN_DARK_COLOR = "#1E3A8A"
 
 
 def weekday_letters() -> list:
@@ -111,6 +113,51 @@ def with_alpha(hex_color: str, alpha: int) -> QColor:
     return c
 
 
+def _write_qss_icon(svg: str, name: str) -> str:
+    """Caches a small SVG to disk and returns its path for use in a QSS
+    `image: url(...)`. Qt's stylesheet engine doesn't reliably rasterize
+    data: URIs for ::indicator/::branch images across platforms, so these
+    need to be real files (content-hashed, so theme/color changes just add
+    a new small file instead of overwriting stale ones)."""
+    import hashlib
+    cache_dir = os.path.join(os.path.dirname(__file__), "user_files", "_qss_icon_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    digest = hashlib.md5(svg.encode("utf-8")).hexdigest()[:10]
+    path = os.path.join(cache_dir, f"{name}_{digest}.svg")
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(svg)
+    return path.replace(os.sep, "/")
+
+
+def _checkmark_icon_path() -> str:
+    """The app's own check-simple.svg (tinted white), used to modernize
+    the checkbox indicators (deck picker) with a filled, rounded,
+    accent-colored checked state — instead of a one-off hand-drawn path."""
+    icon_path = os.path.join(
+        os.path.dirname(__file__), "system_files", "system_icons",
+        "unavailable_for_users", "check-simple.svg",
+    )
+    with open(icon_path, "r", encoding="utf-8") as f:
+        svg = f.read().replace("currentColor", "white")
+    return _write_qss_icon(svg, "checkmark")
+
+
+_CHECKMARK_URI = _checkmark_icon_path()
+
+
+def _chevron_icon_path(color: str, expanded: bool) -> str:
+    """SVG expand/collapse chevron for the deck picker's row toggle label,
+    matching the app's line weight instead of an OS-native arrow."""
+    path = "M3 4.5l3 3 3-3" if expanded else "M4.5 3l3 3-3 3"
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+        f'<path d="{path}" fill="none" stroke="{color}" '
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    )
+    return _write_qss_icon(svg, f"chevron_{'open' if expanded else 'closed'}_{color.lstrip('#')}")
+
+
 def readable_on(color: str) -> str:
     c = QColor(color)
     lum = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
@@ -148,17 +195,20 @@ def build_qss(p: dict) -> str:
     QPushButton[psDanger="true"]:hover {{ background: rgba(239,68,68,0.12); }}
     QPushButton[psGhost="true"] {{ background: transparent; border: 1px solid transparent; color: {p['fg2']}; }}
     QPushButton[psGhost="true"]:hover {{ background: {p['surface2']}; color: {p['fg']}; }}
-    QTreeWidget {{
-        background: {p['surface']};
-        border: 1px solid {p['border2']};
-        border-radius: 10px;
-        outline: none;
-        padding: 4px;
-    }}
-    QTreeWidget::item {{ padding: 6px 4px; border-radius: 7px; color: {p['fg']}; }}
-    QTreeWidget::item:hover {{ background: {p['surface2']}; }}
-    QTreeWidget::indicator {{ width: 16px; height: 16px; }}
     QCheckBox {{ spacing: 8px; color: {p['fg']}; }}
+    QCheckBox::indicator {{
+        width: 17px; height: 17px;
+        margin: 0;
+        border: 2px solid {p['border2']};
+        border-radius: 6px;
+        background: {p['surface']};
+    }}
+    QCheckBox::indicator:hover {{ border-color: {accent}; }}
+    QCheckBox::indicator:checked {{
+        border: 2px solid {accent};
+        background: {accent};
+        image: url("{_CHECKMARK_URI}");
+    }}
     QScrollArea {{ background: transparent; border: none; }}
     QScrollArea > QWidget > QWidget {{ background: transparent; }}
     QScrollBar:vertical {{ background: transparent; width: 8px; margin: 2px; }}
@@ -313,15 +363,13 @@ def load_cover_pixmap(path: str, target_w: int, target_h: int) -> QPixmap | None
 
 def resolve_plan_color(plan: dict, dark: bool | None = None) -> str:
     """Resolves the plan's single effective accent color, honoring Dynamic
-    Mode (separate light/dark colors) when enabled."""
+    Mode (separate light/dark colors) when enabled. With Dynamic Mode off,
+    the Light Color doubles as the default color."""
     if dark is None:
         dark = theme_manager.night_mode
-    if plan.get("color_dynamic"):
-        key = "color_dark" if dark else "color_light"
-        color = plan.get(key) or plan.get("color")
-        if color:
-            return color
-    return plan.get("color", "#3B82F6")
+    if plan.get("color_dynamic") and dark:
+        return plan.get("color_dark") or plan.get("color_light") or plan.get("color", "#3B82F6")
+    return plan.get("color_light") or plan.get("color", "#3B82F6")
 
 
 def blur_pixmap(pixmap: QPixmap, radius: float) -> QPixmap:
@@ -387,6 +435,12 @@ def deck_icon_value(name: str, has_children: bool) -> str:
     custom_data = custom_icons.get(str(did), {}) if did is not None else {}
     icon_file = custom_data.get("icon")
     if icon_file:
+        # Custom deck icons may be stored as a bare emoji glyph (no "emoji:"
+        # prefix) — same heuristic as learner_stats_widget.py's mirror, so
+        # those decks don't silently render blank in render_icon_pixmap.
+        if (not icon_file.startswith("emoji:") and not icon_file.startswith("system:")
+                and len(icon_file) <= 8 and "." not in icon_file):
+            return f"emoji:{icon_file}"
         return icon_file
 
     is_filtered = False
@@ -719,6 +773,7 @@ class ExamCard(QWidget):
 
     CARD_W = 232
     CARD_H = 206
+    LONG_PRESS_MS = 380
 
     def __init__(self, plan: dict, pace: dict, addon_path: str, pal: dict, parent=None):
         super().__init__(parent)
@@ -727,12 +782,19 @@ class ExamCard(QWidget):
         self.addon_path = addon_path
         self.pal = pal
         self._hover = 0.0
+        self._press_pos = None
+        self._dragging = False
+        self._reorder_container = None
         self.setFixedSize(self.CARD_W, self.CARD_H + 10)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._icon_pix = render_icon_pixmap(addon_path, plan.get("icon", DEFAULT_ICON), "#ffffff", 26)
         self._anim = QPropertyAnimation(self, b"hoverProgress", self)
         self._anim.setDuration(150)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._longpress_timer = QTimer(self)
+        self._longpress_timer.setSingleShot(True)
+        self._longpress_timer.setInterval(self.LONG_PRESS_MS)
+        self._longpress_timer.timeout.connect(self._maybe_start_reorder)
 
     def _get_hover(self):
         return self._hover
@@ -753,8 +815,55 @@ class ExamCard(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self.plan.get("id", ""))
+            self._press_pos = event.position().toPoint()
+            self._dragging = False
+            self._longpress_timer.start()
         super().mousePressEvent(event)
+
+    def _maybe_start_reorder(self) -> None:
+        if self._press_pos is None or self._dragging:
+            return
+        if not (QApplication.mouseButtons() & Qt.MouseButton.LeftButton):
+            return
+        container = self._find_cards_container()
+        if container is None:
+            return
+        self._dragging = True
+        self._reorder_container = container
+        container.begin_reorder(self, QCursor.pos())
+
+    def _find_cards_container(self) -> "PlanCardsContainer | None":
+        w = self.parentWidget()
+        while w is not None and not isinstance(w, PlanCardsContainer):
+            w = w.parentWidget()
+        return w
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and self._reorder_container is not None:
+            self._reorder_container.update_drag(event.globalPosition().toPoint())
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._longpress_timer.isActive():
+            self._longpress_timer.stop()
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._dragging:
+                container = self._reorder_container
+                self._dragging = False
+                self._reorder_container = None
+                self._press_pos = None
+                if container is not None:
+                    container.end_reorder(event.globalPosition().toPoint())
+                # `self` may have just been deleted (the container's commit
+                # rebuilds the whole grid) — do not touch it beyond this point.
+                return
+            if self._press_pos is not None:
+                self._press_pos = None
+                self.clicked.emit(self.plan.get("id", ""))
+                return
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, event) -> None:
         p = self.pal
@@ -762,15 +871,15 @@ class ExamCard(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
-        lift = self._hover * 3.0
-        rect = QRectF(3, 7 - lift, self.CARD_W - 6, self.CARD_H)
+        rect = QRectF(3, 7, self.CARD_W - 6, self.CARD_H)
         radius = 18
 
-        # Soft shadow on hover
-        if self._hover > 0.01:
-            shadow_path = QPainterPath()
-            shadow_path.addRoundedRect(rect.adjusted(0, 5, 0, 7), radius, radius)
-            painter.fillPath(shadow_path, QBrush(QColor(0, 0, 0, int(45 * self._hover))))
+        scale = 1.0 + self._hover * 0.02
+        painter.save()
+        center = rect.center()
+        painter.translate(center)
+        painter.scale(scale, scale)
+        painter.translate(-center)
 
         full_path = QPainterPath()
         full_path.addRoundedRect(rect, radius, radius)
@@ -844,24 +953,7 @@ class ExamCard(QWidget):
         painter.drawText(QRectF(rect.left() + 16 + num_w + 7, body_top + 12, rect.width() - 32 - num_w, 36),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, small)
 
-        # Todo progress (very bottom)
-        todos = self.plan.get("todos", [])
-        total = len(todos)
-        done = sum(1 for t in todos if t.get("done"))
-        bar_y = rect.bottom() - 22
-        if total > 0:
-            track = QRectF(rect.left() + 16, bar_y, rect.width() - 32 - 38, 5)
-            tpath = QPainterPath(); tpath.addRoundedRect(track, 2.5, 2.5)
-            painter.fillPath(tpath, QBrush(QColor(p["surface2"])))
-            frac = done / total
-            if frac > 0:
-                fill = QRectF(track.left(), track.top(), track.width() * frac, track.height())
-                fpath = QPainterPath(); fpath.addRoundedRect(fill, 2.5, 2.5)
-                painter.fillPath(fpath, QBrush(QColor(resolve_plan_color(self.plan) or p["accent"])))
-            painter.setPen(QPen(QColor(p["fg3"])))
-            tiny = QFont(); tiny.setPointSize(8); painter.setFont(tiny)
-            painter.drawText(QRectF(rect.right() - 44, bar_y - 6, 36, 16),
-                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{done}/{total}")
+        painter.restore()
 
 
 class AddExamCard(QWidget):
@@ -906,6 +998,214 @@ class AddExamCard(QWidget):
         painter.setPen(QPen(accent if self._hover else QColor(p["fg2"])))
         painter.drawText(QRectF(rect.left(), rect.center().y() + 14, rect.width(), 24),
                          Qt.AlignmentFlag.AlignCenter, tr("prep_new_plan"))
+
+
+class _PlaceholderCard(QWidget):
+    """Dashed rounded slot shown in the grid at the spot the dragged card
+    would land, while the real card is dimmed to nothing and floats as a
+    ghost preview under the cursor."""
+
+    def __init__(self, size, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self.setFixedSize(size)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(3, 7, self.width() - 6, self.height() - 10)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 18, 18)
+        painter.fillPath(path, QBrush(with_alpha(self.pal["accent"], 20)))
+        painter.setPen(QPen(QColor(self.pal["accent"]), 2, Qt.PenStyle.DashLine))
+        painter.drawPath(path)
+
+
+class _DragGhost(QWidget):
+    """Floating rounded preview of the card being reordered; follows the cursor."""
+
+    def __init__(self, pixmap: QPixmap, parent=None):
+        super().__init__(parent)
+        self._pixmap = pixmap
+        self.resize(pixmap.size())
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        self.setGraphicsEffect(shadow)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(3, 7, self.width() - 6, self.height() - 10), 18, 18)
+        painter.setOpacity(0.97)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, self._pixmap)
+
+
+class PlanCardsContainer(QWidget):
+    """Hosts the ExamCard flow layout. Long-pressing a card enters a reorder
+    mode: the other cards dim, the pressed card lifts into a floating rounded
+    preview that follows the cursor, and a dashed placeholder in the grid
+    shows exactly where it will land. Releasing commits the new order;
+    Escape (or releasing over nothing useful) restores the original order."""
+
+    orderCommitted = pyqtSignal(str, int)
+
+    def __init__(self, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self._dragged_card = None
+        self._origin_index = -1
+        self._placeholder = None
+        self._ghost = None
+        self._dim_effects = {}
+
+    def is_reordering(self) -> bool:
+        return self._dragged_card is not None
+
+    def begin_reorder(self, card: "ExamCard", global_pos) -> None:
+        if self._dragged_card is not None:
+            return
+        layout = self.layout()
+        origin_index = layout.indexOf(card)
+        if origin_index < 0:
+            return
+        self._dragged_card = card
+        self._origin_index = origin_index
+        card_pixmap = card.grab()
+
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if w is None or w is card:
+                continue
+            effect = QGraphicsOpacityEffect(w)
+            effect.setOpacity(0.35)
+            w.setGraphicsEffect(effect)
+            self._dim_effects[w] = effect
+
+        # Keep the real card alive and receiving mouse events (Qt keeps
+        # delivering them to whatever widget took the initial press) but
+        # fully transparent and out of the layout, so only the ghost is seen.
+        dragged_effect = QGraphicsOpacityEffect(card)
+        dragged_effect.setOpacity(0.0)
+        card.setGraphicsEffect(dragged_effect)
+        layout.takeAt(origin_index)
+
+        self._placeholder = _PlaceholderCard(card.size(), self.pal, self)
+        layout.insertWidget(origin_index, self._placeholder)
+        self._placeholder.show()
+
+        self._ghost = _DragGhost(card_pixmap, self)
+        self._ghost.show()
+        self._ghost.raise_()
+        self._move_ghost(global_pos)
+        layout.invalidate()
+
+    def update_drag(self, global_pos) -> None:
+        if self._dragged_card is None:
+            return
+        self._move_ghost(global_pos)
+        target_index = self._plan_index_for_pos(self.mapFromGlobal(global_pos))
+        if target_index == self._placeholder_plan_index():
+            return
+        layout = self.layout()
+        raw = layout.indexOf(self._placeholder)
+        if raw >= 0:
+            layout.takeAt(raw)
+        layout.insertWidget(self._raw_insert_index(target_index), self._placeholder)
+        layout.invalidate()
+
+    def end_reorder(self, global_pos) -> None:
+        if self._dragged_card is None:
+            return
+        plan_id = self._dragged_card.plan.get("id", "")
+        final_index = self._placeholder_plan_index()
+        self._teardown(delete_card=True)
+        self.orderCommitted.emit(plan_id, final_index)
+
+    def cancel_reorder(self) -> None:
+        if self._dragged_card is None:
+            return
+        card = self._dragged_card
+        origin_index = self._origin_index
+        self._teardown(delete_card=False)
+        layout = self.layout()
+        layout.insertWidget(min(origin_index, layout.count()), card)
+        card.setGraphicsEffect(None)
+        layout.invalidate()
+
+    def _teardown(self, delete_card: bool) -> None:
+        layout = self.layout()
+        if self._placeholder is not None:
+            idx = layout.indexOf(self._placeholder)
+            if idx >= 0:
+                layout.takeAt(idx)
+            self._placeholder.deleteLater()
+            self._placeholder = None
+        if self._ghost is not None:
+            self._ghost.deleteLater()
+            self._ghost = None
+        for w, effect in self._dim_effects.items():
+            try:
+                w.setGraphicsEffect(None)
+            except RuntimeError:
+                pass
+        self._dim_effects.clear()
+        if self._dragged_card is not None and delete_card:
+            self._dragged_card.deleteLater()
+        self._dragged_card = None
+        self._origin_index = -1
+
+    def _move_ghost(self, global_pos) -> None:
+        if self._ghost is None:
+            return
+        local = self.mapFromGlobal(global_pos)
+        self._ghost.move(local.x() - self._ghost.width() // 2, local.y() - self._ghost.height() // 2)
+
+    def _plan_index_for_pos(self, pos) -> int:
+        layout = self.layout()
+        cards = [layout.itemAt(i).widget() for i in range(layout.count())] if layout else []
+        cards = [w for w in cards if isinstance(w, ExamCard)]
+        if not cards:
+            return 0
+        best_index = len(cards)
+        best_dist = None
+        for i, w in enumerate(cards):
+            center = w.geometry().center()
+            dist = (center.x() - pos.x()) ** 2 + (center.y() - pos.y()) ** 2
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                best_index = i if pos.x() < center.x() else i + 1
+        return best_index
+
+    def _placeholder_plan_index(self) -> int:
+        layout = self.layout()
+        idx = layout.indexOf(self._placeholder) if self._placeholder is not None else -1
+        if idx < 0:
+            return 0
+        count = 0
+        for i in range(idx):
+            if isinstance(layout.itemAt(i).widget(), ExamCard):
+                count += 1
+        return count
+
+    def _raw_insert_index(self, plan_index: int) -> int:
+        layout = self.layout()
+        seen = 0
+        add_card_raw = layout.count()
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if isinstance(w, AddExamCard):
+                add_card_raw = i
+            elif isinstance(w, ExamCard):
+                if seen == plan_index:
+                    return i
+                seen += 1
+        return add_card_raw
 
 
 # ─── Plan detail view ──────────────────────────────────────────────────────────
@@ -984,6 +1284,8 @@ class PlanDetailBanner(QFrame):
 class _DetailStatTile(QFrame):
     def __init__(self, pal: dict, sub_text: str, parent=None):
         super().__init__(parent)
+        self.pal = pal
+        self._color = pal["accent"]
         self.setObjectName("psDetailStatTile")
         self.setStyleSheet(
             f"QFrame#psDetailStatTile {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
@@ -992,7 +1294,7 @@ class _DetailStatTile(QFrame):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(2)
         self.value_label = QLabel("—")
-        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {pal['accent']}; background: transparent;")
+        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self._color}; background: transparent;")
         layout.addWidget(self.value_label)
         self.sub_label = QLabel(sub_text)
         self.sub_label.setWordWrap(True)
@@ -1003,57 +1305,282 @@ class _DetailStatTile(QFrame):
         self.value_label.setText(value_text)
         self.sub_label.setText(sub_text)
 
+    def set_color(self, color: str) -> None:
+        self._color = color
+        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self._color}; background: transparent;")
 
-class PlanTodoChecklist(QWidget):
-    """Interactive checklist bound to a plan's todos; toggling persists
-    immediately (via todosChanged) without opening the full edit dialog."""
 
-    todosChanged = pyqtSignal(list)
+class _StackedBar(QWidget):
+    """Tiny rounded horizontal bar: a solid 'due' segment (pressing work) plus a
+    translucent 'new' segment, both tinted with the plan colour, over a track."""
 
     def __init__(self, pal: dict, parent=None):
         super().__init__(parent)
         self.pal = pal
-        self._todos = []
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(6)
+        self._due = 0
+        self._new = 0
+        self._color = pal["accent"]
+        self.setFixedHeight(6)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_todos(self, todos: list) -> None:
-        self._todos = [dict(t) for t in (todos or [])]
-        self._rebuild()
+    def set_data(self, new: int, due: int, color: str) -> None:
+        self._new, self._due, self._color = max(0, new), max(0, due), color
+        self.update()
 
-    def _rebuild(self) -> None:
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        if not self._todos:
-            empty = QLabel(tr("prep_no_tasks_yet"))
-            empty.setStyleSheet(f"color: {self.pal['fg3']}; font-size: 12px; background: transparent;")
-            self._layout.addWidget(empty)
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(0, 0, self.width(), self.height())
+        r = rect.height() / 2
+        track = QPainterPath(); track.addRoundedRect(rect, r, r)
+        painter.fillPath(track, QBrush(QColor(self.pal["surface2"])))
+        total = self._new + self._due
+        if total <= 0 or rect.width() <= 0:
             return
-        for todo in self._todos:
-            row = QWidget()
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(0, 0, 0, 0)
-            rl.setSpacing(8)
-            checkbox = QCheckBox()
-            checkbox.setChecked(bool(todo.get("done")))
-            label = QLabel(todo.get("text", ""))
-            label.setWordWrap(True)
-            label.setStyleSheet(f"font-size: 13px; color: {self.pal['fg']}; background: transparent;")
-            rl.addWidget(checkbox, 0)
-            rl.addWidget(label, 1)
-            todo_id = todo.get("id")
-            checkbox.toggled.connect(lambda checked, tid=todo_id: self._on_toggled(tid, checked))
-            self._layout.addWidget(row)
+        painter.setClipPath(track)
+        due_w = rect.width() * (self._due / total)
+        painter.fillRect(QRectF(0, 0, due_w, rect.height()), QBrush(QColor(self._color)))
+        soft = QColor(self._color); soft.setAlpha(95)
+        painter.fillRect(QRectF(due_w, 0, rect.width() - due_w, rect.height()), QBrush(soft))
 
-    def _on_toggled(self, todo_id, checked: bool) -> None:
-        for todo in self._todos:
-            if todo.get("id") == todo_id:
-                todo["done"] = checked
-                break
-        self.todosChanged.emit([dict(t) for t in self._todos])
+
+class _RatioBar(QWidget):
+    """Single rounded progress bar (recent pace ÷ target), with a subtle marker
+    at the 100% target line so 'behind' vs 'ahead' reads at a glance."""
+
+    def __init__(self, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self._frac = 0.0
+        self._color = pal["accent"]
+        self.setFixedHeight(8)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_fraction(self, frac: float, color: str) -> None:
+        self._frac = max(0.0, min(1.0, frac))
+        self._color = color
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(0, 0, self.width(), self.height())
+        r = rect.height() / 2
+        track = QPainterPath(); track.addRoundedRect(rect, r, r)
+        painter.fillPath(track, QBrush(QColor(self.pal["surface2"])))
+        if rect.width() <= 0:
+            return
+        painter.setClipPath(track)
+        fill_w = rect.width() * self._frac
+        if fill_w > 0:
+            painter.fillRect(QRectF(0, 0, fill_w, rect.height()), QBrush(QColor(self._color)))
+
+
+class _DeckBreakdownCard(QFrame):
+    """Per-deck workload: each assigned deck's pending new/due counts with a
+    stacked mini bar, sorted by how much work is left. Fills the detail page
+    with the plan's actual composition instead of a single aggregate number."""
+
+    def __init__(self, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self.setObjectName("psDeckCard")
+        self.setStyleSheet(
+            f"QFrame#psDeckCard {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 14, 18, 16)
+        outer.setSpacing(12)
+
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        tag = QLabel(tr("prep_deck_breakdown", "DECK BREAKDOWN"))
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        header.addWidget(tag)
+        header.addStretch(1)
+        self.legend = QLabel()
+        self.legend.setStyleSheet("background: transparent;")
+        header.addWidget(self.legend)
+        outer.addLayout(header)
+
+        self.rows_holder = QVBoxLayout()
+        self.rows_holder.setSpacing(12)
+        outer.addLayout(self.rows_holder)
+        outer.addStretch(1)
+
+    def set_decks(self, deck_counts: dict, color: str) -> None:
+        p = self.pal
+        while self.rows_holder.count():
+            it = self.rows_holder.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+
+        qc = QColor(color)
+        soft_rgba = f"rgba({qc.red()},{qc.green()},{qc.blue()},0.42)"
+        self.legend.setText(
+            f'<span style="color:{color};">&#9679;</span> '
+            f'<span style="color:{p["fg3"]};">{tr("prep_legend_due", "due")}</span>'
+            f'&nbsp;&nbsp;<span style="color:{soft_rgba};">&#9679;</span> '
+            f'<span style="color:{p["fg3"]};">{tr("prep_legend_new", "new")}</span>'
+        )
+
+        if not deck_counts:
+            empty = QLabel(tr("prep_no_decks", "No decks assigned to this plan yet."))
+            empty.setStyleSheet(f"font-size: 12px; color: {p['fg3']}; background: transparent;")
+            self.rows_holder.addWidget(empty)
+            return
+
+        items = sorted(
+            deck_counts.items(),
+            key=lambda kv: -((kv[1].get("new", 0)) + (kv[1].get("due", 0))),
+        )
+        for name, c in items[:8]:
+            new_n = int(c.get("new", 0))
+            due_n = int(c.get("due", 0))
+            pending = new_n + due_n
+
+            row = QWidget()
+            rl = QVBoxLayout(row)
+            rl.setContentsMargins(0, 0, 0, 0)
+            rl.setSpacing(5)
+
+            top = QHBoxLayout()
+            top.setSpacing(8)
+            leaf = str(name).split("::")[-1]
+            if len(leaf) > 30:
+                leaf = leaf[:29] + "…"
+            name_label = QLabel(leaf)
+            dim = pending == 0
+            name_label.setStyleSheet(
+                f"font-size: 12.5px; font-weight: 600; color: {p['fg3'] if dim else p['fg']}; background: transparent;"
+            )
+            top.addWidget(name_label, 1)
+            if pending == 0:
+                count_label = QLabel(tr("prep_deck_done", "done ✓"))
+                count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
+            else:
+                count_label = QLabel(tr("prep_new_due_split", "{0} new · {1} due").format(new_n, due_n))
+                count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg2']}; background: transparent;")
+            top.addWidget(count_label, 0)
+            rl.addLayout(top)
+
+            bar = _StackedBar(p)
+            bar.set_data(new_n, due_n, color)
+            rl.addWidget(bar)
+
+            self.rows_holder.addWidget(row)
+
+        extra = len(items) - 8
+        if extra > 0:
+            more = QLabel(tr("prep_more_decks", "+{0} more").format(extra))
+            more.setStyleSheet(f"font-size: 11px; color: {p['fg3']}; background: transparent;")
+            self.rows_holder.addWidget(more)
+
+
+class _PaceInsightCard(QFrame):
+    """Turns the raw pace number into a verdict: compares the last 7 days' actual
+    review pace against the required pace and projects finishing early or late."""
+
+    GOOD = "#10B981"
+    WARN = "#F59E0B"
+
+    def __init__(self, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self.setObjectName("psPaceCard")
+        self.setStyleSheet(
+            f"QFrame#psPaceCard {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 14, 18, 16)
+        outer.setSpacing(8)
+
+        tag = QLabel(tr("prep_pace_check", "PACE CHECK"))
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        outer.addWidget(tag)
+
+        self.status_label = QLabel("—")
+        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {pal['fg']}; background: transparent;")
+        outer.addWidget(self.status_label)
+
+        self.detail_label = QLabel("")
+        self.detail_label.setStyleSheet(f"font-size: 11.5px; font-weight: 600; color: {pal['fg2']}; background: transparent;")
+        outer.addWidget(self.detail_label)
+
+        self.bar = _RatioBar(pal)
+        outer.addSpacing(2)
+        outer.addWidget(self.bar)
+
+        self.proj_label = QLabel("")
+        self.proj_label.setWordWrap(True)
+        self.proj_label.setStyleSheet(f"font-size: 11.5px; color: {pal['fg3']}; background: transparent;")
+        outer.addSpacing(2)
+        outer.addWidget(self.proj_label)
+        outer.addStretch(1)
+
+    def set_data(self, pace: dict, weekly_counts: list, color: str) -> None:
+        p = self.pal
+        status = pace.get("status", "")
+        days_left = pace.get("days_left")
+        total_pending = int(pace.get("total_pending", 0) or 0)
+        required = pace.get("required_per_day")
+        recent = (sum(weekly_counts) / 7.0) if weekly_counts else 0.0
+
+        accent_status = p["fg"]
+        detail = ""
+        proj = ""
+        frac = 0.0
+        bar_color = color
+
+        if status == "expired":
+            head = tr("prep_pace_expired", "Exam has passed")
+            accent_status = p["fg3"]
+            proj = tr("prep_pace_proj_expired", "This plan's exam date is in the past.")
+        elif status == "done" or total_pending == 0:
+            head = tr("prep_pace_caughtup", "All caught up")
+            accent_status = self.GOOD
+            frac = 1.0
+            bar_color = self.GOOD
+            proj = tr("prep_pace_proj_done", "Nothing left to review — nicely done. 🎉")
+        else:
+            target = float(required or 0)
+            detail = tr("prep_pace_target_recent", "Target {0}/day · Recent {1}/day").format(
+                f"{target:.0f}", f"{recent:.0f}"
+            )
+            frac = (recent / target) if target > 0 else 0.0
+            if recent <= 0:
+                head = tr("prep_pace_notstarted", "Not started yet")
+                accent_status = p["fg3"]
+                proj = tr("prep_pace_proj_none", "No reviews in the last 7 days — start today.")
+            else:
+                days_to_finish = total_pending / recent
+                margin = (days_left if days_left is not None else 0) - days_to_finish
+                if margin >= 0:
+                    if recent >= target * 1.15:
+                        head = tr("prep_pace_ahead", "Ahead of pace")
+                    else:
+                        head = tr("prep_pace_ontrack", "On track")
+                    accent_status = self.GOOD
+                    bar_color = self.GOOD
+                    proj = tr(
+                        "prep_pace_proj_early",
+                        "At ~{0}/day you'll finish about {1}d before the exam.",
+                    ).format(f"{recent:.0f}", f"{margin:.0f}")
+                else:
+                    head = tr("prep_pace_behind", "Falling behind")
+                    accent_status = self.WARN
+                    bar_color = self.WARN
+                    proj = tr(
+                        "prep_pace_proj_late",
+                        "At ~{0}/day you'd finish ~{1}d late — aim for {2}/day.",
+                    ).format(f"{recent:.0f}", f"{abs(margin):.0f}", f"{target:.0f}")
+
+        self.status_label.setText(head)
+        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {accent_status}; background: transparent;")
+        self.detail_label.setText(detail)
+        self.detail_label.setVisible(bool(detail))
+        self.bar.set_fraction(frac, bar_color)
+        self.proj_label.setText(proj)
 
 
 class PlanDetailView(QWidget):
@@ -1063,7 +1590,6 @@ class PlanDetailView(QWidget):
     backRequested = pyqtSignal()
     editRequested = pyqtSignal(str)
     deleteRequested = pyqtSignal(str)
-    todosChanged = pyqtSignal(str, list)
 
     def __init__(self, addon_path: str, pal: dict, parent=None):
         super().__init__(parent)
@@ -1090,16 +1616,42 @@ class PlanDetailView(QWidget):
         top_row.addWidget(del_btn)
         layout.addLayout(top_row)
 
-        self.banner = PlanDetailBanner(pal)
-        layout.addWidget(self.banner)
+        # Everything below the action row scrolls, so the page stays usable on
+        # short windows even with the richer breakdown/pace content.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.viewport().setAutoFillBackground(False)
+        content = QWidget()
+        content.setAutoFillBackground(False)
+        body = QVBoxLayout(content)
+        body.setContentsMargins(0, 0, 4, 0)
+        body.setSpacing(14)
+        layout.addWidget(scroll, 1)
+        scroll.setWidget(content)
 
+        self.banner = PlanDetailBanner(pal)
+        body.addWidget(self.banner)
+
+        # ── Stat tiles: pace, days left, cards remaining, reviewed this week ──
         stats_row = QHBoxLayout()
         stats_row.setSpacing(14)
         self.pace_tile = _DetailStatTile(pal, tr("prep_cards_per_day_unit"))
-        self.todo_tile = _DetailStatTile(pal, tr("prep_todo_items_label"))
-        stats_row.addWidget(self.pace_tile, 1)
-        stats_row.addWidget(self.todo_tile, 1)
-        layout.addLayout(stats_row)
+        self.days_tile = _DetailStatTile(pal, tr("prep_days_left_unit", "days left"))
+        self.remaining_tile = _DetailStatTile(pal, tr("prep_cards_remaining", "cards remaining"))
+        self.week_tile = _DetailStatTile(pal, tr("prep_reviewed_this_week", "reviewed this week"))
+        for tile in (self.pace_tile, self.days_tile, self.remaining_tile, self.week_tile):
+            stats_row.addWidget(tile, 1)
+        body.addLayout(stats_row)
+
+        # ── Deck breakdown (left) + pace insight (right) ──
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(14)
+        self.deck_card = _DeckBreakdownCard(pal)
+        self.pace_card = _PaceInsightCard(pal)
+        mid_row.addWidget(self.deck_card, 3)
+        mid_row.addWidget(self.pace_card, 2)
+        body.addLayout(mid_row)
 
         chart_card = QFrame()
         chart_card.setObjectName("psDetailChartCard")
@@ -1115,23 +1667,8 @@ class PlanDetailView(QWidget):
         self.chart.setFixedHeight(74)
         self.chart.set_colors(pal["accent"], pal["fg3"], 45)
         chart_layout.addWidget(self.chart)
-        layout.addWidget(chart_card)
-
-        todo_card = QFrame()
-        todo_card.setObjectName("psDetailTodoCard")
-        todo_card.setStyleSheet(
-            f"QFrame#psDetailTodoCard {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
-        )
-        todo_layout = QVBoxLayout(todo_card)
-        todo_layout.setContentsMargins(18, 14, 18, 14)
-        todo_layout.setSpacing(8)
-        todo_tag = QLabel(tr("prep_todo_items_label"))
-        todo_tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
-        todo_layout.addWidget(todo_tag)
-        self.checklist = PlanTodoChecklist(pal)
-        self.checklist.todosChanged.connect(lambda todos: self.todosChanged.emit(self._plan_id, todos))
-        todo_layout.addWidget(self.checklist)
-        layout.addWidget(todo_card, 1)
+        body.addWidget(chart_card)
+        body.addStretch(1)
 
     def _pill_button(self, text: str, kind: str) -> QPushButton:
         """Fully-rounded action button (Berry-style pill)."""
@@ -1165,8 +1702,15 @@ class PlanDetailView(QWidget):
         self._plan_id = plan.get("id", "")
         self.banner.set_plan(plan, pace, self.addon_path)
 
+        plan_color = resolve_plan_color(plan) or self.pal["accent"]
+        for tile in (self.pace_tile, self.days_tile, self.remaining_tile, self.week_tile):
+            tile.set_color(plan_color)
+        self.chart.set_colors(plan_color, self.pal["fg3"], 45)
+
         req = pace.get("required_per_day")
         status = pace.get("status", "")
+
+        # Pace tile
         if status == "expired":
             self.pace_tile.set_value("—", tr("prep_exam_has_passed"))
         elif req is None:
@@ -1176,13 +1720,43 @@ class PlanDetailView(QWidget):
         else:
             self.pace_tile.set_value(f"{req:.0f}", tr("prep_cards_per_day_unit"))
 
-        todos = plan.get("todos", [])
-        done = sum(1 for t in todos if t.get("done"))
-        total = len(todos)
-        self.todo_tile.set_value(f"{done}/{total}", tr("prep_todo_items_label"))
+        # Days-left tile
+        days_left = pace.get("days_left")
+        if days_left is None:
+            self.days_tile.set_value("—", tr("prep_days_left_unit", "days left"))
+        elif days_left < 0:
+            self.days_tile.set_value(str(abs(days_left)), tr("prep_days_over_unit", "days ago"))
+        elif days_left == 0:
+            self.days_tile.set_value("0", tr("prep_exam_is_today", "exam is today"))
+        else:
+            self.days_tile.set_value(str(days_left), tr("prep_days_left_unit", "days left"))
+
+        # Cards-remaining tile (with new · due split as subtext)
+        total_pending = int(pace.get("total_pending", 0) or 0)
+        total_new = int(pace.get("total_new", 0) or 0)
+        total_due = int(pace.get("total_due", 0) or 0)
+        if req is None:
+            self.remaining_tile.set_value("—", tr("prep_cards_remaining", "cards remaining"))
+        elif total_pending == 0:
+            self.remaining_tile.set_value("0", tr("prep_all_caught_up"))
+        else:
+            self.remaining_tile.set_value(
+                f"{total_pending:,}".replace(",", " "),
+                tr("prep_new_due_split", "{0} new · {1} due").format(total_new, total_due),
+            )
+
+        # Reviewed-this-week tile
+        week_total = int(sum(weekly_counts)) if weekly_counts else 0
+        self.week_tile.set_value(
+            f"{week_total:,}".replace(",", " "),
+            tr("prep_reviewed_this_week", "reviewed this week"),
+        )
+
+        # Deck breakdown + pace insight
+        self.deck_card.set_decks(pace.get("deck_counts", {}) or {}, plan_color)
+        self.pace_card.set_data(pace, weekly_counts, plan_color)
 
         self.chart.set_data(weekly_counts, weekly_labels)
-        self.checklist.set_todos(todos)
 
 
 # ─── Custom calendar ──────────────────────────────────────────────────────────
@@ -1332,6 +1906,58 @@ class MiniCalendar(QFrame):
         self.grid.set_marks(marks)
 
 
+class UpcomingPlansCard(QFrame):
+    """Compact list of each plan's exam date, soonest first — sits between
+    the calendar and the daily-target stat in the dashboard sidebar."""
+
+    def __init__(self, pal: dict, parent=None):
+        super().__init__(parent)
+        self.pal = pal
+        self.setObjectName("psUpcomingCard")
+        self.setStyleSheet(
+            f"QFrame#psUpcomingCard {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
+        )
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(16, 14, 16, 14)
+        self._layout.setSpacing(8)
+        tag = QLabel(tr("prep_upcoming_dates"))
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        self._layout.addWidget(tag)
+        self.list_holder = QVBoxLayout()
+        self.list_holder.setSpacing(7)
+        self._layout.addLayout(self.list_holder)
+
+    def set_items(self, items: list) -> None:
+        """items: list of (plan_name, date_label, color), soonest first."""
+        while self.list_holder.count():
+            it = self.list_holder.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        p = self.pal
+        if not items:
+            empty = QLabel(tr("prep_no_upcoming_dates"))
+            empty.setStyleSheet(f"font-size: 12px; color: {p['fg3']}; background: transparent;")
+            self.list_holder.addWidget(empty)
+            return
+        for name, date_label, color in items[:6]:
+            row = QWidget()
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(0, 0, 0, 0)
+            rl.setSpacing(9)
+            dot = QLabel("●")
+            dot.setStyleSheet(f"font-size: 9px; color: {color}; background: transparent;")
+            dot.setFixedWidth(10)
+            name_label = QLabel(name)
+            name_label.setStyleSheet(f"font-size: 12px; color: {p['fg2']}; background: transparent;")
+            name_label.setWordWrap(False)
+            date_label_w = QLabel(date_label)
+            date_label_w.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
+            rl.addWidget(dot, 0, Qt.AlignmentFlag.AlignTop)
+            rl.addWidget(name_label, 1)
+            rl.addWidget(date_label_w, 0)
+            self.list_holder.addWidget(row)
+
+
 # ─── Dashboard side cards ─────────────────────────────────────────────────────
 
 class StatCard(QFrame):
@@ -1395,52 +2021,157 @@ class QuoteCard(QFrame):
         self.quote_label.setText(text)
 
 
-class TodoSummaryCard(QFrame):
-    def __init__(self, pal: dict, parent=None):
+# ─── Deck tree picker ─────────────────────────────────────────────────────────
+
+class _ClickableLabel(QLabel):
+    """Plain, chrome-free click target — used for the expand/collapse chevron
+    instead of QToolButton, which on some platforms still paints a faint
+    native frame/arrow of its own even with no icon and disabled, which is
+    what caused every row (leaves included) to show a phantom chevron."""
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+class _DeckRowWidget(QFrame):
+    """One self-contained pill per deck row: expand toggle, checkbox, icon and
+    name all live inside the SAME frame/background, instead of Qt's native
+    tree view splitting the branch (expand arrow) and item (checkbox/icon/
+    text) into two separately-painted cells. Nesting depth is expressed as
+    left padding inside this one frame, not as a second reserved column."""
+
+    expandClicked = pyqtSignal()
+
+    ROW_HEIGHT = 30
+    TOGGLE_SIZE = 16
+    CHEVRON_SIZE = 8
+
+    def __init__(self, pal: dict, depth: int, has_children: bool, icon_pixmap: QPixmap, text: str, parent=None):
         super().__init__(parent)
         self.pal = pal
-        self.setObjectName("psTodoCard")
+        self.setObjectName("psDeckRow")
+        self.setFixedHeight(self.ROW_HEIGHT)
         self.setStyleSheet(
-            f"QFrame#psTodoCard {{ background: {pal['surface']}; border: 1px solid {pal['border']}; border-radius: 16px; }}"
+            f"QFrame#psDeckRow {{ background: transparent; border-radius: 8px; }}"
+            f"QFrame#psDeckRow:hover {{ background: {pal['surface2']}; }}"
         )
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(16, 14, 16, 14)
-        self._layout.setSpacing(8)
-        tag = QLabel(tr("prep_pending_tasks"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
-        self._layout.addWidget(tag)
-        self.list_holder = QVBoxLayout()
-        self.list_holder.setSpacing(7)
-        self._layout.addLayout(self.list_holder)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4 + depth * 16, 0, 8, 0)
+        layout.setSpacing(8)
 
-    def set_items(self, items: list) -> None:
-        while self.list_holder.count():
-            it = self.list_holder.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-        p = self.pal
-        if not items:
-            empty = QLabel(tr("prep_nothing_pending"))
-            empty.setStyleSheet(f"font-size: 12px; color: {p['fg3']}; background: transparent;")
-            self.list_holder.addWidget(empty)
+        self.toggle_lbl = None
+        if has_children:
+            self.toggle_lbl = _ClickableLabel()
+            self.toggle_lbl.setFixedSize(self.TOGGLE_SIZE, self.TOGGLE_SIZE)
+            self.toggle_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.toggle_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.toggle_lbl.clicked.connect(self.expandClicked.emit)
+            layout.addWidget(self.toggle_lbl)
+        else:
+            spacer = QWidget()
+            spacer.setFixedSize(self.TOGGLE_SIZE, self.TOGGLE_SIZE)
+            layout.addWidget(spacer)
+
+        self.checkbox = QCheckBox()
+        layout.addWidget(self.checkbox)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(icon_pixmap)
+        icon_lbl.setFixedSize(icon_pixmap.deviceIndependentSize().toSize())
+        layout.addWidget(icon_lbl)
+
+        name_lbl = QLabel(text)
+        name_lbl.setStyleSheet(f"font-size: 13px; color: {pal['fg']}; background: transparent;")
+        name_lbl.setMinimumWidth(0)
+        layout.addWidget(name_lbl, 1)
+
+    def set_expanded(self, expanded: bool) -> None:
+        if self.toggle_lbl is None:
             return
-        for text, color in items[:7]:
-            row = QWidget()
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(0, 0, 0, 0)
-            rl.setSpacing(9)
-            dot = QLabel("●")
-            dot.setStyleSheet(f"font-size: 9px; color: {color}; background: transparent;")
-            dot.setFixedWidth(10)
-            label = QLabel(text)
-            label.setStyleSheet(f"font-size: 12px; color: {p['fg2']}; background: transparent;")
-            label.setWordWrap(False)
-            rl.addWidget(dot, 0, Qt.AlignmentFlag.AlignTop)
-            rl.addWidget(label, 1)
-            self.list_holder.addWidget(row)
+        icon_path = _chevron_icon_path(self.pal.get("fg2", self.pal.get("fg", "#6a6a6e")), expanded)
+        self.toggle_lbl.setPixmap(QPixmap(icon_path).scaled(
+            self.CHEVRON_SIZE, self.CHEVRON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation,
+        ))
 
 
-# ─── Deck tree picker ─────────────────────────────────────────────────────────
+class _DeckNode(QWidget):
+    """One deck row plus (if it has subdecks) a collapsible column of nested
+    _DeckNode children underneath it — a plain widget tree built with normal
+    layouts, not QTreeWidget. This sidesteps every native-tree-view quirk
+    (branch/item painting split, itemWidget sizing, platform button chrome)
+    that kept causing visual bugs when we tried to reskin QTreeWidget."""
+
+    def __init__(self, pal: dict, addon_path: str, name: str, depth: int,
+                 children_of: dict, icon_color: str, parent=None):
+        super().__init__(parent)
+        self.name = name
+        self._expanded = True
+        self._child_nodes: list = []
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(2)
+
+        child_names = children_of.get(name, [])
+        has_children = bool(child_names)
+        leaf_text = name.split("::")[-1]
+        icon_value = deck_icon_value(name, has_children)
+        pixmap = render_icon_pixmap(addon_path, icon_value, icon_color, DeckTreePicker.ICON_SIZE)
+
+        self.row = _DeckRowWidget(pal, depth, has_children, pixmap, leaf_text)
+        self.row.expandClicked.connect(self._toggle_expanded)
+        outer.addWidget(self.row)
+
+        self.children_container = None
+        if has_children:
+            self.children_container = QWidget()
+            child_layout = QVBoxLayout(self.children_container)
+            child_layout.setContentsMargins(0, 0, 0, 0)
+            child_layout.setSpacing(2)
+            for child_name in child_names:
+                node = _DeckNode(pal, addon_path, child_name, depth + 1, children_of, icon_color)
+                self._child_nodes.append(node)
+                child_layout.addWidget(node)
+            outer.addWidget(self.children_container)
+            self.row.set_expanded(True)
+
+    def _toggle_expanded(self) -> None:
+        self._expanded = not self._expanded
+        self.children_container.setVisible(self._expanded)
+        self.row.set_expanded(self._expanded)
+
+    def get_selected(self, out: list) -> None:
+        if self.row.checkbox.isChecked():
+            out.append(self.name)
+        for child in self._child_nodes:
+            child.get_selected(out)
+
+    def set_selected(self, wanted: set) -> None:
+        self.row.checkbox.setChecked(self.name in wanted)
+        for child in self._child_nodes:
+            child.set_selected(wanted)
+
+    def apply_filter(self, text: str) -> bool:
+        self_visible = not text or text in self.name.lower()
+        child_visible = False
+        for child in self._child_nodes:
+            if child.apply_filter(text):
+                child_visible = True
+        visible = self_visible or child_visible
+        self.setVisible(visible)
+        if self.children_container is not None:
+            # Auto-reveal children while a search is narrowing the match,
+            # without permanently changing the node's own expanded state.
+            show_children = self._expanded or (bool(text) and child_visible)
+            self.children_container.setVisible(show_children)
+            self.row.set_expanded(show_children)
+        return visible
+
 
 class DeckTreePicker(QWidget):
     """Searchable, checkable deck tree with each deck's own icon (mirrors Deck Stats selection)."""
@@ -1458,212 +2189,58 @@ class DeckTreePicker(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(tr("prep_search_decks_placeholder"))
         layout.addWidget(self.search_input)
-        self.tree = QTreeWidget()
-        self.tree.setHeaderHidden(True)
-        self.tree.setRootIsDecorated(False)
-        self.tree.setIndentation(18)
-        self.tree.setIconSize(QSize(self.ICON_SIZE, self.ICON_SIZE))
-        self.tree.setMinimumHeight(150)
-        self.tree.setMaximumHeight(190)
-        layout.addWidget(self.tree)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setMinimumHeight(210)
+        self.scroll.setMaximumHeight(260)
+        self.scroll.setObjectName("psDeckTreeScroll")
+        self.scroll.setStyleSheet(
+            f"QScrollArea#psDeckTreeScroll {{ background: {pal['surface']}; "
+            f"border: 1px solid {pal['border2']}; border-radius: 10px; }}"
+        )
+        self._container = QWidget()
+        self._container.setAutoFillBackground(False)
+        self._col = QVBoxLayout(self._container)
+        self._col.setContentsMargins(4, 4, 4, 4)
+        self._col.setSpacing(2)
+        self.scroll.setWidget(self._container)
+        layout.addWidget(self.scroll)
+
+        self._roots: list = []
         self._populate()
         self.search_input.textChanged.connect(self._filter)
 
     def _populate(self) -> None:
-        self.tree.clear()
         children_of = {}
         for name in self._deck_names:
             parent_name = name.rsplit("::", 1)[0] if "::" in name else None
             children_of.setdefault(parent_name, []).append(name)
 
         icon_color = self.pal.get("fg2", self.pal.get("fg", "#6a6a6e"))
-
-        def add_children(parent_name, parent_item):
-            for name in children_of.get(parent_name, []):
-                leaf = name.split("::")[-1]
-                has_children = name in children_of
-                item = QTreeWidgetItem([leaf])
-                item.setData(0, Qt.ItemDataRole.UserRole, name)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(0, Qt.CheckState.Unchecked)
-                icon_value = deck_icon_value(name, has_children)
-                pixmap = render_icon_pixmap(self.addon_path, icon_value, icon_color, self.ICON_SIZE)
-                item.setIcon(0, QIcon(pixmap))
-                if parent_item is None:
-                    self.tree.addTopLevelItem(item)
-                else:
-                    parent_item.addChild(item)
-                add_children(name, item)
-
-        add_children(None, None)
-        self.tree.expandAll()
+        for name in children_of.get(None, []):
+            node = _DeckNode(self.pal, self.addon_path, name, 0, children_of, icon_color)
+            self._roots.append(node)
+            self._col.addWidget(node)
+        self._col.addStretch(1)
 
     def _filter(self, text: str) -> None:
         text = text.lower().strip()
-
-        def apply(item) -> bool:
-            name = str(item.data(0, Qt.ItemDataRole.UserRole) or "")
-            child_visible = False
-            for i in range(item.childCount()):
-                if apply(item.child(i)):
-                    child_visible = True
-            self_visible = not text or text in name.lower()
-            visible = self_visible or child_visible
-            item.setHidden(not visible)
-            return visible
-
-        for i in range(self.tree.topLevelItemCount()):
-            apply(self.tree.topLevelItem(i))
+        for node in self._roots:
+            node.apply_filter(text)
 
     def get_selected(self) -> list:
-        out = []
-
-        def walk(item):
-            if item.checkState(0) == Qt.CheckState.Checked:
-                out.append(str(item.data(0, Qt.ItemDataRole.UserRole)))
-            for i in range(item.childCount()):
-                walk(item.child(i))
-
-        for i in range(self.tree.topLevelItemCount()):
-            walk(self.tree.topLevelItem(i))
+        out: list = []
+        for node in self._roots:
+            node.get_selected(out)
         return out
 
     def set_selected(self, names: list) -> None:
         wanted = set(names or [])
-
-        def walk(item):
-            name = str(item.data(0, Qt.ItemDataRole.UserRole))
-            item.setCheckState(0, Qt.CheckState.Checked if name in wanted else Qt.CheckState.Unchecked)
-            for i in range(item.childCount()):
-                walk(item.child(i))
-
-        for i in range(self.tree.topLevelItemCount()):
-            walk(self.tree.topLevelItem(i))
-
-
-# ─── Todo editor ──────────────────────────────────────────────────────────────
-
-class TodoListEditor(QWidget):
-    """Card-framed checklist editor with an empty state and a height that
-    hugs its current row count instead of leaving a dead gap when empty."""
-
-    ROW_HEIGHT = 34
-    MAX_VISIBLE_ROWS = 4
-
-    def __init__(self, pal: dict, addon_path: str, parent=None):
-        super().__init__(parent)
-        self.pal = pal
-        self.addon_path = addon_path
-        self._rows = []
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        self.card = QFrame()
-        self.card.setObjectName("psTodoEditorCard")
-        self.card.setStyleSheet(
-            f"QFrame#psTodoEditorCard {{ background: {pal['surface']}; border: 1px solid {pal['border2']}; border-radius: 14px; }}"
-        )
-        card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(10, 4, 6, 4)
-
-        self.rows_container = QWidget()
-        self.rows_layout = QVBoxLayout(self.rows_container)
-        self.rows_layout.setContentsMargins(0, 4, 0, 4)
-        self.rows_layout.setSpacing(2)
-
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.scroll.setWidget(self.rows_container)
-        card_layout.addWidget(self.scroll)
-        layout.addWidget(self.card)
-
-        self.empty_label = QLabel(tr("prep_no_tasks_yet"))
-        self.empty_label.setStyleSheet(f"color: {pal['fg3']}; font-size: 12px; padding: 9px 6px; background: transparent;")
-        self.rows_layout.addWidget(self.empty_label)
-
-        add_row = QHBoxLayout()
-        add_row.setSpacing(8)
-        self.new_input = QLineEdit()
-        self.new_input.setPlaceholderText(tr("prep_add_task_placeholder"))
-        self.new_input.returnPressed.connect(self._add_from_input)
-        add_btn = QPushButton(tr("add"))
-        add_btn.setProperty("psPrimary", True)
-        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_btn.clicked.connect(self._add_from_input)
-        add_row.addWidget(self.new_input, 1)
-        add_row.addWidget(add_btn, 0)
-        layout.addLayout(add_row)
-
-        self._update_state()
-
-    def _add_from_input(self) -> None:
-        text = self.new_input.text().strip()
-        if not text:
-            return
-        self.new_input.clear()
-        self._add_row({"text": text, "done": False})
-        self._update_state()
-
-    def _add_row(self, todo: dict) -> None:
-        row = QWidget()
-        row.setFixedHeight(self.ROW_HEIGHT)
-        rl = QHBoxLayout(row)
-        rl.setContentsMargins(2, 0, 2, 0)
-        rl.setSpacing(8)
-        checkbox = QCheckBox()
-        checkbox.setChecked(bool(todo.get("done")))
-        text_input = QLineEdit(todo.get("text", ""))
-        text_input.setStyleSheet("border: none; background: transparent; padding: 4px 2px;")
-        del_btn = QPushButton()
-        del_btn.setIcon(QIcon(render_icon_pixmap(self.addon_path, "system:cancel.svg", self.pal["fg3"], 13)))
-        del_btn.setIconSize(QSize(13, 13))
-        del_btn.setProperty("psGhost", True)
-        del_btn.setFixedWidth(26)
-        del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        del_btn.setToolTip(tr("prep_delete"))
-        rl.addWidget(checkbox)
-        rl.addWidget(text_input, 1)
-        rl.addWidget(del_btn)
-        del_btn.clicked.connect(lambda: self._remove_row(row))
-        self.rows_layout.insertWidget(len(self._rows), row)
-        self._rows.append(row)
-
-    def _remove_row(self, row) -> None:
-        if row in self._rows:
-            self._rows.remove(row)
-        self.rows_layout.removeWidget(row)
-        row.deleteLater()
-        self._update_state()
-
-    def _update_state(self) -> None:
-        count = len(self._rows)
-        self.empty_label.setVisible(count == 0)
-        visible_rows = min(count, self.MAX_VISIBLE_ROWS) if count else 1
-        height = (self.ROW_HEIGHT * visible_rows) if count else self.empty_label.sizeHint().height()
-        self.scroll.setFixedHeight(height + 8)
-
-    def set_todos(self, todos: list) -> None:
-        for row in self._rows:
-            self.rows_layout.removeWidget(row)
-            row.deleteLater()
-        self._rows = []
-        for todo in todos or []:
-            self._add_row(todo)
-        self._update_state()
-
-    def get_todos(self) -> list:
-        import uuid
-        out = []
-        for row in self._rows:
-            checkbox = row.findChild(QCheckBox)
-            text_input = row.findChild(QLineEdit)
-            text = (text_input.text() if text_input else "").strip()
-            if not text:
-                continue
-            out.append({"id": str(uuid.uuid4()), "text": text, "done": bool(checkbox.isChecked()) if checkbox else False})
-        return out
+        for node in self._roots:
+            node.set_selected(wanted)
 
 
 # ─── Icon picker button ───────────────────────────────────────────────────────
@@ -1765,35 +2342,60 @@ class DatePickerButton(QPushButton):
 
 # ─── Plan background picker ──────────────────────────────────────────────────
 
-class _ColorPillButton(QWidget):
-    """Small round color swatch; clicking it opens the shared custom color
-    picker (OnigiriColorDialog), same as the Settings background designer."""
+class _ColorPillRow(QFrame):
+    """Full-width color row matching Settings' Colors page pills: a label on
+    the left and a rounded hex badge on the right that shows the current
+    color and opens the shared custom color picker when clicked."""
 
     clicked = pyqtSignal()
 
-    def __init__(self, pal: dict, color: str, parent=None):
+    def __init__(self, pal: dict, label_text: str, color: str, parent=None):
         super().__init__(parent)
         self.pal = pal
-        self._color = color
-        self.setFixedSize(26, 26)
+        self.setObjectName("psColorPillRow")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 8, 10, 8)
+        layout.setSpacing(10)
+
+        self.label = QLabel(label_text)
+        self.label.setStyleSheet(f"font-weight: 600; font-size: 12px; color: {pal['fg2']}; background: transparent; border: none;")
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self.label, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        self.badge = QLabel()
+        self.badge.setFixedHeight(30)
+        self.badge.setMinimumWidth(96)
+        self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.badge, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.set_color(color)
+        self._apply_frame_style()
+
+    def _apply_frame_style(self) -> None:
+        self.setStyleSheet(
+            f"QFrame#psColorPillRow {{ background: transparent; border: 1px solid {self.pal['border2']}; border-radius: 12px; }}"
+            f"QFrame#psColorPillRow:hover {{ background: {with_alpha(self.pal['fg'], 12).name(QColor.NameFormat.HexArgb)}; }}"
+        )
 
     def set_color(self, color: str) -> None:
         self._color = color
-        self.update()
+        qcolor = QColor(color)
+        if not qcolor.isValid():
+            qcolor = QColor(self.pal["accent"])
+        luminance = (0.299 * qcolor.red() + 0.587 * qcolor.green() + 0.114 * qcolor.blue()) / 255
+        text_color = "#000000" if luminance > 0.5 else "#FFFFFF"
+        self.badge.setText(qcolor.name().upper())
+        self.badge.setStyleSheet(
+            f"background-color: {qcolor.name()}; color: {text_color}; border: none; border-radius: 10px; "
+            f"font-family: monospace; font-weight: bold; font-size: 12px;"
+        )
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        rect = QRectF(1.5, 1.5, self.width() - 3, self.height() - 3)
-        painter.setPen(QPen(QColor(self.pal["border2"]), 1.5))
-        painter.setBrush(QBrush(QColor(self._color)))
-        painter.drawEllipse(rect)
 
 
 class _PlanBgPreview(QFrame):
@@ -1835,16 +2437,17 @@ class PlanBackgroundPicker(QWidget):
         self.addon_path = addon_path
         self.pal = pal
         plan = plan or {}
-        base_color = plan.get("color") or PLAN_COLORS[0]
+        # Legacy plans only had a single "color" field; treat it as the
+        # Light Color, since that's what's used when Dynamic Mode is off.
+        legacy_color = plan.get("color")
         self._state = {
             "thumbnail": plan.get("thumbnail", ""),
             "thumbnail_opacity": int(plan.get("thumbnail_opacity", 100)),
             "thumbnail_blur": int(plan.get("thumbnail_blur", 0)),
             "color_only": bool(plan.get("color_only", not plan.get("thumbnail"))),
             "color_dynamic": bool(plan.get("color_dynamic", False)),
-            "color": base_color,
-            "color_light": plan.get("color_light") or base_color,
-            "color_dark": plan.get("color_dark") or base_color,
+            "color_light": plan.get("color_light") or legacy_color or DEFAULT_PLAN_LIGHT_COLOR,
+            "color_dark": plan.get("color_dark") or DEFAULT_PLAN_DARK_COLOR,
         }
 
         outer = QVBoxLayout(self)
@@ -1910,17 +2513,17 @@ class PlanBackgroundPicker(QWidget):
         self.color_only_toggle.toggled.connect(self._on_color_only_toggled)
         layout.addWidget(self._toggle_row(tr("prep_color_only_label"), self.color_only_toggle))
 
-        self.color_row_single = self._build_color_row(tr("prep_color_row_label"), "color")
-        layout.addWidget(self.color_row_single)
-
-        self.dual_color_container = QWidget()
-        dual_row = QHBoxLayout(self.dual_color_container)
-        dual_row.setContentsMargins(0, 0, 0, 0)
-        dual_row.setSpacing(20)
-        dual_row.addWidget(self._build_color_row(tr("prep_light_color_label"), "color_light"))
-        dual_row.addWidget(self._build_color_row(tr("prep_dark_color_label"), "color_dark"))
-        dual_row.addStretch(1)
-        layout.addWidget(self.dual_color_container)
+        # Just two colors: Light Color (also the default, when Dynamic Mode
+        # is off) and Dark Color (only used once Dynamic Mode is on).
+        color_container = QWidget()
+        color_row = QHBoxLayout(color_container)
+        color_row.setContentsMargins(0, 0, 0, 0)
+        color_row.setSpacing(20)
+        self.light_color_row = self._build_color_row(tr("prep_color_row_label"), "color_light")
+        self.dark_color_row = self._build_color_row(tr("prep_dark_color_label"), "color_dark")
+        color_row.addWidget(self.light_color_row, 1)
+        color_row.addWidget(self.dark_color_row, 1)
+        layout.addWidget(color_container)
 
         self._sync_visibility()
         self._refresh_preview()
@@ -1959,18 +2562,10 @@ class PlanBackgroundPicker(QWidget):
         return wrap
 
     def _build_color_row(self, label_text: str, state_key: str) -> QWidget:
-        wrap = QWidget()
-        row = QHBoxLayout(wrap)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(10)
-        lbl = QLabel(label_text)
-        lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['fg2']}; background: transparent;")
-        swatch = _ColorPillButton(self.pal, self._state[state_key])
-        swatch.clicked.connect(lambda k=state_key, s=swatch: self._pick_color(k, s))
-        row.addWidget(lbl)
-        row.addWidget(swatch)
-        setattr(self, f"_swatch_{state_key}", swatch)
-        return wrap
+        pill_row = _ColorPillRow(self.pal, label_text, self._state[state_key])
+        pill_row.clicked.connect(lambda k=state_key, s=pill_row: self._pick_color(k, s))
+        setattr(self, f"_swatch_{state_key}", pill_row)
+        return pill_row
 
     # ── handlers ──────────────────────────────────────────────────────────
 
@@ -2042,7 +2637,7 @@ class PlanBackgroundPicker(QWidget):
         self._refresh_preview()
         self.changed.emit()
 
-    def _pick_color(self, state_key: str, swatch: "_ColorPillButton") -> None:
+    def _pick_color(self, state_key: str, swatch: "_ColorPillRow") -> None:
         chosen, ok = OnigiriColorDialog.getColor(self._state[state_key], self, anchor=swatch)
         if ok and chosen:
             self._state[state_key] = chosen
@@ -2050,18 +2645,30 @@ class PlanBackgroundPicker(QWidget):
             self._refresh_preview()
             self.changed.emit()
 
+    def _set_dimmed(self, widgets, dimmed: bool) -> None:
+        for widget in widgets:
+            widget.setEnabled(not dimmed)
+            effect = widget.graphicsEffect()
+            if dimmed:
+                if not isinstance(effect, QGraphicsOpacityEffect):
+                    effect = QGraphicsOpacityEffect(widget)
+                    widget.setGraphicsEffect(effect)
+                effect.setOpacity(0.4)
+            elif isinstance(effect, QGraphicsOpacityEffect):
+                widget.setGraphicsEffect(None)
+
     def _sync_visibility(self) -> None:
         has_photo = bool(self._state["thumbnail"])
         color_only = self._state["color_only"]
         # Choosing a photo is always available (and turns Color Only off);
-        # only the effect sliders depend on there being a *visible* photo.
-        self.remove_btn.setVisible(has_photo)
+        # controls that don't currently apply are dimmed rather than hidden,
+        # matching the Main Background designer in Settings.
+        self._set_dimmed([self.remove_btn], not has_photo)
         show_effects = has_photo and not color_only
-        self.opacity_row.setVisible(show_effects)
-        self.blur_row.setVisible(show_effects)
+        self._set_dimmed([self.opacity_row, self.blur_row], not show_effects)
         dynamic = self._state["color_dynamic"]
-        self.color_row_single.setVisible(not dynamic)
-        self.dual_color_container.setVisible(dynamic)
+        self.light_color_row.label.setText(tr("prep_light_color_label") if dynamic else tr("prep_color_row_label"))
+        self._set_dimmed([self.dark_color_row], not dynamic)
 
     def _refresh_preview(self) -> None:
         self.preview.set_plan(dict(self._state))
@@ -2101,7 +2708,6 @@ class _FloatingFooterHost(QWidget):
 
     SIDE_MARGIN = 22
     BOTTOM_MARGIN = 18
-    PILL_WIDTH_RATIO = 0.9  # pill is 10% narrower than the content, centered
 
     def __init__(self, scroll_area: QScrollArea, footer_pill: QWidget, parent=None):
         super().__init__(parent)
@@ -2117,7 +2723,9 @@ class _FloatingFooterHost(QWidget):
         self._scroll.setGeometry(0, 0, content_w, self.height())
         full_content_w = max(0, content_w - self.SIDE_MARGIN)
         footer_h = self._footer.sizeHint().height()
-        footer_w = int(full_content_w * self.PILL_WIDTH_RATIO)
+        # Pill hugs its buttons' natural width (equal margins both sides)
+        # instead of stretching to a fixed ratio, so there's no dead space.
+        footer_w = min(full_content_w, self._footer.sizeHint().width())
         footer_x = self.SIDE_MARGIN + (full_content_w - footer_w) // 2
         self._footer.setGeometry(
             footer_x, self.height() - footer_h - self.BOTTOM_MARGIN, footer_w, footer_h,
@@ -2191,11 +2799,6 @@ class PlanEditDialog(QDialog):
         self.deck_picker.set_selected((self.plan or {}).get("decks", []))
         form.addWidget(self.deck_picker)
 
-        form.addWidget(self._field_label(tr("prep_todo_items_label")))
-        self.todo_editor = TodoListEditor(self.pal, addon_path)
-        self.todo_editor.set_todos((self.plan or {}).get("todos", []))
-        form.addWidget(self.todo_editor)
-
         form.addWidget(self._field_label(tr("prep_notes_label")))
         self.notes_input = QTextEdit((self.plan or {}).get("notes", ""))
         self.notes_input.setPlaceholderText(tr("prep_notes_placeholder"))
@@ -2215,11 +2818,12 @@ class PlanEditDialog(QDialog):
         footer = QHBoxLayout(footer_pill)
         footer.setContentsMargins(10, 10, 10, 10)
         footer.setSpacing(8)
-        if self.plan:
-            del_btn = self._pill_button(tr("prep_delete"), "danger")
-            del_btn.clicked.connect(self._on_delete)
-            footer.addWidget(del_btn)
-        footer.addStretch(1)
+        del_btn = self._pill_button(tr("prep_delete"), "danger")
+        del_btn.clicked.connect(self._on_delete)
+        del_btn.setEnabled(bool(self.plan))
+        if not self.plan:
+            del_btn.setToolTip(tr("prep_delete_unavailable"))
+        footer.addWidget(del_btn)
         cancel_btn = self._pill_button(tr("cancel"), "ghost")
         cancel_btn.clicked.connect(self.reject)
         save_btn = self._pill_button(tr("prep_save_changes") if self.plan else tr("prep_create_plan"), "primary")
@@ -2249,18 +2853,21 @@ class PlanEditDialog(QDialog):
             hover = QColor(accent).lighter(112).name()
             btn.setStyleSheet(
                 f"QPushButton {{ background: {accent}; color: #ffffff; border: none; "
-                f"border-radius: 20px; padding: 0 20px; font-weight: 700; }}"
+                f"border-radius: 20px; padding: 0 14px 0 20px; font-weight: 700; }}"
                 f"QPushButton:hover {{ background: {hover}; }}"
             )
         elif kind == "danger":
             btn.setStyleSheet(
-                "QPushButton { background: transparent; color: #ef4444; border: none; "
+                "QPushButton { background: rgba(239,68,68,0.10); color: #ef4444; "
+                "border: 1px solid rgba(239,68,68,0.45); "
                 "border-radius: 20px; padding: 0 18px; font-weight: 600; }"
-                "QPushButton:hover { background: rgba(239,68,68,0.14); }"
+                "QPushButton:hover { background: rgba(239,68,68,0.18); }"
+                "QPushButton:disabled { background: rgba(239,68,68,0.05); color: rgba(239,68,68,0.35); "
+                "border: 1px solid rgba(239,68,68,0.18); }"
             )
         else:
             btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {pal['fg2']}; border: none; "
+                f"QPushButton {{ background: {pal['surface2']}; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
                 f"border-radius: 20px; padding: 0 18px; font-weight: 600; }}"
                 f"QPushButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
             )
@@ -2279,7 +2886,6 @@ class PlanEditDialog(QDialog):
             **self.bg_picker.result(),
             "exam_date": exam_date.isoformat(),
             "decks": self.deck_picker.get_selected(),
-            "todos": self.todo_editor.get_todos(),
             "notes": self.notes_input.toPlainText().strip(),
         }
         self.accept()

@@ -12,7 +12,7 @@ from aqt.qt import *
 from ..onigiri_notifications import notify_info as showInfo
 
 
-REWARD_API_URL = "https://script.google.com/macros/s/AKfycbxTGeWG088ZNkCYeyR2EnDiAKmlaInNbqCw0VAU2vlUmUAc8PW2JVMywGIyFS-bDb8C/exec"
+REWARD_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 BUY_CODES_URL = "https://buymeacoffee.com/peacemonk/extras"
 
 
@@ -243,7 +243,7 @@ class RewardCodeDialog(QDialog):
         coin = QLabel()
         coin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         coin.setFixedSize(40, 40)
-        coin_icon_path = os.path.join(_addon_path(), "system_files", "gamification_images", "Hexagon_world.png")
+        coin_icon_path = os.path.join(_addon_path(), "system_files", "gamification_images", "Hexagon_world.webp")
         if os.path.exists(coin_icon_path):
             dpr = _device_pixel_ratio(self)
             target = max(1, round(26 * dpr))
@@ -320,7 +320,7 @@ class RewardCodeDialog(QDialog):
         mart = QLabel()
         mart.setAlignment(Qt.AlignmentFlag.AlignCenter)
         mart.setFixedSize(40, 40)
-        mart_icon_path = os.path.join(_addon_path(), "system_files", "gamification_images", "Mart.png")
+        mart_icon_path = os.path.join(_addon_path(), "system_files", "gamification_images", "Mart.webp")
         if os.path.exists(mart_icon_path):
             dpr = _device_pixel_ratio(self)
             target = max(1, round(26 * dpr))

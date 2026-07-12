@@ -37,6 +37,7 @@ from aqt.qt import (
     QPainter,
     QPixmap,
     Qt,
+    QTimer,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -46,6 +47,7 @@ from PyQt6.QtCore import QRectF
 from PyQt6.QtSvg import QSvgRenderer
 
 from . import config
+from .translations import tr
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -420,29 +422,30 @@ def _profile_bar_context():
         conf = mw.col.conf if (mw and mw.col) else {}
         dark = _is_dark_mode()
         suffix = "dark" if dark else "light"
-        mode = conf.get("modern_menu_profile_bg_mode", "accent")
+        mode = conf.get("modern_menu_profile_bg_mode", "image")
         if mode == "accent":
             color = _accent_color()
         else:
             color = conf.get(f"modern_menu_profile_bg_color_{suffix}", "#555555" if dark else "#EEEEEE")
-        opacity = int(conf.get("modern_menu_profile_bg_opacity", 100) or 100)
+        opacity = int(conf.get("modern_menu_profile_bg_opacity", 50) or 50)
+        blur = int(conf.get("modern_menu_profile_bg_blur", 0) or 0)
         image = ""
         if mode == "image":
             filename = conf.get("modern_menu_profile_bg_image", "")
             path = os.path.join(_addon_root(), "user_files", "profile_bg", filename) if filename else ""
             image = _file_data_uri(path)
-        return {"color": color, "image": image, "opacity": opacity}
+        return {"color": color, "image": image, "opacity": opacity, "blur": blur}
     except Exception:
-        return {"color": _accent_color(), "image": "", "opacity": 100}
+        return {"color": _accent_color(), "image": "", "opacity": 100, "blur": 0}
 
 
 def _profile_name():
     try:
         conf = mw.col.conf if (mw and mw.col) else {}
         name = conf.get("modern_menu_profile_name", "") or config.get_config().get("userName", "")
-        return str(name or "").strip() or "You"
+        return str(name or "").strip() or tr("hashi_profile_you", "You")
     except Exception:
-        return "You"
+        return tr("hashi_profile_you", "You")
 
 
 # ─── Theme palette for the webviews ───────────────────────────────────────────
@@ -517,10 +520,37 @@ def _emoji_sprite_map():
         return {}
 
 
+# Every user-facing string the two webviews (hashi_notes.html / hashi_gallery.html)
+# render. Injected into the context JSON as ctx.strings so the HTML/JS can look
+# them up; English is kept inline in the templates as a fallback.
+_WEBVIEW_STRING_KEYS = (
+    "hashi_notes_title", "hashi_notes_short", "hashi_back_to_notes",
+    "hashi_note_colors", "hashi_set_note_icon", "hashi_untitled",
+    "hashi_bold", "hashi_italic", "hashi_heading1", "hashi_heading2",
+    "hashi_hl_yellow", "hashi_hl_green", "hashi_hl_blue", "hashi_hl_pink",
+    "hashi_hl_custom", "hashi_hl_remove", "hashi_insert_emoji",
+    "hashi_editor_placeholder", "hashi_keep", "hashi_priority",
+    "hashi_prio_low", "hashi_prio_med", "hashi_prio_high",
+    "hashi_tags_placeholder", "hashi_color_label", "hashi_custom_color",
+    "hashi_never", "hashi_days_suffix", "hashi_no_cards",
+    "hashi_view_trash", "hashi_sort_prefix", "hashi_sort_recent",
+    "hashi_sort_tags", "hashi_sort_priority", "hashi_sort_title",
+    "hashi_empty_note", "hashi_kept", "hashi_days_left_suffix",
+    "hashi_new_note", "hashi_trash_empty", "hashi_restore",
+    "hashi_delete_forever", "hashi_move_to_trash", "hashi_profile_you",
+    "hashi_months",
+)
+
+
+def _webview_strings():
+    return {key: tr(key) for key in _WEBVIEW_STRING_KEYS}
+
+
 def _build_context_json(dark):
     pal = _palette(dark)
     prefs = get_prefs()
     return {
+        "strings": _webview_strings(),
         "dark": bool(dark),
         "accent": _accent_color(),
         "palette": pal,
@@ -544,11 +574,11 @@ def _safe_json(value):
     return json.dumps(value).replace("</", "<\\/")
 
 
-def _render_html(template_name, note_data, dark):
+def _render_html(template_name, note_data, dark, ctx_override=None):
     template = _read_web_asset(template_name)
     if not template:
         return "<html><body>Hashi Notes assets missing.</body></html>"
-    ctx = _build_context_json(dark)
+    ctx = ctx_override or _build_context_json(dark)
     return (
         template
         .replace("/*__HASHI_CONTEXT__*/null", _safe_json(ctx))
@@ -596,6 +626,9 @@ class _HashiNoteEditorMixin:
         if cmd == "hashi:pick_color":
             self._pick_color()
             return True
+        if cmd == "hashi:pick_highlight":
+            self._pick_highlight()
+            return True
         return False
 
     def _pick_icon(self, mode="inline"):
@@ -612,43 +645,55 @@ class _HashiNoteEditorMixin:
         except Exception as e:
             print(f"Hashi Notes: icon picker error: {e}")
 
-    def _pick_color(self):
-        """Opens Onigiri's native color picker (same as Settings) for a custom
-        note colour; the chosen hex drives both marker and fill.
+    def _open_color_dialog(self, current):
+        """Runs Onigiri's native colour picker (same as Settings), floated in
+        its own always-on-top translucent top-level window. Returns (hex, ok).
 
         The picker is an in-window overlay, but our editor is an AnkiWebView,
         whose native surface paints over sibling widgets — so a picker parented
-        to this popup would hide *behind* the webview. We host it in a small
-        translucent, always-on-top top-level window (its own native surface)
-        laid over this popup, so it floats above the webview where clicked.
+        to this popup would hide *behind* the webview. Hosting it in a separate
+        top-level window (its own native surface) laid over this popup lets it
+        float above the webview where clicked.
         """
+        from .onigiri_color_picker import OnigiriColorDialog
+
+        host = QWidget(None)
+        host.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        host.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        host.setGeometry(self.frameGeometry())
+        host.show()
+        host.raise_()
+        host.activateWindow()
         try:
-            from .onigiri_color_picker import OnigiriColorDialog
-
-            current = self.note.get("color", "") or _accent_color()
-
-            host = QWidget(None)
-            host.setWindowFlags(
-                Qt.WindowType.Tool
-                | Qt.WindowType.FramelessWindowHint
-                | Qt.WindowType.WindowStaysOnTopHint
-            )
-            host.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            host.setGeometry(self.frameGeometry())
-            host.show()
-            host.raise_()
-            host.activateWindow()
-            try:
-                chosen, ok = OnigiriColorDialog.getColor(current, host)
-            finally:
-                host.close()
-                host.deleteLater()
+            return OnigiriColorDialog.getColor(current, host)
+        finally:
+            host.close()
+            host.deleteLater()
             self.raise_()
             self.activateWindow()
+
+    def _pick_color(self):
+        """Custom note colour; the chosen hex drives both marker and fill."""
+        try:
+            current = self.note.get("color", "") or _accent_color()
+            chosen, ok = self._open_color_dialog(current)
             if ok and chosen:
                 self.web.eval("window.hashiSetColor && window.hashiSetColor(%s);" % json.dumps(chosen))
         except Exception as e:
             print(f"Hashi Notes: color picker error: {e}")
+
+    def _pick_highlight(self):
+        """Custom text-highlight colour; applied to the editor's saved selection."""
+        try:
+            chosen, ok = self._open_color_dialog("#fff3b0")
+            if ok and chosen:
+                self.web.eval("window.hashiApplyHighlight && window.hashiApplyHighlight(%s);" % json.dumps(chosen))
+        except Exception as e:
+            print(f"Hashi Notes: highlight picker error: {e}")
 
     def _on_icon_selected(self, value, mode="inline"):
         if not value:
@@ -701,7 +746,7 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
         self.dark = _is_dark_mode()
         self.pal = pal = _palette(self.dark)
 
-        self.setWindowTitle("Hashi Notes")
+        self.setWindowTitle(tr("hashi_notes_title", "Hashi Notes"))
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -746,19 +791,19 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
         self.topbar.setCursor(Qt.CursorShape.SizeAllCursor)
         top = QHBoxLayout(self.topbar)
         top.setContentsMargins(10, 0, 6, 0)
-        title = QLabel("Hashi Notes")
+        title = QLabel(tr("hashi_notes_title", "Hashi Notes"))
         title.setObjectName("hashiTitle")
         browse_btn = QToolButton()
         browse_btn.setIcon(_tinted_icon(_system_icon_path("browse.svg"), pal["fg2"], 15))
         browse_btn.setFixedSize(26, 26)
         browse_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        browse_btn.setToolTip("Browse previous notes")
+        browse_btn.setToolTip(tr("hashi_browse_previous", "Browse previous notes"))
         browse_btn.clicked.connect(self._open_gallery)
         close_btn = QToolButton()
         close_btn.setText("✕")
         close_btn.setFixedSize(26, 26)
         close_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        close_btn.setToolTip("Close")
+        close_btn.setToolTip(tr("hashi_close", "Close"))
         close_btn.clicked.connect(self.close)
         top.addWidget(title)
         top.addStretch()
@@ -892,34 +937,14 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
         super().__init__(parent or mw)
         self.dark = _is_dark_mode()
         self.note = None
-        self.setWindowTitle("Hashi Notes")
+        self.current_view = "active"  # track Notes vs Trash view
+        self.setWindowTitle(tr("hashi_notes_title", "Hashi Notes"))
         self.setMinimumSize(720, 560)
         self.resize(880, 640)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-
-        pal = _palette(self.dark)
-        self.editor_bar = QFrame()
-        self.editor_bar.setObjectName("hashiEditorBar")
-        self.editor_bar.setFixedHeight(36)
-        self.editor_bar.setVisible(False)
-        self.editor_bar.setStyleSheet(f"""
-            QFrame#hashiEditorBar {{ background: {pal['shell']}; border-bottom: 1px solid {pal['border']}; }}
-            QToolButton {{ background: transparent; border: none; color: {pal['fg2']};
-                font-size: 13px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }}
-            QToolButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}
-        """)
-        bar_layout = QHBoxLayout(self.editor_bar)
-        bar_layout.setContentsMargins(10, 0, 10, 0)
-        back_btn = QToolButton()
-        back_btn.setText("‹ Notes")
-        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        back_btn.clicked.connect(self._show_grid)
-        bar_layout.addWidget(back_btn)
-        bar_layout.addStretch()
-        layout.addWidget(self.editor_bar)
 
         self.web = AnkiWebView(self)
         layout.addWidget(self.web, 1)
@@ -930,32 +955,37 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
     def _reload(self):
         purge_expired()
         self.note = None
-        self.editor_bar.setVisible(False)
         data = {
             "notes": load_notes(),
             "trashed": load_notes(include_trashed=True),
         }
-        self.web.stdHtml(_render_html("hashi_gallery.html", data, self.dark))
+        ctx = _build_context_json(self.dark)
+        ctx["initialView"] = self.current_view  # restore the Notes/Trash view
+        self.web.stdHtml(_render_html("hashi_gallery.html", data, self.dark, ctx))
 
     def _show_editor(self, note):
         """Opens a note (new or existing) inside this dialog's own webview, in
         place of the grid. The Reviewer's button is the only entry point that
         still spawns the separate floating HashiNotePopup."""
         self.note = note
-        self.editor_bar.setVisible(True)
         self.web.stdHtml(_render_html("hashi_notes.html", note, self.dark))
 
     def _show_grid(self):
-        if self.note is not None:
-            try:
-                self.web.eval("window.hashiFlush && window.hashiFlush();")
-            except Exception:
-                pass
-        self._reload()
+        if self.note is None:
+            self._reload()
+            return
+        try:
+            self.web.eval("window.hashiFlush && window.hashiFlush(); window.hashiFadeOut && window.hashiFadeOut();")
+        except Exception:
+            pass
+        QTimer.singleShot(140, self._reload)
 
     def _on_bridge(self, cmd):
         try:
             if self.note is not None and self._handle_note_bridge(cmd):
+                return
+            if cmd == "hashi:back":
+                self._show_grid()
                 return
             if cmd == "hashi:new":
                 note = save_note(_new_note())
@@ -978,6 +1008,9 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
                 return
             if cmd.startswith("hashi:set_sort:"):
                 self._save_sort(cmd.split(":", 2)[2])
+                return
+            if cmd.startswith("hashi:set_view:"):
+                self.current_view = cmd.split(":", 2)[2]
                 return
         except Exception as e:
             print(f"Hashi Notes: gallery bridge error ({cmd[:40]}): {e}")

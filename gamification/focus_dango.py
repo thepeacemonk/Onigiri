@@ -13,7 +13,7 @@ _event_filter = None
 _navigation_is_suspended = False
 _exit_attempt_count = 0
 _LIGHT_MODE_ATTEMPTS_TO_UNLOCK = 3
-_DEFAULT_UNLOCK_PIN = "000000"
+
 
 
 class PinDigitBoxes(QWidget):
@@ -132,14 +132,6 @@ def is_self_sabotage_enabled():
     """Return whether Focus Dango should use the stricter lock-down mode."""
     focus_dango_conf = _focus_dango_config()
     return bool(focus_dango_conf.get("self_sabotage", False))
-
-def unlock_pin():
-    """Return the configured six-digit Focus Dango unlock PIN."""
-    focus_dango_conf = _focus_dango_config()
-    pin = "".join(ch for ch in str(focus_dango_conf.get("unlock_pin", "") or "") if ch.isdigit())
-    if len(pin) != 6:
-        pin = _DEFAULT_UNLOCK_PIN
-    return pin
 
 def set_focus_dango_enabled(enabled):
     """Update the Focus Dango enabled state."""
@@ -424,7 +416,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     layout.setSpacing(16)
     layout.setContentsMargins(30, 30, 30, 30)
     
-    dango_path = os.path.join(addon_path, "system_files", "gamification_images", "dango.png")
+    dango_path = os.path.join(addon_path, "system_files", "gamification_images", "dango.webp")
     
     if os.path.exists(dango_path):
         image_label = QLabel()
@@ -444,7 +436,7 @@ def show_dango_dialog(command=None, on_confirm=None):
 
     attempts_left = max(0, _LIGHT_MODE_ATTEMPTS_TO_UNLOCK - _exit_attempt_count)
     hint = (
-        "Enter your six-digit PIN to leave Focus Dango."
+        "Self-Sabotage mode is active. You cannot leave Focus Dango."
         if strict_mode
         else f"Focus Dango will let you leave after {_LIGHT_MODE_ATTEMPTS_TO_UNLOCK} attempts. Attempts left: {attempts_left}."
     )
@@ -454,29 +446,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     hint_label.setStyleSheet(f"background-color: transparent; font-size: 12px; color: {hint_color};")
     layout.addWidget(hint_label)
 
-    pin_input = None
-    pin_error_label = None
-    if strict_mode:
-        pin_input = PinDigitBoxes(object_name="FocusDangoPinInput")
-        pin_input.setStyleSheet(f"""
-            QLineEdit#FocusDangoPinInput {{
-                background-color: {"#4a2232" if dark_mode else "#ffffff"};
-                color: {message_color};
-                border: 1px solid {"#9c5870" if dark_mode else "#e4a9bd"};
-                border-radius: 10px;
-                padding: 0px;
-                font-size: 20px;
-                font-weight: 700;
-            }}
-            QLineEdit#FocusDangoPinInput:focus {{
-                border-color: {"#f0a9c4" if dark_mode else "#9D3D64"};
-            }}
-        """)
-        pin_error_label = QLabel("")
-        pin_error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pin_error_label.setStyleSheet(f"background-color: transparent; font-size: 12px; color: {error_color};")
-        layout.addWidget(pin_input, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(pin_error_label)
+
     
     button_row = QHBoxLayout()
     button_row.setSpacing(10)
@@ -498,27 +468,11 @@ def show_dango_dialog(command=None, on_confirm=None):
         dialog.close()
         QtCore.QTimer.singleShot(0, lambda: _run_exit_command(command))
 
-    def on_pin_unlock():
-        if pin_input is None:
-            return
-        typed_pin = pin_input.pin()
-        if typed_pin == unlock_pin():
-            on_exit_click()
-            return
-        if pin_error_label is not None:
-            pin_error_label.setText("Incorrect PIN.")
-        pin_input.clear()
-    
     close_button.clicked.connect(on_button_click)
     close_button.setFocus()
-    if pin_input is not None:
-        pin_input.focus_first_empty()
 
     exit_button = None
-    if command and strict_mode:
-        if pin_input is not None:
-            pin_input.unlockRequested.connect(on_pin_unlock)
-    elif command and not strict_mode and _exit_attempt_count >= _LIGHT_MODE_ATTEMPTS_TO_UNLOCK:
+    if command and not strict_mode and _exit_attempt_count >= _LIGHT_MODE_ATTEMPTS_TO_UNLOCK:
         exit_button = QPushButton(_exit_button_label(command))
         exit_button.clicked.connect(on_exit_click)
 

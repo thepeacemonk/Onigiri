@@ -26,6 +26,7 @@ class DialogCoreMixin:
         self._pending_theme_data = None
         self._theme_prepare_save_in_progress = False
         self._theme_preparing_overlay = None
+        self._theme_selected_toast = None
         self.setWindowTitle("Onigiri Settings")
         
         # --- Screen Proportional Sizing ---
@@ -362,6 +363,7 @@ class DialogCoreMixin:
             "Reviewer": self.create_reviewer_tab,
             "Prep Station": self.create_prep_station_page,
             "Hashi Notes": self.create_hashi_notes_page,
+            "Pomodoro": self.create_pomodoro_page,
             "Gallery": self.create_gallery_page,
             "Sync": self.create_sync_page,
         }
@@ -378,7 +380,7 @@ class DialogCoreMixin:
             if pic_dynamic else ""
         ) or mw.col.conf.get("modern_menu_profile_picture", "")
         pic_path = os.path.join(self.addon_path, "user_files", "profile", pic_filename) if pic_filename else ""
-        bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
+        bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
         bg_color = mw.col.conf.get(f"modern_menu_profile_bg_color_{'dark' if is_dark else 'light'}", "#555" if is_dark else "#EEE")
         bg_image_filename = mw.col.conf.get("modern_menu_profile_bg_image", "")
         bg_image_path = os.path.join(self.addon_path, "user_files", "profile_bg", bg_image_filename) if bg_image_filename else ""
@@ -386,7 +388,7 @@ class DialogCoreMixin:
             'color': bg_color,
             'image': bg_image_path,
             'blur': mw.col.conf.get("modern_menu_profile_bg_blur", 0),
-            'opacity': mw.col.conf.get("modern_menu_profile_bg_opacity", 100),
+            'opacity': mw.col.conf.get("modern_menu_profile_bg_opacity", 50),
         }
         pic_config = {
             'mode': mw.col.conf.get("modern_menu_profile_picture_mode", "image"),
@@ -458,6 +460,7 @@ class DialogCoreMixin:
         self._add_sidebar_nav_section(sidebar_layout, "Study Tools", [
             ("Prep Station", "Prep Station", "stats.svg"),
             ("Hashi Notes", "Hashi Notes", "hashi_notes.svg"),
+            ("Pomodoro", "Pomodoro", "pomodoro.svg"),
         ])
 
         sidebar_layout.addStretch()
@@ -631,6 +634,7 @@ class DialogCoreMixin:
                     "Reviewer": tr("reviewer"),
                     "Prep Station": "Prep Station",
                     "Hashi Notes": tr("hashi_notes_title", "Hashi Notes"),
+                    "Pomodoro": tr("pomodoro_title", "Pomodoro"),
                     "Gallery": tr("gallery"),
                     "Sync": tr("sync_button"),
                 }
@@ -2236,6 +2240,8 @@ class DialogCoreMixin2:
                 _safe("prep_station", self._save_prep_station_settings)
             if self.tabs_loaded.get(page_indices.get("Hashi Notes")):
                 _safe("hashi_notes", self._save_hashi_notes_settings)
+            if self.tabs_loaded.get(page_indices.get("Pomodoro")):
+                _safe("pomodoro", self._save_pomodoro_settings)
 
             # Sync toggle is always present in memory; save unconditionally
             try:

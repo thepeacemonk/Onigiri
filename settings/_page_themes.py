@@ -6,6 +6,139 @@ from ._layout_main import *
 from ._layout_sidebar import *
 
 
+class HoldToResetButton(QPushButton):
+    """A pill button that must be pressed and held to fire.
+
+    A fill sweeps across the button while held; releasing early cancels it.
+    Releasing after the fill completes emits `hold_completed`.
+    """
+
+    hold_completed = pyqtSignal()
+
+    def __init__(self, text, hold_duration_ms=800, parent=None):
+        super().__init__(text, parent)
+        self._hold_duration_ms = hold_duration_ms
+        self._tick_ms = 16
+        self._progress = 0.0
+        self._pressed = False
+        self._base_color = QColor(Qt.GlobalColor.transparent)
+        self._fill_color = QColor("#00A982")
+        self._border_color = QColor("#dcdde1")
+        self._hover_color = QColor("#dcdde1")
+        self._text_color = QColor("#202124")
+        self._hover_text_color = QColor("#202124")
+        self._hovered = False
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._tick_ms)
+        self._timer.timeout.connect(self._on_tick)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAutoDefault(False)
+        self.setDefault(False)
+        self.setFlat(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        # Fully custom-painted (see paintEvent) so no native button chrome
+        # (focus ring, pressed flash) can appear as a square over the pill.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+
+    def set_fill_color(self, color):
+        qcolor = QColor(color)
+        if qcolor.isValid():
+            self._fill_color = qcolor
+            self.update()
+
+    def set_base_color(self, color):
+        qcolor = QColor(color)
+        if qcolor.isValid():
+            self._base_color = qcolor
+            self.update()
+
+    def set_border_color(self, color, hover_color=None):
+        qcolor = QColor(color)
+        if qcolor.isValid():
+            self._border_color = qcolor
+            self._hover_color = QColor(hover_color) if hover_color and QColor(hover_color).isValid() else qcolor
+            self.update()
+
+    def set_text_color(self, color, hover_color=None):
+        qcolor = QColor(color)
+        if qcolor.isValid():
+            self._text_color = qcolor
+            self._hover_text_color = QColor(hover_color) if hover_color and QColor(hover_color).isValid() else qcolor
+            self.update()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def _on_tick(self):
+        self._progress = min(1.0, self._progress + self._tick_ms / self._hold_duration_ms)
+        self.update()
+        if self._progress >= 1.0:
+            self._timer.stop()
+
+    def _cancel_hold(self):
+        self._pressed = False
+        self._timer.stop()
+        self._progress = 0.0
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.isEnabled():
+            self._pressed = True
+            self._progress = 0.0
+            self._timer.start()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._pressed:
+            completed = self._progress >= 1.0
+            self._cancel_hold()
+            if completed:
+                self.hold_completed.emit()
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        if self._pressed:
+            self._cancel_hold()
+        else:
+            self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        # Entirely self-painted (background, border, and text) so no native
+        # button chrome (focus ring, "pressed" flash) can appear as a square
+        # over the rounded pill in any state.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        border_width = 1.0
+        rect = QRectF(self.rect()).adjusted(border_width / 2, border_width / 2, -border_width / 2, -border_width / 2)
+        radius = rect.height() / 2
+        path = QPainterPath()
+        path.addRoundedRect(rect, radius, radius)
+
+        painter.save()
+        painter.setClipPath(path)
+        painter.fillRect(self.rect(), self._base_color)
+        if self._progress > 0:
+            fill_rect = QRectF(rect.x(), rect.y(), rect.width() * self._progress, rect.height())
+            painter.fillRect(fill_rect, self._fill_color)
+        painter.restore()
+
+        pen = painter.pen()
+        pen.setWidthF(border_width)
+        pen.setColor(self._hover_color if self._hovered else self._border_color)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+
+        painter.setPen(self._hover_text_color if self._hovered else self._text_color)
+        painter.setFont(self.font())
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+        painter.end()
+
 
 class PageThemesMixin:
     def _theme_action_button_stylesheet(self, height=36):
@@ -330,6 +463,52 @@ class PageThemesMixin:
         self.theme_preview_mode_toggle = toggle
         return widget
 
+    def _theme_reset_hold_button_font_stylesheet(self, height=32):
+        # Font/sizing only: HoldToResetButton paints its own background, border,
+        # and text (see its paintEvent), so background/border/color must NOT be
+        # set here or they'd reintroduce native button chrome on top of it.
+        return f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                min-height: {height}px;
+                max-height: {height}px;
+                padding: 0px 16px;
+                font-size: 12px;
+                font-weight: 700;
+            }}
+        """
+
+    def _create_theme_header_actions_widget(self):
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        layout.addWidget(self._create_theme_preview_mode_widget())
+
+        palette = self._settings_palette()
+        reset_bg = palette.get("--canvas-inset", "#242424" if theme_manager.night_mode else "#ffffff")
+        border = palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+        fg = palette.get("--fg-subtle", "#b7bcc5" if theme_manager.night_mode else "#6f7177")
+        active_fg = palette.get("--fg", "#f4f4f5" if theme_manager.night_mode else "#202124")
+        accent = palette.get("--accent-color", DEFAULTS["colors"]["dark" if theme_manager.night_mode else "light"]["--accent-color"])
+
+        reset_button = HoldToResetButton(tr("reset_theme_to_default"), hold_duration_ms=800)
+        reset_button.setToolTip(tr("reset_theme_tooltip"))
+        reset_button.setFixedHeight(32)
+        reset_button.setStyleSheet(self._theme_reset_hold_button_font_stylesheet())
+        reset_button.set_base_color(reset_bg)
+        reset_button.set_fill_color(accent)
+        reset_button.set_border_color(border, accent)
+        reset_button.set_text_color(fg, active_fg)
+        reset_button.hold_completed.connect(self._reset_theme_to_default_with_toast)
+        self.theme_reset_button = reset_button
+        layout.addWidget(reset_button)
+
+        return widget
+
     def create_themes_page(self):
         page, layout = self._create_scrollable_page()
 
@@ -337,7 +516,7 @@ class PageThemesMixin:
         official_themes, user_themes = self._load_themes()
         self.theme_preview_mode = "dark" if theme_manager.night_mode else "light"
         self.theme_preview_cards = []
-        self.theme_preview_mode_widget = self._create_theme_preview_mode_widget()
+        self.theme_preview_mode_widget = self._create_theme_header_actions_widget()
 
         # --- Section 1: Your Themes ---
         user_section = SectionGroup(
@@ -369,7 +548,7 @@ class PageThemesMixin:
         theme_actions_layout.addWidget(export_button)
         user_section.add_header_widget(theme_actions)
 
-        self.user_themes_grid_layout = FlowLayout(spacing=15)
+        self.user_themes_grid_layout = FlowLayout(spacing=15, stretch_rows=True)
         user_section.add_layout(self.user_themes_grid_layout)
         self._populate_grid_with_themes(self.user_themes_grid_layout, user_themes, deletable=True)
         layout.addWidget(user_section)
@@ -381,32 +560,11 @@ class PageThemesMixin:
             border=True,
             description=tr("official_themes_desc")
         )
-        self.official_themes_grid_layout = FlowLayout(spacing=15)
+        self.official_themes_grid_layout = FlowLayout(spacing=15, stretch_rows=True)
         official_section.add_layout(self.official_themes_grid_layout)
         self._populate_grid_with_themes(self.official_themes_grid_layout, official_themes, deletable=False)
         layout.addWidget(official_section)
 
-        # Add navigation buttons
-        sections = {
-            tr("your_themes"): user_section,
-            tr("official_themes"): official_section
-        }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections)
-
-        # --- Reset Button ---
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 8, 0, 22)
-        button_layout.setSpacing(12)
-
-        reset_button = QPushButton(tr("reset_theme_to_default"))
-        reset_button.setStyleSheet(self._reset_button_stylesheet())
-        reset_button.setToolTip(tr("reset_theme_tooltip"))
-        reset_button.clicked.connect(self.reset_theme_to_default)
-
-        button_layout.addStretch()
-        button_layout.addWidget(reset_button)
-
-        layout.addLayout(button_layout)
         return page
 
     def _on_theme_preview_mode_toggled(self, mode):
@@ -510,6 +668,25 @@ class PageThemesMixin:
         if "modern_menu_bg_color_dark" not in customization_collection and dark_palette.get("--bg"):
             mw.col.conf["modern_menu_bg_color_dark"] = dark_palette["--bg"]
 
+        # Keep the Sidebar and Box Color and Effect backgrounds tied to the
+        # applied theme's --bg, so both update on every theme switch and stay
+        # equal to each other, unless the theme file customizes them itself.
+        customization_addon = (
+            customization.get("addon_config", {}) if isinstance(customization, dict) else {}
+        )
+        if not isinstance(customization_addon, dict):
+            customization_addon = {}
+        overview_colors = self.current_config.setdefault("overview_style", {}).setdefault("colors", {})
+        for mode, palette in (("light", light_palette), ("dark", dark_palette)):
+            theme_bg = palette.get("--bg")
+            if not theme_bg:
+                continue
+            if "overview_style" not in customization_addon:
+                overview_colors.setdefault(mode, {})["box_bg"] = theme_bg
+            sidebar_key = f"modern_menu_sidebar_bg_color_{mode}"
+            if sidebar_key not in customization_collection:
+                mw.col.conf[sidebar_key] = theme_bg
+
         self._apply_theme_customization(customization)
 
         if mark_pending:
@@ -544,7 +721,26 @@ class PageThemesMixin:
             self.main_bg_light_color_input.setText(light_palette["--bg"])
         if hasattr(self, "main_bg_dark_color_input") and "--bg" in dark_palette:
             self.main_bg_dark_color_input.setText(dark_palette["--bg"])
-        
+
+        # Update Sidebar Settings page inputs so a later Save doesn't overwrite
+        # the synced color with stale widget text.
+        if hasattr(self, "sidebar_bg_light_color_input") and "--bg" in light_palette:
+            self.sidebar_bg_light_color_input.setText(light_palette["--bg"])
+        if hasattr(self, "sidebar_bg_dark_color_input") and "--bg" in dark_palette:
+            self.sidebar_bg_dark_color_input.setText(dark_palette["--bg"])
+
+        # Update Box Color and Effect inputs (Overview page) likewise.
+        if hasattr(self, "overview_style_color_inputs"):
+            for mode, palette in (("light", light_palette), ("dark", dark_palette)):
+                theme_bg = palette.get("--bg")
+                if not theme_bg:
+                    continue
+                box_widget = self.overview_style_color_inputs.get(("box_bg", mode))
+                if box_widget is not None:
+                    box_widget.setText(theme_bg)
+            if hasattr(self, "_update_overview_style_controls"):
+                self._update_overview_style_controls()
+
         # Update Icon previews after applying icons
         if "icons" in assets and hasattr(self, "icon_widgets"):
             for icon_key in assets["icons"].keys():
@@ -564,9 +760,17 @@ class PageThemesMixin:
                                     scaled = pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                                     preview_label.setPixmap(scaled)
 
-    def _apply_theme(self, theme_data: dict):
+    def _apply_theme(self, theme_data: dict, theme_name: str = None):
         """Applies the selected theme's colors and assets to the config and live UI."""
         self._apply_theme_payload(theme_data, mark_pending=True, refresh_widgets=True)
+        self._show_theme_selected_toast(theme_name)
+
+    def _show_theme_selected_toast(self, theme_name):
+        if theme_name:
+            text = f"{tr('theme_applied_toast', 'Theme selected:')} {theme_name}"
+        else:
+            text = tr("theme_applied_toast_generic", "Theme selected")
+        show_settings_toast(self, text)
 
     def _theme_customization_key_groups(self):
         explicit_addon_keys = [
@@ -814,13 +1018,7 @@ class PageThemesMixin:
 
     def _load_themes(self):
         """Loads built-in and custom themes, returning them as separate dictionaries."""
-        default_theme = copy.deepcopy(DEFAULTS["colors"])
-        default_theme["light"]["--canvas-inset"] = "#e8e8e8"
-        default_theme["light"]["--highlight-bg"] = "#e8e8e8"
-        default_theme["dark"]["--canvas-inset"] = "#1f1f1f"
-        default_theme["dark"]["--highlight-bg"] = "#3c3c3c"
-        official_themes = {"Default theme": default_theme}
-        official_themes.update(THEMES.copy())
+        official_themes = dict(THEMES)
         user_themes = {}
 
         # Load user themes from JSON files
@@ -842,6 +1040,78 @@ class PageThemesMixin:
 
         return official_themes, user_themes
 
+    def _create_themes_empty_state(self):
+        palette = self._settings_palette()
+        border = palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+        fg = palette.get("--fg", "#f4f4f5" if theme_manager.night_mode else "#202124")
+        subtle = palette.get("--fg-subtle", "#c4c4c4" if theme_manager.night_mode else "#6f7177")
+        panel_bg = palette.get("--canvas-inset", "#1f1f1f" if theme_manager.night_mode else "#fafafa")
+        accent = palette.get("--accent-color", DEFAULTS["colors"]["dark" if theme_manager.night_mode else "light"]["--accent-color"])
+
+        accent_qcolor = QColor(accent if QColor(accent).isValid() else "#00A982")
+        badge_bg = QColor(accent_qcolor)
+        badge_bg.setAlpha(30 if theme_manager.night_mode else 20)
+
+        panel = QFrame()
+        panel.setObjectName("themesEmptyState")
+        panel.setMinimumWidth(0)
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        panel.setStyleSheet(f"""
+            QFrame#themesEmptyState {{
+                background-color: {panel_bg};
+                border: 1.5px dashed {border};
+                border-radius: 20px;
+            }}
+            QLabel {{
+                background: transparent;
+            }}
+        """)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(28, 34, 28, 34)
+        layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        badge = QLabel()
+        badge.setFixedSize(56, 56)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(f"background-color: {badge_bg.name(QColor.NameFormat.HexArgb)}; border-radius: 28px;")
+        try:
+            with open(system_icon_path("import_file.svg"), "r", encoding="utf-8") as icon_file:
+                svg_data = icon_file.read().replace("currentColor", accent)
+            renderer = QSvgRenderer(QByteArray(svg_data.encode("utf-8")))
+            icon_pixmap = QPixmap(26, 26)
+            icon_pixmap.fill(Qt.GlobalColor.transparent)
+            icon_painter = QPainter(icon_pixmap)
+            icon_painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            renderer.render(icon_painter)
+            icon_painter.end()
+            badge.setPixmap(icon_pixmap)
+        except Exception:
+            badge.setText("+")
+
+        title = QLabel(tr("no_custom_themes"))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(f"color: {fg}; font-size: 14px; font-weight: 700;")
+
+        subtitle = QLabel(tr("no_custom_themes_hint", "Import a .onigiri theme file to see it here."))
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(f"color: {subtle}; font-size: 12px; font-weight: 500;")
+
+        import_button = QPushButton(tr("import_theme"))
+        import_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        import_button.setStyleSheet(self._theme_action_button_stylesheet(34))
+        import_button.setFixedHeight(34)
+        import_button.clicked.connect(self._import_theme)
+
+        layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addWidget(import_button, 0, Qt.AlignmentFlag.AlignCenter)
+
+        return panel
+
     def _populate_grid_with_themes(self, grid_layout, themes_dict, deletable=False):
         """Helper function to populate a given layout with theme cards."""
         existing_cards = getattr(self, "theme_preview_cards", [])
@@ -855,10 +1125,11 @@ class PageThemesMixin:
 
         if not themes_dict:
             if deletable:
+                empty_state = self._create_themes_empty_state()
                 if isinstance(grid_layout, FlowLayout):
-                    grid_layout.addWidget(QLabel(tr("no_custom_themes")))
+                    grid_layout.addWidget(empty_state)
                 else:
-                    grid_layout.addWidget(QLabel(tr("no_custom_themes")), 0, 0)
+                    grid_layout.addWidget(empty_state, 0, 0)
             return
 
         # Create the icon once, before the loop
@@ -867,16 +1138,7 @@ class PageThemesMixin:
         row, col = 0, 0
         num_cols = 2
 
-        theme_items = list(themes_dict.items())
-        if not deletable:
-            default_items = [(name, data) for name, data in theme_items if name == "Default theme"]
-            other_items = sorted(
-                [(name, data) for name, data in theme_items if name != "Default theme"],
-                key=lambda item: item[0].lower()
-            )
-            theme_items = default_items + other_items
-        else:
-            theme_items = sorted(theme_items, key=lambda item: item[0].lower())
+        theme_items = sorted(themes_dict.items(), key=lambda item: item[0].lower())
 
         for name, data in theme_items:
             card = ThemeCardWidget(
@@ -887,7 +1149,7 @@ class PageThemesMixin:
                 preview_mode=getattr(self, "theme_preview_mode", "light"),
                 full_preview=deletable,
             )
-            card.theme_selected.connect(self._apply_theme)
+            card.theme_selected.connect(lambda data, c=card: self._apply_theme(data, c.display_name))
             if deletable:
                 card.delete_requested.connect(self._delete_user_theme) # Connect the new signal
             self.theme_preview_cards.append(card)
@@ -902,149 +1164,138 @@ class PageThemesMixin:
                 col = 0; row += 1
 
     def _import_theme(self):
-        """Opens a file dialog to import a theme from a JSON or .onigiri file."""
+        """Opens a file dialog to import a theme from a .onigiri file."""
         filepath, _ = QFileDialog.getOpenFileName(
-            self, 
-            tr("import_theme_title"), 
-            "", 
-            f"{tr('onigiri_theme_files', 'Onigiri Theme Files')} (*.json *.onigiri);;JSON Files (*.json);;Onigiri Files (*.onigiri)"
+            self,
+            tr("import_theme_title"),
+            "",
+            f"{tr('onigiri_theme_files', 'Onigiri Theme Files')} (*.onigiri)"
         )
         if not filepath:
             return
 
         try:
             filename = os.path.basename(filepath)
-            
-            # Handle .json files (legacy)
-            if filename.lower().endswith(".json"):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    theme_data = json.load(f)
-                
-                # Validate
-                if not isinstance(theme_data, dict) or "light" not in theme_data or "dark" not in theme_data:
-                    QMessageBox.warning(self, tr("import_error_title"), tr("invalid_theme_file"))
-                    return
 
-                # Copy
-                dest_path = os.path.join(self.user_themes_path, filename)
-                shutil.copy(filepath, dest_path)
-            
+            if not filename.lower().endswith(".onigiri"):
+                QMessageBox.warning(self, tr("import_error_title"), tr("invalid_theme_file"))
+                return
+
             # Handle .onigiri files (zip)
-            elif filename.lower().endswith(".onigiri"):
-                import zipfile
-                if not zipfile.is_zipfile(filepath):
-                    QMessageBox.warning(self, "Import Error", "The selected file is not a valid zip archive.")
+            import zipfile
+            if not zipfile.is_zipfile(filepath):
+                QMessageBox.warning(self, "Import Error", "The selected file is not a valid zip archive.")
+                return
+
+            with zipfile.ZipFile(filepath, 'r') as zf:
+                # 1. Read theme.json
+                try:
+                    with zf.open('theme.json') as f:
+                        theme_data = json.load(f)
+                except KeyError:
+                    QMessageBox.warning(self, "Import Error", "The .onigiri file is missing 'theme.json'.")
                     return
 
-                with zipfile.ZipFile(filepath, 'r') as zf:
-                    # 1. Read theme.json
-                    try:
-                        with zf.open('theme.json') as f:
-                            theme_data = json.load(f)
-                    except KeyError:
-                        QMessageBox.warning(self, "Import Error", "The .onigiri file is missing 'theme.json'.")
-                        return
+                # 2. Extract Assets
+                # We will modify theme_data to point to the new extracted locations
+                assets = theme_data.get("assets", {})
+                theme_name = os.path.splitext(filename)[0] # e.g. "My_Theme"
+                
+                # Prepare directories
+                images_dest_dir = os.path.join(self.addon_path, "user_files", "images", theme_name)
+                fonts_dest_dir = os.path.join(self.addon_path, "user_files", "fonts")
+                icons_dest_dir = os.path.join(self.addon_path, "user_files", "icons")
+                
+                os.makedirs(images_dest_dir, exist_ok=True)
+                os.makedirs(fonts_dest_dir, exist_ok=True)
+                os.makedirs(icons_dest_dir, exist_ok=True)
 
-                    # 2. Extract Assets
-                    # We will modify theme_data to point to the new extracted locations
-                    assets = theme_data.get("assets", {})
-                    theme_name = os.path.splitext(filename)[0] # e.g. "My_Theme"
-                    
-                    # Prepare directories
-                    images_dest_dir = os.path.join(self.addon_path, "user_files", "images", theme_name)
-                    fonts_dest_dir = os.path.join(self.addon_path, "user_files", "fonts")
-                    icons_dest_dir = os.path.join(self.addon_path, "user_files", "icons")
-                    
-                    os.makedirs(images_dest_dir, exist_ok=True)
-                    os.makedirs(fonts_dest_dir, exist_ok=True)
-                    os.makedirs(icons_dest_dir, exist_ok=True)
+                # Extract Images
+                if "images" in assets:
+                    def extract_image_asset(archive_path):
+                        # archive_path is like "images/main_bg/bg.png" or "images/filename.png"
+                        parts = archive_path.split("/")
+                        if len(parts) >= 3 and parts[0] == "images":
+                            subfolder = parts[1]
+                            filename = parts[-1]
+                            dest_dir = os.path.join(self.addon_path, "user_files", subfolder)
+                        else:
+                            dest_dir = images_dest_dir
+                            filename = os.path.basename(archive_path)
 
-                    # Extract Images
-                    if "images" in assets:
-                        def extract_image_asset(archive_path):
-                            # archive_path is like "images/main_bg/bg.png" or "images/filename.png"
-                            parts = archive_path.split("/")
-                            if len(parts) >= 3 and parts[0] == "images":
-                                subfolder = parts[1]
-                                filename = parts[-1]
-                                dest_dir = os.path.join(self.addon_path, "user_files", subfolder)
-                            else:
-                                dest_dir = images_dest_dir
-                                filename = os.path.basename(archive_path)
+                        os.makedirs(dest_dir, exist_ok=True)
+                        target_path = os.path.join(dest_dir, filename)
+                        with zf.open(archive_path) as source, open(target_path, "wb") as target:
+                            shutil.copyfileobj(source, target)
+                        return target_path
 
-                            os.makedirs(dest_dir, exist_ok=True)
-                            target_path = os.path.join(dest_dir, filename)
+                    for config_key, archive_value in assets["images"].items():
+                        archive_paths = archive_value if isinstance(archive_value, list) else [archive_value]
+                        extracted_paths = []
+                        for archive_path in archive_paths:
+                            if not isinstance(archive_path, str):
+                                continue
+                            try:
+                                extracted_paths.append(extract_image_asset(archive_path))
+                            except KeyError:
+                                print(f"Asset {archive_path} not found in zip.")
+                        if extracted_paths:
+                            theme_data["assets"]["images"][config_key] = (
+                                extracted_paths if isinstance(archive_value, list) else extracted_paths[0]
+                            )
+
+                # Extract Fonts
+                if "fonts" in assets:
+                     for font_key, archive_path in assets["fonts"].items():
+                        try:
+                            asset_filename = os.path.basename(archive_path)
+                            target_path = os.path.join(fonts_dest_dir, asset_filename)
                             with zf.open(archive_path) as source, open(target_path, "wb") as target:
                                 shutil.copyfileobj(source, target)
-                            return target_path
+                            # We don't need to update reference in theme_data if it uses filename as key
+                            # But if we stored archive_path, we might? 
+                            # Export stored key -> archive_path.
+                            # Fonts.py loads all from user_files/fonts. 
+                            # So by just placing it there, it becomes available.
+                        except KeyError:
+                            pass
 
-                        for config_key, archive_value in assets["images"].items():
-                            archive_paths = archive_value if isinstance(archive_value, list) else [archive_value]
-                            extracted_paths = []
-                            for archive_path in archive_paths:
-                                if not isinstance(archive_path, str):
-                                    continue
-                                try:
-                                    extracted_paths.append(extract_image_asset(archive_path))
-                                except KeyError:
-                                    print(f"Asset {archive_path} not found in zip.")
-                            if extracted_paths:
-                                theme_data["assets"]["images"][config_key] = (
-                                    extracted_paths if isinstance(archive_value, list) else extracted_paths[0]
-                                )
+                # Extract Icons
+                if "icons" in assets:
+                    for icon_key, archive_path in assets["icons"].items():
+                        try:
+                            asset_filename = os.path.basename(archive_path)
+                            archive_parts = archive_path.split("/")
+                            if len(archive_parts) >= 3 and archive_parts[0] == "icons" and archive_parts[1] == "custom_deck_icons":
+                                target_dir = os.path.join(self.addon_path, "user_files", "custom_deck_icons")
+                                os.makedirs(target_dir, exist_ok=True)
+                            else:
+                                target_dir = icons_dest_dir
+                            target_path = os.path.join(target_dir, asset_filename)
+                            with zf.open(archive_path) as source, open(target_path, "wb") as target:
+                                shutil.copyfileobj(source, target)
+                            
+                            # Update theme data with just the filename
+                            theme_data["assets"]["icons"][icon_key] = asset_filename
+                        except KeyError:
+                            pass
+                
+                # Preserve icon_config if it exists (for preview)
+                # icon_config contains all icon selections (including defaults)
+                # We don't need to modify it, just ensure it's in theme_data
 
-                    # Extract Fonts
-                    if "fonts" in assets:
-                         for font_key, archive_path in assets["fonts"].items():
-                            try:
-                                asset_filename = os.path.basename(archive_path)
-                                target_path = os.path.join(fonts_dest_dir, asset_filename)
-                                with zf.open(archive_path) as source, open(target_path, "wb") as target:
-                                    shutil.copyfileobj(source, target)
-                                # We don't need to update reference in theme_data if it uses filename as key
-                                # But if we stored archive_path, we might? 
-                                # Export stored key -> archive_path.
-                                # Fonts.py loads all from user_files/fonts. 
-                                # So by just placing it there, it becomes available.
-                            except KeyError:
-                                pass
-
-                    # Extract Icons
-                    if "icons" in assets:
-                        for icon_key, archive_path in assets["icons"].items():
-                            try:
-                                asset_filename = os.path.basename(archive_path)
-                                archive_parts = archive_path.split("/")
-                                if len(archive_parts) >= 3 and archive_parts[0] == "icons" and archive_parts[1] == "custom_deck_icons":
-                                    target_dir = os.path.join(self.addon_path, "user_files", "custom_deck_icons")
-                                    os.makedirs(target_dir, exist_ok=True)
-                                else:
-                                    target_dir = icons_dest_dir
-                                target_path = os.path.join(target_dir, asset_filename)
-                                with zf.open(archive_path) as source, open(target_path, "wb") as target:
-                                    shutil.copyfileobj(source, target)
-                                
-                                # Update theme data with just the filename
-                                theme_data["assets"]["icons"][icon_key] = asset_filename
-                            except KeyError:
-                                pass
-                    
-                    # Preserve icon_config if it exists (for preview)
-                    # icon_config contains all icon selections (including defaults)
-                    # We don't need to modify it, just ensure it's in theme_data
-
-                    # 3. Save the modified theme.json to user_themes
-                    # We rename it to match the .onigiri filename
-                    json_filename = theme_name + ".json"
-                    json_dest_path = os.path.join(self.user_themes_path, json_filename)
-                    
-                    with open(json_dest_path, 'w', encoding='utf-8') as f:
-                        json.dump(theme_data, f, indent=4)
+                # 3. Save the modified theme.json to user_themes
+                # We rename it to match the .onigiri filename
+                json_filename = theme_name + ".json"
+                json_dest_path = os.path.join(self.user_themes_path, json_filename)
+                
+                with open(json_dest_path, 'w', encoding='utf-8') as f:
+                    json.dump(theme_data, f, indent=4)
 
             # Refresh the grid to show the new theme
             _, user_themes = self._load_themes()
             self._populate_grid_with_themes(self.user_themes_grid_layout, user_themes, deletable=True)
-            showInfo("Theme imported successfully!")
+            show_settings_toast(self, tr("theme_imported_toast", "Theme imported successfully"))
 
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Could not import the theme file:\n{e}")
@@ -1556,7 +1807,7 @@ class PageThemesMixin:
                 for source, dest in assets_to_zip:
                     zf.write(source, dest)
             
-            showInfo(f"Theme '{name}' exported successfully as .onigiri file!")
+            show_settings_toast(self, f"{tr('theme_exported_toast', 'Theme exported:')} {name}")
 
             # If saved in local themes folder, refresh? 
             # (Currently .onigiri files might not appear until we implement the import/view logic)
@@ -1566,6 +1817,10 @@ class PageThemesMixin:
             
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Could not save the theme file:\n{e}")
+
+    def _reset_theme_to_default_with_toast(self):
+        self.reset_theme_to_default()
+        self._show_theme_selected_toast(tr("default_theme", "Default theme"))
 
     def reset_theme_to_default(self):
         """Resets theme colors and active image selections to the color-only default theme."""
@@ -1621,6 +1876,10 @@ class PageThemesMixin:
     def _reset_theme_media_config_to_default(self, default_colors):
         light_bg = default_colors["light"].get("--bg", "#f3f3f3")
         dark_bg = default_colors["dark"].get("--bg", "#2c2c2c")
+        # Sidebar background mirrors Box Color and Effect so the two stay in sync.
+        box_colors_defaults = DEFAULTS.get("overview_style", {}).get("colors", {})
+        box_bg_light = box_colors_defaults.get("light", {}).get("box_bg", "#f3f3f3")
+        box_bg_dark = box_colors_defaults.get("dark", {}).get("box_bg", "#2c2c2c")
 
         collection_theme_defaults = {
             "modern_menu_background_mode": "color",
@@ -1641,8 +1900,8 @@ class PageThemesMixin:
             "modern_menu_sidebar_bg_type": "color",
             "modern_menu_sidebar_bg_color_theme_mode": "separate",
             "modern_menu_sidebar_bg_image_theme_mode": "separate",
-            "modern_menu_sidebar_bg_color_light": "#F3F3F3",
-            "modern_menu_sidebar_bg_color_dark": "#2C2C2C",
+            "modern_menu_sidebar_bg_color_light": box_bg_light,
+            "modern_menu_sidebar_bg_color_dark": box_bg_dark,
             "modern_menu_sidebar_bg_image": "",
             "modern_menu_sidebar_bg_image_light": "",
             "modern_menu_sidebar_bg_image_dark": "",
@@ -1655,17 +1914,17 @@ class PageThemesMixin:
             "modern_menu_sidebar_stroke": 1,
             "modern_menu_sidebar_margin": 10,
 
-            "modern_menu_profile_bg_mode": "accent",
+            "modern_menu_profile_bg_mode": "image",
             "modern_menu_profile_bg_dynamic_mode": True,
             "modern_menu_profile_bg_color_light": "#EEEEEE",
             "modern_menu_profile_bg_color_dark": "#3C3C3C",
             "modern_menu_profile_bg_image": "",
             "modern_menu_profile_bg_blur": 0,
-            "modern_menu_profile_bg_opacity": 100,
+            "modern_menu_profile_bg_opacity": 50,
             "modern_menu_profile_picture": "",
             "modern_menu_profile_picture_light": "",
             "modern_menu_profile_picture_dark": "",
-            "modern_menu_profile_picture_mode": "accent",
+            "modern_menu_profile_picture_mode": "image",
             "modern_menu_profile_picture_dynamic_mode": True,
             "modern_menu_profile_picture_color_light": "#8CACB4",
             "modern_menu_profile_picture_color_dark": "#B8BDC3",
@@ -1830,6 +2089,9 @@ class PageThemesMixin2:
     def _reset_loaded_theme_media_widgets(self, default_colors):
         light_bg = default_colors["light"].get("--bg", "#f3f3f3")
         dark_bg = default_colors["dark"].get("--bg", "#2c2c2c")
+        box_colors_defaults = DEFAULTS.get("overview_style", {}).get("colors", {})
+        box_bg_light = box_colors_defaults.get("light", {}).get("box_bg", "#f3f3f3")
+        box_bg_dark = box_colors_defaults.get("dark", {}).get("box_bg", "#2c2c2c")
 
         if hasattr(self, "main_bg_color_only_toggle"):
             self.main_bg_color_only_toggle.setChecked(True)
@@ -1861,7 +2123,7 @@ class PageThemesMixin2:
             if hasattr(self, "bg_opacity_spinbox"):
                 self.bg_opacity_spinbox.setValue(100)
 
-        self._reset_loaded_modern_background_widgets("sidebar", "#F3F3F3", "#2C2C2C")
+        self._reset_loaded_modern_background_widgets("sidebar", box_bg_light, box_bg_dark)
         self._reset_loaded_modern_background_widgets("overview", "#f2f2f2", "#2C2C2C")
         self._reset_loaded_modern_background_widgets("reviewer", "#f2f2f2", "#2C2C2C")
 
@@ -1933,7 +2195,7 @@ class PageThemesMixin2:
         try:
             if os.path.exists(filepath):
                 os.remove(filepath)
-                showInfo(f"Theme '{theme_name}' deleted.")
+                show_settings_toast(self, f"{tr('theme_deleted_toast', 'Theme deleted:')} {theme_name}")
                 _, user_themes = self._load_themes()
                 self._populate_grid_with_themes(self.user_themes_grid_layout, user_themes, deletable=True)
             else:

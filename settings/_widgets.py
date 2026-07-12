@@ -1,6 +1,6 @@
 # Auto-split from the historical settings/_legacy.py. Do not hand-edit alongside _legacy.
 from ._common import *
-from ._common import _contrast_icon_color
+from ._common import _contrast_icon_color, _font_popup_svg_icon
 
 
 class AnimatedRadioButton(QRadioButton):
@@ -1772,6 +1772,7 @@ class ProfileBarWidget(QWidget):
         self._bg_blur = max(0, min(100, int(self._bg_config.get("blur", 0) or 0)))
         self._bg_opacity = max(0.0, min(1.0, float(self._bg_config.get("opacity", 100) if self._bg_config.get("opacity", 100) is not None else 100) / 100.0))
         self._pic_config = pic_config or {}
+        self._name_color_override = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 12, 6)
@@ -1902,8 +1903,42 @@ class ProfileBarWidget(QWidget):
             pixmap = faded
         return pixmap
 
+    def _custom_name_color(self):
+        from ._common import theme_manager, mw
+        override = getattr(self, "_name_color_override", None)
+        if override is not None:
+            enabled, light, dark, dynamic = override
+        else:
+            enabled = mw.col.conf.get("modern_menu_profile_name_color_enabled", False)
+            dynamic = mw.col.conf.get("modern_menu_profile_name_dynamic_mode", True)
+            light = mw.col.conf.get("modern_menu_profile_name_color_light", "#111827")
+            dark = mw.col.conf.get("modern_menu_profile_name_color_dark", "#f9fafb")
+        if not enabled:
+            return None
+        if not dynamic:
+            return light
+        return dark if theme_manager.night_mode else light
+
+    def set_name_color_override(self, enabled, light, dark, dynamic):
+        self._name_color_override = (bool(enabled), light, dark, bool(dynamic))
+        self.refresh_theme()
+
     def _text_colors(self):
-        if (self._bg_mode == "image" and self._bg_config.get("image")) or self._using_default_bg:
+        name, subtitle = self._auto_text_colors()
+        override = self._custom_name_color()
+        if override and QColor(override).isValid():
+            name = override
+        return name, subtitle
+
+    def _auto_text_colors(self):
+        from ._common import theme_manager, mw
+        dynamic_mode = mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True)
+        if self._using_default_bg and dynamic_mode:
+            if theme_manager.night_mode:
+                return "#f9fafb", "#d1d5db"
+            else:
+                return "#111827", "#4b5563"
+        elif (self._bg_mode == "image" and self._bg_config.get("image")) or self._using_default_bg:
             return "#ffffff", "#d1d5db"
 
         bg = self._profile_background_color()
@@ -1913,6 +1948,30 @@ class ProfileBarWidget(QWidget):
 
     def setAccentColor(self, accent_color):
         self._accent_color = accent_color
+        self.refresh_theme()
+
+    def update_profile(self, user_name, pic_path, bg_mode, bg_config, pic_config=None):
+        self._pic_path = pic_path
+        self._user_name = user_name
+        self._bg_mode = bg_mode
+        self._bg_config = bg_config or {}
+        self._bg_image_path = self._bg_config.get("image", "")
+        self._using_default_bg = False
+        if self._bg_mode != "image":
+            self._bg_image_path = ""
+        elif not self._bg_image_path or not os.path.exists(self._bg_image_path):
+            default_bg = os.path.join(ADDON_ROOT, "system_files", "profile_default", "onigiri-bg.png")
+            if os.path.exists(default_bg):
+                self._bg_image_path = default_bg
+                self._using_default_bg = True
+        self._bg_pixmap = QPixmap(self._bg_image_path) if self._bg_image_path and os.path.exists(self._bg_image_path) else QPixmap()
+        self._bg_blur = max(0, min(100, int(self._bg_config.get("blur", 0) or 0)))
+        self._bg_opacity = max(0.0, min(1.0, float(self._bg_config.get("opacity", 100) if self._bg_config.get("opacity", 100) is not None else 100) / 100.0))
+        self._pic_config = pic_config or {}
+
+        circular_pixmap = self._render_avatar_pixmap(38)
+        self.pic_label.setPixmap(circular_pixmap if not circular_pixmap.isNull() else QPixmap())
+        self.name_label.setText(user_name)
         self.refresh_theme()
 
     def refresh_theme(self):
@@ -2952,11 +3011,16 @@ class ThemeCardWidget(QFrame):
         self.display_name = display_name
 
         self.setObjectName("themeCard")
+        # Fixed height, but flexible width: the parent FlowLayout (in
+        # stretch_rows mode) resizes each row's cards to fill the full grid
+        # width, so the card must be allowed to grow horizontally.
         if self.full_preview:
-            self.setFixedSize(154, 118)
+            self.setFixedHeight(118)
+            self.setMinimumWidth(154)
         else:
-            self.setFixedSize(138, 74)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.setFixedHeight(74)
+            self.setMinimumWidth(138)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         main_layout = QVBoxLayout(self)
@@ -3008,8 +3072,6 @@ class ThemeCardWidget(QFrame):
         self.swatch_layout = QHBoxLayout()
         self.swatch_layout.setSpacing(3 if self.full_preview else 6)
         self.swatch_layout.setContentsMargins(0, 0, 0, 0)
-        if not self.full_preview:
-            self.swatch_layout.addStretch()
         self.swatches = []
         swatch_count = 6
         for _ in range(swatch_count):
@@ -3021,8 +3083,10 @@ class ThemeCardWidget(QFrame):
             swatch.setObjectName("themePreviewSwatch")
             self.swatches.append(swatch)
             self.swatch_layout.addWidget(swatch)
+        # Trailing (rather than leading) stretch keeps the swatch row flush with
+        # the name label below it, no matter how wide the card is stretched.
+        self.swatch_layout.addStretch()
         if self.full_preview:
-            self.swatch_layout.addStretch()
             content_layout.addLayout(self.font_layout)
             content_layout.addSpacing(1)
             content_layout.addLayout(self.swatch_layout)
@@ -3381,40 +3445,138 @@ class ThemeCardWidget(QFrame):
 
 
 class ThemePreparingPulseAnimation(QFrame):
-    """Small loading animation used while a saved theme is being persisted."""
+    """Modern rotating-arc loading indicator shown while a saved theme is being persisted."""
     def __init__(self, accent="#007aff", parent=None):
         super().__init__(parent)
         self.accent = QColor(accent if QColor(accent).isValid() else "#007aff")
-        self._phase = 0.0
-        self.setFixedSize(58, 58)
+        self._angle = 0.0
+        self.setFixedSize(46, 46)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(20)
+        self._timer.start(16)
 
     def _tick(self):
-        self._phase = (self._phase + 0.018) % 1.0
+        self._angle = (self._angle + 5.5) % 360
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        cx = self.width() / 2
-        cy = self.height() / 2
-        halo = QColor(self.accent)
-        halo.setAlpha(24)
-        painter.setBrush(halo)
-        painter.drawEllipse(QRectF(cx - 20, cy - 20, 40, 40))
-        for index in range(8):
-            angle = (self._phase + index / 8) * math.tau
-            strength = (math.sin((self._phase + index / 8) * math.tau) + 1) / 2
-            radius = 3.0 + strength * 1.8
-            x = cx + math.cos(angle) * 17
-            y = cy + math.sin(angle) * 17
-            dot = QColor(self.accent).lighter(105 + int(strength * 45))
-            dot.setAlpha(78 + int(strength * 152))
-            painter.setBrush(dot)
-            painter.drawEllipse(QRectF(x - radius, y - radius, radius * 2, radius * 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        stroke = 4
+        rect = QRectF(stroke / 2, stroke / 2, self.width() - stroke, self.height() - stroke)
+
+        track_pen = QPen(QColor(self.accent))
+        track_color = QColor(self.accent)
+        track_color.setAlpha(32)
+        track_pen.setColor(track_color)
+        track_pen.setWidth(stroke)
+        track_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(track_pen)
+        painter.drawEllipse(rect)
+
+        arc_pen = QPen(QColor(self.accent))
+        arc_pen.setWidth(stroke)
+        arc_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc_pen)
+        span_degrees = 100
+        start_angle = int(-self._angle * 16)
+        span_angle = int(-span_degrees * 16)
+        painter.drawArc(rect, start_angle, span_angle)
+
+
+class ThemeSelectedToast(QFrame):
+    """Floating pill confirming a theme was applied, fades out on its own."""
+    def __init__(self, text, accent="#007aff", parent=None):
+        super().__init__(parent)
+        self.setObjectName("themeSelectedToast")
+        accent_color = QColor(accent if QColor(accent).isValid() else "#007aff")
+
+        self.setStyleSheet(f"""
+            QFrame#themeSelectedToast {{
+                background-color: rgba(28, 29, 33, 235);
+                border: 1px solid rgba(255, 255, 255, 35);
+                border-radius: 19px;
+            }}
+            QLabel {{
+                color: #f4f4f5;
+                background: transparent;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 9, 18, 9)
+        layout.setSpacing(9)
+
+        check_badge = QLabel("✓")
+        check_badge.setFixedSize(18, 18)
+        check_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        check_badge.setStyleSheet(f"""
+            color: #ffffff;
+            background-color: {accent_color.name()};
+            border-radius: 9px;
+            font-size: 11px;
+            font-weight: 700;
+        """)
+        layout.addWidget(check_badge)
+
+        label = QLabel(text)
+        layout.addWidget(label)
+        self.adjustSize()
+
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(0.0)
+        self.setGraphicsEffect(self._opacity_effect)
+
+        self._fade_anim = QPropertyAnimation(self._opacity_effect, b"opacity", self)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def play(self, visible_ms=5000, fade_ms=220):
+        self.show()
+        self.raise_()
+        self._fade_anim.stop()
+        self._fade_anim.setDuration(fade_ms)
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.start()
+        QTimer.singleShot(visible_ms, self._fade_out)
+
+    def _fade_out(self):
+        self._fade_anim.stop()
+        self._fade_anim.setDuration(280)
+        self._fade_anim.setStartValue(self._opacity_effect.opacity())
+        self._fade_anim.setEndValue(0.0)
+        try:
+            self._fade_anim.finished.disconnect()
+        except TypeError:
+            pass
+        self._fade_anim.finished.connect(self.deleteLater)
+        self._fade_anim.start()
+
+
+def show_settings_toast(dialog, text, accent=None):
+    """Shows the floating confirmation pill (as used for theme selection) anchored to
+    a settings dialog/page, replacing any toast already in flight on it."""
+    existing = getattr(dialog, "_active_settings_toast", None)
+    if existing is not None:
+        try:
+            existing._fade_anim.stop()
+            existing.deleteLater()
+        except RuntimeError:
+            pass
+        dialog._active_settings_toast = None
+
+    if accent is None:
+        accent = dialog._settings_accent_color()
+
+    toast = ThemeSelectedToast(text, accent, parent=dialog)
+    toast.move((dialog.width() - toast.width()) // 2, 22)
+    dialog._active_settings_toast = toast
+    toast.play()
+    return toast
 
 
 class ThumbnailWorker(QObject):

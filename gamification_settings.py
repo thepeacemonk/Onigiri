@@ -13,7 +13,7 @@ from aqt.qt import (
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QImage, QFont
 from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
 from aqt import mw
 from aqt.theme import theme_manager
@@ -589,7 +589,9 @@ class StudyZonePinInput(QWidget):
             box.setObjectName("studyZonePinDigit")
             box.setAlignment(Qt.AlignmentFlag.AlignCenter)
             box.setMaxLength(1)
-            box.setFixedSize(34, 38)
+            box.setFixedSize(36, 42)
+            box.setTextMargins(0, 0, 0, 0)
+            box.setFont(QFont(box.font().family(), 15, QFont.Weight.Bold))
             box.textEdited.connect(lambda text, i=index: self._handle_text_edited(i, text))
             layout.addWidget(box)
             self._boxes.append(box)
@@ -1101,9 +1103,9 @@ class GamificationSettingsDialog(QDialog):
             return f'<img src="{url}" width="32" height="32">'
 
         onigimon_difficulties = [
-            ("bulbassaur", "Bulbassaur", "More frequent rewards with softer miss penalties and missed-day decay.", _get_sprite("bulbasaur_pixel.png")),
-            ("pikachu", "Pikachu", "Balanced rewards, miss penalties, and care pacing.", _get_sprite("pikachu_pixel.png")),
-            ("charizard", "Charizard", "Slower rewards with stronger miss penalties and missed-day decay.", _get_sprite("charizard_pixel.png")),
+            ("bulbassaur", "Bulbassaur", "More frequent rewards with softer miss penalties and missed-day decay.", _get_sprite("bulbasaur_pixel.webp")),
+            ("pikachu", "Pikachu", "Balanced rewards, miss penalties, and care pacing.", _get_sprite("pikachu_pixel.webp")),
+            ("charizard", "Charizard", "Slower rewards with stronger miss penalties and missed-day decay.", _get_sprite("charizard_pixel.webp")),
         ]
         for data, title, description, badge in onigimon_difficulties:
             btn = DifficultyCardWidget(title, description, badge)
@@ -1227,11 +1229,7 @@ class GamificationSettingsDialog(QDialog):
         self.focus_dango_toggle.setChecked(bool(focus_dango_conf.get("enabled", False)))
         self.focus_dango_self_sabotage_toggle = AnimatedToggleButton(accent_color="#9D3D64")
         self.focus_dango_self_sabotage_toggle.setChecked(bool(focus_dango_conf.get("self_sabotage", False)))
-        dango_pin = "".join(ch for ch in str(focus_dango_conf.get("unlock_pin", "000000") or "") if ch.isdigit())
-        if len(dango_pin) != 6:
-            dango_pin = "000000"
-        self.focus_dango_pin_input = StudyZonePinInput(dango_pin, self)
-        
+
         dango_fallback = self._message_values(
             focus_dango_conf.get("message"),
             [tr("dont_give_up"), tr("stay_focused")]
@@ -1884,7 +1882,7 @@ class GamificationSettingsDialog(QDialog):
         hero = self._create_study_zone_header(
             tr("restaurant_level"),
             tr("grow_restaurant_desc"),
-            "nook.png",
+            "nook.webp",
             "#B94632",
             self.nook_level_toggle
         )
@@ -2013,9 +2011,12 @@ class GamificationSettingsDialog(QDialog):
         )
 
         dynamic_row.addWidget(self.rl_dynamic_chip_colors_toggle)
-        dynamic_row.addStretch()
-        dynamic_row.addWidget(self.rl_dynamic_chip_theme_widget)
         chip_layout.addLayout(dynamic_row)
+
+        theme_row = QHBoxLayout()
+        theme_row.addStretch()
+        theme_row.addWidget(self.rl_dynamic_chip_theme_widget)
+        chip_layout.addLayout(theme_row)
 
         chip_layout.addWidget(self._create_restaurant_chip_bg_control(tr("level_chip_bg_color"), self.rl_chip_bg_button))
         chip_layout.addWidget(self._create_restaurant_chip_color_card(tr("level_chip_progress_color"), self.rl_chip_progress_button))
@@ -2404,7 +2405,7 @@ class GamificationSettingsDialog(QDialog):
         icon_label.setFixedSize(76, 76)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label.setStyleSheet("background: transparent;")
-        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_pikachu.png")
+        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_pikachu.webp")
         pixmap = QPixmap(icon_path)
         if not pixmap.isNull():
             icon_label.setPixmap(self._scaled_for_display(pixmap, 72, 72))
@@ -2440,7 +2441,7 @@ class GamificationSettingsDialog(QDialog):
         layout.addWidget(self._create_study_zone_header(
             "Onigimon",
             "Use Ankimon's Pokemon PC to choose the active Pokemon, then feed, clean, train, and play while Onigimon updates Ankimon.",
-            "pokemon_pikachu.png",
+            "pokemon_pikachu.webp",
             "#F2B705",
             self.onigimon_toggle
         ))
@@ -2650,7 +2651,7 @@ class GamificationSettingsDialog(QDialog):
         header = self._create_study_zone_header(
             tr("focus_dango"),
             tr("dango_help_focus"),
-            "dango.png",
+            "dango.webp",
             "#9D3D64",
             self.focus_dango_toggle
         )
@@ -2694,30 +2695,7 @@ class GamificationSettingsDialog(QDialog):
         sabotage_row.addWidget(self.focus_dango_self_sabotage_toggle, 0, Qt.AlignmentFlag.AlignVCenter)
         mode_layout.addLayout(sabotage_row)
 
-        pin_row = QHBoxLayout()
-        pin_row.setContentsMargins(0, 0, 0, 0)
-        pin_row.setSpacing(12)
 
-        pin_text = QWidget()
-        pin_text_layout = QVBoxLayout(pin_text)
-        pin_text_layout.setContentsMargins(0, 0, 0, 0)
-        pin_text_layout.setSpacing(4)
-
-        pin_title = QLabel(tr("focus_dango_pin", "Unlock PIN"))
-        pin_title.setObjectName("studyZoneCardTitle")
-        pin_title.setStyleSheet("font-size: 13px;")
-        pin_desc = QLabel(tr(
-            "focus_dango_pin_desc",
-            "Six digits required to leave Focus Dango while Self-Sabotage Mode is active."
-        ))
-        pin_desc.setObjectName("studyZoneCardDescription")
-        pin_desc.setWordWrap(True)
-        pin_text_layout.addWidget(pin_title)
-        pin_text_layout.addWidget(pin_desc)
-
-        pin_row.addWidget(pin_text, 1)
-        pin_row.addWidget(self.focus_dango_pin_input, 0, Qt.AlignmentFlag.AlignVCenter)
-        mode_layout.addLayout(pin_row)
         layout.addWidget(mode_card)
 
         layout.addStretch()
@@ -2729,7 +2707,7 @@ class GamificationSettingsDialog(QDialog):
         header = self._create_study_zone_header(
             tr("mochi_messages_title"),
             tr("mochi_cheer_on"),
-            "mochi_messenger.png",
+            "mochi_messenger.webp",
             "#00935C",
             self.mochi_messages_toggle
         )
@@ -2763,7 +2741,7 @@ class GamificationSettingsDialog(QDialog):
         layout.addWidget(self._create_study_zone_header(
             "Hexagon Land",
             "Build an island while you study: earn Hex Coins and materials, expand tile by tile, grow trees, invite inhabitants, and raise castles.",
-            "Hexagon_world.png",
+            "Hexagon_world.webp",
             "#1F6FE0",
             self.hexagon_land_toggle
         ))
@@ -3228,8 +3206,7 @@ class GamificationSettingsDialog(QDialog):
         dango_conf["enabled"] = self.focus_dango_toggle.isChecked()
         dango_conf["messages"] = self.focus_dango_message_editor.messages()
         dango_conf["self_sabotage"] = self.focus_dango_self_sabotage_toggle.isChecked()
-        dango_pin = self.focus_dango_pin_input.pin()
-        dango_conf["unlock_pin"] = dango_pin if len(dango_pin) == 6 else "000000"
+
 
         # Hexagon Land
         hex_conf = self.current_config.setdefault("hexagon_land", {})
@@ -3554,8 +3531,6 @@ class GamificationSettingsDialog(QDialog):
                 border: 1px solid {border};
                 border-radius: 9px;
                 padding: 0px;
-                font-size: 16px;
-                font-weight: 700;
                 selection-background-color: {accent};
             }}
             QLineEdit#studyZonePinDigit:focus {{

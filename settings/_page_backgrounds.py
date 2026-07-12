@@ -299,9 +299,12 @@ class PageBackgroundsMixin:
         slideshow_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         color_only_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         sync_main_toggle = AnimatedToggleButton(accent_color=self.accent_color) if spec.get("allow_main_sync") else None
+        sync_box_toggle = AnimatedToggleButton(accent_color=self.accent_color) if is_sidebar_preview else None
         dynamic_toggle.setChecked((mode in {"color", "accent"} and color_theme_mode == "separate") or (mode == "image_color" and image_theme_mode == "separate"))
         slideshow_toggle.setChecked(mode == "slideshow")
         color_only_toggle.setChecked(mode in {"color", "accent"})
+        if sync_box_toggle:
+            sync_box_toggle.setChecked(bool(mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True)))
         if sync_main_toggle:
             sync_main_toggle.setChecked(mode == "main")
 
@@ -402,6 +405,8 @@ class PageBackgroundsMixin:
         interval_row = self._create_main_bg_value_row("Change every", interval_spinbox)
         right_layout.addWidget(interval_row)
         right_layout.addWidget(self._create_main_bg_toggle_row("Color only", color_only_toggle))
+        if sync_box_toggle:
+            right_layout.addWidget(self._create_main_bg_toggle_row(tr("sync_box_color_effect", "Sync with Box Color and Effect"), sync_box_toggle))
         right_layout.addStretch()
 
         for name, widget in {
@@ -419,6 +424,8 @@ class PageBackgroundsMixin:
         if sync_main_toggle:
             setattr(self, f"{prefix}_bg_sync_main_toggle", sync_main_toggle)
             setattr(self, f"{prefix}_bg_sync_main_row", sync_main_row)
+        if sync_box_toggle:
+            setattr(self, f"{prefix}_bg_sync_box_toggle", sync_box_toggle)
 
         controls_pair = ResponsivePairWidget(left, right, spacing=18, breakpoint=720)
         if is_sidebar_preview:
@@ -463,6 +470,8 @@ class PageBackgroundsMixin:
         color_only_toggle.toggled.connect(lambda checked, p=prefix: self._on_modern_background_mode_changed(p, checked))
         if sync_main_toggle:
             sync_main_toggle.toggled.connect(lambda checked, p=prefix: self._on_modern_background_mode_changed(p, checked))
+        if sync_box_toggle:
+            sync_box_toggle.toggled.connect(lambda checked, p=prefix: self._update_modern_background_controls(p))
         interval_spinbox.valueChanged.connect(lambda value, p=prefix: self._sync_modern_background_slideshow_preview_timer(p))
         blur_slider.valueChanged.connect(lambda value, p=prefix: self._on_modern_background_effect_changed(p))
         opacity_slider.valueChanged.connect(lambda value, p=prefix: self._on_modern_background_effect_changed(p))
@@ -582,6 +591,26 @@ class PageBackgroundsMixin:
         interval_visible = getattr(self, f"{prefix}_bg_slideshow_toggle").isChecked() and not color_only and not sync_main
         interval_row.setVisible(interval_visible)
         getattr(self, f"{prefix}_bg_slideshow_interval_spinbox").setEnabled(interval_visible)
+
+        sync_box_toggle = getattr(self, f"{prefix}_bg_sync_box_toggle", None)
+        if sync_box_toggle is not None:
+            sync_box = sync_box_toggle.isChecked()
+            for button_name in ("import_button", "clear_button", "gallery_button"):
+                button = getattr(self, f"{prefix}_bg_{button_name}")
+                button.setEnabled(button.isEnabled() and not sync_box)
+            for name in (
+                "light_color_button", "light_color_value_button",
+                "dark_color_button", "dark_color_value_button",
+            ):
+                getattr(self, f"{prefix}_bg_{name}").setEnabled(not sync_box)
+            for name in ("dynamic_toggle", "slideshow_toggle", "color_only_toggle"):
+                toggle = getattr(self, f"{prefix}_bg_{name}")
+                toggle.setEnabled(toggle.isEnabled() and not sync_box)
+            for attr in ("blur_slider", "opacity_slider", "radius_slider", "stroke_slider"):
+                slider = getattr(self, f"{prefix}_bg_{attr}", None)
+                if slider:
+                    slider.setEnabled(not sync_box)
+
         self._update_modern_background_preview(prefix)
         self._sync_modern_background_slideshow_preview_timer(prefix)
 
@@ -678,8 +707,15 @@ class PageBackgroundsMixin:
             painter.drawPixmap(0, 0, background)
 
             margin = max(0, int(getattr(self, f"{prefix}_bg_margin_slider", None).value() if hasattr(self, f"{prefix}_bg_margin_slider") else 10))
-            radius = max(0, int(getattr(self, f"{prefix}_bg_radius_slider", None).value() if hasattr(self, f"{prefix}_bg_radius_slider") else 15))
-            stroke_width = max(0, int(getattr(self, f"{prefix}_bg_stroke_slider", None).value() if hasattr(self, f"{prefix}_bg_stroke_slider") else 1))
+            sync_box = bool(getattr(self, f"{prefix}_bg_sync_box_toggle", None) and getattr(self, f"{prefix}_bg_sync_box_toggle").isChecked())
+            if sync_box and hasattr(self, "box_effect_radius_slider"):
+                radius = max(0, int(self.box_effect_radius_slider.value()))
+            else:
+                radius = max(0, int(getattr(self, f"{prefix}_bg_radius_slider", None).value() if hasattr(self, f"{prefix}_bg_radius_slider") else 15))
+            if sync_box and hasattr(self, "box_effect_stroke_slider"):
+                stroke_width = max(0, int(self.box_effect_stroke_slider.value()))
+            else:
+                stroke_width = max(0, int(getattr(self, f"{prefix}_bg_stroke_slider", None).value() if hasattr(self, f"{prefix}_bg_stroke_slider") else 1))
             available = rect.adjusted(margin, margin, -margin, -margin)
             checked_position = self.sidebar_position_group.checkedButton() if hasattr(self, "sidebar_position_group") else None
             sidebar_position = checked_position.property("sidebar_position") if checked_position else "left"
@@ -782,6 +818,19 @@ class PageBackgroundsMixin:
         if not spec or not hasattr(self, f"{prefix}_bg_preview"):
             return
         mode = self._modern_background_preview_mode(prefix)
+        sync_box_toggle = getattr(self, f"{prefix}_bg_sync_box_toggle", None)
+        if sync_box_toggle and sync_box_toggle.isChecked():
+            state = self._box_effect_state_for_sidebar_preview(mode)
+            pixmap = self._render_modern_background_state_preview_pixmap(prefix, state)
+            preview = getattr(self, f"{prefix}_bg_preview")
+            preview.setStyleSheet("QLabel#mainBackgroundPreview { background: transparent; border: none; }")
+            preview.setPixmap(pixmap)
+            preview.setText("")
+            if prefix == "sidebar" and hasattr(self, "deck_icon_preview"):
+                self._update_deck_icon_preview()
+            if prefix == "sidebar" and hasattr(self, "actionbtns_preview"):
+                self._update_action_buttons_preview()
+            return
         sync_main_toggle = getattr(self, f"{prefix}_bg_sync_main_toggle", None)
         if sync_main_toggle and sync_main_toggle.isChecked():
             state = self._main_background_state_for_box_preview(mode)
@@ -1128,6 +1177,8 @@ class PageBackgroundsMixin:
                 if slider:
                     slider.setValue(default)
         self._update_modern_background_controls(prefix)
+        label = spec.get("title") or prefix.replace("_", " ").title()
+        show_settings_toast(self, f"{label} {tr('modern_bg_reset_toast_suffix', 'reset to default')}")
 
     def _save_modern_background_designer_settings(self, prefix):
         spec = self._modern_background_spec(prefix)

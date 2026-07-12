@@ -469,7 +469,7 @@ class PageFontsMixin:
         
         try:
             shutil.copy(filepath, dest_path)
-            showInfo(f"Font '{filename}' added successfully.")
+            show_settings_toast(self, f"{tr('font_added_toast', 'Font added:')} {filename}")
             self._refresh_font_selectors()
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not copy font file: {e}")
@@ -512,7 +512,7 @@ class PageFontsMixin:
                         if mw.col.conf.get(f"onigiri_font_{key}") == font_key:
                             mw.col.conf[f"onigiri_font_{key}"] = "system"
                     
-                    showInfo(f"Font '{font_key}' deleted.")
+                    show_settings_toast(self, f"{tr('font_deleted_toast', 'Font deleted:')} {font_key}")
                     if hasattr(self, "font_selectors"):
                         self._refresh_font_selectors()
                     elif hasattr(self, "font_grids"):

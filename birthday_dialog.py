@@ -36,7 +36,7 @@ class BirthdayDialog(QDialog):
             
         # Birthday Icon (keep this)
         icon_data = ""
-        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "birthday.png")
+        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "birthday.webp")
         if os.path.exists(icon_path):
             icon_pixmap = QPixmap(icon_path)
             if not icon_pixmap.isNull():

@@ -29,7 +29,7 @@ except ImportError:
 import random
 
 
-SHOP_API_URL = "https://script.google.com/macros/s/AKfycbxTGeWG088ZNkCYeyR2EnDiAKmlaInNbqCw0VAU2vlUmUAc8PW2JVMywGIyFS-bDb8C/exec"
+SHOP_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 
 # Flat dark theme for the store window/cards (see Tayiaki Shop redesign mockup).
 # True neutral grays (equal R/G/B) - the previous values had the blue channel
@@ -286,7 +286,7 @@ class StoreItemCard(QWidget):
             self.action_btn.setEnabled(False)
             self.action_btn.setStyleSheet(pill_style.format(extra=f"background-color: {self.theme['ACTION_LOCKED_BG']}; color: {self.theme['ACTION_LOCKED_TEXT']};"))
         else:
-            coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+            coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.webp")
             if os.path.exists(coin_path):
                 self.action_btn.setIcon(QIcon(coin_path))
                 self.action_btn.setIconSize(QSize(16, 16))
@@ -461,7 +461,7 @@ class CoinRedemptionDialog(QDialog):
         coin_icon = QLabel()
         coin_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         coin_icon.setFixedSize(40, 40)
-        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.webp")
         if os.path.exists(coin_path):
             coin_icon.setPixmap(_load_scaled_pixmap(coin_path, 26, 26))
         coin_icon.setStyleSheet(f"""
@@ -676,7 +676,7 @@ class CoinSuccessDialog(QDialog):
         self.setup_ui()
 
         # Setup rain animation
-        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.webp")
         if os.path.exists(coin_path):
             pixmap = QPixmap(coin_path)
             self.overlay = CoinRainOverlay(self, pixmap)
@@ -978,7 +978,7 @@ class TaiyakiStoreWindow(QDialog):
         mr_taiyaki_label = QLabel()
         mr_taiyaki_label.setStyleSheet("background: transparent;")
         mr_taiyaki_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mr_taiyaki_path = os.path.join(self.addon_path, "system_files/gamification_images/mr_taiyaki.png")
+        mr_taiyaki_path = os.path.join(self.addon_path, "system_files/gamification_images/mr_taiyaki.webp")
         if os.path.exists(mr_taiyaki_path):
             mr_taiyaki_label.setPixmap(_load_scaled_pixmap(mr_taiyaki_path, 64, 64))
             mr_taiyaki_label.setFixedSize(64, 64)
@@ -1041,7 +1041,7 @@ class TaiyakiStoreWindow(QDialog):
         coin_icon.setStyleSheet("background: transparent;")
         coin_icon.setFixedSize(26, 26)
 
-        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.png")
+        coin_path = os.path.join(self.addon_path, "system_files/gamification_images/Tayaki_coin.webp")
         if os.path.exists(coin_path):
             coin_icon.setPixmap(_load_scaled_pixmap(coin_path, 26, 26))
 

@@ -607,6 +607,7 @@ class PageMainmenuMixin:
         self.selected_heatmap_shape = "system:square.svg"
         self._refresh_heatmap_shape_control()
         self._update_heatmap_preview()
+        show_settings_toast(self, tr("heatmap_shape_reset_toast", "Heatmap shape reset to default"))
 
     def _create_heatmap_streak_icon_control(self):
         control_widget = QFrame()
@@ -723,6 +724,7 @@ class PageMainmenuMixin:
             self.heatmap_streak_icon_zero_color_input.setText(DEFAULTS.get("heatmapStreakIconZeroColor", "#8f8f8f"))
         self._refresh_heatmap_streak_icon_control()
         self._update_heatmap_preview()
+        show_settings_toast(self, tr("heatmap_streak_icon_reset_toast", "Streak icon reset to default"))
 
     def _heatmap_shape_picker_color_options(self):
         return [
@@ -1465,7 +1467,7 @@ class PageMainmenuMixin:
                     default_value = default_colors[mode][key]
                     widget.setText(default_value)
         
-        QMessageBox.information(self, "Heatmap Colors Reset", "The heatmap colors have been reset to their default values.\nPress 'Save' to apply the changes.")
+        show_settings_toast(self, tr("heatmap_colors_reset_toast", "Heatmap colors reset — press Save to apply"))
 
     def _save_main_menu_settings(self):
         mw.col.conf["modern_menu_statsTitle"] = self.stats_title_input.text()

@@ -21,7 +21,7 @@ from ..translations import tr
 XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
-RECIPE_RUSH_API_URL = "https://script.google.com/macros/s/AKfycbxTGeWG088ZNkCYeyR2EnDiAKmlaInNbqCw0VAU2vlUmUAc8PW2JVMywGIyFS-bDb8C/exec"
+RECIPE_RUSH_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 
 
 
@@ -43,63 +43,63 @@ RESTAURANTS = {
         "name": "focus_dango_name",
         "price": 0,
         "theme": "#DC90B8",
-        "image": "restaurants/focus_dango.png",
+        "image": "restaurants/focus_dango.webp",
         "description": "focus_dango_desc"
     },
     "motivated_mochi": {
         "name": "motivated_mochi_name",
         "price": 0,
         "theme": "#6EC170",
-        "image": "restaurants/motivated_mochi.png",
+        "image": "restaurants/motivated_mochi.webp",
         "description": "motivated_mochi_desc"
     },
     "macha_delights": {
         "name": "macha_delights_name",
         "price": 400,
         "theme": "#517C58",
-        "image": "restaurants/matcha_delights.png",
+        "image": "restaurants/matcha_delights.webp",
         "description": "macha_delights_desc"
     },
     "macaron_maison": {
         "name": "macaron_maison_name",
         "price": 500,
         "theme": "#AFC3D6",
-        "image": "restaurants/macaron_maison.png",
+        "image": "restaurants/macaron_maison.webp",
         "description": "macaron_maison_desc"
     },
     "coffee_co": {
         "name": "coffee_co_name",
         "price": 600,
         "theme": "#98693A",
-        "image": "restaurants/coffee_co.png",
+        "image": "restaurants/coffee_co.webp",
         "description": "coffee_co_desc"
     },
     "bakery_heaven": {
         "name": "bakery_heaven_name",
         "price": 800,
         "theme": "#CD9C57",
-        "image": "restaurants/bakery_heaven.png",
+        "image": "restaurants/bakery_heaven.webp",
         "description": "bakery_heaven_desc"
     },
     "awesome_boba": {
         "name": "awesome_boba_name",
         "price": 850,
         "theme": "#CD8DCA",
-        "image": "restaurants/awesome_boba.png",
+        "image": "restaurants/awesome_boba.webp",
         "description": "awesome_boba_desc"
     },
     "awesome_shiny_boba": {
         "name": "awesome_shiny_boba_name",
         "price": 1000,
         "theme": "#41A59D",
-        "image": "restaurants/shiny_awesome_boba.png",
+        "image": "restaurants/shiny_awesome_boba.webp",
         "description": "awesome_shiny_boba_desc"
     },
     "santas_coffee": {
         "name": "santas_coffee_name",
         "price": 1225,
         "theme": "#CA4D44",
-        "image": "restaurants/santas_coffee.png",
+        "image": "restaurants/santas_coffee.webp",
         "description": "santas_coffee_desc"
     },
 }
@@ -110,56 +110,56 @@ EVOLUTIONS = {
         "name": "restaurant_evo_i_name",
         "price": 700,
         "theme": "#D07A5F",
-        "image": "sushi/restaurant_i.png",
+        "image": "sushi/restaurant_i.webp",
         "description": "restaurant_evo_i_desc"
     },
     "restaurant_evo_ii": {
         "name": "restaurant_evo_ii_name",
         "price": 800,
         "theme": "#D07A5F",
-        "image": "sushi/restaurant_ii.png",
+        "image": "sushi/restaurant_ii.webp",
         "description": "restaurant_evo_ii_desc"
     },
     "restaurant_evo_iii": {
         "name": "restaurant_evo_iii_name",
         "price": 900,
         "theme": "#D07A5F",
-        "image": "sushi/restaurant_iii.png",
+        "image": "sushi/restaurant_iii.webp",
         "description": "restaurant_evo_iii_desc"
     },
     "restaurant_evo_iv": {
         "name": "restaurant_evo_iv_name",
         "price": 1000,
         "theme": "#D07A5F",
-        "image": "sushi/restaurant_iv.png",
+        "image": "sushi/restaurant_iv.webp",
         "description": "restaurant_evo_iv_desc"
     },
     "restaurant_evo_legendary": {
         "name": "restaurant_evo_legendary_name",
         "price": 2000,
         "theme": "#445A78",
-        "image": "sushi/legendary_restaurant.png",
+        "image": "sushi/legendary_restaurant.webp",
         "description": "restaurant_evo_legendary_desc"
     },
     "restaurant_evo_garden": {
         "name": "restaurant_evo_garden_name",
         "price": 3000,
         "theme": "#2F553D",
-        "image": "sushi/garden_palace_restaurant.png",
+        "image": "sushi/garden_palace_restaurant.webp",
         "description": "restaurant_evo_garden_desc"
     },
     "restaurant_evo_heaven": {
         "name": "restaurant_evo_heaven_name",
         "price": 4000,
         "theme": "#E8D9A0",
-        "image": "sushi/heaven_restaurant.png",
+        "image": "sushi/heaven_restaurant.webp",
         "description": "restaurant_evo_heaven_desc"
     },
     "restaurant_evo_paradise": {
         "name": "restaurant_evo_paradise_name",
         "price": 5000,
         "theme": "#3D9C8A",
-        "image": "sushi/paradise_restaurant.png",
+        "image": "sushi/paradise_restaurant.webp",
         "description": "restaurant_evo_paradise_desc"
     },
 }
@@ -170,28 +170,28 @@ SHOPS = {
         "name": "grocery_store_name",
         "price": 700,
         "theme": "#AD6131",
-        "image": "shops/grocery_store.png",
+        "image": "shops/grocery_store.webp",
         "description": "grocery_store_desc"
     },
     "lunar_new_year": {
         "name": "lunar_new_year_name",
         "price": 888,
         "theme": "#D22B2B",
-        "image": "shops/lunar_new_year_feast.png",
+        "image": "shops/lunar_new_year_feast.webp",
         "description": "lunar_new_year_desc"
     },
     "astronigiri": {
         "name": "astronigiri_name",
         "price": 5000,
         "theme": "#74829B",
-        "image": "shops/astronigiri.png",
+        "image": "shops/astronigiri.webp",
         "description": "astronigiri_desc"
     },
     "pokestore": {
         "name": "pokestore_name",
         "price": 950,
         "theme": "#E8B23D",
-        "image": "shops/pokestore.png",
+        "image": "shops/pokestore.webp",
         "description": "pokestore_desc"
     },
     "wizard_shop": {
@@ -794,7 +794,7 @@ class NookLevelManager:
                 "recipe_rush_penalty_desc",
                 "The order expired: restaurant level and Taiyaki Coins were reduced."
             ),
-            "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+            "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
             "iconAlt": penalty_msg,
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
@@ -1141,12 +1141,12 @@ class NookLevelManager:
         current_id = state.get("current_theme_id", "default")
 
         if current_id == "default":
-            return "sushi/onigiri_stand.png"
+            return "sushi/onigiri_stand.webp"
 
         item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id) or SHOPS.get(current_id)
         if item and item.get("image"):
             return item["image"]
-        return "sushi/onigiri_stand.png"
+        return "sushi/onigiri_stand.webp"
 
     def get_current_theme_id(self) -> str:
         """Get the ID of the current theme."""
@@ -1463,7 +1463,7 @@ class NookLevelManager:
                 'id': special_id,
                 'name': f'{tr("recipe_rush_delivered", "Recipe delivered")}: {special_name}',
                 'description': f"{special_desc} (+{xp_earned} XP)",
-                'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
+                'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.webp",
                 'iconAlt': "Nook Rush Trophy",
                 'type': 'xp',
                 'amount': xp_earned,
@@ -1591,7 +1591,7 @@ class NookLevelManager:
                 "id": "taiyaki_coins_gained",
                 "name": "Taiyaki Coins!",
                 "description": f"You earned {coins_gained} Taiyaki Coins!",
-                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
                 "iconAlt": "Taiyaki Coins",
                 "textColorLight": "#2c2c2c",
                 "textColorDark": "#ffffff",
@@ -1610,7 +1610,7 @@ class NookLevelManager:
                 "id": "taiyaki_coins_lost",
                 "name": "Level Lost",
                 "description": f"Undoing review... {coins_lost} coins removed.",
-                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
                 "iconAlt": "Taiyaki Coins",
                 "textColorLight": "#2c2c2c",
                 "textColorDark": "#ffffff",
@@ -1691,7 +1691,7 @@ class NookLevelManager:
                             'id': f"recipe_rush_progress_{milestone}",
                             'name': f'{rush_name}: {milestone}% complete!',
                             'description': f"You've reached {milestone}% of today's recipe ({new_progress}/{target}).",
-                            'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
+                            'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.webp",
                             'iconAlt': "Nook Rush Progress",
                             'type': 'info',
                             'progress': milestone,
@@ -1774,7 +1774,7 @@ class NookLevelManager:
         if theme_image:
             icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         return [{
             "id": "restaurant_level_up",
@@ -1794,7 +1794,7 @@ class NookLevelManager:
         if theme_image:
             icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         progress = (xp_into_level / xp_to_next) * 100
         return [{
@@ -1815,7 +1815,7 @@ class NookLevelManager:
         if theme_image:
             icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         return [{
             "id": "daily_special_complete",
@@ -1835,7 +1835,7 @@ class NookLevelManager:
         if theme_image:
             icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         remaining = target - progress
         return [{
@@ -1856,7 +1856,7 @@ class NookLevelManager:
         if theme_image:
             icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         remaining = target - progress
         return [{

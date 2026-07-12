@@ -280,6 +280,27 @@ class PageSidebarMixin:
             if line_edit is not None:
                 line_edit.setText(defaults.get(key, fallback))
             self._refresh_marker_icon_button(key)
+        show_settings_toast(self, tr("markers_reset_toast", "Markers reset to default"))
+
+    def _box_effect_state_for_sidebar_preview(self, mode):
+        light_input = getattr(self, "box_effect_light_color_input", None)
+        dark_input = getattr(self, "box_effect_dark_color_input", None)
+        color = None
+        if mode == "dark" and dark_input is not None:
+            color = dark_input.text()
+        elif light_input is not None:
+            color = light_input.text()
+        if not color or not QColor(color).isValid():
+            colors = self.current_config.get("colors", {})
+            fallback_mode = "dark" if mode == "dark" else "light"
+            color = colors.get(fallback_mode, {}).get(
+                "--canvas-inset", DEFAULTS["colors"][fallback_mode]["--canvas-inset"]
+            )
+        blur_slider = getattr(self, "box_effect_blur_slider", None)
+        opacity_slider = getattr(self, "box_effect_opacity_slider", None)
+        blur = blur_slider.value() if blur_slider else mw.col.conf.get("onigiri_canvas_inset_effect_blur", 0)
+        opacity = opacity_slider.value() if opacity_slider else mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100)
+        return {"color": color, "image_path": "", "blur": blur, "opacity": opacity}
 
     def _on_sidebar_frame_effect_changed(self, prefix):
         for attr in ("radius", "stroke", "margin"):
@@ -1437,6 +1458,7 @@ class PageSidebarMixin:
             self.sidebar_bg_blur_slider.setValue(0)
             self.sidebar_bg_opacity_slider.setValue(100)
             self._update_sidebar_background_controls()
+            show_settings_toast(self, tr("sidebar_bg_reset_toast", "Sidebar background reset to default"))
             return
 
         # Set the main mode back to "Use Main Background Settings"
@@ -1462,6 +1484,7 @@ class PageSidebarMixin:
         self.sidebar_bg_dark_color_input.setText("#2C2C2C")
         self.sidebar_bg_blur_spinbox.setValue(0)
         self.sidebar_bg_opacity_spinbox.setValue(100)
+        show_settings_toast(self, tr("sidebar_bg_reset_toast", "Sidebar background reset to default"))
 
     def toggle_sidebar_background_options(self): 
         if not hasattr(self, "sidebar_bg_main_radio"):
@@ -1655,6 +1678,21 @@ class PageSidebarMixin:
                 mw.col.conf["modern_menu_sidebar_stroke"] = self.sidebar_bg_stroke_slider.value()
             if hasattr(self, "sidebar_bg_margin_slider"):
                 mw.col.conf["modern_menu_sidebar_margin"] = self.sidebar_bg_margin_slider.value()
+
+            sync_box_toggle = getattr(self, "sidebar_bg_sync_box_toggle", None)
+            sync_box_effect = bool(sync_box_toggle and sync_box_toggle.isChecked())
+            mw.col.conf["modern_menu_sidebar_sync_box_effect"] = sync_box_effect
+            if sync_box_effect:
+                light_state = self._box_effect_state_for_sidebar_preview("light")
+                dark_state = self._box_effect_state_for_sidebar_preview("dark")
+                mw.col.conf["modern_menu_sidebar_bg_color_light"] = light_state["color"]
+                mw.col.conf["modern_menu_sidebar_bg_color_dark"] = dark_state["color"]
+                mw.col.conf["modern_menu_sidebar_bg_blur"] = light_state["blur"]
+                mw.col.conf["modern_menu_sidebar_bg_opacity"] = light_state["opacity"]
+                if hasattr(self, "box_effect_radius_slider"):
+                    mw.col.conf["modern_menu_sidebar_radius"] = self.box_effect_radius_slider.value()
+                if hasattr(self, "box_effect_stroke_slider"):
+                    mw.col.conf["modern_menu_sidebar_stroke"] = self.box_effect_stroke_slider.value()
         else:
             if getattr(self, "sidebar_bg_custom_radio", None) and self.sidebar_bg_custom_radio.isChecked(): mw.col.conf["modern_menu_sidebar_bg_mode"] = "custom"
             else: mw.col.conf["modern_menu_sidebar_bg_mode"] = "main"

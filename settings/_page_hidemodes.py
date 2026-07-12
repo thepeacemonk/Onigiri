@@ -204,11 +204,7 @@ class PageHidemodesMixin:
     def _on_full_hide_toggled(self, checked):
         """Handle Full Hide Mode toggle"""
         if checked:
-            QMessageBox.information(
-                self,
-                "Restart Required",
-                "Please restart Anki for the Full Hide Mode to take effect."
-            )
+            show_settings_toast(self, tr("full_hide_restart_toast", "Restart Anki for Full Hide Mode to take effect"))
 
     def _save_hide_modes_settings(self):
         self.current_config.update({

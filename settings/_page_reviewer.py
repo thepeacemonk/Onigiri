@@ -1487,7 +1487,7 @@ class PageReviewerMixin:
             getattr(self, f"btn_{key}_text_dark_color_input").setText(def_txt_d)
             if hasattr(self, f"btn_{key}_text_dark_circular_button"): getattr(self, f"btn_{key}_text_dark_circular_button").setColor(def_txt_d)
         
-        showInfo("Answer buttons have been reset to default values.")
+        show_settings_toast(self, tr("answer_buttons_reset_toast", "Answer buttons reset to default values"))
 
     def create_reviewer_tab(self):
         page, layout = self._create_scrollable_page()
@@ -1789,7 +1789,6 @@ class PageReviewerMixin:
         """Reset reviewer background settings to defaults."""
         if hasattr(self, "reviewer_bg_color_only_toggle") and self._modern_background_spec("reviewer"):
             self._reset_modern_background_to_default("reviewer")
-            QMessageBox.information(self, "Reviewer Background Reset", "The reviewer background settings have been reset to default values.\nPress 'Save' to apply the changes.")
             return
 
         # Set mode to "Use Main Background"
@@ -1815,7 +1814,7 @@ class PageReviewerMixin:
         self.reviewer_bg_blur_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_blur"])
         self.reviewer_bg_opacity_spinbox.setValue(DEFAULTS["onigiri_reviewer_bg_opacity"])
         
-        QMessageBox.information(self, "Reviewer Background Reset", "The reviewer background settings have been reset to default values.\nPress 'Save' to apply the changes.")
+        show_settings_toast(self, tr("reviewer_bg_reset_toast", "Reviewer background reset — press Save to apply"))
 
     def reset_reviewer_bottom_bar_to_default(self):
         """Reset reviewer bottom bar background settings to defaults."""
@@ -1863,7 +1862,7 @@ class PageReviewerMixin:
         if hasattr(self, "_sync_reviewer_bottom_bar_controls"):
             self._sync_reviewer_bottom_bar_controls()
         
-        QMessageBox.information(self, "Bottom Bar Reset", "The bottom bar background settings have been reset to default values.\nPress 'Save' to apply the changes.")
+        show_settings_toast(self, tr("bottom_bar_reset_toast", "Bottom bar reset — press Save to apply"))
 
     def toggle_reviewer_bar_options(self):
         is_main = self.reviewer_bar_main_radio.isChecked()

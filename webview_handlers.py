@@ -288,6 +288,17 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if parent and callable(parent) and type(parent()).__name__ == "OnigimonCareDialog":
         return handled
 
+    if cmd == "onigiri_welcome_dismissed":
+        try:
+            from . import config
+            conf = config.get_config()
+            conf["showWelcomePopup"] = False
+            config.write_config(conf)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error dismissing welcome: {e}")
+            return (True, None)
+
     if cmd == "openGamificationSettings":
         try:
             from . import gamification_settings

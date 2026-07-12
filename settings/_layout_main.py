@@ -1123,9 +1123,9 @@ class UnifiedLayoutEditor(QWidget):
                 changes_made = True
                 
         if changes_made:
-            showInfo("Widget names have been reset to defaults.")
+            show_settings_toast(self, tr("widget_names_reset_toast", "Widget names reset to defaults"))
         else:
-            showInfo("Widget names are already at defaults.")
+            show_settings_toast(self, tr("widget_names_already_default_toast", "Widget names are already at defaults"))
 
     def reset_layout(self):
         """
@@ -1224,7 +1224,7 @@ class UnifiedLayoutEditor(QWidget):
             item._update_size() # Compact size
             item.show()
 
-        showInfo("Layout has been reset to defaults.")
+        show_settings_toast(self, tr("layout_reset_toast", "Layout reset to defaults"))
 
 
 class AdaptiveModeCard(QWidget):

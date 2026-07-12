@@ -304,7 +304,7 @@ class DraggableItem(QFrame):
         height_group = QButtonGroup(custom_menu)
         height_group.setExclusive(True)
         min_rows = self._minimum_row_span()
-        height_options = [(str(i), i, self.row_span == i) for i in range(min_rows, 4)]
+        height_options = [(str(i), i, self.row_span == i) for i in range(min_rows, 5)]
         custom_menu.add_section_label(tr("widget_menu_rows", "Rows"))
         custom_menu.add_segmented_row(height_options, height_group)
 

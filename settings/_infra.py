@@ -191,7 +191,10 @@ class InfraMixin:
     def _populate_page_nav(self, page_name):
         self._clear_page_nav()
         sections = self._page_nav_sections.get(page_name, [])
-        self.page_nav_bar.setVisible(bool(sections))
+        # Keep the (transparent) nav bar visible even when empty so its expanding
+        # size policy keeps reserving the stretch space that pushes header action
+        # widgets (e.g. the Themes light/dark toggle) to the top-right.
+        self.page_nav_bar.setVisible(True)
         for title, target_widget in sections:
             btn = QPushButton(title)
             btn.setObjectName("pageNavButton")
@@ -1098,6 +1101,7 @@ class InfraMixin:
         self._update_action_buttons_preview()
         if hasattr(self, "sidebar_bg_preview"):
             self._update_modern_background_preview("sidebar")
+        show_settings_toast(self, tr("action_buttons_reset_toast", "Action buttons reset to default"))
 
     def _action_external_ids(self):
         try:
@@ -1390,6 +1394,8 @@ class InfraMixin:
         self._update_box_effect_controls()
         if hasattr(self, "overview_style_sync_toggle") and self.overview_style_sync_toggle.isChecked():
             self._update_overview_style_controls()
+        if hasattr(self, "sidebar_bg_sync_box_toggle") and self.sidebar_bg_sync_box_toggle.isChecked():
+            self._update_modern_background_preview("sidebar")
 
     def _update_box_effect_controls(self):
         if not hasattr(self, "box_effect_preview"):
@@ -1460,6 +1466,9 @@ class InfraMixin:
         self.box_effect_radius_slider.setValue(20)
         self.box_effect_stroke_slider.setValue(1)
         self._update_box_effect_controls()
+        if hasattr(self, "sidebar_bg_sync_box_toggle") and self.sidebar_bg_sync_box_toggle.isChecked():
+            self._update_modern_background_preview("sidebar")
+        show_settings_toast(self, tr("box_effect_reset_toast", "Box effect reset to default"))
 
     def _draw_box_effect_background_layer(self, painter, rect, mode):
         state = self._main_background_state_for_box_preview(mode)
@@ -3352,6 +3361,7 @@ class InfraMixin2:
 
         self._update_deck_icon_state()
         self._update_deck_icon_preview()
+        show_settings_toast(self, tr("deck_reset_toast", "Deck settings reset to default"))
 
     def _on_settings_accent_changed(self, mode, value):
         color = QColor(value)
@@ -3396,6 +3406,8 @@ class InfraMixin2:
         else:
             self.bg_blur_spinbox.setValue(0)
             self.bg_opacity_spinbox.setValue(100)
+
+        show_settings_toast(self, tr("main_bg_reset_toast", "Main background reset to default"))
 
     def _animate_visibility(self, widget, should_be_visible, animate=True):
         """Animates the visibility of a widget by changing its height."""

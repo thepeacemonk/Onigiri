@@ -1046,7 +1046,7 @@ class OnigimonCareDialog(QDialog):
         gift_ready = bool(payload.get("marketGiftReady"))
         comet_icon = _item_asset_url(ITEMS.get("valuable_comet_shard", {}))
         star_icon = _item_asset_url(ITEMS.get("valuable_star_piece", {}))
-        mart_icon = _addon_asset_url("system_files/gamification_images/Mart.png")
+        mart_icon = _addon_asset_url("system_files/gamification_images/Mart.webp")
         rows = "".join(self._market_item(item, purchased) for item in market_items)
         gift_disabled = "disabled" if not gift_ready else ""
         gift_text = tr("onigimon_daily_gift") if gift_ready else tr("onigimon_gift_opened")
@@ -1457,21 +1457,7 @@ class OnigimonCareDialog(QDialog):
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .onigimon-pokemon.low-hp > img {
-            filter: grayscale(100%) brightness(0.9) contrast(1.1) drop-shadow(0 5px 0 rgba(0, 0, 0, 0.18)) !important;
-        }
-        .onigimon-pokemon.low-happy:not(.low-hp) > img {
-            filter: sepia(0.65) hue-rotate(-50deg) saturate(2.8) drop-shadow(0 0 12px rgba(220, 20, 20, 0.75)) drop-shadow(0 5px 0 rgba(0, 0, 0, 0.18)) !important;
-        }
-        .onigimon-pokemon.low-hygiene:not(.low-hp):not(.low-happy) > img {
-            filter: sepia(0.8) hue-rotate(85deg) saturate(2.4) drop-shadow(0 0 12px rgba(46, 204, 113, 0.65)) drop-shadow(0 5px 0 rgba(0, 0, 0, 0.18)) !important;
-        }
-        .onigimon-pokemon.low-hunger:not(.low-hp):not(.low-happy):not(.low-hygiene) > img {
-            filter: sepia(0.5) hue-rotate(185deg) saturate(2) opacity(0.72) drop-shadow(0 0 10px rgba(52, 152, 219, 0.6)) drop-shadow(0 5px 0 rgba(0, 0, 0, 0.18)) !important;
-        }
-        .onigimon-pokemon.low-training:not(.low-hp):not(.low-happy):not(.low-hygiene):not(.low-hunger) > img {
-            filter: grayscale(30%) sepia(45%) brightness(0.8) contrast(0.9) drop-shadow(0 5px 0 rgba(0, 0, 0, 0.18)) !important;
-        }
+
         .onigimon-pokemon > img.is-oni-anim-feed {
             animation: oni-nom 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }

@@ -23,9 +23,10 @@ from ._page_languages import PageLanguagesMixin
 from ._page_gallery import PageGalleryMixin
 from ._page_study_tools import PageStudyToolsMixin
 from ._page_hashi_notes import PageHashiNotesMixin
-from . import _infra, _page_colors, _page_themes, _page_fonts, _page_sidebar, _dialog_core, _page_sync, _page_profile, _page_mainmenu, _page_backgrounds, _page_reviewer, _page_hidemodes, _page_overviews, _page_languages, _page_gallery, _page_study_tools, _page_hashi_notes, _layout_base, _layout_main, _layout_sidebar
+from ._page_pomodoro import PagePomodoroMixin
+from . import _infra, _page_colors, _page_themes, _page_fonts, _page_sidebar, _dialog_core, _page_sync, _page_profile, _page_mainmenu, _page_backgrounds, _page_reviewer, _page_hidemodes, _page_overviews, _page_languages, _page_gallery, _page_study_tools, _page_hashi_notes, _page_pomodoro, _layout_base, _layout_main, _layout_sidebar
 
-class SettingsDialog(InfraMixin, InfraMixin2, PageColorsMixin, PageThemesMixin, PageThemesMixin2, PageFontsMixin, PageSidebarMixin, DialogCoreMixin, DialogCoreMixin2, PageSyncMixin, PageProfileMixin, PageMainmenuMixin, PageBackgroundsMixin, PageBackgroundsMixin2, PageReviewerMixin, PageReviewerMixin2, PageHidemodesMixin, PageOverviewsMixin, PageLanguagesMixin, PageGalleryMixin, PageStudyToolsMixin, PageHashiNotesMixin, QDialog):
+class SettingsDialog(InfraMixin, InfraMixin2, PageColorsMixin, PageThemesMixin, PageThemesMixin2, PageFontsMixin, PageSidebarMixin, DialogCoreMixin, DialogCoreMixin2, PageSyncMixin, PageProfileMixin, PageMainmenuMixin, PageBackgroundsMixin, PageBackgroundsMixin2, PageReviewerMixin, PageReviewerMixin2, PageHidemodesMixin, PageOverviewsMixin, PageLanguagesMixin, PageGalleryMixin, PageStudyToolsMixin, PageHashiNotesMixin, PagePomodoroMixin, QDialog):
     ACTION_BUTTON_ORDER_IDS = ("add", "browse", "stats", "sync", "settings", "gamification", "more")
     ACTION_BUTTON_MORE_CHILDREN = ("get_shared", "create_deck", "import_file")
 

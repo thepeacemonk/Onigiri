@@ -166,21 +166,23 @@ THEMES = {
             "--star-color": "#1e66f5",
             "--empty-star-color": "#7c7f93",
         },
-        # Latte is a light theme, so its "dark" mode is identical.
+        # Dark mode counterpart for Latte, using Catppuccin Mocha's palette
+        # (Latte has no official dark flavor) with Latte's own blue accent
+        # swapped for Mocha's softer pastel blue so it reads well on a dark bg.
         {
-            "--accent-color": "#1e66f5",
-            "--bg": "#eff1f5",
-            "--fg": "#4c4f69",
-            "--fg-subtle": "#6c6f85",
-            "--border": "#bcc0cc",
-            "--canvas-inset": "#e6e9ef",
-            "--heatmap-color": "#1e66f5",
-            "--heatmap-color-zero": "#ccd0da",
-            "--icon-color": "#7c7f93",
-            "--icon-color-filtered": "#1e66f5",
-            "--highlight-bg": "#ccd0da",
-            "--star-color": "#1e66f5",
-            "--empty-star-color": "#7c7f93",
+            "--accent-color": "#89b4fa",
+            "--bg": "#1e1e2e",
+            "--fg": "#cdd6f4",
+            "--fg-subtle": "#a6adc8",
+            "--border": "#45475a",
+            "--canvas-inset": "#181825",
+            "--heatmap-color": "#89b4fa",
+            "--heatmap-color-zero": "#313244",
+            "--icon-color": "#9399b2",
+            "--icon-color-filtered": "#89b4fa",
+            "--highlight-bg": "#313244",
+            "--star-color": "#89b4fa",
+            "--empty-star-color": "#9399b2",
         }
     ),
     "Catppuccin Frappé": define_theme(

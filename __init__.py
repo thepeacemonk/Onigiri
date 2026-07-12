@@ -117,6 +117,66 @@ def inject_menu_files(web_content, context):
         web_content.head += quiet_state_change_css()
         web_content.head += patcher.generate_dynamic_css(conf)
         web_content.head += patcher.generate_box_effect_button_vars_css(conf)
+
+        if conf.get("showWelcomePopup", True):
+            web_content.head += f"""
+            <script>
+            window.addEventListener("DOMContentLoaded", function() {{
+                if (document.getElementById("onigiri-welcome-overlay")) return;
+                
+                const style = document.createElement("style");
+                style.id = "onigiri-welcome-style";
+                style.innerHTML = `
+                    @font-face {{
+                        font-family: 'OnigiriMontserrat';
+                        src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Montserrat.ttf') format('truetype');
+                    }}
+                    #onigiri-welcome-overlay {{
+                        position: fixed; inset: 0; z-index: 2147483647;
+                        display: flex; flex-direction: column; align-items: center; justify-content: center;
+                        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                        background: rgba(0, 0, 0, 0.55);
+                        color: white;
+                        font-family: 'OnigiriMontserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+                        opacity: 0; transition: opacity 0.4s ease;
+                    }}
+                    #onigiri-welcome-overlay .btn-continue {{
+                        margin-top: 36px; padding: 16px 48px; font-size: 21px; font-weight: 700;
+                        font-family: 'OnigiriMontserrat', sans-serif; color: #123034; background: white;
+                        border: none; border-radius: 40px; cursor: pointer;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;
+                    }}
+                    #onigiri-welcome-overlay .btn-continue:hover {{
+                        transform: scale(1.05); box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+                    }}
+                `;
+                document.head.appendChild(style);
+
+                const overlay = document.createElement("div");
+                overlay.id = "onigiri-welcome-overlay";
+                overlay.innerHTML = `
+                    <img src="/_addons/{addon_package}/onigiri_logo.png" style="width: 290px; height: auto; margin-bottom: 32px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3));" />
+                    <h1 style="margin: 0 0 20px 0; font-size: 49px; font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Welcome!</h1>
+                    <p style="margin: 0; font-size: 26px; font-weight: 500; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">Proceed to Settings to start customizing</p>
+                    <button class="btn-continue">Continue</button>
+                `;
+                
+                const btn = overlay.querySelector('.btn-continue');
+                btn.addEventListener("click", function() {{
+                    overlay.style.opacity = "0";
+                    setTimeout(() => {{
+                        overlay.remove();
+                        const s = document.getElementById("onigiri-welcome-style");
+                        if (s) s.remove();
+                        pycmd("onigiri_welcome_dismissed");
+                    }}, 400);
+                }});
+                
+                document.body.appendChild(overlay);
+                setTimeout(() => {{ overlay.style.opacity = "1"; }}, 50);
+            }});
+            </script>
+            """
     if is_deck_browser:
         def versioned_web_asset(filename: str) -> str:
             try:

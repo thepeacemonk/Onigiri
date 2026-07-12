@@ -2185,14 +2185,10 @@ def _care_modal_html(payload: Dict[str, Any], companion: Optional[Dict[str, Any]
     hp = companion.get("hp", 0)
     max_hp = companion.get("max_hp", 0)
     sick_indicator = ""
-    health_filter = ""
     if max_hp and hp < max_hp * 0.3:
-        health_filter = "filter: grayscale(40%) sepia(20%) hue-rotate(-10deg);"
         sick_indicator = f'<div style="position:absolute; top: 10px; right: 10px; background: rgba(220, 53, 69, 0.9); color: white; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 13px; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🤒 {escape(tr("onigimon_sick_low_hp"))}</div>'
     
     sprite_img = _sprite_img_html(sprite_urls, name)
-    if sprite_img and health_filter:
-        sprite_img = sprite_img.replace("<img ", f'<img style="{escape(health_filter, quote=True)}" ', 1)
     categories = (
         ("food", tr("onigimon_category_food"), "berry_cheri", BERRY_KEYS + ("curry_ingredients",), "feed"),
         ("treats", tr("onigimon_category_treats"), "poke_candies", ("poke_candies", "exp_candy"), "feed"),

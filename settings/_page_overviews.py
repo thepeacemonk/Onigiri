@@ -1331,6 +1331,7 @@ class PageOverviewsMixin:
         self.overview_style_preview_overviewer_button.setChecked(True)
         del blockers
         self._update_overview_style_controls()
+        show_settings_toast(self, tr("overview_style_reset_toast", "Overview style reset to default"))
 
     def _save_overview_style_settings(self):
         if not hasattr(self, "overview_style_sync_toggle"):

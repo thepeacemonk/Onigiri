@@ -345,7 +345,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
 def _profile_background_render_parts(addon_package, include_default_image=True):
     container_style = ""
     layer_style = ""
-    bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "accent")
+    bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "image")
     if bg_mode == "image":
         bg_image_file = _col_conf_get("modern_menu_profile_bg_image", "")
         if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
@@ -357,7 +357,7 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
         container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
         if bg_url:
             blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_bg_blur", 0) or 0)))
-            opacity_value = _col_conf_get("modern_menu_profile_bg_opacity", 100)
+            opacity_value = _col_conf_get("modern_menu_profile_bg_opacity", 50)
             opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
             blur_px = blur * 0.2
             scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
@@ -699,10 +699,10 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal") -> str:
     # Get Image and check if it's Santa's Coffee
     image_file = nook_level.manager.get_current_theme_image()
     if not image_file:
-        image_file = "sushi/onigiri_stand.png" # Default
+        image_file = "sushi/onigiri_stand.webp" # Default
 
     # Check if Santa's Coffee is active
-    is_santas_coffee = image_file.endswith("santas_coffee.png")
+    is_santas_coffee = image_file.endswith("santas_coffee.webp")
     snow_class = "with-snow" if is_santas_coffee else ""
     
     # Generate snowflakes HTML if Santa's Coffee is active
@@ -2174,12 +2174,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # Build the dynamic profile bar HTML
     user_name = conf.get("userName", "USER")
     
-    profile_bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "accent")
+    profile_bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "image")
     bg_class_str = ""
     bg_style_str, bg_layer_style = _profile_background_render_parts(addon_package)
     bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
     if profile_bg_mode == "image":
         bg_class_str = "with-image-bg"
+        if not _col_conf_get("modern_menu_profile_bg_image", "") and _col_conf_get("modern_menu_profile_bg_dynamic_mode", True):
+            bg_class_str += " dynamic-default-bg"
     
     profile_pic_html_expanded = _get_profile_pic_html(user_name, addon_package)
 
@@ -2261,6 +2263,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # --- ADDED: Generate CSS for Action Icons ---
     action_icons_css = _generate_action_icons_css(conf, addon_package)
     theme_css += action_icons_css
+
+    # --- ADDED: Custom profile name color (light/dark aware) ---
+    if _col_conf_get("modern_menu_profile_name_color_enabled", False):
+        name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
+        name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
+        name_dark = _col_conf_get("modern_menu_profile_name_color_dark", name_light) if name_dynamic else name_light
+        theme_css += f"""
+        <style id="profile-name-color">
+            .profile-bar .profile-name {{ color: {name_light} !important; text-shadow: none !important; }}
+            body.night-mode .profile-bar .profile-name {{ color: {name_dark} !important; }}
+        </style>
+        """
 
     profile_bar_html = (
         f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "

@@ -1727,7 +1727,7 @@ class HexagonLandManager:
             'hexland_earned_session_tooltip',
             "Hexagon Land: Você ganhou {} Hex Coins{} nesta sessão!"
         ).format(pending_coins, materials_text)
-        coin_icon_url = f"/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.png"
+        coin_icon_url = f"/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.webp"
         reward_items = []
         if pending_coins > 0:
             reward_items.append({
@@ -1744,7 +1744,7 @@ class HexagonLandManager:
                 "name": "Hexagon Land",
                 "description": tr('hexland_earned_session_ui', 'Session Rewards:'),
                 "rewardItems": reward_items,
-                "iconImage": f"/_addons/{_addon_package()}/system_files/gamification_images/Hexagon_world.png",
+                "iconImage": f"/_addons/{_addon_package()}/system_files/gamification_images/Hexagon_world.webp",
                 "iconAlt": "Hexagon Land",
                 "forceTop": True,
                 "duration": 6500,
@@ -2316,7 +2316,7 @@ def _stat_asset_icon_html(sprite: str, css_class: str = "") -> str:
 
 
 def _coin_stat_icon_html() -> str:
-    return f'<img class="hex-land-stat-sprite coin" src="/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.png" alt="" aria-hidden="true">'
+    return f'<img class="hex-land-stat-sprite coin" src="/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.webp" alt="" aria-hidden="true">'
 
 
 def _stat_row_html(label: str, value: int, icon_html: str) -> str:
@@ -3993,7 +3993,7 @@ function tools() {
 
 function coinLabelHtml(value, label = null) {
     const displayLabel = label || "{tr('hexland_hex_coins', 'Hex Coins')}";
-    return `<span class="coin-value"><img src="/_addons/__ADDON__/system_files/gamification_images/hex_coin.png" alt=""> <span>${esc(value)} ${esc(displayLabel)}</span></span>`;
+    return `<span class="coin-value"><img src="/_addons/__ADDON__/system_files/gamification_images/hex_coin.webp" alt=""> <span>${esc(value)} ${esc(displayLabel)}</span></span>`;
 }
 
 function formatCoinRate(value) {
@@ -4165,7 +4165,7 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
     toast.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:#1597d1;color:white;padding:12px 24px;border-radius:20px;font-weight:bold;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:opacity 0.5s;';
     
     let parts = [];
-    const coinIcon = "/_addons/__ADDON__/system_files/gamification_images/hex_coin.png";
+    const coinIcon = "/_addons/__ADDON__/system_files/gamification_images/hex_coin.webp";
     if (data.pendingCoins > 0) {
         parts.push(`<span style="display:inline-flex;align-items:center;gap:5px;"><img src="${coinIcon}" alt="" style="width:20px;height:20px;object-fit:contain;">${data.pendingCoins}</span>`);
     }

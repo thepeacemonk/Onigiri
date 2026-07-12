@@ -25,8 +25,8 @@ from . import config
 from .settings import FlowLayout
 from .translations import tr, current_locale
 from .prep_station_ui import (
-    HeaderBar, ExamCard, AddExamCard, MiniCalendar, StatCard, QuoteCard,
-    TodoSummaryCard, PlanEditDialog, PlanDetailView,
+    HeaderBar, ExamCard, AddExamCard, PlanCardsContainer, MiniCalendar, UpcomingPlansCard, StatCard, QuoteCard,
+    PlanEditDialog, PlanDetailView,
     palette, build_qss, circular_pixmap, resolve_plan_color, fit_dialog_to_screen,
     readable_on,
 )
@@ -305,12 +305,12 @@ def _resolve_header_background(dark: bool):
     sync = bool(conf.get("onigiri_prep_station_bg_sync_profile", True))
 
     if sync:
-        mode = conf.get("modern_menu_profile_bg_mode", "accent")
+        mode = conf.get("modern_menu_profile_bg_mode", "image")
         if mode == "accent":
             color = _accent_color()
         else:
             color = conf.get(f"modern_menu_profile_bg_color_{suffix}", "#555555" if dark else "#EEEEEE")
-        opacity = int(conf.get("modern_menu_profile_bg_opacity", 100) or 100)
+        opacity = int(conf.get("modern_menu_profile_bg_opacity", 50) or 50)
         blur = int(conf.get("modern_menu_profile_bg_blur", 0) or 0)
         pixmap = None
         if mode == "image":
@@ -407,8 +407,9 @@ class PrepStationDialog(QDialog):
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         left_scroll.viewport().setAutoFillBackground(False)
-        self.cards_container = QWidget()
+        self.cards_container = PlanCardsContainer(self.pal)
         self.cards_container.setAutoFillBackground(False)
+        self.cards_container.orderCommitted.connect(self._reorder_plan)
         self.cards_flow = FlowLayout(self.cards_container, margin=2, spacing=14)
         left_scroll.setWidget(self.cards_container)
         content_row.addWidget(left_scroll, 2)
@@ -427,14 +428,14 @@ class PrepStationDialog(QDialog):
         self.calendar = MiniCalendar(self.pal)
         right_layout.addWidget(self.calendar)
 
+        self.upcoming_card = UpcomingPlansCard(self.pal)
+        right_layout.addWidget(self.upcoming_card)
+
         self.stat_card = StatCard(self.pal)
         right_layout.addWidget(self.stat_card)
 
         self.quote_card = QuoteCard(self.pal)
         right_layout.addWidget(self.quote_card)
-
-        self.todo_summary = TodoSummaryCard(self.pal)
-        right_layout.addWidget(self.todo_summary)
 
         right_layout.addStretch(1)
         right_scroll.setWidget(right_container)
@@ -446,7 +447,6 @@ class PrepStationDialog(QDialog):
         self.detail_view.backRequested.connect(self._close_plan_detail)
         self.detail_view.editRequested.connect(self._edit_from_detail)
         self.detail_view.deleteRequested.connect(self._delete_from_detail)
-        self.detail_view.todosChanged.connect(self._on_detail_todos_changed)
         self.stack.addWidget(self.detail_view)
 
         self.refresh()
@@ -454,6 +454,7 @@ class PrepStationDialog(QDialog):
     def refresh(self) -> None:
         dark = _is_dark_mode()
         self.pal = palette(dark)
+        self.cards_container.pal = self.pal
         plans = _get_plans()
         enriched = [_enrich_plan(p) for p in plans]
 
@@ -491,6 +492,25 @@ class PrepStationDialog(QDialog):
                 pass
         self.calendar.set_marks(marks)
 
+        upcoming = []
+        today = date.today()
+        for p in enriched:
+            try:
+                d = date.fromisoformat(p.get("exam_date", ""))
+            except Exception:
+                continue
+            days_left = (d - today).days
+            if days_left < 0:
+                continue
+            if days_left == 0:
+                date_label = tr("prep_today_badge")
+            else:
+                date_label = tr("prep_days_left_badge").format(days_left)
+            name = p.get("name") or tr("prep_default_plan_name")
+            upcoming.append((days_left, name, date_label, resolve_plan_color(p)))
+        upcoming.sort(key=lambda x: x[0])
+        self.upcoming_card.set_items([(name, date_label, color) for _, name, date_label, color in upcoming])
+
         total_pace = 0.0
         active_count = 0
         for p in enriched:
@@ -504,13 +524,20 @@ class PrepStationDialog(QDialog):
 
         self.quote_card.set_quote(_motivational_phrase())
 
-        pending = []
-        for p in enriched:
-            pc = resolve_plan_color(p)
-            for t in p.get("todos", []):
-                if not t.get("done"):
-                    pending.append((f"{p.get('name', tr('prep_default_plan_name'))}: {t.get('text', '')}", pc))
-        self.todo_summary.set_items(pending)
+    def _reorder_plan(self, plan_id: str, target_index: int) -> None:
+        plans = _get_plans()
+        src_index = next((i for i, p in enumerate(plans) if p.get("id") == plan_id), None)
+        if src_index is None:
+            return
+        plan = plans.pop(src_index)
+        if target_index > src_index:
+            target_index -= 1
+        target_index = max(0, min(target_index, len(plans)))
+        if target_index == src_index:
+            return
+        plans.insert(target_index, plan)
+        _save_plans(plans)
+        self.refresh()
 
     def _open_add_modal(self) -> None:
         dialog = PlanEditDialog(self.addon_path, _get_deck_names(), None, self)
@@ -575,14 +602,11 @@ class PrepStationDialog(QDialog):
         _handle_delete_plan(plan_id)
         self._close_plan_detail()
 
-    def _on_detail_todos_changed(self, plan_id: str, todos: list) -> None:
-        plans = _get_plans()
-        for p in plans:
-            if p.get("id") == plan_id:
-                p["todos"] = todos
-                break
-        _save_plans(plans)
-        self._refresh_detail_view()
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and self.cards_container.is_reordering():
+            self.cards_container.cancel_reorder()
+            return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event) -> None:
         try:
@@ -666,14 +690,12 @@ def render_widget_html(slot_count: int = 4) -> str:
                 active_plans.append((days_left, p))
         except Exception:
             pass
-    active_plans.sort(key=lambda x: x[0])
 
-    open_tooltip = html.escape(tr("prep_open_tooltip"), quote=True)
     widget_title = html.escape(tr("prep_widget_title"))
 
     if not active_plans:
         return f"""
-<div class="prep-station-widget" onclick="pycmd('openPrepStation')" title="{open_tooltip}">
+<div class="prep-station-widget" onclick="pycmd('openPrepStation')">
   <div class="prep-widget-header">
     <span class="prep-widget-title">{widget_title}</span>
   </div>
@@ -684,9 +706,6 @@ def render_widget_html(slot_count: int = 4) -> str:
     for days_left, p in active_plans[:slot_count]:
         name = html.escape(p.get("name", tr("prep_default_exam_name")))
         color = resolve_plan_color(p)
-        todos = p.get("todos", [])
-        done = sum(1 for t in todos if t.get("done"))
-        total = len(todos)
         enriched = _enrich_plan(p)
         pace = enriched.get("_pace") or {}
         req = pace.get("required_per_day")
@@ -712,13 +731,6 @@ def render_widget_html(slot_count: int = 4) -> str:
         icon_html = _prep_card_icon_html(addon_path, addon_package, p.get("icon", "emoji:📚"), fg_on_band)
 
         progress_html = ""
-        if total > 0:
-            frac = (done / total) * 100
-            progress_html = f"""
-    <div class="prep-card-progress">
-      <div class="prep-card-progress-track"><div class="prep-card-progress-fill" style="width:{frac:.0f}%;background:{color}"></div></div>
-      <span class="prep-card-progress-label">{done}/{total}</span>
-    </div>"""
 
         cards_html += f"""
 <div class="prep-plan-card" onclick="event.stopPropagation(); pycmd('openPrepStation')">
@@ -742,7 +754,7 @@ def render_widget_html(slot_count: int = 4) -> str:
     plan_word = tr("prep_plan") if len(active_plans) == 1 else tr("prep_plans")
     count_label = html.escape(tr("prep_count_tpl").format(len(active_plans), plan_word))
     return f"""
-<div class="prep-station-widget" onclick="pycmd('openPrepStation')" title="{open_tooltip}">
+<div class="prep-station-widget" onclick="pycmd('openPrepStation')">
   <div class="prep-widget-header">
     <span class="prep-widget-count">{count_label}</span>
     <span class="prep-widget-title">{widget_title}</span>

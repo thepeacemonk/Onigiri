@@ -9,7 +9,6 @@ __all__ = [
     'hexagon_land',
     'focus_dango',
     'taiyaki_store',
-    'onigimon_sandbox',
     'reward_redemption',
     'nook_level_ui',
 ]

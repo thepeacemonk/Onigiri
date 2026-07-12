@@ -16,17 +16,18 @@ class PageHashiNotesMixin:
         for key, value in DEFAULTS.get("hashi_notes", {}).items():
             prefs.setdefault(key, copy.deepcopy(value))
 
-        intro = QLabel(
+        intro = QLabel(tr(
+            "hashi_settings_intro",
             "Hashi Notes are quick, temporary study notes. Take one from the Reviewer "
-            "or the Onigiri menu; each note auto-deletes after its retention window."
-        )
+            "or the Onigiri menu; each note auto-deletes after its retention window.",
+        ))
         intro.setObjectName("sectionDescription")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
         # Open button
         open_section = SectionGroup("", self, border=False)
-        open_btn = QPushButton("Open Hashi Notes")
+        open_btn = QPushButton(tr("hashi_open_button", "Open Hashi Notes"))
         open_btn.setObjectName("toolsOpenButton")
         open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_btn.setFixedHeight(40)
@@ -39,10 +40,10 @@ class PageHashiNotesMixin:
         layout.addWidget(open_section)
 
         options_section = SectionGroup(
-            "Options",
+            tr("hashi_options", "Options"),
             self,
             border=False,
-            description="Defaults applied to new notes and the gallery.",
+            description=tr("hashi_options_desc", "Defaults applied to new notes and the gallery."),
         )
         opt_layout = options_section.content_layout
 
@@ -51,15 +52,15 @@ class PageHashiNotesMixin:
         self.hashi_retention_group.setExclusive(True)
         retention_value = str(prefs.get("retention_default", 30))
         retention_segment = self._create_tools_segmented_control(
-            [("7", "7 days"), ("30", "30 days"), ("0", "Never")],
+            [("7", tr("hashi_7_days", "7 days")), ("30", tr("hashi_30_days", "30 days")), ("0", tr("hashi_never", "Never"))],
             self.hashi_retention_group,
             retention_value,
             "hashi_retention",
             min_button_width=120,
         )
         opt_layout.addWidget(self._create_tools_control_row(
-            "Default retention",
-            "How long new notes are kept before they move to trash and are purged.",
+            tr("hashi_default_retention", "Default retention"),
+            tr("hashi_default_retention_desc", "How long new notes are kept before they move to trash and are purged."),
             retention_segment,
         ))
 
@@ -68,32 +69,18 @@ class PageHashiNotesMixin:
         self.hashi_sort_group.setExclusive(True)
         sort_value = str(prefs.get("default_sort", "age"))
         sort_segment = self._create_tools_segmented_control(
-            [("age", "Age"), ("tags", "Tags"), ("priority", "Priority"), ("title", "Title")],
+            [("age", tr("hashi_sort_age", "Age")), ("tags", tr("hashi_sort_tags", "Tags")), ("priority", tr("hashi_sort_priority", "Priority")), ("title", tr("hashi_sort_title", "Title"))],
             self.hashi_sort_group,
             sort_value,
             "hashi_sort",
             min_button_width=96,
         )
         opt_layout.addWidget(self._create_tools_control_row(
-            "Default sort",
-            "Initial ordering of notes in the gallery.",
+            tr("hashi_default_sort", "Default sort"),
+            tr("hashi_default_sort_desc", "Initial ordering of notes in the gallery."),
             sort_segment,
         ))
         layout.addWidget(options_section)
-
-        # Custom CSS
-        css_section = SectionGroup(
-            "Custom CSS",
-            self,
-            border=False,
-            description="Injected into the note editor and gallery to extend their styling.",
-        )
-        self.hashi_custom_css_input = QPlainTextEdit(str(prefs.get("custom_css", "") or ""))
-        self.hashi_custom_css_input.setObjectName("toolsPromptInput")
-        self.hashi_custom_css_input.setPlaceholderText(".hl { background: #ffe08a; }")
-        self.hashi_custom_css_input.setFixedHeight(120)
-        css_section.content_layout.addWidget(self.hashi_custom_css_input)
-        layout.addWidget(css_section)
 
         layout.addStretch()
         try:
@@ -117,7 +104,6 @@ class PageHashiNotesMixin:
         prefs["default_sort"] = (
             sort_button.property("hashi_sort") if sort_button else "age"
         )
-        prefs["custom_css"] = self.hashi_custom_css_input.toPlainText()
 
     def _open_hashi_notes(self):
         self._save_hashi_notes_settings()

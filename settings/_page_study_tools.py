@@ -351,12 +351,12 @@ class PageStudyToolsMixin:
         previews. Returns (color_hex, QPixmap|None, opacity_percent)."""
         if self.prep_bg_sync_toggle.isChecked():
             conf = mw.col.conf
-            bg_mode = conf.get("modern_menu_profile_bg_mode", "accent")
+            bg_mode = conf.get("modern_menu_profile_bg_mode", "image")
             if bg_mode == "accent":
                 color = self._settings_accent_color()
             else:
                 color = conf.get(f"modern_menu_profile_bg_color_{'dark' if dark else 'light'}", "#3B82F6")
-            opacity = int(conf.get("modern_menu_profile_bg_opacity", 100) or 100)
+            opacity = int(conf.get("modern_menu_profile_bg_opacity", 50) or 50)
             pixmap = QPixmap()
             if bg_mode == "image":
                 fn = conf.get("modern_menu_profile_bg_image", "")

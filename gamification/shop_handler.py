@@ -9,7 +9,7 @@ from ..onigiri_notifications import notify_info as showInfo
 
 
 
-SHOP_API_URL = "https://script.google.com/macros/s/AKfycbxTGeWG088ZNkCYeyR2EnDiAKmlaInNbqCw0VAU2vlUmUAc8PW2JVMywGIyFS-bDb8C/exec"
+SHOP_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 
 class StoreWindow(QDialog):
     def __init__(self, parent=None):
