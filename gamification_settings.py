@@ -9,7 +9,7 @@ from aqt.qt import (
     Qt, QFrame, QSizePolicy, QButtonGroup, QAbstractButton, QSignalBlocker,
     QColor, QPointF, QPen, QRectF, QPainter, QPainterPath, QPropertyAnimation,
     QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize,
-    QFileDialog, QSlider
+    QFileDialog
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
 from PyQt6.QtSvg import QSvgRenderer
@@ -398,6 +398,110 @@ class AnimatedToggleButton(QAbstractButton):
         self._thumb_x_pos = self.width() - self.height() + 3 if self.isChecked() else 3
         self.update()
 
+class GooeyPillSwitch(QWidget):
+    """Two-option pill switch with a sliding indicator that squashes and
+    stretches mid-travel and overshoots on arrival, for a soft 'gooey' feel."""
+
+    modeChanged = pyqtSignal(str)
+
+    def __init__(self, left_value, right_value, left_label="", right_label="", accent_color="#F2B705", parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._left_value = left_value
+        self._right_value = right_value
+        self._labels = [left_label, right_label]
+        self._value = left_value
+        self._accent_color = QColor(accent_color)
+        self._track_color = QColor(120, 120, 120, 38)
+        self._text_color_on = QColor("#ffffff")
+        self._text_color_off = QColor("#888888")
+        self._indicator_frac = 0.0
+        self.setFixedHeight(34)
+        self.setMinimumWidth(160)
+
+        self._anim = QPropertyAnimation(self, b"indicator_frac", self)
+        self._anim.setDuration(360)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutBack)
+
+    def setLabels(self, left_label, right_label):
+        self._labels = [left_label, right_label]
+        self.update()
+
+    def setTextColors(self, on_color, off_color):
+        self._text_color_on = QColor(on_color)
+        self._text_color_off = QColor(off_color)
+        self.update()
+
+    @pyqtProperty(float)
+    def indicator_frac(self):
+        return self._indicator_frac
+
+    @indicator_frac.setter
+    def indicator_frac(self, value):
+        self._indicator_frac = value
+        self.update()
+
+    def setValue(self, value, animate=True):
+        target = 1.0 if value == self._right_value else 0.0
+        self._value = self._right_value if value == self._right_value else self._left_value
+        if animate and self.isVisible():
+            self._anim.stop()
+            self._anim.setStartValue(self._indicator_frac)
+            self._anim.setEndValue(target)
+            self._anim.start()
+        else:
+            self._anim.stop()
+            self._indicator_frac = target
+            self.update()
+
+    def value(self):
+        return self._value
+
+    def mousePressEvent(self, event):
+        half = self.width() / 2.0
+        new_value = self._right_value if event.position().x() >= half else self._left_value
+        if new_value != self._value:
+            self.setValue(new_value, animate=True)
+            self.modeChanged.emit(new_value)
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(self.rect())
+        radius = rect.height() / 2.0
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._track_color)
+        painter.drawRoundedRect(rect, radius, radius)
+
+        pad = 3.0
+        half_w = (rect.width() - pad * 2) / 2.0
+        frac = self._indicator_frac
+        clamped_frac = max(0.0, min(1.0, frac))
+        x = pad + half_w * clamped_frac
+        # Squash/stretch peaks mid-travel to read as a soft, gooey blob.
+        stretch = 1.0 + 0.22 * (1.0 - abs(clamped_frac * 2.0 - 1.0)) + 0.35 * max(0.0, abs(frac - clamped_frac))
+        ind_w = half_w * stretch
+        overflow = ind_w - half_w
+        ind_x = x - overflow / 2.0
+        ind_x = max(pad, min(ind_x, rect.width() - pad - ind_w))
+        indicator_rect = QRectF(ind_x, pad, ind_w, rect.height() - pad * 2)
+        painter.setBrush(self._accent_color)
+        painter.drawRoundedRect(indicator_rect, indicator_rect.height() / 2.0, indicator_rect.height() / 2.0)
+
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(9)
+        painter.setFont(font)
+        for i, text in enumerate(self._labels):
+            seg_rect = QRectF(pad + half_w * i, 0, half_w, rect.height())
+            is_active = (i == 0 and clamped_frac < 0.5) or (i == 1 and clamped_frac >= 0.5)
+            painter.setPen(self._text_color_on if is_active else self._text_color_off)
+            painter.drawText(seg_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+        painter.end()
+
 class SectionGroup(QWidget):
     def __init__(self, title="", parent=None, border=True, description=""):
         super().__init__(parent)
@@ -640,7 +744,7 @@ class StudyZonePinInput(QWidget):
         return "".join(box.text() for box in self._boxes)
 
 class DifficultyCardWidget(QPushButton):
-    def __init__(self, title, description, emoji):
+    def __init__(self, title, description, emoji, accent_color=None):
         super().__init__()
         self.setCheckable(True)
         self.setObjectName("difficultyCard")
@@ -648,6 +752,16 @@ class DifficultyCardWidget(QPushButton):
         self.setMinimumHeight(100)
         self.setMinimumWidth(220)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        if accent_color:
+            qcolor = QColor(accent_color)
+            tint = f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, 0.14)"
+            self.setStyleSheet(f"""
+                QPushButton#difficultyCard:checked {{
+                    border: 2px solid {accent_color};
+                    background-color: {tint};
+                }}
+            """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -694,6 +808,7 @@ class DifficultyCardWidget(QPushButton):
 class GamificationSettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.addon_path = addon_path
         self.current_config = config.get_config()
         self.setWindowTitle(tr("gamification_settings_title"))
@@ -1084,16 +1199,8 @@ class GamificationSettingsDialog(QDialog):
             self.onigimon_config = {}
         self.onigimon_toggle = AnimatedToggleButton(accent_color="#F2B705")
         self.onigimon_toggle.setChecked(bool(self.onigimon_config.get("enabled", False)))
-        self.onigimon_notifications_toggle = AnimatedToggleButton(accent_color="#F2B705")
-        self.onigimon_notifications_toggle.setChecked(bool(self.onigimon_config.get("notifications_enabled", True)))
-        self.onigimon_daily_toggle = AnimatedToggleButton(accent_color="#F2B705")
-        self.onigimon_daily_toggle.setChecked(bool(self.onigimon_config.get("daily_surprise_enabled", True)))
         self.onigimon_ankimon_updates_toggle = AnimatedToggleButton(accent_color="#F2B705")
         self.onigimon_ankimon_updates_toggle.setChecked(bool(self.onigimon_config.get("allow_ankimon_updates", True)))
-        self.onigimon_reward_interval_spinbox = QSpinBox()
-        self.onigimon_reward_interval_spinbox.setRange(1, 50)
-        self.onigimon_reward_interval_spinbox.setSuffix(" correct cards")
-        self.onigimon_reward_interval_spinbox.setValue(int(self.onigimon_config.get("reward_interval", 4) or 4))
         self.onigimon_difficulty_group = QButtonGroup()
         self.onigimon_difficulty_group.setExclusive(True)
         self.onigimon_difficulty_widgets = {}
@@ -1103,43 +1210,44 @@ class GamificationSettingsDialog(QDialog):
             return f'<img src="{url}" width="32" height="32">'
 
         onigimon_difficulties = [
-            ("bulbassaur", "Bulbassaur", "More frequent rewards with softer miss penalties and missed-day decay.", _get_sprite("bulbasaur_pixel.webp")),
-            ("pikachu", "Pikachu", "Balanced rewards, miss penalties, and care pacing.", _get_sprite("pikachu_pixel.webp")),
-            ("charizard", "Charizard", "Slower rewards with stronger miss penalties and missed-day decay.", _get_sprite("charizard_pixel.webp")),
+            ("bulbassaur", "Bulbassaur", tr("onigimon_diff_easy_desc"), _get_sprite("bulbasaur_pixel.webp"), "#4CAF50"),
+            ("pikachu", "Pikachu", tr("onigimon_diff_normal_desc"), _get_sprite("pikachu_pixel.webp"), "#F2B705"),
+            ("charizard", "Charizard", tr("onigimon_diff_hard_desc"), _get_sprite("charizard_pixel.webp"), "#E8562F"),
         ]
-        for data, title, description, badge in onigimon_difficulties:
-            btn = DifficultyCardWidget(title, description, badge)
+        for data, title, description, badge, accent in onigimon_difficulties:
+            btn = DifficultyCardWidget(title, description, badge, accent_color=accent)
             self.onigimon_difficulty_group.addButton(btn)
             self.onigimon_difficulty_widgets[data] = btn
         current_onigimon_difficulty = str(self.onigimon_config.get("difficulty", "pikachu") or "pikachu").lower()
         if current_onigimon_difficulty not in self.onigimon_difficulty_widgets:
             current_onigimon_difficulty = "pikachu"
         self.onigimon_difficulty_widgets[current_onigimon_difficulty].setChecked(True)
-        self.onigimon_widget_style_combo = QComboBox()
-        self.onigimon_widget_style_combo.addItems(["compact", "care", "detailed"])
-        current_style = str(self.onigimon_config.get("widget_style", "care"))
-        self.onigimon_widget_style_combo.setCurrentText(current_style if current_style in {"compact", "care", "detailed"} else "care")
-        self.onigimon_sprite_motion_combo = QComboBox()
-        self.onigimon_sprite_motion_combo.addItem("Static sprites", "static")
-        self.onigimon_sprite_motion_combo.addItem("GIF sprites", "gif")
-        current_motion = str(self.onigimon_config.get("sprite_motion", "static"))
-        self.onigimon_sprite_motion_combo.setCurrentIndex(1 if current_motion == "gif" else 0)
-        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#e8f4ff") or "#e8f4ff")
+        self.onigimon_sprite_motion = "gif" if str(self.onigimon_config.get("sprite_motion", "static")) == "gif" else "static"
+        self.onigimon_sprite_mode_widget = GooeyPillSwitch(
+            "static", "gif",
+            tr("onigimon_sprite_static"), tr("onigimon_sprite_animated"),
+            accent_color="#F2B705",
+        )
+        self.onigimon_sprite_mode_widget.setValue(self.onigimon_sprite_motion, animate=False)
+        def _on_onigimon_sprite_mode_changed(value):
+            self.onigimon_sprite_motion = "gif" if value == "gif" else "static"
+        self.onigimon_sprite_mode_widget.modeChanged.connect(_on_onigimon_sprite_mode_changed)
+        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#7FD179") or "#7FD179")
         if not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color):
-            self.onigimon_scene_color = "#e8f4ff"
+            self.onigimon_scene_color = "#7FD179"
         self.onigimon_scene_image = str(self.onigimon_config.get("scene_background_image", "") or "")
-        self.onigimon_scene_color_button = QPushButton("Scene color")
+        self.onigimon_scene_color_button = QPushButton(tr("onigimon_scene_color_button"))
         self.onigimon_scene_color_button.setObjectName("onigimonSceneButton")
         self.onigimon_scene_color_button.clicked.connect(self._choose_onigimon_scene_color)
-        self.onigimon_scene_import_button = QPushButton("Import image")
+        self.onigimon_scene_import_button = QPushButton(tr("onigimon_import_image_button"))
         self.onigimon_scene_import_button.setObjectName("onigimonSceneButton")
         self.onigimon_scene_import_button.clicked.connect(self._import_onigimon_scene_background)
-        self.onigimon_scene_clear_button = QPushButton("Clear image")
+        self.onigimon_scene_clear_button = QPushButton(tr("onigimon_clear_image_button"))
         self.onigimon_scene_clear_button.setObjectName("onigimonSceneButton")
         self.onigimon_scene_clear_button.clicked.connect(self._clear_onigimon_scene_background)
+        scene_slider_tokens = self._theme_tokens()
         blur_value = int(self.onigimon_config.get("scene_background_blur", 9) or 0)
-        self.onigimon_scene_blur_slider = QSlider(Qt.Orientation.Horizontal)
-        self.onigimon_scene_blur_slider.setObjectName("onigimonSceneSlider")
+        self.onigimon_scene_blur_slider = MainBackgroundEffectSlider("#F2B705", scene_slider_tokens["surface"], scene_slider_tokens["border"])
         self.onigimon_scene_blur_slider.setRange(0, 40)
         self.onigimon_scene_blur_slider.setSingleStep(1)
         self.onigimon_scene_blur_slider.setPageStep(4)
@@ -1151,8 +1259,7 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_scene_blur_apply_timer.setSingleShot(True)
         self.onigimon_scene_blur_apply_timer.timeout.connect(self._persist_onigimon_scene_blur)
         opacity_value = int(self.onigimon_config.get("scene_background_opacity", 90) or 0)
-        self.onigimon_scene_opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.onigimon_scene_opacity_slider.setObjectName("onigimonSceneSlider")
+        self.onigimon_scene_opacity_slider = MainBackgroundEffectSlider("#F2B705", scene_slider_tokens["surface"], scene_slider_tokens["border"])
         self.onigimon_scene_opacity_slider.setRange(0, 100)
         self.onigimon_scene_opacity_slider.setSingleStep(1)
         self.onigimon_scene_opacity_slider.setPageStep(10)
@@ -1163,7 +1270,7 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_selected_companion_id = ""
         self.onigimon_companions_loaded = False
         self.onigimon_name_input = QLineEdit("")
-        self.onigimon_name_input.setPlaceholderText("Nickname")
+        self.onigimon_name_input.setPlaceholderText(tr("onigimon_nickname_placeholder"))
         self.onigimon_companion_buttons = QButtonGroup(self)
         self.onigimon_companion_buttons.setExclusive(True)
         self.onigimon_companion_grid = QWidget()
@@ -1171,7 +1278,7 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_companion_grid_layout = QGridLayout(self.onigimon_companion_grid)
         self.onigimon_companion_grid_layout.setContentsMargins(8, 8, 8, 8)
         self.onigimon_companion_grid_layout.setSpacing(8)
-        self.onigimon_companion_status_label = QLabel("Open this page to load Ankimon companions.")
+        self.onigimon_companion_status_label = QLabel(tr("onigimon_status_open_page"))
         self.onigimon_companion_status_label.setWordWrap(True)
         
         # Difficulty Setting
@@ -1179,14 +1286,28 @@ class GamificationSettingsDialog(QDialog):
         self.restaurant_difficulty_group.setExclusive(True)
         
         self.difficulty_widgets = {}
+        
+        def _get_restaurant_svg(filename, color):
+            import base64
+            path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "available_for_users", filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = content.replace("<path ", f'<path fill="{color}" ')
+                b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+                return f'<img src="data:image/svg+xml;base64,{b64}" width="32" height="32">'
+            except Exception:
+                return ""
+        
         diffs = [
-            ("Apprendice", tr("apprentice") + " (1x)", tr("apprentice_desc"), "Apprendice", "🧑‍🍳"),
-            ("Cook", tr("cook") + " (2x)", tr("cook_desc"), "Cook", "🍳"),
-            ("Chef", tr("chef") + " (4x)", tr("chef_desc"), "Chef", "🔪")
+            ("Apprendice", "Apprendice (1x)", tr("apprentice_desc"), "Apprendice", "seed.svg", "#4CAF50"),
+            ("Experient", "Experient (2x)", tr("cook_desc"), "Experient", "tree.svg", "#F2B705"),
+            ("Legend", "Legend (4x)", tr("chef_desc"), "Legend", "crown.svg", "#E8562F")
         ]
         
-        for name, title, description, data, emoji in diffs:
-            btn = DifficultyCardWidget(title, description, emoji)
+        for name, title, description, data, filename, accent in diffs:
+            emoji = _get_restaurant_svg(filename, accent)
+            btn = DifficultyCardWidget(title, description, emoji, accent_color=accent)
             
             self.restaurant_difficulty_group.addButton(btn)
             self.difficulty_widgets[data] = btn
@@ -2076,7 +2197,7 @@ class GamificationSettingsDialog(QDialog):
         return page
 
     def _populate_onigimon_companion_combo(self):
-        self.onigimon_companion_status_label.setText("Loading Ankimon companions...")
+        self.onigimon_companion_status_label.setText(tr("onigimon_status_loading"))
         onigimon = _onigimon_module()
         onigimon.manager.bridge.clear_cache()
         while self.onigimon_companion_grid_layout.count():
@@ -2096,23 +2217,23 @@ class GamificationSettingsDialog(QDialog):
         companions.sort(key=lambda p: (str(p.get("ankimon_id")) != str(active_id), not bool(p.get("is_favorite")), str(p.get("name", "")).lower()))
 
         if status == "missing":
-            self.onigimon_companion_status_label.setText("Ankimon is not installed.")
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_missing"))
             return
         if status == "starter_needed":
-            self.onigimon_companion_status_label.setText("Choose your first Ankimon Pokémon first.")
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_starter_needed"))
             return
         if status == "no_collection":
-            self.onigimon_companion_status_label.setText("No Pokémon in Ankimon Collection PC yet.")
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_no_collection"))
             return
         if not companions:
-            self.onigimon_companion_status_label.setText("No Ankimon Pokémon found.")
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_no_companions"))
             return
 
-        self.onigimon_companion_status_label.setText("The active Pokémon in Ankimon's PC is your Onigimon companion. Picking a tile here also makes it active in Ankimon.")
+        self.onigimon_companion_status_label.setText(tr("onigimon_status_ready"))
         columns = 4
         for index, pokemon in enumerate(companions):
             ankimon_id = str(pokemon.get("ankimon_id", ""))
-            label = f"{pokemon.get('name', 'Pokemon')} · Lv. {pokemon.get('level', 1)}"
+            label = f"{pokemon.get('name', 'Pokemon')} · {tr('onigimon_level_short')} {pokemon.get('level', 1)}"
             btn = QPushButton()
             btn.setObjectName("onigimonCompanionTile")
             btn.setCheckable(True)
@@ -2312,7 +2433,7 @@ class GamificationSettingsDialog(QDialog):
             print(f"Warning: Could not refresh Onigimon care after blur change: {exc}")
 
     def _update_onigimon_scene_controls(self):
-        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#e8f4ff"
+        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#7FD179"
         self.onigimon_scene_color_button.setStyleSheet(
             f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111; border: 1px solid rgba(0,0,0,0.18); border-radius: 15px; padding: 4px 14px; min-height: 28px; }}"
         )
@@ -2358,7 +2479,7 @@ class GamificationSettingsDialog(QDialog):
     def _import_onigimon_scene_background(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Import Onigimon background",
+            tr("import_image"),
             "",
             "Images (*.png *.jpg *.jpeg *.webp *.gif)"
         )
@@ -2440,15 +2561,15 @@ class GamificationSettingsDialog(QDialog):
 
         layout.addWidget(self._create_study_zone_header(
             "Onigimon",
-            "Use Ankimon's Pokemon PC to choose the active Pokemon, then feed, clean, train, and play while Onigimon updates Ankimon.",
+            tr("onigimon_page_desc"),
             "pokemon_pikachu.webp",
             "#F2B705",
             self.onigimon_toggle
         ))
 
-        companion_group, companion_layout = self._create_study_zone_card("Companion")
+        companion_group, companion_layout = self._create_study_zone_card(tr("onigimon_companion_title"))
         companion_layout.addWidget(self.onigimon_companion_status_label)
-        companion_layout.addWidget(QLabel("Companion nickname"))
+        companion_layout.addWidget(QLabel(tr("onigimon_nickname_label")))
         companion_layout.addWidget(self.onigimon_name_input)
         tile_scroll = QScrollArea()
         tile_scroll.setWidgetResizable(True)
@@ -2458,16 +2579,16 @@ class GamificationSettingsDialog(QDialog):
         tile_scroll.setStyleSheet("background: transparent;")
         tile_scroll.setWidget(self.onigimon_companion_grid)
         companion_layout.addWidget(tile_scroll)
-        refresh_btn = QPushButton("Refresh Ankimon PC")
+        refresh_btn = QPushButton(tr("onigimon_refresh_button"))
         refresh_btn.clicked.connect(self._populate_onigimon_companion_combo)
         companion_layout.addWidget(refresh_btn)
-        starter_note = QLabel("Changing the active Pokémon in Ankimon's PC changes the Onigimon companion automatically.")
+        starter_note = QLabel(tr("onigimon_starter_note"))
         starter_note.setWordWrap(True)
         starter_note.setMinimumWidth(0)
         companion_layout.addWidget(starter_note)
         layout.addWidget(companion_group)
 
-        scene_group, scene_layout = self._create_study_zone_card("Scene")
+        scene_group, scene_layout = self._create_study_zone_card(tr("onigimon_scene_title"))
         self.onigimon_scene_preview = QFrame()
         self.onigimon_scene_preview.setObjectName("onigimonScenePreview")
         self.onigimon_scene_preview.setMinimumHeight(128)
@@ -2492,37 +2613,32 @@ class GamificationSettingsDialog(QDialog):
         image_row.addStretch()
         scene_layout.addLayout(image_row)
         color_row = QHBoxLayout()
-        color_row.addWidget(QLabel("Background color"))
+        color_row.addWidget(QLabel(tr("background_color")))
         color_row.addWidget(self.onigimon_scene_color_button)
         color_row.addStretch()
         scene_layout.addLayout(color_row)
         blur_row = QHBoxLayout()
-        blur_row.addWidget(QLabel("Blur intensity"))
+        blur_row.addWidget(QLabel(tr("onigimon_blur_intensity")))
         blur_row.addWidget(self.onigimon_scene_blur_slider, 1)
         blur_row.addWidget(self.onigimon_scene_blur_value_label)
         blur_row.addStretch()
         scene_layout.addLayout(blur_row)
         opacity_row = QHBoxLayout()
-        opacity_row.addWidget(QLabel("Background opacity"))
+        opacity_row.addWidget(QLabel(tr("background_opacity")))
         opacity_row.addWidget(self.onigimon_scene_opacity_slider, 1)
         opacity_row.addWidget(self.onigimon_scene_opacity_value_label)
         opacity_row.addStretch()
         scene_layout.addLayout(opacity_row)
+        sprite_mode_row = QHBoxLayout()
+        sprite_mode_row.addWidget(QLabel(tr("onigimon_sprite_mode_label")))
+        sprite_mode_row.addStretch()
+        sprite_mode_row.addWidget(self.onigimon_sprite_mode_widget)
+        scene_layout.addLayout(sprite_mode_row)
         self._update_onigimon_scene_controls()
         layout.addWidget(scene_group)
 
-        rewards_group, rewards_layout = self._create_study_zone_card("Rewards")
-        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_notifications_toggle, "Show Onigimon notifications"))
-        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_daily_toggle, "Daily surprise item"))
-        interval_row = QHBoxLayout()
-        interval_row.addWidget(QLabel("Reward item every"))
-        interval_row.addWidget(self.onigimon_reward_interval_spinbox)
-        interval_row.addStretch()
-        rewards_layout.addLayout(interval_row)
-        layout.addWidget(rewards_group)
-
-        difficulty_group, difficulty_layout = self._create_study_zone_card("Difficulty")
-        difficulty_note = QLabel("Difficulty changes how often correct-answer rewards appear, how much mistakes hurt, and how much care stats drop after missed study days.")
+        difficulty_group, difficulty_layout = self._create_study_zone_card(tr("onigimon_difficulty_title"))
+        difficulty_note = QLabel(tr("onigimon_difficulty_note"))
         difficulty_note.setWordWrap(True)
         difficulty_layout.addWidget(difficulty_note)
         difficulty_cards = QVBoxLayout()
@@ -2532,28 +2648,15 @@ class GamificationSettingsDialog(QDialog):
         difficulty_layout.addLayout(difficulty_cards)
         layout.addWidget(difficulty_group)
 
-        widget_group, widget_layout = self._create_study_zone_card("Widget")
-        widget_row = QHBoxLayout()
-        widget_row.addWidget(QLabel("Widget style"))
-        widget_row.addWidget(self.onigimon_widget_style_combo)
-        widget_row.addStretch()
-        widget_layout.addLayout(widget_row)
-        sprite_row = QHBoxLayout()
-        sprite_row.addWidget(QLabel("Sprite mode"))
-        sprite_row.addWidget(self.onigimon_sprite_motion_combo)
-        sprite_row.addStretch()
-        widget_layout.addLayout(sprite_row)
-        layout.addWidget(widget_group)
-
-        bridge_group, bridge_layout = self._create_study_zone_card("Ankimon Bridge")
-        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, "Allow Onigimon items to update Ankimon data"))
-        bridge_note = QLabel("Onigimon reads Ankimon's database and writes care rewards back to the active Pokémon's HP, Attack, Defense, and XP.")
+        bridge_group, bridge_layout = self._create_study_zone_card(tr("onigimon_bridge_title"))
+        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, tr("onigimon_bridge_toggle")))
+        bridge_note = QLabel(tr("onigimon_bridge_note"))
         bridge_note.setWordWrap(True)
         bridge_layout.addWidget(bridge_note)
         layout.addWidget(bridge_group)
 
-        credits_group, credits_layout = self._create_study_zone_card("Sprite Credits")
-        credit = QLabel("PokéSprite sprite images are © Nintendo/Creatures Inc./GAME FREAK Inc. PokéSprite project code/data by msikma, MIT licensed.")
+        credits_group, credits_layout = self._create_study_zone_card(tr("onigimon_credits_title"))
+        credit = QLabel(tr("onigimon_credits_text"))
         credit.setWordWrap(True)
         credits_layout.addWidget(credit)
         layout.addWidget(credits_group)
@@ -2823,7 +2926,7 @@ class GamificationSettingsDialog(QDialog):
         if owns_keys:
             self.hexagon_keys_status_label.setText("Keys owned. Your island name appears on the Hexagon Land widget.")
         else:
-            self.hexagon_keys_status_label.setText("Current balance: ∞ Hex Coins.")
+            self.hexagon_keys_status_label.setText(f"Current balance: {state.hex_coins} Hex Coins.")
 
     def _buy_hexagon_keys(self):
         hexagon_land = _hexagon_land_module()
@@ -3147,7 +3250,15 @@ class GamificationSettingsDialog(QDialog):
         res_conf["notifications_enabled"] = self.restaurant_notifications_toggle.isChecked()
         res_conf["show_profile_bar_progress"] = self.restaurant_bar_toggle.isChecked()
         res_conf["show_reviewer_header"] = self.restaurant_reviewer_toggle.isChecked()
-        
+
+        # Keep the persisted gamification state in sync with the config toggles above.
+        # get_progress() only pulls from config on first migration; after that it trusts
+        # this state, so without these calls the chip stays stuck at its first-ever value.
+        nook_level = _nook_level_module()
+        nook_level.manager.set_enabled(res_conf["enabled"])
+        nook_level.manager.set_notifications_enabled(res_conf["notifications_enabled"])
+        nook_level.manager.set_profile_bar_visibility(res_conf["show_profile_bar_progress"])
+
         selected_diff = "Apprendice"
         for data, btn in self.difficulty_widgets.items():
             if btn.isChecked():
@@ -3174,8 +3285,6 @@ class GamificationSettingsDialog(QDialog):
         # Onigimon
         oni_conf = self.current_config.setdefault("onigimon", {})
         oni_conf["enabled"] = self.onigimon_toggle.isChecked()
-        oni_conf["notifications_enabled"] = self.onigimon_notifications_toggle.isChecked()
-        oni_conf["daily_surprise_enabled"] = self.onigimon_daily_toggle.isChecked()
         oni_conf["allow_ankimon_updates"] = self.onigimon_ankimon_updates_toggle.isChecked()
         selected_onigimon_difficulty = "pikachu"
         for data, btn in self.onigimon_difficulty_widgets.items():
@@ -3183,9 +3292,7 @@ class GamificationSettingsDialog(QDialog):
                 selected_onigimon_difficulty = data
                 break
         oni_conf["difficulty"] = selected_onigimon_difficulty
-        oni_conf["reward_interval"] = self.onigimon_reward_interval_spinbox.value()
-        oni_conf["widget_style"] = self.onigimon_widget_style_combo.currentText()
-        oni_conf["sprite_motion"] = self.onigimon_sprite_motion_combo.currentData()
+        oni_conf["sprite_motion"] = self.onigimon_sprite_motion
         oni_conf["scene_background_color"] = self.onigimon_scene_color
         oni_conf["scene_background_image"] = self.onigimon_scene_image
         oni_conf["scene_background_blur"] = self.onigimon_scene_blur_slider.value()
@@ -3671,26 +3778,6 @@ class GamificationSettingsDialog(QDialog):
             QLabel#onigimonSceneBlurValue {{
                 color: {fg};
                 min-width: 42px;
-            }}
-            QSlider#onigimonSceneSlider {{
-                min-width: 180px;
-            }}
-            QSlider#onigimonSceneSlider::groove:horizontal {{
-                height: 6px;
-                border-radius: 3px;
-                background-color: {border};
-            }}
-            QSlider#onigimonSceneSlider::sub-page:horizontal {{
-                border-radius: 3px;
-                background-color: #F2B705;
-            }}
-            QSlider#onigimonSceneSlider::handle:horizontal {{
-                width: 18px;
-                height: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
-                background-color: #F2B705;
-                border: 1px solid rgba(0,0,0,0.16);
             }}
 
             QPushButton#notificationPositionButton {{

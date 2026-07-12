@@ -1398,12 +1398,8 @@ def _get_nook_level_chip_html():
         xp_into_level = max(0, getattr(progress, "xp_into_level", 0))
         xp_to_next_level = max(1, getattr(progress, "xp_to_next_level", 100))
         progress_percent = min(100, max(0, (xp_into_level / xp_to_next_level) * 100))
-        bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
-        if bar_mode == "custom":
-            bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
-        else:
-            bar_color = nook_level.manager.get_current_theme_color()
-        style_attr = f' style="--profile-level-bar-bg: {bar_color};"' if bar_color else ""
+        chip_style = nook_level.build_chip_style_attr()
+        style_attr = f' style="{chip_style}"' if chip_style else ""
         xp_detail = f"{xp_into_level}/{xp_to_next_level} XP"
         return f"""
         <div class="restaurant-level-chip" onclick="event.stopPropagation(); pycmd('restaurant_level'); return false;" title="{html.escape(xp_detail, quote=True)}"{style_attr}>
@@ -1438,22 +1434,12 @@ def _get_reviewer_nook_level_chip_html():
         xp_to_next_level = max(1, getattr(progress, "xp_to_next_level", 100))
         progress_percent = min(100, max(0, (xp_into_level / xp_to_next_level) * 100))
 
-        bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
-        if bar_mode == "custom":
-            bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
-        else:
-            bar_color = nook_level.manager.get_current_theme_color()
-
-        chip_style = ""
-        if bar_color:
-            chip_style = (
-                f' style="--reviewer-level-bar-bg: {html.escape(str(bar_color), quote=True)}; '
-                f'--reviewer-level-bar-hover-bg: {html.escape(str(bar_color), quote=True)};"'
-            )
+        chip_style_str = nook_level.build_chip_style_attr()
+        style_attr = f' style="{chip_style_str}"' if chip_style_str else ""
 
         xp_detail = f"{xp_into_level}/{xp_to_next_level} XP"
         return f"""
-        <div class="restaurant-level-chip" onclick="pycmd('restaurant_level')" title="{html.escape(xp_detail, quote=True)}"{chip_style}>
+        <div class="restaurant-level-chip" onclick="pycmd('restaurant_level')" title="{html.escape(xp_detail, quote=True)}"{style_attr}>
             <span class="rl-chip-level">Lv {current_level}</span>
             <div class="rl-chip-progress">
                 <div class="rl-chip-progress-fill" style="width: {progress_percent:.2f}%"></div>
@@ -2462,7 +2448,7 @@ def patch_congrats_page():
                     bg_class_str += " dynamic-default-bg"
             
             profile_bar_html = f"""
-            <div class="profile-bar {bg_class_str}" style="{bg_style_str}">
+            <div class="overview-profile-bar profile-bar {bg_class_str}" style="{bg_style_str}">
                 {bg_layer_html}
                 {profile_pic_html}
                 <span class="profile-name">{user_name}</span>

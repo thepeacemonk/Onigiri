@@ -536,16 +536,16 @@ body {
     margin-left: auto;
     padding: 4px 10px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--rl-chip-bg, rgba(255, 255, 255, 0.16));
     backdrop-filter: blur(4px);
-    color: inherit;
+    color: var(--rl-chip-text, inherit);
     font-size: 12px;
     transition: background 0.2s ease;
     flex: 0 0 auto;
 }
 
 .night-mode .profile-bar .restaurant-level-chip {
-    background: rgba(0, 0, 0, 0.24);
+    background: var(--rl-chip-bg, rgba(0, 0, 0, 0.24));
 }
 
 .profile-bar .restaurant-level-chip .rl-chip-level {

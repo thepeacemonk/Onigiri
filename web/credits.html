@@ -11,111 +11,12 @@
             padding: 0;
             overflow: hidden;
             height: 100%;
+            background: #181818;
         }
-
-        /* --- Bubble Animation (Same as welcome.html) --- */
-
-        :root {
-            /* Adapted color palette */
-            --color-bg1: #123034;
-            --color-bg2: #0F2327;
-            --color1: 46, 176, 194;
-            /* #2EB0C2 */
-            --color2: 96, 152, 176;
-            /* #6098B0 */
-            --color3: 40, 120, 150;
-            --circle-size: 80%;
-            --blending: screen;
-        }
-
-        @keyframes moveInCircle {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            50% {
-                transform: rotate(180deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        @keyframes moveVertical {
-            0% {
-                transform: translateY(-50%);
-            }
-
-            50% {
-                transform: translateY(50%);
-            }
-
-            100% {
-                transform: translateY(-50%);
-            }
-        }
-
-        .gradient-bg {
-            width: 100vw;
-            height: 100vh;
-            position: fixed;
-            overflow: hidden;
-            background: linear-gradient(40deg, var(--color-bg1), var(--color-bg2));
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-
-        .gradient-bg svg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .gradients-container {
-            filter: url(#goo) blur(40px);
-            width: 100%;
-            height: 100%;
-        }
-
-        .g1,
-        .g2,
-        .g3 {
-            position: absolute;
-            mix-blend-mode: var(--blending);
-            width: var(--circle-size);
-            height: var(--circle-size);
-            top: calc(50% - var(--circle-size) / 2);
-            left: calc(50% - var(--circle-size) / 2);
-            opacity: 1;
-        }
-
-        .g1 {
-            background: radial-gradient(circle at center, rgba(var(--color1), 0.8) 0, rgba(var(--color1), 0) 50%) no-repeat;
-            transform-origin: center center;
-            animation: moveVertical 15s ease infinite;
-        }
-
-        .g2 {
-            background: radial-gradient(circle at center, rgba(var(--color2), 0.8) 0, rgba(var(--color2), 0) 50%) no-repeat;
-            transform-origin: calc(50% - 400px);
-            animation: moveInCircle 12s reverse infinite;
-        }
-
-        .g3 {
-            background: radial-gradient(circle at center, rgba(var(--color3), 0.8) 0, rgba(var(--color3), 0) 50%) no-repeat;
-            transform-origin: calc(50% + 400px);
-            animation: moveInCircle 20s linear infinite;
-        }
-
 
         /* --- Content Styles --- */
         .content-wrapper {
             position: relative;
-            z-index: 10;
             width: 100%;
             height: 100%;
             display: flex;
@@ -161,10 +62,10 @@
         .credits-list {
             text-align: left;
             max-width: 600px;
-            background: rgba(0, 0, 0, 0.2);
+            background: #242424;
             padding: 20px;
             border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid #454545;
             margin-bottom: 20px;
             font-size: 14px;
             line-height: 1.6;
@@ -195,9 +96,9 @@
         }
 
         .close-button {
-            background-color: rgba(255, 255, 255, 0.15);
+            background-color: #303030;
             color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid #454545;
             padding: 10px 30px;
             border-radius: 8px;
             font-size: 14px;
@@ -208,30 +109,12 @@
         }
 
         .close-button:hover {
-            background-color: rgba(255, 255, 255, 0.25);
+            background-color: #3a3a3a;
         }
     </style>
 </head>
 
 <body>
-    <div class="gradient-bg">
-        <svg xmlns="http://www.w3.org/2000/svg" version="1.1">
-            <defs>
-                <filter id="goo">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
-                        result="goo" />
-                    <feBlend in="SourceGraphic" in2="goo" />
-                </filter>
-            </defs>
-        </svg>
-        <div class="gradients-container">
-            <div class="g1"></div>
-            <div class="g2"></div>
-            <div class="g3"></div>
-        </div>
-    </div>
-
     <div class="content-wrapper">
         <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri Logo">
         <h1>Credits and Acknowledgements</h1>

@@ -172,10 +172,10 @@ class PageSidebarMixin:
         
         trash_icon_path = system_icon_path("cancel.svg")
         if theme_manager.night_mode:
-             delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 12px; } QPushButton:hover { background: rgba(255,0,0,0.2); }")
+             delete_btn.setStyleSheet("/* onigiri-rounded-button-fix */\nQPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; } QPushButton:hover { background-color: rgba(255,0,0,0.2); border: 1px solid transparent; border-radius: 12px; }")
              trash_color = "#ff6b6b"
         else:
-             delete_btn.setStyleSheet("QPushButton { background: transparent; border: none; border-radius: 12px; } QPushButton:hover { background: rgba(255,0,0,0.1); }")
+             delete_btn.setStyleSheet("/* onigiri-rounded-button-fix */\nQPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; } QPushButton:hover { background-color: rgba(255,0,0,0.1); border: 1px solid transparent; border-radius: 12px; }")
              trash_color = "#d32f2f"
 
         if os.path.exists(trash_icon_path):

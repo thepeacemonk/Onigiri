@@ -4,11 +4,14 @@ Pomodoro — a minimal floating focus-timer island plus a stats dashboard.
 The countdown lives in PomodoroTimer, a QObject singleton independent of any
 window, so it keeps running while the floating island is closed. Settings and
 completed-session history live in mw.col.conf (mirrors Prep Station's plan
-storage), so they sync via AnkiWeb.
+storage), so they sync via AnkiWeb. They are also mirrored to
+user_files/pomodoro/ (mirrors Hashi Notes' pattern), so they are safe on disk
+too and ride the existing Onigiri media-zip sync (sync.py).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import uuid
@@ -341,6 +344,7 @@ def save_settings(settings):
         mw.col.setMod()
     except Exception as e:
         print(f"Pomodoro: settings save error: {e}")
+    _write_json_mirror("settings.json", settings)
 
 
 def get_sessions():
@@ -371,6 +375,27 @@ def _log_session(started_at, planned_minutes, actual_minutes):
         mw.col.setMod()
     except Exception as e:
         print(f"Pomodoro: session log error: {e}")
+    _write_json_mirror("sessions.json", sessions)
+
+
+# ─── Persistence: user_files JSON mirror ──────────────────────────────────────
+
+def _mirror_dir():
+    path = os.path.join(_addon_root(), "user_files", "pomodoro")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+    return path
+
+
+def _write_json_mirror(filename, data):
+    try:
+        path = os.path.join(_mirror_dir(), filename)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Pomodoro: mirror write error: {e}")
 
 
 # ─── Timer state machine (window-independent singleton) ───────────────────────

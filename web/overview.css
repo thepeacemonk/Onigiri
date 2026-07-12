@@ -36,12 +36,12 @@ body {
 }
 
 .overview-profile-bar {
-    width: max-content;
-    max-width: min(520px, calc(100% - 40px));
+    width: 100%;
+    max-width: 350px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    padding: 4px;
+    padding: 6px;
     border-radius: 999px;
     margin: 0 0 -18px 0;
     background-color: var(--highlight-bg);
@@ -104,11 +104,11 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin-left: 10px;
+    margin-left: auto;
     padding: 3px 8px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.18);
-    color: inherit;
+    background: var(--rl-chip-bg, rgba(255, 255, 255, 0.18));
+    color: var(--rl-chip-text, inherit);
     flex: 0 0 auto;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
@@ -116,7 +116,7 @@ body {
 
 .night-mode .overview-profile-bar .restaurant-level-chip,
 .nightMode .overview-profile-bar .restaurant-level-chip {
-    background: rgba(0, 0, 0, 0.24);
+    background: var(--rl-chip-bg, rgba(0, 0, 0, 0.24));
 }
 
 .overview-profile-bar .restaurant-level-chip .rl-chip-level {
@@ -168,7 +168,7 @@ body.night-mode .overview-profile-bar.with-image-bg.dynamic-default-bg .profile-
 }
 
 .overview-profile-bar.with-image-bg .restaurant-level-chip {
-    color: white;
+    color: var(--rl-chip-text, white);
 }
 
 /* New header for buttons */

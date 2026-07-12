@@ -249,9 +249,10 @@ class ModernColorPickerDialog(QDialog):
         if theme_manager.night_mode:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #d0d0d0;")
             close_btn.setStyleSheet("""
+                /* onigiri-rounded-button-fix */
                 QPushButton { 
                     background-color: transparent; 
-                    border: none; 
+                    border: 1px solid transparent; 
                     border-radius: 12px; 
                     padding: 0px;
                     margin: 0px;
@@ -260,15 +261,16 @@ class ModernColorPickerDialog(QDialog):
                     max-width: 24px;
                     max-height: 24px;
                 }
-                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); border: 1px solid transparent; border-radius: 12px; }
             """)
             icon_color = QColor("#ffffff")
         else:
             title_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333333;")
             close_btn.setStyleSheet("""
+                /* onigiri-rounded-button-fix */
                 QPushButton { 
                     background-color: transparent; 
-                    border: none; 
+                    border: 1px solid transparent; 
                     border-radius: 12px; 
                     padding: 0px;
                     margin: 0px;
@@ -277,7 +279,7 @@ class ModernColorPickerDialog(QDialog):
                     max-width: 24px;
                     max-height: 24px;
                 }
-                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); border: 1px solid transparent; border-radius: 12px; }
             """)
             icon_color = QColor("#555555")
 

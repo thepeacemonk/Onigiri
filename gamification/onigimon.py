@@ -1680,8 +1680,6 @@ class OnigimonManager:
     def claim_daily_gift(self) -> Optional[str]:
         if self.status() != "ready":
             return None
-        if not bool(self.config().get("daily_surprise_enabled", True)):
-            return None
         companion = self.active_companion()
         if companion is None:
             return None
@@ -1932,8 +1930,6 @@ class OnigimonManager:
     def notify(self, title: str, description: str, icon_image: str = "") -> None:
         if title not in ("Onigimon reward", "Daily Onigimon surprise", "Sequência quebrada"):
             return
-        if not bool(self.config().get("notifications_enabled", True)):
-            return
         try:
             context = None
             if getattr(mw, "state", "") == "review":
@@ -2093,7 +2089,7 @@ def _normalize_scene_color(value: Any) -> str:
     text = str(value or "").strip()
     if re.match(r"^#[0-9a-fA-F]{6}$", text):
         return text
-    return "#e8f4ff"
+    return "#7FD179"
 
 
 def _onigimon_scene_image_url() -> str:
@@ -2114,7 +2110,7 @@ def _onigimon_scene_image_url() -> str:
 
 
 def _onigimon_scene_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#e8f4ff"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))
@@ -2138,7 +2134,7 @@ def _onigimon_scene_style_attr() -> str:
 
 
 def _onigimon_scene_background_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#e8f4ff"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))

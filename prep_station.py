@@ -1,13 +1,18 @@
 """
 Prep Station — Study Planner for Onigiri
 
-Persists to mw.col.conf so plans sync via AnkiWeb collection sync
-(unlike config.json, which is local-only to this profile/computer).
+Storage model (mirrors Hashi Notes):
+  1. mw.col.conf[PREP_STATION_CONF_KEY] — source of truth. Lives inside
+     collection.anki2, so it syncs via AnkiWeb collection sync (unlike
+     config.json, which is local-only to this profile/computer).
+  2. user_files/prep_station/plans.json — local mirror. Rides the existing
+     Onigiri media-zip sync (sync.py), so plans are also safe on disk.
 """
 
 from __future__ import annotations
 
 import html
+import json
 import os
 import uuid
 from datetime import date, datetime, timedelta
@@ -70,6 +75,27 @@ def _save_plans(plans: list) -> None:
         mw.col.setMod()
     except Exception as e:
         print(f"Prep Station: save error: {e}")
+    _write_json_mirror(plans)
+
+
+# ─── Persistence: user_files JSON mirror ──────────────────────────────────────
+
+def _mirror_dir():
+    path = os.path.join(os.path.dirname(__file__), "user_files", "prep_station")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+    return path
+
+
+def _write_json_mirror(plans: list) -> None:
+    try:
+        path = os.path.join(_mirror_dir(), "plans.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(plans, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Prep Station: mirror write error: {e}")
 
 
 # ─── Anki data helpers ────────────────────────────────────────────────────────

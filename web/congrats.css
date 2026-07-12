@@ -39,30 +39,30 @@ body {
     z-index: 2000;
 }
 
-/* Re-using profile bar styles from menu.css, but making it a bit wider */
-.profile-bar {
+/* Re-using overview-profile-bar styles from overview.css */
+.overview-profile-bar {
     width: 100%;
     max-width: 350px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     padding: 6px;
-    border-radius: 50px;
+    border-radius: 999px;
     background-color: var(--highlight-bg);
-    transition: background-color 0.2s;
     position: relative;
     overflow: hidden;
-    cursor: pointer;
     box-shadow: 0 4px 15px var(--shadow-md);
-    z-index: 2; /* Make sure the profile bar sits on top of the card */
+    z-index: 2;
+    gap: 0;
+    margin: 0 0 -14px 0; /* Changed from -18px to bring it up slightly */
 }
 
-.profile-bar > * {
+.overview-profile-bar > * {
     position: relative;
     z-index: 2;
 }
 
-.profile-bar .profile-bg-layer {
+.overview-profile-bar .profile-bg-layer {
     position: absolute;
     inset: 0;
     background-repeat: no-repeat;
@@ -70,70 +70,113 @@ body {
     z-index: 0;
 }
 
-.profile-pic {
-    width: 38px;
-    height: 38px;
+.overview-profile-bar .profile-pic,
+.overview-profile-bar .profile-pic-placeholder {
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
-    object-fit: cover;
-    margin-right: 12px;
+    margin-right: 8px;
     flex-shrink: 0;
 }
 
-.profile-pic-placeholder {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    margin-right: 12px;
+.overview-profile-bar .profile-pic {
+    object-fit: cover;
+}
+
+.overview-profile-bar .profile-pic-placeholder {
     background-color: var(--accent-color);
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 13px;
     font-weight: bold;
-    flex-shrink: 0;
 }
 
-.profile-pic-generated {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 700;
-}
-
-.profile-name {
-    font-size: 16px;
+.overview-profile-bar .profile-name {
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
     font-weight: 500;
+    color: var(--fg);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--fg);
+    min-width: 0;
+    flex: 0 1 auto;
 }
 
-.profile-bar::after {
+/* Level chip */
+.overview-profile-bar .restaurant-level-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--rl-chip-bg, rgba(255, 255, 255, 0.18));
+    color: var(--rl-chip-text, inherit);
+    flex: 0 0 auto;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    cursor: pointer;
+}
+
+.night-mode .overview-profile-bar .restaurant-level-chip,
+.nightMode .overview-profile-bar .restaurant-level-chip {
+    background: var(--rl-chip-bg, rgba(0, 0, 0, 0.24));
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-level {
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-progress {
+    width: 54px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+    overflow: hidden;
+}
+
+.night-mode .overview-profile-bar .restaurant-level-chip .rl-chip-progress,
+.nightMode .overview-profile-bar .restaurant-level-chip .rl-chip-progress {
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.overview-profile-bar .restaurant-level-chip .rl-chip-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--profile-level-bar-bg, linear-gradient(90deg, #ffb347, #ff6b6b));
+    transition: width 0.3s ease;
+}
+
+/* Image background variants */
+.overview-profile-bar.with-image-bg::after {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
+    inset: 0;
     background-color: var(--profile-image-overlay-bg, transparent);
-    border-radius: 50px;
     z-index: 1;
-    display: none;
 }
-.profile-bar.with-image-bg::after {
-    display: block;
-}
-.profile-bar.with-image-bg .profile-name {
+
+.overview-profile-bar.with-image-bg .profile-name {
     color: white;
     text-shadow: 1px 1px 3px var(--text-shadow-light);
 }
 
-.profile-bar.with-image-bg.dynamic-default-bg .profile-name {
+.overview-profile-bar.with-image-bg.dynamic-default-bg .profile-name {
     color: var(--text-fg, #111827);
     text-shadow: none;
 }
-body.night-mode .profile-bar.with-image-bg.dynamic-default-bg .profile-name {
+body.night-mode .overview-profile-bar.with-image-bg.dynamic-default-bg .profile-name {
     color: var(--text-fg, #f9fafb);
+}
+
+.overview-profile-bar.with-image-bg .restaurant-level-chip {
+    color: var(--rl-chip-text, white);
 }
 
 .congrats-card {
@@ -147,7 +190,6 @@ body.night-mode .profile-bar.with-image-bg.dynamic-default-bg .profile-name {
     box-sizing: border-box;
     box-shadow: 0 4px 15px var(--shadow-md);
     border: var(--overview-box-stroke, 1px) solid var(--overview-box-border, var(--border));
-    margin-top: -20px; /* Pull the card up */
     backdrop-filter: blur(var(--overview-box-blur, 0px));
     -webkit-backdrop-filter: blur(var(--overview-box-blur, 0px));
 }

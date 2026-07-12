@@ -202,7 +202,7 @@ class DialogCoreMixin:
         self.max_hide_checkbox.toggled.connect(self._on_max_hide_toggled)
         self.full_hide_mode_checkbox.toggled.connect(self._on_full_hide_toggled)
 
-        self.stats_title_input = QLineEdit(mw.col.conf.get("modern_menu_statsTitle", DEFAULTS["statsTitle"]))
+        self.stats_title_input = QLineEdit(mw.col.conf.get("modern_menu_statsTitle") or DEFAULTS["statsTitle"])
 
 
 

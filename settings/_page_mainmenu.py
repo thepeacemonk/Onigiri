@@ -552,8 +552,9 @@ class PageMainmenuMixin:
         reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
         reset_button.setToolTip(tr("reset_to_default_tooltip"))
         reset_button.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 12px; }"
-            "QPushButton:hover { background: rgba(220, 38, 38, 0.12); }"
+            "/* onigiri-rounded-button-fix */\n"
+            "QPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; }"
+            "QPushButton:hover { background-color: rgba(220, 38, 38, 0.12); border: 1px solid transparent; border-radius: 12px; }"
         )
         icon_path = system_icon_path("cancel.svg")
         if os.path.exists(icon_path):
@@ -605,6 +606,16 @@ class PageMainmenuMixin:
 
     def _reset_heatmap_shape_to_default(self):
         self.selected_heatmap_shape = "system:square.svg"
+        for mode, color_key in (
+            ("light", "--heatmap-color"),
+            ("light", "--heatmap-color-zero"),
+            ("dark", "--heatmap-color"),
+            ("dark", "--heatmap-color-zero"),
+        ):
+            line_edit = self.color_widgets.get(mode, {}).get(color_key)
+            if line_edit is not None:
+                line_edit.setText(DEFAULTS["colors"][mode][color_key])
+        self._update_heatmap_color_cards()
         self._refresh_heatmap_shape_control()
         self._update_heatmap_preview()
         show_settings_toast(self, tr("heatmap_shape_reset_toast", "Heatmap shape reset to default"))
@@ -662,8 +673,9 @@ class PageMainmenuMixin:
         reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
         reset_button.setToolTip(tr("reset_to_default_tooltip"))
         reset_button.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 12px; }"
-            "QPushButton:hover { background: rgba(220, 38, 38, 0.12); }"
+            "/* onigiri-rounded-button-fix */\n"
+            "QPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; }"
+            "QPushButton:hover { background-color: rgba(220, 38, 38, 0.12); border: 1px solid transparent; border-radius: 12px; }"
         )
         icon_path = system_icon_path("cancel.svg")
         if os.path.exists(icon_path):
@@ -733,24 +745,28 @@ class PageMainmenuMixin:
                 "mode": "light",
                 "label": tr("heatmap_shape_color", "Shape"),
                 "value": self._heatmap_color_value("light", "--heatmap-color"),
+                "default": DEFAULTS["colors"]["light"]["--heatmap-color"],
             },
             {
                 "key": "light_zero",
                 "mode": "light",
                 "label": tr("heatmap_shape_zero_color", "Shape (0 reviews)"),
                 "value": self._heatmap_color_value("light", "--heatmap-color-zero"),
+                "default": DEFAULTS["colors"]["light"]["--heatmap-color-zero"],
             },
             {
                 "key": "dark_shape",
                 "mode": "dark",
                 "label": tr("heatmap_shape_dark_color", "Shape"),
                 "value": self._heatmap_color_value("dark", "--heatmap-color"),
+                "default": DEFAULTS["colors"]["dark"]["--heatmap-color"],
             },
             {
                 "key": "dark_zero",
                 "mode": "dark",
                 "label": tr("heatmap_shape_zero_dark_color", "Shape (0 reviews)"),
                 "value": self._heatmap_color_value("dark", "--heatmap-color-zero"),
+                "default": DEFAULTS["colors"]["dark"]["--heatmap-color-zero"],
             },
         ]
 
@@ -776,11 +792,13 @@ class PageMainmenuMixin:
                 "key": "active",
                 "label": tr("heatmap_streak_icon_color", "Streak Icon Color"),
                 "value": self._heatmap_streak_icon_color(),
+                "default": DEFAULTS.get("heatmapStreakIconColor", "#ff6b35"),
             },
             {
                 "key": "zero",
                 "label": tr("heatmap_streak_icon_zero_color", "Streak Icon Color (0 days)"),
                 "value": self._heatmap_streak_icon_zero_color(),
+                "default": DEFAULTS.get("heatmapStreakIconZeroColor", "#8f8f8f"),
             },
         ]
 

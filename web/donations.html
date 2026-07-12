@@ -5,12 +5,18 @@
     <meta charset="utf-8">
     <style>
         :root {
-            --ink: #252525;
-            --paper: #f7f7f5;
-            --blue: #7ea8ca;
+            --ink: #fbf1e6;
+            --ink-dim: rgba(251, 241, 230, 0.66);
+            --ink-faint: rgba(251, 241, 230, 0.42);
             --red: #ff555d;
             --gold: #ffbd5b;
-            --border: #202020;
+            --blue: #7ea8ca;
+            --accent: #33aebf;
+            --bg: #181818;
+            --panel: #242424;
+            --surface: #303030;
+            --hover: #3a3a3a;
+            --border: #454545;
         }
 
         @font-face {
@@ -36,127 +42,166 @@
             overflow: hidden;
             font-family: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             color: var(--ink);
-            background: #242424;
+            background: var(--bg);
         }
 
-        body {
-            display: grid;
-            place-items: center;
+        /* ---------- flat textured backdrop (no gradients) ---------- */
+
+        .backdrop-texture {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Ccircle cx='1' cy='1' r='0.55' fill='%23ffffff' fill-opacity='0.05'/%3E%3C/svg%3E");
+            background-size: 4px 4px;
         }
 
-        .donations-page {
+        .backdrop-vignette {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            box-shadow: inset 0 0 150px 10px rgba(0, 0, 0, 0.45);
+        }
+
+        /* ---------- page shell ---------- */
+
+        .page {
+            position: relative;
+            z-index: 2;
             width: 100vw;
             height: 100vh;
             overflow-x: hidden;
             overflow-y: auto;
-            border-radius: 0;
-            background: var(--paper);
-            border: 0;
-            box-shadow: none;
             scrollbar-width: none;
+            padding: 40px 34px 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 26px;
         }
 
-        .donations-page::-webkit-scrollbar {
+        .page::-webkit-scrollbar {
             width: 0;
             height: 0;
         }
 
-        .hero {
-            min-height: 52vh;
-            padding: 7vh 7vw 9vh;
-            display: grid;
-            place-items: center;
+        /* ---------- masthead ---------- */
+
+        .masthead {
             text-align: center;
-            background: var(--blue);
-        }
-
-        .hero h1 {
-            max-width: 1080px;
-            margin: 0;
-            color: #fff;
-            font-size: clamp(36px, 6.2vw, 76px);
-            line-height: 1.28;
-            font-weight: 500;
-            letter-spacing: 0;
-        }
-
-        .content {
-            margin-top: -44px;
-            background: var(--paper);
-            border-top-left-radius: 48px;
-            border-top-right-radius: 48px;
-            padding: clamp(28px, 3.6vh, 46px) clamp(16px, 1.5vw, 24px) 34px;
-        }
-
-        .first-panel {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
-            padding-bottom: clamp(18px, 3vh, 34px);
-        }
-
-        .creator-card {
-            width: 100%;
-            padding: clamp(34px, 4vh, 52px) clamp(36px, 7vw, 86px) clamp(34px, 4.4vh, 56px);
-            border: 2px solid var(--border);
-            border-radius: 56px;
-            text-align: center;
-            background: var(--paper);
-        }
-
-        .creator-name {
-            margin: 0 0 26px;
-            font-size: clamp(46px, 6.4vw, 82px);
-            line-height: 1;
-            font-weight: 400;
-            letter-spacing: 0;
-            display: flex;
             align-items: center;
-            justify-content: center;
-            gap: clamp(10px, 1.4vw, 18px);
+            gap: 14px;
         }
 
-        .inhabitant-slot {
-            width: clamp(34px, 4.6vw, 58px);
-            height: clamp(34px, 4.6vw, 58px);
-            flex: 0 0 auto;
-            display: inline-grid;
+        .masthead img {
+            width: 148px;
+            height: auto;
+            filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+        }
+
+        .tagline {
+            margin: 0;
+            max-width: 480px;
+            font-size: 15.5px;
+            font-weight: 500;
+            line-height: 1.45;
+            color: var(--ink-dim);
+            letter-spacing: 0.005em;
+        }
+
+        /* ---------- panel helper ---------- */
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+        }
+
+        /* ---------- spotlight ---------- */
+
+        .spotlight {
+            padding: 34px 32px 30px;
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 18px;
+        }
+
+        .avatar-ring {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            display: grid;
             place-items: center;
-            font-size: clamp(22px, 3vw, 38px);
-            line-height: 1;
+            background: var(--accent);
+            padding: 3px;
         }
 
-        .inhabitant-slot img,
-        .inhabitant-slot svg {
-            max-width: 100%;
-            max-height: 100%;
+        .avatar-inner {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--panel);
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+        }
+
+        .avatar-inner img {
+            width: 68%;
+            height: 68%;
             object-fit: contain;
             display: block;
         }
 
-        .inhabitant-crop {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
+        .avatar-fallback {
+            font-size: 40px;
+            line-height: 1;
         }
 
-        .inhabitant-fallback[hidden] {
+        .avatar-fallback[hidden] {
             display: none;
         }
 
-        .creator-copy {
-            max-width: 920px;
-            margin: 0 auto clamp(32px, 4vh, 48px);
-            font-size: clamp(18px, 2.55vw, 32px);
-            line-height: 1.34;
-            font-weight: 500;
-            letter-spacing: 0;
+        .spotlight-eyebrow {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding: 5px 14px;
+            border-radius: 999px;
+            background: rgba(51, 174, 191, 0.12);
+            border: 1px solid rgba(51, 174, 191, 0.35);
         }
 
-        .creator-actions {
+        .spotlight h1 {
+            margin: 2px 0 0;
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .spotlight p {
+            margin: 0;
+            max-width: 440px;
+            font-size: 15px;
+            line-height: 1.55;
+            font-weight: 500;
+            color: var(--ink-dim);
+        }
+
+        .spotlight-actions {
+            width: 100%;
+            max-width: 440px;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: clamp(32px, 6vw, 74px);
+            gap: 14px;
+            margin-top: 6px;
         }
 
         button {
@@ -166,380 +211,341 @@
             cursor: pointer;
         }
 
-        .big-button {
-            min-height: clamp(72px, 9vh, 104px);
-            border-radius: 999px;
-            background: transparent;
-            color: #050505;
-            font-size: clamp(18px, 2.1vw, 28px);
-            font-weight: 400;
-            letter-spacing: 0;
-            border: clamp(3px, 0.32vw, 4px) solid var(--red);
-            transition: transform 120ms ease, background 120ms ease, color 120ms ease;
-        }
-
-        .big-button.buy {
-            border-color: var(--gold);
-        }
-
-        .big-button:hover,
-        .small-button:hover {
-            transform: translateY(-1px);
-        }
-
-        .big-button.kofi:hover {
-            background: var(--red);
-            color: #050505;
-        }
-
-        .big-button.buy:hover {
-            background: var(--gold);
-            color: #050505;
-        }
-
-        .scroll-cue {
-            width: fit-content;
-            max-width: calc(100% - 28px);
-            margin: clamp(26px, 3.4vh, 44px) auto 0;
-            padding: clamp(10px, 1.2vh, 14px) clamp(18px, 2.7vw, 32px);
-            text-align: center;
-            color: #3f6384;
-            font-size: clamp(18px, 2.4vw, 30px);
-            line-height: 1.2;
-            font-weight: 400;
-            letter-spacing: 0;
-            display: flex;
-            flex-direction: row;
+        .cta {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            border: 1px solid rgba(63, 99, 132, 0.22);
-            border-radius: 999px;
-            background: rgba(126, 168, 202, 0.10);
-        }
-
-        .scroll-chevron {
-            flex: 0 0 auto;
-            width: clamp(12px, 1.5vw, 18px);
-            height: clamp(12px, 1.5vw, 18px);
-            border-right: 2px solid #3f6384;
-            border-bottom: 2px solid #3f6384;
-            transform: rotate(45deg);
-            opacity: 0.82;
-            animation: scrollChevronFloat 1.45s ease-in-out infinite;
-        }
-
-        .collaborators {
-            margin-top: clamp(4px, 1vh, 12px);
-            padding: clamp(18px, 3vh, 30px) clamp(14px, 2vw, 24px) clamp(20px, 3.4vh, 34px);
-            border-radius: 30px;
-            background: rgba(126, 168, 202, 0.13);
-            opacity: 0;
-            transform: translateY(34px);
-            transition: opacity 520ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
-        .collaborators.is-visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .collaborators::before {
-            content: "";
-            display: block;
-            width: 58px;
-            height: 5px;
-            margin: 0 auto clamp(18px, 2.6vh, 26px);
-            border-radius: 999px;
-            background: rgba(63, 99, 132, 0.45);
-        }
-
-        .collab-list {
-            display: grid;
             gap: 9px;
-        }
-
-        .collab-row {
-            min-height: 72px;
-            display: grid;
-            grid-template-columns: minmax(190px, 0.82fr) minmax(210px, 1.2fr) minmax(118px, 0.54fr);
-            align-items: center;
-            gap: 8px;
-            padding: 6px 8px 6px 14px;
-            border: 2px solid var(--border);
+            min-height: 54px;
+            padding: 0 18px;
             border-radius: 999px;
-            background: var(--paper);
-            opacity: 0;
-            transform: translateY(16px);
-            transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--ink);
+            transition: background 140ms ease;
         }
 
-        .collaborators.is-visible .collab-row {
+        .cta svg {
+            width: 19px;
+            height: 19px;
+            flex: 0 0 auto;
+        }
+
+        .cta-gold svg {
+            color: var(--gold);
+        }
+
+        .cta-red svg {
+            color: var(--red);
+        }
+
+        .cta:hover {
+            background: var(--hover);
+        }
+
+        /* ---------- team section ---------- */
+
+        .team {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            opacity: 0;
+            transform: translateY(18px);
+            transition: opacity 560ms ease, transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .team.is-visible {
             opacity: 1;
             transform: translateY(0);
         }
 
-        .collaborators.is-visible .collab-row:nth-child(1) {
-            transition-delay: 80ms;
-        }
-
-        .collaborators.is-visible .collab-row:nth-child(2) {
-            transition-delay: 150ms;
-        }
-
-        .collaborators.is-visible .collab-row:nth-child(3) {
-            transition-delay: 220ms;
-        }
-
-        .collaborators.is-visible .collab-row:nth-child(4) {
-            transition-delay: 290ms;
-        }
-
-        .collab-name {
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            font-size: clamp(20px, 3.3vw, 29px);
-            line-height: 1;
-            font-weight: 400;
-            letter-spacing: 0;
+        .team-heading {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 14px;
         }
 
-        .collab-name .inhabitant-slot {
-            width: clamp(42px, 5.4vw, 60px);
-            height: clamp(42px, 5.4vw, 60px);
-            font-size: clamp(17px, 2vw, 24px);
-        }
-
-        .collab-role {
-            overflow: hidden;
+        .team-heading h2 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--ink-faint);
             white-space: nowrap;
-            text-overflow: ellipsis;
-            font-size: clamp(14px, 2.2vw, 20px);
-            line-height: 1.1;
-            font-weight: 400;
-            letter-spacing: 0;
         }
 
-        .small-button {
-            min-width: 112px;
-            min-height: 40px;
+        .team-line {
+            flex: 1 1 auto;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .team-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .team-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 12px 12px 14px;
+            border-radius: 20px;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1), background 160ms ease, border-color 160ms ease;
+        }
+
+        .team.is-visible .team-row {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .team.is-visible .team-row:nth-child(1) {
+            transition-delay: 60ms;
+        }
+
+        .team.is-visible .team-row:nth-child(2) {
+            transition-delay: 120ms;
+        }
+
+        .team.is-visible .team-row:nth-child(3) {
+            transition-delay: 180ms;
+        }
+
+        .team.is-visible .team-row:nth-child(4) {
+            transition-delay: 240ms;
+        }
+
+        .team-row:hover {
+            background: var(--hover);
+        }
+
+        .team-who {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .team-text {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .team-name {
+            font-size: 16px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .team-role {
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--ink-faint);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .team-link {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 36px;
             padding: 0 14px;
             border-radius: 999px;
-            background: transparent;
-            color: #050505;
-            border: 2px solid var(--border);
-            font-size: clamp(15px, 2.1vw, 19px);
-            line-height: 1;
-            font-weight: 400;
-            letter-spacing: 0;
-            transition: transform 120ms ease, background 120ms ease;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--ink);
+            font-size: 12.5px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: background 140ms ease;
         }
 
-        .small-button:hover {
-            background: rgba(126, 168, 202, 0.13);
+        .team-link svg {
+            width: 13px;
+            height: 13px;
+            opacity: 0.75;
         }
 
-        @keyframes scrollChevronFloat {
-            0%,
-            100% {
-                transform: translateY(-2px) rotate(45deg);
-            }
-
-            50% {
-                transform: translateY(4px) rotate(45deg);
-            }
+        .team-link:hover {
+            background: var(--hover);
         }
 
-        @media (prefers-reduced-motion: reduce) {
-            .scroll-chevron {
-                animation: none;
-            }
+        /* ---------- footnote ---------- */
 
-            .collaborators,
-            .collab-row {
-                opacity: 1;
-                transform: none;
-                transition: none;
-            }
+        .footnote {
+            margin: 4px 0 6px;
+            text-align: center;
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--ink-faint);
         }
 
         @media (max-width: 560px) {
-            .donations-page {
-                width: 100vw;
-                height: 100vh;
-                border-radius: 0;
-                border: 0;
+            .page {
+                padding: 30px 18px 22px;
+                gap: 20px;
             }
 
-            .hero {
-                min-height: 50vh;
-                padding: 44px 18px 64px;
+            .masthead img {
+                width: 118px;
             }
 
-            .hero h1 {
-                font-size: clamp(32px, 8vw, 46px);
+            .tagline {
+                font-size: 14px;
             }
 
-            .content {
-                margin-top: -34px;
-                padding: 26px 14px 24px;
-                border-top-left-radius: 34px;
-                border-top-right-radius: 34px;
-            }
-
-            .first-panel {
-                padding-bottom: 22px;
-            }
-
-            .creator-card {
-                padding: 22px 18px 24px;
-                border-width: 2px;
-                border-radius: 34px;
-            }
-
-            .creator-name {
-                margin-bottom: 16px;
-                font-size: clamp(38px, 11vw, 54px);
-            }
-
-            .creator-copy {
-                margin-bottom: 22px;
-                font-size: clamp(16px, 4.3vw, 22px);
-            }
-
-            .creator-actions {
-                gap: 12px;
-            }
-
-            .big-button {
-                min-height: 60px;
-                font-size: 19px;
-                border-width: 3px;
-            }
-
-            .scroll-cue {
-                margin-top: 22px;
-                padding: 10px 15px;
-                font-size: clamp(15px, 4vw, 19px);
-                gap: 10px;
-            }
-
-            .collaborators {
-                margin-top: 6px;
-                padding: 16px 10px 20px;
+            .spotlight {
+                padding: 26px 20px 24px;
                 border-radius: 24px;
             }
 
-            .collab-row {
-                grid-template-columns: minmax(134px, 0.76fr) minmax(116px, 0.95fr) minmax(86px, 0.52fr);
-                min-height: 58px;
-                gap: 6px;
-                padding: 4px 6px 4px 9px;
+            .spotlight h1 {
+                font-size: 27px;
             }
 
-            .collab-name .inhabitant-slot {
-                width: 38px;
-                height: 38px;
+            .spotlight-actions {
+                grid-template-columns: 1fr;
             }
 
-            .small-button {
-                min-width: 90px;
-                min-height: 38px;
-                padding: 0 10px;
+            .team-row {
+                padding: 10px;
+                border-radius: 18px;
+            }
+
+            .team-role {
+                display: none;
             }
         }
     </style>
 </head>
 
 <body>
-    <main class="donations-page">
-        <section class="hero">
-            <h1 id="opening-phrase">Super happy to know you want to support Onigiri!</h1>
-        </section>
+    <div class="backdrop-texture" aria-hidden="true"></div>
+    <div class="backdrop-vignette" aria-hidden="true"></div>
 
-        <section class="content">
-            <div class="first-panel">
-                <div class="creator-card">
-                    <h2 class="creator-name">
-                        <span class="inhabitant-slot" aria-hidden="true">
-                            <img src="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/peace_inhabitant.svg" alt="" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                            <span class="inhabitant-fallback" hidden>🍙</span>
-                        </span>
-                        <span>Peace</span>
-                    </h2>
-                    <p class="creator-copy">Creator of Onigiri, Senchadō, Bento Widgets Collection, lofi.town and focumon add-ons integrations.</p>
-                    <div class="creator-actions">
-                        <button class="big-button buy" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk');">Buy me a Coffee</button>
-                        <button class="big-button kofi" onclick="pycmd('open_link:https://ko-fi.com/peacemonk');">Ko-Fi</button>
-                    </div>
-                </div>
-                <p class="scroll-cue">
-                    Scroll down to support other developers!
-                    <span class="scroll-chevron" aria-hidden="true"></span>
-                </p>
+    <main class="page">
+        <header class="masthead">
+            <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri">
+            <p class="tagline" id="opening-phrase">Super happy to know you want to support Onigiri!</p>
+        </header>
+
+        <section class="spotlight panel">
+            <div class="avatar-ring" aria-hidden="true">
+                <span class="avatar-inner">
+                    <img src="/_addons/%%ADDON_PACKAGE%%/system_files/emojis/onigiri.svg" alt="" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                    <span class="avatar-fallback" hidden>🍙</span>
+                </span>
             </div>
-
-            <section class="collaborators">
-                <div class="collab-list">
-                    <div class="collab-row">
-                        <div class="collab-name">
-                            <span class="inhabitant-slot" aria-hidden="true">
-                                <svg class="inhabitant-crop" viewBox="18 568 56 72">
-                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
-                                </svg>
-                                <span class="inhabitant-fallback" hidden>🍙</span>
-                            </span>
-                            <span>loui4raw</span>
-                        </div>
-                        <div class="collab-role">creator of the new sidebar</div>
-                        <button class="small-button" onclick="pycmd('open_link:https://ko-fi.com/loui4raw');">Ko-Fi</button>
-                    </div>
-                    <div class="collab-row">
-                        <div class="collab-name">
-                            <span class="inhabitant-slot" aria-hidden="true">
-                                <svg class="inhabitant-crop" viewBox="78 568 56 72">
-                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
-                                </svg>
-                                <span class="inhabitant-fallback" hidden>🍙</span>
-                            </span>
-                            <span>unlucky</span>
-                        </div>
-                        <div class="collab-role">original creator of Ankimon</div>
-                        <button class="small-button" onclick="pycmd('open_link:https://ko-fi.com/unlucky99');">Ko-Fi</button>
-                    </div>
-                    <div class="collab-row">
-                        <div class="collab-name">
-                            <span class="inhabitant-slot" aria-hidden="true">
-                                <svg class="inhabitant-crop" viewBox="138 568 56 72">
-                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
-                                </svg>
-                                <span class="inhabitant-fallback" hidden>🍙</span>
-                            </span>
-                            <span>h0tp</span>
-                        </div>
-                        <div class="collab-role">core contributor for Onigiri</div>
-                        <button class="small-button" onclick="pycmd('open_link:https://github.com/h0tp-ftw');">GitHub Fund</button>
-                    </div>
-                    <div class="collab-row">
-                        <div class="collab-name">
-                            <span class="inhabitant-slot" aria-hidden="true">
-                                <svg class="inhabitant-crop" viewBox="198 568 56 72">
-                                    <image href="/_addons/%%ADDON_PACKAGE%%/system_files/gamification_images/hexagon_land/land.svg" width="850" height="640" onerror="this.closest('.inhabitant-slot').querySelector('.inhabitant-fallback').hidden=false; this.closest('svg').hidden=true;"></image>
-                                </svg>
-                                <span class="inhabitant-fallback" hidden>🍙</span>
-                            </span>
-                            <span>Ouranos</span>
-                        </div>
-                        <div class="collab-role">king of feedbacks of Onigiri</div>
-                        <button class="small-button" onclick="pycmd('open_link:https://github.com/OuraN2O');">GitHub</button>
-                    </div>
-                </div>
-            </section>
+            <span class="spotlight-eyebrow">Creator</span>
+            <h1>Peace</h1>
+            <p>Creator of Onigiri, Senchadō, Bento Widgets Collection, lofi.town and focumon add-ons integrations.</p>
+            <div class="spotlight-actions">
+                <button class="cta cta-gold" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk');">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 9h13a2 2 0 0 1 0 4h-1" />
+                        <path d="M4 9v7a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9" />
+                        <path d="M8 6.2c-.5-.7-.5-1.2 0-2" />
+                        <path d="M11.5 6.2c-.5-.7-.5-1.2 0-2" />
+                    </svg>
+                    Buy me a Coffee
+                </button>
+                <button class="cta cta-red" onclick="pycmd('open_link:https://ko-fi.com/peacemonk');">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 9h13a2 2 0 0 1 0 4h-1" />
+                        <path d="M4 9v7a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9" />
+                        <path d="M9.3 6.6c-1-1.4 1-2.6 2-1 1-1.6 3-.4 2 1-.5.7-1.3 1.4-2 2-.7-.6-1.5-1.3-2-2Z" fill="currentColor" stroke="none" />
+                    </svg>
+                    Ko-Fi
+                </button>
+            </div>
         </section>
+
+        <section class="team">
+            <div class="team-heading">
+                <span class="team-line"></span>
+                <h2>More people to thank</h2>
+                <span class="team-line"></span>
+            </div>
+            <div class="team-list">
+                <article class="team-row panel">
+                    <div class="team-who">
+                        <span class="team-text">
+                            <span class="team-name">loui4raw</span>
+                            <span class="team-role">creator of the new sidebar</span>
+                        </span>
+                    </div>
+                    <button class="team-link" onclick="pycmd('open_link:https://ko-fi.com/loui4raw');">
+                        Ko-Fi
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 17 17 7" />
+                            <path d="M9 7h8v8" />
+                        </svg>
+                    </button>
+                </article>
+                <article class="team-row panel">
+                    <div class="team-who">
+                        <span class="team-text">
+                            <span class="team-name">unlucky</span>
+                            <span class="team-role">original creator of Ankimon</span>
+                        </span>
+                    </div>
+                    <button class="team-link" onclick="pycmd('open_link:https://ko-fi.com/unlucky99');">
+                        Ko-Fi
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 17 17 7" />
+                            <path d="M9 7h8v8" />
+                        </svg>
+                    </button>
+                </article>
+                <article class="team-row panel">
+                    <div class="team-who">
+                        <span class="team-text">
+                            <span class="team-name">h0tp</span>
+                            <span class="team-role">core contributor for Onigiri</span>
+                        </span>
+                    </div>
+                    <button class="team-link" onclick="pycmd('open_link:https://github.com/h0tp-ftw');">
+                        GitHub Fund
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 17 17 7" />
+                            <path d="M9 7h8v8" />
+                        </svg>
+                    </button>
+                </article>
+                <article class="team-row panel">
+                    <div class="team-who">
+                        <span class="team-text">
+                            <span class="team-name">Ouranos</span>
+                            <span class="team-role">king of feedbacks of Onigiri</span>
+                        </span>
+                    </div>
+                    <button class="team-link" onclick="pycmd('open_link:https://github.com/OuraN2O');">
+                        GitHub
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 17 17 7" />
+                            <path d="M9 7h8v8" />
+                        </svg>
+                    </button>
+                </article>
+            </div>
+        </section>
+
+        <p class="footnote">Every coffee and Ko-Fi keeps Onigiri simmering. Thank you 🍙</p>
     </main>
 
     <script>
@@ -564,29 +570,29 @@
             window.localStorage.setItem(storageKey, String(next));
             document.getElementById("opening-phrase").textContent = phrases[next];
 
-            const collaborators = document.querySelector(".collaborators");
-            const scrollRoot = document.querySelector(".donations-page");
-            if (!collaborators || !scrollRoot) {
+            const team = document.querySelector(".team");
+            const scrollRoot = document.querySelector(".page");
+            if (!team || !scrollRoot) {
                 return;
             }
-            if (!("IntersectionObserver" in window)) {
-                collaborators.classList.add("is-visible");
+            if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                team.classList.add("is-visible");
                 return;
             }
 
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach((entry) => {
                     if (entry.isIntersecting) {
-                        collaborators.classList.add("is-visible");
-                        observer.unobserve(collaborators);
+                        team.classList.add("is-visible");
+                        observer.unobserve(team);
                     }
                 });
             }, {
                 root: scrollRoot,
-                threshold: 0.18,
-                rootMargin: "0px 0px -8% 0px"
+                threshold: 0.12,
+                rootMargin: "0px 0px -6% 0px"
             });
-            observer.observe(collaborators);
+            observer.observe(team);
         })();
     </script>
 </body>

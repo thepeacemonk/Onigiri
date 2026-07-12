@@ -990,7 +990,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             """
 
     # --- Part 3: Assemble the Final Stats Block ---
-    stats_title = _col_conf_get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
+    stats_title = _col_conf_get("modern_menu_statsTitle", "") or config.DEFAULTS["statsTitle"]
     title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
 
     # Combine both Onigiri and External widgets into a single unified grid
@@ -2211,8 +2211,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         # Use the full module path to avoid any potential naming conflicts
         import html as html_module
         xp_detail = html_module.escape(xp_detail, quote=True)
+        chip_style_str = nook_level.build_chip_style_attr()
+        chip_style_attr = f' style="{chip_style_str}"' if chip_style_str else ""
         rl_chip = f"""
-        <div class="restaurant-level-chip" title="{xp_detail}">
+        <div class="restaurant-level-chip" title="{xp_detail}"{chip_style_attr}>
             <span class="rl-chip-level">{tr('level_prefix')} {rl_payload.get('level', 0)}</span>
             <div class="rl-chip-progress">
                 <div class="rl-chip-progress-fill" style="width: {fill_width}"></div>
@@ -2233,11 +2235,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # Inject CSS for theme colors if a theme is active
     theme_css = ""
     if rl_chip:
-        bar_mode = _col_conf_get("onigiri_profile_level_bar_mode", "theme")
-        if bar_mode == "custom":
-            rl_theme_color = _col_conf_get("onigiri_profile_level_bar_custom_color", "#4CAF50")
-        else:
-            rl_theme_color = nook_level.manager.get_current_theme_color()
+        chip_vals = nook_level.get_chip_style_values()
+        rl_theme_color = chip_vals.get("progress", "")
 
     if rl_theme_color:
         theme_css = f"""

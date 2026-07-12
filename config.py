@@ -45,7 +45,7 @@ DEFAULTS = {
 
 DEFAULTS = {
     "userName": "USER",
-    "statsTitle": "Today's Stats",
+    "statsTitle": "Welcome to Onigiri!",
     "studyNowText": "Study Now",
     "hideWelcomeMessage": False,
     "hideAllDeckCounts": False,
@@ -148,15 +148,12 @@ DEFAULTS = {
     },
     "onigimon": {
         "enabled": False,
-        "notifications_enabled": True,
-        "daily_surprise_enabled": True,
         "difficulty": "pikachu",
         "reward_interval": 4,
         "reward_generosity": "normal",
-        "widget_style": "care",
         "sprite_source": "ankimon_then_pokesprite",
         "sprite_motion": "static",
-        "scene_background_color": "#e8f4ff",
+        "scene_background_color": "#7FD179",
         "scene_background_image": "",
         "scene_background_blur": 9,
         "scene_background_opacity": 90,

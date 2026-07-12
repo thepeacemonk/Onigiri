@@ -163,7 +163,7 @@
             { label: 'Get Shared', id: 'get_shared', cmd: 'shared' },
             { label: 'Create Deck', id: 'create_deck', cmd: 'onigiri_create_deck' },
             { label: 'Import File', id: 'import_file', cmd: 'import' }
-        ].filter(item => isSidebarActionVisible(item.id));
+        ];
 
         // Insert the 3 inline buttons right after the More button
         let insertAfter = moreBtn;
@@ -268,7 +268,6 @@
         const container = document.querySelector('.container.modern-main-menu');
         if (!header || !label || !container) return;
 
-        const cycleStateKey = 'onigiri_decks_header_cycle_state';
         if (!sidebar.dataset.onigiriBaseSidebarOnly) {
             sidebar.dataset.onigiriBaseSidebarOnly = sidebar.classList.contains('sidebar-only-mode') ? '1' : '0';
         }
@@ -331,12 +330,6 @@
             modePalette.appendChild(button);
         });
 
-        const saveCycleState = (state) => {
-            try {
-                sessionStorage.setItem(cycleStateKey, String(state));
-            } catch (_) {}
-        };
-
         const restoreBaseSidebarOnly = () => {
             sidebar.classList.toggle('sidebar-only-mode', sidebar.dataset.onigiriBaseSidebarOnly === '1');
         };
@@ -367,7 +360,6 @@
                 button.classList.toggle('active', isActive);
                 button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             });
-            saveCycleState(nextState);
             updateDeckFocusLayout();
             if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
                 window.onigiriUpdateSidebarEdgeToggle();
@@ -420,6 +412,11 @@
             });
         });
 
+        // The server always renders the up-to-date deck_cycle_state (persisted via
+        // the saveDeckCycleState pycmd on every click, or by the Sidebar position
+        // setting), so it must win outright. A previous sessionStorage-based
+        // fallback let a stale Center/focus-mode choice silently override a newer
+        // Sidebar position change from Settings until Anki was restarted.
         let restoredState = sidebar.classList.contains('deck-focus-mode') ? 1 : 0;
         const configuredState = Number.parseInt(
             window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.deckCycleState,
@@ -428,16 +425,6 @@
         if (configuredState >= 0 && configuredState <= 4) {
             restoredState = configuredState;
         }
-        try {
-            const storedState = Number.parseInt(sessionStorage.getItem(cycleStateKey) || '', 10);
-            if (storedState === 2 || storedState === 3 || storedState === 4) {
-                restoredState = storedState;
-            } else if (storedState === 1 && sidebar.classList.contains('deck-focus-mode')) {
-                restoredState = 1;
-            } else if (storedState === 0 && !sidebar.classList.contains('deck-focus-mode')) {
-                restoredState = 0;
-            }
-        } catch (_) {}
         applyState(restoredState, { persistFocus: false });
     }
 

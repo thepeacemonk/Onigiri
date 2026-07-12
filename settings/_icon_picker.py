@@ -138,14 +138,16 @@ class IconPickerDialog(QDialog):
         
         if theme_manager.night_mode:
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
-                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
+                /* onigiri-rounded-button-fix */
+                QPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; }
+                QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); border: 1px solid transparent; border-radius: 12px; }
             """)
             icon_color = "#e0e0e0"
         else:
             close_btn.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; border-radius: 12px; }
-                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+                /* onigiri-rounded-button-fix */
+                QPushButton { background-color: transparent; border: 1px solid transparent; border-radius: 12px; }
+                QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); border: 1px solid transparent; border-radius: 12px; }
             """)
             icon_color = "#555555"
 
@@ -490,7 +492,7 @@ class DeckIconPickerDialog(QDialog):
         self.close_btn = QPushButton()
         self.close_btn.setFixedSize(28, 28)
         self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; border-radius: 14px; color: {self._muted}; font-size: 20px; }} QPushButton:hover {{ color: {self._fg}; background: rgba(128, 128, 128, 0.14); }}")
+        self.close_btn.setStyleSheet(f"/* onigiri-rounded-button-fix */\nQPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 14px; color: {self._muted}; font-size: 20px; }} QPushButton:hover {{ color: {self._fg}; background: rgba(128, 128, 128, 0.14); border: 1px solid transparent; border-radius: 14px; }}")
         self._update_close_button_icon()
         self.close_btn.clicked.connect(self.close)
         header.addWidget(self.title_label)
@@ -544,6 +546,8 @@ class DeckIconPickerDialog(QDialog):
         for btn in (save_btn, cancel_btn, reset_btn):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedHeight(36)
+            btn.setAutoDefault(False)
+            btn.setDefault(False)
         accent = getattr(self.parent(), "accent_color", "#00A982") if self.parent() else "#00A982"
         if type(accent) is QColor:
             accent = accent.name()
@@ -552,7 +556,7 @@ class DeckIconPickerDialog(QDialog):
         for btn in (cancel_btn, reset_btn):
             btn.setStyleSheet(f"QPushButton {{ background: {self._surface}; color: {self._fg}; border: 1px solid {self._border}; border-radius: 18px; padding: 0 18px; }}")
         save_btn.clicked.connect(self._save_and_close)
-        reset_btn.clicked.connect(lambda: (self.iconSelected.emit(""), self.close()))
+        reset_btn.clicked.connect(self._reset_to_default)
         cancel_btn.clicked.connect(self.close)
         footer.addStretch()
         footer.addWidget(save_btn)
@@ -563,6 +567,28 @@ class DeckIconPickerDialog(QDialog):
 
     def _save_and_close(self):
         self.iconSelected.emit(self.current_icon)
+        self.close()
+
+    def _reset_to_default(self):
+        # Icon reset alone used to leave stale custom colors on screen (the
+        # swatch never looked "reset" if the default icon happened to match
+        # the current one). Also restore any color option that declares a
+        # "default" value.
+        changed = False
+        for option in self.color_options:
+            key = option.get("key")
+            if not key or "default" not in option:
+                continue
+            default_value = self._valid_color(option["default"])
+            if self.color_values.get(key) != default_value:
+                changed = True
+            self.color_values[key] = default_value
+            button = self._color_buttons.get(key)
+            if button is not None:
+                self._style_color_option_button(button, default_value)
+        if changed:
+            self.colorsChanged.emit(dict(self.color_values))
+        self.iconSelected.emit("")
         self.close()
 
     def _on_preview_mode_toggled(self, mode):
@@ -582,7 +608,7 @@ class DeckIconPickerDialog(QDialog):
 
         if hasattr(self, 'title_label'):
             self.title_label.setStyleSheet(f"font-weight: 700; font-size: 15px; color: {self._fg};")
-            self.close_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; border-radius: 14px; color: {self._muted}; font-size: 20px; }} QPushButton:hover {{ color: {self._fg}; background: rgba(128, 128, 128, 0.14); }}")
+            self.close_btn.setStyleSheet(f"/* onigiri-rounded-button-fix */\nQPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 14px; color: {self._muted}; font-size: 20px; }} QPushButton:hover {{ color: {self._fg}; background: rgba(128, 128, 128, 0.14); border: 1px solid transparent; border-radius: 14px; }}")
             self._update_close_button_icon()
             for btn in (self.cancel_btn, self.reset_btn):
                 btn.setStyleSheet(f"QPushButton {{ background: {self._surface}; color: {self._fg}; border: 1px solid {self._border}; border-radius: 18px; padding: 0 18px; }}")
@@ -809,6 +835,8 @@ class DeckIconPickerDialog(QDialog):
             button.setFixedHeight(34)
             button.setMinimumWidth(120)
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            button.setAutoDefault(False)
+            button.setDefault(False)
             self._color_buttons[key] = button
             self._style_color_option_button(button, self.color_values.get(key, "#00A982"))
             button.clicked.connect(lambda _=False, k=key, b=button: self._choose_picker_color(k, b))

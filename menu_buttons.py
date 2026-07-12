@@ -247,21 +247,23 @@ def setup_onigiri_menu(addon_path):
     onigiri_menu.addSeparator()
 
     # --- ADD THIS BLOCK ---
+    info_menu = onigiri_menu.addMenu("Info")
+
     guide_action = QAction(tr("onigiri_guide", "Onigiri Guide"), mw)
     guide_action.triggered.connect(_open_onigiri_guide)
-    onigiri_menu.addAction(guide_action)
+    info_menu.addAction(guide_action)
 
-    welcome_action = QAction("Reproduce Welcome Message", mw)
+    welcome_action = QAction("Welcome Message", mw)
     welcome_action.triggered.connect(_show_welcome_message)
-    onigiri_menu.addAction(welcome_action)
+    info_menu.addAction(welcome_action)
 
     donations_action = QAction(tr("donations_title", "Donations"), mw)
     donations_action.triggered.connect(_show_donations_dialog)
-    onigiri_menu.addAction(donations_action)
+    info_menu.addAction(donations_action)
 
     credits_action = QAction(tr("credits"), mw)
     credits_action.triggered.connect(_show_credits_dialog)
-    onigiri_menu.addAction(credits_action)
+    info_menu.addAction(credits_action)
     # --- END: ADD THIS BLOCK ---
 
     # Add version info at the bottom (disabled)
