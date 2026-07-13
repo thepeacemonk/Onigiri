@@ -1312,19 +1312,20 @@ class _DetailStatTile(QFrame):
 
 class _StackedBar(QWidget):
     """Tiny rounded horizontal bar: a solid 'due' segment (pressing work) plus a
-    translucent 'new' segment, both tinted with the plan colour, over a track."""
+    translucent 'new' segment, and an even softer 'suspended' segment, all tinted with the plan colour, over a track."""
 
     def __init__(self, pal: dict, parent=None):
         super().__init__(parent)
         self.pal = pal
         self._due = 0
         self._new = 0
+        self._suspended = 0
         self._color = pal["accent"]
         self.setFixedHeight(6)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_data(self, new: int, due: int, color: str) -> None:
-        self._new, self._due, self._color = max(0, new), max(0, due), color
+    def set_data(self, new: int, due: int, suspended: int, color: str) -> None:
+        self._new, self._due, self._suspended, self._color = max(0, new), max(0, due), max(0, suspended), color
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -1334,14 +1335,24 @@ class _StackedBar(QWidget):
         r = rect.height() / 2
         track = QPainterPath(); track.addRoundedRect(rect, r, r)
         painter.fillPath(track, QBrush(QColor(self.pal["surface2"])))
-        total = self._new + self._due
+        total = self._new + self._due + self._suspended
         if total <= 0 or rect.width() <= 0:
             return
         painter.setClipPath(track)
+
         due_w = rect.width() * (self._due / total)
+        new_w = rect.width() * (self._new / total)
+
+        # Due segment
         painter.fillRect(QRectF(0, 0, due_w, rect.height()), QBrush(QColor(self._color)))
+
+        # New segment
         soft = QColor(self._color); soft.setAlpha(95)
-        painter.fillRect(QRectF(due_w, 0, rect.width() - due_w, rect.height()), QBrush(soft))
+        painter.fillRect(QRectF(due_w, 0, new_w, rect.height()), QBrush(soft))
+
+        # Suspended segment
+        softer = QColor(self._color); softer.setAlpha(45)
+        painter.fillRect(QRectF(due_w + new_w, 0, rect.width() - (due_w + new_w), rect.height()), QBrush(softer))
 
 
 class _RatioBar(QWidget):
@@ -1417,11 +1428,14 @@ class _DeckBreakdownCard(QFrame):
 
         qc = QColor(color)
         soft_rgba = f"rgba({qc.red()},{qc.green()},{qc.blue()},0.42)"
+        softer_rgba = f"rgba({qc.red()},{qc.green()},{qc.blue()},0.20)"
         self.legend.setText(
             f'<span style="color:{color};">&#9679;</span> '
             f'<span style="color:{p["fg3"]};">{tr("prep_legend_due", "due")}</span>'
             f'&nbsp;&nbsp;<span style="color:{soft_rgba};">&#9679;</span> '
             f'<span style="color:{p["fg3"]};">{tr("prep_legend_new", "new")}</span>'
+            f'&nbsp;&nbsp;<span style="color:{softer_rgba};">&#9679;</span> '
+            f'<span style="color:{p["fg3"]};">{tr("prep_legend_suspended", "suspended")}</span>'
         )
 
         if not deck_counts:
@@ -1432,12 +1446,13 @@ class _DeckBreakdownCard(QFrame):
 
         items = sorted(
             deck_counts.items(),
-            key=lambda kv: -((kv[1].get("new", 0)) + (kv[1].get("due", 0))),
+            key=lambda kv: -((kv[1].get("new", 0)) + (kv[1].get("due", 0)) + (kv[1].get("suspended", 0))),
         )
         for name, c in items[:8]:
             new_n = int(c.get("new", 0))
             due_n = int(c.get("due", 0))
-            pending = new_n + due_n
+            suspended_n = int(c.get("suspended", 0))
+            pending = new_n + due_n + suspended_n
 
             row = QWidget()
             rl = QVBoxLayout(row)
@@ -1459,13 +1474,13 @@ class _DeckBreakdownCard(QFrame):
                 count_label = QLabel(tr("prep_deck_done", "done ✓"))
                 count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
             else:
-                count_label = QLabel(tr("prep_new_due_split", "{0} new · {1} due").format(new_n, due_n))
+                count_label = QLabel(tr("prep_new_due_split", "{0} new · {1} due · {2} suspended").format(new_n, due_n, suspended_n))
                 count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg2']}; background: transparent;")
             top.addWidget(count_label, 0)
             rl.addLayout(top)
 
             bar = _StackedBar(p)
-            bar.set_data(new_n, due_n, color)
+            bar.set_data(new_n, due_n, suspended_n, color)
             rl.addWidget(bar)
 
             self.rows_holder.addWidget(row)
@@ -1735,6 +1750,7 @@ class PlanDetailView(QWidget):
         total_pending = int(pace.get("total_pending", 0) or 0)
         total_new = int(pace.get("total_new", 0) or 0)
         total_due = int(pace.get("total_due", 0) or 0)
+        total_suspended = int(pace.get("total_suspended", 0) or 0)
         if req is None:
             self.remaining_tile.set_value("—", tr("prep_cards_remaining", "cards remaining"))
         elif total_pending == 0:
@@ -1742,7 +1758,7 @@ class PlanDetailView(QWidget):
         else:
             self.remaining_tile.set_value(
                 f"{total_pending:,}".replace(",", " "),
-                tr("prep_new_due_split", "{0} new · {1} due").format(total_new, total_due),
+                tr("prep_new_due_split", "{0} new · {1} due · {2} suspended").format(total_new, total_due, total_suspended),
             )
 
         # Reviewed-this-week tile
