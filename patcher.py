@@ -2085,7 +2085,10 @@ def patch_overview():
             }
             .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 14px); color: var(--fg); }
             .mini-overview .stats-row span:first-child { color: var(--fg); }
-            .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-family: inherit; font-size: inherit; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; color: var(--fg) !important; }
+            .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-family: inherit; font-size: inherit; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; }
+            .mini-overview .new-count-bubble { color: var(--overview-new-count-fg, var(--new-count-bubble-fg)) !important; }
+            .mini-overview .learn-count-bubble { color: var(--overview-learn-count-fg, var(--learn-count-bubble-fg)) !important; }
+            .mini-overview .review-count-bubble { color: var(--overview-review-count-fg, var(--review-count-bubble-fg)) !important; }
             .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 16px); color: var(--fg) !important; border-radius: 9999px; box-shadow: none !important; }
             .mini-overview .overview-bottom-actions { 
                 width: 280px; 
@@ -4737,8 +4740,12 @@ def generate_font_css(addon_package):
         }}
 
         .stats-row,
-        .stats-row span,
         .congrats-card h1 {{
+            font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: var(--font-size-main) !important;
+            color: var(--fg) !important;
+        }}
+        .stats-row span:not(.new-count-bubble):not(.learn-count-bubble):not(.review-count-bubble) {{
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
             font-size: var(--font-size-main) !important;
             color: var(--fg) !important;

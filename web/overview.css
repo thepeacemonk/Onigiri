@@ -311,17 +311,17 @@ body.night-mode .overview-profile-bar.with-image-bg.dynamic-default-bg .profile-
 /* Set bubble colors using CSS variables from the config */
 .new-count-bubble {
     background-color: var(--overview-new-bubble-bg, var(--new-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-new-count-fg, var(--new-count-bubble-fg));
 }
 
 .learn-count-bubble {
     background-color: var(--overview-learn-bubble-bg, var(--learn-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-learn-count-fg, var(--learn-count-bubble-fg));
 }
 
 .review-count-bubble {
     background-color: var(--overview-review-bubble-bg, var(--review-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-review-count-fg, var(--review-count-bubble-fg));
 }
 
 
