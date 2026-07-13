@@ -828,7 +828,7 @@ class PageThemesMixin:
             "onigiri_reviewer_btn_padding",
             "onigiri_reviewer_btn_height",
             "onigiri_reviewer_bar_height",
-            "onigiri_reviewer_stattxt_visible",
+            "onigiri_reviewer_stattxt_mode",
             "onigiri_toolbar_bg_mode",
             "onigiri_toolbar_bg_color_light",
             "onigiri_toolbar_bg_color_dark",
@@ -1868,7 +1868,7 @@ class PageThemesMixin:
             "onigiri_reviewer_btn_padding",
             "onigiri_reviewer_btn_height",
             "onigiri_reviewer_bar_height",
-            "onigiri_reviewer_stattxt_visible",
+            "onigiri_reviewer_stattxt_mode",
         ]:
             if key in DEFAULTS:
                 self.current_config[key] = copy.deepcopy(DEFAULTS[key])

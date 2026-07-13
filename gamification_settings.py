@@ -1369,12 +1369,6 @@ class GamificationSettingsDialog(QDialog):
             self.hexagon_land_config = {}
         self.hexagon_land_toggle = AnimatedToggleButton(accent_color="#2D8CFF")
         self.hexagon_land_toggle.setChecked(bool(self.hexagon_land_config.get("enabled", False)))
-        self.hexagon_widget_display_combo = QComboBox()
-        self.hexagon_widget_display_combo.addItem("Land + information", "land_info")
-        self.hexagon_widget_display_combo.addItem("Land only", "land_only")
-        current_display = str(self.hexagon_land_config.get("widget_display", "land_info") or "land_info")
-        display_index = self.hexagon_widget_display_combo.findData(current_display)
-        self.hexagon_widget_display_combo.setCurrentIndex(display_index if display_index >= 0 else 0)
 
         self.hexagon_survival_toggle = AnimatedToggleButton(accent_color="#e53e3e")
         self.hexagon_survival_toggle.setChecked(bool(self.hexagon_land_config.get("survival_mode", False)))
@@ -2885,14 +2879,6 @@ class GamificationSettingsDialog(QDialog):
         keys_layout.addWidget(self.hexagon_keys_button)
         layout.addWidget(keys_group)
 
-        widget_group, widget_layout = self._create_study_zone_card("Widget")
-        display_row = QHBoxLayout()
-        display_row.addWidget(QLabel("Display"))
-        display_row.addWidget(self.hexagon_widget_display_combo)
-        display_row.addStretch()
-        widget_layout.addLayout(display_row)
-        layout.addWidget(widget_group)
-
         survival_group, survival_layout = self._create_study_zone_card("Survival Mode")
         survival_desc = QLabel("If enabled, the larger your streak, the more land tiles you will lose if you miss a study day.")
         survival_desc.setWordWrap(True)
@@ -3319,7 +3305,6 @@ class GamificationSettingsDialog(QDialog):
         hex_conf = self.current_config.setdefault("hexagon_land", {})
         hex_conf["enabled"] = self.hexagon_land_toggle.isChecked()
         hex_conf["theme"] = "island"
-        hex_conf["widget_display"] = self.hexagon_widget_display_combo.currentData() or "land_info"
         hex_conf["survival_mode"] = self.hexagon_survival_toggle.isChecked()
         if "Hexagon Land" in self._loaded_pages and hasattr(self, "hexagon_island_name_input"):
             hexagon_land = _hexagon_land_module()

@@ -1956,7 +1956,7 @@ class OnigimonManager:
                 yield web
 
 
-def render_widget_html() -> str:
+def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
     payload = manager.widget_payload()
     status = payload["status"]
     inventory = payload["inventory"]
@@ -1966,6 +1966,19 @@ def render_widget_html() -> str:
     except Exception:
         addon_package = "1011095603"
     pokeball_icon = f"/_addons/{addon_package}/system_files/system_icons/available_for_users/circle.svg"
+
+    if companion and row_span <= 1:
+        name = escape(manager.companion_display_name(companion))
+        sprite_urls = manager.sprite_urls_for_companion(companion)
+        img = _sprite_img_html(sprite_urls, name, fallback_class="onigimon-placeholder")
+        return f"""
+        <div class="onigimon-widget onigimon-widget-compact" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+            <div class="onigimon-main onigimon-scene onigimon-scene-compact" {_onigimon_scene_style_attr()}>
+                {_onigimon_scene_background_layer("onigimon-scene-bg")}
+                <div class="onigimon-sprite">{img}</div>
+            </div>
+        </div>
+        """
 
     if status == "disabled":
         body = f"<p>{escape(tr('onigimon_enable_settings'))}</p>"

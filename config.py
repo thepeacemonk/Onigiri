@@ -73,7 +73,9 @@ DEFAULTS = {
         "custom_css": "",
         "default_sort": "age",
         "trash_grace_days": 7,
+        "show_in_reviewer_header": True,
     },
+    "onigiri_pomodoro_show_in_reviewer_header": True,
     "userBirthday": "",  # Format: YYYY-MM-DD, empty = not set
     "lastBirthdayShown": "",  # Year when birthday popup was last shown 
     "hideRetentionStars": False,
@@ -163,7 +165,6 @@ DEFAULTS = {
         "enabled": False,
         "theme": "island",
         "sounds_enabled": True,
-        "widget_display": "land_info",
     },
     "heatmapShape": "square.svg",
     "heatmapStreakIcon": "system:fire.svg",
@@ -311,7 +312,7 @@ DEFAULTS = {
     "onigiri_reviewer_other_btn_hover_text_dark": "#3a3a3a",
     
     # --- Stat Text (.stattxt) Colors (intervals like "10m", "4d" and "+" signs) ---
-    "onigiri_reviewer_stattxt_visible": True,
+    "onigiri_reviewer_stattxt_mode": "hover",  # "hover" | "fixed" | "off"
     "onigiri_reviewer_stattxt_color_light": "#666666",
     "onigiri_reviewer_stattxt_color_dark": "#aaaaaa",
 
@@ -797,6 +798,11 @@ def get_config():
         else:
             visible_btns.append("gamification")
     # --------------------------------------------------
+
+    # Compatibility: the old "Show numbers" boolean toggle became a 3-way
+    # "Stats Numbers" mode (hover / fixed / off).
+    if "onigiri_reviewer_stattxt_mode" not in user_config and "onigiri_reviewer_stattxt_visible" in user_config:
+        clean_config["onigiri_reviewer_stattxt_mode"] = "hover" if user_config["onigiri_reviewer_stattxt_visible"] else "off"
 
     return clean_config
 

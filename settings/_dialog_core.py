@@ -12,7 +12,6 @@ from ._widgets import _TooltipSuppressor
 class DialogCoreMixin:
     def __init__(self, parent=None, addon_path=None, initial_page_index=0):
         super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         # Disable native OS tooltips for the whole settings UI while it is open.
         self._tooltip_suppressor = _TooltipSuppressor(self)

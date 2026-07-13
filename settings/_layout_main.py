@@ -24,8 +24,6 @@ class OnigiriDraggableItem(DraggableItem):
             if is_heatmap and i < 2: continue # Heatmap min 2 cols
             if is_restaurant:
                 if i > 2: continue # Restaurant Level supports compact 1x2 or wide 2x2 layouts
-            if self.widget_id == 'hexagon_land':
-                if i != 2: continue # Hexagon Land preview is two columns wide
             if self.widget_id == 'deck_stats':
                 if i > 2: continue
             width_options.append((str(i), i, self.col_span == i))
@@ -38,15 +36,15 @@ class OnigiriDraggableItem(DraggableItem):
         height_group = QButtonGroup(custom_menu)
         height_group.setExclusive(True)
         # Set row constraints
-        min_rows = 2 if (is_heatmap or self.widget_id in ('restaurant_level', 'onigimon', 'hexagon_land', 'prep_station')) else 1
+        min_rows = 2 if (is_heatmap or self.widget_id == 'prep_station') else 1
         if is_heatmap:
             max_rows = 2  # Heatmap: exactly 2 rows
         elif self.widget_id == 'restaurant_level':
-            max_rows = 2  # Nook Level: exactly 2 rows, can never be less
+            max_rows = 2  # Nook Level: full card is two rows, or 1 row for the compact building-only view
         elif self.widget_id == 'onigimon':
-            max_rows = 2  # Onigimon: companion card is two rows tall by default
+            max_rows = 2  # Onigimon: full card is two rows, or 1 row for the compact companion-only view
         elif self.widget_id == 'hexagon_land':
-            max_rows = 2  # Hexagon Land: island preview needs room to breathe
+            max_rows = 4  # Hexagon Land: freely resizable island preview
         elif is_prep_station:
             max_rows = 2  # Study Plans: always exactly 2 rows tall
         elif self.widget_id == 'deck_stats':
@@ -285,9 +283,6 @@ class OnigiriLayoutEditor(QWidget):
                 item.col_span = config.get("col", 1)
                 if widget_id == "restaurant_level":
                     item.restaurant_orientation = config.get("orientation", "horizontal")
-                if widget_id == "hexagon_land":
-                    item.row_span = 2
-                    item.col_span = 2
                 # Use a default 'pos' if missing (e.g., from old config)
                 if self.grid_zone.place_item(item, config.get("pos", 0), silent=True):
                     placed_widgets.add(widget_id)
@@ -889,12 +884,11 @@ class UnifiedLayoutEditor(QWidget):
                 item.col_span = config.get("col", 1)
                 if widget_id == "restaurant_level":
                     item.restaurant_orientation = config.get("orientation", "horizontal")
-                    # Nook Level can never be less than 2 rows tall
-                    item.row_span = 2
+                    item.row_span = max(1, min(2, item.row_span))
                     item.col_span = max(1, min(2, item.col_span))
                 if widget_id == "hexagon_land":
-                    item.row_span = 2
-                    item.col_span = 2
+                    item.row_span = max(1, min(4, item.row_span))
+                    item.col_span = max(1, min(4, item.col_span))
                 if widget_id == "deck_stats":
                     item.row_span = max(1, min(2, item.row_span))
                     item.col_span = max(1, min(2, item.col_span))

@@ -339,6 +339,24 @@ class PageReviewerMixin:
         fallback = "#aaaaaa" if suffix == "dark" else "#666666"
         return self._bottom_bar_color_value(f"stattxt_color_{suffix}", fallback)
 
+    def _reviewer_stattxt_mode(self):
+        group = getattr(self, "reviewer_stattxt_mode_group", None)
+        checked = group.checkedButton() if group else None
+        mode = checked.property("stattxt_mode") if checked else None
+        if mode in {"hover", "fixed", "off"}:
+            return mode
+        return self.current_config.get("onigiri_reviewer_stattxt_mode", "hover")
+
+    def _set_reviewer_stattxt_mode(self, mode):
+        group = getattr(self, "reviewer_stattxt_mode_group", None)
+        if not group:
+            return
+        if mode not in {"hover", "fixed", "off"}:
+            mode = "hover"
+        for button in group.buttons():
+            with QSignalBlocker(button):
+                button.setChecked(button.property("stattxt_mode") == mode)
+
     def _assign_bottom_bar_background_image(self, filename):
         self.galleries.setdefault("reviewer_bar_bg", {"selected": "", "folder": "user_files/reviewer_bar_bg"})
         self.galleries["reviewer_bar_bg"]["selected"] = filename
@@ -670,9 +688,25 @@ class PageReviewerMixin:
         self.reviewer_btn_custom_enable_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.reviewer_btn_custom_enable_toggle.setChecked(self.current_config.get("onigiri_reviewer_btn_custom_enabled", True))
         general_layout.addWidget(self._create_main_bg_toggle_row(tr("enable_custom_buttons_label"), self.reviewer_btn_custom_enable_toggle), 0, 0)
-        self.reviewer_stattxt_visible_toggle = AnimatedToggleButton(accent_color=self.accent_color)
-        self.reviewer_stattxt_visible_toggle.setChecked(self.current_config.get("onigiri_reviewer_stattxt_visible", True))
-        general_layout.addWidget(self._create_main_bg_toggle_row(tr("show_bottom_bar_numbers", "Show numbers"), self.reviewer_stattxt_visible_toggle), 2, 1)
+        self.reviewer_stattxt_mode_group = QButtonGroup(self)
+        self.reviewer_stattxt_mode_group.setExclusive(True)
+        current_stattxt_mode = self.current_config.get("onigiri_reviewer_stattxt_mode", "hover")
+        if current_stattxt_mode not in {"hover", "fixed", "off"}:
+            current_stattxt_mode = "hover"
+        stattxt_mode_container = self._create_organize_segmented_control(
+            [
+                ("hover", tr("stats_numbers_hover_short", "Hover")),
+                ("fixed", tr("stats_numbers_fixed_short", "Fixed")),
+                ("off", tr("stats_numbers_off_short", "Off")),
+            ],
+            self.reviewer_stattxt_mode_group,
+            current_stattxt_mode,
+            "stattxt_mode",
+            fill_width=True,
+            segment_height=28,
+            min_button_width=54,
+        )
+        general_layout.addWidget(self._create_main_bg_value_row(tr("stats_numbers_label", "Stats Numbers"), stattxt_mode_container), 2, 1)
 
         self.reviewer_btn_radius_spin = QSpinBox()
         self.reviewer_btn_radius_spin.setRange(0, 100)
@@ -740,7 +774,7 @@ class PageReviewerMixin:
         self.bottom_bar_answer_mode_button.toggled.connect(lambda checked: self._set_bottom_bar_button_mode("answer") if checked else None)
         self.bottom_bar_pre_answer_mode_button.toggled.connect(lambda checked: self._set_bottom_bar_button_mode("pre_answer") if checked else None)
         self.reviewer_btn_custom_enable_toggle.toggled.connect(lambda _=None: self._update_reviewer_bottom_bar_preview())
-        self.reviewer_stattxt_visible_toggle.toggled.connect(lambda _=None: self._update_reviewer_bottom_bar_preview())
+        self.reviewer_stattxt_mode_group.buttonToggled.connect(lambda _btn, checked: self._update_reviewer_bottom_bar_preview() if checked else None)
         for spinbox in (self.reviewer_btn_radius_spin, self.reviewer_btn_padding_spin, self.reviewer_btn_height_spin, self.reviewer_bar_height_spin):
             spinbox.valueChanged.connect(lambda _=None: self._update_reviewer_bottom_bar_preview())
 
@@ -943,17 +977,40 @@ class PageReviewerMixin:
         font.setPointSize(max(8, min(13, int(rect.height() * 0.34))))
         painter.setFont(font)
         painter.setPen(QColor(fg))
-        show_numbers = getattr(self, "reviewer_stattxt_visible_toggle", None)
-        numbers_visible = show_numbers.isChecked() if show_numbers else self.current_config.get("onigiri_reviewer_stattxt_visible", True)
-        if numbers_visible and pre_answer_counts and hovered:
+        stattxt_mode = self._reviewer_stattxt_mode()
+        is_answer_key = key in {"again", "hard", "good", "easy"}
+        stat_samples = {"again": "0", "hard": "+ 0", "good": "+ 0", "easy": "+ 24"}
+        if stattxt_mode == "fixed" and pre_answer_counts:
+            label_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() * 0.5)
+            counts_rect = QRectF(rect.x(), rect.y() + rect.height() * 0.5, rect.width(), rect.height() * 0.5)
+            label_font = QFont(font)
+            label_font.setPointSize(max(7, min(12, int(rect.height() * 0.26))))
+            painter.setFont(label_font)
+            painter.setPen(QColor(fg))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
+            self._draw_bottom_bar_pre_answer_counts(painter, counts_rect, theme_mode)
+        elif stattxt_mode == "hover" and pre_answer_counts and hovered:
             self._draw_bottom_bar_pre_answer_counts(painter, rect, theme_mode)
-        elif numbers_visible and hovered and key in {"again", "hard", "good", "easy"}:
+        elif stattxt_mode == "fixed" and is_answer_key:
+            label_font = QFont(font)
+            label_font.setPointSize(max(7, min(12, int(rect.height() * 0.26))))
+            number_font = QFont(font)
+            number_font.setBold(True)
+            number_font.setPointSize(max(7, min(12, int(rect.height() * 0.26))))
+            label_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() * 0.5)
+            number_rect = QRectF(rect.x(), rect.y() + rect.height() * 0.5, rect.width(), rect.height() * 0.5)
+            painter.setFont(label_font)
+            painter.setPen(QColor(fg))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label)
+            painter.setFont(number_font)
+            painter.setPen(QColor(self._bottom_bar_answer_hover_number_color(theme_mode, fg)))
+            painter.drawText(number_rect, Qt.AlignmentFlag.AlignCenter, stat_samples.get(key, "0"))
+        elif stattxt_mode == "hover" and hovered and is_answer_key:
             stat_font = QFont(font)
             stat_font.setBold(True)
             stat_font.setPointSize(max(9, min(16, int(rect.height() * 0.38))))
             painter.setFont(stat_font)
             painter.setPen(QColor(self._bottom_bar_answer_hover_number_color(theme_mode, fg)))
-            stat_samples = {"again": "0", "hard": "+ 0", "good": "+ 0", "easy": "+ 24"}
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, stat_samples.get(key, "0"))
         else:
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
@@ -1432,8 +1489,7 @@ class PageReviewerMixin:
         self.reviewer_btn_padding_spin.setValue(5)
         self.reviewer_btn_height_spin.setValue(40)
         self.reviewer_bar_height_spin.setValue(60)
-        if hasattr(self, "reviewer_stattxt_visible_toggle"):
-            self.reviewer_stattxt_visible_toggle.setChecked(True)
+        self._set_reviewer_stattxt_mode("hover")
 
         getattr(self, "stattxt_color_light_color_input").setText("#666666")
         if hasattr(self, "stattxt_color_light_circular_button"): getattr(self, "stattxt_color_light_circular_button").setColor("#666666")
@@ -1845,8 +1901,7 @@ class PageReviewerMixin:
         # Reset custom colors
         self.reviewer_bar_light_color_input.setText(DEFAULTS["onigiri_reviewer_bottom_bar_bg_light_color"])
         self.reviewer_bar_dark_color_input.setText(DEFAULTS["onigiri_reviewer_bottom_bar_bg_dark_color"])
-        if hasattr(self, "reviewer_stattxt_visible_toggle"):
-            self.reviewer_stattxt_visible_toggle.setChecked(DEFAULTS.get("onigiri_reviewer_stattxt_visible", True))
+        self._set_reviewer_stattxt_mode(DEFAULTS.get("onigiri_reviewer_stattxt_mode", "hover"))
         
         # Clear bottom bar image
         if 'reviewer_bar_bg' in self.galleries:
@@ -1903,8 +1958,7 @@ class PageReviewerMixin:
         self.reviewer_btn_padding_spin.setValue(DEFAULTS.get("onigiri_reviewer_btn_padding", 5))
         self.reviewer_btn_height_spin.setValue(DEFAULTS.get("onigiri_reviewer_btn_height", 40))
         self.reviewer_bar_height_spin.setValue(DEFAULTS.get("onigiri_reviewer_bar_height", 60))
-        if hasattr(self, "reviewer_stattxt_visible_toggle"):
-            self.reviewer_stattxt_visible_toggle.setChecked(DEFAULTS.get("onigiri_reviewer_stattxt_visible", True))
+        self._set_reviewer_stattxt_mode(DEFAULTS.get("onigiri_reviewer_stattxt_mode", "hover"))
 
         def set_color(name, value):
             widget = getattr(self, f"{name}_color_input", None)
@@ -1947,8 +2001,8 @@ class PageReviewerMixin2:
         self.current_config["onigiri_reviewer_btn_padding"] = self.reviewer_btn_padding_spin.value()
         self.current_config["onigiri_reviewer_btn_height"] = self.reviewer_btn_height_spin.value()
         self.current_config["onigiri_reviewer_bar_height"] = self.reviewer_bar_height_spin.value()
-        if hasattr(self, "reviewer_stattxt_visible_toggle"):
-            self.current_config["onigiri_reviewer_stattxt_visible"] = self.reviewer_stattxt_visible_toggle.isChecked()
+        if hasattr(self, "reviewer_stattxt_mode_group"):
+            self.current_config["onigiri_reviewer_stattxt_mode"] = self._reviewer_stattxt_mode()
         self.current_config["onigiri_reviewer_stattxt_color_light"] = getattr(self, "stattxt_color_light_color_input").text()
         self.current_config["onigiri_reviewer_stattxt_color_dark"] = getattr(self, "stattxt_color_dark_color_input").text()
 

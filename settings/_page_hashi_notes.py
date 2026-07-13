@@ -80,6 +80,15 @@ class PageHashiNotesMixin:
             tr("hashi_default_sort_desc", "Initial ordering of notes in the gallery."),
             sort_segment,
         ))
+
+        # Show in Reviewer header
+        self.hashi_show_in_header_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.hashi_show_in_header_toggle.setChecked(prefs.get("show_in_reviewer_header", True))
+        opt_layout.addWidget(self._create_tools_toggle_row(
+            tr("hashi_show_in_header", "Show in Reviewer header"),
+            tr("hashi_show_in_header_desc", "Display the Hashi Notes button in the Reviewer's top bar."),
+            self.hashi_show_in_header_toggle,
+        ))
         layout.addWidget(options_section)
 
         layout.addStretch()
@@ -104,6 +113,7 @@ class PageHashiNotesMixin:
         prefs["default_sort"] = (
             sort_button.property("hashi_sort") if sort_button else "age"
         )
+        prefs["show_in_reviewer_header"] = self.hashi_show_in_header_toggle.isChecked()
 
     def _open_hashi_notes(self):
         self._save_hashi_notes_settings()

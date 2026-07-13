@@ -158,6 +158,7 @@ class PagePomodoroMixin:
         layout.addWidget(open_section)
 
         layout.addWidget(self._create_pomodoro_durations_section())
+        layout.addWidget(self._create_pomodoro_options_section())
         layout.addWidget(self._create_pomodoro_appearance_section())
         layout.addWidget(self._create_pomodoro_sound_section())
 
@@ -215,6 +216,25 @@ class PagePomodoroMixin:
             self.pomodoro_cycle_spin,
         ))
 
+        return section
+
+    # ─── Options ────────────────────────────────────────────────────────────
+
+    def _create_pomodoro_options_section(self):
+        section = SectionGroup(
+            tr("pomodoro_options", "Options"),
+            self,
+            border=False,
+        )
+        self.pomodoro_show_in_header_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.pomodoro_show_in_header_toggle.setChecked(
+            self.current_config.get("onigiri_pomodoro_show_in_reviewer_header", True)
+        )
+        section.content_layout.addWidget(self._create_tools_toggle_row(
+            tr("pomodoro_show_in_header", "Show in Reviewer header"),
+            tr("pomodoro_show_in_header_desc", "Display the Pomodoro button in the Reviewer's top bar."),
+            self.pomodoro_show_in_header_toggle,
+        ))
         return section
 
     # ─── Appearance ─────────────────────────────────────────────────────────
@@ -746,6 +766,10 @@ class PagePomodoroMixin:
 
         pomodoro.save_settings(settings)
         pomodoro.get_timer().settings = settings
+
+        self.current_config["onigiri_pomodoro_show_in_reviewer_header"] = (
+            self.pomodoro_show_in_header_toggle.isChecked()
+        )
 
     def _open_pomodoro(self):
         self._save_pomodoro_settings()

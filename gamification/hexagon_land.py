@@ -2334,31 +2334,11 @@ def render_widget_html() -> str:
         return ""
     layers, width, height = manager.preview_layers()
     land_conf = manager.config()
-    widget_display = str(land_conf.get("widget_display", "land_info") or "land_info")
-    show_info = widget_display != "land_only"
+    widget_display = "land_only"
+    show_info = False
     scale_x = 220.0 / max(1, width)
     scale_y = 120.0 / max(1, height)
     scale = state.widget_scale if state.widget_scale > 0 else min(0.72, min(scale_x, scale_y))
-    trees, _flowers = manager.nature_counts(state)
-    info_html = ""
-    if show_info:
-        info_rows = [
-            _stat_row_html("Hexagons", len(state.tiles), _stat_asset_icon_html("Land/tileGrass.png", "land")),
-            _stat_row_html("Inhabitants", manager.inhabitant_count(state), _stat_asset_icon_html("Land/alienGreen.png", "inhabitant")),
-            _stat_row_html("Trees", trees, _stat_asset_icon_html("Land/treeGreen_high.png", "tree")),
-            _stat_row_html("Coins", state.hex_coins, _coin_stat_icon_html()),
-        ]
-        info_html = f"""
-        <div class="hex-land-copy">
-            <div class="hex-land-header">
-                <h3>{escape(manager.island_display_name(state))}</h3>
-                <button aria-label="Redeem Hex Coins" onclick="event.stopPropagation(); pycmd('redeemReward:hex');">#</button>
-            </div>
-            <div class="hex-land-stats">
-                {''.join(info_rows)}
-            </div>
-        </div>
-        """
     
     is_dark = False
     try:
@@ -2466,7 +2446,6 @@ def render_widget_html() -> str:
                 }}, true);
             }})();
         </script>
-        {info_html}
     </div>
     """
 

@@ -41,8 +41,9 @@ body {
 
 /* Re-using overview-profile-bar styles from overview.css */
 .overview-profile-bar {
-    width: 100%;
-    max-width: 350px;
+    width: max-content;
+    min-width: 220px;
+    max-width: min(360px, calc(100% - 40px));
     box-sizing: border-box;
     display: flex;
     align-items: center;

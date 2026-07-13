@@ -36,8 +36,9 @@ body {
 }
 
 .overview-profile-bar {
-    width: 100%;
-    max-width: 350px;
+    width: max-content;
+    min-width: 220px;
+    max-width: min(360px, calc(100% - 40px));
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -311,17 +312,17 @@ body.night-mode .overview-profile-bar.with-image-bg.dynamic-default-bg .profile-
 /* Set bubble colors using CSS variables from the config */
 .new-count-bubble {
     background-color: var(--overview-new-bubble-bg, var(--new-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-new-count-fg, var(--fg));
 }
 
 .learn-count-bubble {
     background-color: var(--overview-learn-bubble-bg, var(--learn-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-learn-count-fg, var(--fg));
 }
 
 .review-count-bubble {
     background-color: var(--overview-review-bubble-bg, var(--review-count-bubble-bg));
-    color: var(--fg);
+    color: var(--overview-review-count-fg, var(--fg));
 }
 
 

@@ -652,7 +652,7 @@ def _get_onigiri_favorites_html() -> str:
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
 
-def _get_onigiri_nook_level_html(orientation: str = "horizontal") -> str:
+def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int = 2, col_span: int = 2) -> str:
     """
     Generates the HTML for the Nook Level widget.
     """
@@ -672,7 +672,7 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal") -> str:
             </div>
         </div>
         """)
-    
+
     level = rl_payload.get("level", 0)
     name = rl_payload.get("name", "Nook Level")
     
@@ -721,7 +721,17 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal") -> str:
         
     addon_package = mw.addonManager.addonFromModule(__name__)
     image_path = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/{image_file}"
-    
+
+    if row_span <= 1:
+        return process_tr_markers(f"""
+        <div class="onigiri-restaurant-level-widget onigiri-restaurant-level-widget-compact {snow_class}" role="button" tabindex="0" style="--theme-bg: {bg_style_value};" onclick="pycmd('openRestaurantLevel')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openRestaurantLevel');}}">
+            <div class="restaurant-image-container">
+                <img src="{image_path}" class="restaurant-image">
+                {snowflakes_html}
+            </div>
+        </div>
+        """)
+
     # Navigation buttons with inline SVGs (using currentColor for --fg-subtle inheritance)
     shop_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="M24,10a.988.988,0,0,0-.024-.217l-1.3-5.868A4.968,4.968,0,0,0,17.792,0H6.208a4.968,4.968,0,0,0-4.88,3.915L.024,9.783A.988.988,0,0,0,0,10v1a3.984,3.984,0,0,0,1,2.643V19a5.006,5.006,0,0,0,5,5H18a5.006,5.006,0,0,0,5-5V13.643A3.984,3.984,0,0,0,24,11ZM2,10.109l1.28-5.76A2.982,2.982,0,0,1,6.208,2H7V5A1,1,0,0,0,9,5V2h6V5a1,1,0,0,0,2,0V2h.792A2.982,2.982,0,0,1,20.72,4.349L22,10.109V11a2,2,0,0,1-2,2H19a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H11a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H4a2,2,0,0,1-2-2ZM18,22H6a3,3,0,0,1-3-3V14.873A3.978,3.978,0,0,0,4,15H5a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,11,15h2a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,19,15h1a3.978,3.978,0,0,0,1-.127V19A3,3,0,0,1,18,22Z"/></svg>'''
     
@@ -857,14 +867,33 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                         col_span = max(1, min(2, int(col_span)))
                     except (TypeError, ValueError):
                         col_span = 1
+                elif widget_id == "hexagon_land":
+                    try:
+                        row_span = max(1, min(4, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(4, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 2
 
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
                 if widget_id == "restaurant_level":
-                    widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"))
+                    widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"), row_span=row_span, col_span=col_span)
                 elif widget_id == "prep_station":
                     widget_html = _prep_station().render_widget_html(slot_count=col_span)
+                elif widget_id == "onigimon":
+                    try:
+                        onigimon_row_span = int(row_span)
+                    except (TypeError, ValueError):
+                        onigimon_row_span = 2
+                    try:
+                        onigimon_col_span = int(col_span)
+                    except (TypeError, ValueError):
+                        onigimon_col_span = 1
+                    widget_html = _onigimon().render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
                 else:
                     widget_html = widget_generators[widget_id]()
                 if not str(widget_html or "").strip():
@@ -1680,6 +1709,31 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex: 0 0 auto;
         }}
 
+        /* Compact 1-row Onigimon widget: just the companion over its background */
+        .onigimon-widget-compact {{
+            padding: 8px;
+            gap: 0;
+        }}
+
+        .onigimon-scene-compact {{
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            justify-content: center;
+        }}
+
+        .onigimon-scene-compact .onigimon-sprite {{
+            width: 64px;
+            height: 64px;
+            flex: 0 0 64px;
+        }}
+
+        .onigimon-scene-compact .onigimon-sprite img {{
+            width: 60px;
+            height: 60px;
+        }}
+
 
         /* Restaurant Level Widget Styles */
         .onigiri-restaurant-level-widget {{
@@ -1706,7 +1760,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         
         .night .onigiri-restaurant-level-widget {{
             background: var(--canvas-inset, #2c2c2c);
-            border-color: var(--border, #444);
+            border-color: var(--border, #e0e0e0);
         }}
 
         .restaurant-image-container {{
@@ -1787,6 +1841,19 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-image {{
             transform: scale(1.0);
+        }}
+
+        /* Compact 1-row Nook Level widget: just the building over its theme background */
+        .onigiri-restaurant-level-widget-compact {{
+            cursor: pointer;
+        }}
+
+        .onigiri-restaurant-level-widget-compact .restaurant-image-container {{
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            background: var(--theme-bg, var(--canvas-inset, #f5f5f5));
         }}
 
         .restaurant-info {{

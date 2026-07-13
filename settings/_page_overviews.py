@@ -1131,7 +1131,7 @@ class PageOverviewsMixin:
         
         def draw_bubble(y, text_label, count, bg_key, fg_key):
             bg_color = QColor(self._overview_style_color(bg_key, mode))
-            fg_color = QColor(self._box_effect_text_color(mode))
+            fg_color = QColor(self._overview_style_color(fg_key, mode))
             
             bubble_rect = QRectF(
                 box_rect.x() + box_rect.width() - (100 if not is_mini else 84),

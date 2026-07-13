@@ -790,6 +790,10 @@ class GridDropZone(DropZone):
                         widget.row_span, widget.col_span = 2, 4
                     elif widget.widget_id == "restaurant_level":
                         widget.row_span, widget.col_span = 2, 2
+                    elif widget.widget_id == "hexagon_land":
+                        widget.row_span, widget.col_span = 2, 2
+                    elif widget.widget_id == "onigimon":
+                        widget.row_span, widget.col_span = 2, 1
                     elif widget.widget_id == "deck_stats":
                         widget.row_span, widget.col_span = 2, 1
                     elif widget.widget_id == "prep_station":

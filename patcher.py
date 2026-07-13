@@ -2085,7 +2085,10 @@ def patch_overview():
             }
             .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 14px); color: var(--fg); }
             .mini-overview .stats-row span:first-child { color: var(--fg); }
-            .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-family: inherit; font-size: inherit; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; color: var(--fg) !important; }
+            .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-family: inherit; font-size: inherit; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; }
+            .mini-overview .new-count-bubble { color: var(--overview-new-count-fg, var(--fg)) !important; }
+            .mini-overview .learn-count-bubble { color: var(--overview-learn-count-fg, var(--fg)) !important; }
+            .mini-overview .review-count-bubble { color: var(--overview-review-count-fg, var(--fg)) !important; }
             .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 16px); color: var(--fg) !important; border-radius: 9999px; box-shadow: none !important; }
             .mini-overview .overview-bottom-actions { 
                 width: 280px; 
@@ -3488,6 +3491,21 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             mw._onigiri_restaurant_hook_registered = True
 
     # Build the HTML with the restaurant chip if enabled
+    hashi_notes_conf = conf.get("hashi_notes", {}) or {}
+    show_hashi_notes_button = hashi_notes_conf.get("show_in_reviewer_header", True)
+    show_pomodoro_button = conf.get("onigiri_pomodoro_show_in_reviewer_header", True)
+
+    hashi_notes_button_html = (
+        '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
+        'class="onigiri-reviewer-button onigiri-hashi-notes-button">Hashi Notes</a>'
+        if show_hashi_notes_button else ""
+    )
+    pomodoro_button_html = (
+        '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
+        'class="onigiri-reviewer-button onigiri-pomodoro-button">Pomodoro</a>'
+        if show_pomodoro_button else ""
+    )
+
     header_buttons = """
     <div class="onigiri-reviewer-header-buttons">
         <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
@@ -3495,11 +3513,11 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
         <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
         <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
-        <a href="#" onclick="pycmd('openHashiNotes:reviewer'); return false;" class="onigiri-reviewer-button onigiri-hashi-notes-button">Hashi Notes</a>
-        <a href="#" onclick="pycmd('togglePomodoro'); return false;" class="onigiri-reviewer-button onigiri-pomodoro-button">Pomodoro</a>
+        {}
+        {}
         {}
     </div>
-    """.format(restaurant_chip_html if show_restaurant_chip else "")
+    """.format(hashi_notes_button_html, pomodoro_button_html, restaurant_chip_html if show_restaurant_chip else "")
     
     html = f"""
     <div id="onigiri-reviewer-header" class="header">
@@ -4737,7 +4755,7 @@ def generate_font_css(addon_package):
         }}
 
         .stats-row,
-        .stats-row span,
+        .stats-row span:not(.new-count-bubble):not(.learn-count-bubble):not(.review-count-bubble),
         .congrats-card h1 {{
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
             font-size: var(--font-size-main) !important;
@@ -4745,7 +4763,9 @@ def generate_font_css(addon_package):
         }}
 
         /* Count bubbles stay pill-shaped at a fixed small size regardless of the
-           main font size setting; see tr.deck .new-count-bubble in menu.css. */
+           main font size setting; see tr.deck .new-count-bubble in menu.css.
+           Color is intentionally NOT forced here so the per-bubble text color
+           set in overview.css (--overview-*-count-fg) can take effect. */
         .new-count-bubble,
         .learn-count-bubble,
         .review-count-bubble {{
@@ -6158,16 +6178,38 @@ def generate_reviewer_buttons_css(conf):
     btn_height = conf.get("onigiri_reviewer_btn_height", 40)
     bar_height = _reviewer_bottom_bar_height_px(conf)
 
-    interval_visible = conf.get("onigiri_reviewer_stattxt_visible", True)
+    stattxt_mode = conf.get("onigiri_reviewer_stattxt_mode", "hover")
+    if stattxt_mode not in {"hover", "fixed", "off"}:
+        stattxt_mode = "hover"
+    interval_visible = stattxt_mode != "off"
     interval_color_light = conf.get("onigiri_reviewer_stattxt_color_light", "#666666")
     interval_color_dark = conf.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa")
     hover_numbers_display = "inline-flex" if interval_visible else "none"
-    answer_label_hover_opacity = "0" if interval_visible else "1"
-    answer_number_hover_opacity = "1" if interval_visible else "0"
-    answer_number_hover_visibility = "visible" if interval_visible else "hidden"
+    # Pre-answer counts (New/Learn/Review pills on the Show Answer button):
+    # "fixed" keeps them permanently visible instead of only on :hover.
+    pre_answer_counts_base_opacity = "1" if stattxt_mode == "fixed" else "0"
+    pre_answer_counts_base_visibility = "visible" if stattxt_mode == "fixed" else "hidden"
+    pre_answer_counts_base_transform = "scale(1)" if stattxt_mode == "fixed" else "scale(0.97)"
+    # "fixed" shows the "Show Answer" label and the counts together (stacked),
+    # so the label never fades away, even on hover.
+    show_answer_label_hover_opacity = "0" if stattxt_mode == "hover" else "1"
+    # Ease button (Again/Hard/Good/Easy) label + interval number:
+    # "hover" swaps label -> number on hover (absolute overlay, unchanged legacy behavior).
+    # "fixed" stacks label + number in normal flow, both always visible, no hover needed.
+    # "off" never shows the number.
+    answer_label_hover_opacity = "0" if stattxt_mode == "hover" else "1"
+    answer_number_base_opacity = "1" if stattxt_mode == "fixed" else "0"
+    answer_number_base_visibility = "visible" if stattxt_mode == "fixed" else "hidden"
+    answer_number_hover_opacity = "1" if stattxt_mode == "hover" else answer_number_base_opacity
+    answer_number_hover_visibility = "visible" if stattxt_mode == "hover" else answer_number_base_visibility
+    answer_number_position = "static" if stattxt_mode == "fixed" else "absolute"
+    answer_number_inset = "auto" if stattxt_mode == "fixed" else "0"
+    answer_number_transform = "none" if stattxt_mode == "fixed" else "translateY(1px) scale(0.98)"
+    answer_number_hover_transform = "none" if stattxt_mode == "fixed" else "translateY(0) scale(1)"
+    answer_number_font_size = "0.66em" if stattxt_mode == "fixed" else "var(--onigiri-answer-number-font-size, 1em)"
     answer_hover_number_color_light = "currentColor" if str(interval_color_light).lower() == "#666666" else interval_color_light
     answer_hover_number_color_dark = "currentColor" if str(interval_color_dark).lower() == "#aaaaaa" else interval_color_dark
-    native_number_display = "none" if custom_enabled else ("inline-block" if interval_visible else "none")
+    native_number_display = "none" if custom_enabled else ("none" if stattxt_mode == "off" else "inline-block")
 
     overview_style = conf.get("overview_style", {}) if isinstance(conf.get("overview_style", {}), dict) else {}
     overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
@@ -6242,6 +6284,10 @@ def generate_reviewer_buttons_css(conf):
         #outer button.onigiri-show-answer-btn {{
             position: relative !important;
             overflow: visible !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
         }}
 
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts {{
@@ -6275,16 +6321,20 @@ def generate_reviewer_buttons_css(conf):
             justify-content: center !important;
             gap: 7px !important;
             padding: 0 !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
+            opacity: {pre_answer_counts_base_opacity} !important;
+            visibility: {pre_answer_counts_base_visibility} !important;
             pointer-events: none !important;
-            transform: scale(0.97) !important;
+            transform: {pre_answer_counts_base_transform} !important;
             transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s linear 0.16s !important;
             z-index: 2 !important;
         }}
 
+        #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts .onigiri-show-answer-label {{
+            opacity: 1 !important;
+        }}
+
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:hover .onigiri-show-answer-label {{
-            opacity: 0 !important;
+            opacity: {show_answer_label_hover_opacity} !important;
         }}
 
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:hover .onigiri-pre-answer-counts {{
@@ -6347,8 +6397,8 @@ def generate_reviewer_buttons_css(conf):
 
         button[data-onigiri-ease] .onigiri-answer-hover-number,
         #outer button[data-onigiri-ease] .onigiri-answer-hover-number {{
-            position: absolute !important;
-            inset: 0 !important;
+            position: {answer_number_position} !important;
+            inset: {answer_number_inset} !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
@@ -6357,12 +6407,12 @@ def generate_reviewer_buttons_css(conf):
             max-width: 100% !important;
             padding: 0 8px !important;
             box-sizing: border-box !important;
-            opacity: 0 !important;
-            visibility: hidden !important;
-            transform: translateY(1px) scale(0.98) !important;
+            opacity: {answer_number_base_opacity} !important;
+            visibility: {answer_number_base_visibility} !important;
+            transform: {answer_number_transform} !important;
             color: var(--onigiri-answer-hover-number-color, currentColor) !important;
             font-weight: 800 !important;
-            font-size: var(--onigiri-answer-number-font-size, 1em) !important;
+            font-size: {answer_number_font_size} !important;
             line-height: 1 !important;
             white-space: nowrap !important;
             transition: opacity 110ms ease-out, transform 110ms ease-out, visibility 0s linear 110ms !important;
@@ -6378,10 +6428,24 @@ def generate_reviewer_buttons_css(conf):
         #outer button[data-onigiri-ease]:hover .onigiri-answer-hover-number {{
             opacity: {answer_number_hover_opacity} !important;
             visibility: {answer_number_hover_visibility} !important;
-            transform: translateY(0) scale(1) !important;
+            transform: {answer_number_hover_transform} !important;
             transition-delay: 0s !important;
         }}
     """)
+
+    if stattxt_mode == "fixed":
+        # Stack "Show Answer" above the New/Learn/Review counts instead of
+        # the hover swap-overlay used by "hover" mode.
+        pre_answer_counts_fixed_height = max(16, int(btn_height * 0.5))
+        css.append(f"""
+        #outer .onigiri-pre-answer-counts {{
+            position: static !important;
+            inset: auto !important;
+            width: 100% !important;
+            height: {pre_answer_counts_fixed_height}px !important;
+            margin: 2px 0 0 0 !important;
+        }}
+        """)
 
     if custom_enabled:
         css.append(f"""
@@ -6834,14 +6898,16 @@ def generate_reviewer_buttons_css(conf):
             }
 
             function collectPreAnswerCounts() {
-                return Array.from(document.querySelectorAll('#outer .stattxt'))
-                    .filter(node => !node.closest('.onigiri-pre-answer-counts'))
-                    .map(node => {
-                        forceHideNativeNumberElement(node, 'onigiri-stattxt-source');
-                        return cleanText(node.textContent);
-                    })
-                    .filter(Boolean)
-                    .slice(0, 3);
+                // Anki can render the new/learn/review counts either as separate
+                // .stattxt nodes ("7268", "+", "68", "+", "5") or as a single
+                // .stattxt node whose textContent is already "7268 + 68 + 5".
+                // Joining every matched node's text and splitting on "+" handles
+                // both shapes and always yields one number per pill.
+                const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
+                    .filter(node => !node.closest('.onigiri-pre-answer-counts'));
+                nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
+                const combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
+                return combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
             }
 
             function prepareShowAnswerCounts(buttons) {
