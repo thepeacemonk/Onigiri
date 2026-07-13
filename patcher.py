@@ -3918,7 +3918,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
             # No color, transparent background
             base_css += "#outer { background: transparent !important; }"
         
-        if light_img_url:
+        if light_img_url or dark_img_url:
             # Add ::before pseudo-element for image on top of the color
             # Using z-index: 0 so it's above the background but below content
             # Apply slight scale even with no blur to prevent edge artifacts
@@ -3944,12 +3944,13 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                     background-size: cover;
                     background-position: {bg_position};
                 """.format(scale_factor=scale_factor, bg_position=bg_position)
+            base_img_url = light_img_url or "none"
             base_css += f"""
                 #outer::before {{
                     content: '';
                     position: absolute;
                     {position_css}
-                    background-image: url('{light_img_url}');
+                    background-image: url('{base_img_url}');
                     background-repeat: no-repeat;
                     filter: blur({blur_px}px);
                     opacity: {opacity_float};
@@ -3963,7 +3964,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                     z-index: 1;
                 }}
             """
-            
+
             if dark_img_url and dark_img_url != light_img_url:
                 base_css += f"""
                     .night-mode #outer::before {{
