@@ -118,20 +118,22 @@ def _get_deck_card_counts(deck_names: list) -> dict:
         for name in deck_names:
             dids = [d.id for d in all_decks if d.name == name or d.name.startswith(name + "::")]
             if not dids:
-                result[name] = {"new": 0, "due": 0, "total": 0}
+                result[name] = {"new": 0, "due": 0, "suspended": 0, "total": 0}
                 continue
             dids_str = ",".join(str(d) for d in dids)
             rows = mw.col.db.all(
                 f"SELECT queue, count(*) FROM cards WHERE did IN ({dids_str}) GROUP BY queue"
             )
-            new_cnt = due_cnt = total_cnt = 0
+            new_cnt = due_cnt = suspended_cnt = total_cnt = 0
             for queue, cnt in rows:
                 total_cnt += cnt
                 if queue == 0:
                     new_cnt += cnt
                 elif queue in (1, 2, 3):
                     due_cnt += cnt
-            result[name] = {"new": new_cnt, "due": due_cnt, "total": total_cnt}
+                elif queue == -1:
+                    suspended_cnt += cnt
+            result[name] = {"new": new_cnt, "due": due_cnt, "suspended": suspended_cnt, "total": total_cnt}
     except Exception as e:
         print(f"Prep Station: deck count error: {e}")
     return result
@@ -151,7 +153,8 @@ def _enrich_plan(plan: dict) -> dict:
         counts = _get_deck_card_counts(decks)
         total_new = sum(v["new"] for v in counts.values())
         total_due = sum(v["due"] for v in counts.values())
-        total_pending = total_new + total_due
+        total_suspended = sum(v.get("suspended", 0) for v in counts.values())
+        total_pending = total_new + total_due + total_suspended
 
         if days_left < 0:
             status = "expired"
@@ -174,6 +177,7 @@ def _enrich_plan(plan: dict) -> dict:
             "total_pending": total_pending,
             "total_new": total_new,
             "total_due": total_due,
+            "total_suspended": total_suspended,
             "required_per_day": req,
             "deck_counts": counts,
         }
