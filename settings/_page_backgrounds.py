@@ -1430,8 +1430,21 @@ class PageBackgroundsMixin:
         return color if QColor(color).isValid() else fallback
 
     def _style_main_background_color_button(self, button, color):
-        text_color = self._readable_text_color(color)
-        qcolor = QColor(color)
+        # CSS-style #RRGGBBAA values must be converted for Qt, which reads
+        # 8-digit hex as #AARRGGBB (that mismatch shows up as wrong hues).
+        css_color = str(color or "").strip()
+        qcolor = None
+        if len(css_color) == 9 and css_color.startswith("#"):
+            try:
+                r = int(css_color[1:3], 16); g = int(css_color[3:5], 16)
+                b = int(css_color[5:7], 16); a = int(css_color[7:9], 16)
+                qcolor = QColor(r, g, b, a)
+                css_color = f"rgba({r}, {g}, {b}, {a / 255:.3f})"
+            except ValueError:
+                qcolor = None
+        if qcolor is None:
+            qcolor = QColor(color)
+        text_color = self._readable_text_color(qcolor.name())
         border_color = qcolor.darker(114) if qcolor.lightness() > 110 else qcolor.lighter(150)
         compact = bool(button.property("compactColor"))
         height = 30 if compact else 36
@@ -1440,7 +1453,7 @@ class PageBackgroundsMixin:
         button.setText(color.upper())
         button.setStyleSheet(f"""
             QPushButton#mainBackgroundColorButton {{
-                background-color: {color};
+                background-color: {css_color};
                 color: {text_color};
                 border: 1px solid {border_color.name()};
                 border-radius: {10 if compact else 12}px;

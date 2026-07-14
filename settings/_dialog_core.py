@@ -592,6 +592,26 @@ class DialogCoreMixin:
                     pass
         super().closeEvent(event)
 
+    def _build_page_error_card(self, page_name, err_text):
+        """Fallback page shown when a settings page fails to build."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(12)
+        title = QLabel(f"{page_name} could not be loaded")
+        title.setStyleSheet("font-size: 18px; font-weight: 600; background: transparent; border: none;")
+        layout.addWidget(title)
+        hint = QLabel("The error has been logged to user_files/settings_page_errors.log — please report it.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size: 12px; opacity: .7; background: transparent; border: none;")
+        layout.addWidget(hint)
+        detail = QLabel(err_text.strip().splitlines()[-1] if err_text.strip() else "")
+        detail.setWordWrap(True)
+        detail.setStyleSheet("font-size: 12px; font-family: Consolas, monospace; background: transparent; border: none;")
+        layout.addWidget(detail)
+        layout.addStretch()
+        return page
+
     def navigate_to_page(self, page_name):
         if not page_name: 
             return
@@ -647,7 +667,21 @@ class DialogCoreMixin:
             if building:
                 create_func = self.pages[page_name]
                 self._building_page_name = page_name
-                new_widget = create_func()
+                try:
+                    new_widget = create_func()
+                except Exception:
+                    # A broken page must not take the whole dialog down: show an
+                    # error card and log the traceback for diagnosis.
+                    import traceback
+                    err = traceback.format_exc()
+                    print(f"[Onigiri] settings page '{page_name}' failed to build:\n{err}")
+                    try:
+                        log_path = os.path.join(self.addon_path, "user_files", "settings_page_errors.log")
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(f"\n=== {page_name} ===\n{err}\n")
+                    except Exception:
+                        pass
+                    new_widget = self._build_page_error_card(page_name, err)
                 self._building_page_name = None
                 self._polish_created_page(new_widget)
 
@@ -786,7 +820,7 @@ class DialogCoreMixin:
         container = QFrame()
         container.setObjectName("ArchivedButtonsContainer")
         container.setStyleSheet(
-            f"QFrame#ArchivedButtonsContainer {{ background-color: {bg}; border-radius: 18px; border: 1px solid {border}; }}"
+            f"QFrame#ArchivedButtonsContainer {{ background-color: {bg}; border-radius: 10px; border: 1px solid {border}; }}"
         )
         outer.addWidget(container)
         layout = QVBoxLayout(container)
@@ -974,8 +1008,8 @@ class DialogCoreMixin2:
             QWidget#settingsContentShell {{
                 background-color: {panel_bg};
                 border: none;
-                border-top-left-radius: 28px;
-                border-top-right-radius: 28px;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -989,10 +1023,10 @@ class DialogCoreMixin2:
                 color: {fg};
                 background: transparent;
                 border: none;
-                font-size: 22px;
-                font-weight: 300;
+                font-size: 20px;
+                font-weight: 650;
                 padding: 0px;
-                letter-spacing: 0px;
+                letter-spacing: -0.2px;
             }}
             QWidget#pageNavBar {{
                 background-color: transparent;
@@ -1003,18 +1037,18 @@ class DialogCoreMixin2:
 
             /* Botões de navegação de seção (jump) */
             QPushButton#pageNavButton {{
-                background-color: {surface_bg};
-                border: 1px solid {border};
-                border-radius: 15px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 9px;
                 color: {fg_secondary};
-                min-height: 28px;
-                padding: 0px 18px;
-                font-weight: 500;
+                min-height: 26px;
+                padding: 0px 12px;
+                font-weight: 600;
                 font-size: 11px;
             }}
             QPushButton#pageNavButton:hover {{
                 background-color: {surface_hover};
-                border-color: {soft_border};
+                border-color: transparent;
                 color: {fg};
             }}
             QPushButton#pageNavButton:pressed {{
@@ -1031,8 +1065,8 @@ class DialogCoreMixin2:
             QWidget#pageContainer {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 28px;
-                border-top-right-radius: 28px;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -1043,16 +1077,16 @@ class DialogCoreMixin2:
             QScrollArea {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 24px;
-                border-top-right-radius: 24px;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
             QScrollArea QWidget#qt_scrollarea_viewport {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 24px;
-                border-top-right-radius: 24px;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -1185,23 +1219,23 @@ class DialogCoreMixin2:
 
             QPushButton#sidebarActionButton,
             #sidebarActionsContainer QPushButton#sidebarActionButton {{
-                min-height: 38px;
-                max-height: 38px;
-                padding: 0px 14px;
-                border-radius: 12px;
+                min-height: 32px;
+                max-height: 32px;
+                padding: 0px 12px;
+                border-radius: 10px;
                 text-align: left;
-                background-color: {input_bg};
-                border: 1px solid {border};
+                background-color: transparent;
+                border: 1px solid transparent;
                 color: {fg_secondary};
-                font-weight: 700;
-                font-size: 13px;
+                font-weight: 600;
+                font-size: 12px;
             }}
             QPushButton#sidebarActionButton:hover,
             #sidebarActionsContainer QPushButton#sidebarActionButton:hover {{
                 background-color: {surface_hover};
                 color: {fg};
-                border-color: {soft_border};
-                border-radius: 12px;
+                border-color: transparent;
+                border-radius: 10px;
             }}
             QPushButton#sidebarActionButton:pressed,
             #sidebarActionsContainer QPushButton#sidebarActionButton:pressed {{
@@ -1213,10 +1247,10 @@ class DialogCoreMixin2:
 
             QPushButton#saveSidebarButton,
             #sidebarActionsContainer QPushButton#saveSidebarButton {{
-                min-height: 38px;
-                max-height: 38px;
+                min-height: 36px;
+                max-height: 36px;
                 padding: 1px 14px;
-                border-radius: 12px;
+                border-radius: 10px;
                 text-align: left;
                 background-color: {save_btn_bg};
                 color: {save_btn_fg};
@@ -1226,15 +1260,15 @@ class DialogCoreMixin2:
             }}
             QPushButton#cancelSidebarButton,
             #sidebarActionsContainer QPushButton#cancelSidebarButton {{
-                min-height: 38px;
-                max-height: 38px;
+                min-height: 36px;
+                max-height: 36px;
                 padding: 1px 14px;
-                border-radius: 12px;
+                border-radius: 10px;
                 text-align: center;
-                background-color: {input_bg};
+                background-color: transparent;
                 color: {fg_secondary};
                 border: 1px solid {border};
-                font-weight: 700;
+                font-weight: 600;
                 font-size: 13px;
             }}
             QPushButton#cancelSidebarButton:hover,
@@ -1298,9 +1332,9 @@ class DialogCoreMixin2:
             }}
             QPushButton#sidebarNavButton,
             #sidebarContainer QPushButton#sidebarNavButton {{
-                min-height: 28px;
+                min-height: 30px;
                 padding: 4px 10px;
-                border-radius: 20px;
+                border-radius: 10px;
                 background-color: transparent;
                 border: 1px solid transparent;
                 text-align: left;
@@ -1312,7 +1346,7 @@ class DialogCoreMixin2:
                 background-color: {surface_hover};
                 color: {fg};
                 border-color: transparent;
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             QPushButton#sidebarNavButton:checked,
             #sidebarContainer QPushButton#sidebarNavButton:checked {{
@@ -1320,12 +1354,12 @@ class DialogCoreMixin2:
                 color: {nav_checked_fg};
                 border-color: transparent;
                 font-weight: 600;
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             #sidebarContainer QPushButton#subItemButton {{
                 min-height: 28px;
                 padding: 5px 10px 5px 20px;
-                border-radius: 18px;
+                border-radius: 10px;
                 color: {muted_fg};
                 font-weight: 400;
                 font-size: 12px;
@@ -1333,13 +1367,13 @@ class DialogCoreMixin2:
             #sidebarContainer QPushButton#subItemButton:hover {{
                 color: {fg};
                 background-color: {surface_hover};
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             #sidebarContainer QPushButton#subItemButton:checked {{
                 background-color: {nav_checked_bg};
                 color: {nav_checked_fg};
                 font-weight: 500;
-                border-radius: 18px;
+                border-radius: 10px;
             }}
 
             /* ── Labels genéricas ────────────────────────────────────── */
@@ -1359,7 +1393,7 @@ class DialogCoreMixin2:
             QWidget#settingsSection {{
                 background-color: transparent;
                 border: none;
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             QWidget#sectionBody {{
                 background-color: transparent;
@@ -1387,7 +1421,7 @@ class DialogCoreMixin2:
             #innerGroup {{
                 background-color: transparent;
                 border: none;
-                border-radius: 18px;
+                border-radius: 10px;
             }}
 
             /* Linhas de setting */
@@ -1482,7 +1516,7 @@ class DialogCoreMixin2:
             QGroupBox {{
                 background-color: transparent;
                 border: none;
-                border-radius: 18px;
+                border-radius: 10px;
                 margin-top: 0px;
                 padding: 28px 0px 6px 0px;
                 font-weight: 600;
@@ -1557,7 +1591,7 @@ class DialogCoreMixin2:
                 background-color: {input_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
                 padding: 6px 10px;
                 min-height: 30px;
                 selection-background-color: {accent_color};
@@ -1632,7 +1666,7 @@ class DialogCoreMixin2:
                 background-color: {panel_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
                 selection-background-color: {surface_hover};
                 selection-color: {fg};
                 padding: 4px;
@@ -1645,7 +1679,7 @@ class DialogCoreMixin2:
                 color: {fg_secondary};
                 border: 1px solid {border};
                 padding: 7px 14px;
-                border-radius: 18px;
+                border-radius: 10px;
                 font-weight: 500;
                 font-size: 13px;
             }}
@@ -1662,7 +1696,7 @@ class DialogCoreMixin2:
                 background-color: {surface_bg};
                 color: {muted_fg};
                 border-color: {border};
-                border-radius: 18px;
+                border-radius: 10px;
             }}
 
             /* ── Separadores ─────────────────────────────────────────── */
@@ -1682,7 +1716,7 @@ class DialogCoreMixin2:
                 background: transparent;
                 border: 1px solid transparent;
                 padding: 6px 14px;
-                border-radius: 18px;
+                border-radius: 10px;
                 margin-right: 3px;
                 color: {muted_fg};
                 font-weight: 500;
@@ -1775,7 +1809,7 @@ class DialogCoreMixin2:
             #colorPill {{
                 background-color: {input_bg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
             }}
 
             QFrame#themeCard {{
@@ -1809,7 +1843,7 @@ class DialogCoreMixin2:
             QFrame#LayoutGroup {{
                 background-color: {surface_bg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             QGroupBox#LayoutGroup {{
                 margin-top: 0px;
@@ -1837,7 +1871,7 @@ class DialogCoreMixin2:
             #DraggableItem {{
                 background-color: {button_bg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
                 color: {fg};
                 font-weight: 500;
                 text-align: center;
@@ -1850,7 +1884,7 @@ class DialogCoreMixin2:
             #Shelf {{
                 background-color: transparent;
                 border: 1.5px dashed {border};
-                border-radius: 18px;
+                border-radius: 10px;
             }}
             #Shelf[is_highlighted="true"] {{
                 background-color: rgba(99, 132, 255, 0.08);
@@ -1913,7 +1947,7 @@ class DialogCoreMixin2:
             QWidget#pageJumpBar {{
                 background-color: {surface_bg};
                 border: 1px solid {border};
-                border-radius: 18px;
+                border-radius: 10px;
                 padding: 2px;
             }}
             QPushButton#pageJumpButton {{
@@ -1974,7 +2008,7 @@ class DialogCoreMixin2:
             }}
             QPushButton#searchResult {{
                 background-color: {surface_bg};
-                border-radius: 18px;
+                border-radius: 10px;
                 border: 1px solid {border};
                 text-align: left;
                 color: {fg_secondary};
