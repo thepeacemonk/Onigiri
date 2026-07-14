@@ -317,7 +317,7 @@ _PORTED_WIDGET_CSS = """
             flex-shrink: 0;
         }
         .prep-widget-title {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 600;
             letter-spacing: .1em;
             text-transform: uppercase;
@@ -535,9 +535,9 @@ _PORTED_WIDGET_CSS = """
         .hex-land-header h3,
         .hex-land-copy h3 {
             margin: 0;
-            font-size: 22px;
-            line-height: 1.15;
-            font-weight: 900;
+            font-size: 15px;
+            line-height: 1.2;
+            font-weight: 700;
             color: var(--fg, #111);
         }
 
