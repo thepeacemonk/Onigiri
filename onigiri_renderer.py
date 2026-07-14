@@ -4,6 +4,7 @@ import html
 import json
 import os
 import re
+import random
 import copy
 from dataclasses import dataclass
 
@@ -14,6 +15,7 @@ from . import config, heatmap, deck_tree_updater, sidebar_api, profile_backgroun
 from . import patcher
 from .gamification import onigimon, nook_level
 from .templates import custom_body_template
+from .translations import tr
 
 
 def _system_icon_url(addon_package: str, filename: str) -> str:
@@ -1234,28 +1236,50 @@ def _get_onigiri_favorites_html() -> str:
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
 
-def _get_onigiri_restaurant_level_html() -> str:
+def process_tr_markers(html_str: str) -> str:
     """
-    Generates the HTML for the Restaurant Level widget.
+    Finds and replaces {tr("key")} markers in HTML strings with actual translations.
+    """
+    if not html_str:
+        return html_str
+        
+    def replace_match(match):
+        key = match.group(1)
+        return tr(key)
+        
+    # Matches {tr("key")} or {tr('key')}
+    pattern = r'\{tr\([\'"]([^\'"]+)[\'"]\)\}'
+    return re.sub(pattern, replace_match, html_str)
+
+
+def _nook_level():
+    from .gamification import nook_level as _nl
+    return _nl
+
+
+def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int = 2, col_span: int = 2) -> str:
+    """
+    Generates the HTML for the Nook Level widget.
     """
     # Invalidate cache to ensure fresh data when deck browser is rendered
     # REVERTED: Do NOT invalidate here. It causes lag on every render.
     # nook_level.manager.invalidate_daily_cache()
-    
-    # Get Restaurant Level Data
+    nook_level = _nook_level()
+
+    # Get Nook Level Data
     rl_payload = nook_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):
-        return """
+        return process_tr_markers("""
         <div class="onigiri-restaurant-level-widget disabled">
             <div class="restaurant-info">
-                <h3>Restaurant Level</h3>
-                <p>Feature Disabled</p>
+                <h3>{tr("restaurant_level")}</h3>
+                <p>{tr("feature_disabled")}</p>
             </div>
         </div>
-        """
-    
+        """)
+
     level = rl_payload.get("level", 0)
-    name = rl_payload.get("name", "Restaurant Level")
+    name = rl_payload.get("name", "Nook Level")
     
     # Level Progress
     xp_into = rl_payload.get("xpIntoLevel", 0)
@@ -1263,9 +1287,9 @@ def _get_onigiri_restaurant_level_html() -> str:
     level_percent = rl_payload.get("progressFraction", 0.0) * 100
     
     if xp_next <= 0:
-        xp_text = "Max Level"
+        xp_text = tr("max_level")
     else:
-        xp_text = f"{xp_into} / {xp_next} XP"
+        xp_text = f"{xp_into} / {xp_next} {tr('xp_label')}"
 
     # Theme Color
     theme_color = nook_level.manager.get_current_theme_color()
@@ -1280,10 +1304,10 @@ def _get_onigiri_restaurant_level_html() -> str:
     # Get Image and check if it's Santa's Coffee
     image_file = nook_level.manager.get_current_theme_image()
     if not image_file:
-        image_file = "restaurant_level.png" # Default
-    
+        image_file = "sushi/onigiri_stand.webp" # Default
+
     # Check if Santa's Coffee is active
-    is_santas_coffee = (image_file == "Santa's Coffee.png")
+    is_santas_coffee = image_file.endswith("santas_coffee.webp")
     snow_class = "with-snow" if is_santas_coffee else ""
     
     # Generate snowflakes HTML if Santa's Coffee is active
@@ -1301,23 +1325,35 @@ def _get_onigiri_restaurant_level_html() -> str:
         snowflakes_html = ''.join(snowflakes)
         
     addon_package = mw.addonManager.addonFromModule(__name__)
-    image_path = f"/_addons/{addon_package}/system_files/gamification_images/restaurant_folder/{image_file}"
+    image_path = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/{image_file}"
+
+    if row_span <= 1:
+        return process_tr_markers(f"""
+        <div class="onigiri-restaurant-level-widget onigiri-restaurant-level-widget-compact {snow_class}" role="button" tabindex="0" style="--theme-bg: {bg_style_value};" onclick="pycmd('openRestaurantLevel')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openRestaurantLevel');}}">
+            <div class="restaurant-image-container">
+                <img src="{image_path}" class="restaurant-image">
+                {snowflakes_html}
+            </div>
+        </div>
+        """)
+
+    # Navigation buttons with inline SVGs (using currentColor for --fg-subtle inheritance)
+    shop_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="M24,10a.988.988,0,0,0-.024-.217l-1.3-5.868A4.968,4.968,0,0,0,17.792,0H6.208a4.968,4.968,0,0,0-4.88,3.915L.024,9.783A.988.988,0,0,0,0,10v1a3.984,3.984,0,0,0,1,2.643V19a5.006,5.006,0,0,0,5,5H18a5.006,5.006,0,0,0,5-5V13.643A3.984,3.984,0,0,0,24,11ZM2,10.109l1.28-5.76A2.982,2.982,0,0,1,6.208,2H7V5A1,1,0,0,0,9,5V2h6V5a1,1,0,0,0,2,0V2h.792A2.982,2.982,0,0,1,20.72,4.349L22,10.109V11a2,2,0,0,1-2,2H19a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H11a2,2,0,0,1-2-2,1,1,0,0,0-2,0,2,2,0,0,1-2,2H4a2,2,0,0,1-2-2ZM18,22H6a3,3,0,0,1-3-3V14.873A3.978,3.978,0,0,0,4,15H5a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,11,15h2a3.99,3.99,0,0,0,3-1.357A3.99,3.99,0,0,0,19,15h1a3.978,3.978,0,0,0,1-.127V19A3,3,0,0,1,18,22Z"/></svg>'''
     
-    shop_icon_url = _system_icon_url(addon_package, "shop.svg")
-    restaurant_icon_url = _system_icon_url(addon_package, "restaurant.svg")
+    restaurant_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="m21 6.424v-2.424c1.654 0 3-1.346 3-3 0-.552-.447-1-1-1s-1 .448-1 1-.448 1-1 1h-19v-1c0-.552-.447-1-1-1s-1 .448-1 1v22c0 .552.447 1 1 1s1-.448 1-1v-19h5v2.424c-1.763.774-3 2.531-3 4.576v8c0 2.757 2.243 5 5 5h10c2.757 0 5-2.243 5-5v-8c0-2.045-1.237-3.802-3-4.576zm-12-2.424h10v2h-10zm13 15c0 1.654-1.346 3-3 3h-10c-1.654 0-3-1.346-3-3v-8c0-1.654 1.346-3 3-3h10c1.654 0 3 1.346 3 3zm-3-2c0-2.414-1.721-4.434-4-4.899v-.101c0-.552-.447-1-1-1s-1 .448-1 1v.101c-2.279.465-4 2.484-4 4.899-.553 0-1 .448-1 1s.447 1 1 1h10c.553 0 1-.448 1-1s-.447-1-1-1zm-5-3c1.654 0 3 1.346 3 3h-6c0-1.654 1.346-3 3-3z"/></svg>'''
     
     nav_buttons_html = f"""
     <div class="rl-widget-nav-buttons">
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="Open Taiyaki Store">
-            <i class="rl-nav-icon" style="--rl-nav-icon: url('{shop_icon_url}');"></i>
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="{tr('open_taiyaki_store')}">
+            {shop_svg}
         </button>
-        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="Open Restaurant Level">
-            <i class="rl-nav-icon" style="--rl-nav-icon: url('{restaurant_icon_url}');"></i>
+        <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openRestaurantLevel');" title="{tr('open_restaurant_level')}">
+            {restaurant_svg}
         </button>
     </div>
     """
     
-    # Get Daily Special Data
+    # Get Nook Rush data. The storage key remains daily_special for migration compatibility.
     daily_special = nook_level.manager.get_daily_special_status()
     ds_enabled = daily_special.get("enabled", False)
     ds_progress = daily_special.get("current_progress", 0)
@@ -1326,10 +1362,11 @@ def _get_onigiri_restaurant_level_html() -> str:
     ds_html = ""
     if ds_enabled:
         percent = min(100, int((ds_progress / ds_target) * 100)) if ds_target > 0 else 0
+        rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
         ds_html = f"""
         <div class="daily-special-section">
             <div class="ds-header">
-                <div class="ds-label">Daily Special</div>
+                <div class="ds-label">{rush_name}</div>
                 <div class="ds-text">{ds_progress} / {ds_target}</div>
             </div>
             <div class="ds-progress-bar">
@@ -1338,10 +1375,11 @@ def _get_onigiri_restaurant_level_html() -> str:
         </div>
         """
     else:
-        ds_html = "<div class='daily-special-section'><p class='ds-label'>No Daily Special Active</p></div>"
+        ds_html = f"<div class='daily-special-section'><p class='ds-label'>{tr('no_daily_special_active')}</p></div>"
 
-    return f"""
-    <div class="onigiri-restaurant-level-widget {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
+    widget_orientation = "vertical" if orientation == "vertical" else "horizontal"
+    return process_tr_markers(f"""
+    <div class="onigiri-restaurant-level-widget orientation-{widget_orientation} {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
         <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
@@ -1361,9 +1399,10 @@ def _get_onigiri_restaurant_level_html() -> str:
             {ds_html}
         </div>
     </div>
-    """
+    """)
 
 # --- The Main Rendering Function ---
+
 
 def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     """
@@ -1430,7 +1469,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
-        "restaurant_level": _get_onigiri_restaurant_level_html,
+        "restaurant_level": _get_onigiri_nook_level_html,
         "onigimon": onigimon.render_widget_html,
         "hexagon_land": _render_hexagon_land_widget,
         "deck_stats": _render_learner_stats_widget,
@@ -1465,7 +1504,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-                if widget_id == "prep_station":
+                if widget_id == "restaurant_level":
+                    widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"), row_span=row_span, col_span=col_span)
+                elif widget_id == "prep_station":
                     widget_html = _render_prep_station_widget(slot_count=col_span)
                 elif widget_id == "onigimon":
                     try:

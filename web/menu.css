@@ -60,8 +60,8 @@ body {
 .resize-handle {
     --resize-handle-top-clearance: 72px;
     --resize-handle-bottom-clearance: 15px;
-    width: 15px;
-    flex: 0 0 15px;
+    width: 10px;
+    flex: 0 0 10px;
     position: relative;
     align-self: stretch;
     z-index: 2;
@@ -2109,6 +2109,12 @@ tr.deck .learn-count-bubble.zero {
 
 .sidebar-left.profile-panel-open {
     padding: 0 !important;
+}
+
+/* While the panel is open, let its inset:0 resolve against the sidebar
+   itself (not the padded content area) so it sits flush with every edge. */
+.sidebar-left.profile-panel-open .sidebar-expanded-content {
+    position: static;
 }
 
 .onigiri-sidebar-profile-back {

@@ -794,7 +794,8 @@
             const isCollapsed = sidebarEl.classList.contains('sidebar-collapsed') || _edgeToggleCollapseLocked;
             const rect = sidebarEl.getBoundingClientRect();
             const btnWidth = edgeToggleBtn.offsetWidth || 24;
-            const left = isCollapsed ? collapsedEdgeTogglePosition.left : Math.max(0, rect.right - Math.round(btnWidth / 2));
+            // Center the control on the resize gutter so both edge affordances share one line.
+            const left = isCollapsed ? collapsedEdgeTogglePosition.left : Math.max(0, rect.right + 5 - Math.round(btnWidth / 2));
             const top = isCollapsed ? collapsedEdgeTogglePosition.top : Math.max(0, rect.top + 24);
 
             edgeToggleBtn.style.left = `${left}px`;
@@ -827,6 +828,13 @@
                     expandSidebar();
                 }
                 sidebarEl.classList.toggle('profile-panel-open', !!open);
+                // The edge collapse control overlaps the panel's close button;
+                // suppress it (and its hover zone) while the panel is open.
+                const edgeBtn = document.getElementById('onigiri-sidebar-edge-toggle');
+                const edgeZone = document.querySelector('.sidebar-edge-toggle-zone');
+                [edgeBtn, edgeZone].forEach((el) => {
+                    if (el) el.style.display = open ? 'none' : '';
+                });
                 if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
                     requestAnimationFrame(window.onigiriUpdateSidebarEdgeToggle);
                 }
