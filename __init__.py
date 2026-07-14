@@ -28,7 +28,6 @@ try:
     from . import credits_dialog
     from . import create_deck_dialog
     from . import icon_chooser
-    from . import coloris_picker
     from . import themes
     from . import sidebar_api
     from . import favorites_cleanup
