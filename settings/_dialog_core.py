@@ -26,7 +26,7 @@ class DialogCoreMixin:
         self._theme_prepare_save_in_progress = False
         self._theme_preparing_overlay = None
         self._theme_selected_toast = None
-        self.setWindowTitle("Onigiri Settings")
+        self.setWindowTitle("Onigiri Settings — build W6")
         
         # --- Screen Proportional Sizing ---
         screen = mw.app.primaryScreen()
