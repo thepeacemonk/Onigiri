@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f1f1f0; --border: #e5e7eb;
+    --fg: #1f2933; --fg2: #4b5563; --fg3: #8a9099;
+    --accent: #00A982; --chip: #eef0f2; --highlight: #fff3b0;
+    --input-bg: #ffffff; --hover: #f1f3f5;
+  }
+  * { box-sizing: border-box; }
+  /* kill native button chrome + Anki's injected base button styles. stdHtml
+     adds a box-shadow to <button>; the extra `html body` specificity is needed
+     so we win regardless of whether Anki's rule is injected before or after. */
+  html body button { appearance: none !important; -webkit-appearance: none !important;
+    box-shadow: none !important; background-image: none !important; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--note-fill, transparent);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; padding: 18px 20px 18px;
+    opacity: 0; transition: opacity .16s ease-out; }
+  #app.hashi-in { opacity: 1; }
+
+  /* title bar */
+  #titlebar { display: flex; align-items: center; gap: 6px; padding-bottom: 16px;
+    margin-bottom: 16px; }
+  #titleinput { margin-left: 6px; }
+  #backbtn { flex: 0 0 auto; margin: 0; height: 40px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--fg2); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0 13px;
+    border-radius: 11px; display: inline-flex; align-items: center; gap: 3px;
+    transition: border-color .12s, color .12s, transform .12s; }
+  #backbtn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  #noteicon { flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border);
+    border-radius: 11px; background: var(--surface); cursor: pointer; font-size: 20px;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--fg2);
+    transition: border-color .12s, transform .12s; }
+  #noteicon:hover { border-color: var(--accent); transform: translateY(-1px); }
+  #noteicon img { width: 22px; height: 22px; object-fit: contain; }
+  #noteicon .hashi-sysmask { width: 22px; height: 22px; }
+  #titleinput { flex: 1 1 auto; border: none; background: transparent; outline: none;
+    color: var(--fg); font-size: 21px; font-weight: 700; padding: 4px 2px;
+    -webkit-user-select: text; user-select: text; }
+  #titleinput::placeholder { color: var(--fg3); font-weight: 700; }
+
+  /* system-icon mask: recolours currentColor SVGs to follow the theme */
+  .hashi-sysmask { display: inline-block; background-color: currentColor;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    -webkit-mask-size: contain; mask-size: contain; }
+
+  /* note colour button + palette */
+  #colorbtn { flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border);
+    border-radius: 11px; background: var(--surface); cursor: pointer; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .12s, transform .12s; }
+  #colorbtn:hover { border-color: var(--accent); transform: translateY(-1px); }
+  #colorbtn .dot { width: 17px; height: 17px; border-radius: 50%;
+    background: var(--marker, var(--accent)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  /* no colour chosen → show an empty outlined circle, not a filled swatch */
+  #colorbtn .dot.empty { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); }
+  #palette { position: fixed; display: none; z-index: 46; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+  #palette.open { display: block; }
+  #palette .prow { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #palette .plabel { font-size: 10.5px; color: var(--fg3); width: 46px;
+    text-transform: uppercase; letter-spacing: .04em; }
+  #palette .psw { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; position: relative;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); transition: transform .1s ease; }
+  #palette .psw:hover { transform: scale(1.14); }
+  /* selected ring is drawn with box-shadow so it never adds an outer "container" */
+  #palette .psw.on { box-shadow: inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
+  #palette .psw.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); }
+  #palette .psw.none.on { box-shadow: inset 0 0 0 1.5px var(--fg3), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
+  #palette .psw.none::after { content: ""; position: absolute; left: 50%; top: 3px; bottom: 3px;
+    width: 1.5px; margin-left: -0.75px; border-radius: 1px; background: var(--fg3); transform: rotate(45deg); }
+  #palette .psw.rainbow { box-shadow: none;
+    background:
+      radial-gradient(circle at 50% 50%, var(--surface) 22%, transparent 24%),
+      conic-gradient(from 140deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b06ab3, #ff6b6b); }
+  #palette .psw.rainbow.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
+
+  /* editor */
+  #editor {
+    flex: 1 1 auto; overflow-y: auto; outline: none;
+    -webkit-user-select: text; user-select: text;
+    background: var(--note-card, var(--input-bg)); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px; line-height: 1.6;
+    font-size: 14px; color: var(--fg);
+  }
+  #editor:empty::before { content: attr(data-placeholder); color: var(--fg3); }
+  #editor > div { min-height: 1.5em; }
+  /* highlight bg is always a light pastel, so force dark text for readability in both themes */
+  .hl { background: var(--highlight); border-radius: 3px; padding: 0 2px; color: #1f2933; }
+  code, .code {
+    background: var(--chip); border-radius: 5px; padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  }
+  .bullet { padding-left: 18px; position: relative; }
+  .bullet::before { content: "•"; position: absolute; left: 4px; color: var(--accent); }
+  .todo { padding-left: 22px; position: relative; }
+  .todo .box {
+    position: absolute; left: 2px; top: 3px; width: 14px; height: 14px;
+    border: 1.5px solid var(--fg3); border-radius: 4px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
+  }
+  .todo.done .box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .todo.done .txt { text-decoration: line-through; color: var(--fg3); }
+  .toggle { padding-left: 20px; position: relative; }
+  .toggle > .arrow { position: absolute; left: 2px; cursor: pointer; color: var(--fg2);
+    transition: transform .15s; display: inline-block; }
+  .toggle.closed > .arrow { transform: rotate(-90deg); }
+  .toggle.closed > .body { display: none; }
+  .hd1 { font-size: 20px; font-weight: 700; margin: 4px 0; }
+  .hd2 { font-size: 16px; font-weight: 700; margin: 4px 0; }
+  .card-chip {
+    display: inline-flex; align-items: center; gap: 4px; background: var(--accent);
+    color: #fff; border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600;
+  }
+  .hashi-inline-icon { width: 1.1em; height: 1.1em; vertical-align: -0.15em; }
+
+  /* footer meta */
+  #footer { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    margin-top: 16px; padding: 12px 14px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--border); }
+  .metagroup { display: inline-flex; align-items: center; gap: 8px; }
+  #footer .lbl { font-size: 10.5px; color: var(--fg3); text-transform: uppercase; letter-spacing: .06em;
+    font-weight: 600; }
+  .pillgroup { display: inline-flex; gap: 4px; }
+  .pillgroup button {
+    border: 1px solid var(--border); background: var(--input-bg); color: var(--fg2);
+    border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; line-height: 1;
+    transition: border-color .12s, background .12s, color .12s;
+  }
+  .pillgroup button:hover { border-color: var(--accent); }
+  .pillgroup button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #tags {
+    background: var(--input-bg); border: 1px solid var(--border); border-radius: 999px;
+    color: var(--fg); font-size: 12px; padding: 7px 12px; outline: none;
+    flex: 1 1 140px; min-width: 100px; transition: border-color .12s;
+  }
+  #tags:focus { border-color: var(--accent); }
+  .spacer { flex: 1 1 auto; }
+  .footer-sep { width: 1px; align-self: stretch; background: var(--border); }
+
+  /* format toolbar (docked below the title) */
+  #toolbar { display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+    margin-bottom: 14px; padding: 5px 8px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); }
+  #toolbar .tbtn { border: none; background: transparent; color: var(--fg2); cursor: pointer;
+    min-width: 30px; height: 30px; border-radius: 8px; font-size: 14px; padding: 0 7px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s; }
+  #toolbar .tbtn:hover { background: var(--hover); color: var(--fg); }
+  #toolbar .tbtn.on { background: var(--accent); color: #fff; }
+  #toolbar .tbtn.hd { font-weight: 700; font-size: 12.5px; letter-spacing: .02em; }
+  #toolbar .tbtn svg { display: block; width: 17px; height: 17px; }
+  #toolbar .tsep { width: 1px; align-self: stretch; margin: 5px 5px; background: var(--fg3); opacity: .25; }
+  #toolbar .hlgroup { display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; }
+  #toolbar .hlsw { width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); transition: transform .1s ease; }
+  #toolbar .hlsw:hover { transform: scale(1.16); }
+  /* custom-highlight swatch: rainbow wheel that opens the colour picker */
+  #toolbar .hlsw.rainbow { box-shadow: none;
+    background:
+      radial-gradient(circle at 50% 50%, var(--surface) 20%, transparent 22%),
+      conic-gradient(from 140deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b06ab3, #ff6b6b); }
+  /* clear-highlight swatch: hollow with a slash */
+  #toolbar .hlsw.clear { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); position: relative; }
+  #toolbar .hlsw.clear::after { content: ""; position: absolute; left: 50%; top: 2px; bottom: 2px;
+    width: 1.5px; margin-left: -.75px; border-radius: 1px; background: var(--fg3); transform: rotate(45deg); }
+
+  /* @ card picker */
+  #cardpick {
+    position: fixed; display: none; z-index: 50; max-height: 220px; overflow-y: auto;
+    width: 320px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.22); padding: 4px;
+  }
+  #cardpick .row { padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+  #cardpick .row:hover, #cardpick .row.sel { background: var(--hover); }
+  #cardpick .row .deck { color: var(--fg3); font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="titlebar">
+    <button id="backbtn" data-i18n-title="hashi_back_to_notes" title="Back to Notes">‹ <span data-i18n-text="hashi_notes_short">Notes</span></button>
+    <button id="colorbtn" data-i18n-title="hashi_note_colors" title="Note colours"><span class="dot"></span></button>
+    <div id="noteicon" data-i18n-title="hashi_set_note_icon" title="Set note icon">📝</div>
+    <input id="titleinput" data-i18n-placeholder="hashi_untitled" placeholder="Untitled">
+  </div>
+  <div id="toolbar">
+    <button class="tbtn" data-cmd="bold" data-i18n-title="hashi_bold" title="Bold"><b>B</b></button>
+    <button class="tbtn" data-cmd="italic" data-i18n-title="hashi_italic" title="Italic"><i>I</i></button>
+    <span class="tsep"></span>
+    <button class="tbtn hd" data-cmd="h1" data-i18n-title="hashi_heading1" title="Heading 1">H1</button>
+    <button class="tbtn hd" data-cmd="h2" data-i18n-title="hashi_heading2" title="Heading 2">H2</button>
+    <span class="tsep"></span>
+    <span class="hlgroup">
+      <span class="hlsw" data-hl="#fff3b0" style="background:#fff3b0" data-i18n-title="hashi_hl_yellow" title="Yellow highlight"></span>
+      <span class="hlsw" data-hl="#b9f6ca" style="background:#b9f6ca" data-i18n-title="hashi_hl_green" title="Green highlight"></span>
+      <span class="hlsw" data-hl="#b3e5fc" style="background:#b3e5fc" data-i18n-title="hashi_hl_blue" title="Blue highlight"></span>
+      <span class="hlsw" data-hl="#ffcdd2" style="background:#ffcdd2" data-i18n-title="hashi_hl_pink" title="Pink highlight"></span>
+      <span class="hlsw rainbow" data-hl-custom="1" data-i18n-title="hashi_hl_custom" title="Custom highlight…"></span>
+      <span class="hlsw clear" data-hl="" data-i18n-title="hashi_hl_remove" title="Remove highlight"></span>
+    </span>
+    <span class="tsep"></span>
+    <button class="tbtn" data-cmd="icon" data-i18n-title="hashi_insert_emoji" title="Insert emoji or icon"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12S6.477 2 12 2m0 2a8 8 0 1 0 0 16a8 8 0 0 0 0-16m2.8 9.857a1 1 0 1 1 1.4 1.428A5.98 5.98 0 0 1 12 17a5.98 5.98 0 0 1-4.2-1.715a1 1 0 0 1 1.4-1.428A3.98 3.98 0 0 0 12 15c1.09 0 2.077-.435 2.8-1.143M8.5 8a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3m7 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3"/></svg></button>
+  </div>
+  <div id="editor" contenteditable="true" data-i18n-dplaceholder="hashi_editor_placeholder" data-placeholder="Jot something… use - , [ ] , &gt; , ==highlight==, `code`, $x^2$, @card"></div>
+  <div id="footer">
+    <div class="metagroup">
+      <span class="lbl" data-i18n-text="hashi_keep">Keep</span>
+      <div class="pillgroup" id="retgroup"></div>
+    </div>
+    <div class="footer-sep"></div>
+    <div class="metagroup">
+      <span class="lbl" data-i18n-text="hashi_priority">Priority</span>
+      <div class="pillgroup" id="priogroup">
+        <button data-v="none">—</button>
+        <button data-v="low" data-i18n-text="hashi_prio_low">Low</button>
+        <button data-v="med" data-i18n-text="hashi_prio_med">Med</button>
+        <button data-v="high" data-i18n-text="hashi_prio_high">High</button>
+      </div>
+    </div>
+    <div class="footer-sep"></div>
+    <input id="tags" data-i18n-placeholder="hashi_tags_placeholder" placeholder="Tags, comma separated">
+  </div>
+</div>
+
+<div id="cardpick"></div>
+<div id="palette"></div>
+
+<script>
+const HASHI_CTX = /*__HASHI_CONTEXT__*/null;
+const HASHI_NOTE = /*__HASHI_DATA__*/null;
+
+(function () {
+  "use strict";
+  const ctx = HASHI_CTX || {};
+  const pal = ctx.palette || {};
+  const accent = ctx.accent || "#00A982";
+  const note = HASHI_NOTE || {};
+
+  // ---- i18n: strings come from ctx.strings (built via tr() in Python) ----
+  const S = ctx.strings || {};
+  function tS(key, fallback) { const v = S[key]; return (v == null || v === "") ? fallback : v; }
+  function applyI18n(root) {
+    root.querySelectorAll("[data-i18n-text]").forEach((el) => { const v = S[el.getAttribute("data-i18n-text")]; if (v) el.textContent = v; });
+    root.querySelectorAll("[data-i18n-title]").forEach((el) => { const v = S[el.getAttribute("data-i18n-title")]; if (v) el.title = v; });
+    root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { const v = S[el.getAttribute("data-i18n-placeholder")]; if (v) el.setAttribute("placeholder", v); });
+    root.querySelectorAll("[data-i18n-dplaceholder]").forEach((el) => { const v = S[el.getAttribute("data-i18n-dplaceholder")]; if (v) el.setAttribute("data-placeholder", v); });
+  }
+  applyI18n(document);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const app = document.getElementById("app");
+      if (app) app.classList.add("hashi-in");
+    });
+  });
+
+  // ---- theme ----
+  const r = document.documentElement.style;
+  const map = { "--bg": pal.bg, "--surface": pal.surface, "--border": pal.border,
+    "--fg": pal.fg, "--fg2": pal.fg2, "--fg3": pal.fg3, "--chip": pal.chip,
+    "--highlight": pal.highlight, "--input-bg": pal.input_bg, "--hover": pal.hover,
+    "--accent": accent };
+  for (const k in map) { if (map[k]) r.setProperty(k, map[k]); }
+  if (ctx.customCss) {
+    const s = document.createElement("style"); s.textContent = ctx.customCss; document.head.appendChild(s);
+  }
+
+  // ---- KaTeX (loaded locally from the addon; degrades gracefully) ----
+  function loadKatex() {
+    if (!ctx.katexCss || !ctx.katexJs) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet"; link.href = ctx.katexCss; document.head.appendChild(link);
+    const s1 = document.createElement("script"); s1.src = ctx.katexJs;
+    s1.onload = function () {
+      const s2 = document.createElement("script"); s2.src = ctx.katexAutoJs;
+      s2.onload = function () { renderMath(editor); };
+      document.body.appendChild(s2);
+    };
+    document.body.appendChild(s1);
+  }
+
+  const editor = document.getElementById("editor");
+  const $ = (id) => document.getElementById(id);
+
+  // ---- back to gallery ----
+  $("backbtn").addEventListener("click", () => pycmd("hashi:back"));
+
+  // ---- title + note icon ----
+  const titleInput = $("titleinput");
+  titleInput.value = note.title || "";
+  titleInput.addEventListener("input", scheduleSave);
+
+  let noteIcon = note.icon || "";
+  const noteIconEl = $("noteicon");
+  function renderNoteIcon() {
+    const base = ctx.addonBase || "";
+    if (!noteIcon) {
+      const asset = (ctx.emojiSprites || {})["📝"];
+      if (asset) { noteIconEl.innerHTML = '<img src="' + base + "system_files/emojis/" + asset + '">'; }
+      else { noteIconEl.textContent = "📝"; }
+      return;
+    }
+    if (noteIcon.indexOf("emoji:") === 0) {
+      const em = noteIcon.slice(6);
+      const asset = (ctx.emojiSprites || {})[em];
+      if (asset) { noteIconEl.innerHTML = '<img src="' + base + "system_files/emojis/" + asset + '">'; }
+      else { noteIconEl.textContent = em; }
+      return;
+    }
+    if (noteIcon.indexOf("system:") === 0) {
+      // currentColor SVG → mask so it adapts to light/dark
+      const src = base + "system_files/system_icons/available_for_users/" + noteIcon.slice(7);
+      noteIconEl.innerHTML = '<span class="hashi-sysmask" style="-webkit-mask-image:url(\'' + src + '\');mask-image:url(\'' + src + '\')"></span>';
+    } else {
+      noteIconEl.innerHTML = '<img src="' + base + "user_files/custom_deck_icons/" + noteIcon + '">';
+    }
+  }
+  renderNoteIcon();
+  noteIconEl.addEventListener("click", () => pycmd("hashi:pick_icon:title"));
+  window.hashiSetIcon = function (value) { noteIcon = value || ""; renderNoteIcon(); scheduleSave(); };
+
+  // ---- note colours: marker (accent band) + fill (post-it background) ----
+  const NOTE_COLORS = [
+    { k: "none", hex: "" }, { k: "red", hex: "#ef4444" }, { k: "orange", hex: "#f97316" },
+    { k: "yellow", hex: "#eab308" }, { k: "green", hex: "#22c55e" }, { k: "blue", hex: "#3b82f6" },
+    { k: "purple", hex: "#a855f7" }, { k: "pink", hex: "#ec4899" }, { k: "gray", hex: "#6b7280" },
+  ];
+  const isDark = !!ctx.dark;
+  const rootEl = document.documentElement;
+  let noteMarker = note.color || "";
+  let noteBg = note.bg_color || "";
+  if (noteMarker !== noteBg) { const c = noteMarker || noteBg; noteMarker = c; noteBg = c; }
+  function hexToRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)]; }
+  function rgbToHex(r, g, b) { return "#" + [r, g, b].map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join(""); }
+  function mixHex(a, b, t) { const x = hexToRgb(a), y = hexToRgb(b); return rgbToHex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); }
+  function fillTint(base) { return isDark ? mixHex(base, "#161616", 0.80) : mixHex(base, "#ffffff", 0.80); }
+  function cardTint(base) { return isDark ? mixHex(base, "#161616", 0.88) : mixHex(base, "#ffffff", 0.92); }
+  // chrome (buttons, footer, inputs, borders) also tints so nothing stays flat grey
+  function surfTint(base) { return isDark ? mixHex(base, "#161616", 0.66) : mixHex(base, "#ffffff", 0.74); }
+  function inputTint(base) { return isDark ? mixHex(base, "#161616", 0.80) : mixHex(base, "#ffffff", 0.88); }
+  // no visible outlines on tinted chrome — containers read by their fill alone
+  function chromeBorder(base) { return "transparent"; }
+  function setOrClear(prop, val) { if (val) rootEl.style.setProperty(prop, val); else rootEl.style.removeProperty(prop); }
+  function applyColors() {
+    const marker = noteMarker || (ctx.accent || "#00A982");
+    rootEl.style.setProperty("--marker", marker);
+    rootEl.style.setProperty("--accent", marker);
+    if (noteBg) {
+      const fill = fillTint(noteBg);
+      rootEl.style.setProperty("--note-fill", fill);
+      rootEl.style.setProperty("--note-card", cardTint(noteBg));
+      rootEl.style.setProperty("--surface", surfTint(noteBg));
+      rootEl.style.setProperty("--input-bg", inputTint(noteBg));
+      rootEl.style.setProperty("--chip", surfTint(noteBg));
+      rootEl.style.setProperty("--hover", surfTint(noteBg));
+      rootEl.style.setProperty("--border", chromeBorder(noteBg));
+      try { pycmd("hashi:set_shell:" + fill); } catch (e) {}
+    } else {
+      rootEl.style.removeProperty("--note-fill");
+      rootEl.style.removeProperty("--note-card");
+      // restore the theme's own chrome colours (fall back to CSS defaults if absent)
+      setOrClear("--surface", pal.surface);
+      setOrClear("--input-bg", pal.input_bg);
+      setOrClear("--chip", pal.chip);
+      setOrClear("--hover", pal.hover);
+      setOrClear("--border", pal.border);
+      try { pycmd("hashi:set_shell:"); } catch (e) {}
+    }
+    const dot = document.querySelector("#colorbtn .dot");
+    if (dot) {
+      if (noteMarker) { dot.style.background = marker; dot.classList.remove("empty"); }
+      else { dot.style.background = "transparent"; dot.classList.add("empty"); }
+    }
+  }
+  const palette = $("palette");
+  const colorBtn = $("colorbtn");
+  function buildPalette() {
+    // one colour drives BOTH the marker (solid band) and the fill (tinted bg)
+    const r = document.createElement("div"); r.className = "prow";
+    const l = document.createElement("span"); l.className = "plabel"; l.textContent = tS("hashi_color_label", "Colour"); r.appendChild(l);
+    const presetHexes = NOTE_COLORS.map((c) => c.hex);
+    NOTE_COLORS.forEach((c) => {
+      const s = document.createElement("span");
+      s.className = "psw" + (c.hex === "" ? " none" : "") + ((noteMarker || "") === c.hex ? " on" : "");
+      s.setAttribute("data-hex", c.hex);
+      if (c.hex) s.style.background = c.hex;
+      r.appendChild(s);
+    });
+    // rainbow swatch → opens Onigiri's native colour picker for any custom colour
+    const rb = document.createElement("span");
+    const isCustom = noteMarker && presetHexes.indexOf(noteMarker) === -1;
+    rb.className = "psw rainbow" + (isCustom ? " on" : "");
+    rb.setAttribute("data-rainbow", "1");
+    rb.title = tS("hashi_custom_color", "Custom colour…");
+    r.appendChild(rb);
+    palette.innerHTML = "";
+    palette.appendChild(r);
+  }
+  colorBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (palette.classList.contains("open")) { palette.classList.remove("open"); return; }
+    buildPalette();
+    palette.classList.add("open");  // make visible so we can measure its width
+    const rect = colorBtn.getBoundingClientRect();
+    const pw = palette.offsetWidth || 300;
+    palette.style.left = Math.max(6, Math.min(rect.right - pw, window.innerWidth - pw - 6)) + "px";
+    palette.style.top = (rect.bottom + 6) + "px";
+  });
+  palette.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = e.target.closest(".psw"); if (!s) return;
+    if (s.getAttribute("data-rainbow")) { palette.classList.remove("open"); pycmd("hashi:pick_color"); return; }
+    const hex = s.getAttribute("data-hex");
+    noteMarker = hex; noteBg = hex;  // marker + fill stay in sync
+    applyColors(); buildPalette(); scheduleSave();
+  });
+  window.hashiSetColor = function (hex) {
+    noteMarker = hex || ""; noteBg = noteMarker;
+    applyColors(); buildPalette(); scheduleSave();
+  };
+
+  // ---- retention + priority pills ----
+  const retChoices = ctx.retentionChoices || [7, 30, 0];
+  const retGroup = $("retgroup");
+  retChoices.forEach((d) => {
+    const b = document.createElement("button");
+    b.setAttribute("data-v", String(d));
+    b.textContent = d === 0 ? tS("hashi_never", "Never") : d + tS("hashi_days_suffix", "d");
+    retGroup.appendChild(b);
+  });
+  const prioGroup = $("priogroup");
+  let retention = note.retention != null ? note.retention : 30;
+  let priority = note.priority || "none";
+  function setActive(group, value) {
+    group.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.getAttribute("data-v") === String(value)));
+  }
+  setActive(retGroup, retention);
+  setActive(prioGroup, priority);
+  retGroup.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
+    retention = parseInt(b.getAttribute("data-v"), 10); setActive(retGroup, retention); scheduleSave(); });
+  prioGroup.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
+    priority = b.getAttribute("data-v"); setActive(prioGroup, priority); scheduleSave(); });
+
+  $("tags").value = (note.tags || []).join(", ");
+  $("tags").addEventListener("input", scheduleSave);
+
+  // ---- load existing body ----
+  if (note.body_md) editor.innerHTML = note.body_md;
+  if (!editor.firstChild) editor.appendChild(document.createElement("div"));
+
+  // ---- save (debounced) ----
+  let saveTimer = null;
+  function collect() {
+    return {
+      body_md: editor.innerHTML,
+      title: titleInput.value.trim().slice(0, 120),
+      icon: noteIcon,
+      retention: retention,
+      priority: priority,
+      color: noteMarker,
+      bg_color: noteBg,
+      tags: $("tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+    };
+  }
+  function save() {
+    try { pycmd("hashi:save:" + JSON.stringify(collect())); } catch (e) {}
+  }
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 600); }
+  window.hashiFlush = function () { clearTimeout(saveTimer); save(); };
+  window.hashiFadeOut = function () {
+    const app = document.getElementById("app");
+    if (app) app.classList.remove("hashi-in");
+  };
+
+  // ---- caret helpers ----
+  function currentBlock() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    let n = sel.getRangeAt(0).startContainer;
+    while (n && n.parentNode !== editor) { if (n === editor) break; n = n.parentNode; }
+    return (n && n.parentNode === editor) ? n : null;
+  }
+  function caretToEnd(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el); range.collapse(false);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  }
+
+  // ---- inline formatting ----
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function inlineFormat(text) {
+    let h = escapeHtml(text);
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/==([^=]+)==/g, '<span class="hl">$1</span>');
+    h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
+    return h;
+  }
+
+  // ---- block reformatting on space / enter ----
+  function reformatBlock(block) {
+    if (!block || block.querySelector(".card-chip")) return;
+    let raw = block.textContent || "";
+    let cls = "", prefixHtml = "", done = false, tag = "div";
+    if (/^##\s/.test(raw)) { tag = "h2"; cls = "block"; raw = raw.replace(/^##\s/, ""); }
+    else if (/^#\s/.test(raw)) { tag = "h1"; cls = "block"; raw = raw.replace(/^#\s/, ""); }
+    else if (/^-\s/.test(raw)) { cls = "bullet"; raw = raw.replace(/^-\s/, ""); }
+    else if (/^\[( |x|X)\]\s/.test(raw)) {
+      done = /^\[(x|X)\]/.test(raw); cls = "todo" + (done ? " done" : "");
+      prefixHtml = '<span class="box" contenteditable="false">' + (done ? "✓" : "") + '</span>';
+      raw = raw.replace(/^\[( |x|X)\]\s/, "");
+    }
+    else if (/^>\s/.test(raw)) {
+      cls = "toggle";
+      prefixHtml = '<span class="arrow" contenteditable="false">▾</span>';
+      raw = raw.replace(/^>\s/, "");
+    }
+    const inner = inlineFormat(raw);
+    if (tag === "h1") cls = "hd1";
+    else if (tag === "h2") cls = "hd2";
+    block.className = cls;
+    if (cls.startsWith("todo")) block.innerHTML = prefixHtml + '<span class="txt">' + inner + "</span>";
+    else if (cls === "toggle") block.innerHTML = prefixHtml + '<span class="body">' + inner + "</span>";
+    else block.innerHTML = inner || "<br>";
+    caretToEnd(block);
+    renderMath(block);
+  }
+
+  function renderMath(scope) {
+    if (!window.renderMathInElement) return;
+    try {
+      window.renderMathInElement(scope, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+        ],
+        throwOnError: false,
+      });
+    } catch (e) {}
+  }
+
+  editor.addEventListener("keydown", function (e) {
+    if (e.key === "@") { setTimeout(openCardPick, 0); }
+    if (e.key === " ") {
+      const block = currentBlock();
+      if (block) {
+        const raw = block.textContent || "";
+        if (/^(#{1,2}|-|>|\[( |x|X)\])\s?$/.test(raw + " ") || /(`[^`]+`|==[^=]+==|\*\*[^*]+\*\*)$/.test(raw)) {
+          setTimeout(() => reformatBlock(block), 0);
+        }
+      }
+    }
+  });
+  editor.addEventListener("input", function () {
+    if (!editor.firstChild) editor.appendChild(document.createElement("div"));
+    scheduleSave();
+  });
+
+  // ---- todo / toggle clicks ----
+  editor.addEventListener("click", function (e) {
+    const box = e.target.closest(".box");
+    if (box) {
+      const b = box.closest(".todo");
+      if (b) { b.classList.toggle("done"); box.textContent = b.classList.contains("done") ? "✓" : ""; scheduleSave(); }
+      return;
+    }
+    const arrow = e.target.closest(".arrow");
+    if (arrow) { const t = arrow.closest(".toggle"); if (t) { t.classList.toggle("closed"); } }
+  });
+
+  // ---- format toolbar (docked below the title) ----
+  const toolbar = $("toolbar");
+  function selectionInEditor() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    let n = sel.getRangeAt(0).commonAncestorContainer;
+    while (n) { if (n === editor) return true; n = n.parentNode; }
+    return false;
+  }
+  function wrapSelection(tag, cls) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    try { el.appendChild(range.extractContents()); range.insertNode(el); } catch (e) {}
+    sel.removeAllRanges(); scheduleSave();
+  }
+  function applyHighlight(hex) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const span = document.createElement("span");
+    span.className = "hl"; span.style.background = hex;
+    try { span.appendChild(range.extractContents()); range.insertNode(span); } catch (e) {}
+    sel.removeAllRanges(); scheduleSave();
+  }
+  function clearHighlight() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return;
+    // unwrap any .hl spans that intersect the selection
+    const range = sel.getRangeAt(0);
+    const hls = editor.querySelectorAll("span.hl");
+    hls.forEach((el) => {
+      if (range.intersectsNode(el)) {
+        const parent = el.parentNode;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el); parent.normalize();
+      }
+    });
+    scheduleSave();
+  }
+  // toggle the caret's block between a heading class and plain text
+  function toggleHeader(cls) {
+    const block = currentBlock();
+    if (!block) return;
+    const already = block.classList.contains(cls);
+    block.classList.remove("hd1", "hd2");
+    if (!already) block.classList.add(cls);
+    caretToEnd(block); syncHeaderButtons(); scheduleSave();
+  }
+  function syncHeaderButtons() {
+    const block = currentBlock();
+    const h1 = block && block.classList.contains("hd1");
+    const h2 = block && block.classList.contains("hd2");
+    toolbar.querySelector('[data-cmd="h1"]').classList.toggle("on", !!h1);
+    toolbar.querySelector('[data-cmd="h2"]').classList.toggle("on", !!h2);
+  }
+  document.addEventListener("selectionchange", function () {
+    if (selectionInEditor()) syncHeaderButtons();
+  });
+  // custom-highlight flow: the colour picker steals focus and clears the
+  // selection, so stash the range on click and restore it when the hex returns.
+  let savedHlRange = null;
+  window.hashiApplyHighlight = function (hex) {
+    if (savedHlRange) {
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(savedHlRange);
+    }
+    if (hex) applyHighlight(hex);
+    savedHlRange = null;
+  };
+  toolbar.addEventListener("mousedown", function (e) {
+    const sw = e.target.closest(".hlsw");
+    if (sw) {
+      e.preventDefault();
+      if (sw.getAttribute("data-hl-custom")) {
+        const sel = window.getSelection();
+        savedHlRange = (sel.rangeCount && !sel.isCollapsed) ? sel.getRangeAt(0).cloneRange() : null;
+        if (savedHlRange) pycmd("hashi:pick_highlight");
+        return;
+      }
+      const hex = sw.getAttribute("data-hl");
+      if (hex) applyHighlight(hex); else clearHighlight();
+      return;
+    }
+    const btn = e.target.closest(".tbtn");
+    if (!btn) return;
+    e.preventDefault();
+    const cmd = btn.getAttribute("data-cmd");
+    if (cmd === "bold") wrapSelection("b");
+    else if (cmd === "italic") wrapSelection("i");
+    else if (cmd === "h1") toggleHeader("hd1");
+    else if (cmd === "h2") toggleHeader("hd2");
+    else if (cmd === "icon") pycmd("hashi:pick_icon");
+  });
+
+  function insertAtCaret(node) {
+    editor.focus();
+    const sel = window.getSelection();
+    if (!sel.rangeCount) { editor.appendChild(node); return; }
+    const range = sel.getRangeAt(0); range.deleteContents(); range.insertNode(node);
+    range.setStartAfter(node); range.collapse(true); sel.removeAllRanges(); sel.addRange(range);
+  }
+  window.hashiInsertIcon = function (htmlStr) {
+    const tmp = document.createElement("span"); tmp.innerHTML = htmlStr;
+    insertAtCaret(tmp.firstChild || document.createTextNode("")); scheduleSave();
+  };
+
+  // ---- @ card picking ----
+  const cardpick = $("cardpick");
+  let pickQuery = "", pickSel = 0, pickResults = [], pickActive = false;
+  function openCardPick() {
+    pickActive = true; pickQuery = ""; pickSel = 0;
+    const sel = window.getSelection();
+    if (sel.rangeCount) {
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      cardpick.style.left = Math.max(6, Math.min(rect.left, window.innerWidth - 330)) + "px";
+      cardpick.style.top = (rect.bottom + 4) + "px";
+    }
+    cardpick.style.display = "block";
+    pycmd("hashi:search_cards:");
+  }
+  function closeCardPick() { pickActive = false; cardpick.style.display = "none"; }
+  window.hashiReceiveCards = function (results) {
+    if (!pickActive) return;
+    pickResults = results || []; pickSel = 0; renderCardPick();
+  };
+  function renderCardPick() {
+    cardpick.innerHTML = "";
+    if (!pickResults.length) { cardpick.innerHTML = '<div class="row">' + tS("hashi_no_cards", "No cards") + '</div>'; return; }
+    pickResults.forEach((c, i) => {
+      const row = document.createElement("div");
+      row.className = "row" + (i === pickSel ? " sel" : "");
+      row.innerHTML = '<div>' + (c.label || "card") + '</div><div class="deck">' + (c.deck || "") + '</div>';
+      row.addEventListener("mousedown", (e) => { e.preventDefault(); chooseCard(c); });
+      cardpick.appendChild(row);
+    });
+  }
+  function chooseCard(c) {
+    // remove the trailing "@query" the user typed
+    const block = currentBlock();
+    const chip = document.createElement("span");
+    chip.className = "card-chip"; chip.setAttribute("contenteditable", "false");
+    chip.setAttribute("data-card", c.id);
+    chip.textContent = "@" + (c.label || "card").slice(0, 24);
+    insertAtCaret(chip);
+    insertAtCaret(document.createTextNode(" "));
+    closeCardPick(); scheduleSave();
+  }
+  editor.addEventListener("keydown", function (e) {
+    if (!pickActive) return;
+    if (e.key === "Escape") { e.preventDefault(); closeCardPick(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); pickSel = Math.min(pickSel + 1, pickResults.length - 1); renderCardPick(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); pickSel = Math.max(pickSel - 1, 0); renderCardPick(); }
+    else if (e.key === "Enter") { if (pickResults[pickSel]) { e.preventDefault(); chooseCard(pickResults[pickSel]); } }
+    else if (e.key === "Backspace" && !pickQuery) { closeCardPick(); }
+    else if (e.key.length === 1) { setTimeout(() => { pickQuery += e.key; pycmd("hashi:search_cards:" + pickQuery); }, 0); }
+  });
+
+  document.addEventListener("mousedown", function (e) {
+    if (!cardpick.contains(e.target)) closeCardPick();
+    if (!palette.contains(e.target) && e.target !== colorBtn && !colorBtn.contains(e.target)) palette.classList.remove("open");
+  });
+
+  // apply saved colours (marker + fill) and initial math render
+  applyColors();
+  loadKatex();
+  editor.focus();
+})();
+</script>
+</body>
+</html>
