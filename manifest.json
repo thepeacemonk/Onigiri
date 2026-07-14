@@ -1,10 +1,9 @@
 {
-  "name": "Onigiri (by Peace)",
-  "package": "1011095603",
-  "ankiweb_id": "1011095603",
-  "author": "PeaceMonk",
-  "version": "1.0.9.1-beta",
+  "name": "Onigiri (Louie dev)",
+  "package": "Onigiri (Louie)",
+  "author": "Loui4Raw",
+  "version": "dev",
   "homepage": "",
-  "conflicts": [],
+  "conflicts": ["1011095603"],
   "max_point_version": 250904
 }
