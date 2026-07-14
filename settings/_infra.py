@@ -175,9 +175,21 @@ class InfraMixin:
             if button:
                 self._decorate_button(button, icon_filename, 16)
 
+    def _on_sidebar_search_typed(self, text):
+        """Live search: jump to the Search page and filter as the user types."""
+        if getattr(self, "_current_page_name", None) != "Search":
+            self.navigate_to_page("Search")
+        page = getattr(self, "_search_page", None)
+        if page is not None and hasattr(page, "search_bar"):
+            if page.search_bar.text() != text:
+                page.search_bar.setText(text)
+        # keep typing in the nav field
+        self.sidebar_search_field.setFocus()
+
     def create_search_page(self):
         page = SettingsSearchPage(self)
         page.page_requested.connect(self.navigate_to_page)
+        self._search_page = page
         return page
 
     def _clear_page_nav(self):

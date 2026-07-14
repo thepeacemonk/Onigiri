@@ -1034,6 +1034,17 @@ class DialogCoreMixin2:
             QLineEdit#settingsSearchInput, QLineEdit#searchInput {{
                 max-width: 10000px;
             }}
+            QLineEdit#sidebarSearchField {{
+                max-width: 10000px;
+                background-color: {input_bg};
+                border: 1px solid {soft_border};
+                border-radius: 10px;
+                padding: 0px 10px;
+                color: {fg};
+            }}
+            QLineEdit#sidebarSearchField:focus {{
+                border-color: {accent_color};
+            }}
 
             /* Hairline row anatomy for compact settings rows */
             QFrame#organizeCompactRow {{
