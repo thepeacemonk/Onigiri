@@ -482,20 +482,28 @@ class BackgroundGalleryTile(QWidget):
 
 class BackgroundPreviewLabel(QLabel):
     """Keep background preview geometry independent from the current text or pixmap."""
+    # Previews are supporting visuals, not the page: cap their height so
+    # wide dialogs get compact strips instead of canvas-dominated pages.
+    MAX_PREVIEW_HEIGHT = 200
+
     def __init__(self, parent=None, aspect_ratio=2.0, minimum_preview_height=230):
         super().__init__(parent)
         self._aspect_ratio = max(0.1, float(aspect_ratio))
-        self._minimum_preview_height = int(minimum_preview_height)
+        self._minimum_preview_height = min(int(minimum_preview_height), 140)
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
         self.setMinimumHeight(self._minimum_preview_height)
+        self.setMaximumHeight(self.MAX_PREVIEW_HEIGHT)
 
     def hasHeightForWidth(self):
         return True
 
     def heightForWidth(self, width):
-        return max(self._minimum_preview_height, int(max(1, width) / self._aspect_ratio))
+        return min(
+            self.MAX_PREVIEW_HEIGHT,
+            max(self._minimum_preview_height, int(max(1, width) / self._aspect_ratio)),
+        )
 
     def sizeHint(self):
         width = max(720, self.width(), super().sizeHint().width())
