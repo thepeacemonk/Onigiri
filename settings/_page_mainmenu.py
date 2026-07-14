@@ -38,8 +38,8 @@ class PageMainmenuMixin:
             QLabel#organizeCompactLabel {{
                 color: {fg};
                 background: transparent;
-                font-size: 13px;
-                font-weight: 500;
+                font-size: 14px;
+                font-weight: 600;
             }}
             QLineEdit#organizeStatsTitleInput, QAbstractSpinBox#organizeCompactSpinBox {{
                 background-color: {input_bg};
