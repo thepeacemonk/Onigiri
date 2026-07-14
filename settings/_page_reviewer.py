@@ -7,6 +7,26 @@ from ._layout_sidebar import *
 
 
 
+class _ReviewerStickyFilter(QObject):
+    """Forwards viewport/header resize + layout events to a reposition callback
+    so the pinned Reviewer Buttons header keeps its geometry in sync."""
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self._callback = callback
+
+    def eventFilter(self, obj, event):
+        try:
+            if event.type() in (
+                QEvent.Type.Resize,
+                QEvent.Type.LayoutRequest,
+                QEvent.Type.Show,
+            ):
+                self._callback()
+        except Exception:
+            pass
+        return False
+
+
 class PageReviewerMixin:
     def _bottom_bar_bg_folder_path(self):
         path = os.path.join(self.addon_path, "user_files", "reviewer_bar_bg")
@@ -35,7 +55,7 @@ class PageReviewerMixin:
         if widget:
             widget.setText(color)
 
-    def _create_bottom_bar_color_pill_row(self, label_text, attr_base, initial_color):
+    def _create_bottom_bar_color_pill_row(self, label_text, attr_base, initial_color, allow_transparent=False):
         label_button = self._create_main_bg_button(label_text)
         value_button = self._create_main_bg_button("")
         value_button.setObjectName("mainBackgroundColorButton")
@@ -46,7 +66,7 @@ class PageReviewerMixin:
         setattr(self, f"{attr_base}_color_input", line_edit)
 
         def choose_color(anchor):
-            chosen, ok = OnigiriColorDialog.getColor(line_edit.text(), self, anchor=anchor)
+            chosen, ok = OnigiriColorDialog.getColor(line_edit.text(), self, anchor=anchor, allow_transparent=allow_transparent)
             if ok:
                 line_edit.setText(chosen)
 
@@ -71,7 +91,7 @@ class PageReviewerMixin:
             filtered.append((clean_label, attr_base, color))
         return filtered
 
-    def _create_bottom_bar_color_grid(self, rows, columns=2):
+    def _create_bottom_bar_color_grid(self, rows, columns=2, allow_transparent=False):
         grid = QWidget()
         layout = QGridLayout(grid)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -81,7 +101,11 @@ class PageReviewerMixin:
         for column in range(columns):
             layout.setColumnStretch(column, 1)
         for index, (label, attr_base, color) in enumerate(rows):
-            layout.addWidget(self._create_bottom_bar_color_pill_row(label, attr_base, color), index // columns, index % columns)
+            row_allow_transparent = allow_transparent(attr_base) if callable(allow_transparent) else allow_transparent
+            layout.addWidget(
+                self._create_bottom_bar_color_pill_row(label, attr_base, color, allow_transparent=row_allow_transparent),
+                index // columns, index % columns,
+            )
         return grid
 
     def _create_bottom_bar_effect_page(self, blur_widget, blur_label, opacity_widget, opacity_label):
@@ -127,7 +151,7 @@ class PageReviewerMixin:
     def _create_bottom_bar_number_row(self, label_text, spinbox):
         return self._create_main_bg_value_row(label_text, spinbox)
 
-    def _create_bottom_bar_button_section(self, title, rows):
+    def _create_bottom_bar_button_section(self, title, rows, allow_transparent_bg=False):
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -136,10 +160,97 @@ class PageReviewerMixin:
         title_label.setObjectName("mainBackgroundControlLabel")
         title_label.setStyleSheet("font-weight: 700;")
         layout.addWidget(title_label)
-        layout.addWidget(self._create_bottom_bar_color_grid(rows))
+        if allow_transparent_bg:
+            grid = self._create_bottom_bar_color_grid(
+                rows,
+                allow_transparent=lambda attr_base: attr_base.endswith("_bg_light") or attr_base.endswith("_bg_dark"),
+            )
+        else:
+            grid = self._create_bottom_bar_color_grid(rows)
+        layout.addWidget(grid)
         return container
 
-    def _create_bottom_bar_button_config_page(self, sections, mode):
+    def _create_stats_bar_bg_sync_card(self, text, toggle):
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#242424" if theme_manager.night_mode else "#ffffff")
+        card_border = palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+        card = QFrame()
+        card.setObjectName("statsBarSyncCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setStyleSheet(f"""
+            QFrame#statsBarSyncCard {{
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 16px;
+            }}
+        """)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setSpacing(12)
+        label = QLabel(text)
+        label.setObjectName("mainBackgroundControlLabel")
+        layout.addWidget(label, 1)
+        layout.addWidget(toggle)
+        return card
+
+    def _create_stats_bar_bg_section(self):
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        title_label = QLabel(tr("stats_bar_bg_section_title", "Stats Bar Background"))
+        title_label.setObjectName("mainBackgroundControlLabel")
+        title_label.setStyleSheet("font-weight: 700;")
+        layout.addWidget(title_label)
+
+        self.show_answer_bar_bg_sync_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.show_answer_bar_bg_sync_toggle.setChecked(
+            self.current_config.get("onigiri_reviewer_show_answer_bar_bg_sync", True)
+        )
+        layout.addWidget(self._create_stats_bar_bg_sync_card(
+            tr("sync_stats_bar_bg_label", "Sync with colors of other Pre-Answer Buttons"),
+            self.show_answer_bar_bg_sync_toggle,
+        ))
+
+        stats_bar_bg_rows = [
+            ("Stats Bar BG (Light)", "show_answer_bar_bg_light", self.current_config.get("onigiri_reviewer_show_answer_bar_bg_light", "#2c2c2c")),
+            ("Stats Bar BG (Dark)", "show_answer_bar_bg_dark", self.current_config.get("onigiri_reviewer_show_answer_bar_bg_dark", "#e0e0e0")),
+        ]
+        self.stats_bar_bg_color_grid = self._create_bottom_bar_color_grid(stats_bar_bg_rows, allow_transparent=True)
+        layout.addWidget(self.stats_bar_bg_color_grid)
+
+        self.show_answer_bar_bg_sync_toggle.toggled.connect(self._on_stats_bar_bg_sync_toggled)
+        self._on_stats_bar_bg_sync_toggled(self.show_answer_bar_bg_sync_toggle.isChecked())
+
+        return container
+
+    def _on_stats_bar_bg_sync_toggled(self, checked):
+        if hasattr(self, "stats_bar_bg_color_grid"):
+            grid = self.stats_bar_bg_color_grid
+            grid.setEnabled(not checked)
+            # setEnabled alone doesn't visibly dim these color swatch buttons
+            # (their stylesheet paints the picked color regardless of enabled
+            # state), so layer an opacity effect to make the lock obvious.
+            effect = getattr(self, "_stats_bar_bg_color_opacity_effect", None)
+            if effect is None:
+                effect = QGraphicsOpacityEffect(grid)
+                grid.setGraphicsEffect(effect)
+                self._stats_bar_bg_color_opacity_effect = effect
+            effect.setOpacity(0.35 if checked else 1.0)
+        self._update_reviewer_bottom_bar_preview()
+
+    def _bottom_bar_stats_bar_bg_color(self, mode):
+        suffix = "dark" if mode == "dark" else "light"
+        if hasattr(self, "show_answer_bar_bg_sync_toggle"):
+            synced = self.show_answer_bar_bg_sync_toggle.isChecked()
+        else:
+            synced = self.current_config.get("onigiri_reviewer_show_answer_bar_bg_sync", True)
+        if synced:
+            return self._bottom_bar_color_value(f"other_btn_hover_bg_{suffix}", "#e0e0e0" if suffix == "dark" else "#2c2c2c")
+        return self._bottom_bar_color_value(f"show_answer_bar_bg_{suffix}", "#e0e0e0" if suffix == "dark" else "#2c2c2c")
+
+    def _create_bottom_bar_button_config_page(self, sections, mode, transparent_bg_titles=()):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -147,7 +258,9 @@ class PageReviewerMixin:
         for title, rows in sections:
             mode_rows = self._bottom_bar_rows_for_mode(rows, mode)
             if mode_rows:
-                layout.addWidget(self._create_bottom_bar_button_section(title, mode_rows))
+                layout.addWidget(self._create_bottom_bar_button_section(
+                    title, mode_rows, allow_transparent_bg=(title in transparent_bg_titles),
+                ))
         layout.addStretch()
         return page
 
@@ -357,6 +470,46 @@ class PageReviewerMixin:
             with QSignalBlocker(button):
                 button.setChecked(button.property("stattxt_mode") == mode)
 
+    def _reviewer_timer_position(self):
+        group = getattr(self, "reviewer_timer_position_group", None)
+        checked = group.checkedButton() if group else None
+        position = checked.property("timer_position") if checked else None
+        if position in {"right", "left", "out"}:
+            return position
+        return self.current_config.get("onigiri_reviewer_timer_position", "right")
+
+    def _set_reviewer_timer_position(self, position):
+        group = getattr(self, "reviewer_timer_position_group", None)
+        if not group:
+            return
+        if position not in {"right", "left", "out"}:
+            position = "right"
+        for button in group.buttons():
+            with QSignalBlocker(button):
+                button.setChecked(button.property("timer_position") == position)
+        self._on_reviewer_timer_position_changed()
+
+    def _on_reviewer_timer_position_changed(self):
+        if hasattr(self, "reviewer_timer_color_section"):
+            locked = self._reviewer_timer_position() == "out"
+            self.reviewer_timer_color_section.setEnabled(not locked)
+            # setEnabled alone doesn't visibly dim these color swatch buttons
+            # (their stylesheet paints the picked color regardless of enabled
+            # state), so layer an opacity effect to make the lock obvious.
+            effect = getattr(self, "_reviewer_timer_color_opacity_effect", None)
+            if effect is None:
+                effect = QGraphicsOpacityEffect(self.reviewer_timer_color_section)
+                self.reviewer_timer_color_section.setGraphicsEffect(effect)
+                self._reviewer_timer_color_opacity_effect = effect
+            effect.setOpacity(0.35 if locked else 1.0)
+        self._update_reviewer_bottom_bar_preview()
+
+    def _bottom_bar_timer_colors(self, mode):
+        suffix = "dark" if mode == "dark" else "light"
+        bg = self._bottom_bar_color_value(f"timer_bg_{suffix}", "#3a3a3a" if suffix == "dark" else "#e5e5e5")
+        fg = self._bottom_bar_color_value(f"timer_text_{suffix}", "#e0e0e0" if suffix == "dark" else "#2c2c2c")
+        return bg, fg
+
     def _assign_bottom_bar_background_image(self, filename):
         self.galleries.setdefault("reviewer_bar_bg", {"selected": "", "folder": "user_files/reviewer_bar_bg"})
         self.galleries["reviewer_bar_bg"]["selected"] = filename
@@ -438,10 +591,6 @@ class PageReviewerMixin:
                 (f"{title.split()[0]} Text (Light)", f"btn_{key}_text_light", self.current_config.get(f"onigiri_reviewer_btn_{key}_text_light", text_l)),
                 (f"{title.split()[0]} Text (Dark)", f"btn_{key}_text_dark", self.current_config.get(f"onigiri_reviewer_btn_{key}_text_dark", text_d)),
             ]))
-        sections.append(("Answer Hover Numbers", [
-            ("Number (Light)", "stattxt_color_light", self.current_config.get("onigiri_reviewer_stattxt_color_light", "#666666")),
-            ("Number (Dark)", "stattxt_color_dark", self.current_config.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa")),
-        ]))
         return sections
 
     def _bottom_bar_pre_answer_button_color_sections(self):
@@ -531,13 +680,56 @@ class PageReviewerMixin:
             "folder": "user_files/reviewer_bar_bg",
         }
 
+        _sticky_palette = self._settings_palette()
+        _sticky_panel_bg = _sticky_palette.get("--canvas-inset", "#242424" if theme_manager.night_mode else "#ffffff")
+        _sticky_border = _sticky_palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+
+        # The container is split into a pinned "cap" (header + live preview, which
+        # also carries the container's top outline) and a scrolling "body" (all the
+        # options). While scrolling, the cap stays attached to the top and the body
+        # slides up beneath it — see _install_reviewer_sticky_header. The two frames
+        # share one background/border split at the seam so they read as a single
+        # rounded container at rest.
         self.bottom_bar_designer = QFrame()
-        self.bottom_bar_designer.setObjectName("mainBackgroundDesigner")
-        outer = QVBoxLayout(self.bottom_bar_designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        self.bottom_bar_designer.setObjectName("reviewerButtonsDesigner")
+        self.bottom_bar_designer.setStyleSheet(
+            "QFrame#reviewerButtonsDesigner { background: transparent; border: none; }"
+        )
+        container_layout = QVBoxLayout(self.bottom_bar_designer)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
+        sticky_cap = QFrame()
+        sticky_cap.setObjectName("reviewerStickyCap")
+        sticky_cap.setStyleSheet(
+            f"QFrame#reviewerStickyCap {{ background-color: {_sticky_panel_bg}; "
+            f"border: 1px solid {_sticky_border}; border-bottom: none; "
+            f"border-top-left-radius: 26px; border-top-right-radius: 26px; "
+            f"border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
+        )
+        cap_layout = QVBoxLayout(sticky_cap)
+        cap_layout.setContentsMargins(18, 18, 18, 14)
+        cap_layout.setSpacing(14)
+
+        body = QFrame()
+        body.setObjectName("reviewerButtonsBody")
+        body.setStyleSheet(
+            f"QFrame#reviewerButtonsBody {{ background-color: {_sticky_panel_bg}; "
+            f"border: 1px solid {_sticky_border}; border-top: none; "
+            f"border-top-left-radius: 0px; border-top-right-radius: 0px; "
+            f"border-bottom-left-radius: 26px; border-bottom-right-radius: 26px; }}"
+        )
+        outer = QVBoxLayout(body)
+        outer.setContentsMargins(18, 0, 18, 18)
         outer.setSpacing(14)
 
+        container_layout.addWidget(sticky_cap)
+        container_layout.addWidget(body)
+
         preview_header = QWidget()
+        preview_header.setObjectName("reviewerStickyHeader")
+        preview_header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        preview_header.setStyleSheet("QWidget#reviewerStickyHeader { background: transparent; }")
         preview_header_layout = QHBoxLayout(preview_header)
         preview_header_layout.setContentsMargins(0, 0, 0, 0)
         preview_header_layout.setSpacing(10)
@@ -568,13 +760,22 @@ class PageReviewerMixin:
             preview_header_layout.addWidget(button)
         self.bottom_bar_answer_mode_button.setChecked(True)
 
+        # "Reset Options" opens a small pop-up holding the three reset actions
+        # that used to live at the bottom of the section.
+        self.reviewer_reset_options_button = QPushButton(tr("reset_options_btn", "Reset Options"))
+        self.reviewer_reset_options_button.setStyleSheet(self._reset_button_stylesheet(min_height=34))
+        self.reviewer_reset_options_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reviewer_reset_options_button.setAutoDefault(False)
+        self.reviewer_reset_options_button.clicked.connect(self._open_reviewer_reset_menu)
+        preview_header_layout.addWidget(self.reviewer_reset_options_button)
+
         self.bottom_bar_preview_mode = "dark" if theme_manager.night_mode else "light"
         self.bottom_bar_preview_mode_widget, self.bottom_bar_preview_mode_toggle = self._create_light_dark_mode_toggle(
             self.bottom_bar_preview_mode,
             self._on_bottom_bar_preview_mode_toggled,
         )
         preview_header_layout.addWidget(self.bottom_bar_preview_mode_widget)
-        outer.addWidget(preview_header)
+        cap_layout.addWidget(preview_header)
 
         self.bottom_bar_preview = BackgroundPreviewLabel(aspect_ratio=8.5, minimum_preview_height=118)
         self.bottom_bar_preview.setObjectName("mainBackgroundPreview")
@@ -583,7 +784,14 @@ class PageReviewerMixin:
         self.bottom_bar_preview.installEventFilter(self)
         self._bottom_bar_preview_hover_key = None
         self._bottom_bar_preview_button_rects = []
-        outer.addWidget(self.bottom_bar_preview)
+        cap_layout.addWidget(self.bottom_bar_preview)
+
+        # Refs used by _install_reviewer_sticky_header (called from create_reviewer_tab).
+        # The whole cap (top outline + header + preview) is the pinned element; it
+        # is lifted out of `container_layout` into the scroll viewport.
+        self._reviewer_sticky_top = sticky_cap
+        self._reviewer_sticky_outer = container_layout
+        self._reviewer_sticky_installed = False
 
         background_left = QWidget()
         background_left.setMinimumWidth(0)
@@ -729,7 +937,44 @@ class PageReviewerMixin:
         general_layout.addWidget(self._create_bottom_bar_number_row(tr("button_padding_label"), self.reviewer_btn_padding_spin), 1, 0)
         general_layout.addWidget(self._create_bottom_bar_number_row(tr("min_height_label"), self.reviewer_btn_height_spin), 1, 1)
         general_layout.addWidget(self._create_bottom_bar_number_row(tr("bar_height_label"), self.reviewer_bar_height_spin), 2, 0)
+
+        self.reviewer_timer_position_group = QButtonGroup(self)
+        self.reviewer_timer_position_group.setExclusive(True)
+        current_timer_position = self.current_config.get("onigiri_reviewer_timer_position", "right")
+        if current_timer_position not in {"right", "left", "out"}:
+            current_timer_position = "right"
+        timer_position_container = self._create_organize_segmented_control(
+            [
+                ("right", tr("timer_position_right_short", "Right")),
+                ("left", tr("timer_position_left_short", "Left")),
+                ("out", tr("timer_position_out_short", "Out")),
+            ],
+            self.reviewer_timer_position_group,
+            current_timer_position,
+            "timer_position",
+            fill_width=True,
+            segment_height=28,
+            min_button_width=54,
+        )
+        general_layout.addWidget(
+            self._create_main_bg_value_row(tr("timer_position_label", "Timer Position"), timer_position_container),
+            3, 1,
+        )
         outer.addWidget(general)
+
+        timer_color_rows = [
+            ("Timer BG (Light)", "timer_bg_light", self.current_config.get("onigiri_reviewer_timer_bg_light", "#e5e5e5")),
+            ("Timer Text (Light)", "timer_text_light", self.current_config.get("onigiri_reviewer_timer_text_light", "#2c2c2c")),
+            ("Timer BG (Dark)", "timer_bg_dark", self.current_config.get("onigiri_reviewer_timer_bg_dark", "#3a3a3a")),
+            ("Timer Text (Dark)", "timer_text_dark", self.current_config.get("onigiri_reviewer_timer_text_dark", "#e0e0e0")),
+        ]
+        self.reviewer_timer_color_section = self._create_bottom_bar_button_section(
+            tr("timer_colors_section_title", "Timer Pill Colors"), timer_color_rows
+        )
+        outer.addWidget(self.reviewer_timer_color_section)
+
+        self.reviewer_stats_bar_bg_section = self._create_stats_bar_bg_section()
+        outer.addWidget(self.reviewer_stats_bar_bg_section)
 
         self.bottom_bar_button_config_stack = QStackedWidget()
         self.bottom_bar_answer_color_stack = QStackedWidget()
@@ -739,27 +984,15 @@ class PageReviewerMixin:
 
         self.bottom_bar_pre_answer_color_stack = QStackedWidget()
         pre_answer_sections = self._bottom_bar_pre_answer_button_color_sections()
-        self.bottom_bar_pre_answer_color_stack.addWidget(self._create_bottom_bar_button_config_page(pre_answer_sections, "light"))
-        self.bottom_bar_pre_answer_color_stack.addWidget(self._create_bottom_bar_button_config_page(pre_answer_sections, "dark"))
+        pre_answer_transparent_titles = {"Pre-Answer Buttons"}
+        self.bottom_bar_pre_answer_color_stack.addWidget(self._create_bottom_bar_button_config_page(pre_answer_sections, "light", transparent_bg_titles=pre_answer_transparent_titles))
+        self.bottom_bar_pre_answer_color_stack.addWidget(self._create_bottom_bar_button_config_page(pre_answer_sections, "dark", transparent_bg_titles=pre_answer_transparent_titles))
 
         self.bottom_bar_button_config_stack.addWidget(self.bottom_bar_answer_color_stack)
         self.bottom_bar_button_config_stack.addWidget(self.bottom_bar_pre_answer_color_stack)
         outer.addWidget(self.bottom_bar_button_config_stack)
 
-        reset_row = QWidget()
-        reset_layout = QHBoxLayout(reset_row)
-        reset_layout.setContentsMargins(0, 0, 0, 0)
-        reset_layout.addStretch()
-        reset_bottom_bar_button = QPushButton(tr("reset_bottom_bar_default"))
-        reset_bottom_bar_button.setStyleSheet(self._reset_button_stylesheet())
-        reset_bottom_bar_button.clicked.connect(self.reset_reviewer_bottom_bar_to_default)
-        reset_buttons_button = QPushButton(tr("reset_answer_buttons_btn"))
-        reset_buttons_button.setStyleSheet(self._reset_button_stylesheet())
-        reset_buttons_button.clicked.connect(self.reset_reviewer_buttons_to_default)
-        reset_layout.addWidget(reset_bottom_bar_button)
-        reset_layout.addWidget(reset_buttons_button)
-        reset_layout.addStretch()
-        outer.addWidget(reset_row)
+        # The reset actions now live in the "Reset Options" pop-up in the header.
 
         layout.addWidget(self.bottom_bar_designer)
 
@@ -775,11 +1008,13 @@ class PageReviewerMixin:
         self.bottom_bar_pre_answer_mode_button.toggled.connect(lambda checked: self._set_bottom_bar_button_mode("pre_answer") if checked else None)
         self.reviewer_btn_custom_enable_toggle.toggled.connect(lambda _=None: self._update_reviewer_bottom_bar_preview())
         self.reviewer_stattxt_mode_group.buttonToggled.connect(lambda _btn, checked: self._update_reviewer_bottom_bar_preview() if checked else None)
+        self.reviewer_timer_position_group.buttonToggled.connect(lambda _btn, checked: self._on_reviewer_timer_position_changed() if checked else None)
         for spinbox in (self.reviewer_btn_radius_spin, self.reviewer_btn_padding_spin, self.reviewer_btn_height_spin, self.reviewer_bar_height_spin):
             spinbox.valueChanged.connect(lambda _=None: self._update_reviewer_bottom_bar_preview())
 
         self._set_bottom_bar_button_mode("answer")
         self._sync_reviewer_bottom_bar_controls()
+        self._on_reviewer_timer_position_changed()
         QTimer.singleShot(0, self._update_reviewer_bottom_bar_preview)
         return section
 
@@ -796,6 +1031,176 @@ class PageReviewerMixin:
                 self.bottom_bar_answer_mode_button.setChecked(self.bottom_bar_button_mode == "answer")
         self._bottom_bar_preview_hover_key = None
         self._update_reviewer_bottom_bar_preview()
+        if getattr(self, "_reviewer_sticky_installed", False):
+            QTimer.singleShot(0, self._reposition_reviewer_sticky)
+
+    def _install_reviewer_sticky_header(self, scroll):
+        """Pin the Reviewer Buttons cap (top outline + header + live preview) to
+        the top of the page while the options below it scroll. The cap is lifted
+        out of the scrolling flow into the scroll viewport as a free overlay; a
+        same-height spacer keeps the layout intact, and _reposition_reviewer_sticky
+        keeps its geometry synced. This is cheap: a couple of maps + one
+        setGeometry per scroll/resize tick, no per-tick style work."""
+        cap = getattr(self, "_reviewer_sticky_top", None)
+        outer = getattr(self, "_reviewer_sticky_outer", None)
+        if cap is None or outer is None or scroll is None:
+            return
+        self._reviewer_sticky_scroll = scroll
+        self._reviewer_sticky_spacer = None
+        self._reviewer_sticky_installed = False
+
+        filt = _ReviewerStickyFilter(self._reposition_reviewer_sticky, self)
+        self._reviewer_sticky_filter = filt
+        scroll.viewport().installEventFilter(filt)
+        cap.installEventFilter(filt)
+
+        vbar = scroll.verticalScrollBar()
+        vbar.valueChanged.connect(lambda _=None: self._reposition_reviewer_sticky())
+        vbar.rangeChanged.connect(lambda *_: self._reposition_reviewer_sticky())
+        QTimer.singleShot(0, self._reposition_reviewer_sticky)
+
+    def _reviewer_cap_height(self, cap, width, fallback):
+        # The preview inside the cap is height-for-width, so the cap's height
+        # depends on the current width — recompute it every reposition so the
+        # pin stays correct while the dialog is resized.
+        try:
+            if width > 1 and cap.hasHeightForWidth():
+                h = cap.heightForWidth(width)
+                if h > 1:
+                    return h
+            h = cap.sizeHint().height()
+            if h > 1:
+                return h
+        except Exception:
+            pass
+        return fallback
+
+    def _reposition_reviewer_sticky(self):
+        if getattr(self, "_reviewer_sticky_busy", False):
+            return
+        self._reviewer_sticky_busy = True
+        try:
+            scroll = getattr(self, "_reviewer_sticky_scroll", None)
+            cap = getattr(self, "_reviewer_sticky_top", None)
+            designer = getattr(self, "bottom_bar_designer", None)
+            if scroll is None or cap is None or designer is None:
+                return
+            if sip is not None and (sip.isdeleted(scroll) or sip.isdeleted(cap) or sip.isdeleted(designer)):
+                return
+            viewport = scroll.viewport()
+
+            if not getattr(self, "_reviewer_sticky_installed", False):
+                natural_height = cap.height()
+                if natural_height <= 1 or not cap.isVisible():
+                    return
+                outer = getattr(self, "_reviewer_sticky_outer", None)
+                idx = outer.indexOf(cap) if outer is not None else -1
+                if idx < 0:
+                    return
+                spacer = QWidget()
+                spacer.setObjectName("reviewerStickySpacer")
+                spacer.setFixedHeight(natural_height)
+                outer.insertWidget(idx, spacer)
+                outer.removeWidget(cap)
+                cap.setParent(viewport)
+                cap.show()
+                cap.raise_()
+                self._reviewer_sticky_spacer = spacer
+                self._reviewer_sticky_installed = True
+
+            spacer = getattr(self, "_reviewer_sticky_spacer", None)
+            if spacer is None or (sip is not None and sip.isdeleted(spacer)):
+                return
+
+            width = spacer.width()
+            if width <= 1:
+                width = cap.width()
+            height = self._reviewer_cap_height(cap, width, spacer.height())
+            if height > 1 and spacer.height() != height:
+                spacer.setFixedHeight(height)
+
+            top_left = spacer.mapTo(viewport, QPoint(0, 0))
+            x = top_left.x()
+            natural_y = top_left.y()
+            designer_bottom = designer.mapTo(viewport, QPoint(0, designer.height())).y()
+
+            target_y = natural_y
+            if target_y < 0:
+                target_y = 0
+            max_y = designer_bottom - height
+            if target_y > max_y:
+                target_y = max_y
+
+            cap.setGeometry(x, target_y, width, height)
+            cap.raise_()
+        except Exception:
+            pass
+        finally:
+            self._reviewer_sticky_busy = False
+
+    def _open_reviewer_reset_menu(self):
+        """Small modern pop-up holding the three reviewer reset actions."""
+        anchor = getattr(self, "reviewer_reset_options_button", None)
+        if anchor is None:
+            return
+        existing = getattr(self, "_reviewer_reset_menu", None)
+        if existing is not None and sip is not None and not sip.isdeleted(existing):
+            existing.close()
+
+        palette = self._settings_palette()
+        panel_bg = palette.get("--canvas-inset", "#242424" if theme_manager.night_mode else "#ffffff")
+        border = palette.get("--border", "#454545" if theme_manager.night_mode else "#dcdde1")
+        fg = palette.get("--fg", "#f4f4f5" if theme_manager.night_mode else "#202124")
+
+        menu = QFrame(self, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._reviewer_reset_menu = menu
+
+        wrapper = QVBoxLayout(menu)
+        wrapper.setContentsMargins(14, 14, 14, 14)
+
+        card = QFrame(menu)
+        card.setObjectName("reviewerResetCard")
+        card.setStyleSheet(
+            f"QFrame#reviewerResetCard {{ background-color: {panel_bg}; "
+            f"border: 1px solid {border}; border-radius: 16px; }}"
+        )
+        shadow = QGraphicsDropShadowEffect(card)
+        shadow.setBlurRadius(28)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        shadow.setOffset(0, 8)
+        card.setGraphicsEffect(shadow)
+        wrapper.addWidget(card)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(14, 12, 14, 14)
+        card_layout.setSpacing(8)
+
+        title = QLabel(tr("reset_options_title", "Reset Options"))
+        title.setStyleSheet(f"color: {fg}; font-size: 13px; font-weight: 700; padding: 0px 2px 2px 2px;")
+        card_layout.addWidget(title)
+
+        reset_actions = [
+            (tr("reset_reviewer_bg_default"), self.reset_reviewer_bg_to_default),
+            (tr("reset_bottom_bar_default"), self.reset_reviewer_bottom_bar_to_default),
+            (tr("reset_answer_buttons_btn"), self.reset_reviewer_buttons_to_default),
+        ]
+        for label, handler in reset_actions:
+            button = QPushButton(label)
+            button.setStyleSheet(self._reset_button_stylesheet(min_height=38))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda _=False, h=handler, m=menu: (m.close(), h()))
+            card_layout.addWidget(button)
+
+        menu.adjustSize()
+        anchor_pos = anchor.mapToGlobal(QPoint(0, anchor.height() + 6))
+        x = anchor_pos.x() + anchor.width() - menu.width()
+        screen = anchor.screen().availableGeometry() if anchor.screen() else None
+        if screen is not None:
+            x = max(screen.left() + 8, min(x, screen.right() - menu.width() - 8))
+        menu.move(x, anchor_pos.y())
+        menu.show()
 
     def _sync_reviewer_bottom_bar_controls(self):
         if not hasattr(self, "reviewer_bar_effect_stack"):
@@ -946,20 +1351,37 @@ class PageReviewerMixin:
         inset = max(4, rect.height() * 0.14)
         gap = max(5, rect.height() * 0.12)
         pill_rect = QRectF(rect).adjusted(inset, inset, -inset, -inset)
-        pill_w = (pill_rect.width() - gap * 2) / 3
         samples = [
             ("new", self.current_config.get("onigiri_reviewer_stattxt_new", "9999")),
             ("learn", self.current_config.get("onigiri_reviewer_stattxt_learn", "46")),
             ("review", self.current_config.get("onigiri_reviewer_stattxt_review", "39")),
         ]
-        for index, (kind, text) in enumerate(samples):
-            bg, fg = self._bottom_bar_overview_count_colors(kind, theme_mode)
+        timer_position = self._reviewer_timer_position()
+        # All pills (counts + timer, when present) share the same width, matching
+        # the actual reviewer layout where every pill is an equal flex item.
+        items = list(samples)
+        if timer_position == "left":
+            items = [("timer", "0:06")] + items
+        elif timer_position == "right":
+            items = items + [("timer", "0:06")]
+        pill_w = (pill_rect.width() - gap * (len(items) - 1)) / len(items)
+        for index, (kind, text) in enumerate(items):
+            if kind == "timer":
+                bg, fg = self._bottom_bar_timer_colors(theme_mode)
+            else:
+                bg, fg = self._bottom_bar_overview_count_colors(kind, theme_mode)
             item_rect = QRectF(pill_rect.x() + index * (pill_w + gap), pill_rect.y(), pill_w, pill_rect.height())
             self._draw_bottom_bar_count_pill(painter, item_rect, str(text), bg, fg)
 
     def _draw_bottom_bar_preview_button(self, painter, rect, label, key, theme_mode, hovered=False, pre_answer_counts=False):
         if self.reviewer_btn_custom_enable_toggle.isChecked():
             bg, fg = self._bottom_bar_button_colors(key, theme_mode, hovered)
+            if pre_answer_counts:
+                preview_stattxt_mode = self._reviewer_stattxt_mode()
+                if (preview_stattxt_mode == "hover" and hovered) or preview_stattxt_mode == "fixed":
+                    bg = self._bottom_bar_stats_bar_bg_color(theme_mode)
+                    suffix = "dark" if theme_mode == "dark" else "light"
+                    fg = self._bottom_bar_color_value(f"other_btn_hover_text_{suffix}", "#3a3a3a" if suffix == "dark" else "#f0f0f0")
             radius = self.reviewer_btn_radius_spin.value()
         else:
             if hovered:
@@ -1063,16 +1485,26 @@ class PageReviewerMixin:
 
         if preview_mode == "pre_answer":
             specs = [("Edit", "other", 70, "edit"), ("Show Answer", "other", 176, "show_answer"), ("More", "other", 70, "more")]
+            if self._reviewer_timer_position() == "out":
+                specs.insert(len(specs) - 1, ("0:06", "other", 64, "timer_out"))
             total = sum(item[2] for item in specs)
             side_margin = max(18, width * 0.04)
             usable = max(1, width - side_margin * 2)
             scale = min(1.0, max(0.58, usable / max(1, total + 34)))
             button_gap = 17 * scale
             button_w_values = [max(50, base_w * scale + padding) for _, _, base_w, _ in specs]
-            left_x = side_margin
-            right_x = width - side_margin - button_w_values[2]
-            center_x = (width - button_w_values[1]) / 2
-            positions = [left_x, center_x, right_x]
+            show_answer_index = next(i for i, spec in enumerate(specs) if spec[3] == "show_answer")
+            positions = [0] * len(specs)
+            positions[show_answer_index] = (width - button_w_values[show_answer_index]) / 2
+            x = side_margin
+            for i in range(show_answer_index):
+                positions[i] = x
+                x += button_w_values[i] + button_gap
+            x = width - side_margin
+            for i in range(len(specs) - 1, show_answer_index, -1):
+                x -= button_w_values[i]
+                positions[i] = x
+                x -= button_gap
             for (label, key, _base_w, button_id), button_w, x in zip(specs, button_w_values, positions):
                 rect = QRectF(x, y, button_w, button_h)
                 theme_mode = mode
@@ -1491,12 +1923,6 @@ class PageReviewerMixin:
         self.reviewer_bar_height_spin.setValue(60)
         self._set_reviewer_stattxt_mode("hover")
 
-        getattr(self, "stattxt_color_light_color_input").setText("#666666")
-        if hasattr(self, "stattxt_color_light_circular_button"): getattr(self, "stattxt_color_light_circular_button").setColor("#666666")
-        
-        getattr(self, "stattxt_color_dark_color_input").setText("#aaaaaa")
-        if hasattr(self, "stattxt_color_dark_circular_button"): getattr(self, "stattxt_color_dark_circular_button").setColor("#aaaaaa")
-        
         # Reset Other Buttons
         getattr(self, "other_btn_bg_light_color_input").setText("#ffffff")
         if hasattr(self, "other_btn_bg_light_circular_button"): getattr(self, "other_btn_bg_light_circular_button").setColor("#ffffff")
@@ -1521,6 +1947,13 @@ class PageReviewerMixin:
         
         getattr(self, "other_btn_hover_text_dark_color_input").setText("#3a3a3a")
         if hasattr(self, "other_btn_hover_text_dark_circular_button"): getattr(self, "other_btn_hover_text_dark_circular_button").setColor("#3a3a3a")
+
+        # Reset Stats Bar Background
+        if hasattr(self, "show_answer_bar_bg_sync_toggle"):
+            self.show_answer_bar_bg_sync_toggle.setChecked(True)
+        if hasattr(self, "show_answer_bar_bg_light_color_input"):
+            getattr(self, "show_answer_bar_bg_light_color_input").setText("#2c2c2c")
+            getattr(self, "show_answer_bar_bg_dark_color_input").setText("#e0e0e0")
 
         # Reset Per Button Settings
         defaults = [
@@ -1579,17 +2012,8 @@ class PageReviewerMixin:
         bottom_bar_buttons_section = self.create_bottom_bar_background_and_buttons_section()
         layout.addWidget(bottom_bar_buttons_section)
 
-        # --- RESET BUTTONS ---
-        reset_buttons_layout = QHBoxLayout()
-        reset_buttons_layout.addStretch()
-
-        reset_reviewer_bg_button = QPushButton(tr("reset_reviewer_bg_default"))
-        reset_reviewer_bg_button.setStyleSheet(self._reset_button_stylesheet())
-        reset_reviewer_bg_button.clicked.connect(self.reset_reviewer_bg_to_default)
-        reset_buttons_layout.addWidget(reset_reviewer_bg_button)
-
-        layout.addLayout(reset_buttons_layout)
-        # --- END OF RESET BUTTONS ---
+        # The reset actions now live in the "Reset Options" pop-up in the
+        # Reviewer Buttons header (see _open_reviewer_reset_menu).
 
         layout.addStretch()
 
@@ -1597,7 +2021,9 @@ class PageReviewerMixin:
             tr("reviewer_background"): reviewer_bg_section,
             tr("bottom_bar_background_and_buttons", "Bottom Bar Background and Buttons"): bottom_bar_buttons_section,
         }
-        self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=2)
+        page_scroll = page.findChild(QScrollArea)
+        self._add_navigation_buttons(page, page_scroll, sections, buttons_per_row=2)
+        self._install_reviewer_sticky_header(page_scroll)
 
         return page
 
@@ -1959,6 +2385,7 @@ class PageReviewerMixin:
         self.reviewer_btn_height_spin.setValue(DEFAULTS.get("onigiri_reviewer_btn_height", 40))
         self.reviewer_bar_height_spin.setValue(DEFAULTS.get("onigiri_reviewer_bar_height", 60))
         self._set_reviewer_stattxt_mode(DEFAULTS.get("onigiri_reviewer_stattxt_mode", "hover"))
+        self._set_reviewer_timer_position(DEFAULTS.get("onigiri_reviewer_timer_position", "right"))
 
         def set_color(name, value):
             widget = getattr(self, f"{name}_color_input", None)
@@ -1969,8 +2396,6 @@ class PageReviewerMixin:
                 button.setColor(value)
 
         reviewer_color_defaults = {
-            "stattxt_color_light": "onigiri_reviewer_stattxt_color_light",
-            "stattxt_color_dark": "onigiri_reviewer_stattxt_color_dark",
             "other_btn_bg_light": "onigiri_reviewer_other_btn_bg_light",
             "other_btn_text_light": "onigiri_reviewer_other_btn_text_light",
             "other_btn_bg_dark": "onigiri_reviewer_other_btn_bg_dark",
@@ -1979,6 +2404,10 @@ class PageReviewerMixin:
             "other_btn_hover_text_light": "onigiri_reviewer_other_btn_hover_text_light",
             "other_btn_hover_bg_dark": "onigiri_reviewer_other_btn_hover_bg_dark",
             "other_btn_hover_text_dark": "onigiri_reviewer_other_btn_hover_text_dark",
+            "timer_bg_light": "onigiri_reviewer_timer_bg_light",
+            "timer_text_light": "onigiri_reviewer_timer_text_light",
+            "timer_bg_dark": "onigiri_reviewer_timer_bg_dark",
+            "timer_text_dark": "onigiri_reviewer_timer_text_dark",
         }
         for widget_prefix, config_key in reviewer_color_defaults.items():
             set_color(widget_prefix, DEFAULTS.get(config_key, self.current_config.get(config_key, "")))
@@ -2003,8 +2432,14 @@ class PageReviewerMixin2:
         self.current_config["onigiri_reviewer_bar_height"] = self.reviewer_bar_height_spin.value()
         if hasattr(self, "reviewer_stattxt_mode_group"):
             self.current_config["onigiri_reviewer_stattxt_mode"] = self._reviewer_stattxt_mode()
-        self.current_config["onigiri_reviewer_stattxt_color_light"] = getattr(self, "stattxt_color_light_color_input").text()
-        self.current_config["onigiri_reviewer_stattxt_color_dark"] = getattr(self, "stattxt_color_dark_color_input").text()
+
+        if hasattr(self, "reviewer_timer_position_group"):
+            self.current_config["onigiri_reviewer_timer_position"] = self._reviewer_timer_position()
+        if hasattr(self, "timer_bg_light_color_input"):
+            self.current_config["onigiri_reviewer_timer_bg_light"] = getattr(self, "timer_bg_light_color_input").text()
+            self.current_config["onigiri_reviewer_timer_text_light"] = getattr(self, "timer_text_light_color_input").text()
+            self.current_config["onigiri_reviewer_timer_bg_dark"] = getattr(self, "timer_bg_dark_color_input").text()
+            self.current_config["onigiri_reviewer_timer_text_dark"] = getattr(self, "timer_text_dark_color_input").text()
 
         if hasattr(self, "pre_count_new_bg_light_color_input") and getattr(self, "_bottom_bar_pre_count_colors_dirty", False):
             overview_style = self.current_config.setdefault("overview_style", {})
@@ -2035,7 +2470,14 @@ class PageReviewerMixin2:
         self.current_config["onigiri_reviewer_other_btn_hover_text_light"] = getattr(self, "other_btn_hover_text_light_color_input").text()
         self.current_config["onigiri_reviewer_other_btn_hover_bg_dark"] = getattr(self, "other_btn_hover_bg_dark_color_input").text()
         self.current_config["onigiri_reviewer_other_btn_hover_text_dark"] = getattr(self, "other_btn_hover_text_dark_color_input").text()
-        
+
+        # Save Stats Bar Background
+        if hasattr(self, "show_answer_bar_bg_sync_toggle"):
+            self.current_config["onigiri_reviewer_show_answer_bar_bg_sync"] = self.show_answer_bar_bg_sync_toggle.isChecked()
+        if hasattr(self, "show_answer_bar_bg_light_color_input"):
+            self.current_config["onigiri_reviewer_show_answer_bar_bg_light"] = getattr(self, "show_answer_bar_bg_light_color_input").text()
+            self.current_config["onigiri_reviewer_show_answer_bar_bg_dark"] = getattr(self, "show_answer_bar_bg_dark_color_input").text()
+
         for key in ["again", "hard", "good", "easy"]:
             self.current_config[f"onigiri_reviewer_btn_{key}_bg_light"] = getattr(self, f"btn_{key}_bg_light_color_input").text()
             self.current_config[f"onigiri_reviewer_btn_{key}_bg_dark"] = getattr(self, f"btn_{key}_bg_dark_color_input").text()

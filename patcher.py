@@ -4273,11 +4273,34 @@ def generate_icon_size_css():
     }
 
     css_rules = []
+    action_button_size = icon_configs["action_button"]["default"]
     for key, config in icon_configs.items():
         config_key = f"modern_menu_icon_size_{key}"
         size = mw.col.conf.get(config_key, config["default"])
+        if key == "action_button":
+            action_button_size = size
         selector = config["selector"]
         css_rules.append(f"{selector} {{ width: {size}px; height: {size}px; }}")
+
+    # Exposed as a CSS variable so the collapsed sidebar-toolbar mode (which
+    # renders Action Buttons as .action-btn/.action-icon via injector.js,
+    # separate from the .menu-item markup above) can also size off it.
+    css_rules.append(f":root {{ --onigiri-action-icon-size: {action_button_size}px; }}")
+
+    # Count badge (deck new/learn/review pill) size. The base rule in menu.css
+    # expresses height/min-width/padding in em relative to the badge font-size,
+    # so scaling only the font-size grows the whole pill proportionally.
+    badge_size_key = mw.col.conf.get("modern_menu_count_badge_size", "small")
+    if badge_size_key == "custom":
+        # Custom stores an absolute badge font-size in px.
+        badge_font = f"{mw.col.conf.get('modern_menu_count_badge_size_custom_px', 16)}px"
+    else:
+        badge_em = {"small": 0.75, "medium": 0.98, "big": 1.2}.get(badge_size_key, 0.75)
+        badge_font = f"{badge_em}em"
+    css_rules.append(
+        "tr.deck .new-count-bubble, tr.deck .review-count-bubble, "
+        f"tr.deck .learn-count-bubble {{ font-size: {badge_font} !important; }}"
+    )
 
     return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
 
@@ -4783,6 +4806,11 @@ def generate_font_css(addon_package):
         .deck-table a.deck {{
              font-size: var(--font-size-main) !important;
              color: var(--fg) !important;
+        }}
+
+        /* Action Buttons (Add/Browse/Stats/Sync/Settings/More/etc.) - list mode */
+        .menu-item {{
+             font-size: var(--font-size-main) !important;
         }}
         
         /* Titles (Subtle) - e.g. Today's Stats */
@@ -6212,6 +6240,34 @@ def generate_reviewer_buttons_css(conf):
     answer_hover_number_color_dark = "currentColor" if str(interval_color_dark).lower() == "#aaaaaa" else interval_color_dark
     native_number_display = "none" if custom_enabled else ("none" if stattxt_mode == "off" else "inline-block")
 
+    # Timer adaptation (Anki deck options "Show answer timer"):
+    # "right"/"left" show a neutral pill inside the Show Answer button, alongside the
+    # New/Learn/Review counts. "out" moves the timer to the bottom bar itself, styled
+    # like the other bottom-bar buttons (Edit/More), just to the left of Edit.
+    timer_position = conf.get("onigiri_reviewer_timer_position", "right")
+    if timer_position not in {"right", "left", "out"}:
+        timer_position = "right"
+    timer_bg_light = conf.get("onigiri_reviewer_timer_bg_light", "#e5e5e5")
+    timer_text_light = conf.get("onigiri_reviewer_timer_text_light", "#2c2c2c")
+    timer_bg_dark = conf.get("onigiri_reviewer_timer_bg_dark", "#3a3a3a")
+    timer_text_dark = conf.get("onigiri_reviewer_timer_text_dark", "#e0e0e0")
+
+    # Stats bar background: the Show Answer button's own background while the
+    # timer + New/Learn/Review pills panel is visible. Defaults to mirroring the
+    # "Other" hover background so existing setups look unchanged; can be
+    # decoupled into its own color via onigiri_reviewer_show_answer_bar_bg_sync.
+    if conf.get("onigiri_reviewer_show_answer_bar_bg_sync", True):
+        show_answer_bar_bg_light = conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")
+        show_answer_bar_bg_dark = conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")
+    else:
+        show_answer_bar_bg_light = conf.get("onigiri_reviewer_show_answer_bar_bg_light", "#2c2c2c")
+        show_answer_bar_bg_dark = conf.get("onigiri_reviewer_show_answer_bar_bg_dark", "#e0e0e0")
+    # Text must ride along with the stats bar background (not the button's idle
+    # text color) so the "Show Answer" label stays legible against it in "fixed"
+    # mode, where the button is never actually in its native :hover state.
+    show_answer_bar_text_light = conf.get("onigiri_reviewer_other_btn_hover_text_light", "#f0f0f0")
+    show_answer_bar_text_dark = conf.get("onigiri_reviewer_other_btn_hover_text_dark", "#3a3a3a")
+
     overview_style = conf.get("overview_style", {}) if isinstance(conf.get("overview_style", {}), dict) else {}
     overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
     palette_colors = conf.get("colors", {}) if isinstance(conf.get("colors", {}), dict) else {}
@@ -6376,6 +6432,43 @@ def generate_reviewer_buttons_css(conf):
             color: var(--onigiri-reviewer-review-count-fg) !important;
         }}
 
+        /* Timer adaptation: neutral pill shown inside the Show Answer button
+           (position "right"/"left"), grouped alongside the New/Learn/Review pills. */
+        :root {{
+            --onigiri-reviewer-timer-bg: {timer_bg_light};
+            --onigiri-reviewer-timer-fg: {timer_text_light};
+        }}
+
+        .nightMode, .night-mode {{
+            --onigiri-reviewer-timer-bg: {timer_bg_dark};
+            --onigiri-reviewer-timer-fg: {timer_text_dark};
+        }}
+
+        #outer .onigiri-timer-pill {{
+            flex: 1 1 0 !important;
+            min-width: 54px !important;
+            height: 100% !important;
+            border-radius: 999px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 0 12px !important;
+            font-weight: 800 !important;
+            font-size: clamp(13px, 0.95em, 19px) !important;
+            line-height: 1 !important;
+            box-sizing: border-box !important;
+            white-space: nowrap !important;
+            background: var(--onigiri-reviewer-timer-bg) !important;
+            color: var(--onigiri-reviewer-timer-fg) !important;
+        }}
+
+        /* Timer adaptation: position "out" moves the timer into the bottom bar,
+           to the left of Edit, styled exactly like the other bottom-bar buttons. */
+        #outer .onigiri-timer-out-btn {{
+            pointer-events: none !important;
+            cursor: default !important;
+        }}
+
         button[data-onigiri-ease],
         #outer button[data-onigiri-ease] {{
             position: relative !important;
@@ -6445,6 +6538,21 @@ def generate_reviewer_buttons_css(conf):
             width: 100% !important;
             height: {pre_answer_counts_fixed_height}px !important;
             margin: 2px 0 0 0 !important;
+        }}
+
+        /* "fixed" mode keeps the counts panel visible without hovering, so the
+           Show Answer button needs the stats bar background at all times, not
+           just on :hover. */
+        #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+            background: {show_answer_bar_bg_light} !important;
+            background-color: {show_answer_bar_bg_light} !important;
+            color: {show_answer_bar_text_light} !important;
+        }}
+
+        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+            background: {show_answer_bar_bg_dark} !important;
+            background-color: {show_answer_bar_bg_dark} !important;
+            color: {show_answer_bar_text_dark} !important;
         }}
         """)
 
@@ -6566,7 +6674,11 @@ def generate_reviewer_buttons_css(conf):
             border: 2px solid transparent !important;
             border-radius: {radius}px !important;
             box-shadow: none !important;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            /* Only color/background transition (quick hover feedback) - no
+               width/height/transform animation, so the Show Answer -> ease
+               buttons swap (and any button resize from width-locking) is instant
+               instead of visibly shrinking/growing. */
+            transition: background-color 0.08s ease, color 0.08s ease, border-color 0.08s ease, transform 0.08s ease !important;
             box-sizing: border-box !important;
             cursor: pointer !important;
             padding: {padding}px 15px !important;
@@ -6633,6 +6745,21 @@ def generate_reviewer_buttons_css(conf):
             color: {conf.get("onigiri_reviewer_other_btn_hover_text_dark", "#3a3a3a")} !important;
             transform: translateY(-2px) !important;
             box-shadow: none !important;
+        }}
+
+        /* Stats bar background: overrides the generic "Other" hover background
+           above, specifically for the Show Answer button while its pre-answer
+           counts panel is present. */
+        #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+            background: {show_answer_bar_bg_light} !important;
+            background-color: {show_answer_bar_bg_light} !important;
+            color: {show_answer_bar_text_light} !important;
+        }}
+
+        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+            background: {show_answer_bar_bg_dark} !important;
+            background-color: {show_answer_bar_bg_dark} !important;
+            color: {show_answer_bar_text_dark} !important;
         }}
 
         button:active {{
@@ -6729,10 +6856,17 @@ def generate_reviewer_buttons_css(conf):
             }}
             """)
 
-        scripts.append("""
+        _pre_answer_counts_script = """
         <script>
         (function() {
             const ANSWER_LABELS = {"1": "Again", "2": "Hard", "3": "Good", "4": "Easy"};
+            const ONIGIRI_TIMER_POSITION = "__ONIGIRI_TIMER_POSITION__";
+            // Anki's native New/Learn/Review counts node lives inside the Show
+            // Answer button and is only scraped successfully once per card (any
+            // rebuild of the button wipes it for good). Cache the last real read so
+            // a later empty scrape - caused by our own rebuild, not a real change -
+            // doesn't blank the pills out.
+            let onigiriLastKnownStats = null;
 
             function cleanText(value) {
                 return (value || '').replace(/\\s+/g, ' ').trim();
@@ -6810,6 +6944,47 @@ def generate_reviewer_buttons_css(conf):
 
             function findNativeNumberInsideButton(btn) {
                 return Array.from(btn.querySelectorAll('.nobold')).find(node => !node.classList.contains('onigiri-answer-hover-number'));
+            }
+
+            // Anki's own "Show answer timer" (deck options > Timers) renders a
+            // ticking mm:ss counter somewhere in the bottom toolbar. We don't rely
+            // on a fixed id/class (it has changed across Anki versions) - instead we
+            // look for a leaf element whose own text matches the mm:ss shape, which
+            // intervals/counts never do. Scoped to #outer so we never touch card text.
+            function isOnigiriTimerText(text) {
+                return /^\d{1,2}:\d{2}$/.test(text);
+            }
+
+            function findOnigiriNativeTimerNode() {
+                const outer = document.getElementById('outer');
+                if (!outer) return null;
+                const nodes = outer.querySelectorAll('*');
+                for (const el of nodes) {
+                    if (el.closest('.onigiri-timer-pill, .onigiri-timer-out-btn')) continue;
+                    if (el.children.length > 0) continue;
+                    if (isOnigiriTimerText(cleanText(el.textContent))) return el;
+                }
+                return null;
+            }
+
+            function ensureOnigiriTimerOutButton(text) {
+                const outer = document.getElementById('outer');
+                const lastCell = outer && outer.querySelector('table td:last-child');
+                if (!lastCell) return;
+                let btn = lastCell.querySelector('.onigiri-timer-out-btn');
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'onigiri-timer-out-btn onigiri-other-btn';
+                    btn.setAttribute('tabindex', '-1');
+                    btn.setAttribute('aria-hidden', 'true');
+                    lastCell.insertBefore(btn, lastCell.firstChild);
+                }
+                if (btn.textContent !== text) btn.textContent = text;
+            }
+
+            function removeOnigiriTimerOutButton() {
+                document.querySelectorAll('.onigiri-timer-out-btn').forEach(el => el.remove());
             }
 
             function findAnswerNumber(btn, sourceNode) {
@@ -6898,22 +7073,36 @@ def generate_reviewer_buttons_css(conf):
                 return nonUtility.sort((a, b) => buttonTextWithoutOnigiri(b).length - buttonTextWithoutOnigiri(a).length)[0] || null;
             }
 
-            function collectPreAnswerCounts() {
+            function collectPreAnswerCounts(timerNode, timerText) {
                 // Anki can render the new/learn/review counts either as separate
                 // .stattxt nodes ("7268", "+", "68", "+", "5") or as a single
-                // .stattxt node whose textContent is already "7268 + 68 + 5".
-                // Joining every matched node's text and splitting on "+" handles
-                // both shapes and always yields one number per pill.
+                // .stattxt node whose textContent is already "7268 + 68 + 5" - and
+                // on builds with the answer timer on, that same node (or a sibling
+                // sharing the .stattxt class) can also carry the "0:09" timer text.
+                // Rather than dropping a whole node when it merely contains the
+                // timer text, cut just that substring out before splitting, so real
+                // counts sharing a node with the timer still come through.
                 const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
                     .filter(node => !node.closest('.onigiri-pre-answer-counts'));
                 nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
-                const combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
-                return combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
+                let combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
+                if (timerNode && timerText) {
+                    combined = combined.split(timerText).map(part => cleanText(part)).filter(Boolean).join(' ');
+                }
+                const scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
+                if (scraped.length > 0) {
+                    onigiriLastKnownStats = scraped;
+                    return scraped;
+                }
+                // Empty scrape: almost always means our own earlier rebuild already
+                // wiped the native counts node for this card, not that the counts
+                // themselves vanished. Fall back to the last real read instead of
+                // reporting "no counts" (which would blank the pills every tick).
+                return onigiriLastKnownStats || [];
             }
 
             function prepareShowAnswerCounts(buttons) {
                 stripBottomBarTooltips(document);
-                const stats = collectPreAnswerCounts();
                 const showButton = findShowAnswerButton(buttons);
                 document.querySelectorAll('#outer button.onigiri-show-answer-btn').forEach(btn => {
                     if (btn !== showButton) {
@@ -6922,27 +7111,85 @@ def generate_reviewer_buttons_css(conf):
                         if (counts) counts.remove();
                     }
                 });
-                if (!showButton || stats.length === 0) return;
-                const joined = stats.join('|');
+
+                const timerNode = findOnigiriNativeTimerNode();
+                const timerText = timerNode ? cleanText(timerNode.textContent) : '';
+                const stats = collectPreAnswerCounts(timerNode, timerText);
+                if (timerNode) forceHideNativeNumberElement(timerNode, 'onigiri-native-timer-source');
+
+                if (ONIGIRI_TIMER_POSITION === 'out') {
+                    if (timerNode) ensureOnigiriTimerOutButton(timerText);
+                    else removeOnigiriTimerOutButton();
+                } else {
+                    removeOnigiriTimerOutButton();
+                }
+
+                const hasInsideTimer = !!timerNode && ONIGIRI_TIMER_POSITION !== 'out';
+
+                if (!showButton || (stats.length === 0 && !hasInsideTimer)) {
+                    if (showButton) {
+                        const counts = showButton.querySelector('.onigiri-pre-answer-counts');
+                        if (counts && !showButton.querySelector('.onigiri-count-pill')) counts.remove();
+                    }
+                    return;
+                }
+
+                // Only the counts and whether the timer is inside the button define
+                // the button's *structure* - the timer's own ticking text must NOT
+                // be part of this key. A structural rebuild wipes the button's
+                // children (showButton.textContent = ''), which permanently destroys
+                // Anki's native counts element nested inside it (it can only be
+                // scraped once per card); if the timer text were included here, the
+                // button would rebuild every second and lose the counts after the
+                // very first tick. The timer text itself is still updated live,
+                // in place, below, without triggering a rebuild.
+                const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0');
                 const label = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
                 showButton.classList.add('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
                 showButton.setAttribute('data-onigiri-show-answer-label', label || 'Show Answer');
-                if (showButton.getAttribute('data-onigiri-pre-answer-counts') === joined && showButton.querySelector('.onigiri-pre-answer-counts')) return;
-                showButton.setAttribute('data-onigiri-pre-answer-counts', joined);
+                if (showButton.getAttribute('data-onigiri-pre-answer-counts') === structureKey && showButton.querySelector('.onigiri-pre-answer-counts')) {
+                    if (hasInsideTimer) {
+                        const timerPill = showButton.querySelector('.onigiri-timer-pill');
+                        if (timerPill && timerPill.textContent !== timerText) timerPill.textContent = timerText;
+                    }
+                    return;
+                }
+                showButton.setAttribute('data-onigiri-pre-answer-counts', structureKey);
                 showButton.textContent = '';
                 const labelSpan = document.createElement('span');
                 labelSpan.className = 'onigiri-show-answer-label';
                 labelSpan.textContent = label || 'Show Answer';
                 showButton.appendChild(labelSpan);
+
                 const panel = document.createElement('span');
                 panel.className = 'onigiri-pre-answer-counts';
                 panel.setAttribute('aria-hidden', 'true');
-                ['new', 'learn', 'review'].forEach((kind, index) => {
-                    const pill = document.createElement('span');
-                    pill.className = 'onigiri-count-pill onigiri-count-pill-' + kind;
-                    pill.textContent = stats[index] || '0';
-                    panel.appendChild(pill);
-                });
+
+                function appendCountPills(container) {
+                    ['new', 'learn', 'review'].forEach((kind, index) => {
+                        const pill = document.createElement('span');
+                        pill.className = 'onigiri-count-pill onigiri-count-pill-' + kind;
+                        pill.textContent = stats[index] || '0';
+                        container.appendChild(pill);
+                    });
+                }
+
+                function makeTimerPill() {
+                    const timerPill = document.createElement('span');
+                    timerPill.className = 'onigiri-timer-pill';
+                    timerPill.textContent = timerText;
+                    return timerPill;
+                }
+
+                if (hasInsideTimer && stats.length > 0) {
+                    if (ONIGIRI_TIMER_POSITION === 'left') panel.appendChild(makeTimerPill());
+                    appendCountPills(panel);
+                    if (ONIGIRI_TIMER_POSITION === 'right') panel.appendChild(makeTimerPill());
+                } else if (hasInsideTimer) {
+                    panel.appendChild(makeTimerPill());
+                } else {
+                    appendCountPills(panel);
+                }
                 showButton.appendChild(panel);
             }
 
@@ -6972,7 +7219,8 @@ def generate_reviewer_buttons_css(conf):
             observer.observe(document.body, { childList: true, subtree: true });
         })();
         </script>
-        """)
+        """
+        scripts.append(_pre_answer_counts_script.replace("__ONIGIRI_TIMER_POSITION__", timer_position))
 
     scripts.append("""
     <script>

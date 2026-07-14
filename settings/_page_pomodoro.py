@@ -16,6 +16,7 @@
 # designer - reused as-is rather than reimplemented.
 from ._common import *
 from ._icon_picker import *
+from ._font_picker import FontPickerDialog
 from ._widgets import *
 from ._layout_base import *
 
@@ -180,43 +181,121 @@ class PagePomodoroMixin:
         )
         settings = self.pomodoro_settings
 
-        self.pomodoro_focus_spin = QSpinBox()
-        self.pomodoro_focus_spin.setRange(1, 180)
-        self.pomodoro_focus_spin.setValue(int(settings.get("focus_minutes", 25)))
-        section.content_layout.addWidget(self._create_tools_control_row(
-            tr("pomodoro_focus", "Focus"),
-            tr("pomodoro_focus_desc", "Length of a focus session, in minutes."),
-            self.pomodoro_focus_spin,
-        ))
+        self.pomodoro_focus_spin = self._make_pomodoro_duration_spin(1, 180, int(settings.get("focus_minutes", 25)))
+        self.pomodoro_short_break_spin = self._make_pomodoro_duration_spin(1, 60, int(settings.get("short_break_minutes", 5)))
+        self.pomodoro_long_break_spin = self._make_pomodoro_duration_spin(1, 90, int(settings.get("long_break_minutes", 15)))
+        self.pomodoro_cycle_spin = self._make_pomodoro_duration_spin(1, 12, int(settings.get("sessions_until_long_break", 4)))
 
-        self.pomodoro_short_break_spin = QSpinBox()
-        self.pomodoro_short_break_spin.setRange(1, 60)
-        self.pomodoro_short_break_spin.setValue(int(settings.get("short_break_minutes", 5)))
-        section.content_layout.addWidget(self._create_tools_control_row(
-            tr("pomodoro_short_break", "Short Break"),
-            tr("pomodoro_short_break_desc", "Length of a short break, in minutes."),
-            self.pomodoro_short_break_spin,
-        ))
+        min_unit = tr("pomodoro_unit_min", "min")
+        cards = [
+            self._create_pomodoro_duration_card(
+                tr("pomodoro_focus", "Focus"),
+                tr("pomodoro_focus_desc", "Length of a focus session, in minutes."),
+                self.pomodoro_focus_spin, min_unit),
+            self._create_pomodoro_duration_card(
+                tr("pomodoro_short_break", "Short Break"),
+                tr("pomodoro_short_break_desc", "Length of a short break, in minutes."),
+                self.pomodoro_short_break_spin, min_unit),
+            self._create_pomodoro_duration_card(
+                tr("pomodoro_long_break", "Long Break"),
+                tr("pomodoro_long_break_desc", "Length of a long break, in minutes."),
+                self.pomodoro_long_break_spin, min_unit),
+            self._create_pomodoro_duration_card(
+                tr("pomodoro_sessions_until_long", "Sessions until Long Break"),
+                tr("pomodoro_sessions_until_long_desc", "Focus sessions completed before a long break is offered."),
+                self.pomodoro_cycle_spin, tr("pomodoro_unit_sessions", "sessions")),
+        ]
 
-        self.pomodoro_long_break_spin = QSpinBox()
-        self.pomodoro_long_break_spin.setRange(1, 90)
-        self.pomodoro_long_break_spin.setValue(int(settings.get("long_break_minutes", 15)))
-        section.content_layout.addWidget(self._create_tools_control_row(
-            tr("pomodoro_long_break", "Long Break"),
-            tr("pomodoro_long_break_desc", "Length of a long break, in minutes."),
-            self.pomodoro_long_break_spin,
-        ))
-
-        self.pomodoro_cycle_spin = QSpinBox()
-        self.pomodoro_cycle_spin.setRange(1, 12)
-        self.pomodoro_cycle_spin.setValue(int(settings.get("sessions_until_long_break", 4)))
-        section.content_layout.addWidget(self._create_tools_control_row(
-            tr("pomodoro_sessions_until_long", "Sessions until Long Break"),
-            tr("pomodoro_sessions_until_long_desc", "Focus sessions completed before a long break is offered."),
-            self.pomodoro_cycle_spin,
-        ))
+        grid_wrap = QWidget()
+        grid_wrap.setStyleSheet("background: transparent;")
+        grid = QGridLayout(grid_wrap)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        for index, card in enumerate(cards):
+            grid.addWidget(card, index // 2, index % 2)
+        section.content_layout.addWidget(grid_wrap)
 
         return section
+
+    def _make_pomodoro_duration_spin(self, minimum, maximum, value):
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setValue(value)
+        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spin.setMinimumHeight(56)
+        spin.setMaximumHeight(56)
+        spin.setFixedWidth(96)
+        spin.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        return spin
+
+    def _create_pomodoro_duration_card(self, title, description, spinbox, unit):
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#ffffff")
+        card_border = palette.get("--border", "#dcdde1")
+        hover_bg = palette.get("--hover-bg", "#f2f2f2")
+        surface = palette.get("--highlight-bg", palette.get("--hover-bg", "#f2f2f2"))
+        text_color = palette.get("--fg", "#202124")
+        subtle_color = palette.get("--fg-subtle", "#6f7177")
+        accent = self._settings_accent_color()
+        if type(accent) is QColor:
+            accent = accent.name()
+
+        card = QFrame()
+        card.setObjectName("pomodoroDurationCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        card.setStyleSheet(f"""
+            QFrame#pomodoroDurationCard {{
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 20px;
+            }}
+            QFrame#pomodoroDurationCard:hover {{
+                background-color: {hover_bg};
+            }}
+        """)
+
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(18, 16, 18, 16)
+        outer.setSpacing(12)
+
+        title_label = QLabel(title)
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(f"background: transparent; border: none; color: {text_color}; font-size: 15px; font-weight: 700;")
+        outer.addWidget(title_label)
+
+        value_row = QHBoxLayout()
+        value_row.setContentsMargins(0, 0, 0, 0)
+        value_row.setSpacing(8)
+        spinbox.setStyleSheet(f"""
+            QSpinBox {{
+                background: {surface};
+                border: 1px solid {card_border};
+                border-radius: 16px;
+                color: {text_color};
+                font-size: 26px;
+                font-weight: 800;
+                padding: 2px 4px;
+            }}
+            QSpinBox:focus {{ border: 1px solid {accent}; }}
+        """)
+        unit_label = QLabel(unit)
+        unit_label.setStyleSheet(f"background: transparent; border: none; color: {subtle_color}; font-size: 13px; font-weight: 600;")
+        value_row.addWidget(spinbox, 0, Qt.AlignmentFlag.AlignVCenter)
+        value_row.addWidget(unit_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        value_row.addStretch()
+        outer.addLayout(value_row)
+
+        desc_label = QLabel(description)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(f"background: transparent; border: none; color: {subtle_color}; font-size: 12px;")
+        outer.addWidget(desc_label)
+        outer.addStretch()
+
+        return card
 
     # ─── Options ────────────────────────────────────────────────────────────
 
@@ -234,6 +313,20 @@ class PagePomodoroMixin:
             tr("pomodoro_show_in_header", "Show in Reviewer header"),
             tr("pomodoro_show_in_header_desc", "Display the Pomodoro button in the Reviewer's top bar."),
             self.pomodoro_show_in_header_toggle,
+        ))
+
+        self.pomodoro_auto_start_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.pomodoro_auto_start_toggle.setChecked(
+            bool(self.pomodoro_settings.get("auto_start_next_phase", True))
+        )
+        section.content_layout.addWidget(self._create_tools_toggle_row(
+            tr("pomodoro_auto_start", "Auto-start next timer"),
+            tr(
+                "pomodoro_auto_start_desc",
+                "Automatically start the next timer when the current one ends. "
+                "Turn off to pause between phases until you press play.",
+            ),
+            self.pomodoro_auto_start_toggle,
         ))
         return section
 
@@ -315,27 +408,110 @@ class PagePomodoroMixin:
         picker.exec()
 
     def _create_pomodoro_font_control(self):
-        settings = self.pomodoro_settings
-        combo = QComboBox()
-        combo.setMinimumWidth(200)
-        all_fonts = get_all_fonts(self.addon_path)
-        ordered_keys = ["system", "instrument_serif", "nunito", "montserrat", "space_mono", "silkscreen"]
-        ordered_keys += sorted(key for key, info in all_fonts.items() if info.get("user"))
-        current_key = settings.get("font_key", "system")
-        for font_key in ordered_keys:
-            info = all_fonts.get(font_key)
-            if not info:
-                continue
-            label = tr("system") if font_key == "system" else info.get("name", font_key)
-            combo.addItem(label, font_key)
-        idx = combo.findData(current_key)
-        combo.setCurrentIndex(idx if idx >= 0 else 0)
-        self.pomodoro_font_combo = combo
-        return self._create_tools_control_row(
-            tr("pomodoro_font", "Timer Font"),
-            tr("pomodoro_font_desc", "Font used for the countdown numbers."),
-            combo,
+        palette = self._settings_palette()
+        card_bg = palette.get("--canvas-inset", "#ffffff")
+        card_border = palette.get("--border", "#dcdde1")
+        hover_bg = palette.get("--hover-bg", "#f2f2f2")
+        text_color = palette.get("--fg", "#202124")
+        subtle_color = palette.get("--fg-subtle", "#6f7177")
+
+        self.selected_pomodoro_font_key = self.pomodoro_settings.get("font_key", "system") or "system"
+
+        card = _PomodoroClickableCard(self._open_pomodoro_font_picker)
+        card.setObjectName("pomodoroFontCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        card.setMinimumHeight(60)
+        card.setStyleSheet(f"""
+            QFrame#pomodoroFontCard {{ background-color: {card_bg}; border: 1px solid {card_border}; border-radius: 16px; }}
+            QFrame#pomodoroFontCard:hover {{ background-color: {hover_bg}; }}
+        """)
+
+        row = QHBoxLayout(card)
+        row.setContentsMargins(14, 8, 12, 8)
+        row.setSpacing(12)
+
+        preview = QLabel("12:34")
+        preview.setFixedWidth(64)
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setStyleSheet(f"background: transparent; border: none; color: {text_color};")
+
+        text_col = QVBoxLayout()
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
+        name_label = QLabel(tr("pomodoro_font", "Timer Font"))
+        name_label.setStyleSheet(f"background: transparent; border: none; font-weight: bold; color: {text_color}; font-size: 13px;")
+        value_label = QLabel()
+        value_label.setStyleSheet(f"background: transparent; border: none; color: {subtle_color}; font-size: 10px;")
+        text_col.addWidget(name_label)
+        text_col.addWidget(value_label)
+
+        row.addLayout(text_col, 1)
+        row.addWidget(preview)
+
+        self.pomodoro_font_preview_label = preview
+        self.pomodoro_font_value_label = value_label
+        self._refresh_pomodoro_font_card()
+        return card
+
+    def _pomodoro_font_family(self, font_key):
+        if not font_key or font_key == "system":
+            return ""
+        cache = getattr(self, "_font_family_cache", None)
+        if cache is None:
+            cache = self._font_family_cache = {}
+        if font_key in cache:
+            return cache[font_key]
+        info = get_all_fonts(self.addon_path).get(font_key, {})
+        font_file = info.get("file")
+        if not font_file:
+            cache[font_key] = info.get("family", "")
+            return cache[font_key]
+        if info.get("user"):
+            path = os.path.join(self.addon_path, "user_files", "fonts", font_file)
+        else:
+            path = os.path.join(self.addon_path, "system_files", "fonts", "system_fonts", font_file)
+        if not os.path.exists(path):
+            cache[font_key] = info.get("family", "")
+            return cache[font_key]
+        font_id = QFontDatabase.addApplicationFont(path)
+        families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
+        cache[font_key] = families[0] if families else info.get("family", "")
+        return cache[font_key]
+
+    def _refresh_pomodoro_font_card(self):
+        key = getattr(self, "selected_pomodoro_font_key", "system") or "system"
+        info = get_all_fonts(self.addon_path).get(key, {})
+        display = tr("system") if key == "system" else info.get("name", key)
+        value_label = getattr(self, "pomodoro_font_value_label", None)
+        if value_label is not None:
+            value_label.setText(f"{display} · {tr('click_to_change')}")
+        preview = getattr(self, "pomodoro_font_preview_label", None)
+        if preview is not None:
+            family = self._pomodoro_font_family(key)
+            font = QFont()
+            if family:
+                font.setFamily(family)
+            font.setPixelSize(20)
+            font.setBold(True)
+            preview.setFont(font)
+
+    def _open_pomodoro_font_picker(self):
+        dialog = FontPickerDialog(
+            getattr(self, "selected_pomodoro_font_key", "system"),
+            self.addon_path,
+            self,
+            sample_text="12:34",
+            title=tr("pomodoro_font", "Timer Font"),
         )
+
+        def on_selected(font_key):
+            self.selected_pomodoro_font_key = font_key or "system"
+            self._refresh_pomodoro_font_card()
+
+        dialog.fontSelected.connect(on_selected)
+        dialog.exec()
 
     # ─── Appearance panel (mirrors "Box Color and Effect") ─────────────────
 
@@ -661,8 +837,8 @@ class PagePomodoroMixin:
             line_edit.setText("")
             self.pomodoro_color_swatch_refreshers[key]()
         self.selected_pomodoro_icon = pomodoro.DEFAULT_ICON
-        idx = self.pomodoro_font_combo.findData("system")
-        self.pomodoro_font_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.selected_pomodoro_font_key = "system"
+        self._refresh_pomodoro_font_card()
         if hasattr(self, "pomodoro_dynamic_mode_toggle"):
             self.pomodoro_dynamic_mode_toggle.setChecked(True)
         if hasattr(self, "pomodoro_opacity_slider"):
@@ -750,8 +926,9 @@ class PagePomodoroMixin:
         settings["short_break_minutes"] = self.pomodoro_short_break_spin.value()
         settings["long_break_minutes"] = self.pomodoro_long_break_spin.value()
         settings["sessions_until_long_break"] = self.pomodoro_cycle_spin.value()
+        settings["auto_start_next_phase"] = self.pomodoro_auto_start_toggle.isChecked()
         settings["icon"] = self.selected_pomodoro_icon or pomodoro.DEFAULT_ICON
-        settings["font_key"] = self.pomodoro_font_combo.currentData() or "system"
+        settings["font_key"] = getattr(self, "selected_pomodoro_font_key", "system") or "system"
         settings["sound_enabled"] = self.pomodoro_sound_toggle.isChecked()
         settings["sound_file"] = self.selected_pomodoro_sound_file or ""
         settings["dynamic_mode"] = self.pomodoro_dynamic_mode_toggle.isChecked()

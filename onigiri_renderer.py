@@ -264,11 +264,15 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
         'import_file': 'import_file.svg',
     }
     
+    # Icon size comes from the "Action Button Icons" setting (Icons tab); falls
+    # back to 16px, matching generate_icon_size_css()'s default for this key.
+    icon_size = _col_conf_get("modern_menu_icon_size_action_button", 16)
+
     # 1. Standard Actions
     for action_id, filename in default_icons.items():
         # Check for custom icon
         custom_file = _col_conf_get(f"modern_menu_icon_{action_id}", "")
-        
+
         if custom_file:
             icon_url = f"{user_icon_base}{custom_file}"
         else:
@@ -282,8 +286,8 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
         css = f"""
         .action-{action_id} .icon {{
             display: inline-block !important;
-            width: 16px !important;
-            height: 16px !important;
+            width: {icon_size}px !important;
+            height: {icon_size}px !important;
             mask-image: url('{icon_url}') !important;
             -webkit-mask-image: url('{icon_url}') !important;
             mask-size: contain !important;
@@ -1019,7 +1023,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             """
 
     # --- Part 3: Assemble the Final Stats Block ---
-    stats_title = _col_conf_get("modern_menu_statsTitle", "") or config.DEFAULTS["statsTitle"]
+    # None == key never set (fresh install) -> show the welcome default.
+    # "" == user cleared the title on purpose -> keep it blank.
+    stats_title = _col_conf_get("modern_menu_statsTitle", None)
+    if stats_title is None:
+        stats_title = config.DEFAULTS["statsTitle"]
     title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
 
     # Combine both Onigiri and External widgets into a single unified grid
@@ -2338,7 +2346,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         theme_css += f"""
         <style id="profile-name-color">
             .profile-bar .profile-name {{ color: {name_light} !important; text-shadow: none !important; }}
-            body.night-mode .profile-bar .profile-name {{ color: {name_dark} !important; }}
+            .night-mode .profile-bar .profile-name,
+            .nightMode .profile-bar .profile-name {{ color: {name_dark} !important; }}
         </style>
         """
 

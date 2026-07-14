@@ -642,7 +642,8 @@ body {
     color: var(--text-fg, #111827);
     text-shadow: none;
 }
-body.night-mode .profile-bar.with-image-bg.dynamic-default-bg .profile-name {
+.night-mode .profile-bar.with-image-bg.dynamic-default-bg .profile-name,
+.nightMode .profile-bar.with-image-bg.dynamic-default-bg .profile-name {
     color: var(--text-fg, #f9fafb);
 }
 
@@ -1992,26 +1993,31 @@ td.count {
     transition: background-color 0.2s, border-color 0.2s;
 }
 
-/* Action Buttons Specifics */
+/* Action Buttons Specifics - box grows with the configured icon size
+   (Icons tab > Action Button Icons) instead of staying a fixed 24px. */
 .sidebar-toolbar .action-btn {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: max(24px, calc(var(--onigiri-action-icon-size, 14px) + 10px));
+    height: max(24px, calc(var(--onigiri-action-icon-size, 14px) + 10px));
 }
 
 .sidebar-toolbar.sidebar-actions-inline .action-btn {
     width: 100%;
     min-width: 0;
-    height: 32px;
+    height: max(32px, calc(var(--onigiri-action-icon-size, 14px) + 18px));
     box-sizing: border-box;
 }
 
-/* Mask-based action icon — color controlled by background-color */
-.sidebar-toolbar .action-btn .action-icon,
-.more-dropdown-menu .menu-item .action-icon {
-    width: 14px;
-    height: 14px;
+/* Mask-based action icon — color controlled by background-color.
+   Sized off --onigiri-action-icon-size (Icons tab > Action Button Icons),
+   set in patcher.generate_icon_size_css(). The "More" dropdown's icons stay
+   at the fixed default since that menu reuses .menu-item's own icon sizing. */
+.sidebar-toolbar .action-btn .action-icon {
+    width: var(--onigiri-action-icon-size, 14px);
+    height: var(--onigiri-action-icon-size, 14px);
     flex-shrink: 0;
     display: block;
     background-color: var(--icon-color, #888888);

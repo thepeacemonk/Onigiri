@@ -1285,6 +1285,7 @@ class PageSidebarMixin:
             tr("deck_icons"): deck_section
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
+        self._install_deck_icon_sticky_preview(page)
 
         return page
 
@@ -1562,6 +1563,12 @@ class PageSidebarMixin:
              
         if hasattr(self, "indentation_custom_spin"):
              self.current_config["deck_indentation_custom_px"] = self.indentation_custom_spin.value()
+
+        # Save Count Badge Size
+        if hasattr(self, "count_badge_size_group") and self.count_badge_size_group.checkedButton():
+             mw.col.conf["modern_menu_count_badge_size"] = self.count_badge_size_group.checkedButton().property("badge_size")
+        if hasattr(self, "count_badge_custom_spin"):
+             mw.col.conf["modern_menu_count_badge_size_custom_px"] = self.count_badge_custom_spin.value()
         
         # Save Hide Icon Toggles
         if hasattr(self, "hide_folder_cb"):

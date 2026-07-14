@@ -56,6 +56,10 @@ DEFAULT_SETTINGS = {
     "short_break_minutes": 5,
     "long_break_minutes": 15,
     "sessions_until_long_break": 4,
+    # When True (default), the next phase begins running automatically the
+    # moment the current one ends. When False, the next phase is prepared but
+    # left paused so the user must press play to continue (see _advance).
+    "auto_start_next_phase": True,
     "icon": DEFAULT_ICON,
     "font_key": "system",
     "sound_enabled": True,
@@ -446,7 +450,9 @@ class PomodoroTimer(QObject):
         self.tick.emit()
 
     def skip(self):
-        self._advance()
+        # Skip is an explicit user action, so it always starts the next phase
+        # immediately regardless of the auto-start-next preference.
+        self._advance(auto_start=True)
 
     def _on_tick(self):
         self.remaining_seconds -= 1
@@ -463,9 +469,9 @@ class PomodoroTimer(QObject):
             _play_sound(self.settings)
         else:
             tooltip(tr("pomodoro_break_done", "Break's over. Ready to focus?"))
-        self._advance()
+        self._advance(auto_start=self.settings.get("auto_start_next_phase", True))
 
-    def _advance(self):
+    def _advance(self, auto_start=True):
         if self.session_type == "focus":
             self.focus_count += 1
             if self.focus_count >= self.settings["sessions_until_long_break"]:
@@ -477,8 +483,11 @@ class PomodoroTimer(QObject):
             self.session_type = "focus"
         self._phase_started_at = None
         self.remaining_seconds = self.phase_length_seconds()
-        self.running = True
-        self._qtimer.start()
+        self.running = bool(auto_start)
+        if self.running:
+            self._qtimer.start()
+        else:
+            self._qtimer.stop()
         self.phase_changed.emit()
 
 

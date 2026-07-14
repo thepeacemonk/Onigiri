@@ -68,6 +68,8 @@ CHECK_ICON_PATH = _system_icon_path("check-simple.svg")
 
 def _normalized_hex(value, fallback=DEFAULT_COLOR):
     text = str(value or "").strip()
+    if text.lower() == "transparent":
+        return "transparent"
     if text and not text.startswith("#") and len(text) in (3, 6):
         text = f"#{text}"
     color = QColor(text)
@@ -263,6 +265,27 @@ class _GradientSlider(QWidget):
         painter.drawEllipse(center, radius, radius)
 
 
+def _paint_checkerboard(painter, rect, dark, cell=5):
+    path = QPainterPath()
+    path.addEllipse(QRectF(rect))
+    painter.save()
+    painter.setClipPath(path)
+    light = QColor(70, 70, 70) if dark else QColor(230, 230, 230)
+    shade = QColor(45, 45, 45) if dark else QColor(190, 190, 190)
+    y = 0.0
+    row = 0
+    while y < rect.height():
+        x = 0.0
+        col = 0
+        while x < rect.width():
+            painter.fillRect(QRectF(rect.x() + x, rect.y() + y, cell, cell), light if (row + col) % 2 == 0 else shade)
+            x += cell
+            col += 1
+        y += cell
+        row += 1
+    painter.restore()
+
+
 class _PreviewCircle(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -277,9 +300,36 @@ class _PreviewCircle(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(1, 1, -1, -1)
+        if self._color.alpha() == 0:
+            _paint_checkerboard(painter, rect, _is_dark_mode())
+            return
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self._color)
         painter.drawEllipse(rect)
+
+
+class _TransparentSwatchButton(QWidget):
+    clicked = pyqtSignal()
+
+    def __init__(self, dark=False, parent=None):
+        super().__init__(parent)
+        self.dark = dark
+        self.setFixedSize(28, 28)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Make transparent")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        _paint_checkerboard(painter, rect, self.dark)
+        painter.setPen(QPen(QColor(255, 255, 255, 90) if self.dark else QColor(0, 0, 0, 60), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(rect)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
 
 
 class _FavoriteSlot(QWidget):
@@ -395,12 +445,13 @@ class _IconButton(QWidget):
 class _OnigiriPalettePopup(QFrame):
     finished = pyqtSignal(str, bool)
 
-    def __init__(self, initial_color, parent=None, anchor=None):
+    def __init__(self, initial_color, parent=None, anchor=None, allow_transparent=False):
         super().__init__(parent)
         self._anchor = anchor
         self._dark = _is_dark_mode()
         self._finished = False
         self._event_filter_installed = False
+        self._allow_transparent = allow_transparent
         self._color = QColor(_normalized_hex(initial_color))
         self._favorites = _load_favorites()
 
@@ -519,6 +570,12 @@ class _OnigiriPalettePopup(QFrame):
         )
         self.hex_input.textChanged.connect(self._set_color_from_hex)
         hex_layout.addWidget(self.hex_input, 1)
+
+        if self._allow_transparent:
+            self.transparent_button = _TransparentSwatchButton(self._dark, hex_frame)
+            self.transparent_button.clicked.connect(self._select_transparent)
+            hex_layout.addWidget(self.transparent_button)
+
         layout.addWidget(hex_frame)
 
         self.favorites_grid = QGridLayout()
@@ -615,10 +672,16 @@ class _OnigiriPalettePopup(QFrame):
         super().closeEvent(event)
 
     def accept(self):
-        self._finish(self._color.name().upper(), True)
+        color_hex = "transparent" if self._color.alpha() == 0 else self._color.name().upper()
+        self._finish(color_hex, True)
 
     def cancel(self):
         self._finish(self._color.name().upper(), False)
+
+    def _select_transparent(self):
+        self._color = QColor(0, 0, 0, 0)
+        self._sync_widgets()
+        self.accept()
 
     def _finish(self, color_hex, accepted):
         if self._finished:
@@ -725,7 +788,7 @@ class _OnigiriPalettePopup(QFrame):
 
 class OnigiriColorDialog:
     @staticmethod
-    def getColor(initial_color, parent=None, anchor=None):
+    def getColor(initial_color, parent=None, anchor=None, allow_transparent=False):
         app = QApplication.instance()
         if app is None:
             return _normalized_hex(initial_color), False
@@ -738,7 +801,7 @@ class OnigiriColorDialog:
 
         result = {"color": _normalized_hex(initial_color), "ok": False}
         loop = QEventLoop()
-        popup = _OnigiriPalettePopup(initial_color, root, anchor=anchor)
+        popup = _OnigiriPalettePopup(initial_color, root, anchor=anchor, allow_transparent=allow_transparent)
 
         def finish(color_hex, accepted):
             result["color"] = color_hex

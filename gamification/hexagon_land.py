@@ -1722,7 +1722,7 @@ class HexagonLandManager:
 
         materials_text = ""
         if pending_mats:
-            materials_text = " e " + ", ".join(f"{amount} {key}" for key, amount in pending_mats.items())
+            materials_text = tr('hexland_and_connector', ' and ') + ", ".join(f"{amount} {key}" for key, amount in pending_mats.items())
         message = tr(
             'hexland_earned_session_tooltip',
             "Hexagon Land: Você ganhou {} Hex Coins{} nesta sessão!"

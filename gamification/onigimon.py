@@ -1415,8 +1415,11 @@ class OnigimonManager:
         name = self.companion_display_name(companion)
         
         if streak > 0:
-            self.last_message = f"Sequência de {streak} acerto(s) interrompida! Acerte cartas seguidas para o {name} encontrar itens."
-            self.notify("Sequência quebrada", self.last_message, companion.sprite_url)
+            self.last_message = tr(
+                "onigimon_streak_broken_body",
+                "{streak}-answer streak broken! Answer cards correctly in a row for {name} to find items.",
+            ).format(streak=streak, name=name)
+            self.notify(tr("onigimon_streak_broken_title", "Streak broken"), self.last_message, companion.sprite_url)
         else:
             self.last_message = f"{name} missed that one. Reward progress moved back and care stats dropped."
 
@@ -1928,7 +1931,7 @@ class OnigimonManager:
         return message
 
     def notify(self, title: str, description: str, icon_image: str = "") -> None:
-        if title not in ("Onigimon reward", "Daily Onigimon surprise", "Sequência quebrada"):
+        if title not in ("Onigimon reward", "Daily Onigimon surprise", tr("onigimon_streak_broken_title", "Streak broken")):
             return
         try:
             context = None

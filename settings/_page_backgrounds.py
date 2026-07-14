@@ -1451,13 +1451,42 @@ class PageBackgroundsMixin:
         return color if QColor(color).isValid() else fallback
 
     def _style_main_background_color_button(self, button, color):
-        text_color = self._readable_text_color(color)
-        qcolor = QColor(color)
-        border_color = qcolor.darker(114) if qcolor.lightness() > 110 else qcolor.lighter(150)
         compact = bool(button.property("compactColor"))
         height = 30 if compact else 36
         padding = "0px 12px" if compact else "0px 18px"
         font_size = 12 if compact else 13
+        if str(color).strip().lower() == "transparent":
+            # A literal "background-color: transparent" here would just reveal
+            # whatever the surrounding card is painted with (often white), and
+            # the readable-text-color computed from black (transparent's RGB)
+            # would then pick white text too - i.e. invisible on light theme.
+            # Use a fixed, always-legible neutral swatch instead.
+            swatch_bg = "#3a3a3a" if theme_manager.night_mode else "#e5e5e5"
+            text_color = "#e5e5e5" if theme_manager.night_mode else "#1f1f1f"
+            border_color = QColor(swatch_bg).lighter(150) if theme_manager.night_mode else QColor(swatch_bg).darker(114)
+            button.setText("TRANSPARENT")
+            button.setStyleSheet(f"""
+                QPushButton#mainBackgroundColorButton {{
+                    background-color: {swatch_bg};
+                    color: {text_color};
+                    border: 1px dashed {border_color.name()};
+                    border-radius: {10 if compact else 12}px;
+                    min-height: {height}px;
+                    max-height: {height}px;
+                    padding: {padding};
+                    font-size: {font_size}px;
+                    font-weight: 700;
+                    letter-spacing: 0.2px;
+                }}
+                QPushButton#mainBackgroundColorButton:hover,
+                QPushButton#mainBackgroundColorButton:pressed {{
+                    border-radius: {10 if compact else 12}px;
+                }}
+            """)
+            return
+        text_color = self._readable_text_color(color)
+        qcolor = QColor(color)
+        border_color = qcolor.darker(114) if qcolor.lightness() > 110 else qcolor.lighter(150)
         button.setText(color.upper())
         button.setStyleSheet(f"""
             QPushButton#mainBackgroundColorButton {{

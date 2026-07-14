@@ -310,11 +310,25 @@ DEFAULTS = {
     "onigiri_reviewer_other_btn_hover_text_light": "#f0f0f0",
     "onigiri_reviewer_other_btn_hover_bg_dark": "#e0e0e0",
     "onigiri_reviewer_other_btn_hover_text_dark": "#3a3a3a",
-    
+
+    # --- Stats Bar Background (timer + New/Learn/Review pills panel behind the
+    # Show Answer button). Independent color, unless synced with the "Other"
+    # hover background above. ---
+    "onigiri_reviewer_show_answer_bar_bg_sync": True,
+    "onigiri_reviewer_show_answer_bar_bg_light": "#2c2c2c",
+    "onigiri_reviewer_show_answer_bar_bg_dark": "#e0e0e0",
+
     # --- Stat Text (.stattxt) Colors (intervals like "10m", "4d" and "+" signs) ---
     "onigiri_reviewer_stattxt_mode": "hover",  # "hover" | "fixed" | "off"
     "onigiri_reviewer_stattxt_color_light": "#666666",
     "onigiri_reviewer_stattxt_color_dark": "#aaaaaa",
+
+    # --- Timer (deck options "Show answer timer") adaptation ---
+    "onigiri_reviewer_timer_position": "right",  # "right" | "left" | "out"
+    "onigiri_reviewer_timer_bg_light": "#e5e5e5",
+    "onigiri_reviewer_timer_text_light": "#2c2c2c",
+    "onigiri_reviewer_timer_bg_dark": "#3a3a3a",
+    "onigiri_reviewer_timer_text_dark": "#e0e0e0",
 
     "onigiri_overview_bg_dark_color": "#2C2C2C",
     "onigiri_overview_bg_image_light": "",

@@ -8,6 +8,17 @@ from ._layout_sidebar import *
 from ..emoji_sprites import path_for_emoji
 
 
+class _StickyRepositionFilter(QObject):
+    """Forwards Resize events on a watched widget to a callback."""
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self._callback = callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Resize:
+            self._callback()
+        return False
+
 
 class InfraMixin:
     def _system_icon(self, filename):
@@ -1856,12 +1867,42 @@ class InfraMixin2:
 
         outer.addLayout(header_layout)
 
-        self.deck_icon_preview = BackgroundPreviewLabel(aspect_ratio=3.4, minimum_preview_height=210)
-        self.deck_icon_preview.setObjectName("mainBackgroundPreview")
+        body = QWidget()
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(24)
+        outer.addWidget(body)
+
+        # Backdrop: a static panel (never floated) that occupies the left column
+        # exactly like the Action Buttons Customization preview column does. It
+        # fills the full height of the row (matching the settings column) and
+        # renders the main-window background. Only the card inside it moves.
+        self.deck_icon_preview_backdrop = BackgroundPreviewLabel(aspect_ratio=1.2, minimum_preview_height=420)
+        self.deck_icon_preview_backdrop.setObjectName("mainBackgroundPreview")
+        self.deck_icon_preview_backdrop.setMinimumSize(300, 420)
+        self.deck_icon_preview_backdrop.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.deck_icon_preview_backdrop.setProperty("deck_icon_preview_backdrop", True)
+        self.deck_icon_preview_backdrop.installEventFilter(self)
+        body_layout.addWidget(self.deck_icon_preview_backdrop, 4)
+
+        # Card: the actual deck-list mockup. It is a *free child* of the backdrop
+        # (NOT placed in any layout) so it can be manually sized and centered
+        # within the visible portion of the backdrop as the settings column is
+        # scrolled, and clamped so it can never leave the backdrop. Its geometry
+        # and pixmap are driven from the backdrop's dimensions inside
+        # _install_deck_icon_sticky_preview / _reposition_deck_icon_card.
+        self.deck_icon_preview = QLabel(self.deck_icon_preview_backdrop)
+        self.deck_icon_preview.setObjectName("deckIconPreviewCard")
         self.deck_icon_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.deck_icon_preview.setProperty("deck_icon_preview", True)
-        self.deck_icon_preview.installEventFilter(self)
-        outer.addWidget(self.deck_icon_preview)
+        self.deck_icon_preview.show()
+
+        controls = QWidget()
+        controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(14)
+        body_layout.addWidget(controls, 6)
 
         self.indentation_mode_group = QButtonGroup(self)
         self.indentation_mode_group.setExclusive(True)
@@ -1879,7 +1920,7 @@ class InfraMixin2:
             segment_height=28,
             min_button_width=72,
         )
-        outer.addWidget(self._create_main_bg_value_row(tr("decks_indentation"), indentation_mode_container))
+        controls_layout.addWidget(self._create_main_bg_value_row(tr("decks_indentation"), indentation_mode_container))
 
         self.indentation_custom_spin = QSpinBox()
         self.indentation_custom_spin.setRange(0, 100)
@@ -1892,14 +1933,48 @@ class InfraMixin2:
             tr("custom_indentation_px"),
             self.indentation_custom_spin,
         )
-        outer.addWidget(self.indentation_custom_row_widget)
+        controls_layout.addWidget(self.indentation_custom_row_widget)
         self.indentation_mode_group.buttonClicked.connect(self._on_indentation_mode_btn_clicked)
         self._on_indentation_mode_btn_clicked(self.indentation_mode_group.checkedButton())
+
+        # Count badge size (small = current / medium / big / custom), scaled proportionally.
+        self.count_badge_size_group = QButtonGroup(self)
+        self.count_badge_size_group.setExclusive(True)
+        count_badge_size_container = self._create_organize_segmented_control(
+            [
+                ("small", tr("badge_size_small", "Small")),
+                ("medium", tr("badge_size_medium", "Medium")),
+                ("big", tr("badge_size_big", "Big")),
+                ("custom", tr("custom")),
+            ],
+            self.count_badge_size_group,
+            mw.col.conf.get("modern_menu_count_badge_size", "small"),
+            "badge_size",
+            fill_width=True,
+            segment_height=28,
+            min_button_width=72,
+        )
+        controls_layout.addWidget(self._create_main_bg_value_row(tr("count_badge_size", "Count Badge Size"), count_badge_size_container))
+
+        self.count_badge_custom_spin = QSpinBox()
+        self.count_badge_custom_spin.setRange(8, 40)
+        self.count_badge_custom_spin.setValue(mw.col.conf.get("modern_menu_count_badge_size_custom_px", 16))
+        self.count_badge_custom_spin.setSuffix(" px")
+        self.count_badge_custom_spin.setFixedHeight(32)
+        self.count_badge_custom_spin.setMinimumWidth(120)
+        self.count_badge_custom_spin.valueChanged.connect(self._update_deck_icon_preview)
+        self.count_badge_custom_row_widget = self._create_main_bg_value_row(
+            tr("custom_badge_size_px", "Custom Badge Size Px"),
+            self.count_badge_custom_spin,
+        )
+        controls_layout.addWidget(self.count_badge_custom_row_widget)
+        self.count_badge_size_group.buttonClicked.connect(self._on_count_badge_size_btn_clicked)
+        self._on_count_badge_size_btn_clicked(self.count_badge_size_group.checkedButton())
 
         icons_label = QLabel(tr("deck_icon_assignment_label", "Click an icon below to change it"))
         icons_label.setObjectName("sectionDescription")
         icons_label.setWordWrap(True)
-        outer.addWidget(icons_label)
+        controls_layout.addWidget(icons_label)
 
         deck_icons_layout = QHBoxLayout()
         deck_icons_layout.setContentsMargins(0, 0, 0, 0)
@@ -1909,21 +1984,21 @@ class InfraMixin2:
             control_widget = self._create_icon_control_widget(key, display_name=label_text, compact=True)
             self.icon_assignment_widgets.append(control_widget)
             deck_icons_layout.addWidget(control_widget, 1)
-        outer.addLayout(deck_icons_layout)
+        controls_layout.addLayout(deck_icons_layout)
 
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setFrameShadow(QFrame.Shadow.Sunken)
-        outer.addWidget(divider)
-
-        bottom_h_layout = QHBoxLayout()
-        bottom_h_layout.setSpacing(12)
-        bottom_h_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        controls_layout.addWidget(divider)
 
         # Use the same inner-group wrapper as the palettes so the "Deck Icon
         # Settings" title lines up with the palette titles.
         settings_group, sizing_layout = self._create_inner_group(tr("deck_icon_settings"))
         sizing_layout.setSpacing(8)
+        # The segmented controls and icon cards above sit flush to the controls
+        # column edges; #innerGroup is transparent (no visible border), so drop
+        # its horizontal padding here to keep this bottom part aligned with them.
+        settings_group.layout().setContentsMargins(0, 12, 0, 12)
 
         palette = self._settings_palette()
         border_color = palette.get("--border", "#dcdde1")
@@ -1957,11 +2032,13 @@ class InfraMixin2:
 
         light_deck_colors_group, light_deck_colors_layout = self._create_inner_group(f"{tr('light_mode')} {tr('palette')}")
         light_deck_colors_layout.setSpacing(5)
+        light_deck_colors_group.layout().setContentsMargins(0, 12, 0, 12)
         self._populate_pills_for_keys(light_deck_colors_layout, "light", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
         self._populate_overview_count_pills(light_deck_colors_layout, "light")
 
         dark_deck_colors_group, dark_deck_colors_layout = self._create_inner_group(f"{tr('dark_mode')} {tr('palette')}")
         dark_deck_colors_layout.setSpacing(5)
+        dark_deck_colors_group.layout().setContentsMargins(0, 12, 0, 12)
         self._populate_pills_for_keys(dark_deck_colors_layout, "dark", ["--deck-list-bg", "--highlight-bg", "--highlight-fg", "--icon-color", "--icon-color-filtered"])
         self._populate_overview_count_pills(dark_deck_colors_layout, "dark")
 
@@ -1970,17 +2047,13 @@ class InfraMixin2:
         self.deck_icon_palette_stack.addWidget(dark_deck_colors_group)
         self.deck_icon_palette_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
-        # Lay the settings and active palette columns side by side, each hugging the top so their
-        # section titles align on the same baseline regardless of column height.
-        for column_group in (settings_group, self.deck_icon_palette_stack):
-            column_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-            column_wrapper = QVBoxLayout()
-            column_wrapper.setContentsMargins(0, 0, 0, 0)
-            column_wrapper.addWidget(column_group)
-            column_wrapper.addStretch()
-            bottom_h_layout.addLayout(column_wrapper, 1)
-
-        outer.addLayout(bottom_h_layout)
+        # Stack the settings group and the active palette vertically so each
+        # spans the full width of the (narrower) controls column; laying them
+        # side by side here squeezes the rows and clips their labels/swatches.
+        settings_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.deck_icon_palette_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        controls_layout.addWidget(settings_group)
+        controls_layout.addWidget(self.deck_icon_palette_stack)
         self._update_deck_icon_palette_controls()
 
         # --- Add Hide Icon Toggles ---
@@ -2025,7 +2098,73 @@ class InfraMixin2:
                 size_spinbox.valueChanged.connect(self._update_deck_icon_preview)
             sizing_layout.addWidget(create_setting_row(label, size_spinbox))
 
+        controls_layout.addStretch()
+
         return designer
+
+    def _install_deck_icon_sticky_preview(self, page):
+        """Wire the deck-list card (a free child of the backdrop) so it stays
+        vertically centered within the *visible* portion of the backdrop as the
+        Deck Customization settings are scrolled. The card is clamped to the
+        backdrop's bounds, so the follow behavior is confined to the backdrop
+        preview box and never floats over the rest of the Sidebar page."""
+        scroll_area = page.findChild(QScrollArea)
+        card = getattr(self, "deck_icon_preview", None)
+        backdrop = getattr(self, "deck_icon_preview_backdrop", None)
+        if not scroll_area or card is None or backdrop is None:
+            return
+
+        self._deck_icon_scroll_area = scroll_area
+        reposition = self._reposition_deck_icon_card
+
+        resize_filter = _StickyRepositionFilter(reposition, backdrop)
+        backdrop.installEventFilter(resize_filter)
+        scroll_area.viewport().installEventFilter(resize_filter)
+        self._deck_icon_sticky_resize_filter = resize_filter
+
+        scroll_area.verticalScrollBar().valueChanged.connect(lambda _v: reposition())
+        QTimer.singleShot(0, reposition)
+
+    def _reposition_deck_icon_card(self):
+        card = getattr(self, "deck_icon_preview", None)
+        backdrop = getattr(self, "deck_icon_preview_backdrop", None)
+        scroll_area = getattr(self, "_deck_icon_scroll_area", None)
+        if card is None or backdrop is None or scroll_area is None:
+            return
+
+        bw = backdrop.width()
+        bh = backdrop.height()
+        if bw <= 1 or bh <= 1:
+            return
+
+        # Card size, derived from the backdrop so rows/icons/fonts render at a
+        # sensible scale (no arbitrary tiny constant).
+        margin = 24
+        card_w = max(220, min(bw - 2 * margin, 320))
+        card_h = min(bh - 2 * margin, 320)
+        card_h = max(card_h, 200)
+
+        # Vertical center of the backdrop's currently-visible band (in backdrop
+        # local coordinates), so the card tracks the viewport while scrolling.
+        viewport = scroll_area.viewport()
+        top_in_vp = backdrop.mapTo(viewport, QPoint(0, 0)).y()
+        vis_top = max(0, -top_in_vp)
+        vis_bottom = min(bh, viewport.height() - top_in_vp)
+        band_center = (vis_top + vis_bottom) / 2 if vis_bottom > vis_top else bh / 2
+
+        # Clamp inside a margin so the card keeps a visible gap from the
+        # backdrop's edges and never sits flush against them.
+        y = int(band_center - card_h / 2)
+        y = max(margin, min(y, bh - card_h - margin))
+        x = int((bw - card_w) / 2)
+
+        if card.size() != QSize(card_w, card_h):
+            card.setFixedSize(card_w, card_h)
+            card.move(x, y)
+            self._update_deck_icon_preview()
+        else:
+            card.move(x, y)
+        card.raise_()
 
     def _on_deck_icon_preview_mode_toggled(self, mode):
         self.deck_icon_preview_mode = "dark" if mode == "dark" else "light"
@@ -2070,6 +2209,21 @@ class InfraMixin2:
             return widget.value()
         return DEFAULT_ICON_SIZES.get(key, 16)
 
+    def _count_badge_size_key(self):
+        group = getattr(self, "count_badge_size_group", None)
+        if group and group.checkedButton():
+            return group.checkedButton().property("badge_size") or "small"
+        return mw.col.conf.get("modern_menu_count_badge_size", "small")
+
+    def _count_badge_size_scale(self):
+        key = self._count_badge_size_key()
+        if key == "custom":
+            # Custom stores an absolute px badge font-size; the "small" preset is
+            # ~12px (0.75em at a 16px root), so scale the preview relative to that.
+            px = self.count_badge_custom_spin.value() if hasattr(self, "count_badge_custom_spin") else 16
+            return px / 12.0
+        return {"small": 1.0, "medium": 1.3, "big": 1.6}.get(key, 1.0)
+
     def _deck_icon_preview_indent_px(self):
         mode = "default"
         if hasattr(self, "indentation_mode_group"):
@@ -2109,8 +2263,9 @@ class InfraMixin2:
         hide_zero = bool(getattr(self, "hide_deck_counts_checkbox", None) and self.hide_deck_counts_checkbox.isChecked())
 
         specs = self._deck_icon_count_bubble_specs(mode)
-        bubble_height = max(11, min(18, row_rect.height() * 0.5))
-        gap = 4
+        scale = self._count_badge_size_scale()
+        bubble_height = max(11, min(18, row_rect.height() * 0.5)) * scale
+        gap = 4 * scale
 
         font = QFont(self.font())
         font.setPointSize(max(6, int(bubble_height * 0.46)))
@@ -2123,7 +2278,7 @@ class InfraMixin2:
                 continue
             text = str(count)
             text_width = metrics.horizontalAdvance(text)
-            bubble_width = max(bubble_height, text_width + 10)
+            bubble_width = max(bubble_height, text_width + 10 * scale)
             bubble_rect = QRectF(x - bubble_width, row_rect.y() + (row_rect.height() - bubble_height) / 2, bubble_width, bubble_height)
             bubble_path = QPainterPath()
             bubble_path.addRoundedRect(bubble_rect, bubble_height / 2, bubble_height / 2)
@@ -2151,19 +2306,21 @@ class InfraMixin2:
         chevron_size = max(8, min(28, self._deck_icon_preview_size("collapse")))
         indent_px = self._deck_icon_preview_indent_px()
 
+        # Multi-digit sample counts so the count badges clearly read as pills
+        # (wide capsules), not circles.
         rows = [
             {"key": "folder", "chevron": "collapse_open", "indent": 0,
-             "label": tr("deck_icon_preview_folder", "Folder"), "counts": (15, 12, 18)},
+             "label": tr("deck_icon_preview_folder", "Folder"), "counts": (152, 128, 184)},
             {"key": "subdeck", "chevron": None, "indent": indent_px,
-             "label": tr("deck_icon_preview_subdeck", "Subdeck"), "counts": (13, 11, 14)},
+             "label": tr("deck_icon_preview_subdeck", "Subdeck"), "counts": (134, 116, 149)},
             {"key": "subdeck", "chevron": None, "indent": indent_px,
-             "label": tr("deck_icon_preview_subdeck", "Subdeck"), "counts": (0, 0, 12)},
+             "label": tr("deck_icon_preview_subdeck", "Subdeck"), "counts": (0, 0, 127)},
             {"key": "deck", "chevron": None, "indent": 0,
-             "label": tr("deck_icon_preview_deck", "Deck"), "highlight": True, "counts": (10, 0, 15)},
+             "label": tr("deck_icon_preview_deck", "Deck"), "highlight": True, "counts": (108, 0, 156)},
             {"key": "filtered_deck", "chevron": None, "indent": 0,
-             "label": tr("deck_icon_preview_filtered", "Filtered Deck"), "counts": (17, 0, 0)},
+             "label": tr("deck_icon_preview_filtered", "Filtered Deck"), "counts": (173, 0, 0)},
             {"key": "folder", "chevron": "collapse_closed", "indent": 0,
-             "label": tr("deck_icon_preview_folder", "Folder"), "counts": (12, 13, 20)},
+             "label": tr("deck_icon_preview_folder", "Folder"), "counts": (1240, 132, 208)},
         ]
 
         row_height = rect.height() / len(rows)
@@ -2204,11 +2361,52 @@ class InfraMixin2:
             text_rect = QRectF(x, row_rect.y(), max(0.0, counts_left_edge - x - 8), row_rect.height())
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter, row["label"])
 
+    def _render_deck_icon_preview_backdrop_pixmap(self):
+        widget = getattr(self, "deck_icon_preview_backdrop", None)
+        if widget is None:
+            return QPixmap()
+        size = widget.size()
+        width = max(1, size.width())
+        height = max(1, size.height())
+        radius = 22
+        dpr = max(1.0, widget.devicePixelRatioF())
+        target = QPixmap(int(width * dpr), int(height * dpr))
+        target.setDevicePixelRatio(dpr)
+        target.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(target)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        rect = QRectF(1, 1, width - 2, height - 2)
+        path = QPainterPath()
+        path.addRoundedRect(rect, radius, radius)
+        painter.setClipPath(path)
+
+        mode = self._deck_icon_preview_mode()
+        self._draw_box_effect_background_layer(painter, QRectF(0, 0, width, height), mode)
+
+        painter.setClipping(False)
+        border_color = QColor("#4b5563" if theme_manager.night_mode else "#d1d5db")
+        pen = QPen(border_color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+        painter.end()
+        return target
+
+    def _update_deck_icon_preview_backdrop(self):
+        widget = getattr(self, "deck_icon_preview_backdrop", None)
+        if widget is None:
+            return
+        widget.setStyleSheet("QLabel#mainBackgroundPreview { background: transparent; border: none; }")
+        widget.setPixmap(self._render_deck_icon_preview_backdrop_pixmap())
+
     def _render_deck_icon_preview_pixmap(self):
         size = self.deck_icon_preview.size()
         width = max(1, size.width())
         height = max(1, size.height())
-        radius = 22
+        radius = 18
         dpr = max(1.0, self.deck_icon_preview.devicePixelRatioF())
         target = QPixmap(int(width * dpr), int(height * dpr))
         target.setDevicePixelRatio(dpr)
@@ -2225,7 +2423,9 @@ class InfraMixin2:
         mode = self._deck_icon_preview_mode()
         self._draw_deck_icon_sidebar_background_layer(painter, QRectF(0, 0, width, height), mode)
 
-        content_rect = preview_rect.adjusted(0, 6, 0, -6)
+        # Mandatory breathing room at the top so the first deck row never
+        # touches the card's top edge.
+        content_rect = preview_rect.adjusted(0, 22, 0, -12)
         self._draw_deck_icon_preview_rows(painter, content_rect, mode)
 
         painter.setClipping(False)
@@ -2241,8 +2441,9 @@ class InfraMixin2:
     def _update_deck_icon_preview(self):
         if not hasattr(self, "deck_icon_preview"):
             return
-        self.deck_icon_preview.setStyleSheet("QLabel#mainBackgroundPreview { background: transparent; border: none; }")
+        self.deck_icon_preview.setStyleSheet("QLabel#deckIconPreviewCard { background: transparent; border: none; }")
         self.deck_icon_preview.setPixmap(self._render_deck_icon_preview_pixmap())
+        self._update_deck_icon_preview_backdrop()
 
     def _confirm_delete_dialog(self, window_title, title_text, message_text):
         palette = self._settings_palette()
@@ -2881,6 +3082,10 @@ class InfraMixin2:
                 QTimer.singleShot(0, self._update_deck_icon_preview)
                 return False
 
+            if source.property("deck_icon_preview_backdrop") and event.type() == QEvent.Type.Resize:
+                QTimer.singleShot(0, self._update_deck_icon_preview_backdrop)
+                return False
+
             if source.property("heatmap_preview") and event.type() == QEvent.Type.Resize:
                 QTimer.singleShot(0, self._update_heatmap_preview)
                 return False
@@ -3337,6 +3542,15 @@ class InfraMixin2:
         if hasattr(self, "indentation_custom_spin"):
             self.indentation_custom_spin.setValue(DEFAULTS.get("deck_indentation_custom_px", 20))
 
+        if hasattr(self, "count_badge_size_group"):
+            for button in self.count_badge_size_group.buttons():
+                if button.property("badge_size") == "small":
+                    button.setChecked(True)
+                    break
+            self._on_count_badge_size_btn_clicked(self.count_badge_size_group.checkedButton())
+        if hasattr(self, "count_badge_custom_spin"):
+            self.count_badge_custom_spin.setValue(16)
+
         deck_color_keys = [
             "--deck-list-bg", "--highlight-bg", "--highlight-fg",
             "--icon-color", "--icon-color-filtered",
@@ -3654,6 +3868,13 @@ class InfraMixin2:
         is_custom = (mode == "custom")
         if hasattr(self, 'indentation_custom_row_widget'):
             self.indentation_custom_row_widget.setVisible(is_custom)
+        self._update_deck_icon_preview()
+
+    def _on_count_badge_size_btn_clicked(self, button):
+        if not button: return
+        is_custom = (button.property("badge_size") == "custom")
+        if hasattr(self, 'count_badge_custom_row_widget'):
+            self.count_badge_custom_row_widget.setVisible(is_custom)
         self._update_deck_icon_preview()
 
     def _update_deck_icon_state(self):
