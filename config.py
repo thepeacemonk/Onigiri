@@ -3,16 +3,37 @@ import json
 import os
 from aqt import mw
 
-# Default settings for the add-on
-DEFAULTS = {
-    # ... (content remains same, will be merged by tool if unreferenced, but I should be careful not to delete DEFAULTS content if I can help it. 
-    # Actually wait, replace_file_content replaces the WHOLE chunk. I need to keep DEFAULTS intact. 
-    # I will target the imports and the functions at the end, leaving DEFAULTS in the middle untouched if possible.
-    # Ah, I cannot "leave in the middle untouched" easily with one chunk if I want to wrap everything.
-    # I will use multiple chunks.)
-}
+def effective_night_mode(conf=None):
+    """
+    Return the active dark/light mode for Onigiri previews and rendered UI.
 
-# ... (I will use multi_replace to target specific areas)
+    The add-on can force a theme via ``onigiriThemeMode``; when it is set to
+    ``system`` we follow Anki's current night-mode state.
+    """
+    mode = "system"
+    if isinstance(conf, dict):
+        mode = str(conf.get("onigiriThemeMode", "system")).lower()
+
+    if mode in {"dark", "night", "night_mode"}:
+        return True
+    if mode in {"light", "day", "day_mode"}:
+        return False
+
+    try:
+        from aqt.theme import theme_manager
+
+        return bool(theme_manager.night_mode)
+    except Exception:
+        pass
+
+    try:
+        return bool(mw and mw.pm and mw.pm.night_mode())
+    except Exception:
+        return False
+
+
+# Default settings for the add-on
+
 
 DEFAULTS = {
     "userName": "USER",
@@ -342,7 +363,93 @@ DEFAULTS = {
             "--text-shadow-light": "rgba(0, 0, 0, 0.5)",
             "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
         }
-    }
+    },
+
+    # --- ported from upstream v1.0 (feature defaults) ---
+    "hideSynapseProSidebar": False,
+    "sidebarPosition": "left",
+    "showOverviewProfileBar": True,
+    "onigiriThemeMode": "system",
+    "prep_station": {
+        "plans": [],
+    },
+    "hashi_notes": {
+        "retention_default": 30,
+        "custom_css": "",
+        "default_sort": "age",
+        "trash_grace_days": 7,
+        "show_in_reviewer_header": True,
+    },
+    "onigiri_pomodoro_show_in_reviewer_header": True,
+    "onigiriProfile": {
+        "bio": "",
+        "status": "",
+        "musicLink": "",
+        "spotifyLink": ""
+    },
+    "hexagon_land": {
+        "enabled": False,
+        "theme": "island",
+        "sounds_enabled": True,
+    },
+    "heatmapStreakIcon": "system:fire.svg",
+    "heatmapStreakIconColor": "#ff6b35",
+    "heatmapStreakIconZeroColor": "#8f8f8f",
+    "markerColors": {
+        "red": "#FF4B4B",
+        "blue": "#4488FF",
+        "green": "#44BB66",
+        "yellow": "#FFB800",
+    },
+    "onigiriDecklineAutoEmbed": True,
+    "onigiri_reviewer_bg_image": "",
+    "onigiri_reviewer_bg_color_theme_mode": "separate",
+    "onigiri_reviewer_bg_image_theme_mode": "separate",
+    "onigiri_reviewer_slideshow_images": [],
+    "onigiri_reviewer_slideshow_interval": 10,
+    "onigiri_notification_duration_ms": 5200,
+    "onigiri_reviewer_bottom_bar_match_overview_bg_blur": 0,
+    "onigiri_reviewer_bottom_bar_match_overview_bg_opacity": 100,
+    "language": "English (Default)",
+    "onigiri_reviewer_stattxt_mode": "hover",
+    "onigiri_overview_slideshow_images": [],
+    "onigiri_overview_slideshow_interval": 10,
+    "overview_style": {
+        "sync_box_effect": False,
+        "dynamic": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+        "study_button_opacity": 100,
+        "study_button_stroke": 0,
+        "study_button_dashed": False,
+        "study_button_animated": True,
+        "colors": {
+            "light": {
+                "box_bg": "#f3f3f3",
+                "box_border": "#e0e0e0",
+                "study_button": "#0077C8",
+                "new_bubble": "#1e8cff",
+                "new_text": "#ffffff",
+                "learn_bubble": "#19c96b",
+                "learn_text": "#ffffff",
+                "review_bubble": "#ff5757",
+                "review_text": "#ffffff",
+            },
+            "dark": {
+                "box_bg": "#2c2c2c",
+                "box_border": "#565656",
+                "study_button": "#0077C8",
+                "new_bubble": "#0077C8",
+                "new_text": "#f7fbff",
+                "learn_bubble": "#12b765",
+                "learn_text": "#f4fff8",
+                "review_bubble": "#ff453a",
+                "review_text": "#fff5f5",
+            },
+        },
+    },
 }
 
 
