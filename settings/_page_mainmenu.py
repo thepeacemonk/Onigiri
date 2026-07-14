@@ -1,5 +1,6 @@
 # Auto-split from the historical settings/_legacy.py. Do not hand-edit alongside _legacy.
 from ._common import *
+from ._common import _contrast_icon_color
 from ._icon_picker import *
 from ._widgets import *
 from ._layout_base import *
