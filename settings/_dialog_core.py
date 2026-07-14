@@ -399,8 +399,9 @@ class DialogCoreMixin:
 
 
         self.profile_bar = ProfileBarWidget(user_name, pic_path, bg_mode, bg_config, self.accent_color, self, pic_config=pic_config)
-        # Keep the live profile preview compact in the settings nav.
-        self.profile_bar.setMaximumHeight(48)
+        # The live profile preview lives on the Profile page, not the nav.
+        self.profile_bar.setVisible(False)
+        self.profile_bar.setMaximumHeight(0)
         self.profile_bar.setMinimumWidth(120)
 
         self.sidebar_search_button = QPushButton(tr("search"))
@@ -430,7 +431,15 @@ class DialogCoreMixin:
         sidebar_top_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         sidebar_top_layout.addWidget(self.profile_bar)
         sidebar_top_layout.addSpacing(8)
-        sidebar_top_layout.addWidget(self.sidebar_search_button)
+        self.sidebar_search_field = QLineEdit()
+        self.sidebar_search_field.setObjectName("sidebarSearchField")
+        self.sidebar_search_field.setPlaceholderText(tr("search", "Search"))
+        self.sidebar_search_field.setClearButtonEnabled(True)
+        self.sidebar_search_field.setFixedHeight(32)
+        self.sidebar_search_field.textEdited.connect(self._on_sidebar_search_typed)
+        sidebar_top_layout.addWidget(self.sidebar_search_field)
+        self.sidebar_search_button.setVisible(False)
+        self.sidebar_search_button.setMaximumHeight(0)
         sidebar_wrapper_layout.insertWidget(0, sidebar_top)
 
         self.sidebar_buttons = {}
@@ -942,12 +951,12 @@ class DialogCoreMixin2:
         accent_color = self._settings_accent_color()
         if theme_manager.night_mode:
             # ── Dark: one near-black sheet, one input tone, hairlines ─────
-            window_bg        = "#161616"
-            panel_bg         = "#161616"
-            sidebar_bg       = "#161616"
-            surface_bg       = "#222222"
-            surface_hover    = "#262626"
-            input_bg         = "#1f1f1f"
+            window_bg        = "#1e1e1d"
+            panel_bg         = "#1e1e1d"
+            sidebar_bg       = "#1e1e1d"
+            surface_bg       = "#2a2a29"
+            surface_hover    = "#30302f"
+            input_bg         = "#282827"
             button_bg        = surface_bg
             fg               = "#ececea"
             fg_secondary     = "#b4b4b1"
@@ -956,7 +965,7 @@ class DialogCoreMixin2:
             soft_border      = "rgba(255, 255, 255, 0.07)"
             separator_color  = "rgba(255, 255, 255, 0.07)"
             sidebar_label_color  = muted_fg
-            nav_checked_bg   = "#2a2a2a"
+            nav_checked_bg   = "#323231"
             nav_checked_fg   = fg
             save_btn_bg      = accent_color
             c = QColor(save_btn_bg)
