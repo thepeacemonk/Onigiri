@@ -1312,8 +1312,8 @@ class InfraMixin:
         group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         group_layout = QVBoxLayout(group)
-        group_layout.setContentsMargins(14, 12, 14, 14)
-        group_layout.setSpacing(10)
+        group_layout.setContentsMargins(0, 10, 0, 4)
+        group_layout.setSpacing(8)
 
         title_label = QLabel(title)
         title_label.setObjectName("LayoutGroupTitle")

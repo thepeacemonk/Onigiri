@@ -26,7 +26,7 @@ class DialogCoreMixin:
         self._theme_prepare_save_in_progress = False
         self._theme_preparing_overlay = None
         self._theme_selected_toast = None
-        self.setWindowTitle("Onigiri Settings — build W7")
+        self.setWindowTitle("Onigiri Settings — build W8")
         
         # --- Screen Proportional Sizing ---
         screen = mw.app.primaryScreen()
@@ -310,6 +310,10 @@ class DialogCoreMixin:
         header_row.setObjectName("settingsPageHeader")
         header_row.setMinimumHeight(44)
         self.settings_page_header = header_row
+        # Reference layout: content starts directly with the first section —
+        # no in-content page title, no jump-chip row.
+        header_row.setVisible(False)
+        header_row.setMaximumHeight(0)
         header_layout = QHBoxLayout(header_row)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(10)
@@ -951,21 +955,21 @@ class DialogCoreMixin2:
         accent_color = self._settings_accent_color()
         if theme_manager.night_mode:
             # ── Dark: one near-black sheet, one input tone, hairlines ─────
-            window_bg        = "#1e1e1d"
-            panel_bg         = "#1e1e1d"
-            sidebar_bg       = "#1e1e1d"
-            surface_bg       = "#2a2a29"
-            surface_hover    = "#30302f"
-            input_bg         = "#282827"
+            window_bg        = "#232326"
+            panel_bg         = "#232326"
+            sidebar_bg       = "#1b1b1e"
+            surface_bg       = "#2d2d31"
+            surface_hover    = "#333338"
+            input_bg         = "#2b2b2f"
             button_bg        = surface_bg
-            fg               = "#ececea"
+            fg               = "#f4f4f3"
             fg_secondary     = "#b4b4b1"
             muted_fg         = "#8d8d8a"
             border           = "rgba(255, 255, 255, 0.10)"
             soft_border      = "rgba(255, 255, 255, 0.07)"
             separator_color  = "rgba(255, 255, 255, 0.07)"
             sidebar_label_color  = muted_fg
-            nav_checked_bg   = "#323231"
+            nav_checked_bg   = "#34343a"
             nav_checked_fg   = fg
             save_btn_bg      = accent_color
             c = QColor(save_btn_bg)
