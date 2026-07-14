@@ -37,8 +37,8 @@ class PageSidebarMixin:
         section_content = QWidget()
         section_content.setObjectName("sidebarSectionContent")
         section_layout = QVBoxLayout(section_content)
-        section_layout.setContentsMargins(0, 0, 0, 0)
-        section_layout.setSpacing(4)
+        section_layout.setContentsMargins(0, 0, 0, 2)
+        section_layout.setSpacing(1)
 
         layout.addWidget(self._create_sidebar_section_toggle(title, section_content))
         for label, page_name, icon_filename in items:
@@ -47,7 +47,7 @@ class PageSidebarMixin:
             button.setObjectName("sidebarNavButton")
             button.setMinimumWidth(0)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.setFixedHeight(36)
+            button.setFixedHeight(30)
             button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             self._decorate_button(button, icon_filename, 16)
             button.clicked.connect(lambda _, page=page_name: self.navigate_to_page(page))
