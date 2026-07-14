@@ -23,9 +23,9 @@ class PageMainmenuMixin:
 
         return f"""
             QFrame#organizeCompactPanel {{
-                background-color: {panel_bg};
-                border: 1px solid {border};
-                border-radius: 18px;
+                background-color: transparent;
+                border: none;
+                border-radius: 0px;
             }}
             QFrame#organizeCompactRow {{
                 background-color: transparent;
@@ -45,7 +45,8 @@ class PageMainmenuMixin:
                 background-color: {input_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 15px;
+                border-radius: 10px;
+                max-width: 360px;
                 padding: 0 12px;
                 min-height: 30px;
                 max-height: 30px;
@@ -57,15 +58,15 @@ class PageMainmenuMixin:
             }}
             QFrame#organizeSegmentShell {{
                 background-color: {segment_bg};
-                border: 1px solid {border};
-                border-radius: 15px;
+                border: none;
+                border-radius: 10px;
             }}
             QPushButton#organizeSegmentButton {{
                 background: transparent;
                 background-color: transparent;
                 color: {fg};
                 border: 1px solid transparent;
-                border-radius: 12px;
+                border-radius: 8px;
                 min-height: 24px;
                 max-height: 24px;
                 padding: 0 8px;

@@ -1317,6 +1317,81 @@ class PageProfileMixin:
         self.profile_show_stats_check.setChecked(mw.col.conf.get("onigiri_profile_show_stats", True))
         panel_layout.addWidget(self._create_toggle_row(self.profile_show_stats_check, tr("show_stats_section", "Show 'Daily Stats' section")))
 
+        # Profile bar gradient background (runtime: profile_background.py)
+        from .. import profile_background as _pbg
+        self.profile_bar_gradient_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_bar_gradient_toggle.setChecked(
+            mw.col.conf.get("modern_menu_profile_bg_mode", "image") == _pbg.PROFILE_BG_MODE_GRADIENT
+        )
+        panel_layout.addWidget(self._create_toggle_row(
+            self.profile_bar_gradient_toggle,
+            tr("profile_bar_gradient", "Gradient bar background"),
+        ))
+
+        def _gradient_color_button(conf_key, role):
+            initial = str(mw.col.conf.get(conf_key, _pbg.PROFILE_BG_GRADIENT_DEFAULTS[role]))
+            button = QPushButton(initial)
+            button.setObjectName("mainBackgroundColorButton")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setFixedHeight(28)
+            button.setMinimumWidth(92)
+
+            def refresh(hex_value):
+                button.setText(hex_value)
+                icon_color = _contrast_icon_color(QColor(hex_value))
+                button.setStyleSheet(
+                    f"QPushButton#mainBackgroundColorButton {{ background-color: {hex_value};"
+                    f" color: {icon_color}; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); }}"
+                )
+
+            def choose():
+                chosen, ok = OnigiriColorDialog.getColor(button.text(), self, anchor=button)
+                if ok and chosen:
+                    refresh(chosen)
+
+            refresh(initial)
+            button.clicked.connect(choose)
+            return button
+
+        self.profile_bar_gradient_buttons = {
+            "light_start": _gradient_color_button(_pbg.PROFILE_BG_GRADIENT_LIGHT_START_KEY, "light_start"),
+            "light_end": _gradient_color_button(_pbg.PROFILE_BG_GRADIENT_LIGHT_END_KEY, "light_end"),
+            "dark_start": _gradient_color_button(_pbg.PROFILE_BG_GRADIENT_DARK_START_KEY, "dark_start"),
+            "dark_end": _gradient_color_button(_pbg.PROFILE_BG_GRADIENT_DARK_END_KEY, "dark_end"),
+        }
+
+        def _gradient_row(label_text, a, b):
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(10)
+            row_layout.addWidget(QLabel(label_text))
+            row_layout.addStretch()
+            row_layout.addWidget(a)
+            row_layout.addWidget(b)
+            return row
+
+        self.profile_bar_gradient_light_row = _gradient_row(
+            tr("gradient_light", "Gradient (light) start / end"),
+            self.profile_bar_gradient_buttons["light_start"],
+            self.profile_bar_gradient_buttons["light_end"],
+        )
+        self.profile_bar_gradient_dark_row = _gradient_row(
+            tr("gradient_dark", "Gradient (dark) start / end"),
+            self.profile_bar_gradient_buttons["dark_start"],
+            self.profile_bar_gradient_buttons["dark_end"],
+        )
+        panel_layout.addWidget(self.profile_bar_gradient_light_row)
+        panel_layout.addWidget(self.profile_bar_gradient_dark_row)
+
+        def _sync_gradient_rows():
+            visible = self.profile_bar_gradient_toggle.isChecked()
+            self.profile_bar_gradient_light_row.setVisible(visible)
+            self.profile_bar_gradient_dark_row.setVisible(visible)
+
+        self.profile_bar_gradient_toggle.toggled.connect(lambda _=False: _sync_gradient_rows())
+        _sync_gradient_rows()
+
         section.add_widget(panel)
         return section
 
@@ -1456,6 +1531,17 @@ class PageProfileMixin:
                 mw.col.conf["onigiri_profile_page_bg_mode"] = "color"
                 mw.col.conf["onigiri_profile_page_bg_light_color1"] = self.profile_page_light_color1_color_input.text()
                 mw.col.conf["onigiri_profile_page_bg_dark_color1"] = self.profile_page_dark_color1_color_input.text()
+
+        # Profile bar gradient: runs after the bar-mode block above so an
+        # enabled gradient takes precedence over image/custom/accent.
+        if hasattr(self, "profile_bar_gradient_toggle") and self.profile_bar_gradient_toggle.isChecked():
+            from .. import profile_background as _pbg
+            mw.col.conf["modern_menu_profile_bg_mode"] = _pbg.PROFILE_BG_MODE_GRADIENT
+            buttons = self.profile_bar_gradient_buttons
+            mw.col.conf[_pbg.PROFILE_BG_GRADIENT_LIGHT_START_KEY] = buttons["light_start"].text()
+            mw.col.conf[_pbg.PROFILE_BG_GRADIENT_LIGHT_END_KEY] = buttons["light_end"].text()
+            mw.col.conf[_pbg.PROFILE_BG_GRADIENT_DARK_START_KEY] = buttons["dark_start"].text()
+            mw.col.conf[_pbg.PROFILE_BG_GRADIENT_DARK_END_KEY] = buttons["dark_end"].text()
 
     def _overview_style_profile_bar_rect(self, rect, y=None):
         bar_width = min(rect.width() * 0.425, 338)

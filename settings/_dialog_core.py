@@ -1402,21 +1402,21 @@ class DialogCoreMixin2:
             QLabel#sectionTitle {{
                 color: {fg};
                 background: transparent;
-                font-size: 17px;
-                font-weight: 400;
+                font-size: 15px;
+                font-weight: 700;
             }}
             QLabel#sectionDescription,
             QLabel#settingRowDescription {{
                 color: {muted_fg};
                 background: transparent;
-                font-size: 13px;
+                font-size: 12px;
             }}
             QLabel#settingRowTitle,
             QLabel#galleryTitleLabel {{
                 color: {fg};
                 background: transparent;
-                font-size: 14px;
-                font-weight: 400;
+                font-size: 13px;
+                font-weight: 600;
             }}
             #innerGroup {{
                 background-color: transparent;
@@ -1454,20 +1454,20 @@ class DialogCoreMixin2:
                 border-radius: 12px;
             }}
             QFrame#mainBackgroundDesigner {{
-                background-color: {panel_bg};
+                background-color: transparent;
                 border: 1px solid {border};
-                border-radius: 26px;
+                border-radius: 14px;
             }}
             QPushButton#mainBackgroundButton,
             QPushButton#mainBackgroundColorButton {{
                 background-color: transparent;
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 12px;
-                min-height: 36px;
-                max-height: 36px;
-                padding: 0px 14px;
-                font-size: 13px;
+                border-radius: 10px;
+                min-height: 32px;
+                max-height: 32px;
+                padding: 0px 12px;
+                font-size: 12px;
                 font-weight: 500;
             }}
             QPushButton#mainBackgroundButton:hover,
@@ -1741,16 +1741,16 @@ class DialogCoreMixin2:
             QScrollBar:vertical {{
                 border: none;
                 background: transparent;
-                width: 10px;
-                margin: 0px 2px 0px 2px;
+                width: 6px;
+                margin: 0px 1px 0px 1px;
             }}
             QScrollBar::handle:vertical {{
                 background: {border};
                 min-height: 32px;
-                border-radius: 5px;
+                border-radius: 3px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: {accent_color};
+                background: {muted_fg};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
@@ -1759,16 +1759,16 @@ class DialogCoreMixin2:
             QScrollBar:horizontal {{
                 border: none;
                 background: transparent;
-                height: 10px;
-                margin: 2px 0px 2px 0px;
+                height: 6px;
+                margin: 1px 0px 1px 0px;
             }}
             QScrollBar::handle:horizontal {{
                 background: {border};
                 min-width: 32px;
-                border-radius: 5px;
+                border-radius: 3px;
             }}
             QScrollBar::handle:horizontal:hover {{
-                background: {accent_color};
+                background: {muted_fg};
             }}
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
             QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
