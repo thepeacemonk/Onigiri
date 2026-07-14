@@ -289,6 +289,632 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         '</span>'
     )
 
+# CSS for the ported dashboard widgets (Prep Station, Hexagon Land, Onigimon).
+# Extracted from the upstream renderer, where these styles lived inline.
+_PORTED_WIDGET_CSS = """
+        /* Prep Station widget */
+        .prep-station-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px 12px 12px 12px;
+            cursor: pointer;
+            overflow: hidden;
+            font-family: inherit;
+            /* background + border-radius/width fall back here, then get
+               overridden !important by the Box Color & Effect settings */
+            background-color: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+            border-radius: 15px;
+        }
+        .prep-widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .prep-widget-title {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            opacity: 0.55;
+        }
+        .prep-widget-count {
+            font-size: 9px;
+            opacity: 0.45;
+            margin-right: auto;
+        }
+        .prep-widget-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            opacity: 0.45;
+            font-style: italic;
+        }
+
+        /* Mini exam-card previews, echoing the Prep Station dialog's ExamCard.
+           grid-template-columns is set inline per-instance to the widget's
+           configured slot count, so a card only ever occupies one column's
+           width even when fewer plans than slots are active. */
+        .prep-plan-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+        }
+        .prep-plan-card {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+        }
+        .prep-card-band {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 0 0 auto;
+            padding: 6px 7px;
+            min-height: 40%;
+            color: #ffffff;
+        }
+        .prep-card-band-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+        }
+        .prep-card-name-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 4px;
+            min-width: 0;
+        }
+        .prep-card-icon {
+            font-size: 13px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        img.prep-card-icon {
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+        }
+        .prep-card-badge {
+            font-size: 7px;
+            font-weight: 700;
+            white-space: nowrap;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 2px 5px;
+            border-radius: 8px;
+        }
+        .prep-card-name {
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: -0.01em;
+            text-align: left;
+        }
+        .prep-card-body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 1;
+            min-height: 0;
+            padding: 6px 7px 7px 7px;
+            gap: 4px;
+        }
+        .prep-card-pace {
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+            min-width: 0;
+        }
+        .prep-card-pace-num {
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .prep-card-pace-unit {
+            font-size: 8px;
+            opacity: 0.55;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .prep-card-progress {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .prep-card-progress-track {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border, rgba(128, 128, 128, 0.25));
+            overflow: hidden;
+        }
+        .prep-card-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+        }
+        .prep-card-progress-label {
+            font-size: 8px;
+            opacity: 0.55;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .hex-land-widget {
+            display: grid;
+            grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
+            gap: 14px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--border, #e0e0e0);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .hex-land-widget.land-only {
+            display: block;
+            padding: 10px;
+        }
+
+        .hex-land-widget.disabled {
+            display: flex;
+            align-items: center;
+            background: var(--canvas-inset, #ffffff);
+        }
+
+        .hex-land-preview {
+            position: relative;
+            min-width: 0;
+            min-height: 120px;
+            height: 100%;
+            border-radius: 14px;
+            overflow: hidden;
+            background-color: var(--hl-bottom, #1597d1);
+            background-image: linear-gradient(180deg, var(--hl-top, #48c0ee), var(--hl-bottom, #1597d1));
+        }
+
+        .hex-land-widget.land-only .hex-land-preview {
+            min-height: 100%;
+        }
+
+        .hex-land-preview-stage {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(var(--hl-scale, .72));
+            transform-origin: center;
+        }
+
+        .hex-land-preview img,
+        .hex-land-preview svg {
+            position: absolute;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .hex-land-preview .hl-tile {
+            width: 65px;
+        }
+
+        .hex-land-copy {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .hex-land-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .hex-land-header h3,
+        .hex-land-copy h3 {
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.15;
+            font-weight: 900;
+            color: var(--fg, #111);
+        }
+
+        .hex-land-header button {
+            width: 25px;
+            height: 25px;
+            border: 0;
+            border-radius: 999px;
+            background: #f5bf36;
+            color: #3b2604;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .hex-land-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .hex-land-stat-row {
+            display: grid;
+            grid-template-columns: 36px 1fr;
+            align-items: center;
+            min-height: 34px;
+            padding: 4px 10px 4px 6px;
+            border: 1px solid var(--fg, #161616);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 92%, transparent);
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .hex-land-stat-icon {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .hex-land-stat-sprite {
+            display: block;
+            max-width: 31px;
+            max-height: 31px;
+            object-fit: contain;
+        }
+
+        .hex-land-stat-sprite.tree {
+            max-height: 34px;
+        }
+
+        .hex-land-stat-text {
+            min-width: 0;
+            text-align: center;
+            font-size: 15px;
+            line-height: 1.1;
+            font-weight: 900;
+            color: var(--fg, #111);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .hex-land-coin-fallback {
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 32% 28%, #fff4a8 0 18%, #f8c94d 19% 62%, #d18a19 63% 100%);
+            color: #593a04;
+            font-size: 9px;
+            font-weight: 900;
+            box-shadow: inset 0 -2px 0 rgba(89, 58, 4, .22);
+        }
+
+        .hex-land-coins {
+            font-size: 18px;
+            font-weight: 900;
+            color: #1f6f87;
+        }
+
+        .hex-land-meta,
+        .hex-land-copy p {
+            margin: 0;
+            color: var(--fg-subtle, #757575);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .hex-land-mats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: auto;
+        }
+
+        .hex-land-mats span {
+            padding: 5px 7px;
+            border-radius: 999px;
+            background: color-mix(in srgb, #58af82 14%, transparent);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .onigimon-widget, .onigimon-widget * {
+            font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
+        }
+
+        .onigimon-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px;
+            border-radius: 15px;
+            border: 1px solid var(--border, #e0e0e0);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .onigimon-header,
+        .onigimon-main,
+        .onigimon-inventory {
+            display: flex;
+            align-items: center;
+        }
+
+        .onigimon-header {
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .onigimon-header h3 {
+            margin: 0;
+            font-size: 15px;
+        }
+
+        .onigimon-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .onigimon-header span,
+        .onigimon-info span {
+            color: var(--fg-subtle, #757575);
+            font-size: 12px;
+        }
+        
+        .onigimon-ball-btn {
+            width: 24px;
+            height: 24px;
+            display: grid;
+            place-items: center;
+            flex: 0 0 24px;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 999px;
+            background: var(--canvas, #ffffff);
+            padding: 0;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .onigimon-ball-btn:hover {
+            background: var(--accent-color, #007aff);
+            border-color: var(--accent-color, #007aff);
+            box-shadow: 0 4px 8px color-mix(in srgb, var(--accent-color, #007aff) 30%, transparent);
+            transform: translateY(-1px);
+        }
+
+        .onigimon-ball-icon {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            background-color: var(--fg, #222);
+            mask-size: contain;
+            -webkit-mask-size: contain;
+            mask-repeat: no-repeat;
+            -webkit-mask-repeat: no-repeat;
+            mask-position: center;
+            -webkit-mask-position: center;
+            transition: background-color 0.2s ease;
+        }
+
+        .onigimon-ball-btn:hover .onigimon-ball-icon {
+            background-color: #ffffff;
+        }
+
+        .onigimon-main {
+            gap: 12px;
+            min-height: 52px;
+        }
+
+        .onigimon-scene {
+            position: relative;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 12px;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow: hidden;
+            isolation: isolate;
+        }
+
+        .onigimon-scene::before {
+            content: "";
+            position: absolute;
+            inset: -12px;
+            background-image: var(--onigimon-scene-image, none);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(var(--onigimon-scene-blur, 9px));
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: -2;
+            display: none;
+        }
+
+        .onigimon-scene-bg {
+            position: absolute;
+            inset: -12px;
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .onigimon-scene::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 16%, transparent);
+            z-index: 1;
+        }
+
+        .onigimon-scene > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        .onigimon-scene > .onigimon-scene-bg {
+            position: absolute;
+            z-index: 0;
+        }
+
+        .onigimon-sprite {
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            flex: 0 0 58px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--accent-color, #007aff) 10%, transparent);
+        }
+
+        .onigimon-scene .onigimon-sprite {
+            background: transparent;
+        }
+
+        .onigimon-sprite img {
+            width: 54px;
+            height: 54px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        .onigimon-placeholder {
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+        }
+
+        .onigimon-info {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+            text-align: left;
+            justify-items: start;
+        }
+
+        .onigimon-info strong {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .onigimon-meter {
+            display: grid;
+            grid-template-columns: 80px 40px minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .onigimon-meter b {
+            color: var(--fg, #222);
+            font-weight: 800;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .onigimon-meter > div {
+            height: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--fg, #222) 10%, transparent);
+        }
+
+        .onigimon-meter i {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+        }
+
+        .onigimon-inventory {
+            gap: 7px;
+            flex-wrap: wrap;
+            color: var(--fg, #222);
+            margin-top: auto;
+        }
+
+        .onigimon-inventory span {
+            min-width: 58px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--accent-color, #007aff) 10%, transparent);
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .onigimon-item-icon {
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
+            image-rendering: pixelated;
+            flex: 0 0 auto;
+        }
+
+        /* Compact 1-row Onigimon widget: just the companion over its background */
+        .onigimon-widget-compact {
+            padding: 8px;
+            gap: 0;
+        }
+
+        .onigimon-scene-compact {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            justify-content: center;
+        }
+
+        .onigimon-scene-compact .onigimon-sprite {
+            width: 64px;
+            height: 64px;
+            flex: 0 0 64px;
+        }
+
+        .onigimon-scene-compact .onigimon-sprite img {
+            width: 60px;
+            height: 60px;
+        }
+
+
+"""
+
+
 def _col_conf_get(key, default=None):
     try:
         return mw.col.conf.get(key, default)
@@ -902,7 +1528,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     unified_grid_html = onigiri_grid_html + external_widgets_html
 
     # [CHANGED] Updated CSS to force grid expansion and row height
-    onigimon_css = onigimon.widget_css()
+    onigimon_css = _PORTED_WIDGET_CSS
 
     stats_block_html = f"""
     <style>
@@ -940,7 +1566,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
-        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget {{
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget {{
             flex: 1;
             width: 100%;
             height: 100%;
