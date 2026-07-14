@@ -1046,6 +1046,30 @@ class DialogCoreMixin2:
                 border-color: {accent_color};
             }}
 
+            /* Default button family: quiet secondary. Specific object names
+               (save, nav, segments, color swatches) override below. */
+            QPushButton {{
+                background-color: transparent;
+                color: {fg_secondary};
+                border: 1px solid {border};
+                border-radius: 10px;
+                min-height: 28px;
+                padding: 0px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {surface_hover};
+                color: {fg};
+            }}
+            QPushButton:pressed {{
+                background-color: {nav_checked_bg};
+            }}
+            QPushButton:disabled {{
+                color: {muted_fg};
+                border-color: {soft_border};
+            }}
+
             /* Hairline row anatomy for compact settings rows */
             QFrame#organizeCompactRow {{
                 border-bottom: 1px solid {separator_color};

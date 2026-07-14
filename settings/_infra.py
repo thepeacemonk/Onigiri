@@ -3637,8 +3637,16 @@ class InfraMixin2:
         moon_button.setCursor(Qt.CursorShape.PointingHandCursor)
         moon_button.setStyleSheet("background: transparent; border: none; padding: 0px;")
 
+        # Compact control: the toggle alone (tooltips carry Light/Dark);
+        # the flanking glyph labels added noise to every section header.
+        sun_button.setVisible(False)
+        moon_button.setVisible(False)
+        sun_button.setFixedSize(0, 0)
+        moon_button.setFixedSize(0, 0)
+
         toggle = AnimatedToggleButton(self, accent)
         toggle.setChecked(current_mode == "dark")
+        toggle.setToolTip(tr("preview_theme_toggle", "Preview in light / dark"))
 
         def refresh_icons(checked):
             sun_color = muted if checked else accent
