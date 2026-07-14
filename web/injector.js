@@ -811,6 +811,34 @@
         }
         window.onigiriUpdateSidebarEdgeToggle = updateSidebarEdgeToggle;
 
+        // Sidebar profile panel: click the profile bar to slide the profile
+        // into the sidebar; back button or toggle click slides it away.
+        function setupProfileSidebar() {
+            const panel = sidebarEl ? sidebarEl.querySelector('[data-profile-sidebar]') : null;
+            if (!sidebarEl || !panel || panel.dataset.profileSidebarBound) return;
+            panel.dataset.profileSidebarBound = 'true';
+
+            function setOpen(open, event) {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                if (open && sidebarEl.classList.contains('sidebar-collapsed')) {
+                    expandSidebar();
+                }
+                sidebarEl.classList.toggle('profile-panel-open', !!open);
+                if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
+                    requestAnimationFrame(window.onigiriUpdateSidebarEdgeToggle);
+                }
+            }
+
+            window.OnigiriProfileSidebar = {
+                open: (event) => setOpen(true, event),
+                close: (event) => setOpen(false, event),
+                toggle: (event) => setOpen(!sidebarEl.classList.contains('profile-panel-open'), event)
+            };
+        }
+
         function collapseSidebar() {
             _edgeToggleCollapseLocked = true;
             applyCollapsedEdgeTogglePosition();
@@ -874,6 +902,7 @@
         }
 
         setupResizeHandle();
+        setupProfileSidebar();
         setupDeckFocusLabel();
         // Edit mode and Transfer buttons removed — drag-and-drop is always-on
         setupActionButtons();

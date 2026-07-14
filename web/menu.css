@@ -2063,3 +2063,210 @@ tr.deck .learn-count-bubble.zero {
 .sidebar-edge-toggle-zone.always-visible {
     pointer-events: none;
 }
+
+/* =====================================================================
+   Sidebar Profile Panel (click profile bar to slide open in sidebar)
+   ===================================================================== */
+/* Sidebar Profile Panel */
+.sidebar-expanded-content {
+    position: relative;
+}
+
+.onigiri-sidebar-profile {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    color: var(--fg);
+    background: transparent;
+    overflow: hidden auto;
+    border-radius: 15px;
+    opacity: 0;
+    transform: translateX(16px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.2s ease;
+    z-index: 2;
+}
+
+.sidebar-left .sidebar-expanded-content > :not(.onigiri-sidebar-profile) {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 0.16s ease, transform 0.2s ease;
+}
+
+.sidebar-left.profile-panel-open .sidebar-expanded-content > :not(.onigiri-sidebar-profile) {
+    opacity: 0;
+    transform: translateX(-16px);
+    pointer-events: none;
+}
+
+.sidebar-left.profile-panel-open .onigiri-sidebar-profile {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+.sidebar-left.profile-panel-open {
+    padding: 0 !important;
+}
+
+.onigiri-sidebar-profile-back {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    border-radius: 50% !important;
+    background: rgba(0, 0, 0, 0.12) !important;
+    color: #fff;
+    cursor: pointer;
+    padding: 0 !important;
+    box-shadow: none !important;
+    opacity: 0.72;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.onigiri-sidebar-profile-back:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.onigiri-sidebar-profile-back::before,
+.onigiri-sidebar-profile-back::after {
+    content: "";
+    position: absolute;
+    top: 12px;
+    left: 7px;
+    width: 12px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+.onigiri-sidebar-profile-back::before {
+    transform: rotate(45deg);
+}
+
+.onigiri-sidebar-profile-back::after {
+    transform: rotate(-45deg);
+}
+
+.onigiri-sidebar-profile-cover {
+    position: relative;
+    min-height: 176px;
+    overflow: hidden;
+    background-color: var(--accent-color);
+    border-top-left-radius: 15px;
+    border-top-right-radius: 15px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    flex-shrink: 0;
+}
+
+.onigiri-sidebar-profile-bg-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+.onigiri-sidebar-profile-body {
+    position: relative;
+    padding: 0 24px 24px;
+}
+
+.onigiri-sidebar-profile-avatar {
+    width: 110px;
+    height: 110px;
+    margin-top: -58px;
+    margin-bottom: 14px;
+    border-radius: 50%;
+    border: 7px solid var(--onigiri-profile-ring-color, var(--canvas, #f4f4f4));
+    background: var(--accent-color);
+    background-clip: padding-box;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+}
+
+.onigiri-sidebar-profile-img,
+.onigiri-sidebar-profile-img.profile-pic-generated {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0;
+    font-size: 36px;
+}
+
+.onigiri-sidebar-profile-body h2 {
+    margin: 0 0 8px;
+    font-size: 24px;
+    line-height: 1.12;
+    color: var(--fg);
+}
+
+.onigiri-sidebar-profile-bio,
+.onigiri-sidebar-profile-status {
+    margin: 0 0 12px;
+    font-size: 16px;
+    line-height: 1.38;
+    color: var(--fg);
+    overflow-wrap: anywhere;
+}
+
+.onigiri-sidebar-profile-status {
+    padding-left: 12px;
+    border-left: 3px solid var(--accent-color);
+    color: var(--fg-subtle);
+}
+
+.onigiri-sidebar-profile-music,
+.onigiri-sidebar-profile-music-link {
+    display: block;
+    width: 100%;
+    margin: 18px 0 10px;
+    border-radius: 20px;
+    background: transparent;
+    overflow: hidden;
+    border: none;
+    min-height: 80px;
+    line-height: 0;
+}
+
+.onigiri-sidebar-profile-music iframe {
+    display: block;
+    width: 100%;
+    height: 80px;
+    border: 0;
+}
+
+.onigiri-sidebar-profile-music-link {
+    box-sizing: border-box;
+    padding: 16px;
+    color: #fff;
+    text-decoration: none;
+    background: #16b9d0;
+    line-height: normal;
+}
+
+.onigiri-sidebar-profile-music-link span {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    opacity: 0.78;
+    margin-bottom: 6px;
+}
+
+.onigiri-sidebar-profile-music-link strong {
+    display: block;
+    font-size: 14px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+

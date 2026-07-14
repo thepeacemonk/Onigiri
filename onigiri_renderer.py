@@ -3,6 +3,7 @@
 import html
 import json
 import os
+import re
 import copy
 from dataclasses import dataclass
 
@@ -287,6 +288,167 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         'onerror="this.onerror=null;this.style.display=\'none\';">'
         '</span>'
     )
+
+def _col_conf_get(key, default=None):
+    try:
+        return mw.col.conf.get(key, default)
+    except Exception:
+        return default
+
+
+def _profile_background_render_parts(addon_package, include_default_image=True):
+    container_style = ""
+    layer_style = ""
+    bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "image")
+    if bg_mode == "image":
+        bg_image_file = _col_conf_get("modern_menu_profile_bg_image", "")
+        if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
+            bg_url = f"/_addons/{addon_package}/user_files/profile_bg/{bg_image_file}"
+        elif include_default_image:
+            bg_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
+        else:
+            bg_url = ""
+        container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
+        if bg_url:
+            blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_bg_blur", 0) or 0)))
+            opacity_value = _col_conf_get("modern_menu_profile_bg_opacity", 50)
+            opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
+            blur_px = blur * 0.2
+            scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
+            layer_style = (
+                f"background-image: url('{bg_url}'); background-size: cover; background-position: center; "
+                f"filter: blur({blur_px}px); opacity: {opacity}; transform: scale({scale});"
+            )
+    elif bg_mode == "custom":
+        container_style = "background-color: var(--profile-bg-custom-color);"
+    else:
+        container_style = "background-color: var(--accent-color);"
+    return container_style, layer_style
+
+
+def _spotify_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if text.startswith("spotify:"):
+        parts = text.split(":")
+        if len(parts) >= 3 and parts[1] in {"track", "album", "playlist", "episode", "show"}:
+            return f"https://open.spotify.com/embed/{parts[1]}/{parts[2]}?utm_source=generator"
+    if not text or "spotify.com" not in text:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(text)
+        parts = [part for part in parsed.path.split("/") if part]
+        if parts and parts[0].startswith("intl-"):
+            parts = parts[1:]
+        if len(parts) >= 2 and parts[0] in {"track", "album", "playlist", "episode", "show"}:
+            return f"https://open.spotify.com/embed/{parts[0]}/{parts[1]}?utm_source=generator"
+    except Exception:
+        return ""
+    return ""
+
+
+def _apple_music_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if not text or "music.apple.com" not in text:
+        return ""
+    try:
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(text)
+        host = parsed.netloc.lower()
+        if host not in {"music.apple.com", "embed.music.apple.com"}:
+            return ""
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 3 or parts[1] not in {"album", "song", "playlist"}:
+            return ""
+        return urlunparse(("https", "embed.music.apple.com", parsed.path, "", parsed.query, ""))
+    except Exception:
+        return ""
+
+
+def _youtube_music_embed_url(url: str) -> str:
+    text = str(url or "").strip()
+    if not text or "music.youtube.com" not in text:
+        return ""
+    try:
+        from urllib.parse import parse_qs, urlparse
+        parsed = urlparse(text)
+        if parsed.netloc.lower() != "music.youtube.com" or parsed.path != "/watch":
+            return ""
+        video_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        if not re.fullmatch(r"[\w-]{6,20}", video_id):
+            return ""
+        return f"https://www.youtube-nocookie.com/embed/{video_id}?controls=1&modestbranding=1&rel=0"
+    except Exception:
+        return ""
+
+
+def _music_embed_url(url: str) -> str:
+    return _spotify_embed_url(url) or _apple_music_embed_url(url) or _youtube_music_embed_url(url)
+
+
+def _music_link_service_label(url: str) -> str:
+    text = str(url or "").lower()
+    if "music.apple.com" in text:
+        return "Apple Music"
+    if "music.youtube.com" in text:
+        return "YouTube Music"
+    if "spotify.com" in text or text.startswith("spotify:"):
+        return "Spotify"
+    return "Music"
+
+
+def _profile_sidebar_config(conf: dict) -> dict:
+    profile = conf.get("onigiriProfile", {})
+    if not isinstance(profile, dict):
+        profile = {}
+    return {
+        "bio": str(profile.get("bio") or "").strip(),
+        "status": str(profile.get("status") or "").strip(),
+        "musicLink": str(profile.get("spotifyLink") or profile.get("musicLink") or "").strip(),
+    }
+
+
+def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, profile_pic_html: str) -> str:
+    profile = _profile_sidebar_config(conf)
+    bg_style, layer_style = _profile_background_render_parts(addon_package)
+    bg_layer_html = f'<div class="onigiri-sidebar-profile-bg-layer" style="{layer_style}"></div>' if layer_style else ""
+
+    bio_html = f'<p class="onigiri-sidebar-profile-bio">{html.escape(profile["bio"], quote=False)}</p>' if profile["bio"] else ""
+    status_html = f'<p class="onigiri-sidebar-profile-status">{html.escape(profile["status"], quote=False)}</p>' if profile["status"] else ""
+    music_link = profile["musicLink"]
+    music_html = ""
+    if music_link:
+        embed_url = _music_embed_url(music_link)
+        if embed_url:
+            music_html = f"""
+            <section class="onigiri-sidebar-profile-music">
+                <iframe src="{html.escape(embed_url, quote=True)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+            </section>
+            """
+        else:
+            music_html = f"""
+            <a class="onigiri-sidebar-profile-music-link" href="{html.escape(music_link, quote=True)}">
+                <span>{html.escape(_music_link_service_label(music_link), quote=False)}</span>
+                <strong>{html.escape(music_link, quote=False)}</strong>
+            </a>
+            """
+
+    return f"""
+    <section class="onigiri-sidebar-profile" data-profile-sidebar>
+        <button type="button" class="onigiri-sidebar-profile-back" aria-label="Back" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.close(event)"></button>
+        <div class="onigiri-sidebar-profile-cover" style="{bg_style}">
+            {bg_layer_html}
+        </div>
+        <div class="onigiri-sidebar-profile-body">
+            <div class="onigiri-sidebar-profile-avatar">{profile_pic_html}</div>
+            <h2>{html.escape(user_name, quote=False)}</h2>
+            {status_html}
+            {bio_html}
+            {music_html}
+        </div>
+    </section>
+    """
+
 
 def _get_onigiri_stat_card_html(label: str, value: str, widget_id: str) -> str:
     return f"""<div class="stat-card {widget_id}-card"><h3>{label}</h3><p>{value}</p></div>"""
@@ -1247,9 +1409,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     profile_bar_html = (
         f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
-        f"onclick=\"pycmd('showUserProfile')\">{profile_bar_contents}</div>"
+        f"onclick=\"window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)\">{profile_bar_contents}</div>"
     )
-    
+    profile_sidebar_html = _build_profile_sidebar_html(
+        conf,
+        addon_package,
+        user_name,
+        _get_profile_pic_html(user_name, addon_package, "onigiri-sidebar-profile-img"),
+    )
+
     # 1. Build the dynamic sidebar HTML from the layout config
     sidebar_buttons_html = _build_sidebar_html(conf)
     
@@ -1813,6 +1981,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .replace("{sidebar_style}", sidebar_style) \
         .replace("{welcome_message}", welcome_message) \
         .replace("{sidebar_buttons}", sidebar_buttons_html) \
+        .replace("{profile_sidebar}", profile_sidebar_html) \
         .replace("{organise_button}", organise_button_html) \
         .replace("{ellipsis_button}", ellipsis_button_html) \
         .replace("{undo_button}", undo_button_html) \
