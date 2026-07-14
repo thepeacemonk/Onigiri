@@ -163,7 +163,7 @@ class PageBackgroundsMixin:
         designer.setObjectName("mainBackgroundDesigner")
         is_sidebar_preview = spec.get("preview_shape") == "sidebar"
         designer_layout = QVBoxLayout(designer)
-        designer_layout.setContentsMargins(18, 18, 18, 18)
+        designer_layout.setContentsMargins(0, 8, 0, 8)
         designer_layout.setSpacing(14)
 
         preview_mode_header = QHBoxLayout()
@@ -1044,7 +1044,7 @@ class PageBackgroundsMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         mode = self._background_gallery_mode(
@@ -1234,7 +1234,7 @@ class PageBackgroundsMixin:
         self.main_bg_designer = QFrame()
         self.main_bg_designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(self.main_bg_designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         header_layout = QHBoxLayout()
@@ -1788,7 +1788,7 @@ class PageBackgroundsMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         mode = self._background_gallery_mode(

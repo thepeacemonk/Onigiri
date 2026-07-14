@@ -1000,6 +1000,45 @@ class DialogCoreMixin2:
                 font-family: -apple-system, "Segoe UI", sans-serif;
             }}
 
+            /* ── Global form controls: one quiet family ─────────────── */
+            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTimeEdit, QDateEdit {{
+                background-color: {input_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 10px;
+                min-height: 30px;
+                max-height: 30px;
+                max-width: 380px;
+                padding: 0px 10px;
+                selection-background-color: {accent_color};
+                selection-color: #ffffff;
+            }}
+            QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
+                border-color: {accent_color};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QSpinBox::up-button, QSpinBox::down-button,
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+                border: none;
+                background: transparent;
+                width: 16px;
+            }}
+            QLineEdit#settingsSearchInput, QLineEdit#searchInput {{
+                max-width: 10000px;
+            }}
+
+            /* Hairline row anatomy for compact settings rows */
+            QFrame#organizeCompactRow {{
+                border-bottom: 1px solid {separator_color};
+                min-height: 38px;
+            }}
+            QFrame#organizeCompactRow:last-child {{
+                border-bottom: none;
+            }}
+
             /* ── Sidebar ─────────────────────────────────────────────── */
             QWidget#settingsSidebarWrapper {{
                 background-color: {sidebar_bg};
@@ -1455,8 +1494,8 @@ class DialogCoreMixin2:
             }}
             QFrame#mainBackgroundDesigner {{
                 background-color: transparent;
-                border: 1px solid {border};
-                border-radius: 14px;
+                border: none;
+                border-radius: 0px;
             }}
             QPushButton#mainBackgroundButton,
             QPushButton#mainBackgroundColorButton {{

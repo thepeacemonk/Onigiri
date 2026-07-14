@@ -355,7 +355,7 @@ class PagePomodoroMixin:
             }}
         """)
         outer = QVBoxLayout(frame)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         outer.addWidget(self._create_pomodoro_preview_panel())

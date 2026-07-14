@@ -153,7 +153,7 @@ class PageStudyToolsMixin:
         designer = QFrame()
         designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         header_layout = QHBoxLayout()
@@ -422,7 +422,7 @@ class PageStudyToolsMixin:
         designer = QFrame()
         designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         header_layout = QHBoxLayout()

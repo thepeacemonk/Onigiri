@@ -982,7 +982,7 @@ class PageGalleryMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         layout.addWidget(self._create_background_gallery_hint_bar("single"))

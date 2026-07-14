@@ -120,7 +120,7 @@ class PageProfileMixin:
         designer = QFrame()
         designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         segment_shell = QFrame()
@@ -712,7 +712,7 @@ class PageProfileMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         dynamic_pic_gallery = key == "profile_pic" and hasattr(self, "profile_pic_dynamic_toggle") and self.profile_pic_dynamic_toggle.isChecked()
