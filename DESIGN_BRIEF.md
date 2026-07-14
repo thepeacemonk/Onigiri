@@ -70,4 +70,17 @@ H. Full verify sweep (compile all, node --check, unresolved names) + commit.
 ## Status log (update as steps land)
 - [2026-07-14] Crashes fixed: tr shadow (deck open), --highlight-bg KeyError (sidebar page),
   nook name in gamification save. Committed 189939e.
-- Steps A–H: pending.
+- [wave 1] A hugeicons in settings nav; D welcome removed + heart donate; token pass
+  (radii/typography/ghost buttons/6px scrollbars); F bar gradient restored; E-part
+  prep/hexland title normalization. Committed c9ada57, df28d67.
+- [wave 2] Unified widget chrome layer in _PORTED_WIDGET_CSS (one card family: 14px
+  radius, one 11px caps title style incl .stat-card h3/.onigimon-header h3/
+  .learner-stats-header h3/.prep-widget-title/nook h3, favorites rows flat with
+  hairlines, 24px metric scale). Settings shell corners 18->0 (flat sheet). d1d671a.
+- NEXT (wave 3): settings page anatomy rebuild — convert boxed designers to
+  row-anatomy (title+desc left, control right, hairlines); learner-stats chip
+  flattening; nook full-variant inner layout; icon sweep for web toolbar + remaining
+  dialogs (pomodoro/hashi/prep/care all still upstream-styled); perf pass (G);
+  square-corner scrollbar hunt — page-level QScrollArea handle (user still sees
+  square corners; global QSS has 3px radius — find which scrollbar is unstyled,
+  possibly the webview or a per-page style overriding).
