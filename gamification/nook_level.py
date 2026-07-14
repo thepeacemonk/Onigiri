@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import os
 import time
 import re
 import random
@@ -11,157 +10,240 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
+import requests
 from aqt import mw
 
 from .. import config
+from ..translations import tr
 
 
 
 XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
+RECIPE_RUSH_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 
 
 
 
-MOTIVATIONAL_PHRASES = (
-    "The next level awaits — make your restaurant legendary!",
-    "Keep the kitchen busy and the XP flowing!",
-    "Every serving of study brings new patrons to your restaurant.",
-    "Your crew is cheering — plate up more reviews!",
-    "Tonight's special: one more level up!",
-    "Customers are lining up; keep the knowledge coming!",
-)
+def get_motivational_phrases():
+    return [
+        tr("motivational_phrase_1"),
+        tr("motivational_phrase_2"),
+        tr("motivational_phrase_3"),
+        tr("motivational_phrase_4"),
+        tr("motivational_phrase_5"),
+        tr("motivational_phrase_6"),
+    ]
 
+# Image filenames are relative to system_files/gamification_images/nook_folder/,
+# organized into subfolders that match the store's 3 tabs (restaurants/sushi/shops).
 RESTAURANTS = {
     "focus_dango": {
-        "name": "Focus Dango", 
-        "price": 0, 
-        "theme": "#DC90B8", 
-        "image": "focus_dango_restaurant.png",
-        "description": "A cozy pink haven where soft melodies and the gentle aroma of sweet dango help you find your flow. Perfect for deep study sessions!"
+        "name": "focus_dango_name",
+        "price": 0,
+        "theme": "#DC90B8",
+        "image": "restaurants/focus_dango.webp",
+        "description": "focus_dango_desc"
     },
     "motivated_mochi": {
-        "name": "Motivated Mochi", 
-        "price": 0, 
-        "theme": "#6EC170", 
-        "image": "mochi_msg_restaurant.png",
-        "description": "A cheerful green café where adorable mochi friends cheer you on with every review! Their little motivational notes will keep your spirits high!"
+        "name": "motivated_mochi_name",
+        "price": 0,
+        "theme": "#6EC170",
+        "image": "restaurants/motivated_mochi.webp",
+        "description": "motivated_mochi_desc"
     },
     "macha_delights": {
-        "name": "Macha Delights", 
-        "price": 400, 
-        "theme": "#517C58", 
-        "image": "Macha Delights.png",
-        "description": "A serene tea house specializing in premium matcha creations. Perfect for those who appreciate the subtle, earthy flavors of green tea paired with delicate pastries."
+        "name": "macha_delights_name",
+        "price": 400,
+        "theme": "#517C58",
+        "image": "restaurants/matcha_delights.webp",
+        "description": "macha_delights_desc"
     },
     "macaron_maison": {
-        "name": "Macaron Maison", 
-        "price": 500, 
-        "theme": "#AFC3D6", 
-        "image": "Macaron Maison.png",
-        "description": "An elegant French patisserie known for its colorful, delicate macarons. Each bite is a perfect balance of crispy shell and smooth, flavorful filling."
+        "name": "macaron_maison_name",
+        "price": 500,
+        "theme": "#AFC3D6",
+        "image": "restaurants/macaron_maison.webp",
+        "description": "macaron_maison_desc"
     },
     "coffee_co": {
-        "name": "Coffee & Co", 
-        "price": 600, 
-        "theme": "#98693A", 
-        "image": "CoffeeAndCake.png",
-        "description": "A cozy coffee shop where the aroma of freshly brewed coffee fills the air. Enjoy artisan coffee paired with homemade cakes and pastries."
-    },
-    "grocery_store": {
-        "name": "Grocery Store", 
-        "price": 700, 
-        "theme": "#AD6131", 
-        "image": "Grocery Store.png",
-        "description": "Your friendly neighborhood market stocked with fresh produce, pantry essentials, and daily necessities. A warm, welcoming place for all your shopping needs."
+        "name": "coffee_co_name",
+        "price": 600,
+        "theme": "#98693A",
+        "image": "restaurants/coffee_co.webp",
+        "description": "coffee_co_desc"
     },
     "bakery_heaven": {
-        "name": "Bakery Heaven", 
-        "price": 800, 
-        "theme": "#CD9C57", 
-        "image": "Bakery.png",
-        "description": "A traditional bakery where the scent of freshly baked bread greets you every morning. From crusty baguettes to soft croissants, every item is made with love."
+        "name": "bakery_heaven_name",
+        "price": 800,
+        "theme": "#CD9C57",
+        "image": "restaurants/bakery_heaven.webp",
+        "description": "bakery_heaven_desc"
     },
     "awesome_boba": {
-        "name": "Awesome Boba", 
-        "price": 850, 
-        "theme": "#CD8DCA", 
-        "image": "Awesome Boba.png",
-        "description": "A vibrant bubble tea shop offering creative flavors and toppings. Customize your drink with chewy tapioca pearls, fruit jellies, and more!"
+        "name": "awesome_boba_name",
+        "price": 850,
+        "theme": "#CD8DCA",
+        "image": "restaurants/awesome_boba.webp",
+        "description": "awesome_boba_desc"
     },
     "awesome_shiny_boba": {
-        "name": "Awesome Shiny Boba", 
-        "price": 1000, 
-        "theme": "#41A59D", 
-        "image": "Awesome Boba (Shiny).png",
-        "description": "The premium evolution of Awesome Boba! This exclusive location features rare ingredients and limited-edition flavors with a stunning aesthetic."
+        "name": "awesome_shiny_boba_name",
+        "price": 1000,
+        "theme": "#41A59D",
+        "image": "restaurants/shiny_awesome_boba.webp",
+        "description": "awesome_shiny_boba_desc"
     },
     "santas_coffee": {
-        "name": "Santa's Coffee", 
-        "price": 1225, 
-        "theme": "#CA4D44", 
-        "image": "Santa's Coffee.png",
-        "description": "A magical winter wonderland café where holiday cheer meets exceptional coffee. Warm up with seasonal drinks while enjoying the festive atmosphere."
-    },
-    "lunar_new_year": {
-        "name": "Lunar New Year Feast", 
-        "price": 888, 
-        "theme": "#D22B2B", 
-        "image": "lunar_new_year_feast.png",
-        "description": "A grand feast to celebrate the Lunar New Year! Enjoy delicious traditional dishes and prosperity for the year ahead."
+        "name": "santas_coffee_name",
+        "price": 1225,
+        "theme": "#CA4D44",
+        "image": "restaurants/santas_coffee.webp",
+        "description": "santas_coffee_desc"
     },
 }
 
+# "Sushi Evolutions": upgrade stages for the starting Onigiri Stand.
 EVOLUTIONS = {
-    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None, "description": "The upgrade is here!"},
-    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None, "description": "Even better!"},
-    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None, "description": "Superb!"},
-    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None, "description": "Masterpiece!"},
-    "prev_onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76", "description": "Heavenly!"},
     "restaurant_evo_i": {
-        "name": "Restaurant I Star", 
-        "price": 700, 
-        "theme": "#D07A5F", 
-        "image": "Restaurant Evo I.png",
-        "description": "The first evolution of your restaurant journey. A charming establishment that shows your dedication to growth and improvement."
+        "name": "restaurant_evo_i_name",
+        "price": 700,
+        "theme": "#D07A5F",
+        "image": "sushi/restaurant_i.webp",
+        "description": "restaurant_evo_i_desc"
     },
     "restaurant_evo_ii": {
-        "name": "Restaurant II Star", 
-        "price": 800, 
-        "theme": "#D07A5F", 
-        "image": "Restaurant Evo II.png",
-        "description": "Your restaurant continues to evolve! Enhanced decor and expanded menu options attract more customers and showcase your progress."
+        "name": "restaurant_evo_ii_name",
+        "price": 800,
+        "theme": "#D07A5F",
+        "image": "sushi/restaurant_ii.webp",
+        "description": "restaurant_evo_ii_desc"
     },
     "restaurant_evo_iii": {
-        "name": "Restaurant III Star", 
-        "price": 900, 
-        "theme": "#D07A5F", 
-        "image": "Restaurant Evo III.png",
-        "description": "A significant milestone in your culinary journey. Your restaurant now features premium amenities and a reputation for excellence."
+        "name": "restaurant_evo_iii_name",
+        "price": 900,
+        "theme": "#D07A5F",
+        "image": "sushi/restaurant_iii.webp",
+        "description": "restaurant_evo_iii_desc"
     },
     "restaurant_evo_iv": {
-        "name": "Restaurant IV Star", 
-        "price": 1000, 
-        "theme": "#D07A5F", 
-        "image": "Restaurant Evo IV.png",
-        "description": "Near the peak of perfection! Your establishment has become a local landmark, known for its exceptional service and quality."
+        "name": "restaurant_evo_iv_name",
+        "price": 1000,
+        "theme": "#D07A5F",
+        "image": "sushi/restaurant_iv.webp",
+        "description": "restaurant_evo_iv_desc"
     },
     "restaurant_evo_legendary": {
-        "name": "Restaurant Legendary", 
-        "price": 1500, 
-        "theme": "#445A78", 
-        "image": "Restaurant Evo Legendary.png",
-        "description": "The ultimate achievement! A legendary restaurant that stands as a testament to your dedication and hard work. Only the most committed reach this level."
+        "name": "restaurant_evo_legendary_name",
+        "price": 2000,
+        "theme": "#445A78",
+        "image": "sushi/legendary_restaurant.webp",
+        "description": "restaurant_evo_legendary_desc"
     },
     "restaurant_evo_garden": {
-        "name": "Restaurant Garden Palace", 
-        "price": 3000, 
-        "theme": "#2F553D", 
-        "image": "Restaurant Evo Garden Palace.png",
-        "description": "The pinnacle of culinary prestige! This deluxe establishment radiates luxury and sophistication, offering a world-class dining experience that is truly second to none."
+        "name": "restaurant_evo_garden_name",
+        "price": 3000,
+        "theme": "#2F553D",
+        "image": "sushi/garden_palace_restaurant.webp",
+        "description": "restaurant_evo_garden_desc"
+    },
+    "restaurant_evo_heaven": {
+        "name": "restaurant_evo_heaven_name",
+        "price": 4000,
+        "theme": "#E8D9A0",
+        "image": "sushi/heaven_restaurant.webp",
+        "description": "restaurant_evo_heaven_desc"
+    },
+    "restaurant_evo_paradise": {
+        "name": "restaurant_evo_paradise_name",
+        "price": 5000,
+        "theme": "#3D9C8A",
+        "image": "sushi/paradise_restaurant.webp",
+        "description": "restaurant_evo_paradise_desc"
     },
 }
+
+# "Shops": special/seasonal venues, separate from the everyday restaurant themes.
+SHOPS = {
+    "grocery_store": {
+        "name": "grocery_store_name",
+        "price": 700,
+        "theme": "#AD6131",
+        "image": "shops/grocery_store.webp",
+        "description": "grocery_store_desc"
+    },
+    "lunar_new_year": {
+        "name": "lunar_new_year_name",
+        "price": 888,
+        "theme": "#D22B2B",
+        "image": "shops/lunar_new_year_feast.webp",
+        "description": "lunar_new_year_desc"
+    },
+    "astronigiri": {
+        "name": "astronigiri_name",
+        "price": 5000,
+        "theme": "#74829B",
+        "image": "shops/astronigiri.webp",
+        "description": "astronigiri_desc"
+    },
+    "pokestore": {
+        "name": "pokestore_name",
+        "price": 950,
+        "theme": "#E8B23D",
+        "image": "shops/pokestore.webp",
+        "description": "pokestore_desc"
+    },
+    "wizard_shop": {
+        "name": "wizard_shop_name",
+        "price": 1200,
+        "theme": "#6A4C93",
+        "image": None,
+        "description": "wizard_shop_desc"
+    },
+    "onigilab": {
+        "name": "onigilab_name",
+        "price": 1300,
+        "theme": "#3FA796",
+        "image": None,
+        "description": "onigilab_desc"
+    },
+    "paws_whiskers": {
+        "name": "paws_whiskers_name",
+        "price": 1100,
+        "theme": "#E89CAE",
+        "image": None,
+        "description": "paws_whiskers_desc"
+    },
+    "dino_shop": {
+        "name": "dino_shop_name",
+        "price": 1400,
+        "theme": "#7A8450",
+        "image": None,
+        "description": "dino_shop_desc"
+    },
+}
+
+def get_localized_restaurants():
+    localized = copy.deepcopy(RESTAURANTS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
+
+def get_localized_evolutions():
+    localized = copy.deepcopy(EVOLUTIONS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
+
+def get_localized_shops():
+    localized = copy.deepcopy(SHOPS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
 
 
 @dataclass(frozen=True)
@@ -183,12 +265,14 @@ class LevelProgress:
         return max(0.0, min(1.0, self.xp_into_level / self.xp_to_next_level))
 
 
-class RestaurantLevelManager:
-    """Tracks the Restaurant Level system (XP, levels, and notifications)."""
+class NookLevelManager:
+    """Tracks the Nook Level system (XP, levels, and notifications)."""
 
     def __init__(self) -> None:
         self._addon_package: str | None = None
         self._daily_target_cache: Dict[str, Any] = {}
+        self._recipe_rush_ticket_cache: Dict[str, Any] = {}
+        self._last_recipe_rush_error: str = ""
         self._last_daily_sync_time: float = 0
         self._cached_daily_count: int = -1
         self._xp_history: List[int] = []
@@ -242,7 +326,7 @@ class RestaurantLevelManager:
         return self._add_xp(50, reason=f"achievement:{achievement_id}")
 
     def reset_progress(self) -> None:
-        """Reset Restaurant Level progress back to level 0."""
+        """Reset Nook Level progress back to level 0."""
         from aqt import mw
         
         # Reset XP and level in gamification.json (Source of Truth)
@@ -361,7 +445,7 @@ class RestaurantLevelManager:
         # Fallback to config if gamification.json is empty (rare now due to defaults)
         total_xp = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
         # level = int(game_state.get("level", restaurant_conf.get("level", 0)))
-        name = game_state.get("name", restaurant_conf.get("name", "Restaurant Level"))
+        name = game_state.get("name", restaurant_conf.get("name", "Nook Level"))
 
         # Recalculate level from XP to be safe
         calc_level, xp_into_level, xp_to_next = self._collapse_xp(total_xp)
@@ -404,6 +488,10 @@ class RestaurantLevelManager:
             "phrase": self._get_motivational_phrase(progress.level),
         }
 
+    def _get_motivational_phrase(self, level: int) -> str:
+        phrases = get_motivational_phrases()
+        return phrases[level % len(phrases)]
+
     def get_daily_special_status(self) -> Dict[str, Any]:
         """Get daily special data, resetting it if it's a new day."""
         conf = config.get_config()
@@ -418,15 +506,16 @@ class RestaurantLevelManager:
         state = self._get_gamification_state()
         daily_special_state = state.get("daily_special", {})
         
-        # Merge config (settings) and state (progress)
-        daily_special = {
-            "enabled": daily_special_conf.get("enabled", False),
-            "target": daily_special_state.get("target", daily_special_conf.get("target", 100)),
-            "current_progress": daily_special_state.get("current_progress", 0),
-            "last_updated": daily_special_state.get("last_updated"),
-            "last_notified_milestone": daily_special_state.get("last_notified_milestone", 0),
-            "last_notified_percent": daily_special_state.get("last_notified_percent", 0)
-        }
+        # Merge config (settings) and state (progress). Preserve Nook Rush ticket metadata.
+        daily_special = dict(daily_special_state) if isinstance(daily_special_state, dict) else {}
+        daily_special.update({
+            "enabled": daily_special_conf.get("enabled", daily_special.get("enabled", False)),
+            "target": daily_special.get("target", daily_special_conf.get("target", 100)),
+            "current_progress": daily_special.get("current_progress", 0),
+            "last_updated": daily_special.get("last_updated"),
+            "last_notified_milestone": daily_special.get("last_notified_milestone", 0),
+            "last_notified_percent": daily_special.get("last_notified_percent", 0),
+        })
         
         reset_occurred = self._check_and_reset_daily_special(daily_special)
         sync_occurred = self._sync_daily_progress_with_db(daily_special)
@@ -455,8 +544,265 @@ class RestaurantLevelManager:
         except Exception:
             return datetime.now().strftime('%Y-%m-%d')
 
+    def _recipe_rush_restaurants_payload(self) -> List[Dict[str, Any]]:
+        restaurants = [{
+            "id": "default",
+            "name": tr("onigiri_stand_name", "Onigiri Stand"),
+            "type": "restaurant",
+            "price": 0,
+        }]
+
+        for item_id, item in RESTAURANTS.items():
+            restaurants.append({
+                "id": item_id,
+                "name": tr(item.get("name", item_id), item_id.replace("_", " ").title()),
+                "type": "restaurant",
+                "price": int(item.get("price", 0) or 0),
+            })
+
+        for item_id, item in EVOLUTIONS.items():
+            restaurants.append({
+                "id": item_id,
+                "name": tr(item.get("name", item_id), item_id.replace("_", " ").title()),
+                "type": "evolution",
+                "price": int(item.get("price", 0) or 0),
+            })
+
+        for item_id, item in SHOPS.items():
+            restaurants.append({
+                "id": item_id,
+                "name": tr(item.get("name", item_id), item_id.replace("_", " ").title()),
+                "type": "shop",
+                "price": int(item.get("price", 0) or 0),
+            })
+
+        return restaurants
+
+    def _normalize_ingredient_cards(self, ingredients: Any, target: int) -> List[Dict[str, Any]]:
+        if isinstance(ingredients, str):
+            raw_names = [part.strip() for part in re.split(r"[,;|]", ingredients) if part.strip()]
+            ingredients = [{"name": name} for name in raw_names]
+
+        if not isinstance(ingredients, list):
+            ingredients = []
+
+        normalized = []
+        names = [item for item in ingredients if isinstance(item, (dict, str))]
+        count = max(1, len(names))
+        fallback_cards = max(1, int(target * 0.7) // count) if target > 0 else 1
+
+        for item in names:
+            if isinstance(item, str):
+                name = item.strip()
+                cards = fallback_cards
+            else:
+                name = str(item.get("name") or item.get("ingredient") or "").strip()
+                try:
+                    cards = int(item.get("cards") or item.get("required_cards") or fallback_cards)
+                except (TypeError, ValueError):
+                    cards = fallback_cards
+            if name:
+                normalized.append({"name": name, "cards": max(1, cards)})
+
+        if not normalized:
+            normalized = [
+                {"name": tr("recipe_rush_default_ingredient_1", "Rice"), "cards": max(1, int(target * 0.35) or 1)},
+                {"name": tr("recipe_rush_default_ingredient_2", "Filling"), "cards": max(1, int(target * 0.35) or 1)},
+            ]
+
+        return normalized
+
+    def _normalize_recipe_rush_ticket(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        ticket = data.get("ticket", data) if isinstance(data, dict) else {}
+        if not isinstance(ticket, dict):
+            return None
+
+        try:
+            target = int(ticket.get("target_cards") or ticket.get("targetCards") or ticket.get("target") or 0)
+        except (TypeError, ValueError):
+            target = 0
+
+        try:
+            prep_cards = int(ticket.get("prep_cards") or ticket.get("prepCards") or 0)
+        except (TypeError, ValueError):
+            prep_cards = 0
+
+        try:
+            delivery_cards = int(ticket.get("delivery_cards") or ticket.get("deliveryCards") or 0)
+        except (TypeError, ValueError):
+            delivery_cards = 0
+
+        ingredients = self._normalize_ingredient_cards(ticket.get("ingredients"), max(target, 1))
+        ingredient_total = sum(int(item.get("cards", 0) or 0) for item in ingredients)
+
+        if target <= 0:
+            target = ingredient_total + max(0, prep_cards) + max(0, delivery_cards)
+        if target <= 0:
+            return None
+
+        if prep_cards <= 0:
+            prep_cards = max(1, int(target * 0.2))
+        if delivery_cards <= 0:
+            delivery_cards = max(1, target - ingredient_total - prep_cards)
+        if ingredient_total + prep_cards + delivery_cards != target:
+            delivery_cards = max(1, target - ingredient_total - prep_cards)
+            if ingredient_total + prep_cards + delivery_cards <= 0:
+                delivery_cards = 1
+
+        difficulty = str(ticket.get("difficulty") or "common").strip().lower()
+        if difficulty not in {"common", "uncommon", "rare", "epic", "legendary"}:
+            difficulty = "common"
+
+        return {
+            "recipe_id": str(ticket.get("recipe_id") or ticket.get("recipeId") or ticket.get("id") or "").strip(),
+            "name": str(ticket.get("name") or ticket.get("recipe_name") or ticket.get("recipeName") or tr("recipe_rush_title", "Nook Rush")).strip(),
+            "description": str(ticket.get("description") or "").strip(),
+            "difficulty": difficulty,
+            "target": max(1, int(target)),
+            "target_cards": max(1, int(target)),
+            "ingredients": ingredients,
+            "prep_cards": max(1, int(prep_cards)),
+            "delivery_cards": max(1, int(delivery_cards)),
+            "preparation": str(ticket.get("preparation") or ticket.get("prep") or "").strip(),
+            "delivery": str(ticket.get("delivery") or ticket.get("deliver_to") or ticket.get("deliverTo") or "").strip(),
+            "restaurant_id": str(ticket.get("restaurant_id") or ticket.get("restaurantId") or self.get_current_theme_id()).strip() or "default",
+            "restaurant_name": str(ticket.get("restaurant_name") or ticket.get("restaurantName") or "").strip(),
+            "rush_name": str(ticket.get("rush_name") or ticket.get("rushName") or "").strip(),
+            "ingredients_label": str(ticket.get("ingredients_label") or ticket.get("ingredientsLabel") or "").strip(),
+            "stage_collect_label": str(ticket.get("stage_collect_label") or ticket.get("stageCollectLabel") or "").strip(),
+            "stage_prepare_label": str(ticket.get("stage_prepare_label") or ticket.get("stagePrepareLabel") or "").strip(),
+            "stage_deliver_label": str(ticket.get("stage_deliver_label") or ticket.get("stageDeliverLabel") or "").strip(),
+            "stage_completed_label": str(ticket.get("stage_completed_label") or ticket.get("stageCompletedLabel") or "").strip(),
+            "xp_reward": int(ticket.get("xp_reward") or ticket.get("xpReward") or 0) if str(ticket.get("xp_reward") or ticket.get("xpReward") or "0").isdigit() else 0,
+            "source": str(ticket.get("source") or "apps_script"),
+        }
+
+    def _fetch_recipe_rush_ticket(self, today: str, restaurant_id: str) -> Optional[Dict[str, Any]]:
+        cache = self._recipe_rush_ticket_cache
+        if (
+            cache.get("date") == today
+            and cache.get("restaurant_id") == restaurant_id
+            and time.time() - float(cache.get("checked_at", 0) or 0) < 600
+        ):
+            return cache.get("ticket")
+
+        conf, restaurant_conf = self._config_bundle()
+        payload = {
+            "action": "recipeRushToday",
+            "anki_day": today,
+            "restaurant_id": restaurant_id,
+            "difficulty": restaurant_conf.get("difficulty", "Apprendice"),
+            "restaurants": self._recipe_rush_restaurants_payload(),
+        }
+
+        try:
+            # The script syncs every restaurant/evolution/shop into a sheet on each call,
+            # which can take a few seconds - a short timeout here causes spurious failures.
+            response = requests.post(RECIPE_RUSH_API_URL, json=payload, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            if str(data.get("result", "")).lower() != "success":
+                ticket = None
+                self._last_recipe_rush_error = str(data.get("message") or "Apps Script returned an error.")
+            else:
+                ticket = self._normalize_recipe_rush_ticket(data)
+                self._last_recipe_rush_error = ""
+        except Exception as exc:
+            print(f"Onigiri: Nook Rush server unavailable: {exc}")
+            ticket = None
+            self._last_recipe_rush_error = str(exc)
+
+        self._recipe_rush_ticket_cache = {
+            "date": today,
+            "restaurant_id": restaurant_id,
+            "checked_at": time.time(),
+            "ticket": ticket,
+        }
+        return ticket
+
+    def _recipe_rush_stage(self, daily_special: Dict[str, Any]) -> str:
+        if daily_special.get("completed"):
+            return "completed"
+
+        current = max(0, int(daily_special.get("current_progress", 0) or 0))
+        target = max(1, int(daily_special.get("target", 1) or 1))
+        ingredients = daily_special.get("ingredients") or []
+        ingredient_total = sum(int(item.get("cards", 0) or 0) for item in ingredients if isinstance(item, dict))
+        if ingredient_total <= 0:
+            ingredient_total = max(1, int(target * 0.7))
+
+        prep_cards = max(1, int(daily_special.get("prep_cards", max(1, int(target * 0.2))) or 1))
+        if current < ingredient_total:
+            return "collect"
+        if current < min(target, ingredient_total + prep_cards):
+            return "prepare"
+        if current < target:
+            return "deliver"
+        return "completed"
+
+    def _update_recipe_rush_stage(self, daily_special: Dict[str, Any]) -> None:
+        daily_special["mode"] = "recipe_rush"
+        daily_special["stage"] = self._recipe_rush_stage(daily_special)
+        if daily_special["stage"] == "completed":
+            daily_special["completed"] = True
+            daily_special["status"] = "delivered"
+        else:
+            daily_special["completed"] = False
+            daily_special["status"] = daily_special["stage"]
+
+    def _total_xp_for_level(self, level: int) -> int:
+        level = max(0, int(level or 0))
+        return sum(self._xp_for_next(lvl) for lvl in range(level))
+
+    def _apply_recipe_rush_missed_penalty(self, daily_special: Dict[str, Any]) -> List[Dict[str, Any]]:
+        missed_day = daily_special.get("last_updated")
+        if not missed_day or daily_special.get("completed") or daily_special.get("penalty_applied_for") == missed_day:
+            return []
+
+        conf, restaurant_conf = self._config_bundle()
+        difficulty = restaurant_conf.get("difficulty", "Apprendice")
+        if difficulty == "Cook":
+            level_loss = 1
+            coins_lost = 25
+        elif difficulty == "Chef":
+            level_loss = 2
+            coins_lost = 75
+        else:
+            daily_special["penalty_applied_for"] = missed_day
+            return []
+
+        progress = self.get_progress()
+        current_coins = self._get_coins_from_json()
+        new_level = max(0, progress.level - level_loss)
+        new_total_xp = min(progress.total_xp, self._total_xp_for_level(new_level))
+        new_coins = current_coins - coins_lost
+
+        self._update_gamification_data({
+            "total_xp": new_total_xp,
+            "level": new_level,
+            "taiyaki_coins": new_coins,
+        })
+
+        rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
+        penalty_msg = f'{rush_name} {tr("recipe_rush_penalty_suffix", "missed")}'
+
+        daily_special["penalty_applied_for"] = missed_day
+        return [{
+            "id": f"recipe_rush_missed_{missed_day}",
+            "name": penalty_msg,
+            "description": tr(
+                "recipe_rush_penalty_desc",
+                "The order expired: restaurant level and Taiyaki Coins were reduced."
+            ),
+            "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
+            "iconAlt": penalty_msg,
+            "textColorLight": "#2c2c2c",
+            "textColorDark": "#ffffff",
+            "duration": 5000,
+        }]
+
     def _check_and_reset_daily_special(self, daily_special: Dict[str, Any]) -> bool:
-        """Check if daily special needs reset and update it in-place. Returns True if reset occurred."""
+        """Check if Nook Rush needs reset and update it in-place. Returns True if reset occurred."""
         if not daily_special.get("enabled", False):
             return False
             
@@ -469,29 +815,107 @@ class RestaurantLevelManager:
         needs_reset = False
         
         if last_updated != today:
+            penalty_notifications = self._apply_recipe_rush_missed_penalty(daily_special)
+            if penalty_notifications:
+                self._dispatch_notifications(penalty_notifications)
+
             daily_special["current_progress"] = 0
             daily_special["last_updated"] = today
             daily_special["last_notified_milestone"] = 0
             daily_special["last_notified_percent"] = 0
+            daily_special["completed"] = False
+            daily_special["status"] = "collect"
+            daily_special.pop("penalty_applied_for", None)
             needs_reset = True
             
-        # Recalculate if reset happened OR if target is the default 100
-        if needs_reset or target == 100:
-            # Calculate new target based on today's sushi special
-            new_target = self._calculate_daily_target()
+        # Recalculate if reset happened OR if target is the default 100 OR legacy state has no recipe ticket
+        # OR the equipped Nook/shop changed since today's ticket was generated.
+        if (
+            needs_reset
+            or target == 100
+            or daily_special.get("mode") != "recipe_rush"
+            or daily_special.get("restaurant_id") != self.get_current_theme_id()
+        ):
+            recipe_data = self._get_daily_special_data()
+            new_target = int(recipe_data.get("target", 0) or 0) if recipe_data else 0
             
             # Fallback if calculation fails (e.g. JS file not found)
             if not new_target:
-                # Generate a deterministic random target between 50 and 150 based on date
-                # This ensures variety even without the JS file
+                # Apps Script unreachable: keep the daily counter alive with a
+                # generic target/name instead of duplicating its recipe content here.
                 random.seed(today)
                 new_target = random.randint(50, 150)
-                
+
             if new_target:
-                daily_special["target"] = new_target
+                self._apply_recipe_rush_ticket_data(daily_special, recipe_data, new_target, today)
                 needs_reset = True
-                
+
         return needs_reset
+
+    def _apply_recipe_rush_ticket_data(
+        self,
+        daily_special: Dict[str, Any],
+        recipe_data: Optional[Dict[str, Any]],
+        new_target: int,
+        today: str,
+    ) -> None:
+        """Write a (possibly fallback) Nook Rush ticket into daily_special in-place."""
+        daily_special["target"] = new_target
+        daily_special["mode"] = "recipe_rush"
+        daily_special["recipe_id"] = (recipe_data or {}).get("recipe_id") or f"{self.get_current_theme_id()}_{today}"
+        daily_special["name"] = (recipe_data or {}).get("name") or tr("recipe_rush_title", "Nook Rush")
+        daily_special["description"] = (recipe_data or {}).get("description") or tr("complete_your_reviews")
+        daily_special["difficulty"] = (recipe_data or {}).get("difficulty", "common")
+        daily_special["ingredients"] = (recipe_data or {}).get("ingredients", [])
+        daily_special["prep_cards"] = (recipe_data or {}).get("prep_cards", max(1, int(new_target * 0.2)))
+        daily_special["delivery_cards"] = (recipe_data or {}).get("delivery_cards", max(1, int(new_target * 0.1)))
+        daily_special["preparation"] = (recipe_data or {}).get("preparation", "")
+        daily_special["delivery"] = (recipe_data or {}).get("delivery", "")
+        # Only lock in restaurant_id when we got a real ticket. If the Apps
+        # Script call failed/returned no recipe, leave it mismatched so the
+        # next check keeps retrying instead of being stuck on the generic
+        # fallback for the rest of the day.
+        daily_special["restaurant_id"] = recipe_data.get("restaurant_id", self.get_current_theme_id()) if recipe_data else ""
+        daily_special["restaurant_name"] = (recipe_data or {}).get("restaurant_name", "")
+        daily_special["rush_name"] = (recipe_data or {}).get("rush_name") or tr("recipe_rush_title", "Nook Rush")
+        daily_special["ingredients_label"] = (recipe_data or {}).get("ingredients_label", "")
+        daily_special["stage_collect_label"] = (recipe_data or {}).get("stage_collect_label", "")
+        daily_special["stage_prepare_label"] = (recipe_data or {}).get("stage_prepare_label", "")
+        daily_special["stage_deliver_label"] = (recipe_data or {}).get("stage_deliver_label", "")
+        daily_special["stage_completed_label"] = (recipe_data or {}).get("stage_completed_label", "")
+        daily_special["xp_reward"] = (recipe_data or {}).get("xp_reward", 0)
+        self._update_recipe_rush_stage(daily_special)
+
+    def force_resync_recipe_rush(self) -> Tuple[bool, str]:
+        """Manually refetch today's Nook Rush ticket for the currently equipped Nook/shop.
+
+        Bypasses the ticket cache and the "already have a ticket for today" guard, so it
+        always asks the Apps Script for a fresh pick from the equipped shop's Rush group,
+        even late in the Anki day. Keeps today's current_progress untouched.
+        """
+        self._recipe_rush_ticket_cache = {}
+
+        today = self._get_anki_today_date()
+        state = self._get_gamification_state()
+        daily_special_state = state.get("daily_special", {})
+        daily_special = dict(daily_special_state) if isinstance(daily_special_state, dict) else {}
+
+        recipe_data = self._get_daily_special_data()
+        new_target = int(recipe_data.get("target", 0) or 0) if recipe_data else 0
+        if not new_target:
+            reason = self._last_recipe_rush_error or "Unknown error."
+            return False, tr(
+                "recipe_rush_sync_failed",
+                "Could not get a Rush from the Apps Script for the equipped Nook: {reason}",
+            ).format(reason=reason)
+
+        daily_special["last_updated"] = today
+        daily_special["current_progress"] = daily_special.get("current_progress", 0)
+        self._apply_recipe_rush_ticket_data(daily_special, recipe_data, new_target, today)
+        self._update_gamification_daily_special(daily_special)
+        self.invalidate_daily_cache()
+
+        return True, daily_special.get("rush_name") or daily_special.get("name") or tr("recipe_rush_title", "Nook Rush")
 
     def _sync_daily_progress_with_db(self, daily_special: Dict[str, Any]) -> bool:
         """Syncs the daily special progress with the actual review count from the database."""
@@ -544,6 +968,7 @@ class RestaurantLevelManager:
                 self._dispatch_notifications(notifications)
 
             daily_special["current_progress"] = max(0, today_reviews)
+            self._update_recipe_rush_stage(daily_special)
             
             # Silently update notified percent to avoid stale notifications
             target = daily_special.get("target", 100)
@@ -561,6 +986,8 @@ class RestaurantLevelManager:
         if today_reviews >= target:
             notifications = self._handle_daily_special_completion(daily_special)
             self._dispatch_notifications(notifications)
+            if notifications:
+                updated = True
                 
         return updated
 
@@ -626,8 +1053,9 @@ class RestaurantLevelManager:
             "coins": coins,
             "owned_items": owned,
             "current_theme_id": current,
-            "restaurants": RESTAURANTS,
-            "evolutions": EVOLUTIONS
+            "restaurants": get_localized_restaurants(),
+            "evolutions": get_localized_evolutions(),
+            "shops": get_localized_shops()
         }
 
     def refresh_state(self) -> None:
@@ -658,7 +1086,7 @@ class RestaurantLevelManager:
         if item_id in owned:
             return False, "Item already owned."
             
-        item = RESTAURANTS.get(item_id) or EVOLUTIONS.get(item_id)
+        item = RESTAURANTS.get(item_id) or EVOLUTIONS.get(item_id) or SHOPS.get(item_id)
         if not item:
             return False, "Item not found."
             
@@ -702,7 +1130,7 @@ class RestaurantLevelManager:
         if current_id == "default":
             return "#D49083"
             
-        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id)
+        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id) or SHOPS.get(current_id)
         if item:
             return item["theme"]
         return None
@@ -711,14 +1139,14 @@ class RestaurantLevelManager:
         """Get the image filename of the current theme."""
         state = self._get_gamification_state()
         current_id = state.get("current_theme_id", "default")
-        
+
         if current_id == "default":
-            return "restaurant_level.png"
-            
-        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id)
-        if item and "image" in item:
+            return "sushi/onigiri_stand.webp"
+
+        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id) or SHOPS.get(current_id)
+        if item and item.get("image"):
             return item["image"]
-        return "restaurant_level.png"
+        return "sushi/onigiri_stand.webp"
 
     def get_current_theme_id(self) -> str:
         """Get the ID of the current theme."""
@@ -745,6 +1173,12 @@ class RestaurantLevelManager:
         self._xp_history.append(xp)
         notifications = self.add_review_xp(xp, count=1)
         self._dispatch_notifications(notifications)
+        try:
+            from .. import patcher
+            if hasattr(patcher, "update_reviewer_chip"):
+                patcher.update_reviewer_chip()
+        except Exception:
+            pass
 
     def on_state_did_undo(self, changes: Any = None) -> None:
         """Hook handler for undoing a review (state_did_undo)."""
@@ -785,7 +1219,7 @@ class RestaurantLevelManager:
              notifications = []
         
         # Suppress popup notifications when Focused Gaming is active
-        # OR when the user has explicitly disabled Restaurant Level notifications
+        # OR when the user has explicitly disabled Nook Level notifications
         conf = config.get_config()
         focused_gaming = conf.get("focusedGaming", False)
         restaurant_notifications_on = conf.get("restaurant_level", {}).get("notifications_enabled", True)
@@ -797,7 +1231,6 @@ class RestaurantLevelManager:
             
         from aqt import mw
         
-        payload = json.dumps(notifications, ensure_ascii=False)
         state = getattr(mw, "state", None)
         webviews = []
 
@@ -805,38 +1238,45 @@ class RestaurantLevelManager:
         overview = getattr(mw, "overview", None)
         deck_browser = getattr(mw, "deckBrowser", None)
 
-        if state == "review" and reviewer and getattr(reviewer, "web", None):
-            webviews.append(reviewer.web)
-        elif state == "overview" and overview and getattr(overview, "web", None):
+        if state == "overview" and overview and getattr(overview, "web", None):
             webviews.append(overview.web)
         elif state == "deckBrowser" and deck_browser and getattr(deck_browser, "web", None):
             webviews.append(deck_browser.web)
 
         # Fallbacks if state-based lookup failed
-        for web in [reviewer and getattr(reviewer, "web", None), overview and getattr(overview, "web", None), deck_browser and getattr(deck_browser, "web", None)]:
+        for web in [overview and getattr(overview, "web", None), deck_browser and getattr(deck_browser, "web", None)]:
             if web and web not in webviews:
                 webviews.append(web)
 
         # Serialize data
         payload = json.dumps(notifications, ensure_ascii=False)
+        if notifications and state == "review":
+            reviewer_web = reviewer and getattr(reviewer, "web", None)
+            if reviewer_web:
+                notification_script = (
+                    "(function() {"
+                    "if (window.OnigiriNotifications) {"
+                    f"const items = {payload};"
+                    "items.forEach(item => window.OnigiriNotifications.show(item));"
+                    "}"
+                    "})();"
+                )
+                try:
+                    reviewer_web.eval(notification_script)
+                except Exception:
+                    pass
         
         # Get latest progress data
         progress = self.get_progress_payload()
         progress_json = json.dumps(progress, ensure_ascii=False)
 
-        # Enhanced script to update both notifications AND the UI widgets
+        # Enhanced script to update UI widgets.
         # WRAPPED IN IIFE TO PREVENT "Identifier has already been declared" ERRORS
         script = (
             "(function() {"
             f"const progress = {progress_json};"
             "try {"
-                # 1. Dispatch Notifications
-                "if (window.OnigiriNotifications) {"
-                    f"const items = {payload};"
-                    "items.forEach(item => window.OnigiriNotifications.show(item));"
-                "}"
-                
-                # 2. Update Deck Browser Widget (Restaurant Level)
+                # 1. Update Deck Browser Widget (Nook Level)
                 # Update Progress Bar
                 "const lpFill = document.querySelector('.level-progress-container .lp-fill');"
                 "if (lpFill) lpFill.style.width = (progress.progressFraction * 100) + '%';"
@@ -883,15 +1323,6 @@ class RestaurantLevelManager:
                 "const levelBind = document.querySelector('[data-bind=\"level\"]');"
                 "if (levelBind) levelBind.textContent = progress.level;"
 
-                # 4. Update Reviewer Header Chip (Reviewer Top Bar)
-                # Update Progress Bar (Reviewer)
-                "const chipProgressBar = document.querySelector('.restaurant-level-chip .rl-chip-progress-fill');"
-                "if (chipProgressBar) chipProgressBar.style.width = (progress.progressFraction * 100) + '%';"
-                
-                # Update Level Text (Reviewer) - Format: "Lv 5"
-                "const chipLevelText = document.querySelector('.restaurant-level-chip .rl-chip-level');"
-                "if (chipLevelText) chipLevelText.textContent = `Lv ${progress.level}`;"
-
             "} catch (e) { console.error('Onigiri UI Update Error:', e); }"
             "})();"
         )
@@ -934,7 +1365,7 @@ class RestaurantLevelManager:
         return close_time >= close_time_threshold
 
     def _handle_daily_special_completion(self, daily_special: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Handle completion of a daily special and update gamification data.
+        """Handle completion of a Nook Rush ticket and update gamification data.
         
         Returns:
             List of notifications to display
@@ -948,16 +1379,15 @@ class RestaurantLevelManager:
             
             # Use Anki's day calculation for consistency with _check_and_reset_daily_special
             today = self._get_anki_today_date()
-            special_id = f"daily_{today}"
+            special_id = f"recipe_rush_{today}"
             
             # Check if already completed to prevent double-awarding
             existing = next((s for s in gamification.daily_specials if s.id == special_id and s.completed), None)
             if existing:
                 return []
 
-            
-            # Get the actual daily special data
-            special_data = self._get_daily_special_data()
+            self._update_recipe_rush_stage(daily_special)
+            special_data = daily_special if daily_special.get("mode") == "recipe_rush" else self._get_daily_special_data()
             
             if special_data:
                 special_name = special_data.get("name")
@@ -967,12 +1397,13 @@ class RestaurantLevelManager:
                 # Let's Capitalize for display/storage if that's the pattern.
                 # Looking at original code: difficulty = "Common" (Capitalized)
                 difficulty = difficulty.capitalize() 
-                target = special_data.get("target", 100)
+                target = int(special_data.get("target", 100) or 100)
             else:
                 # Fallback if something goes wrong
-                special_name = f"Daily Special - {today}"
+                rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
+                special_name = f"{rush_name} - {today}"
                 special_desc = "Complete your daily review goal"
-                target = daily_special.get("target", 100)
+                target = int(daily_special.get("target", 100) or 100)
                 if target <= 50:
                     difficulty = "Common"
                 elif target <= 100:
@@ -1001,8 +1432,10 @@ class RestaurantLevelManager:
             elif diff_lower == "legendary":
                 multiplier = 2.5
                 
-            xp_earned = int(base_xp * multiplier)
-            xp_earned = max(50, xp_earned)
+            xp_earned = int(special_data.get("xp_reward", 0) or 0) if special_data else 0
+            if xp_earned <= 0:
+                xp_earned = int(base_xp * multiplier)
+                xp_earned = max(50, xp_earned)
 
             # Update gamification data
             gamification.add_daily_special(
@@ -1015,6 +1448,12 @@ class RestaurantLevelManager:
                 cards_completed=target,
                 xp_earned=xp_earned
             )
+
+            daily_special["completed"] = True
+            daily_special["stage"] = "completed"
+            daily_special["status"] = "delivered"
+            daily_special["current_progress"] = max(int(daily_special.get("current_progress", 0) or 0), target)
+            self._update_gamification_daily_special(daily_special)
             
             # Award XP and get notifications
             notifications = self._add_xp(xp_earned, reason="daily_special")
@@ -1022,13 +1461,13 @@ class RestaurantLevelManager:
             # Add a specific notification for daily special completion
             notifications.append({
                 'id': special_id,
-                'name': f'Completed: {special_name}',
-                'description': f"You finished '{special_desc}' (+{xp_earned} XP)",
-                'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
-                'iconAlt': "Daily Special Trophy",
+                'name': f'{tr("recipe_rush_delivered", "Recipe delivered")}: {special_name}',
+                'description': f"{special_desc} (+{xp_earned} XP)",
+                'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.webp",
+                'iconAlt': "Nook Rush Trophy",
                 'type': 'xp',
                 'amount': xp_earned,
-                'reason': 'daily_special',
+                'reason': 'recipe_rush',
                 'special': {
                     'id': special_id,
                     'name': special_name,
@@ -1051,128 +1490,16 @@ class RestaurantLevelManager:
 
     def _get_daily_special_data(self) -> Optional[Dict[str, Any]]:
         """
-        Parses the special_dishes.js file and replicates the logic to find today's special dish.
-        Returns a dictionary with name, description, target, difficulty, etc.
+        Return today's Nook Rush ticket from the Apps Script.
+
+        All recipe content (names, descriptions, ingredients, per-shop "Rush"
+        names) lives in the Apps Script - the add-on has no local recipe list
+        of its own. If the server is unreachable, callers fall back to a
+        generic numeric target rather than a duplicated recipe database.
         """
         today = self._get_anki_today_date()
-        
-        # Check cache if we cached the full object? 
-        # _daily_target_cache only has 'target'. Let's expand it or just re-parse (it's fast enough)
-        
-        try:
-            # Find the sushi_dishes.js file
-            addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            js_path = os.path.join(addon_path, "web", "gamification", "restaurant_level", "special_dishes.js")
-            
-            if not os.path.exists(js_path):
-                return None
-                
-            # Read the JS file
-            with open(js_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            # Get current restaurant ID
-            restaurant_id = self.get_current_theme_id()
-            
-            # Handle evolution mapping (same as JS logic)
-            if restaurant_id and restaurant_id.startswith('restaurant_evo_'):
-                restaurant_id = 'default'
-            
-            # Find the array for the restaurant
-            start_marker = f'"{restaurant_id}": ['
-            start_idx = content.find(start_marker)
-            
-            # Fallback to default if not found
-            if start_idx == -1:
-                restaurant_id = 'default'
-                start_marker = f'"{restaurant_id}": ['
-                start_idx = content.find(start_marker)
-                
-            if start_idx == -1:
-                return None
-                
-            # Extract the array content
-            array_start = start_idx + len(start_marker) - 1 
-            
-            open_brackets = 0
-            array_content = ""
-            found_end = False
-            
-            for i in range(array_start, len(content)):
-                char = content[i]
-                if char == '[':
-                    open_brackets += 1
-                elif char == ']':
-                    open_brackets -= 1
-                    
-                if open_brackets == 0:
-                    array_content = content[array_start+1:i]
-                    found_end = True
-                    break
-            
-            if not found_end:
-                return None
-
-            # Parse the array content (simulated JS object parsing)
-            dishes = []
-            current_obj = {}
-            lines = array_content.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith('{'):
-                    current_obj = {}
-                elif line.startswith('}'):
-                    if current_obj:
-                        dishes.append(current_obj)
-                elif ':' in line:
-                    parts = line.split(':', 1)
-                    key = parts[0].strip()
-                    # Strip quotes from key names (e.g., "name" -> name)
-                    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
-                        key = key[1:-1]
-                    
-                    val = parts[1].strip().rstrip(',')
-                    
-                    # Clean up value quotes
-                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                        val = val[1:-1]
-                    elif val.isdigit():
-                        val = int(val)
-                        
-                    current_obj[key] = val
-            
-            if not dishes:
-                return None
-                
-            # Calculate day of year
-            now = datetime.now()
-            start_of_year = datetime(now.year, 1, 1)
-            day_of_year = (now - start_of_year).days + 1
-            
-            index = day_of_year % len(dishes)
-            special = dishes[index]
-            
-            min_cards = int(special.get('minCards', 10)) * self._get_difficulty_multiplier()
-            max_cards = int(special.get('maxCards', 100)) * self._get_difficulty_multiplier()
-            
-            # PRNG logic matching JS:
-            seed = day_of_year * 31 + index
-            random_val = ((seed * 9301 + 49297) % 233280) / 233280
-            
-            target = int(random_val * (max_cards - min_cards + 1)) + min_cards
-            
-            result = {
-                'name': special.get('name', 'Daily Special'),
-                'description': special.get('description', ''),
-                'difficulty': special.get('difficulty', 'common'),
-                'target': target
-            }
-            return result
-            
-        except Exception as e:
-            print(f"Onigiri: Error getting daily special data: {e}")
-            return None
+        current_restaurant_id = self.get_current_theme_id()
+        return self._fetch_recipe_rush_ticket(today, current_restaurant_id)
 
     def _update_gamification_data(self, updates: Dict[str, Any]) -> None:
         """Update the gamification data via manager."""
@@ -1185,13 +1512,39 @@ class RestaurantLevelManager:
 
     def _update_gamification_daily_special(self, daily_special: Dict[str, Any]) -> None:
         """Update daily special state via manager."""
-        state_to_save = {
-            "target": daily_special.get("target"),
-            "current_progress": daily_special.get("current_progress"),
-            "last_updated": daily_special.get("last_updated"),
-            "last_notified_milestone": daily_special.get("last_notified_milestone"),
-            "last_notified_percent": daily_special.get("last_notified_percent")
-        }
+        state_keys = [
+            "mode",
+            "recipe_id",
+            "name",
+            "description",
+            "difficulty",
+            "target",
+            "target_cards",
+            "current_progress",
+            "ingredients",
+            "prep_cards",
+            "delivery_cards",
+            "preparation",
+            "delivery",
+            "restaurant_id",
+            "restaurant_name",
+            "rush_name",
+            "ingredients_label",
+            "stage_collect_label",
+            "stage_prepare_label",
+            "stage_deliver_label",
+            "stage_completed_label",
+            "stage",
+            "status",
+            "completed",
+            "xp_reward",
+            "source",
+            "last_updated",
+            "last_notified_milestone",
+            "last_notified_percent",
+            "penalty_applied_for",
+        ]
+        state_to_save = {key: daily_special.get(key) for key in state_keys if key in daily_special}
         self._gamification_manager.update_restaurant_data({"daily_special_update": state_to_save})
 
     def _add_xp(self, amount: int, *, reason: str, review_count: int = 0) -> List[Dict[str, Any]]:
@@ -1201,7 +1554,7 @@ class RestaurantLevelManager:
 
         conf, restaurant_conf = self._config_bundle()
         if not restaurant_conf.get("enabled", False):
-            print("Onigiri: Restaurant Level disabled in config, not awarding XP.")
+            print("Onigiri: Nook Level disabled in config, not awarding XP.")
             return []
 
         # Read current state from gamification.json (source of truth for XP/level)
@@ -1238,7 +1591,7 @@ class RestaurantLevelManager:
                 "id": "taiyaki_coins_gained",
                 "name": "Taiyaki Coins!",
                 "description": f"You earned {coins_gained} Taiyaki Coins!",
-                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
                 "iconAlt": "Taiyaki Coins",
                 "textColorLight": "#2c2c2c",
                 "textColorDark": "#ffffff",
@@ -1257,7 +1610,7 @@ class RestaurantLevelManager:
                 "id": "taiyaki_coins_lost",
                 "name": "Level Lost",
                 "description": f"Undoing review... {coins_lost} coins removed.",
-                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.png",
+                "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
                 "iconAlt": "Taiyaki Coins",
                 "textColorLight": "#2c2c2c",
                 "textColorDark": "#ffffff",
@@ -1265,7 +1618,7 @@ class RestaurantLevelManager:
             })
 
         
-        # Update the restaurant level and total XP in gamification.json
+        # Update the Nook Level and total XP in gamification.json
         # We NO LONGER write this to config.json
         
         update_data = {
@@ -1289,15 +1642,16 @@ class RestaurantLevelManager:
             # Get state from gamification.json
             daily_special_state = game_state.get("daily_special", {})
             
-            # Construct daily special object
-            daily_special = {
+            # Construct Nook Rush object while preserving ticket metadata.
+            daily_special = dict(daily_special_state) if isinstance(daily_special_state, dict) else {}
+            daily_special.update({
                 "enabled": True,
-                "target": daily_special_state.get("target", daily_special_conf.get("target", 100)),
-                "current_progress": daily_special_state.get("current_progress", 0),
-                "last_updated": daily_special_state.get("last_updated"),
-                "last_notified_milestone": daily_special_state.get("last_notified_milestone", 0),
-                "last_notified_percent": daily_special_state.get("last_notified_percent", 0)
-            }
+                "target": daily_special.get("target", daily_special_conf.get("target", 100)),
+                "current_progress": daily_special.get("current_progress", 0),
+                "last_updated": daily_special.get("last_updated"),
+                "last_notified_milestone": daily_special.get("last_notified_milestone", 0),
+                "last_notified_percent": daily_special.get("last_notified_percent", 0),
+            })
             
             # Ensure we're working with fresh daily stats
             self._check_and_reset_daily_special(daily_special)
@@ -1321,6 +1675,7 @@ class RestaurantLevelManager:
                 
                 # Update progress
                 daily_special["current_progress"] = max(0, new_progress)
+                self._update_recipe_rush_stage(daily_special)
 
                 
                 # Check for progress milestones (25%, 50%, 75%)
@@ -1331,12 +1686,13 @@ class RestaurantLevelManager:
                     if (last_notified < milestone <= progress_percent and 
                         current < target and 
                         new_progress < target):
+                        rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
                         notifications.append({
-                            'id': f"daily_special_progress_{milestone}",
-                            'name': f'Daily Special: {milestone}% complete!',
-                            'description': f"You've reached {milestone}% of your daily goal ({new_progress}/{target}).",
-                            'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.png",
-                            'iconAlt': "Daily Special Progress",
+                            'id': f"recipe_rush_progress_{milestone}",
+                            'name': f'{rush_name}: {milestone}% complete!',
+                            'description': f"You've reached {milestone}% of today's recipe ({new_progress}/{target}).",
+                            'iconImage': f"{self._addon_prefix}/system_files/gamification_images/onigiri_trophy.webp",
+                            'iconAlt': "Nook Rush Progress",
                             'type': 'info',
                             'progress': milestone,
                             'current': new_progress,
@@ -1416,16 +1772,16 @@ class RestaurantLevelManager:
         # Get the current theme image
         theme_image = self.get_current_theme_image()
         if theme_image:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         return [{
             "id": "restaurant_level_up",
-            "name": f"Level {new_level} Unlocked!",
-            "description": f"Your restaurant has reached level {new_level}!",
+            "name": tr("level_unlocked_msg").format(level=new_level),
+            "description": tr("level_unlocked_desc").format(level=new_level),
             "iconImage": icon_path,
-            "iconAlt": "Restaurant Level Up",
+            "iconAlt": tr("level_unlocked_msg").format(level=new_level),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 5000
@@ -1436,17 +1792,17 @@ class RestaurantLevelManager:
         # Get the current theme image
         theme_image = self.get_current_theme_image()
         if theme_image:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         progress = (xp_into_level / xp_to_next) * 100
         return [{
             "id": "restaurant_level_progress",
-            "name": f"Level {level} Progress",
-            "description": f"You're {int(progress)}% to level {level + 1}!",
+            "name": tr("level_progress_msg").format(level=level),
+            "description": tr("level_progress_desc").format(percent=int(progress), next_level=level + 1),
             "iconImage": icon_path,
-            "iconAlt": "Level Progress",
+            "iconAlt": tr("level_progress_msg").format(level=level),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1457,16 +1813,16 @@ class RestaurantLevelManager:
         # Get the current theme image
         theme_image = self.get_current_theme_image()
         if theme_image:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         return [{
             "id": "daily_special_complete",
-            "name": "Daily Special Complete!",
-            "description": "You've completed today's special! Great job!",
+            "name": tr("daily_special_complete_msg"),
+            "description": tr("daily_special_complete_desc"),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Complete",
+            "iconAlt": tr("daily_special_complete_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 5000
@@ -1477,17 +1833,17 @@ class RestaurantLevelManager:
         # Get the current theme image
         theme_image = self.get_current_theme_image()
         if theme_image:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         remaining = target - progress
         return [{
             "id": "daily_special_progress_75",
-            "name": "Daily Special Progress",
-            "description": f"You're 75% done! Just {remaining} more to go!",
+            "name": tr("daily_special_progress_msg"),
+            "description": tr("daily_special_75_desc").format(remaining=remaining),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Progress",
+            "iconAlt": tr("daily_special_progress_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1498,17 +1854,17 @@ class RestaurantLevelManager:
         # Get the current theme image
         theme_image = self.get_current_theme_image()
         if theme_image:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/{theme_image}"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/{theme_image}"
         else:
-            icon_path = f"{self._addon_prefix}/system_files/gamification_images/restaurant_folder/restaurant_level.png"
+            icon_path = f"{self._addon_prefix}/system_files/gamification_images/nook_folder/sushi/onigiri_stand.webp"
         
         remaining = target - progress
         return [{
             "id": "daily_special_progress_50",
-            "name": "Daily Special Progress",
-            "description": f"Halfway there! {remaining} more to complete today's special!",
+            "name": tr("daily_special_progress_msg"),
+            "description": tr("daily_special_50_desc").format(remaining=remaining),
             "iconImage": icon_path,
-            "iconAlt": "Daily Special Progress",
+            "iconAlt": tr("daily_special_progress_msg"),
             "textColorLight": "#2c2c2c",
             "textColorDark": "#ffffff",
             "duration": 4000
@@ -1537,11 +1893,6 @@ class RestaurantLevelManager:
         """
         return []
 
-    def _get_motivational_phrase(self, level: int) -> str:
-        if not MOTIVATIONAL_PHRASES:
-            return "Keep serving knowledge!"
-        index = level % len(MOTIVATIONAL_PHRASES)
-        return MOTIVATIONAL_PHRASES[index]
         
     @property
     def _addon_prefix(self) -> str:
@@ -1550,7 +1901,120 @@ class RestaurantLevelManager:
         return f"/_addons/{self._addon_package}"
 
 
-manager = RestaurantLevelManager()
+# ---------------------------------------------------------------------------
+# Chip colour helpers
+# ---------------------------------------------------------------------------
+
+def _valid_hex_color(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not text.startswith("#") and len(text) in (3, 6, 8):
+        text = f"#{text}"
+    from aqt.qt import QColor
+    color = QColor(text)
+    if color.isValid():
+        if color.alpha() < 255:
+            return color.name(QColor.NameFormat.HexArgb)
+        return color.name(QColor.NameFormat.HexRgb)
+    return ""
+
+
+def default_chip_bg(is_dark: Optional[bool] = None) -> str:
+    if is_dark is None:
+        try:
+            from aqt.theme import theme_manager
+            is_dark = bool(theme_manager.night_mode)
+        except Exception:
+            is_dark = False
+    if is_dark:
+        return "#3d000000"   # ~24% black
+    return "#29ffffff"       # ~16% white
+
+
+def default_chip_progress_color() -> str:
+    try:
+        if getattr(mw, "col", None) and hasattr(mw.col, "conf"):
+            custom = _valid_hex_color(
+                mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+            )
+            if custom:
+                return custom
+        theme_color = manager.get_current_theme_color()
+        if theme_color:
+            return _valid_hex_color(theme_color) or str(theme_color)
+    except Exception:
+        pass
+    return "#ffb347"
+
+
+def get_chip_style_values(
+    conf: Optional[Dict[str, Any]] = None,
+    is_dark: Optional[bool] = None,
+) -> Dict[str, str]:
+    if conf is None:
+        conf = config.get_config()
+    if is_dark is None:
+        is_dark = config.effective_night_mode(conf)
+
+    restaurant_conf = conf.get("restaurant_level", {})
+
+    is_dynamic = restaurant_conf.get("dynamic_chip_colors", False)
+    if is_dynamic:
+        bg_key       = "chip_bg_color_dark"       if is_dark else "chip_bg_color_light"
+        text_key     = "chip_text_color_dark"     if is_dark else "chip_text_color_light"
+        progress_key = "chip_progress_color_dark" if is_dark else "chip_progress_color_light"
+    else:
+        bg_key       = "chip_bg_color"
+        text_key     = "chip_text_color"
+        progress_key = "chip_progress_color"
+
+    bg   = _valid_hex_color(restaurant_conf.get(bg_key))   or default_chip_bg(is_dark)
+    text = _valid_hex_color(restaurant_conf.get(text_key))
+
+    if not text and bg:
+        from aqt.qt import QColor
+        qcolor = QColor(bg)
+        if qcolor.isValid():
+            text = "#111827" if qcolor.lightness() > 150 else "#ffffff"
+
+    progress = (
+        _valid_hex_color(restaurant_conf.get(progress_key))
+        or default_chip_progress_color()
+    )
+    return {"bg": bg, "progress": progress, "text": text}
+
+
+def build_chip_style_attr(
+    values: Optional[Dict[str, str]] = None,
+    conf: Optional[Dict[str, Any]] = None,
+    is_dark: Optional[bool] = None,
+) -> str:
+    resolved = values or get_chip_style_values(conf, is_dark)
+    parts: List[str] = []
+
+    def _to_css(c: str) -> str:
+        """Convert Qt #AARRGGBB hex to CSS rgba(r,g,b,a)."""
+        if c and c.startswith("#") and len(c) == 9:
+            a = int(c[1:3], 16) / 255.0
+            r = int(c[3:5], 16)
+            g = int(c[5:7], 16)
+            b = int(c[7:9], 16)
+            return f"rgba({r}, {g}, {b}, {a:.3f})"
+        return c
+
+    if resolved.get("bg"):
+        parts.append(f"--rl-chip-bg: {_to_css(resolved['bg'])}")
+    if resolved.get("text"):
+        parts.append(f"--rl-chip-text: {_to_css(resolved['text'])}")
+    if resolved.get("progress"):
+        parts.append(f"--profile-level-bar-bg: {_to_css(resolved['progress'])}")
+        parts.append(f"--reviewer-level-bar-bg: {_to_css(resolved['progress'])}")
+        parts.append(f"--reviewer-level-bar-hover-bg: {_to_css(resolved['progress'])}")
+    return "; ".join(parts)
+
+
+manager = NookLevelManager()
 
 def register_hooks() -> None:
     from aqt import gui_hooks

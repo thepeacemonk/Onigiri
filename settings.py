@@ -29,7 +29,7 @@ from aqt import mw, gui_hooks
 from aqt.theme import theme_manager
 from typing import Union
 from . import config
-from .gamification import restaurant_level
+from .gamification import nook_level
 from .config import DEFAULTS
 from .constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
 from .themes import THEMES 
@@ -8334,7 +8334,7 @@ class SettingsDialog(QDialog):
         
         # Restaurant Level visibility
         self.profile_show_restaurant_check = AnimatedToggleButton(accent_color=self.accent_color)
-        self.profile_show_restaurant_check.setChecked(restaurant_level.manager.get_progress().show_profile_page_progress)
+        self.profile_show_restaurant_check.setChecked(nook_level.manager.get_progress().show_profile_page_progress)
         visibility_section.add_widget(self._create_toggle_row(self.profile_show_restaurant_check, "Show 'Restaurant Level' Section"))
 
         layout.addWidget(visibility_section)
@@ -12582,7 +12582,7 @@ class SettingsDialog(QDialog):
             if hasattr(self, 'profile_level_bar_custom_color_color_input'):
                 mw.col.conf["onigiri_profile_level_bar_custom_color"] = self.profile_level_bar_custom_color_color_input.text()
         # Save Restaurant Level visibility
-        restaurant_level.manager.set_profile_page_visibility(self.profile_show_restaurant_check.isChecked())
+        nook_level.manager.set_profile_page_visibility(self.profile_show_restaurant_check.isChecked())
 
     def _save_achievements_settings(self):
         # Save restaurant_level to top-level config
@@ -12613,14 +12613,14 @@ class SettingsDialog(QDialog):
         if hasattr(self, 'restaurant_name_input'):
             new_name = self.restaurant_name_input.text().strip()
             if new_name:
-                restaurant_level.manager.set_restaurant_name(new_name)
+                nook_level.manager.set_restaurant_name(new_name)
             else:
-                restaurant_level.manager.set_restaurant_name("Restaurant Level")
+                nook_level.manager.set_restaurant_name("Restaurant Level")
 
-        restaurant_level.manager.set_enabled(restaurant_enabled)
-        restaurant_level.manager.set_notifications_enabled(restaurant_conf["notifications_enabled"])
-        restaurant_level.manager.set_profile_bar_visibility(restaurant_conf["show_profile_bar_progress"])
-        restaurant_level.manager.set_profile_page_visibility(restaurant_conf["show_profile_page_progress"])
+        nook_level.manager.set_enabled(restaurant_enabled)
+        nook_level.manager.set_notifications_enabled(restaurant_conf["notifications_enabled"])
+        nook_level.manager.set_profile_bar_visibility(restaurant_conf["show_profile_bar_progress"])
+        nook_level.manager.set_profile_page_visibility(restaurant_conf["show_profile_page_progress"])
 
         defaults = config.DEFAULTS["achievements"].get("custom_goals", {})
         custom_goals = self.achievements_config.setdefault(

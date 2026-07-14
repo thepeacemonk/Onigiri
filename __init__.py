@@ -27,7 +27,6 @@ try:
     from . import welcome_dialog
     from . import credits_dialog
     from . import create_deck_dialog
-    from . import manual_reset_restaurant_level
     from . import icon_chooser
     from . import coloris_picker
     from . import themes
@@ -73,6 +72,16 @@ def _read_text_asset_cached(path: str) -> str:
         return text
     except FileNotFoundError:
         return ""
+
+def notification_duration_script(conf):
+    """Injects the global notification duration chosen in settings."""
+    try:
+        duration = int(conf.get("onigiri_notification_duration_ms", 5200))
+    except (TypeError, ValueError):
+        duration = 5200
+    duration = max(1000, min(30000, duration))
+    return f"<script>window.onigiriNotificationDuration = {duration};</script>"
+
 
 def generate_notification_position_css(conf):
     """Generates CSS for notification positioning logic."""
@@ -154,6 +163,7 @@ def inject_menu_files(web_content, context):
         web_content.head += patcher.generate_conditional_css(conf)
         web_content.head += patcher.generate_icon_size_css()
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+        web_content.head += notification_duration_script(conf)
         web_content.head += deck_shortcut_js
         web_content.head += f'<script src="{web_assets_root}/injector.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/engine.js"></script>'
@@ -180,6 +190,7 @@ def inject_menu_files(web_content, context):
     elif is_reviewer:
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
         web_content.head += f'<script>window.onigiriSilentNotifications = {silent_notifs};</script>'
+        web_content.head += notification_duration_script(conf)
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += generate_notification_position_css(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
@@ -286,6 +297,33 @@ def setup_shop_menu():
     
 
 
+def initialize_enabled_gamification_hooks():
+    """Load gamification modules with answer/state hooks only when they are enabled."""
+    try:
+        conf = config.get_config()
+        restaurant_conf = conf.get("restaurant_level", {})
+        if not restaurant_conf:
+            restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
+        if restaurant_conf.get("enabled", False):
+            from .gamification import nook_level  # noqa: F401
+
+        onigimon_conf = conf.get("onigimon", {})
+        if onigimon_conf.get("enabled", False):
+            from .gamification import onigimon  # noqa: F401
+
+        mochi_conf = conf.get("mochi_messages", {})
+        if mochi_conf.get("enabled", False):
+            from .gamification import mochi_messages  # noqa: F401
+
+        focus_conf = conf.get("achievements", {}).get("focusDango", {})
+        if focus_conf.get("enabled", False):
+            from .gamification import focus_dango as _focus_dango_mod
+
+            _focus_dango_mod.setup_focus_dango()
+    except Exception as e:
+        print(f"Onigiri: Error initializing enabled gamification hooks: {e}")
+
+
 def verify_coin_integrity():
     """Verify coin integrity on startup to prevent cheating."""
     try:
@@ -386,11 +424,17 @@ def setup_global_hooks():
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
+    from . import bento_api
+    bento_api.register_api()
+    bento_api.ensure_bento_shortcut()
     menu_buttons.setup_onigiri_menu(addon_path)
-    
+
     # Install the toolbar bridge AFTER other addons have loaded their hooks
     from . import sidebar_api
     sidebar_api.ensure_capture_hook_is_last()
+
+    from . import learner_stats_widget
+    learner_stats_widget.init()
 
 def on_profile_did_open():
     """
@@ -426,6 +470,16 @@ def on_profile_did_open():
 
     # Verify coin integrity on startup (requires mw.col)
     verify_coin_integrity()
+
+    # Register optional game hooks after startup, and only for enabled features.
+    QTimer.singleShot(1000, initialize_enabled_gamification_hooks)
+
+    # Clean up expired Hashi notes once the collection is available.
+    try:
+        from . import hashi_notes
+        hashi_notes.purge_expired()
+    except Exception as e:
+        print(f"Onigiri: Error purging expired Hashi notes: {e}")
     
     # Initialize the Shop Menu Item (requires mw.col)
     setup_shop_menu()
