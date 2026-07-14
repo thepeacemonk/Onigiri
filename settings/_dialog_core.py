@@ -399,6 +399,8 @@ class DialogCoreMixin:
 
 
         self.profile_bar = ProfileBarWidget(user_name, pic_path, bg_mode, bg_config, self.accent_color, self, pic_config=pic_config)
+        # Keep the live profile preview compact in the settings nav.
+        self.profile_bar.setMaximumHeight(48)
         self.profile_bar.setMinimumWidth(120)
 
         self.sidebar_search_button = QPushButton(tr("search"))
@@ -933,60 +935,63 @@ class DialogCoreMixin:
 
 class DialogCoreMixin2:
     def apply_stylesheet(self):
-        palette = self._settings_palette()
+        # The settings dialog uses its OWN fixed neutral scheme instead of the
+        # user's dashboard palette: a disciplined near-black (or paper-white)
+        # surface ramp with the accent reserved for controls. This is what
+        # keeps it reading like a modern settings app regardless of theme.
         accent_color = self._settings_accent_color()
         if theme_manager.night_mode:
-            # ── Dark mode ──────────────────────────────────────────────────
-            window_bg        = palette.get("--bg", "#181818")
-            panel_bg         = palette.get("--canvas-inset", "#242424")
-            sidebar_bg       = window_bg   # sidebar alinhada ao fundo geral
-            surface_bg       = palette.get("--highlight-bg", "#303030")
-            surface_hover    = palette.get("--hover-bg", "#3a3a3a")
-            input_bg         = palette.get("--input-bg", panel_bg)
+            # ── Dark: one near-black sheet, one input tone, hairlines ─────
+            window_bg        = "#161616"
+            panel_bg         = "#161616"
+            sidebar_bg       = "#161616"
+            surface_bg       = "#222222"
+            surface_hover    = "#262626"
+            input_bg         = "#1f1f1f"
             button_bg        = surface_bg
-            fg               = palette.get("--fg", "#f9fafb")
-            fg_secondary     = palette.get("--fg-subtle", "#c4c4c4")
-            muted_fg         = palette.get("--muted-fg", "#8a8a8a")
-            border           = palette.get("--border", "#454545")
-            soft_border      = border
-            separator_color  = border
-            sidebar_label_color  = fg_secondary
-            nav_checked_bg   = surface_hover
+            fg               = "#ececea"
+            fg_secondary     = "#b4b4b1"
+            muted_fg         = "#8d8d8a"
+            border           = "rgba(255, 255, 255, 0.10)"
+            soft_border      = "rgba(255, 255, 255, 0.07)"
+            separator_color  = "rgba(255, 255, 255, 0.07)"
+            sidebar_label_color  = muted_fg
+            nav_checked_bg   = "#2a2a2a"
             nav_checked_fg   = fg
-            save_btn_bg      = palette.get("--button-primary-bg", accent_color)
+            save_btn_bg      = accent_color
             c = QColor(save_btn_bg)
             lum = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255
             save_btn_fg      = "#111827" if lum > 0.5 else "#ffffff"
             save_btn_border  = save_btn_bg
             save_btn_icon    = save_btn_fg
-            sidebar_scrollbar_thumb = "rgba(255, 255, 255, 0.20)"
-            sidebar_scrollbar_thumb_hover = "rgba(255, 255, 255, 0.34)"
+            sidebar_scrollbar_thumb = "rgba(255, 255, 255, 0.16)"
+            sidebar_scrollbar_thumb_hover = "rgba(255, 255, 255, 0.30)"
         else:
-            # ── Light mode — fiel à referência ────────────────────────────
-            window_bg        = palette.get("--bg", "#f0f0f0")
-            panel_bg         = palette.get("--canvas-inset", "#ffffff")
-            sidebar_bg       = window_bg   # sidebar alinhada ao fundo geral
-            surface_bg       = palette.get("--highlight-bg", "#f2f2f2")
-            surface_hover    = palette.get("--hover-bg", "#e9e9e9")
-            input_bg         = palette.get("--input-bg", panel_bg)
+            # ── Light: paper white, quiet greys ────────────────────────────
+            window_bg        = "#fafafa"
+            panel_bg         = "#fafafa"
+            sidebar_bg       = "#fafafa"
+            surface_bg       = "#efefef"
+            surface_hover    = "#e9e9e9"
+            input_bg         = "#ffffff"
             button_bg        = surface_bg
-            fg               = palette.get("--fg", "#111827")
-            fg_secondary     = palette.get("--fg-subtle", "#6f7177")
-            muted_fg         = palette.get("--muted-fg", "#8f9299")
-            border           = palette.get("--border", "#e5e7eb")
-            soft_border      = border
-            separator_color  = border
-            sidebar_label_color  = fg_secondary
-            nav_checked_bg   = surface_hover
+            fg               = "#1f1f1f"
+            fg_secondary     = "#5c5c5a"
+            muted_fg         = "#8a8a87"
+            border           = "rgba(0, 0, 0, 0.12)"
+            soft_border      = "rgba(0, 0, 0, 0.07)"
+            separator_color  = "rgba(0, 0, 0, 0.07)"
+            sidebar_label_color  = muted_fg
+            nav_checked_bg   = "#ebebeb"
             nav_checked_fg   = fg
-            save_btn_bg      = palette.get("--button-primary-bg", accent_color)
+            save_btn_bg      = accent_color
             c = QColor(save_btn_bg)
             lum = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255
             save_btn_fg      = "#111827" if lum > 0.5 else "#ffffff"
             save_btn_border  = save_btn_bg
             save_btn_icon    = save_btn_fg
-            sidebar_scrollbar_thumb = "rgba(17, 24, 39, 0.16)"
-            sidebar_scrollbar_thumb_hover = "rgba(17, 24, 39, 0.28)"
+            sidebar_scrollbar_thumb = "rgba(17, 24, 39, 0.14)"
+            sidebar_scrollbar_thumb_hover = "rgba(17, 24, 39, 0.26)"
 
         self.accent_color = accent_color
 
