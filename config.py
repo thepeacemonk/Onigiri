@@ -268,6 +268,9 @@ DEFAULTS = {
     # --- REMOVED: Top-level focusDango was here ---
     "colors": {
         "light": {
+            # ported upstream palette keys (settings fallbacks)
+            "--font-small-title-color": "#212121",
+            "--highlight-bg": "#eeeeee",
             "--accent-color": "#007aff",
             "--bg": "#f3f3f3",
             "--fg": "#212121",
@@ -316,6 +319,9 @@ DEFAULTS = {
             "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
         },
         "dark": {
+            # ported upstream palette keys (settings fallbacks)
+            "--font-small-title-color": "#e0e0e0",
+            "--highlight-bg": "#3c3c3c",
             "--accent-color": "#0a84ff",
             "--bg": "#2c2c2c",
             "--fg": "#e0e0e0",

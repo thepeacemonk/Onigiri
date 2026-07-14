@@ -450,6 +450,19 @@ def on_profile_did_open():
         if isinstance(rl_conf, dict) and rl_conf.get("name") == "Restaurant Level":
             rl_conf["name"] = "Nook Level"
             config.write_config(conf)
+        # The level system's live state is stored per-profile alongside the
+        # settings; normalize the legacy default title there as well.
+        profile_name = mw.pm.name if mw.pm else None
+        if profile_name:
+            gam_path = os.path.join(addon_path, "user_files", f"gamification_{profile_name}.json")
+            if os.path.exists(gam_path):
+                with open(gam_path, "r", encoding="utf-8") as f:
+                    gam_data = json.load(f)
+                rl_state = gam_data.get("restaurant_level")
+                if isinstance(rl_state, dict) and rl_state.get("name") == "Restaurant Level":
+                    rl_state["name"] = "Nook Level"
+                    with open(gam_path, "w", encoding="utf-8") as f:
+                        json.dump(gam_data, f, indent=2)
     except Exception as e:
         print(f"Onigiri: nook name migration skipped: {e}")
     
