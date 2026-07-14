@@ -1407,6 +1407,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     action_icons_css = _generate_action_icons_css(conf, addon_package)
     theme_css += action_icons_css
 
+    # Custom profile name color (light/dark aware), managed from Settings > Profile.
+    if _col_conf_get("modern_menu_profile_name_color_enabled", False):
+        name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
+        name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
+        name_dark = _col_conf_get("modern_menu_profile_name_color_dark", name_light) if name_dynamic else name_light
+        theme_css += f"""
+        <style id="profile-name-color">
+            .profile-bar .profile-name {{ color: {name_light} !important; text-shadow: none !important; }}
+            body.night-mode .profile-bar .profile-name {{ color: {name_dark} !important; }}
+        </style>
+        """
+
     profile_bar_html = (
         f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
         f"onclick=\"window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)\">{profile_bar_contents}</div>"

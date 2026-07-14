@@ -1243,12 +1243,51 @@ class PageSidebarMixin:
         layout.addWidget(close_button, 0, Qt.AlignmentFlag.AlignRight)
         dialog.exec()
 
+    def _create_sidebar_behaviour_group(self):
+        """Collapse-button visibility and ellipsis-menu toggles."""
+        section = SectionGroup(
+            tr("sidebar_behaviour", "Sidebar Behaviour"),
+            self,
+            border=False,
+            description=tr(
+                "sidebar_behaviour_description",
+                "Fine-tune the sidebar's edge controls and menus.",
+            ),
+        )
+
+        panel = QFrame()
+        panel.setObjectName("organizeCompactPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(6, 6, 6, 6)
+        panel_layout.setSpacing(8)
+
+        self.always_show_sidebar_collapse_button_checkbox = AnimatedToggleButton(accent_color=self.accent_color)
+        self.always_show_sidebar_collapse_button_checkbox.setChecked(self.current_config.get("alwaysShowSidebarCollapseButton", False))
+        panel_layout.addWidget(self._create_toggle_row(
+            self.always_show_sidebar_collapse_button_checkbox,
+            tr("always_show_collapse_button", "Always show the collapse/expand button (instead of on hover)"),
+        ))
+
+        self.show_ellipsis_button_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.show_ellipsis_button_toggle.setChecked(mw.col.conf.get("modern_menu_show_ellipsis_button", True))
+        panel_layout.addWidget(self._create_toggle_row(
+            self.show_ellipsis_button_toggle,
+            tr("show_ellipsis_button", "Show the ellipsis (⋯) menu button"),
+        ))
+
+        section.add_widget(panel)
+        return section
+
     def create_sidebar_page(self):
         page, layout = self._create_scrollable_page()
 
         # --- Sidebar Background Section ---
         sidebar_group = self._create_sidebar_background_designer()
         layout.addWidget(sidebar_group)
+
+        behaviour_group = self._create_sidebar_behaviour_group()
+        layout.addWidget(behaviour_group)
 
         # --- Action Button Customization Section ---
         action_buttons_designer = self._create_action_buttons_designer()
@@ -1281,6 +1320,7 @@ class PageSidebarMixin:
         
         sections = {
             tr("sidebar_background"): sidebar_group,
+            tr("sidebar_behaviour", "Behaviour"): behaviour_group,
             tr("action_button_customization", "Action Button Customization"): action_buttons_designer,
             tr("deck_icons"): deck_section
         }
@@ -1536,6 +1576,11 @@ class PageSidebarMixin:
 
         self.current_config["hideDeckCounts"] = self.hide_deck_counts_checkbox.isChecked()
         self.current_config["hideAllDeckCounts"] = self.hide_all_deck_counts_checkbox.isChecked()
+
+        if hasattr(self, "always_show_sidebar_collapse_button_checkbox"):
+            self.current_config["alwaysShowSidebarCollapseButton"] = self.always_show_sidebar_collapse_button_checkbox.isChecked()
+        if hasattr(self, "show_ellipsis_button_toggle"):
+            mw.col.conf["modern_menu_show_ellipsis_button"] = self.show_ellipsis_button_toggle.isChecked()
 
         if hasattr(self, "sidebar_position_group"):
             checked_position = self.sidebar_position_group.checkedButton()

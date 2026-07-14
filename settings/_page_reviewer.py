@@ -1579,6 +1579,9 @@ class PageReviewerMixin:
         bottom_bar_buttons_section = self.create_bottom_bar_background_and_buttons_section()
         layout.addWidget(bottom_bar_buttons_section)
 
+        notifications_section = self._create_reviewer_notifications_group()
+        layout.addWidget(notifications_section)
+
         # --- RESET BUTTONS ---
         reset_buttons_layout = QHBoxLayout()
         reset_buttons_layout.addStretch()
@@ -1596,10 +1599,69 @@ class PageReviewerMixin:
         sections = {
             tr("reviewer_background"): reviewer_bg_section,
             tr("bottom_bar_background_and_buttons", "Bottom Bar Background and Buttons"): bottom_bar_buttons_section,
+            tr("reviewer_notifications", "Notifications"): notifications_section,
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=2)
 
         return page
+
+    def _create_reviewer_notifications_group(self):
+        """Position and silencing of in-review notifications."""
+        section = SectionGroup(
+            tr("reviewer_notifications", "Notifications"),
+            self,
+            border=False,
+            description=tr(
+                "reviewer_notifications_description",
+                "Where gamification and status notifications appear during reviews.",
+            ),
+        )
+
+        panel = QFrame()
+        panel.setObjectName("organizeCompactPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(6, 6, 6, 6)
+        panel_layout.setSpacing(8)
+
+        self.reviewer_notification_pos_group = QButtonGroup(self)
+        self.reviewer_notification_pos_group.setExclusive(True)
+        current_pos = self.current_config.get("onigiri_reviewer_notification_position", "top-right")
+        pos_shell = self._create_organize_segmented_control(
+            [
+                ("top-left", "↖"),
+                ("top-center", "↑"),
+                ("top-right", "↗"),
+                ("bottom-left", "↙"),
+                ("bottom-center", "↓"),
+                ("bottom-right", "↘"),
+            ],
+            self.reviewer_notification_pos_group,
+            current_pos,
+            "notificationPosition",
+            fill_width=True,
+            segment_height=28,
+            min_button_width=42,
+        )
+        pos_row = QWidget()
+        pos_row_layout = QHBoxLayout(pos_row)
+        pos_row_layout.setContentsMargins(0, 0, 0, 0)
+        pos_row_layout.setSpacing(10)
+        pos_row_layout.addWidget(QLabel(tr("notification_position", "Position")))
+        pos_row_layout.addWidget(pos_shell, 1)
+        panel_layout.addWidget(pos_row)
+
+        self.reviewer_silent_notifications_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.reviewer_silent_notifications_toggle.setChecked(
+            self.current_config.get("onigiri_reviewer_silent_notifications", False)
+        )
+        panel_layout.addWidget(self._create_toggle_row(
+            self.reviewer_silent_notifications_toggle,
+            tr("silent_notifications", "Silent notifications (suppress during reviews)"),
+        ))
+
+        section.add_widget(panel)
+        return section
 
     def create_reviewer_bar_custom_options(self):
         widget = QWidget()
@@ -1995,6 +2057,14 @@ class PageReviewerMixin:
 
 class PageReviewerMixin2:
     def _save_reviewer_settings(self):
+        # Notifications
+        if hasattr(self, "reviewer_notification_pos_group"):
+            checked_pos = self.reviewer_notification_pos_group.checkedButton()
+            if checked_pos is not None:
+                self.current_config["onigiri_reviewer_notification_position"] = checked_pos.property("notificationPosition") or "top-right"
+        if hasattr(self, "reviewer_silent_notifications_toggle"):
+            self.current_config["onigiri_reviewer_silent_notifications"] = self.reviewer_silent_notifications_toggle.isChecked()
+
         # Save Answer Buttons Settings
         self.current_config["onigiri_reviewer_btn_custom_enabled"] = self.reviewer_btn_custom_enable_toggle.isChecked()
         self.current_config["onigiri_reviewer_btn_radius"] = self.reviewer_btn_radius_spin.value()

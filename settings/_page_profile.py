@@ -1207,14 +1207,117 @@ class PageProfileMixin:
         layout.addWidget(profile_assets_section)
         self.name_input.textChanged.connect(lambda _=None: self._update_profile_asset_preview())
 
+        profile_extras_section = self._create_profile_extras_group()
+        layout.addWidget(profile_extras_section)
+
         layout.addStretch()
         sections = {
             "Profile": profile_section,
-            tr("profile_picture"): profile_assets_section
+            tr("profile_picture"): profile_assets_section,
+            tr("profile_extras", "Avatar & Sections"): profile_extras_section,
         }
         self._add_navigation_buttons(page, page.findChild(QScrollArea), sections, buttons_per_row=3)
 
         return page
+
+    def _create_profile_extras_group(self):
+        """Avatar sizing, initials colours, and profile-page section visibility."""
+        section = SectionGroup(
+            tr("profile_extras", "Avatar & Sections"),
+            self,
+            border=False,
+            description=tr(
+                "profile_extras_description",
+                "Size of the profile-bar avatar, initials colours when no picture is set, and which sections appear on the profile page.",
+            ),
+        )
+
+        panel = QFrame()
+        panel.setObjectName("organizeCompactPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(6, 6, 6, 6)
+        panel_layout.setSpacing(8)
+
+        # Avatar size presets
+        self.profile_bar_avatar_size_combo = QComboBox()
+        for label, size in ((tr("avatar_large", "Large"), 36), (tr("avatar_default", "Default"), 30), (tr("avatar_small", "Small"), 24)):
+            self.profile_bar_avatar_size_combo.addItem(f"{label} ({size}px)", size)
+        saved_avatar_size = int(mw.col.conf.get("onigiri_profile_bar_avatar_size", 30))
+        size_index = self.profile_bar_avatar_size_combo.findData(saved_avatar_size)
+        if size_index < 0:
+            size_index = self.profile_bar_avatar_size_combo.findData(30)
+        self.profile_bar_avatar_size_combo.setCurrentIndex(size_index)
+        avatar_row = QWidget()
+        avatar_row_layout = QHBoxLayout(avatar_row)
+        avatar_row_layout.setContentsMargins(0, 0, 0, 0)
+        avatar_row_layout.setSpacing(10)
+        avatar_label = QLabel(tr("profile_bar_icon_size", "Profile bar icon size"))
+        avatar_row_layout.addWidget(avatar_label)
+        avatar_row_layout.addStretch()
+        avatar_row_layout.addWidget(self.profile_bar_avatar_size_combo)
+        panel_layout.addWidget(avatar_row)
+
+        # Initials background colours
+        def _initials_color_button(initial_hex):
+            button = QPushButton(initial_hex)
+            button.setObjectName("mainBackgroundColorButton")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setFixedHeight(28)
+            button.setMinimumWidth(96)
+
+            def refresh(hex_value):
+                button.setText(hex_value)
+                icon_color = _contrast_icon_color(QColor(hex_value))
+                button.setStyleSheet(
+                    f"QPushButton#mainBackgroundColorButton {{ background-color: {hex_value};"
+                    f" color: {icon_color}; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); }}"
+                )
+
+            def choose():
+                chosen, ok = OnigiriColorDialog.getColor(button.text(), self, anchor=button)
+                if ok and chosen:
+                    refresh(chosen)
+
+            refresh(initial_hex)
+            button.clicked.connect(choose)
+            return button
+
+        self.profile_initials_bg_light_button = _initials_color_button(
+            str(mw.col.conf.get("onigiri_profile_initials_bg_light", "#D2CDC7"))
+        )
+        self.profile_initials_bg_dark_button = _initials_color_button(
+            str(mw.col.conf.get("onigiri_profile_initials_bg_dark", "#6B635C"))
+        )
+        initials_row = QWidget()
+        initials_layout = QHBoxLayout(initials_row)
+        initials_layout.setContentsMargins(0, 0, 0, 0)
+        initials_layout.setSpacing(10)
+        initials_layout.addWidget(QLabel(tr("initials_background", "Initials background (light / dark)")))
+        initials_layout.addStretch()
+        initials_layout.addWidget(self.profile_initials_bg_light_button)
+        initials_layout.addWidget(self.profile_initials_bg_dark_button)
+        panel_layout.addWidget(initials_row)
+
+        # Profile page section visibility
+        self.profile_show_theme_light_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_theme_light_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_light", True))
+        panel_layout.addWidget(self._create_toggle_row(self.profile_show_theme_light_check, tr("show_theme_light_section", "Show 'Theme Colors (Light)' section")))
+
+        self.profile_show_theme_dark_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_theme_dark_check.setChecked(mw.col.conf.get("onigiri_profile_show_theme_dark", True))
+        panel_layout.addWidget(self._create_toggle_row(self.profile_show_theme_dark_check, tr("show_theme_dark_section", "Show 'Theme Colors (Dark)' section")))
+
+        self.profile_show_backgrounds_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_backgrounds_check.setChecked(mw.col.conf.get("onigiri_profile_show_backgrounds", True))
+        panel_layout.addWidget(self._create_toggle_row(self.profile_show_backgrounds_check, tr("show_backgrounds_section", "Show 'Background Images' section")))
+
+        self.profile_show_stats_check = AnimatedToggleButton(accent_color=self.accent_color)
+        self.profile_show_stats_check.setChecked(mw.col.conf.get("onigiri_profile_show_stats", True))
+        panel_layout.addWidget(self._create_toggle_row(self.profile_show_stats_check, tr("show_stats_section", "Show 'Daily Stats' section")))
+
+        section.add_widget(panel)
+        return section
 
     def toggle_profile_page_bg_options(self): is_gradient = self.profile_page_bg_gradient_radio.isChecked(); self.profile_page_color_group.setVisible(not is_gradient); self.profile_page_gradient_group.setVisible(is_gradient)
 
@@ -1224,6 +1327,17 @@ class PageProfileMixin:
     def _save_profile_settings(self):
         self.current_config["userName"] = self.name_input.text()
         mw.col.conf["modern_menu_userName"] = self.name_input.text()
+
+        if hasattr(self, "profile_bar_avatar_size_combo"):
+            mw.col.conf["onigiri_profile_bar_avatar_size"] = self.profile_bar_avatar_size_combo.currentData() or 30
+        if hasattr(self, "profile_initials_bg_light_button"):
+            mw.col.conf["onigiri_profile_initials_bg_light"] = self.profile_initials_bg_light_button.text()
+            mw.col.conf["onigiri_profile_initials_bg_dark"] = self.profile_initials_bg_dark_button.text()
+        if hasattr(self, "profile_show_theme_light_check"):
+            mw.col.conf["onigiri_profile_show_theme_light"] = self.profile_show_theme_light_check.isChecked()
+            mw.col.conf["onigiri_profile_show_theme_dark"] = self.profile_show_theme_dark_check.isChecked()
+            mw.col.conf["onigiri_profile_show_backgrounds"] = self.profile_show_backgrounds_check.isChecked()
+            mw.col.conf["onigiri_profile_show_stats"] = self.profile_show_stats_check.isChecked()
 
         if hasattr(self, "profile_name_dynamic_toggle"):
             dynamic = self.profile_name_dynamic_toggle.isChecked()

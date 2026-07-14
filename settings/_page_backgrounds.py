@@ -319,30 +319,12 @@ class PageBackgroundsMixin:
             right_layout.addWidget(sync_main_row)
 
         if is_sidebar_preview:
-            self.sidebar_position_group = QButtonGroup(self)
-            self.sidebar_position_group.setExclusive(True)
-            current_position = mw.col.conf.get(
-                "modern_menu_sidebar_position",
-                self.current_config.get("sidebarPosition", "left"),
-            )
-            if current_position not in {"left", "right", "center"}:
-                current_position = "left"
-            position_container = self._create_organize_segmented_control(
-                [
-                    ("left", tr("sidebar_position_left_short", "Left")),
-                    ("center", tr("sidebar_position_center_short", "Center")),
-                    ("right", tr("sidebar_position_right_short", "Right")),
-                ],
-                self.sidebar_position_group,
-                current_position,
-                "sidebar_position",
-                fill_width=True,
-                segment_height=28,
-                min_button_width=62,
-            )
-            right_layout.addWidget(self._create_main_bg_value_row(tr("sidebar_position", "Sidebar position"), position_container))
+            # NOTE: the upstream sidebar position selector (left/center/right)
+            # is intentionally not built here — this runtime's sidebar layout
+            # engine only implements the left-anchored sidebar with its own
+            # DECKS-header display modes.
 
-            # Action buttons mode, same segmented design as Sidebar Position.
+            # Action buttons mode, segmented design.
             self.sidebar_actions_mode_group = QButtonGroup(self)
             self.sidebar_actions_mode_group.setExclusive(True)
             current_actions_mode = self.current_config.get("sidebarActionsMode", "list")
@@ -480,9 +462,6 @@ class PageBackgroundsMixin:
                 getattr(self, f"{prefix}_bg_{attr}_slider").valueChanged.connect(
                     lambda value, p=prefix: self._on_sidebar_frame_effect_changed(p)
                 )
-            self.sidebar_position_group.buttonToggled.connect(
-                lambda button, checked, p=prefix: self._update_modern_background_preview(p) if checked else None
-            )
             self.sidebar_actions_mode_group.buttonToggled.connect(
                 lambda button, checked, p=prefix: self._on_sidebar_actions_mode_changed(p) if checked else None
             )
