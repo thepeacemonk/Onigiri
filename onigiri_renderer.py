@@ -331,27 +331,6 @@ _PORTED_WIDGET_CSS = """
 .prep-widget-title { margin: 0 !important; }
 .prep-widget-count { margin-right: 0 !important; }
 
-/* Favorites: flat rows with hairline separators instead of boxed pills. */
-.onigiri-favorites-widget .favorite-deck-link {
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 1px solid color-mix(in srgb, var(--fg, #888) 10%, transparent) !important;
-    border-radius: 0 !important;
-}
-.onigiri-favorites-widget .favorite-deck-link:last-child,
-.onigiri-favorites-widget .favorite-deck-link:last-of-type {
-    border-bottom: none !important;
-}
-.onigiri-favorites-widget .favorite-deck-link:hover {
-    background: var(--highlight-bg, rgba(128, 128, 128, 0.10)) !important;
-    border-radius: 8px !important;
-}
-.onigiri-favorites-widget .favorite-deck-slot-empty {
-    background: transparent !important;
-    border: 1px dashed color-mix(in srgb, var(--fg, #888) 18%, transparent) !important;
-    border-radius: 8px !important;
-}
-
 /* Big metric numbers share one scale. */
 .stat-card p {
     font-size: 24px !important;
