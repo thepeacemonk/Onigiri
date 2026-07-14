@@ -222,6 +222,171 @@ class PageMainmenuMixin:
 
         return shell
 
+    # --- Widget Background (glassmorphism / colour overlay / solid) -------
+    # Controls the onigiri_widget_bg_* keys consumed by the deck-browser
+    # renderer for dashboard widget surfaces.
+
+    def _widget_bg_slider_row(self, label_text, slider, value_suffix="%"):
+        palette = self._settings_palette()
+        label = QLabel(label_text)
+        label.setObjectName("organizeCompactLabel")
+        value_label = QLabel(f"{slider.value()}{value_suffix}")
+        value_label.setObjectName("mainBackgroundValueLabel")
+        value_label.setFixedWidth(48)
+        slider.valueChanged.connect(lambda v, vl=value_label: vl.setText(f"{v}{value_suffix}"))
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(10)
+        row_layout.addWidget(label)
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        return row
+
+    def _widget_bg_color_button(self, initial_hex):
+        button = QPushButton(initial_hex)
+        button.setObjectName("mainBackgroundColorButton")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFixedHeight(28)
+        button.setMinimumWidth(96)
+
+        def refresh(hex_value):
+            button.setText(hex_value)
+            icon_color = _contrast_icon_color(QColor(hex_value))
+            button.setStyleSheet(
+                f"QPushButton#mainBackgroundColorButton {{ background-color: {hex_value};"
+                f" color: {icon_color}; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); }}"
+            )
+
+        def choose():
+            chosen, ok = OnigiriColorDialog.getColor(button.text(), self, anchor=button)
+            if ok and chosen:
+                refresh(chosen)
+
+        refresh(initial_hex)
+        button.clicked.connect(choose)
+        return button
+
+    def _current_widget_bg_style(self):
+        mode = mw.col.conf.get("onigiri_widget_bg_mode", "solid")
+        if mode != "main":
+            return "solid"
+        effect = mw.col.conf.get("onigiri_widget_bg_main_effect_mode", "glassmorphism")
+        return "glass" if effect == "glassmorphism" else "overlay"
+
+    def _create_widget_background_group(self):
+        section = SectionGroup(
+            tr("widget_background", "Widget Background"),
+            self,
+            border=False,
+            description=tr(
+                "widget_background_description",
+                "How dashboard widget surfaces are drawn: frosted glass over the main background, a colour overlay, or a solid colour.",
+            ),
+        )
+
+        panel = QFrame()
+        panel.setObjectName("organizeCompactPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        panel.setStyleSheet(self._organize_compact_stylesheet())
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(6, 6, 6, 6)
+        panel_layout.setSpacing(8)
+
+        self.widget_bg_style_group = QButtonGroup(self)
+        self.widget_bg_style_group.setExclusive(True)
+        style_shell = self._create_organize_segmented_control(
+            [
+                ("glass", tr("widget_bg_glass", "Glassmorphism")),
+                ("overlay", tr("widget_bg_overlay", "Colour Overlay")),
+                ("solid", tr("widget_bg_solid", "Solid")),
+            ],
+            self.widget_bg_style_group,
+            self._current_widget_bg_style(),
+            "widgetBgStyle",
+            fill_width=True,
+            segment_height=28,
+            min_button_width=90,
+        )
+        panel_layout.addWidget(self._create_organize_compact_row(tr("widget_bg_style", "Style"), style_shell))
+
+        slider_palette = self._settings_palette()
+        slider_track = slider_palette.get("--highlight-bg", "#303030" if theme_manager.night_mode else "#f3f4f6")
+        slider_border = slider_palette.get("--border", "#454545" if theme_manager.night_mode else "#d1d5db")
+
+        # Glassmorphism intensity
+        self.widget_bg_glass_slider = MainBackgroundEffectSlider(self.accent_color, slider_track, slider_border)
+        self.widget_bg_glass_slider.setRange(0, 100)
+        self.widget_bg_glass_slider.setValue(max(0, min(100, int(mw.col.conf.get("onigiri_widget_bg_main_effect_intensity", 50) or 0))))
+        self.widget_bg_glass_row = self._widget_bg_slider_row(tr("widget_bg_intensity", "Effect intensity"), self.widget_bg_glass_slider)
+        panel_layout.addWidget(self.widget_bg_glass_row)
+
+        # Colour overlay tint
+        self.widget_bg_tint_slider = MainBackgroundEffectSlider(self.accent_color, slider_track, slider_border)
+        self.widget_bg_tint_slider.setRange(0, 100)
+        self.widget_bg_tint_slider.setValue(max(0, min(100, int(mw.col.conf.get("onigiri_widget_bg_main_tint_intensity", 30) or 0))))
+        self.widget_bg_tint_row = self._widget_bg_slider_row(tr("widget_bg_overlay_opacity", "Overlay opacity"), self.widget_bg_tint_slider)
+        panel_layout.addWidget(self.widget_bg_tint_row)
+
+        self.widget_bg_tint_light_button = self._widget_bg_color_button(
+            str(mw.col.conf.get("onigiri_widget_bg_main_tint_color_light", "#FFFFFF"))
+        )
+        self.widget_bg_tint_dark_button = self._widget_bg_color_button(
+            str(mw.col.conf.get("onigiri_widget_bg_main_tint_color_dark", "#2C2C2C"))
+        )
+        tint_colors = QWidget()
+        tint_layout = QHBoxLayout(tint_colors)
+        tint_layout.setContentsMargins(0, 0, 0, 0)
+        tint_layout.setSpacing(10)
+        tint_layout.addWidget(self.widget_bg_tint_light_button)
+        tint_layout.addWidget(self.widget_bg_tint_dark_button)
+        tint_layout.addStretch()
+        self.widget_bg_tint_colors_row = self._create_organize_compact_row(
+            tr("widget_bg_overlay_colors", "Overlay colour (light / dark)"), tint_colors
+        )
+        panel_layout.addWidget(self.widget_bg_tint_colors_row)
+
+        # Solid transparency (solid colour itself comes from Box Color above)
+        self.widget_bg_transparency_slider = MainBackgroundEffectSlider(self.accent_color, slider_track, slider_border)
+        self.widget_bg_transparency_slider.setRange(0, 100)
+        self.widget_bg_transparency_slider.setValue(max(0, min(100, int(mw.col.conf.get("onigiri_widget_bg_solid_transparency", 0) or 0))))
+        self.widget_bg_transparency_row = self._widget_bg_slider_row(tr("widget_bg_transparency", "Transparency"), self.widget_bg_transparency_slider)
+        panel_layout.addWidget(self.widget_bg_transparency_row)
+
+        def refresh_visibility():
+            style = "solid"
+            checked = self.widget_bg_style_group.checkedButton()
+            if checked is not None:
+                style = checked.property("widgetBgStyle") or "solid"
+            self.widget_bg_glass_row.setVisible(style == "glass")
+            self.widget_bg_tint_row.setVisible(style == "overlay")
+            self.widget_bg_tint_colors_row.setVisible(style == "overlay")
+            self.widget_bg_transparency_row.setVisible(style == "solid")
+
+        self.widget_bg_style_group.buttonToggled.connect(lambda *_: refresh_visibility())
+        refresh_visibility()
+
+        section.add_widget(panel)
+        return section
+
+    def _save_widget_background_settings(self):
+        if not hasattr(self, "widget_bg_style_group"):
+            return
+        style = "solid"
+        checked = self.widget_bg_style_group.checkedButton()
+        if checked is not None:
+            style = checked.property("widgetBgStyle") or "solid"
+
+        mw.col.conf["onigiri_widget_bg_mode"] = "main" if style in ("glass", "overlay") else "solid"
+        if style in ("glass", "overlay"):
+            mw.col.conf["onigiri_widget_bg_main_effect_mode"] = "glassmorphism" if style == "glass" else "opaque"
+        mw.col.conf["onigiri_widget_bg_main_effect_intensity"] = self.widget_bg_glass_slider.value()
+        mw.col.conf["onigiri_widget_bg_main_tint_intensity"] = self.widget_bg_tint_slider.value()
+        mw.col.conf["onigiri_widget_bg_main_tint_color_light"] = self.widget_bg_tint_light_button.text()
+        mw.col.conf["onigiri_widget_bg_main_tint_color_dark"] = self.widget_bg_tint_dark_button.text()
+        mw.col.conf["onigiri_widget_bg_solid_transparency"] = self.widget_bg_transparency_slider.value()
+
     def create_main_menu_page(self):
         page, layout = self._create_scrollable_page()
 
@@ -256,6 +421,9 @@ class PageMainmenuMixin:
         boxes_effect_section = self._create_boxes_color_effect_group()
         layout.addWidget(boxes_effect_section)
 
+        widget_bg_section = self._create_widget_background_group()
+        layout.addWidget(widget_bg_section)
+
         # --- Main Background Section ---
         user_files_path = os.path.join(self.addon_path, "user_files", "main_bg")
         os.makedirs(user_files_path, exist_ok=True)
@@ -284,6 +452,7 @@ class PageMainmenuMixin:
             tr("organize_section"): organize_section,
             tr("widget_grid"): self.organize_widget_container,
             tr("boxes_color_effect"): boxes_effect_section,
+            tr("widget_background", "Widget Background"): widget_bg_section,
             tr("main_background_section"): mode_group,
             tr("heatmap_section"): heatmap_section
         }

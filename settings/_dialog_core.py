@@ -2222,6 +2222,7 @@ class DialogCoreMixin2:
             if self.tabs_loaded.get(page_indices.get("Main menu")):
                 _safe("main_menu", self._save_main_menu_settings)
                 _safe("organize", self._save_organize_settings)
+                _safe("widget_background", self._save_widget_background_settings)
             if self.tabs_loaded.get(page_indices.get("Sidebar")):
                 _safe("sidebar", self._save_sidebar_settings)
                 _safe("sidebar_layout", self._save_sidebar_layout_settings)
