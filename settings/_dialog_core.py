@@ -26,7 +26,7 @@ class DialogCoreMixin:
         self._theme_prepare_save_in_progress = False
         self._theme_preparing_overlay = None
         self._theme_selected_toast = None
-        self.setWindowTitle("Onigiri Settings — build W6")
+        self.setWindowTitle("Onigiri Settings — build W7")
         
         # --- Screen Proportional Sizing ---
         screen = mw.app.primaryScreen()
@@ -1929,9 +1929,10 @@ class DialogCoreMixin2:
 
             QGroupBox#LayoutGroup,
             QFrame#LayoutGroup {{
-                background-color: {surface_bg};
-                border: 1px solid {border};
-                border-radius: 10px;
+                background-color: transparent;
+                border: none;
+                border-top: 1px solid {separator_color};
+                border-radius: 0px;
             }}
             QGroupBox#LayoutGroup {{
                 margin-top: 0px;

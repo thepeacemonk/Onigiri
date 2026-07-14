@@ -135,24 +135,15 @@ class PageMainmenuMixin:
         label = QLabel(title)
         label.setObjectName("organizeCompactLabel")
         label.setWordWrap(True)
-        label.setMinimumWidth(132)
-        label.setMaximumWidth(190)
-        label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        layout.addWidget(label)
-        if control_widget.objectName() == "organizeSegmentShell":
-            control_cell = QWidget()
-            control_cell.setStyleSheet("background: transparent;")
-            control_cell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            control_layout = QHBoxLayout(control_cell)
-            control_layout.setContentsMargins(0, 0, 0, 0)
-            control_layout.setSpacing(0)
-            control_layout.addWidget(control_widget, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            control_layout.addStretch()
-            layout.addWidget(control_cell, 1)
-        else:
-            layout.addWidget(control_widget, 1)
+        # Reference anatomy: title fills the left, the control sits at the
+        # right edge at its natural width.
+        layout.addWidget(label, 1)
+        if hasattr(control_widget, "setMaximumWidth") and control_widget.objectName() != "organizeSegmentShell":
+            control_widget.setMaximumWidth(320)
+        layout.addWidget(control_widget, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return row
 
     def _create_heatmap_visibility_toggle_row(self, toggle_widget, text_label):
