@@ -1008,8 +1008,8 @@ class DialogCoreMixin2:
             QWidget#settingsContentShell {{
                 background-color: {panel_bg};
                 border: none;
-                border-top-left-radius: 18px;
-                border-top-right-radius: 18px;
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -1065,8 +1065,8 @@ class DialogCoreMixin2:
             QWidget#pageContainer {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 18px;
-                border-top-right-radius: 18px;
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -1077,16 +1077,16 @@ class DialogCoreMixin2:
             QScrollArea {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 18px;
-                border-top-right-radius: 18px;
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
             QScrollArea QWidget#qt_scrollarea_viewport {{
                 background-color: transparent;
                 border: none;
-                border-top-left-radius: 18px;
-                border-top-right-radius: 18px;
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
                 border-bottom-left-radius: 0px;
                 border-bottom-right-radius: 0px;
             }}
@@ -1659,7 +1659,7 @@ class DialogCoreMixin2:
             QComboBox::drop-down {{
                 border: none;
                 width: 24px;
-                border-top-right-radius: 18px;
+                border-top-right-radius: 0px;
                 border-bottom-right-radius: 18px;
             }}
             QComboBox QAbstractItemView {{

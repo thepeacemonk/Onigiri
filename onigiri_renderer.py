@@ -294,6 +294,70 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
 # CSS for the ported dashboard widgets (Prep Station, Hexagon Land, Onigimon).
 # Extracted from the upstream renderer, where these styles lived inline.
 _PORTED_WIDGET_CSS = """
+
+/* ====================================================================
+   Unified widget chrome — one card family for every dashboard widget.
+   Appended last so it wins the cascade over per-widget styles.
+   ==================================================================== */
+.stat-card, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget,
+.prep-station-widget, .onigiri-restaurant-level-widget, #onigiri-heatmap-container {
+    border-radius: 14px !important;
+    box-shadow: none !important;
+}
+
+/* One shared card-title style: small caps, muted, left-aligned. */
+.onigiri-favorites-widget h3,
+.onigimon-header h3,
+.learner-stats-header h3,
+.prep-widget-title,
+.onigiri-restaurant-level-widget .restaurant-info h3,
+.hex-land-header h3,
+.hex-land-copy h3,
+.stat-card h3 {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: var(--fg-subtle, #8a8a8a) !important;
+    margin: 0 0 10px 0 !important;
+    text-align: left !important;
+    font-family: var(--font-main, inherit) !important;
+}
+
+/* Card headers align their title left, controls right. */
+.prep-widget-header {
+    justify-content: space-between !important;
+}
+.prep-widget-title { margin: 0 !important; }
+.prep-widget-count { margin-right: 0 !important; }
+
+/* Favorites: flat rows with hairline separators instead of boxed pills. */
+.onigiri-favorites-widget .favorite-deck-link {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--fg, #888) 10%, transparent) !important;
+    border-radius: 0 !important;
+}
+.onigiri-favorites-widget .favorite-deck-link:last-child,
+.onigiri-favorites-widget .favorite-deck-link:last-of-type {
+    border-bottom: none !important;
+}
+.onigiri-favorites-widget .favorite-deck-link:hover {
+    background: var(--highlight-bg, rgba(128, 128, 128, 0.10)) !important;
+    border-radius: 8px !important;
+}
+.onigiri-favorites-widget .favorite-deck-slot-empty {
+    background: transparent !important;
+    border: 1px dashed color-mix(in srgb, var(--fg, #888) 18%, transparent) !important;
+    border-radius: 8px !important;
+}
+
+/* Big metric numbers share one scale. */
+.stat-card p {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+}
         /* Prep Station widget */
         .prep-station-widget {
             display: flex;
