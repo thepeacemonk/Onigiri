@@ -456,6 +456,67 @@ DEFAULTS = {
 
 # A unique ID for our add-on's configuration
 config_id = None
+def normalize_overview_style_defaults(conf):
+    """Migrate legacy dynamic Overviewer colors whose dark defaults matched light."""
+    overview_style = conf.get("overview_style")
+    if not isinstance(overview_style, dict):
+        return conf
+
+    colors = overview_style.get("colors")
+    if not isinstance(colors, dict):
+        return conf
+
+    light_colors = colors.get("light")
+    dark_colors = colors.get("dark")
+    if not isinstance(light_colors, dict) or not isinstance(dark_colors, dict):
+        return conf
+
+    defaults = DEFAULTS.get("overview_style", {}).get("colors", {})
+    default_light = defaults.get("light", {})
+    default_dark = defaults.get("dark", {})
+    legacy_light_values = {
+        key: {str(value).lower()}
+        for key, value in default_light.items()
+        if isinstance(value, str)
+    }
+    legacy_light_values.setdefault("box_bg", set()).add("#e0e0e0")
+
+    for key, dark_default in default_dark.items():
+        light_value = light_colors.get(key)
+        dark_value = dark_colors.get(key)
+        if not isinstance(light_value, str) or not isinstance(dark_value, str):
+            continue
+        if dark_value.lower() != light_value.lower():
+            continue
+        if light_value.lower() not in legacy_light_values.get(key, set()):
+            continue
+        if dark_value.lower() != str(dark_default).lower():
+            dark_colors[key] = dark_default
+
+    return conf
+
+
+def log_perf(message: str):
+    """
+    Writes performance log messages with high precision to user_files/perf.log.
+    """
+    import datetime
+    import time
+    try:
+        addon_dir = os.path.dirname(os.path.abspath(__file__))
+        log_dir = os.path.join(addon_dir, "user_files")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "perf.log")
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        perf_t = time.perf_counter()
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] [Perf={perf_t:.6f}] {message}\n")
+    except Exception as e:
+        print(f"Error writing to perf.log: {e}")
+
+
 def get_config_id():
     global config_id
     if config_id is None:

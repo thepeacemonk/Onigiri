@@ -3916,6 +3916,22 @@ def _get_external_hooks():
     return _managed_hooks
 
 
+def is_synapsepro_identified() -> bool:
+    """SynapsePro integration is not part of this build; settings sections gate on this."""
+    return False
+
+
+def apply_synapsepro_sidebar_visibility(conf=None) -> None:
+    """No-op compat shim for the SynapsePro sidebar visibility hook."""
+    return None
+
+
+def get_external_hook_display_name(hook_id: str, fallback: str = "") -> str:
+    """Human-readable label for an external add-on hook in layout editors."""
+    hook_id = str(hook_id or "")
+    return fallback or hook_id.split(".")[0]
+
+
 def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -> bool:
 	"""Prevents Anki's default hover-to-show-toolbar behavior."""
 	conf = config.get_config()
