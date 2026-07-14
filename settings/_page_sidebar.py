@@ -383,7 +383,7 @@ class PageSidebarMixin:
         self.sidebar_bg_designer = QFrame()
         self.sidebar_bg_designer.setObjectName("mainBackgroundDesigner")
         outer = QHBoxLayout(self.sidebar_bg_designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(24)
 
         self.sidebar_bg_preview = QLabel()
@@ -1162,7 +1162,7 @@ class PageSidebarMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         mode = self._background_gallery_mode(

@@ -395,7 +395,7 @@ class PageReviewerMixin:
         dialog.setWindowTitle("Select from Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
 
@@ -534,7 +534,7 @@ class PageReviewerMixin:
         self.bottom_bar_designer = QFrame()
         self.bottom_bar_designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(self.bottom_bar_designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         preview_header = QWidget()

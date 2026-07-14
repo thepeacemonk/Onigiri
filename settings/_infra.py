@@ -656,7 +656,7 @@ class InfraMixin:
         designer = QFrame()
         designer.setObjectName("mainBackgroundDesigner")
         designer_layout = QVBoxLayout(designer)
-        designer_layout.setContentsMargins(18, 18, 18, 18)
+        designer_layout.setContentsMargins(0, 8, 0, 8)
         designer_layout.setSpacing(14)
 
         header = QHBoxLayout()
@@ -1825,7 +1825,7 @@ class InfraMixin2:
         designer = QFrame()
         designer.setObjectName("mainBackgroundDesigner")
         outer = QVBoxLayout(designer)
-        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setContentsMargins(0, 8, 0, 8)
         outer.setSpacing(14)
 
         header_layout = QHBoxLayout()
