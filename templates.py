@@ -1180,7 +1180,6 @@ custom_body_template = """
 
         <div class="sidebar-expanded-content">
             {profile_sidebar}
-            <h2 class="sidebar-welcome-heading">{welcome_message}</h2>
             {sidebar_buttons}
             {compact_toolbar_html}
             <div id="deck-list-header">

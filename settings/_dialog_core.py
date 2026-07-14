@@ -408,7 +408,7 @@ class DialogCoreMixin:
         self.sidebar_search_button.setMaximumWidth(216)
         self.sidebar_search_button.setFixedHeight(38)
         self.sidebar_search_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self._decorate_button(self.sidebar_search_button, "search.svg", 16)
+        self._decorate_button(self.sidebar_search_button, "hg-search.svg", 16)
         self.sidebar_search_button.clicked.connect(lambda: self.navigate_to_page("Search"))
         self.sidebar_search_button.toggled.connect(lambda checked: self.navigate_to_page("Search") if checked else None)
 
@@ -438,28 +438,28 @@ class DialogCoreMixin:
         self.sidebar_button_group.addButton(self.sidebar_search_button)
 
         self._add_sidebar_nav_section(sidebar_layout, tr("general"), [
-            (tr("modes"), "Modes", "modes.svg"),
-            (tr("languages"), "Languages", "languages.svg"),
-            (tr("fonts"), "Fonts", "text.svg"),
-            (tr("themes"), "Themes", "themes.svg"),
-            (tr("gallery"), "Gallery", "folder.svg"),
-            (tr("sync_button"), "Sync", "sync.svg"),
+            (tr("modes"), "Modes", "hg-modes.svg"),
+            (tr("languages"), "Languages", "hg-globe.svg"),
+            (tr("fonts"), "Fonts", "hg-font.svg"),
+            (tr("themes"), "Themes", "hg-themes.svg"),
+            (tr("gallery"), "Gallery", "hg-gallery.svg"),
+            (tr("sync_button"), "Sync", "hg-sync.svg"),
         ])
 
         self._add_sidebar_nav_section(sidebar_layout, tr("menu"), [
-            (tr("main_menu"), "Main menu", "main_menu.svg"),
-            (tr("sidebar"), "Sidebar", "sidebar.svg"),
+            (tr("main_menu"), "Main menu", "hg-home.svg"),
+            (tr("sidebar"), "Sidebar", "hg-sidebar.svg"),
         ])
 
         self._add_sidebar_nav_section(sidebar_layout, tr("study_pages"), [
-            (tr("overviewer"), "Overviewer", "stats.svg"),
-            (tr("reviewer"), "Reviewer", "add-card.svg"),
+            (tr("overviewer"), "Overviewer", "hg-overview.svg"),
+            (tr("reviewer"), "Reviewer", "hg-reviewer.svg"),
         ])
 
         self._add_sidebar_nav_section(sidebar_layout, "Study Tools", [
-            ("Prep Station", "Prep Station", "stats.svg"),
-            ("Hashi Notes", "Hashi Notes", "hashi_notes.svg"),
-            ("Pomodoro", "Pomodoro", "pomodoro.svg"),
+            ("Prep Station", "Prep Station", "hg-prep.svg"),
+            ("Hashi Notes", "Hashi Notes", "hg-notes.svg"),
+            ("Pomodoro", "Pomodoro", "hg-pomodoro.svg"),
         ])
 
         sidebar_layout.addStretch()
@@ -468,12 +468,12 @@ class DialogCoreMixin:
         self.donate_button = QPushButton(tr("donate"))
         self.donate_button.setObjectName("sidebarActionButton")
         self.donate_button.setFixedHeight(38)
-        self._decorate_button(self.donate_button, "star_outline.svg")
+        self._decorate_button(self.donate_button, "hg-heart.svg")
         self.donate_button.clicked.connect(self._open_donate_link)
         self.report_bugs_button = QPushButton(tr("report_bugs"))
         self.report_bugs_button.setObjectName("sidebarActionButton")
         self.report_bugs_button.setFixedHeight(38)
-        self._decorate_button(self.report_bugs_button, "info-circle.svg")
+        self._decorate_button(self.report_bugs_button, "hg-bug.svg")
         self.report_bugs_button.clicked.connect(self._open_bugs_link)
 
         self.save_button = QPushButton(tr("save"))
