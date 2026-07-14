@@ -145,6 +145,15 @@ def _render_direct_deck_row_html(deck_browser: DeckBrowser, node, ctx: RenderDec
     return html[:row_end + len("</tr>")]
 
 
+def _apply_tree_preferences(tree_data) -> None:
+    """Apply the user's saved sort order and archive filter to a deck tree."""
+    sort_mode = mw.col.conf.get("onigiri_sort_mode", "")
+    if sort_mode:
+        saved_order = [str(value) for value in mw.col.conf.get("onigiri_custom_deck_order", [])]
+        _apply_sort_recursive(tree_data.children, sort_mode, saved_order, is_top_level=True)
+    apply_archive_filter(tree_data)
+
+
 def _render_deck_tree_html_only(deck_browser: DeckBrowser) -> str:
     """
     Renders just the HTML for the deck tree's <tbody> content.

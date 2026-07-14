@@ -247,7 +247,7 @@ def _render_deck_picker_html(deck_browser: DeckBrowser, selected_did, labels) ->
         tree_data = mw.col.sched.deck_due_tree()
 
     try:
-        from .decks import tree_updater
+        from . import deck_tree_updater as tree_updater
         tree_updater._apply_tree_preferences(tree_data)
     except Exception:
         pass

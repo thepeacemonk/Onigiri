@@ -432,7 +432,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
         
     if cmd.startswith("onigiri_show_transfer_window:"):
         try:
-            from . import mod_transfer_window
+            from .gamification import mod_transfer_window
             json_payload = cmd.split(":", 1)[1]
             mod_transfer_window.show_transfer_window(json_payload)
             return (True, None)
