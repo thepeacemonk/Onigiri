@@ -1528,7 +1528,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     unified_grid_html = onigiri_grid_html + external_widgets_html
 
     # [CHANGED] Updated CSS to force grid expansion and row height
-    onigimon_css = _PORTED_WIDGET_CSS
+    onigimon_css = f"<style>{_PORTED_WIDGET_CSS}</style>"
 
     stats_block_html = f"""
     <style>
