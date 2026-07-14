@@ -1,29 +1,194 @@
 import os
 import copy
+import re
+import shutil
+import tempfile
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QWidget, QSpinBox, QPlainTextEdit, QScrollArea, QGridLayout, QPixmap, 
     Qt, QFrame, QSizePolicy, QButtonGroup, QAbstractButton, QSignalBlocker,
-    QColor, QPointF, QRectF, QPainter, QPainterPath, QPropertyAnimation,
-    QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize
+    QColor, QPointF, QPen, QRectF, QPainter, QPainterPath, QPropertyAnimation,
+    QEasingCurve, QStackedWidget, QMessageBox, QComboBox, QIcon, QSize,
+    QFileDialog
 )
-from PyQt6.QtCore import pyqtSignal, pyqtProperty
-from PyQt6.QtGui import QImage
+from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
+from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtGui import QImage, QFont
+from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
 from aqt import mw
 from aqt.theme import theme_manager
-from aqt.utils import showInfo
 from aqt.qt import (
     QDesktopServices, QUrl
 )
 
 from . import config
+from . import bento_api
 from .config import DEFAULTS
-from .gamification import onigimon, restaurant_level
 from .themes import THEMES
-from .settings import FlowLayout
-from .color_utils import parse_color_string
+from .ui_widgets import FlowLayout
+from .ui_widgets import MainBackgroundEffectSlider
+from .translations import tr
+from .onigiri_notifications import notify_info as showInfo
+from .onigiri_color_picker import OnigiriColorDialog
 
 # --- UI COMPONENTS (Copied from settings.py for standalone functionality) ---
+
+def _hexagon_land_module():
+    from .gamification import hexagon_land
+    return hexagon_land
+
+def _onigimon_module():
+    from .gamification import onigimon
+    return onigimon
+
+def _nook_level_module():
+    from .gamification import nook_level
+    return nook_level
+
+def _safe_device_pixel_ratio(widget=None) -> float:
+    """Return a conservative DPR without depending on a transient Qt screen."""
+    candidates = []
+    if widget is not None:
+        try:
+            candidates.append(widget.devicePixelRatioF())
+        except Exception:
+            pass
+        try:
+            screen = widget.screen()
+            if screen is not None:
+                candidates.append(screen.devicePixelRatio())
+        except Exception:
+            pass
+    try:
+        app = getattr(mw, "app", None)
+        screen = app.primaryScreen() if app else None
+        if screen is not None:
+            candidates.append(screen.devicePixelRatio())
+    except Exception:
+        pass
+
+    for value in candidates:
+        try:
+            ratio = float(value)
+        except (TypeError, ValueError):
+            continue
+        if ratio > 0:
+            return max(1.0, min(ratio, 4.0))
+    return 1.0
+
+CHIP_PREVIEW_DEFAULTS = {
+    "chip_bg":       "#29ffffff",
+    "chip_progress": "#ffb347",
+    "chip_text":     "",
+    "chip_level":    2,
+}
+
+class RestaurantLevelChipPreviewLabel(QWidget):
+    """Small interactive preview of the restaurant-level chip."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(220, 60)
+        self.chip_bg       = CHIP_PREVIEW_DEFAULTS["chip_bg"]
+        self.chip_progress = CHIP_PREVIEW_DEFAULTS["chip_progress"]
+        self.chip_text     = CHIP_PREVIEW_DEFAULTS["chip_text"]
+        self.chip_level    = CHIP_PREVIEW_DEFAULTS["chip_level"]
+        self.chip_progress_fraction = 0.65
+
+    def set_chip_colors(self, bg, progress, text=""):
+        self.chip_bg       = bg or self.chip_bg
+        self.chip_progress = progress or self.chip_progress
+        self.chip_text     = text or ""
+        self.update()
+
+    def paintEvent(self, event):
+        width  = max(1, self.width())
+        height = max(1, self.height())
+
+        painter = QPainter(self)
+        if not painter.isActive():
+            return
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+
+            is_dark = False
+            try:
+                from aqt.theme import theme_manager as _tm
+                is_dark = bool(_tm.night_mode)
+            except Exception:
+                pass
+
+            try:
+                if getattr(mw, "col", None) and hasattr(mw.col, "conf"):
+                    bg_color_str = mw.col.conf.get(
+                        f"modern_menu_profile_bg_color_{'dark' if is_dark else 'light'}",
+                        "#555" if is_dark else "#EEE",
+                    )
+                else:
+                    bg_color_str = "#555555" if is_dark else "#EEEEEE"
+            except Exception:
+                bg_color_str = "#555555" if is_dark else "#EEEEEE"
+
+            bg_rect = QRectF(0, 0, width, height)
+            bg_path = QPainterPath()
+            bg_path.addRoundedRect(bg_rect, 8, 8)
+            painter.fillPath(bg_path, QColor(bg_color_str))
+
+            painter.save()
+            try:
+                scale_factor = 1.8
+                painter.translate(width / 2, height / 2)
+                painter.scale(scale_factor, scale_factor)
+
+                chip_w, chip_h = 100, 24
+                chip_rect = QRectF(-chip_w / 2, -chip_h / 2, chip_w, chip_h)
+                chip_path = QPainterPath()
+                chip_path.addRoundedRect(chip_rect, 12, 12)
+                chip_bg_color = QColor(self.chip_bg)
+                if not chip_bg_color.isValid():
+                    chip_bg_color = QColor(255, 255, 255, 41)
+                painter.fillPath(chip_path, chip_bg_color)
+                painter.setPen(QPen(QColor(255, 255, 255, 40 if not is_dark else 20), 1))
+                painter.drawPath(chip_path)
+
+                if self.chip_text and QColor(self.chip_text).isValid():
+                    text_color = QColor(self.chip_text)
+                else:
+                    text_color = QColor("#111827") if chip_bg_color.lightness() > 150 else QColor("#ffffff")
+
+                level_font = painter.font()
+                level_font.setPointSize(8)
+                level_font.setBold(True)
+                painter.setFont(level_font)
+                painter.setPen(text_color)
+                painter.drawText(
+                    QRectF(chip_rect.x() + 8, chip_rect.y(), 34, chip_rect.height()),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    f"Lv {self.chip_level}",
+                )
+
+                track_rect = QRectF(chip_rect.x() + 40, chip_rect.y() + 9, 52, 6)
+                track_path = QPainterPath()
+                track_path.addRoundedRect(track_rect, 3, 3)
+                track_color = QColor(255, 255, 255, 60) if not is_dark else QColor(0, 0, 0, 90)
+                painter.fillPath(track_path, track_color)
+
+                fill_width = max(0, int(track_rect.width() * self.chip_progress_fraction))
+                if fill_width > 0:
+                    fill_rect = QRectF(track_rect.x(), track_rect.y(), fill_width, track_rect.height())
+                    fill_path = QPainterPath()
+                    fill_path.addRoundedRect(fill_rect, 3, 3)
+                    prog_color = QColor(self.chip_progress)
+                    if not prog_color.isValid():
+                        prog_color = QColor("#ffb347")
+                    painter.fillPath(fill_path, prog_color)
+            finally:
+                painter.restore()
+        except Exception as exc:
+            print(f"[Onigiri] Restaurant chip preview paint failed: {exc}")
+        finally:
+            painter.end()
 
 def create_circular_pixmap(source_image, size):
     """
@@ -63,12 +228,12 @@ class ProfileBarWidget(QWidget):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(50)
-        self.setToolTip("Open Profile Settings")
+        self.setToolTip(tr("open_profile_settings"))
 
         self._bg_mode = bg_mode
         self._bg_image_path = bg_config.get('image')
-        self._bg_color = parse_color_string(bg_config.get('color', '#555555'), fallback="#555555")
-        self._accent_color = parse_color_string(accent_color, fallback="#007BFF")
+        self._bg_color = QColor(bg_config.get('color', '#555555'))
+        self._accent_color = QColor(accent_color)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 15, 5)
@@ -148,24 +313,24 @@ class ProfileBarWidget(QWidget):
 class DonationDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Support Onigiri Development")
+        self.setWindowTitle(tr("support_onigiri_title"))
         self.setFixedWidth(500)
         # Simplified for this context, just a simple message box to minimize copying
         layout = QVBoxLayout(self)
-        msg = QLabel("Onigiri is free and open-source. Your support helps me keep it update and better!\nChoose your preferred method below:")
+        msg = QLabel(tr("support_onigiri_desc"))
         msg.setWordWrap(True)
         layout.addWidget(msg)
         
-        paypal_btn = QPushButton("PayPal")
+        paypal_btn = QPushButton(tr("paypal"))
         paypal_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.paypal.com/donate/?hosted_button_id=HQUK49H7DEDF8")))
         layout.addWidget(paypal_btn)
         
-        pix_btn = QPushButton("Pix (Brazil)")
-        pix_label = QLabel("Chave Pix: gabrielcarusbr16@gmail.com")
+        pix_btn = QPushButton(tr("pix_brazil"))
+        pix_label = QLabel(f"{tr('pix_key')}: gabrielcarusbr16@gmail.com")
         layout.addWidget(pix_btn)
         layout.addWidget(pix_label)
         
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(tr("close"))
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
@@ -175,7 +340,7 @@ class AnimatedToggleButton(QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.accent_color = parse_color_string(accent_color, fallback="#007BFF")
+        self.accent_color = QColor(accent_color)
         self.track_color_off = QColor("#cccccc") if not theme_manager.night_mode else QColor("#555555")
         self.thumb_color = QColor("#ffffff")
         
@@ -233,6 +398,110 @@ class AnimatedToggleButton(QAbstractButton):
         self._thumb_x_pos = self.width() - self.height() + 3 if self.isChecked() else 3
         self.update()
 
+class GooeyPillSwitch(QWidget):
+    """Two-option pill switch with a sliding indicator that squashes and
+    stretches mid-travel and overshoots on arrival, for a soft 'gooey' feel."""
+
+    modeChanged = pyqtSignal(str)
+
+    def __init__(self, left_value, right_value, left_label="", right_label="", accent_color="#F2B705", parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._left_value = left_value
+        self._right_value = right_value
+        self._labels = [left_label, right_label]
+        self._value = left_value
+        self._accent_color = QColor(accent_color)
+        self._track_color = QColor(120, 120, 120, 38)
+        self._text_color_on = QColor("#ffffff")
+        self._text_color_off = QColor("#888888")
+        self._indicator_frac = 0.0
+        self.setFixedHeight(34)
+        self.setMinimumWidth(160)
+
+        self._anim = QPropertyAnimation(self, b"indicator_frac", self)
+        self._anim.setDuration(360)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutBack)
+
+    def setLabels(self, left_label, right_label):
+        self._labels = [left_label, right_label]
+        self.update()
+
+    def setTextColors(self, on_color, off_color):
+        self._text_color_on = QColor(on_color)
+        self._text_color_off = QColor(off_color)
+        self.update()
+
+    @pyqtProperty(float)
+    def indicator_frac(self):
+        return self._indicator_frac
+
+    @indicator_frac.setter
+    def indicator_frac(self, value):
+        self._indicator_frac = value
+        self.update()
+
+    def setValue(self, value, animate=True):
+        target = 1.0 if value == self._right_value else 0.0
+        self._value = self._right_value if value == self._right_value else self._left_value
+        if animate and self.isVisible():
+            self._anim.stop()
+            self._anim.setStartValue(self._indicator_frac)
+            self._anim.setEndValue(target)
+            self._anim.start()
+        else:
+            self._anim.stop()
+            self._indicator_frac = target
+            self.update()
+
+    def value(self):
+        return self._value
+
+    def mousePressEvent(self, event):
+        half = self.width() / 2.0
+        new_value = self._right_value if event.position().x() >= half else self._left_value
+        if new_value != self._value:
+            self.setValue(new_value, animate=True)
+            self.modeChanged.emit(new_value)
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(self.rect())
+        radius = rect.height() / 2.0
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._track_color)
+        painter.drawRoundedRect(rect, radius, radius)
+
+        pad = 3.0
+        half_w = (rect.width() - pad * 2) / 2.0
+        frac = self._indicator_frac
+        clamped_frac = max(0.0, min(1.0, frac))
+        x = pad + half_w * clamped_frac
+        # Squash/stretch peaks mid-travel to read as a soft, gooey blob.
+        stretch = 1.0 + 0.22 * (1.0 - abs(clamped_frac * 2.0 - 1.0)) + 0.35 * max(0.0, abs(frac - clamped_frac))
+        ind_w = half_w * stretch
+        overflow = ind_w - half_w
+        ind_x = x - overflow / 2.0
+        ind_x = max(pad, min(ind_x, rect.width() - pad - ind_w))
+        indicator_rect = QRectF(ind_x, pad, ind_w, rect.height() - pad * 2)
+        painter.setBrush(self._accent_color)
+        painter.drawRoundedRect(indicator_rect, indicator_rect.height() / 2.0, indicator_rect.height() / 2.0)
+
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(9)
+        painter.setFont(font)
+        for i, text in enumerate(self._labels):
+            seg_rect = QRectF(pad + half_w * i, 0, half_w, rect.height())
+            is_active = (i == 0 and clamped_frac < 0.5) or (i == 1 and clamped_frac >= 0.5)
+            painter.setPen(self._text_color_on if is_active else self._text_color_off)
+            painter.drawText(seg_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+        painter.end()
+
 class SectionGroup(QWidget):
     def __init__(self, title="", parent=None, border=True, description=""):
         super().__init__(parent)
@@ -253,6 +522,7 @@ class SectionGroup(QWidget):
         self.content_area = QWidget()
         if border:
             self.content_area.setObjectName("innerGroup")
+            self.content_area.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(15, 15, 15, 15)
@@ -265,8 +535,216 @@ class SectionGroup(QWidget):
     def add_layout(self, layout):
         self.content_layout.addLayout(layout)
 
+class StudyZoneMessageListEditor(QWidget):
+    messagesChanged = pyqtSignal()
+
+    def __init__(self, messages, accent_color, icon_provider, parent=None):
+        super().__init__(parent)
+        self.setObjectName("studyZoneMessageListEditor")
+        self._accent_color = accent_color
+        self._icon_provider = icon_provider
+        self._rows = []
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(10)
+
+        self.rows_widget = QWidget()
+        self.rows_widget.setObjectName("studyZoneMessageRows")
+        self.rows_layout = QVBoxLayout(self.rows_widget)
+        self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_layout.setSpacing(8)
+        main_layout.addWidget(self.rows_widget)
+
+        self.add_button = QPushButton(tr("add_message", "Add message"))
+        self.add_button.setObjectName("studyZoneAddMessageButton")
+        self.add_button.setIcon(self._icon("add.svg", 14))
+        self.add_button.setIconSize(QSize(14, 14))
+        self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_button.clicked.connect(lambda: self.add_message("", focus=True))
+        main_layout.addWidget(self.add_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        initial_messages = [str(item).strip() for item in (messages or []) if str(item).strip()]
+        if not initial_messages:
+            initial_messages = [""]
+        for message in initial_messages:
+            self.add_message(message, focus=False, emit_change=False)
+        self._refresh_row_buttons()
+
+    def _icon(self, filename, size=14):
+        if callable(self._icon_provider):
+            return self._icon_provider(filename, size)
+        return QIcon()
+
+    def _make_icon_button(self, filename, tooltip, callback):
+        button = QPushButton()
+        button.setObjectName("studyZoneMessageIconButton")
+        button.setFixedSize(30, 30)
+        button.setIcon(self._icon(filename, 15))
+        button.setIconSize(QSize(15, 15))
+        button.setToolTip(tooltip)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(callback)
+        return button
+
+    def add_message(self, text="", focus=False, emit_change=True):
+        row = QFrame()
+        row.setObjectName("studyZoneMessageRow")
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(10, 8, 8, 8)
+        row_layout.setSpacing(8)
+
+        input_widget = QLineEdit(str(text or ""))
+        input_widget.setObjectName("studyZoneMessageInput")
+        input_widget.setPlaceholderText(tr("message_placeholder", "Write a message..."))
+        input_widget.textChanged.connect(self._emit_messages_changed)
+
+        up_button = self._make_icon_button("up.svg", tr("move_up", "Move up"), lambda _=False, r=row: self._move_row(r, -1))
+        down_button = self._make_icon_button("down.svg", tr("move_down", "Move down"), lambda _=False, r=row: self._move_row(r, 1))
+        delete_button = self._make_icon_button("trash.svg", tr("delete", "Delete"), lambda _=False, r=row: self._remove_row(r))
+
+        row_layout.addWidget(input_widget, 1)
+        row_layout.addWidget(up_button)
+        row_layout.addWidget(down_button)
+        row_layout.addWidget(delete_button)
+
+        row_data = {
+            "widget": row,
+            "input": input_widget,
+            "up": up_button,
+            "down": down_button,
+            "delete": delete_button,
+        }
+        self._rows.append(row_data)
+        self.rows_layout.addWidget(row)
+        self._refresh_row_buttons()
+
+        if focus:
+            input_widget.setFocus()
+        if emit_change:
+            self._emit_messages_changed()
+
+    def _row_index(self, row_widget):
+        for index, row_data in enumerate(self._rows):
+            if row_data["widget"] is row_widget:
+                return index
+        return -1
+
+    def _move_row(self, row_widget, direction):
+        index = self._row_index(row_widget)
+        new_index = index + int(direction)
+        if index < 0 or new_index < 0 or new_index >= len(self._rows):
+            return
+
+        row_data = self._rows.pop(index)
+        self._rows.insert(new_index, row_data)
+        self.rows_layout.removeWidget(row_widget)
+        self.rows_layout.insertWidget(new_index, row_widget)
+        row_data["input"].setFocus()
+        self._refresh_row_buttons()
+        self._emit_messages_changed()
+
+    def _remove_row(self, row_widget):
+        index = self._row_index(row_widget)
+        if index < 0:
+            return
+
+        row_data = self._rows.pop(index)
+        self.rows_layout.removeWidget(row_data["widget"])
+        row_data["widget"].deleteLater()
+        if not self._rows:
+            self.add_message("", focus=True, emit_change=False)
+        else:
+            focus_index = min(index, len(self._rows) - 1)
+            self._rows[focus_index]["input"].setFocus()
+        self._refresh_row_buttons()
+        self._emit_messages_changed()
+
+    def _refresh_row_buttons(self):
+        last_index = len(self._rows) - 1
+        for index, row_data in enumerate(self._rows):
+            row_data["up"].setEnabled(index > 0)
+            row_data["down"].setEnabled(index < last_index)
+            row_data["delete"].setEnabled(len(self._rows) > 1 or bool(row_data["input"].text().strip()))
+
+    def _emit_messages_changed(self, *args):
+        self._refresh_row_buttons()
+        self.messagesChanged.emit()
+
+    def messages(self):
+        return [row["input"].text().strip() for row in self._rows if row["input"].text().strip()]
+
+class StudyZonePinInput(QWidget):
+    def __init__(self, value="", parent=None):
+        super().__init__(parent)
+        self.setObjectName("studyZonePinInput")
+        self._boxes = []
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:6]
+        digits = digits.ljust(6)
+        for index in range(6):
+            box = QLineEdit(digits[index].strip())
+            box.setObjectName("studyZonePinDigit")
+            box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            box.setMaxLength(1)
+            box.setFixedSize(36, 42)
+            box.setTextMargins(0, 0, 0, 0)
+            box.setFont(QFont(box.font().family(), 15, QFont.Weight.Bold))
+            box.textEdited.connect(lambda text, i=index: self._handle_text_edited(i, text))
+            layout.addWidget(box)
+            self._boxes.append(box)
+
+    def _handle_text_edited(self, index, text):
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if len(digits) > 1:
+            self.set_pin(digits)
+            focus_index = min(len(digits), 5)
+            self._boxes[focus_index].setFocus()
+            return
+
+        box = self._boxes[index]
+        if box.text() != digits:
+            box.setText(digits)
+        if digits and index < 5:
+            self._boxes[index + 1].setFocus()
+            self._boxes[index + 1].selectAll()
+
+    def keyPressEvent(self, event):
+        focused = self.focusWidget()
+        if focused in self._boxes:
+            index = self._boxes.index(focused)
+            if event.key() == Qt.Key.Key_Backspace and not focused.text() and index > 0:
+                previous = self._boxes[index - 1]
+                previous.clear()
+                previous.setFocus()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_Left and index > 0:
+                self._boxes[index - 1].setFocus()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_Right and index < 5:
+                self._boxes[index + 1].setFocus()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def set_pin(self, value):
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())[:6]
+        for index, box in enumerate(self._boxes):
+            box.setText(digits[index] if index < len(digits) else "")
+
+    def pin(self):
+        return "".join(box.text() for box in self._boxes)
+
 class DifficultyCardWidget(QPushButton):
-    def __init__(self, title, description, emoji):
+    def __init__(self, title, description, emoji, accent_color=None):
         super().__init__()
         self.setCheckable(True)
         self.setObjectName("difficultyCard")
@@ -274,6 +752,16 @@ class DifficultyCardWidget(QPushButton):
         self.setMinimumHeight(100)
         self.setMinimumWidth(220)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        if accent_color:
+            qcolor = QColor(accent_color)
+            tint = f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, 0.14)"
+            self.setStyleSheet(f"""
+                QPushButton#difficultyCard:checked {{
+                    border: 2px solid {accent_color};
+                    background-color: {tint};
+                }}
+            """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -320,9 +808,12 @@ class DifficultyCardWidget(QPushButton):
 class GamificationSettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.addon_path = addon_path
         self.current_config = config.get_config()
-        self.setWindowTitle("Gamification Settings")
+        self.setWindowTitle(tr("gamification_settings_title"))
+        self._loaded_pages = set()
+        self._is_saving = False
 
         # --- Screen Proportional Sizing ---
         screen = mw.app.primaryScreen()
@@ -350,22 +841,36 @@ class GamificationSettingsDialog(QDialog):
         main_layout.setSpacing(0)
 
         content_area_layout = QHBoxLayout()
-        content_area_layout.setSpacing(5)
+        content_area_layout.setSpacing(0)
         content_area_layout.setContentsMargins(0, 0, 0, 0)
 
         # Sidebar setup - new colorful pill design
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(210)
+        sidebar_wrapper.setObjectName("settingsSidebarWrapper")
+        sidebar_wrapper.setMinimumWidth(188)
+        sidebar_wrapper.setMaximumWidth(240)
         sidebar_wrapper_layout = QVBoxLayout(sidebar_wrapper)
-        sidebar_wrapper_layout.setContentsMargins(15, 15, 15, 15)
-        sidebar_wrapper_layout.setSpacing(8)
+        sidebar_wrapper_layout.setContentsMargins(12, 16, 12, 12)
+        sidebar_wrapper_layout.setSpacing(4)
+
+        self.sidebar_scroll_area = QScrollArea()
+        self.sidebar_scroll_area.setObjectName("sidebarNavScrollArea")
+        self.sidebar_scroll_area.setWidgetResizable(True)
+        self.sidebar_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.sidebar_scroll_area.viewport().setObjectName("sidebarNavViewport")
+        self.sidebar_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.sidebar_scroll_area.setMinimumWidth(164)
+        self.sidebar_scroll_area.setMaximumWidth(216)
+        self.sidebar_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Main Sidebar Widget (the rounded container)
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("sidebarContainer")
+        sidebar_widget.setMinimumWidth(164)
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(10, 14, 10, 14)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(0, 0, 12, 16)
+        sidebar_layout.setSpacing(6)
         sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Colored pill buttons
@@ -373,42 +878,63 @@ class GamificationSettingsDialog(QDialog):
         self.sidebar_button_group = QButtonGroup()
         self.sidebar_button_group.setExclusive(True)
 
-        # Each item has (display_name, key, bg_color, text_color)
-        gamification_items = [
-            ("General",                "General",           "",         ""),
-            ("Restaurant Level",       "Restaurant Level",  "#ffbd59",  "#000000"),
-            ("Mr. Taiyaki Store",      "Mr. Taiyaki Store", "#a83e25",  "#ffffff"),
-            ("Onigimon",               "Onigimon",          "#70c6a6",  "#10231b"),
-            ("Focus Dango",            "Focus Dango",       "#9d3d64",  "#ffffff"),
-            ("Mochi Messages",         "Mochi Messages",    "#00bf63",  "#000000"),
-            ("Coming Soon",            "Coming Soon",       "",         ""),
+        # Each item has (display_name, key, icon_filename)
+        general_item = (tr("general"), "General", "settings.svg")
+        games_items = [
+            (tr("restaurant_level"),     "Nook Level", "nook.svg"),
+            ("Onigimon",                 "Onigimon",         "pokeball.svg"),
+            ("Hexagon Land",             "Hexagon Land",     "hexagon_land.svg"),
+            ("Bento Games",              "Bento Games",      "bento.svg"),
         ]
-        self._item_colors = {key: (bg, fg_c) for (_, key, bg, fg_c) in gamification_items}
+        study_zone_items = [
+            (tr("focus_dango"),          "Focus Dango",      "dango.svg"),
+            (tr("mochi_messages_title"), "Mochi Messages",   "mochi.svg"),
+        ]
 
-        for label, key, bg_color, text_color in gamification_items:
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setAutoDefault(False)
-            btn.setObjectName("sidebarButton")
-            btn.setProperty("gameBgColor", bg_color)
-            btn.setProperty("gameTextColor", text_color)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, name=key: self.navigate_to_page(name))
-            self.sidebar_buttons[key] = btn
-            self.sidebar_button_group.addButton(btn)
-            sidebar_layout.addWidget(btn)
+        # Per-game accent colours used to tint the selected nav button's icon
+        # and label. (light_mode_color, dark_mode_color) — the dark variants are
+        # brighter so they stay legible on the dark sidebar surface.
+        self._nav_colors = {
+            "General":          (self.accent_color, self.accent_color),
+            "Nook Level": ("#B94632", "#E8836F"),
+            "Onigimon":         ("#F2B705", "#FFD45A"),
+            "Hexagon Land":     ("#1F6FE0", "#5BA8FF"),
+            "Bento Games":      ("#6A40E0", "#B49CFF"),
+            "Focus Dango":      ("#9D3D64", "#E78BAC"),
+            "Mochi Messages":   ("#00935C", "#2FD787"),
+        }
 
-        # Stretch pushes Save to the bottom
+        self._add_sidebar_nav_button(sidebar_layout, *general_item)
+        self._add_sidebar_nav_section(sidebar_layout, "Games", games_items)
+        self._add_sidebar_nav_section(sidebar_layout, "Study Zone", study_zone_items)
+
+        # Stretch pushes buttons to the bottom
         sidebar_layout.addStretch()
 
-        # Save button at the bottom
-        self.save_button = QPushButton("Save")
+        # Cancel button
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setObjectName("cancelButton")
+        self.cancel_button.setAutoDefault(False)
+        self.cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cancel_button.clicked.connect(self.reject)
+
+        # Save button
+        self.save_button = QPushButton(tr("save"))
         self.save_button.setObjectName("saveButton")
         self.save_button.setAutoDefault(False)
+        self.save_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_button.clicked.connect(self.save_settings)
-        sidebar_layout.addWidget(self.save_button)
 
-        sidebar_wrapper_layout.addWidget(sidebar_widget)
+        save_cancel_layout = QHBoxLayout()
+        save_cancel_layout.setSpacing(4)
+        save_cancel_layout.setContentsMargins(0, 0, 0, 0)
+        save_cancel_layout.addWidget(self.save_button)
+        save_cancel_layout.addWidget(self.cancel_button)
+        
+        sidebar_layout.addLayout(save_cancel_layout)
+
+        self.sidebar_scroll_area.setWidget(sidebar_widget)
+        sidebar_wrapper_layout.addWidget(self.sidebar_scroll_area, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Content Stack
         self.content_stack = QStackedWidget()
@@ -416,67 +942,197 @@ class GamificationSettingsDialog(QDialog):
 
         self.pages = {
             "General": self.create_general_page,
-            "Restaurant Level": self.create_restaurant_level_page,
-            "Mr. Taiyaki Store": self.create_mr_taiyaki_store_page,
+            "Nook Level": self.create_nook_level_page,
             "Onigimon": self.create_onigimon_page,
             "Focus Dango": self.create_focus_dango_page,
             "Mochi Messages": self.create_mochi_messages_page,
-            "Coming Soon": self.create_coming_soon_page
+            "Hexagon Land": self.create_hexagon_land_page,
+            "Bento Games": self.create_bento_games_page,
         }
         self.page_order = list(self.pages.keys())
 
         for name in self.page_order:
             self.content_stack.addWidget(QWidget())
 
-        # Wrap content in a rounded container so it paints its own background
-        content_container = QWidget()
+        # Wrap content in a rounded shell (QFrame) that paints its own
+        # background. A QFrame reliably renders the QSS background + border-radius
+        # (a plain QWidget needs WA_StyledBackground and is flaky across Qt
+        # versions), giving each page the same rounded shape as Onigiri Settings.
+        content_container = QFrame()
         content_container.setObjectName("contentContainer")
+        content_container.setFrameShape(QFrame.Shape.NoFrame)
+        content_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         content_container_layout = QVBoxLayout(content_container)
         content_container_layout.setContentsMargins(0, 0, 0, 0)
         content_container_layout.addWidget(self.content_stack)
 
+        # Outer margins inset the shell from the window edges (matches Onigiri
+        # Settings) so the rounded corners read as a distinct shape.
+        content_outer = QWidget()
+        content_outer.setObjectName("contentOuter")
+        content_outer_layout = QVBoxLayout(content_outer)
+        content_outer_layout.setContentsMargins(8, 10, 8, 10)
+        content_outer_layout.setSpacing(0)
+        content_outer_layout.addWidget(content_container)
+
         content_area_layout.addWidget(sidebar_wrapper)
-        content_area_layout.addWidget(content_container)
+        content_area_layout.addWidget(content_outer)
 
         main_layout.addLayout(content_area_layout)
         self.apply_stylesheet()
-        self._apply_pill_button_styles()
 
         # Default page
         self.navigate_to_page("General")
 
-    def _apply_pill_button_styles(self):
-        """Apply individual colored pill styles to each sidebar button."""
-        is_dark = theme_manager.night_mode
-        neutral_bg = "#3c3c3c" if is_dark else "#ffffff"
-        neutral_fg = "#e0e0e0" if is_dark else "#000000"
+    def _theme_tokens(self):
+        # Mirror Onigiri Settings' neutral palette (hardcoded high-contrast
+        # values) so the gamification dialog looks identical — in particular so
+        # the rounded content shell (panel) clearly stands out from the darker
+        # window background, the same way it does on Onigiri Settings.
+        # The accent colour still follows the user's configured theme.
+        mode_key = "dark" if theme_manager.night_mode else "light"
+        palette = self.current_config.get("colors", {}).get(mode_key, {})
+        defaults = DEFAULTS["colors"][mode_key]
+        accent = palette.get("--accent-color", defaults["--accent-color"])
 
+        if theme_manager.night_mode:
+            return {
+                "bg": "#181818",
+                "panel": "#242424",
+                "surface": "#303030",
+                "fg": "#f4f4f5",
+                "muted": "#c4c4c4",
+                "border": "#454545",
+                "accent": accent,
+            }
+        return {
+            "bg": "#f7f7f7",
+            "panel": "#ffffff",
+            "surface": "#f2f2f2",
+            "fg": "#202124",
+            "muted": "#6f7177",
+            "border": "#dcdde1",
+            "accent": accent,
+        }
+
+    def _settings_icon_color(self):
+        return self._theme_tokens()["fg"]
+
+    def _message_values(self, value, fallback=None):
+        if isinstance(value, list):
+            messages = value
+        elif isinstance(value, str):
+            messages = value.splitlines()
+        else:
+            messages = []
+        cleaned = [str(item).strip() for item in messages if str(item).strip()]
+        if cleaned:
+            return cleaned
+        return [str(item).strip() for item in (fallback or []) if str(item).strip()]
+
+    def _study_zone_message_icon(self, filename, size=15):
+        return self._themed_icon(filename, self._theme_tokens()["muted"], size)
+
+    def _themed_icon(self, filename, color=None, size=18):
+        from .settings._common import system_icon_path
+        icon_path = system_icon_path(filename)
+        if not icon_path or not os.path.exists(icon_path):
+            return QIcon()
+
+        icon = QIcon(icon_path)
+        pixmap = icon.pixmap(size, size)
+        if pixmap.isNull():
+            return icon
+
+        tint = QColor(color or self._settings_icon_color())
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), tint)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _tinted_stylesheet_svg_path(self, filename, color):
+        from .settings._common import system_icon_path
+        icon_path = system_icon_path(filename)
+        if not icon_path or not os.path.exists(icon_path):
+            return ""
+
+        color_name = QColor(color or self._settings_icon_color()).name()
+        icon_name = os.path.splitext(os.path.basename(filename))[0]
+        cache_dir = os.path.join(tempfile.gettempdir(), "onigiri_theme_icons")
+        out_path = os.path.join(cache_dir, f"{icon_name}_{color_name.lstrip('#')}.svg")
+
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            if not os.path.exists(out_path):
+                with open(icon_path, "r", encoding="utf-8") as src:
+                    svg = src.read()
+                if "currentColor" in svg:
+                    svg = svg.replace("currentColor", color_name)
+                else:
+                    svg = svg.replace("<svg", f'<svg fill="{color_name}" stroke="{color_name}"', 1)
+                with open(out_path, "w", encoding="utf-8") as dst:
+                    dst.write(svg)
+            return out_path.replace("\\", "/")
+        except Exception as exc:
+            print(f"Onigiri: Error tinting icon {filename}: {exc}")
+            return icon_path.replace("\\", "/")
+
+    def _decorate_button(self, button, icon_filename=None, icon_size=18):
+        if icon_filename:
+            button.setIcon(self._themed_icon(icon_filename, self._settings_icon_color(), icon_size))
+            button.setIconSize(QSize(icon_size, icon_size))
+            button.setProperty("onigiri_icon_filename", icon_filename)
+            button.setProperty("onigiri_icon_size", icon_size)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoDefault(False)
+
+    def _set_sidebar_section_toggle_icon(self, button, expanded):
+        icon_filename = "down.svg" if expanded else "right.svg"
+        button.setIcon(self._themed_icon(icon_filename, self._theme_tokens()["muted"], 12))
+        button.setIconSize(QSize(12, 12))
+
+    def _toggle_sidebar_nav_section(self, toggle_button, content_widget, expanded):
+        content_widget.setVisible(expanded)
+        self._set_sidebar_section_toggle_icon(toggle_button, expanded)
+
+    def _nav_color(self, key):
+        """Theme-aware accent colour for a given mini-game nav item."""
+        light, dark = self._nav_colors.get(key, (self.accent_color, self.accent_color))
+        return dark if theme_manager.night_mode else light
+
+    def _apply_sidebar_button_colors(self, active_key):
+        """Tint the selected nav button (icon + label) with its mini-game colour;
+        reset every other nav button to the neutral muted style."""
+        tokens = self._theme_tokens()
+        surface = tokens["surface"]
+        muted = tokens["muted"]
         for key, btn in self.sidebar_buttons.items():
-            bg = btn.property("gameBgColor")
-            fg_c = btn.property("gameTextColor")
-            if not bg:
-                bg, fg_c = neutral_bg, neutral_fg
-
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {bg};
-                    color: {fg_c};
-                    border: none;
-                    border-radius: 19px;
-                    min-height: 38px;
-                    max-height: 38px;
-                    padding: 0px 14px;
-                    font-size: 13px;
-                    font-weight: bold;
-                    text-align: center;
-                }}
-                QPushButton:checked {{
-                    background-color: {bg};
-                    color: {fg_c};
-                    border: 3px solid rgba(255,255,255,0.85);
-                    border-radius: 19px;
-                }}
-            """)
+            filename = btn.property("onigiri_icon_filename")
+            size = btn.property("onigiri_icon_size") or 16
+            if key == active_key:
+                color = self._nav_color(key)
+                if filename:
+                    btn.setIcon(self._themed_icon(filename, color, size))
+                btn.setStyleSheet(f"""
+                    QPushButton#sidebarNavButton,
+                    QPushButton#sidebarNavButton:hover,
+                    QPushButton#sidebarNavButton:checked {{
+                        min-height: 28px;
+                        padding: 4px 10px;
+                        border-radius: 18px;
+                        background-color: {surface};
+                        border: 1px solid transparent;
+                        text-align: left;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: {color};
+                    }}
+                """)
+            else:
+                if filename:
+                    btn.setIcon(self._themed_icon(filename, muted, size))
+                btn.setStyleSheet("")
 
 
     def _setup_gamification_widgets(self):
@@ -487,30 +1143,171 @@ class GamificationSettingsDialog(QDialog):
         # Focused Gaming Toggle
         self.focused_gaming_toggle = AnimatedToggleButton(accent_color="#5b8dee")
         self.focused_gaming_toggle.setChecked(bool(self.current_config.get("focusedGaming", False)))
-        
+        self.notification_duration_spinbox = QSpinBox()
+        self.notification_duration_spinbox.setObjectName("notificationDurationSpinBox")
+        self.notification_duration_spinbox.setRange(1, 30)
+        self.notification_duration_spinbox.setSuffix(" sec")
+        try:
+            notification_duration_seconds = int(self.current_config.get("onigiri_notification_duration_ms", 5200)) // 1000
+        except (TypeError, ValueError):
+            notification_duration_seconds = 5
+        self.notification_duration_spinbox.setValue(max(1, min(30, notification_duration_seconds)))
+
         restaurant_conf = self.current_config.get("restaurant_level", {})
-        self.restaurant_level_toggle = AnimatedToggleButton(accent_color="#B94632")
-        self.restaurant_level_toggle.setChecked(bool(restaurant_conf.get("enabled", False)))
+        self.nook_level_toggle = AnimatedToggleButton(accent_color="#B94632")
+        self.nook_level_toggle.setChecked(bool(restaurant_conf.get("enabled", False)))
         self.restaurant_notifications_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_notifications_toggle.setChecked(bool(restaurant_conf.get("notifications_enabled", True)))
         self.restaurant_bar_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_bar_toggle.setChecked(bool(restaurant_conf.get("show_profile_bar_progress", True)))
         self.restaurant_reviewer_toggle = AnimatedToggleButton(accent_color=self.accent_color)
         self.restaurant_reviewer_toggle.setChecked(bool(restaurant_conf.get("show_reviewer_header", True)))
+
+        # Chip colour state
+        self.rl_chip_bg_color       = str(restaurant_conf.get("chip_bg_color", ""))
+        self.rl_chip_progress_color = str(restaurant_conf.get("chip_progress_color", ""))
+        self.rl_chip_text_color     = str(restaurant_conf.get("chip_text_color", ""))
+        self.rl_dynamic_chip_colors        = bool(restaurant_conf.get("dynamic_chip_colors", False))
+        self.rl_chip_bg_color_light        = str(restaurant_conf.get("chip_bg_color_light", ""))
+        self.rl_chip_bg_color_dark         = str(restaurant_conf.get("chip_bg_color_dark", ""))
+        self.rl_chip_progress_color_light  = str(restaurant_conf.get("chip_progress_color_light", ""))
+        self.rl_chip_progress_color_dark   = str(restaurant_conf.get("chip_progress_color_dark", ""))
+        self.rl_chip_text_color_light      = str(restaurant_conf.get("chip_text_color_light", ""))
+        self.rl_chip_text_color_dark       = str(restaurant_conf.get("chip_text_color_dark", ""))
+
+        self.rl_chip_bg_button = QPushButton()
+        self.rl_chip_bg_button.setObjectName("restaurantChipColorButton")
+        self.rl_chip_bg_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rl_chip_bg_button.clicked.connect(lambda: self._choose_restaurant_chip_color("bg"))
+
+        self.rl_chip_progress_button = QPushButton()
+        self.rl_chip_progress_button.setObjectName("restaurantChipColorButton")
+        self.rl_chip_progress_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rl_chip_progress_button.clicked.connect(lambda: self._choose_restaurant_chip_color("progress"))
+
+        self.rl_chip_text_button = QPushButton()
+        self.rl_chip_text_button.setObjectName("restaurantChipColorButton")
+        self.rl_chip_text_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rl_chip_text_button.clicked.connect(lambda: self._choose_restaurant_chip_color("text"))
+
+        self.rl_chip_reset_colors_button = QPushButton(tr("reset_colors"))
+        self.rl_chip_reset_colors_button.clicked.connect(self._reset_restaurant_chip_colors)
+
+        # Onigimon
+        self.onigimon_config = self.current_config.get("onigimon", {})
+        if not isinstance(self.onigimon_config, dict):
+            self.onigimon_config = {}
+        self.onigimon_toggle = AnimatedToggleButton(accent_color="#F2B705")
+        self.onigimon_toggle.setChecked(bool(self.onigimon_config.get("enabled", False)))
+        self.onigimon_ankimon_updates_toggle = AnimatedToggleButton(accent_color="#F2B705")
+        self.onigimon_ankimon_updates_toggle.setChecked(bool(self.onigimon_config.get("allow_ankimon_updates", True)))
+        self.onigimon_difficulty_group = QButtonGroup()
+        self.onigimon_difficulty_group.setExclusive(True)
+        self.onigimon_difficulty_widgets = {}
+        def _get_sprite(name):
+            path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "onigimon", name)
+            url = QUrl.fromLocalFile(path).toString()
+            return f'<img src="{url}" width="32" height="32">'
+
+        onigimon_difficulties = [
+            ("bulbassaur", "Bulbassaur", tr("onigimon_diff_easy_desc"), _get_sprite("bulbasaur_pixel.webp"), "#4CAF50"),
+            ("pikachu", "Pikachu", tr("onigimon_diff_normal_desc"), _get_sprite("pikachu_pixel.webp"), "#F2B705"),
+            ("charizard", "Charizard", tr("onigimon_diff_hard_desc"), _get_sprite("charizard_pixel.webp"), "#E8562F"),
+        ]
+        for data, title, description, badge, accent in onigimon_difficulties:
+            btn = DifficultyCardWidget(title, description, badge, accent_color=accent)
+            self.onigimon_difficulty_group.addButton(btn)
+            self.onigimon_difficulty_widgets[data] = btn
+        current_onigimon_difficulty = str(self.onigimon_config.get("difficulty", "pikachu") or "pikachu").lower()
+        if current_onigimon_difficulty not in self.onigimon_difficulty_widgets:
+            current_onigimon_difficulty = "pikachu"
+        self.onigimon_difficulty_widgets[current_onigimon_difficulty].setChecked(True)
+        self.onigimon_sprite_motion = "gif" if str(self.onigimon_config.get("sprite_motion", "static")) == "gif" else "static"
+        self.onigimon_sprite_mode_widget = GooeyPillSwitch(
+            "static", "gif",
+            tr("onigimon_sprite_static"), tr("onigimon_sprite_animated"),
+            accent_color="#F2B705",
+        )
+        self.onigimon_sprite_mode_widget.setValue(self.onigimon_sprite_motion, animate=False)
+        def _on_onigimon_sprite_mode_changed(value):
+            self.onigimon_sprite_motion = "gif" if value == "gif" else "static"
+        self.onigimon_sprite_mode_widget.modeChanged.connect(_on_onigimon_sprite_mode_changed)
+        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#7FD179") or "#7FD179")
+        if not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color):
+            self.onigimon_scene_color = "#7FD179"
+        self.onigimon_scene_image = str(self.onigimon_config.get("scene_background_image", "") or "")
+        self.onigimon_scene_color_button = QPushButton(tr("onigimon_scene_color_button"))
+        self.onigimon_scene_color_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_color_button.clicked.connect(self._choose_onigimon_scene_color)
+        self.onigimon_scene_import_button = QPushButton(tr("onigimon_import_image_button"))
+        self.onigimon_scene_import_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_import_button.clicked.connect(self._import_onigimon_scene_background)
+        self.onigimon_scene_clear_button = QPushButton(tr("onigimon_clear_image_button"))
+        self.onigimon_scene_clear_button.setObjectName("onigimonSceneButton")
+        self.onigimon_scene_clear_button.clicked.connect(self._clear_onigimon_scene_background)
+        scene_slider_tokens = self._theme_tokens()
+        blur_value = int(self.onigimon_config.get("scene_background_blur", 9) or 0)
+        self.onigimon_scene_blur_slider = MainBackgroundEffectSlider("#F2B705", scene_slider_tokens["surface"], scene_slider_tokens["border"])
+        self.onigimon_scene_blur_slider.setRange(0, 40)
+        self.onigimon_scene_blur_slider.setSingleStep(1)
+        self.onigimon_scene_blur_slider.setPageStep(4)
+        self.onigimon_scene_blur_slider.setValue(max(0, min(40, blur_value)))
+        self.onigimon_scene_blur_slider.valueChanged.connect(self._on_onigimon_scene_blur_changed)
+        self.onigimon_scene_blur_value_label = QLabel(f"{self.onigimon_scene_blur_slider.value()} px")
+        self.onigimon_scene_blur_value_label.setObjectName("onigimonSceneBlurValue")
+        self.onigimon_scene_blur_apply_timer = QTimer(self)
+        self.onigimon_scene_blur_apply_timer.setSingleShot(True)
+        self.onigimon_scene_blur_apply_timer.timeout.connect(self._persist_onigimon_scene_blur)
+        opacity_value = int(self.onigimon_config.get("scene_background_opacity", 90) or 0)
+        self.onigimon_scene_opacity_slider = MainBackgroundEffectSlider("#F2B705", scene_slider_tokens["surface"], scene_slider_tokens["border"])
+        self.onigimon_scene_opacity_slider.setRange(0, 100)
+        self.onigimon_scene_opacity_slider.setSingleStep(1)
+        self.onigimon_scene_opacity_slider.setPageStep(10)
+        self.onigimon_scene_opacity_slider.setValue(max(0, min(100, opacity_value)))
+        self.onigimon_scene_opacity_slider.valueChanged.connect(self._on_onigimon_scene_opacity_changed)
+        self.onigimon_scene_opacity_value_label = QLabel(f"{self.onigimon_scene_opacity_slider.value()}%")
+        self.onigimon_scene_opacity_value_label.setObjectName("onigimonSceneBlurValue")
+        self.onigimon_selected_companion_id = ""
+        self.onigimon_companions_loaded = False
+        self.onigimon_name_input = QLineEdit("")
+        self.onigimon_name_input.setPlaceholderText(tr("onigimon_nickname_placeholder"))
+        self.onigimon_companion_buttons = QButtonGroup(self)
+        self.onigimon_companion_buttons.setExclusive(True)
+        self.onigimon_companion_grid = QWidget()
+        self.onigimon_companion_grid.setObjectName("onigimonCompanionGrid")
+        self.onigimon_companion_grid_layout = QGridLayout(self.onigimon_companion_grid)
+        self.onigimon_companion_grid_layout.setContentsMargins(8, 8, 8, 8)
+        self.onigimon_companion_grid_layout.setSpacing(8)
+        self.onigimon_companion_status_label = QLabel(tr("onigimon_status_open_page"))
+        self.onigimon_companion_status_label.setWordWrap(True)
         
         # Difficulty Setting
         self.restaurant_difficulty_group = QButtonGroup()
         self.restaurant_difficulty_group.setExclusive(True)
         
         self.difficulty_widgets = {}
+        
+        def _get_restaurant_svg(filename, color):
+            import base64
+            path = os.path.join(os.path.dirname(__file__), "system_files", "system_icons", "available_for_users", filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = content.replace("<path ", f'<path fill="{color}" ')
+                b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+                return f'<img src="data:image/svg+xml;base64,{b64}" width="32" height="32">'
+            except Exception:
+                return ""
+        
         diffs = [
-            ("Apprendice", "Apprentice (1x)", "The journey begins! Start learning the ropes of the kitchen.", "Apprendice", "🧑‍🍳"),
-            ("Cook", "Cook (2x)", "You know your way around. Things are heating up!", "Cook", "🍳"),
-            ("Chef", "Chef (4x)", "You've become a master of your craft, and now the challenge is here.", "Chef", "🔪")
+            ("Apprendice", "Apprendice (1x)", tr("apprentice_desc"), "Apprendice", "seed.svg", "#4CAF50"),
+            ("Experient", "Experient (2x)", tr("cook_desc"), "Experient", "tree.svg", "#F2B705"),
+            ("Legend", "Legend (4x)", tr("chef_desc"), "Legend", "crown.svg", "#E8562F")
         ]
         
-        for name, title, description, data, emoji in diffs:
-            btn = DifficultyCardWidget(title, description, emoji)
+        for name, title, description, data, filename, accent in diffs:
+            emoji = _get_restaurant_svg(filename, accent)
+            btn = DifficultyCardWidget(title, description, emoji, accent_color=accent)
             
             self.restaurant_difficulty_group.addButton(btn)
             self.difficulty_widgets[data] = btn
@@ -521,88 +1318,187 @@ class GamificationSettingsDialog(QDialog):
         else:
             self.difficulty_widgets["Apprendice"].setChecked(True)
         
-        # Onigimon
-        self.onigimon_config = self.current_config.get("onigimon", {})
-        if not isinstance(self.onigimon_config, dict):
-            self.onigimon_config = {}
-        self.onigimon_toggle = AnimatedToggleButton(accent_color="#70c6a6")
-        self.onigimon_toggle.setChecked(bool(self.onigimon_config.get("enabled", False)))
-        self.onigimon_notifications_toggle = AnimatedToggleButton(accent_color="#70c6a6")
-        self.onigimon_notifications_toggle.setChecked(bool(self.onigimon_config.get("notifications_enabled", True)))
-        self.onigimon_daily_toggle = AnimatedToggleButton(accent_color="#70c6a6")
-        self.onigimon_daily_toggle.setChecked(bool(self.onigimon_config.get("daily_surprise_enabled", True)))
-        self.onigimon_ankimon_updates_toggle = AnimatedToggleButton(accent_color="#70c6a6")
-        self.onigimon_ankimon_updates_toggle.setChecked(bool(self.onigimon_config.get("allow_ankimon_updates", False)))
-        self.onigimon_reward_interval_spinbox = QSpinBox()
-        self.onigimon_reward_interval_spinbox.setRange(1, 50)
-        self.onigimon_reward_interval_spinbox.setSuffix(" cards")
-        self.onigimon_reward_interval_spinbox.setValue(int(self.onigimon_config.get("reward_interval", 4) or 4))
-        self.onigimon_widget_style_combo = QComboBox()
-        self.onigimon_widget_style_combo.addItems(["compact", "care", "detailed"])
-        current_style = str(self.onigimon_config.get("widget_style", "care"))
-        self.onigimon_widget_style_combo.setCurrentText(current_style if current_style in {"compact", "care", "detailed"} else "care")
-        self.onigimon_sprite_motion_combo = QComboBox()
-        self.onigimon_sprite_motion_combo.addItem("Static sprites", "static")
-        self.onigimon_sprite_motion_combo.addItem("GIF sprites", "gif")
-        current_motion = str(self.onigimon_config.get("sprite_motion", "static"))
-        self.onigimon_sprite_motion_combo.setCurrentIndex(1 if current_motion == "gif" else 0)
-        self.onigimon_selected_companion_id = onigimon.manager.load().active_companion_id
-        active_companion = onigimon.manager.active_companion()
-        self.onigimon_name_input = QLineEdit(onigimon.manager.companion_display_name(active_companion) if active_companion else "")
-        self.onigimon_name_input.setPlaceholderText("Nickname")
-        self.onigimon_companion_buttons = QButtonGroup(self)
-        self.onigimon_companion_buttons.setExclusive(True)
-        self.onigimon_companion_grid = QWidget()
-        self.onigimon_companion_grid.setObjectName("onigimonCompanionGrid")
-        self.onigimon_companion_grid_layout = QGridLayout(self.onigimon_companion_grid)
-        self.onigimon_companion_grid_layout.setContentsMargins(8, 8, 8, 8)
-        self.onigimon_companion_grid_layout.setSpacing(8)
-        self.onigimon_companion_status_label = QLabel("")
-        self.onigimon_companion_status_label.setWordWrap(True)
-        self._populate_onigimon_companion_combo()
-
         # Mochi Messages
         self.mochi_messages_config = self.current_config.get("mochi_messages", {})
-        self.mochi_messages_toggle = AnimatedToggleButton(accent_color="#35421C")
+        self.mochi_messages_toggle = AnimatedToggleButton(accent_color="#00935C")
         self.mochi_messages_toggle.setChecked(bool(self.mochi_messages_config.get("enabled", False)))
         self.mochi_interval_spinbox = QSpinBox()
+        self.mochi_interval_spinbox.setObjectName("studyZoneSpinBox")
         self.mochi_interval_spinbox.setRange(1, 1000)
-        self.mochi_interval_spinbox.setSuffix(" cards")
+        mochi_interval_suffix = tr("mochi_interval_suffix")
+        if mochi_interval_suffix and not str(mochi_interval_suffix).startswith(" "):
+            mochi_interval_suffix = f" {mochi_interval_suffix}"
+        self.mochi_interval_spinbox.setSuffix(mochi_interval_suffix)
         self.mochi_interval_spinbox.setValue(int(self.mochi_messages_config.get("cards_interval", 15) or 1))
         
-        messages_list = self.mochi_messages_config.get("messages") or []
-        messages_text = "\n".join([str(item).strip() for item in messages_list if str(item).strip()])
-        self.mochi_messages_editor = QPlainTextEdit(messages_text)
-        self.mochi_messages_editor.setMinimumHeight(120)
+        mochi_default_messages = [
+            tr("mochi_msg_1"), tr("mochi_msg_2"), tr("mochi_msg_3"),
+            tr("mochi_msg_4"), tr("mochi_msg_5"), tr("mochi_msg_6"),
+            tr("mochi_msg_7")
+        ]
+        messages_list = self._message_values(self.mochi_messages_config.get("messages"), mochi_default_messages)
+        self.mochi_messages_editor = StudyZoneMessageListEditor(
+            messages_list,
+            "#00935C",
+            self._study_zone_message_icon,
+            self,
+        )
 
         # Focus Dango
         focus_dango_conf = self.achievements_config.get("focusDango", {})
-        self.focus_dango_toggle = AnimatedToggleButton(accent_color="#61252D")
+        self.focus_dango_toggle = AnimatedToggleButton(accent_color="#9D3D64")
         self.focus_dango_toggle.setChecked(bool(focus_dango_conf.get("enabled", False)))
-        
-        dango_messages = focus_dango_conf.get("messages") or ["Don't give up!", "Stay focused!"]
-        dango_text = "\n".join([str(item).strip() for item in dango_messages if str(item).strip()])
-        self.focus_dango_message_editor = QPlainTextEdit(dango_text)
-        self.focus_dango_message_editor.setMinimumHeight(80)
+        self.focus_dango_self_sabotage_toggle = AnimatedToggleButton(accent_color="#9D3D64")
+        self.focus_dango_self_sabotage_toggle.setChecked(bool(focus_dango_conf.get("self_sabotage", False)))
+
+        dango_fallback = self._message_values(
+            focus_dango_conf.get("message"),
+            [tr("dont_give_up"), tr("stay_focused")]
+        )
+        dango_messages = self._message_values(focus_dango_conf.get("messages"), dango_fallback)
+        self.focus_dango_message_editor = StudyZoneMessageListEditor(
+            dango_messages,
+            "#9D3D64",
+            self._study_zone_message_icon,
+            self,
+        )
+
+        # Hexagon Land
+        self.hexagon_land_config = self.current_config.get("hexagon_land", self.current_config.get("hexagon_world", {}))
+        if not isinstance(self.hexagon_land_config, dict):
+            self.hexagon_land_config = {}
+        self.hexagon_land_toggle = AnimatedToggleButton(accent_color="#2D8CFF")
+        self.hexagon_land_toggle.setChecked(bool(self.hexagon_land_config.get("enabled", False)))
+
+        self.hexagon_survival_toggle = AnimatedToggleButton(accent_color="#e53e3e")
+        self.hexagon_survival_toggle.setChecked(bool(self.hexagon_land_config.get("survival_mode", False)))
 
     def navigate_to_page(self, name):
         if not name: return
         if name in self.pages:
             index = self.page_order.index(name)
             if self.content_stack.widget(index).layout() is None:
-                new_page = self.pages[name]()
+                try:
+                    new_page = self.pages[name]()
+                except Exception as exc:
+                    print(f"[Onigiri] Failed to build gamification page {name}: {exc}")
+                    new_page = self._create_page_error_widget(name, exc)
+                self._prepare_content_controls(new_page)
                 old_widget = self.content_stack.widget(index)
                 self.content_stack.removeWidget(old_widget)
                 self.content_stack.insertWidget(index, new_page)
                 old_widget.deleteLater()
+            self._loaded_pages.add(name)
             self.content_stack.setCurrentIndex(index)
             
             # Update sidebar button state
             if name in self.sidebar_buttons:
                 self.sidebar_buttons[name].setChecked(True)
+            self._apply_sidebar_button_colors(name)
+
+    def _create_page_error_widget(self, name, exc):
+        page, layout = self._create_scrollable_page()
+        group, group_layout = self._create_inner_group(f"{name} could not be opened")
+        message = QLabel(
+            "Onigiri could not build this settings page in the current Anki runtime. "
+            "The rest of the settings dialog is still usable."
+        )
+        message.setWordWrap(True)
+        detail = QLabel(str(exc))
+        detail.setWordWrap(True)
+        detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        group_layout.addWidget(message)
+        group_layout.addWidget(detail)
+        layout.addWidget(group)
+        layout.addStretch()
+        return page
+
+    def _repolish_widget(self, widget):
+        try:
+            style = widget.style()
+            style.unpolish(widget)
+            style.polish(widget)
+            widget.update()
+        except Exception:
+            pass
+
+    def _content_rounded_button_stylesheet(self):
+        tokens = self._theme_tokens()
+        surface = tokens["surface"]
+        fg = tokens["fg"]
+        muted = tokens["muted"]
+        border = tokens["border"]
+        accent = tokens["accent"]
+        return f"""
+            QPushButton {{
+                background-color: {surface};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 18px;
+                padding: 8px 16px;
+                min-height: 36px;
+                font-weight: 600;
+                outline: none;
+            }}
+            QPushButton:hover,
+            QPushButton:focus {{
+                border: 1px solid {accent};
+                border-radius: 18px;
+                outline: none;
+            }}
+            QPushButton:pressed {{
+                background-color: {border};
+                border-radius: 18px;
+            }}
+            QPushButton:disabled {{
+                color: {muted};
+                border-radius: 18px;
+            }}
+        """
+
+    def _prepare_content_controls(self, root):
+        button_skip_names = {
+            "dangerButton",
+            "difficultyCard",
+            "onigimonSceneButton",
+            "onigimonCompanionTile",
+            "notificationPositionButton",
+            "restaurantChipColorButton",
+            "restaurantChipColorLabel",
+            "sidebarNavButton",
+            "sidebarSectionToggle",
+            "saveButton",
+            "cancelButton",
+            "studyZoneAddMessageButton",
+            "studyZoneMessageIconButton",
+        }
+        content_button_style = self._content_rounded_button_stylesheet()
+        for button in root.findChildren(QPushButton):
+            try:
+                button.setAutoDefault(False)
+                button.setDefault(False)
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                if button.objectName() not in button_skip_names:
+                    button.setProperty("contentRoundedButton", True)
+                    managed_style = bool(button.property("contentRoundedButtonStyleManaged"))
+                    if managed_style or not button.styleSheet().strip():
+                        button.setStyleSheet(content_button_style)
+                        button.setProperty("contentRoundedButtonStyleManaged", True)
+                self._repolish_widget(button)
+            except Exception:
+                pass
+
+        for widget_type in (QLineEdit, QSpinBox, QComboBox):
+            for widget in root.findChildren(widget_type):
+                try:
+                    widget.setProperty("contentRoundedInput", True)
+                    self._repolish_widget(widget)
+                except Exception:
+                    pass
 
     def _open_donate_link(self):
-        dialog = DonationDialog(self)
+        from .donations_dialog import DonationsDialog
+        dialog = DonationsDialog(self)
         dialog.exec()
 
     def _open_bugs_link(self):
@@ -611,12 +1507,13 @@ class GamificationSettingsDialog(QDialog):
     def _create_scrollable_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(30, 20, 30, 20)
+        layout.setContentsMargins(30, 28, 30, 20)
         layout.setSpacing(20)
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("background: transparent;")
         
         scroll_content = QWidget()
@@ -633,6 +1530,49 @@ class GamificationSettingsDialog(QDialog):
         group = SectionGroup(title, self)
         return group, group.content_layout
 
+    def _create_sidebar_section_toggle(self, title, content_widget):
+        button = QPushButton(title.upper())
+        button.setObjectName("sidebarSectionToggle")
+        button.setCheckable(True)
+        button.setChecked(True)
+        button.setFixedHeight(24)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setAutoDefault(False)
+        button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._set_sidebar_section_toggle_icon(button, True)
+        button.clicked.connect(
+            lambda checked, section=content_widget, toggle=button: self._toggle_sidebar_nav_section(toggle, section, checked)
+        )
+        return button
+
+    def _add_sidebar_nav_button(self, layout, label, key, icon_filename=None):
+        btn = QPushButton(label)
+        btn.setCheckable(True)
+        btn.setObjectName("sidebarNavButton")
+        btn.setMinimumWidth(0)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.setFixedHeight(36)
+        btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._decorate_button(btn, icon_filename, 16)
+        btn.clicked.connect(lambda _, name=key: self.navigate_to_page(name))
+        self.sidebar_buttons[key] = btn
+        self.sidebar_button_group.addButton(btn)
+        layout.addWidget(btn)
+        return btn
+
+    def _add_sidebar_nav_section(self, layout, title, items):
+        section_content = QWidget()
+        section_content.setObjectName("sidebarSectionContent")
+        section_layout = QVBoxLayout(section_content)
+        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setSpacing(4)
+
+        layout.addWidget(self._create_sidebar_section_toggle(title, section_content))
+        for item in items:
+            self._add_sidebar_nav_button(section_layout, *item)
+        layout.addWidget(section_content)
+        layout.addSpacing(10)
+
     def _create_toggle_row(self, toggle_widget, text_label):
         row = QWidget()
         layout = QHBoxLayout(row)
@@ -641,6 +1581,216 @@ class GamificationSettingsDialog(QDialog):
         layout.addStretch()
         layout.addWidget(toggle_widget)
         return row
+
+    def create_bento_games_page(self):
+        page, layout = self._create_scrollable_page()
+        layout.setSpacing(16)
+        tokens = self._theme_tokens()
+        detected_games = bento_api.get_game_widgets()
+
+        layout.addWidget(self._create_study_zone_header(
+            "Bento Games",
+            "Mini-games built for Onigiri can be managed here when their add-ons are enabled.",
+            "bento.svg",
+            "#6A40E0"
+        ))
+
+        for addon_id, fallback_name in bento_api.GAME_ADDONS.items():
+            game = detected_games.get(addon_id)
+            name = (game or {}).get("name") or fallback_name
+            detected = game is not None
+
+            card = QFrame()
+            card.setObjectName("studyZoneCard")
+            card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            accent_color = tokens["border"]
+            logo_filename = ""
+            
+            if addon_id == "516325516":  # Focumon
+                logo_filename = "Focumon.png"
+                accent_color = "#F2B705"
+            elif addon_id == "1799253175":  # lofi.town
+                logo_filename = "lofi_town.png"
+                accent_color = "#9EAC32"
+            elif addon_id == "585575504":  # Senchado
+                logo_filename = "Senchado.png"
+                accent_color = "#58A866"
+            
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(18, 16, 18, 16)
+            card_layout.setSpacing(16)
+
+            thumbnail_column = QWidget()
+            thumbnail_column.setFixedWidth(54)
+            thumbnail_layout = QVBoxLayout(thumbnail_column)
+            thumbnail_layout.setContentsMargins(0, 0, 0, 0)
+            thumbnail_layout.setSpacing(6)
+            thumbnail_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            icon_label = QLabel()
+            icon_label.setFixedSize(54, 54)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {self._rgba_from_hex(accent_color, 0.12)};
+                    border: 1px solid {self._rgba_from_hex(accent_color, 0.24)};
+                    border-radius: 16px;
+                }}
+            """)
+            if logo_filename:
+                logo_path = os.path.join(self.addon_path, "system_files", "peace_logos", logo_filename)
+                pixmap = QPixmap(logo_path)
+                if not pixmap.isNull():
+                    icon_label.setPixmap(self._scaled_for_display(pixmap, 38, 38))
+
+            status = QLabel("Detected" if detected else "Not found")
+            status.setObjectName("bentoGameStatusPill")
+            status.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            status.setFixedSize(54, 18)
+            status_bg = self._rgba_from_hex(accent_color, 0.18) if detected else tokens["surface"]
+            status_fg = tokens["fg"] if detected else tokens["muted"]
+            status.setStyleSheet(f"""
+                QLabel#bentoGameStatusPill {{
+                    background-color: {status_bg};
+                    color: {status_fg};
+                    border: 1px solid {self._rgba_from_hex(accent_color, 0.28) if detected else tokens["border"]};
+                    border-radius: 9px;
+                    padding: 0px;
+                    font-size: 8px;
+                    font-weight: 400;
+                }}
+            """)
+            thumbnail_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+            thumbnail_layout.addWidget(status, 0, Qt.AlignmentFlag.AlignCenter)
+            card_layout.addWidget(thumbnail_column, 0, Qt.AlignmentFlag.AlignVCenter)
+
+            content_layout = QVBoxLayout()
+            content_layout.setSpacing(7)
+
+            header = QHBoxLayout()
+            title = QLabel(name)
+            title.setObjectName("studyZoneCardTitle")
+            header.addWidget(title)
+            header.addStretch()
+            content_layout.addLayout(header)
+
+            desc = QLabel(
+                "Available as an Onigiri mini-game/widget. Its native controls are surfaced here."
+                if detected else
+                "Install and enable this add-on to embed it as an Onigiri mini-game."
+            )
+            desc.setWordWrap(True)
+            desc.setObjectName("studyZoneCardDescription")
+            content_layout.addWidget(desc)
+
+            actions = QHBoxLayout()
+            actions.addStretch()
+            settings_callback = (game or {}).get("settings_callback")
+            open_callback = (game or {}).get("open_callback")
+
+            btn_style = f"""
+                QPushButton {{
+                    border-radius: 18px;
+                    min-height: 36px;
+                    max-height: 36px;
+                    min-width: 112px;
+                    padding: 0px 22px;
+                    background-color: {tokens["surface"]};
+                    border: 1px solid {tokens["border"]};
+                    font-weight: bold;
+                    color: {tokens["fg"]};
+                }}
+                QPushButton:hover {{
+                    border-radius: 18px;
+                    border: 1px solid {accent_color};
+                }}
+                QPushButton:pressed {{
+                    border-radius: 18px;
+                    background-color: {tokens["border"]};
+                }}
+                QPushButton:disabled {{
+                    border-radius: 18px;
+                    color: {tokens["muted"]};
+                }}
+            """
+
+            if callable(settings_callback):
+                settings_btn = QPushButton("Settings")
+                settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                settings_btn.setStyleSheet(btn_style)
+                settings_btn.clicked.connect(lambda _, cb=settings_callback: cb())
+                actions.addWidget(settings_btn)
+
+            if callable(open_callback):
+                open_btn = QPushButton("Open")
+                open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                open_btn.setStyleSheet(btn_style)
+                open_btn.clicked.connect(lambda _, cb=open_callback: cb())
+                actions.addWidget(open_btn)
+
+            if actions.count() > 1:
+                content_layout.addLayout(actions)
+
+            card_layout.addLayout(content_layout, 1)
+
+            layout.addWidget(card)
+
+        layout.addStretch()
+        return page
+
+    def _scaled_for_display(self, pixmap, width, height,
+                            mode=Qt.AspectRatioMode.KeepAspectRatio):
+        """Scale a pixmap crisply for high-DPI (Retina) screens.
+
+        Renders at width*dpr × height*dpr with smooth filtering and tags the
+        result with the device pixel ratio, so Qt paints it at the requested
+        logical size without the upscaling blur a plain .scaled() produces."""
+        if pixmap.isNull():
+            return pixmap
+        dpr = _safe_device_pixel_ratio(self)
+        target_w = max(1, int(round(width * dpr)))
+        target_h = max(1, int(round(height * dpr)))
+        scaled = pixmap.scaled(target_w, target_h, mode,
+                               Qt.TransformationMode.SmoothTransformation)
+        scaled.setDevicePixelRatio(dpr)
+        return scaled
+
+    def _render_system_icon(self, filename, size=44, color=None):
+        # Icons live in system_icons/{unavailable,available}_for_users — resolve
+        # via the shared helper instead of assuming they sit in system_icons/ root.
+        from .settings._common import system_icon_path
+        icon_path = system_icon_path(filename)
+        device_ratio = _safe_device_pixel_ratio(self)
+        render_size = max(1, int(round(size * device_ratio)))
+
+        pixmap = QPixmap(render_size, render_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        if not icon_path or not os.path.exists(icon_path):
+            pixmap.setDevicePixelRatio(device_ratio)
+            return pixmap
+
+        renderer = QSvgRenderer(icon_path)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        renderer.render(painter, QRectF(0, 0, render_size, render_size))
+        painter.end()
+
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color or self._theme_tokens()["muted"]))
+        painter.end()
+        pixmap.setDevicePixelRatio(device_ratio)
+        return pixmap
+
+    def _create_general_hero_icon(self, filename):
+        label = QLabel()
+        label.setFixedSize(64, 64)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background: transparent; border: none;")
+        label.setPixmap(self._render_system_icon(filename, 54, self._theme_tokens()["muted"]))
+        return label
 
     def _create_onigiri_game_hero_card(self, title, subtitle, icon_filename, background_filename, text_color):
         card = QFrame()
@@ -659,18 +1809,28 @@ class GamificationSettingsDialog(QDialog):
         
         pixmap = QPixmap(icon_path)
         if not pixmap.isNull():
-            icon_label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            icon_label.setPixmap(self._scaled_for_display(pixmap, 100, 100))
         layout.addWidget(icon_label)
 
-        text_layout = QVBoxLayout()
+        text_container = QWidget()
+        text_container.setStyleSheet("background: transparent;")
+        text_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(6)
+        text_layout.addStretch()
         t_label = QLabel(title)
+        t_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         t_label.setStyleSheet(f"font-weight: bold; font-size: 24px; color: {text_color}; background: transparent;")
         s_label = QLabel(subtitle)
         s_label.setWordWrap(True)
+        s_label.setMinimumHeight(46)
+        s_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
         s_label.setStyleSheet(f"color: {text_color}; background: transparent;")
-        text_layout.addWidget(t_label)
-        text_layout.addWidget(s_label)
-        layout.addLayout(text_layout, 1)
+        text_layout.addWidget(t_label, 0, Qt.AlignmentFlag.AlignLeft)
+        text_layout.addWidget(s_label, 0, Qt.AlignmentFlag.AlignLeft)
+        text_layout.addStretch()
+        layout.addWidget(text_container, 1)
 
         bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", background_filename)
         if not os.path.exists(bg_path):
@@ -685,85 +1845,132 @@ class GamificationSettingsDialog(QDialog):
     def _attach_hero_toggle(self, card, toggle):
         card.layout().addWidget(toggle, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+    def create_notification_position_section(self):
+        section = SectionGroup(tr("reviewer_notification_pos_title"), self)
+
+        container = QWidget()
+        main_layout = QHBoxLayout(container)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(28)
+
+        grid_container = QWidget()
+        grid_layout = QGridLayout(grid_container)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setSpacing(10)
+
+        positions = [
+            ("top-left", "↖", 0, 0),
+            ("top-center", "↑", 0, 1),
+            ("top-right", "↗", 0, 2),
+            ("bottom-left", "↙", 1, 0),
+            ("bottom-center", "↓", 1, 1),
+            ("bottom-right", "↘", 1, 2),
+        ]
+
+        self.notification_pos_buttons = {}
+        current_pos = self.current_config.get("onigiri_reviewer_notification_position", "top-center")
+
+        for pos_id, label, row, col in positions:
+            btn = QPushButton(label)
+            btn.setObjectName("notificationPositionButton")
+            btn.setFixedSize(60, 45)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setChecked(pos_id == current_pos)
+            btn.clicked.connect(lambda checked, pid=pos_id: self._update_notification_position(pid))
+            self.notification_pos_buttons[pos_id] = btn
+            grid_layout.addWidget(btn, row, col)
+
+        main_layout.addWidget(grid_container)
+
+        self.notif_preview_widget = QWidget()
+        self.notif_preview_widget.setObjectName("notificationPositionPreview")
+        self.notif_preview_widget.setFixedSize(200, 120)
+
+        self.notif_rect = QLabel(self.notif_preview_widget)
+        self.notif_rect.setObjectName("notificationPositionPreviewRect")
+        self.notif_rect.setFixedSize(60, 30)
+        self.notif_rect.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.notif_rect.setStyleSheet(f"""
+            QLabel#notificationPositionPreviewRect {{
+                background-color: {self.accent_color};
+                border: 1px solid {self.accent_color};
+                border-radius: 4px;
+            }}
+        """)
+        self._position_preview_rect(current_pos)
+
+        main_layout.addWidget(self.notif_preview_widget)
+        main_layout.addStretch()
+
+        section.add_widget(container)
+        return section
+
+    def _update_notification_position(self, pos_id):
+        self.current_config["onigiri_reviewer_notification_position"] = pos_id
+
+        for pid, btn in self.notification_pos_buttons.items():
+            btn.setChecked(pid == pos_id)
+
+        self._position_preview_rect(pos_id)
+
+    def _position_preview_rect(self, pos_id):
+        container_w, container_h = 200, 120
+        rect_w, rect_h = 60, 30
+        margin = 10
+
+        if "left" in pos_id:
+            x = margin
+        elif "right" in pos_id:
+            x = container_w - rect_w - margin
+        else:
+            x = (container_w - rect_w) // 2
+
+        if "top" in pos_id:
+            y = margin
+        else:
+            y = container_h - rect_h - margin
+
+        self.notif_rect.move(x, y)
+        self.notif_rect.raise_()
+        self.notif_rect.show()
+
+    def create_notification_duration_section(self):
+        section = SectionGroup("Notification Display Time", self)
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(8, 8, 8, 8)
+        row_layout.setSpacing(12)
+        row_layout.addWidget(QLabel("Show notifications for"))
+        row_layout.addStretch()
+        row_layout.addWidget(self.notification_duration_spinbox)
+        section.add_widget(row)
+        return section
+
     # --- PAGES ---
 
     def create_general_page(self):
         page, layout = self._create_scrollable_page()
-        
-        # ---- Hero 1: Gamification Mode ----
-        hero_card = QWidget()
-        hero_card.setObjectName("gamificationModeHero")
-        hero_card.setFixedHeight(120)
-        
-        hero_layout = QHBoxLayout(hero_card)
-        hero_layout.setSpacing(20)
-        hero_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Icon
-        icon_label = QLabel()
-        icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "gamification.png")
-        pixmap = QPixmap(icon_path)
-        if not pixmap.isNull():
-            icon_label.setPixmap(pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        hero_layout.addWidget(icon_label)
-        
-        # Text
-        text_container = QWidget()
-        text_layout = QVBoxLayout(text_container)
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        
-        title = QLabel("Gamification Mode")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
-        text_layout.addWidget(title)
-        
-        desc = QLabel("Level up your restaurant, unlock new themes, enjoy Mochi's encouragements, and stay focused with Dango.")
-        desc.setWordWrap(True)
-        desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
-        text_layout.addWidget(desc)
-        
-        hero_layout.addWidget(text_container, 1)
-        hero_layout.addWidget(self.gamification_mode_toggle)
-        
-        layout.addWidget(hero_card)
-        
-        # ---- Hero 2: Focused Gaming ----
-        focused_card = QWidget()
-        focused_card.setObjectName("focusedGamingHero")
-        focused_card.setFixedHeight(120)
-        
-        focused_layout = QHBoxLayout(focused_card)
-        focused_layout.setSpacing(20)
-        focused_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Icon - emoji fallback if no image found
-        focus_icon_label = QLabel()
-        focus_icon_path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "focused_gaming.png")
-        if os.path.exists(focus_icon_path):
-            focus_pixmap = QPixmap(focus_icon_path)
-            if not focus_pixmap.isNull():
-                focus_icon_label.setPixmap(focus_pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        else:
-            focus_icon_label.setText("🎯")
-            focus_icon_label.setStyleSheet("font-size: 40px; background: transparent;")
-        focused_layout.addWidget(focus_icon_label)
-        
-        focus_text = QWidget()
-        focus_text_layout = QVBoxLayout(focus_text)
-        focus_text_layout.setContentsMargins(0, 0, 0, 0)
-        
-        focus_title = QLabel("Focused Gaming")
-        focus_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
-        focus_text_layout.addWidget(focus_title)
-        
-        focus_desc = QLabel("Hide all gamification notifications during reviews. Restaurant Level notifications will be turned off and locked while active.")
-        focus_desc.setWordWrap(True)
-        focus_desc.setStyleSheet("font-size: 13px; color: #888; background: transparent;")
-        focus_text_layout.addWidget(focus_desc)
-        
-        focused_layout.addWidget(focus_text, 1)
-        focused_layout.addWidget(self.focused_gaming_toggle)
-        
-        layout.addWidget(focused_card)
+        layout.setSpacing(16)
+
+        layout.addWidget(self._create_study_zone_header(
+            tr("gamification_mode"),
+            tr("gamification_mode_desc"),
+            "gamepad.svg",
+            self.accent_color,
+            self.gamification_mode_toggle
+        ))
+
+        layout.addWidget(self._create_study_zone_header(
+            tr("focused_gaming"),
+            tr("focused_gaming_desc"),
+            "arrow.svg",
+            "#5b8dee",
+            self.focused_gaming_toggle
+        ))
+
+        layout.addWidget(self.create_notification_position_section())
+        layout.addWidget(self.create_notification_duration_section())
         
         # Lock logic: disable Restaurant Level notifications when Focused Gaming is on
         # Only locks notifications_enabled - the reviewer header/progress bar is unaffected
@@ -782,39 +1989,164 @@ class GamificationSettingsDialog(QDialog):
         
         return page
 
-    def create_restaurant_level_page(self):
+    def create_nook_level_page(self):
         page, layout = self._create_scrollable_page()
+        layout.setSpacing(16)
+        nook_level = _nook_level_module()
         
-        hero = self._create_onigiri_game_hero_card(
-            "Restaurant Level", 
-            "Grow your restaurant by completing reviews!",
-            "restaurant_folder/restaurant_level.png",
-            "restaurant_lvl_bg.png",
-            "#B94632"
+        hero = self._create_study_zone_header(
+            tr("restaurant_level"),
+            tr("grow_restaurant_desc"),
+            "nook.webp",
+            "#B94632",
+            self.nook_level_toggle
         )
-        self._attach_hero_toggle(hero, self.restaurant_level_toggle)
         layout.addWidget(hero)
 
         # Name settings
-        name_group, name_layout = self._create_inner_group("Restaurant Name")
-        progress = restaurant_level.manager.get_progress()
-        if progress.level >= 5:
-            self.restaurant_name_input = QLineEdit(progress.name)
-            name_layout.addWidget(QLabel("Custom Name:"))
+        name_group, name_layout = self._create_study_zone_card(tr("restaurant_name"))
+        try:
+            progress = nook_level.manager.get_progress()
+            progress_level = int(getattr(progress, "level", 0) or 0)
+            progress_name = str(getattr(progress, "name", "Nook Level") or "Nook Level")
+        except Exception as exc:
+            print(f"[Onigiri] Could not load Nook Level progress: {exc}")
+            progress_level = 0
+            progress_name = "Nook Level"
+        if progress_level >= 5:
+            self.restaurant_name_input = QLineEdit(progress_name)
+            name_layout.addWidget(QLabel(tr("custom_name")))
             name_layout.addWidget(self.restaurant_name_input)
         else:
-            name_layout.addWidget(QLabel(f"🔒 Reach Level 5 to unlock custom names. (Current: {progress.level})"))
+            name_layout.addWidget(QLabel(tr("reach_level_5").format(level=progress_level)))
         layout.addWidget(name_group)
 
         # Notifications & Visibility
-        vis_group, vis_layout = self._create_inner_group("Notifications & Visibility")
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, "Show level-up notifications"))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, "Show progress on sidebar"))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, "Show level in reviewer header"))
+        vis_group, vis_layout = self._create_study_zone_card(tr("notifications_visibility"))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, tr("show_levelup_notifications")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, tr("show_progress_sidebar")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, tr("show_level_reviewer")))
         layout.addWidget(vis_group)
         
+        # Level Chip Appearance
+        chip_group, chip_layout = self._create_study_zone_card(tr("level_chip_appearance"))
+        chip_note = QLabel(tr("level_chip_appearance_desc"))
+        chip_note.setWordWrap(True)
+        chip_layout.addWidget(chip_note)
+
+        self.rl_chip_preview = RestaurantLevelChipPreviewLabel()
+        chip_layout.addWidget(self.rl_chip_preview, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        # Dynamic mode toggle row
+        dynamic_row = QHBoxLayout()
+        dynamic_row.addWidget(QLabel(tr("dynamic_chip_colors")))
+        self.rl_dynamic_chip_colors_toggle = AnimatedToggleButton(accent_color=self.accent_color)
+        self.rl_dynamic_chip_colors_toggle.setChecked(self.rl_dynamic_chip_colors)
+
+        self.rl_dynamic_chip_theme_widget = QWidget()
+        self.rl_dynamic_chip_theme_widget.setObjectName("dynamicChipThemeContainer")
+        self.rl_dynamic_chip_theme_widget.setVisible(self.rl_dynamic_chip_colors)
+        segment_layout = QHBoxLayout(self.rl_dynamic_chip_theme_widget)
+        segment_layout.setContentsMargins(4, 4, 4, 4)
+        segment_layout.setSpacing(0)
+        self.rl_dynamic_chip_theme_widget.setStyleSheet("""
+            QWidget#dynamicChipThemeContainer {
+                background-color: rgba(120, 120, 120, 0.15);
+                border-radius: 14px;
+            }
+        """)
+
+        import os as _os
+        _addon_dir = _os.path.dirname(_os.path.abspath(__file__))
+        _sun_path  = _os.path.join(_addon_dir, "system_files", "system_icons", "available_for_users", "sun.svg")
+        _moon_path = _os.path.join(_addon_dir, "system_files", "system_icons", "available_for_users", "moon.svg")
+
+        def _adaptive_icon(svg_path):
+            try:
+                with open(svg_path, "r", encoding="utf-8") as _f:
+                    _content = _f.read()
+                def _make_pixmap(color):
+                    _colored = _content.replace("<path ", f'<path fill="{color}" ')
+                    _px = QPixmap()
+                    _px.loadFromData(_colored.encode("utf-8"))
+                    return _px.scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                _icon = QIcon()
+                _icon.addPixmap(_make_pixmap("#888888"), QIcon.Mode.Normal, QIcon.State.Off)
+                _icon.addPixmap(_make_pixmap("#ffffff"), QIcon.Mode.Normal, QIcon.State.On)
+                return _icon
+            except Exception:
+                return QIcon()
+
+        _btn_style = f"""
+            QPushButton#dynamicThemeButton {{
+                background-color: transparent;
+                border: none;
+                padding: 6px 16px;
+                font-weight: 600;
+                font-size: 12px;
+                color: #888888;
+                border-radius: 10px;
+            }}
+            QPushButton#dynamicThemeButton:hover  {{ color: #aaaaaa; }}
+            QPushButton#dynamicThemeButton:checked {{
+                background-color: {self.accent_color};
+                color: white;
+            }}
+        """
+        self.rl_theme_light_btn = QPushButton(f" {tr('light_mode')}")
+        self.rl_theme_light_btn.setIcon(_adaptive_icon(_sun_path))
+        self.rl_theme_light_btn.setObjectName("dynamicThemeButton")
+        self.rl_theme_light_btn.setCheckable(True)
+        self.rl_theme_light_btn.setChecked(True)
+        self.rl_theme_light_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rl_theme_light_btn.setStyleSheet(_btn_style)
+
+        self.rl_theme_dark_btn = QPushButton(f" {tr('dark_mode')}")
+        self.rl_theme_dark_btn.setIcon(_adaptive_icon(_moon_path))
+        self.rl_theme_dark_btn.setObjectName("dynamicThemeButton")
+        self.rl_theme_dark_btn.setCheckable(True)
+        self.rl_theme_dark_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rl_theme_dark_btn.setStyleSheet(_btn_style)
+
+        segment_layout.addWidget(self.rl_theme_light_btn)
+        segment_layout.addWidget(self.rl_theme_dark_btn)
+
+        self.rl_theme_btn_group = QButtonGroup(self)
+        self.rl_theme_btn_group.addButton(self.rl_theme_light_btn, 0)
+        self.rl_theme_btn_group.addButton(self.rl_theme_dark_btn, 1)
+
+        def on_dynamic_toggled(checked):
+            self.rl_dynamic_chip_colors = checked
+            self.rl_dynamic_chip_theme_widget.setVisible(checked)
+            self._update_restaurant_chip_preview()
+
+        self.rl_dynamic_chip_colors_toggle.toggled.connect(on_dynamic_toggled)
+        self.rl_theme_btn_group.idToggled.connect(
+            lambda _id, checked: self._update_restaurant_chip_preview() if checked else None
+        )
+
+        dynamic_row.addWidget(self.rl_dynamic_chip_colors_toggle)
+        chip_layout.addLayout(dynamic_row)
+
+        theme_row = QHBoxLayout()
+        theme_row.addStretch()
+        theme_row.addWidget(self.rl_dynamic_chip_theme_widget)
+        chip_layout.addLayout(theme_row)
+
+        chip_layout.addWidget(self._create_restaurant_chip_bg_control(tr("level_chip_bg_color"), self.rl_chip_bg_button))
+        chip_layout.addWidget(self._create_restaurant_chip_color_card(tr("level_chip_progress_color"), self.rl_chip_progress_button))
+        chip_layout.addWidget(self._create_restaurant_chip_color_card(tr("level_chip_text_color"), self.rl_chip_text_button))
+
+        reset_row = QHBoxLayout()
+        reset_row.addWidget(self.rl_chip_reset_colors_button)
+        reset_row.addStretch()
+        chip_layout.addLayout(reset_row)
+        layout.addWidget(chip_group)
+        self._update_restaurant_chip_preview()
+
         # Difficulty
-        diff_group, diff_layout = self._create_inner_group("Difficulty Level")
+
+        diff_group, diff_layout = self._create_study_zone_card(tr("difficulty_level"))
         
         vertical_layout = QVBoxLayout()
         vertical_layout.setSpacing(10)
@@ -824,97 +2156,110 @@ class GamificationSettingsDialog(QDialog):
         diff_layout.addLayout(vertical_layout)
         layout.addWidget(diff_group)
 
+        # Nook Rush sync
+        sync_group, sync_layout = self._create_study_zone_card(tr("recipe_rush_sync_title", "Nook Rush Sync"))
+        sync_note = QLabel(tr(
+            "recipe_rush_sync_desc",
+            "If the equipped Nook's Rush still shows a generic ticket, force a fresh pick "
+            "from the Apps Script for today - today's card progress is kept.",
+        ))
+        sync_note.setWordWrap(True)
+        sync_layout.addWidget(sync_note)
+
+        sync_btn = QPushButton(tr("recipe_rush_sync_button", "Sync Rush Now"))
+        sync_btn.clicked.connect(self._confirm_sync_recipe_rush)
+        sync_layout.addWidget(sync_btn)
+        layout.addWidget(sync_group)
+
         # Reset
-        reset_group, reset_layout = self._create_inner_group("Reset Progress")
-        reset_btn = QPushButton("Reset Restaurant Level")
+        reset_group, reset_layout = self._create_study_zone_card(tr("reset_progress_title"))
+        reset_btn = QPushButton(tr("reset_restaurant_level"))
         reset_btn.setObjectName("dangerButton")
-        reset_btn.clicked.connect(self._confirm_reset_restaurant_level)
+        reset_btn.clicked.connect(self._confirm_reset_nook_level)
         reset_layout.addWidget(reset_btn)
+
+        reset_coins_btn = QPushButton(tr("reset_coins"))
+        reset_coins_btn.clicked.connect(self._reset_coins)
+        reset_layout.addWidget(reset_coins_btn)
+
+        reset_purchases_btn = QPushButton(tr("reset_purchases"))
+        reset_purchases_btn.clicked.connect(self._reset_purchases)
+        reset_layout.addWidget(reset_purchases_btn)
         layout.addWidget(reset_group)
         
         layout.addStretch()
         return page
 
-    def create_mr_taiyaki_store_page(self):
-        page, layout = self._create_scrollable_page()
-        hero = self._create_onigiri_game_hero_card(
-            "Mr. Taiyaki Store",
-            "Manage your Mr. Taiyaki Store settings.",
-            "mr_taiyaki.png",
-            "restaurant_folder/wooden_bg.png",
-            "#ffffff"
-        )
-        layout.addWidget(hero)
-
-        coins_group, coins_layout = self._create_inner_group("Reset Coins")
-        reset_coins_btn = QPushButton("Reset Coins")
-        reset_coins_btn.clicked.connect(self._reset_coins)
-        coins_layout.addWidget(reset_coins_btn)
-        layout.addWidget(coins_group)
-
-        purchases_group, purchases_layout = self._create_inner_group("Reset Purchases")
-        reset_purchases_btn = QPushButton("Reset Purchases")
-        reset_purchases_btn.clicked.connect(self._reset_purchases)
-        purchases_layout.addWidget(reset_purchases_btn)
-        layout.addWidget(purchases_group)
-
-        layout.addStretch()
-        return page
-
     def _populate_onigimon_companion_combo(self):
+        self.onigimon_companion_status_label.setText(tr("onigimon_status_loading"))
+        onigimon = _onigimon_module()
         onigimon.manager.bridge.clear_cache()
         while self.onigimon_companion_grid_layout.count():
             item = self.onigimon_companion_grid_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
         for button in list(self.onigimon_companion_buttons.buttons()):
             self.onigimon_companion_buttons.removeButton(button)
 
+        onigimon.manager.sync_active_companion_from_ankimon()
         status = onigimon.manager.bridge.status()
-        companions = onigimon.manager.get_available_companions() if status == "ready" else []
-        active_id = self.onigimon_selected_companion_id or onigimon.manager.load().active_companion_id
+        all_companions = onigimon.manager.get_available_companions() if status == "ready" else []
+        self.onigimon_selected_companion_id = onigimon.manager.load().active_companion_id
+        active_id = self.onigimon_selected_companion_id
+        companions = list(all_companions)
+        companions.sort(key=lambda p: (str(p.get("ankimon_id")) != str(active_id), not bool(p.get("is_favorite")), str(p.get("name", "")).lower()))
 
         if status == "missing":
-            self.onigimon_companion_status_label.setText("Ankimon is not installed.")
-        elif status == "no_starter":
-            self.onigimon_companion_status_label.setText("Choose your first Ankimon Pokémon first.")
-        elif not companions:
-            self.onigimon_companion_status_label.setText("No Pokémon in Ankimon Collection PC yet.")
-        else:
-            self.onigimon_companion_status_label.setText("Select your Onigimon companion.")
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_missing"))
+            return
+        if status == "starter_needed":
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_starter_needed"))
+            return
+        if status == "no_collection":
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_no_collection"))
+            return
+        if not companions:
+            self.onigimon_companion_status_label.setText(tr("onigimon_status_no_companions"))
+            return
 
-        row, col = 0, 0
-        for pokemon in companions:
-            ankimon_id = str(pokemon.get("ankimon_id") or "")
+        self.onigimon_companion_status_label.setText(tr("onigimon_status_ready"))
+        columns = 4
+        for index, pokemon in enumerate(companions):
+            ankimon_id = str(pokemon.get("ankimon_id", ""))
+            label = f"{pokemon.get('name', 'Pokemon')} · {tr('onigimon_level_short')} {pokemon.get('level', 1)}"
             btn = QPushButton()
-            btn.setCheckable(True)
             btn.setObjectName("onigimonCompanionTile")
-            btn.setFixedSize(72, 72)
+            btn.setCheckable(True)
+            btn.setFixedSize(56, 56)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(label)
+            btn.setProperty("companion_id", ankimon_id)
             sprite_path = self._onigimon_sprite_local_path(str(pokemon.get("sprite_url") or ""))
             if sprite_path and os.path.exists(sprite_path):
                 btn.setIcon(QIcon(sprite_path))
-                btn.setIconSize(QSize(48, 48))
+                btn.setIconSize(QSize(44, 44))
             else:
-                name = str(pokemon.get("name") or ankimon_id)
-                btn.setText(name[:6])
-            btn.setToolTip(str(pokemon.get("name") or ankimon_id))
+                btn.setText(str(pokemon.get("name", "?"))[:2].upper())
             btn.clicked.connect(lambda checked, cid=ankimon_id: self._select_onigimon_companion(cid))
             self.onigimon_companion_buttons.addButton(btn)
-            if ankimon_id == str(active_id or ""):
+            if ankimon_id == active_id:
                 btn.setChecked(True)
                 self.onigimon_selected_companion_id = ankimon_id
+            row, col = divmod(index, columns)
             self.onigimon_companion_grid_layout.addWidget(btn, row, col)
-            col += 1
-            if col >= 5:
-                col = 0
-                row += 1
+        self.onigimon_companions_loaded = True
+        self._update_onigimon_scene_controls()
 
     def _select_onigimon_companion(self, ankimon_id):
+        onigimon = _onigimon_module()
         self.onigimon_selected_companion_id = str(ankimon_id)
+        onigimon.manager.set_active_companion(self.onigimon_selected_companion_id)
         for pokemon in onigimon.manager.get_available_companions():
             if str(pokemon.get("ankimon_id")) == self.onigimon_selected_companion_id:
                 current = onigimon.manager.load().companions.get(self.onigimon_selected_companion_id, {})
                 self.onigimon_name_input.setText(str(current.get("display_name") or pokemon.get("name") or ""))
+                self._update_onigimon_scene_controls()
                 break
 
     def _onigimon_sprite_local_path(self, sprite_url):
@@ -930,39 +2275,268 @@ class GamificationSettingsDialog(QDialog):
         except Exception:
             return ""
 
+    def _onigimon_background_dir(self):
+        path = os.path.join(self.addon_path, "user_files", "onigimon_backgrounds")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _onigimon_scene_image_abs_path(self):
+        if not self.onigimon_scene_image:
+            return ""
+        if os.path.isabs(self.onigimon_scene_image):
+            return self.onigimon_scene_image
+        return os.path.join(self.addon_path, self.onigimon_scene_image)
+
+    def _unique_onigimon_background_path(self, source_path):
+        directory = self._onigimon_background_dir()
+        base, ext = os.path.splitext(os.path.basename(source_path))
+        safe_base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip(".-") or "onigimon-background"
+        ext = ext.lower() if ext else ".png"
+        candidate = os.path.join(directory, safe_base + ext)
+        index = 2
+        while os.path.exists(candidate):
+            candidate = os.path.join(directory, f"{safe_base}-{index}{ext}")
+            index += 1
+        return candidate
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "onigimon_scene_preview", None) and event.type() == QEvent.Type.Resize:
+            self._update_onigimon_scene_preview_background()
+        return super().eventFilter(obj, event)
+
+    def _scaled_onigimon_scene_background(self, image_path):
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull() or not hasattr(self, "onigimon_scene_preview"):
+            return QPixmap()
+
+        # Render at the device pixel ratio so the preview stays crisp on Retina.
+        dpr = _safe_device_pixel_ratio(self)
+        size = self.onigimon_scene_preview.size()
+        width = max(1, int(round(size.width() * dpr)))
+        height = max(1, int(round(size.height() * dpr)))
+        scaled = pixmap.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = max(0, (scaled.width() - width) // 2)
+        y = max(0, (scaled.height() - height) // 2)
+        cropped = scaled.copy(x, y, width, height)
+        blur = self.onigimon_scene_blur_slider.value() if hasattr(self, "onigimon_scene_blur_slider") else 0
+        if blur <= 0:
+            result = self._apply_onigimon_scene_opacity(cropped)
+        else:
+            result = self._apply_onigimon_scene_opacity(
+                self._blur_onigimon_scene_pixmap(cropped, float(blur) * dpr)
+            )
+        if not result.isNull():
+            result.setDevicePixelRatio(dpr)
+        return result
+
+    def _apply_onigimon_scene_opacity(self, pixmap):
+        if pixmap.isNull():
+            return pixmap
+        opacity = self.onigimon_scene_opacity_slider.value() if hasattr(self, "onigimon_scene_opacity_slider") else 90
+        opacity = max(0.0, min(1.0, float(opacity) / 100.0))
+        if opacity >= 1.0:
+            return pixmap
+        target = QPixmap(pixmap.size())
+        target.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(target)
+        painter.setOpacity(opacity)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        return target
+
+    def _blur_onigimon_scene_pixmap(self, pixmap, radius):
+        if pixmap.isNull() or radius <= 0:
+            return pixmap
+
+        pad = max(16, int(radius * 2.5))
+        padded = QPixmap(pixmap.width() + pad * 2, pixmap.height() + pad * 2)
+        padded.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(padded)
+        painter.drawPixmap(pad, pad, pixmap)
+        painter.end()
+
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(padded)
+        effect = QGraphicsBlurEffect()
+        effect.setBlurRadius(radius)
+        item.setGraphicsEffect(effect)
+        scene.addItem(item)
+        scene.setSceneRect(QRectF(0, 0, padded.width(), padded.height()))
+
+        blurred = QPixmap(padded.size())
+        blurred.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(blurred)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        scene.render(
+            painter,
+            QRectF(0, 0, padded.width(), padded.height()),
+            QRectF(0, 0, padded.width(), padded.height()),
+        )
+        painter.end()
+        return blurred.copy(pad, pad, pixmap.width(), pixmap.height())
+
+    def _update_onigimon_scene_preview_background(self):
+        if not hasattr(self, "onigimon_scene_preview_bg"):
+            return
+
+        image_path = self._onigimon_scene_image_abs_path()
+        self.onigimon_scene_preview_bg.setGeometry(self.onigimon_scene_preview.rect())
+        if self.onigimon_scene_image and os.path.exists(image_path):
+            self.onigimon_scene_preview_bg.setPixmap(self._scaled_onigimon_scene_background(image_path))
+        else:
+            self.onigimon_scene_preview_bg.setPixmap(QPixmap())
+
+        self.onigimon_scene_preview_bg.lower()
+
+    def _on_onigimon_scene_blur_changed(self, value):
+        if hasattr(self, "onigimon_scene_blur_value_label"):
+            self.onigimon_scene_blur_value_label.setText(f"{int(value)} px")
+        self._update_onigimon_scene_preview_background()
+        oni_conf = self.current_config.setdefault("onigimon", {})
+        oni_conf["scene_background_blur"] = int(value)
+        if hasattr(self, "onigimon_scene_blur_apply_timer"):
+            self.onigimon_scene_blur_apply_timer.start(180)
+
+    def _on_onigimon_scene_opacity_changed(self, value):
+        if hasattr(self, "onigimon_scene_opacity_value_label"):
+            self.onigimon_scene_opacity_value_label.setText(f"{int(value)}%")
+        self._update_onigimon_scene_preview_background()
+        oni_conf = self.current_config.setdefault("onigimon", {})
+        oni_conf["scene_background_opacity"] = int(value)
+        if hasattr(self, "onigimon_scene_blur_apply_timer"):
+            self.onigimon_scene_blur_apply_timer.start(180)
+
+    def _persist_onigimon_scene_blur(self):
+        config.write_config(self.current_config)
+        try:
+            if mw and getattr(mw, "deckBrowser", None):
+                mw.deckBrowser.refresh()
+        except Exception as exc:
+            print(f"Warning: Could not refresh Onigimon widget after blur change: {exc}")
+        try:
+            for widget in mw.app.topLevelWidgets():
+                if widget.__class__.__name__ == "OnigimonCareDialog" and hasattr(widget, "refresh"):
+                    widget.refresh()
+        except Exception as exc:
+            print(f"Warning: Could not refresh Onigimon care after blur change: {exc}")
+
+    def _update_onigimon_scene_controls(self):
+        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#7FD179"
+        self.onigimon_scene_color_button.setStyleSheet(
+            f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111; border: 1px solid rgba(0,0,0,0.18); border-radius: 15px; padding: 4px 14px; min-height: 28px; }}"
+        )
+
+        if hasattr(self, "onigimon_scene_preview"):
+            self.onigimon_scene_preview.setStyleSheet(
+                "QFrame#onigimonScenePreview {"
+                "border: 1px solid rgba(120,120,120,0.42);"
+                "border-radius: 14px;"
+                f"background-color: {color};"
+                "}"
+            )
+            self._update_onigimon_scene_preview_background()
+        if hasattr(self, "onigimon_scene_preview_sprite"):
+            sprite_url = ""
+            selected_id = str(getattr(self, "onigimon_selected_companion_id", "") or "")
+            if self.onigimon_companions_loaded or selected_id:
+                onigimon = _onigimon_module()
+                for pokemon in onigimon.manager.get_available_companions():
+                    if str(pokemon.get("ankimon_id")) == selected_id:
+                        sprite_url = str(pokemon.get("sprite_url") or "")
+                        break
+                if not sprite_url:
+                    companion = onigimon.manager.active_companion()
+                    sprite_url = str(companion.sprite_url if companion else "")
+            sprite_path = self._onigimon_sprite_local_path(sprite_url)
+            pixmap = QPixmap(sprite_path) if sprite_path and os.path.exists(sprite_path) else QPixmap()
+            if not pixmap.isNull():
+                self.onigimon_scene_preview_sprite.setPixmap(
+                    self._scaled_for_display(pixmap, 74, 74)
+                )
+                self.onigimon_scene_preview_sprite.setText("")
+            else:
+                self.onigimon_scene_preview_sprite.setPixmap(QPixmap())
+                self.onigimon_scene_preview_sprite.setText("Onigimon")
+
+    def _choose_onigimon_scene_color(self):
+        chosen, ok = OnigiriColorDialog.getColor(self.onigimon_scene_color, self)
+        if ok:
+            self.onigimon_scene_color = chosen
+            self._update_onigimon_scene_controls()
+
+    def _import_onigimon_scene_background(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("import_image"),
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.gif)"
+        )
+        if not path:
+            return
+        try:
+            dest = self._unique_onigimon_background_path(path)
+            shutil.copy2(path, dest)
+            self.onigimon_scene_image = os.path.relpath(dest, self.addon_path)
+            self._update_onigimon_scene_controls()
+        except Exception as exc:
+            showInfo(f"Could not import Onigimon background: {exc}")
+
+    def _clear_onigimon_scene_background(self):
+        self.onigimon_scene_image = ""
+        self._update_onigimon_scene_controls()
+
     def _create_onigimon_hero(self):
         hero = QFrame()
         hero.setObjectName("onigimonHero")
         hero.setMinimumHeight(132)
         hero.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
         bg_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_bg.png")
         css_bg = bg_path.replace("\\", "/")
         if os.path.exists(bg_path):
-            hero.setStyleSheet(f"QFrame#onigimonHero {{ border-radius: 18px; background-image: url('{css_bg}'); background-position: center; background-repeat: repeat-x; background-size: auto 100%; }}")
+            hero.setStyleSheet(f"""
+                QFrame#onigimonHero {{
+                    border-radius: 18px;
+                    background-image: url('{css_bg}');
+                    background-position: center;
+                    background-repeat: repeat-x;
+                    background-size: auto 100%;
+                }}
+            """)
         else:
             hero.setStyleSheet("QFrame#onigimonHero { border-radius: 18px; background: #1e3c52; }")
+
         hero_layout = QHBoxLayout(hero)
         hero_layout.setContentsMargins(16, 14, 16, 14)
         hero_layout.setSpacing(12)
+
         icon_label = QLabel()
         icon_label.setFixedSize(76, 76)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label.setStyleSheet("background: transparent;")
-        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_pikachu.png")
+        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", "pokemon_pikachu.webp")
         pixmap = QPixmap(icon_path)
         if not pixmap.isNull():
-            icon_label.setPixmap(pixmap.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            icon_label.setPixmap(self._scaled_for_display(pixmap, 72, 72))
         hero_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+
         text_container = QWidget()
         text_container.setStyleSheet("background: transparent;")
         text_container.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         text_layout = QVBoxLayout(text_container)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(5)
+
         title = QLabel("Onigimon")
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: white; background: transparent;")
         title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        desc = QLabel("Choose a Pokémon from Ankimon's Collection PC, then feed, play, and grow your companion while you study.")
+        desc = QLabel("Use Ankimon's Pokémon PC to choose the active Pokémon, then feed, clean, train, and play while Onigimon updates Ankimon.")
         desc.setWordWrap(True)
         desc.setMinimumWidth(0)
         desc.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -977,11 +2551,19 @@ class GamificationSettingsDialog(QDialog):
 
     def create_onigimon_page(self):
         page, layout = self._create_scrollable_page()
-        layout.addWidget(self._create_onigimon_hero())
+        layout.setSpacing(16)
 
-        companion_group, companion_layout = self._create_inner_group("Companion")
+        layout.addWidget(self._create_study_zone_header(
+            "Onigimon",
+            tr("onigimon_page_desc"),
+            "pokemon_pikachu.webp",
+            "#F2B705",
+            self.onigimon_toggle
+        ))
+
+        companion_group, companion_layout = self._create_study_zone_card(tr("onigimon_companion_title"))
         companion_layout.addWidget(self.onigimon_companion_status_label)
-        companion_layout.addWidget(QLabel("Companion nickname"))
+        companion_layout.addWidget(QLabel(tr("onigimon_nickname_label")))
         companion_layout.addWidget(self.onigimon_name_input)
         tile_scroll = QScrollArea()
         tile_scroll.setWidgetResizable(True)
@@ -991,163 +2573,678 @@ class GamificationSettingsDialog(QDialog):
         tile_scroll.setStyleSheet("background: transparent;")
         tile_scroll.setWidget(self.onigimon_companion_grid)
         companion_layout.addWidget(tile_scroll)
-        refresh_btn = QPushButton("Refresh Ankimon PC")
+        refresh_btn = QPushButton(tr("onigimon_refresh_button"))
         refresh_btn.clicked.connect(self._populate_onigimon_companion_combo)
         companion_layout.addWidget(refresh_btn)
-        starter_note = QLabel("If Ankimon was just installed, finish choosing your first Pokémon there before selecting an Onigimon companion.")
+        starter_note = QLabel(tr("onigimon_starter_note"))
         starter_note.setWordWrap(True)
         starter_note.setMinimumWidth(0)
         companion_layout.addWidget(starter_note)
         layout.addWidget(companion_group)
 
-        rewards_group, rewards_layout = self._create_inner_group("Rewards")
-        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_notifications_toggle, "Show Onigimon notifications"))
-        rewards_layout.addWidget(self._create_toggle_row(self.onigimon_daily_toggle, "Daily surprise item"))
-        interval_row = QHBoxLayout()
-        interval_row.addWidget(QLabel("Reward item every"))
-        interval_row.addWidget(self.onigimon_reward_interval_spinbox)
-        interval_row.addStretch()
-        rewards_layout.addLayout(interval_row)
-        layout.addWidget(rewards_group)
+        scene_group, scene_layout = self._create_study_zone_card(tr("onigimon_scene_title"))
+        self.onigimon_scene_preview = QFrame()
+        self.onigimon_scene_preview.setObjectName("onigimonScenePreview")
+        self.onigimon_scene_preview.setMinimumHeight(128)
+        self.onigimon_scene_preview.installEventFilter(self)
+        self.onigimon_scene_preview_bg = QLabel(self.onigimon_scene_preview)
+        self.onigimon_scene_preview_bg.setObjectName("onigimonScenePreviewBackground")
+        self.onigimon_scene_preview_bg.setScaledContents(False)
+        self.onigimon_scene_preview_bg.lower()
+        preview_layout = QVBoxLayout(self.onigimon_scene_preview)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.addStretch()
+        self.onigimon_scene_preview_sprite = QLabel()
+        self.onigimon_scene_preview_sprite.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.onigimon_scene_preview_sprite.setFixedHeight(82)
+        self.onigimon_scene_preview_sprite.setStyleSheet("font-weight: 700; background: transparent; color: rgba(0,0,0,0.58);")
+        preview_layout.addWidget(self.onigimon_scene_preview_sprite)
+        preview_layout.addStretch()
+        scene_layout.addWidget(self.onigimon_scene_preview)
+        image_row = QHBoxLayout()
+        image_row.addWidget(self.onigimon_scene_import_button)
+        image_row.addWidget(self.onigimon_scene_clear_button)
+        image_row.addStretch()
+        scene_layout.addLayout(image_row)
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel(tr("background_color")))
+        color_row.addWidget(self.onigimon_scene_color_button)
+        color_row.addStretch()
+        scene_layout.addLayout(color_row)
+        blur_row = QHBoxLayout()
+        blur_row.addWidget(QLabel(tr("onigimon_blur_intensity")))
+        blur_row.addWidget(self.onigimon_scene_blur_slider, 1)
+        blur_row.addWidget(self.onigimon_scene_blur_value_label)
+        blur_row.addStretch()
+        scene_layout.addLayout(blur_row)
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(QLabel(tr("background_opacity")))
+        opacity_row.addWidget(self.onigimon_scene_opacity_slider, 1)
+        opacity_row.addWidget(self.onigimon_scene_opacity_value_label)
+        opacity_row.addStretch()
+        scene_layout.addLayout(opacity_row)
+        sprite_mode_row = QHBoxLayout()
+        sprite_mode_row.addWidget(QLabel(tr("onigimon_sprite_mode_label")))
+        sprite_mode_row.addStretch()
+        sprite_mode_row.addWidget(self.onigimon_sprite_mode_widget)
+        scene_layout.addLayout(sprite_mode_row)
+        self._update_onigimon_scene_controls()
+        layout.addWidget(scene_group)
 
-        widget_group, widget_layout = self._create_inner_group("Widget")
-        widget_row = QHBoxLayout()
-        widget_row.addWidget(QLabel("Widget style"))
-        widget_row.addWidget(self.onigimon_widget_style_combo)
-        widget_row.addStretch()
-        widget_layout.addLayout(widget_row)
-        sprite_row = QHBoxLayout()
-        sprite_row.addWidget(QLabel("Sprite mode"))
-        sprite_row.addWidget(self.onigimon_sprite_motion_combo)
-        sprite_row.addStretch()
-        widget_layout.addLayout(sprite_row)
-        layout.addWidget(widget_group)
+        difficulty_group, difficulty_layout = self._create_study_zone_card(tr("onigimon_difficulty_title"))
+        difficulty_note = QLabel(tr("onigimon_difficulty_note"))
+        difficulty_note.setWordWrap(True)
+        difficulty_layout.addWidget(difficulty_note)
+        difficulty_cards = QVBoxLayout()
+        difficulty_cards.setSpacing(10)
+        for data in ("bulbassaur", "pikachu", "charizard"):
+            difficulty_cards.addWidget(self.onigimon_difficulty_widgets[data])
+        difficulty_layout.addLayout(difficulty_cards)
+        layout.addWidget(difficulty_group)
 
-        bridge_group, bridge_layout = self._create_inner_group("Ankimon Bridge")
-        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, "Allow Onigimon items to update Ankimon data"))
-        bridge_note = QLabel("Keep this off if you only want Onigiri to track companion care. EXP Candy and medicine can be connected to Ankimon later through this bridge.")
+        bridge_group, bridge_layout = self._create_study_zone_card(tr("onigimon_bridge_title"))
+        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, tr("onigimon_bridge_toggle")))
+        bridge_note = QLabel(tr("onigimon_bridge_note"))
         bridge_note.setWordWrap(True)
         bridge_layout.addWidget(bridge_note)
         layout.addWidget(bridge_group)
 
-        credits_group, credits_layout = self._create_inner_group("Sprite Credits")
-        credit = QLabel("PokéSprite sprite images are © Nintendo/Creatures Inc./GAME FREAK Inc. PokéSprite project code/data by msikma, MIT licensed.")
+        credits_group, credits_layout = self._create_study_zone_card(tr("onigimon_credits_title"))
+        credit = QLabel(tr("onigimon_credits_text"))
         credit.setWordWrap(True)
         credits_layout.addWidget(credit)
         layout.addWidget(credits_group)
 
         layout.addStretch()
+        if not self.onigimon_companions_loaded:
+            QTimer.singleShot(0, self._populate_onigimon_companion_combo)
         return page
+
+    def _rgba_from_hex(self, color, alpha):
+        qcolor = QColor(color)
+        if not qcolor.isValid():
+            return f"rgba(120, 120, 120, {alpha})"
+        return f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, {alpha})"
+
+    def _create_study_zone_header(self, title, description, image_filename, accent, toggle=None):
+        header = QFrame()
+        header.setObjectName("studyZoneHeader")
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header.setMinimumHeight(118)
+        header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(16)
+
+        icon_shell = QLabel()
+        icon_shell.setObjectName("studyZoneIconShell")
+        icon_shell.setFixedSize(62, 62)
+        icon_shell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_shell.setStyleSheet(f"""
+            QLabel#studyZoneIconShell {{
+                background-color: {self._rgba_from_hex(accent, 0.14)};
+                border: 1px solid {self._rgba_from_hex(accent, 0.26)};
+                border-radius: 18px;
+            }}
+        """)
+        icon_path = os.path.join(self.addon_path, "system_files", "gamification_images", image_filename)
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            icon_shell.setPixmap(self._scaled_for_display(pixmap, 44, 44))
+        else:
+            icon_shell.setPixmap(self._render_system_icon(image_filename, 38, accent))
+        layout.addWidget(icon_shell, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        text_box = QWidget()
+        text_box.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(text_box)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(5)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("studyZoneTitle")
+        text_layout.addWidget(title_label)
+
+        desc_label = QLabel(description)
+        desc_label.setObjectName("studyZoneDescription")
+        desc_label.setWordWrap(True)
+        text_layout.addWidget(desc_label)
+
+        layout.addWidget(text_box, 1)
+        if toggle is not None:
+            layout.addWidget(toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        return header
+
+    def _create_study_zone_card(self, title, description=""):
+        card = QFrame()
+        card.setObjectName("studyZoneCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(12)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("studyZoneCardTitle")
+        layout.addWidget(title_label)
+
+        if description:
+            desc_label = QLabel(description)
+            desc_label.setObjectName("studyZoneCardDescription")
+            desc_label.setWordWrap(True)
+            layout.addWidget(desc_label)
+
+        return card, layout
+
+    def _create_study_zone_message_card(self, title, description, editor, accent):
+        card, layout = self._create_study_zone_card(title, description)
+        layout.addWidget(editor)
+        return card
 
     def create_focus_dango_page(self):
         page, layout = self._create_scrollable_page()
-        hero = self._create_onigiri_game_hero_card(
-            "Focus Dango",
-            "Dango-san will help you stay focused!",
-            "dango.png",
-            "dango_bg.png",
-            "#f1aeca"
+        layout.setSpacing(16)
+        header = self._create_study_zone_header(
+            tr("focus_dango"),
+            tr("dango_help_focus"),
+            "dango.webp",
+            "#9D3D64",
+            self.focus_dango_toggle
         )
-        self._attach_hero_toggle(hero, self.focus_dango_toggle)
-        layout.addWidget(hero)
+        layout.addWidget(header)
+        layout.addWidget(self._create_study_zone_message_card(
+            tr("focus_dango_messages"),
+            tr("message_editor_desc", "Create one message per card. Add, reorder, or remove them without worrying about line breaks."),
+            self.focus_dango_message_editor,
+            "#9D3D64"
+        ))
 
-        msg_group, msg_layout = self._create_inner_group("Focus Dango Messages")
-        msg_layout.addWidget(QLabel("Custom messages (one per line):"))
-        msg_layout.addWidget(self.focus_dango_message_editor)
-        layout.addWidget(msg_group)
+        mode_card, mode_layout = self._create_study_zone_card(
+            tr("focus_dango_lock_mode", "Lock Mode"),
+            tr(
+                "focus_dango_lock_mode_desc",
+                "Keep the default mode light, or make Focus Dango stricter during reviews."
+            )
+        )
+        sabotage_row = QHBoxLayout()
+        sabotage_row.setContentsMargins(0, 0, 0, 0)
+        sabotage_row.setSpacing(12)
+
+        sabotage_text = QWidget()
+        sabotage_text_layout = QVBoxLayout(sabotage_text)
+        sabotage_text_layout.setContentsMargins(0, 0, 0, 0)
+        sabotage_text_layout.setSpacing(4)
+
+        sabotage_title = QLabel(tr("focus_dango_self_sabotage", "Self-Sabotage Mode"))
+        sabotage_title.setObjectName("studyZoneCardTitle")
+        sabotage_title.setStyleSheet("font-size: 13px;")
+        sabotage_desc = QLabel(tr(
+            "focus_dango_self_sabotage_desc",
+            "Aggressively blocks attempts to reach the rest of Anki while reviewing."
+        ))
+        sabotage_desc.setObjectName("studyZoneCardDescription")
+        sabotage_desc.setWordWrap(True)
+        sabotage_text_layout.addWidget(sabotage_title)
+        sabotage_text_layout.addWidget(sabotage_desc)
+
+        sabotage_row.addWidget(sabotage_text, 1)
+        sabotage_row.addWidget(self.focus_dango_self_sabotage_toggle, 0, Qt.AlignmentFlag.AlignVCenter)
+        mode_layout.addLayout(sabotage_row)
+
+
+        layout.addWidget(mode_card)
 
         layout.addStretch()
         return page
 
     def create_mochi_messages_page(self):
         page, layout = self._create_scrollable_page()
-        hero = self._create_onigiri_game_hero_card(
-            "Mochi Messages",
-            "Let Mochi cheer you on during reviews.",
-            "mochi_messenger.png",
-            "mochi_messages_bg.png",
-            "#35421C"
+        layout.setSpacing(16)
+        header = self._create_study_zone_header(
+            tr("mochi_messages_title"),
+            tr("mochi_cheer_on"),
+            "mochi_messenger.webp",
+            "#00935C",
+            self.mochi_messages_toggle
         )
-        self._attach_hero_toggle(hero, self.mochi_messages_toggle)
-        layout.addWidget(hero)
+        layout.addWidget(header)
 
-        settings_group, settings_layout = self._create_inner_group("Settings")
-        
+        timing_card, timing_layout = self._create_study_zone_card(tr("settings"))
         interval_row = QHBoxLayout()
-        interval_row.addWidget(QLabel("Show message every"))
-        interval_row.addWidget(self.mochi_interval_spinbox)
+        interval_row.setContentsMargins(0, 0, 0, 0)
+        interval_row.setSpacing(12)
+        interval_row.addWidget(QLabel(tr("show_message_every")))
         interval_row.addStretch()
-        settings_layout.addLayout(interval_row)
-        
-        settings_layout.addWidget(QLabel("Custom messages (one per line):"))
-        settings_layout.addWidget(self.mochi_messages_editor)
+        interval_row.addWidget(self.mochi_interval_spinbox)
+        timing_layout.addLayout(interval_row)
+        layout.addWidget(timing_card)
+
+        layout.addWidget(self._create_study_zone_message_card(
+            tr("mochi_messages_title"),
+            tr("message_editor_desc", "Create one message per card. Add, reorder, or remove them without worrying about line breaks."),
+            self.mochi_messages_editor,
+            "#00935C"
+        ))
+
+        layout.addStretch()
+        return page
+
+    def create_hexagon_land_page(self):
+        page, layout = self._create_scrollable_page()
+        layout.setSpacing(16)
+        hexagon_land = _hexagon_land_module()
+
+        layout.addWidget(self._create_study_zone_header(
+            "Hexagon Land",
+            "Build an island while you study: earn Hex Coins and materials, expand tile by tile, grow trees, invite inhabitants, and raise castles.",
+            "Hexagon_world.webp",
+            "#1F6FE0",
+            self.hexagon_land_toggle
+        ))
+
+        settings_group, settings_layout = self._create_study_zone_card("Island Builder")
+        note = QLabel("Cards studied grant Hex Coins. Trees and flowers increase the Hex Coins earned per card, and longer study history unlocks sand, stone, snow, and magic tiles.")
+        note.setWordWrap(True)
+        settings_layout.addWidget(note)
+        open_btn = QPushButton("Open Hexagon Land")
+        open_btn.clicked.connect(hexagon_land.open_hexagon_land_dialog)
+        settings_layout.addWidget(open_btn)
+        buy_btn = QPushButton("Get Hex Coins")
+        buy_btn.clicked.connect(hexagon_land.open_buy_hex_coins)
+        settings_layout.addWidget(buy_btn)
         layout.addWidget(settings_group)
+
+        keys_group, keys_layout = self._create_study_zone_card("Keys of the Island")
+        keys_note = QLabel(f"Buy the Keys of the Island for {hexagon_land.KEYS_OF_THE_ISLAND_COST} Hex Coins to name your island.")
+        keys_note.setWordWrap(True)
+        keys_layout.addWidget(keys_note)
+
+        self.hexagon_keys_status_label = QLabel()
+        self.hexagon_keys_status_label.setWordWrap(True)
+        keys_layout.addWidget(self.hexagon_keys_status_label)
+
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Island name"))
+        self.hexagon_island_name_input = QLineEdit()
+        self.hexagon_island_name_input.setMaxLength(40)
+        name_row.addWidget(self.hexagon_island_name_input, 1)
+        self.hexagon_island_name_save_btn = QPushButton("Save Name")
+        self.hexagon_island_name_save_btn.clicked.connect(self._save_hexagon_island_name)
+        name_row.addWidget(self.hexagon_island_name_save_btn)
+        keys_layout.addLayout(name_row)
+
+        self.hexagon_keys_button = QPushButton("Buy Keys of the Island")
+        self.hexagon_keys_button.clicked.connect(self._buy_hexagon_keys)
+        keys_layout.addWidget(self.hexagon_keys_button)
+        layout.addWidget(keys_group)
+
+        survival_group, survival_layout = self._create_study_zone_card("Survival Mode")
+        survival_desc = QLabel("If enabled, the larger your streak, the more land tiles you will lose if you miss a study day.")
+        survival_desc.setWordWrap(True)
+        survival_desc.setStyleSheet("color: #888;")
+        survival_layout.addWidget(survival_desc)
+        survival_row = QHBoxLayout()
+        survival_row.addWidget(QLabel("Survival Mode"))
+        survival_row.addStretch()
+        survival_row.addWidget(self.hexagon_survival_toggle)
+        survival_layout.addLayout(survival_row)
+        layout.addWidget(survival_group)
+
+        self._refresh_hexagon_island_controls()
 
         layout.addStretch()
         return page
 
     def create_coming_soon_page(self):
-        page, layout = self._create_scrollable_page()
-        
-        container = QWidget()
-        c_layout = QVBoxLayout(container)
-        c_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.setSpacing(20)
+        return self.create_hexagon_land_page()
 
-        icon_label = QLabel("🎮")
-        icon_label.setStyleSheet("font-size: 64px;")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(icon_label)
+    def _refresh_hexagon_island_controls(self):
+        if not hasattr(self, "hexagon_island_name_input"):
+            return
+        hexagon_land = _hexagon_land_module()
+        state = hexagon_land.manager.load()
+        owns_keys = bool(getattr(state, "keys_of_the_island", False))
+        self.hexagon_island_name_input.setText(hexagon_land.manager.island_display_name(state))
+        self.hexagon_island_name_input.setEnabled(owns_keys)
+        self.hexagon_island_name_save_btn.setEnabled(owns_keys)
+        self.hexagon_keys_button.setVisible(not owns_keys)
+        if owns_keys:
+            self.hexagon_keys_status_label.setText("Keys owned. Your island name appears on the Hexagon Land widget.")
+        else:
+            self.hexagon_keys_status_label.setText(f"Current balance: {state.hex_coins} Hex Coins.")
 
-        title = QLabel("Coming Soon")
-        title.setStyleSheet("font-size: 32px; font-weight: bold;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        c_layout.addWidget(title)
+    def _buy_hexagon_keys(self):
+        hexagon_land = _hexagon_land_module()
+        message = hexagon_land.manager.buy_keys_of_the_island()
+        showInfo(message)
+        self._refresh_hexagon_island_controls()
 
-        desc = QLabel("We're working on new mini-games to make your study sessions even more fun. Stay tuned!")
-        desc.setWordWrap(True)
-        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc.setStyleSheet("color: #888; font-size: 16px; max-width: 400px;")
-        c_layout.addWidget(desc)
-
-        layout.addStretch()
-        layout.addWidget(container)
-        layout.addStretch()
-        return page
+    def _save_hexagon_island_name(self):
+        hexagon_land = _hexagon_land_module()
+        message = hexagon_land.manager.set_island_name(self.hexagon_island_name_input.text())
+        showInfo(message)
+        self._refresh_hexagon_island_controls()
 
     # --- Actions ---
 
-    def _confirm_reset_restaurant_level(self):
-        if QMessageBox.question(self, "Reset", "Reset Restaurant Level progress?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-            restaurant_level.manager.reset_progress()
-            showInfo("Restaurant Level reset.")
+    def _confirm_sync_recipe_rush(self):
+        if QMessageBox.question(
+            self,
+            tr("recipe_rush_sync_title", "Nook Rush Sync"),
+            tr(
+                "recipe_rush_sync_confirm",
+                "Pick a fresh Nook Rush from the Apps Script for the currently equipped Nook, "
+                "replacing today's ticket? Today's card progress is kept.",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes:
+            nook_level = _nook_level_module()
+            success, message = nook_level.manager.force_resync_recipe_rush()
+            if success:
+                showInfo(tr("recipe_rush_sync_success", "Synced! New Rush: {name}").format(name=message))
+            else:
+                showInfo(message)
+
+    def _confirm_reset_nook_level(self):
+        if QMessageBox.question(self, tr("reset"), tr("reset_restaurant_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            nook_level = _nook_level_module()
+            nook_level.manager.reset_progress()
+            showInfo(tr("restaurant_level_reset_info"))
 
     def _reset_coins(self):
-        if QMessageBox.question(self, "Reset", "Reset Taiyaki Coins?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-            restaurant_level.manager.reset_coins()
-            showInfo("Coins reset.")
+        if QMessageBox.question(self, tr("reset"), tr("reset_coins_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            nook_level = _nook_level_module()
+            nook_level.manager.reset_coins()
+            showInfo(tr("coins_reset_info"))
 
     def _reset_purchases(self):
-        if QMessageBox.question(self, "Reset", "Reset all purchases?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-            restaurant_level.manager.reset_purchases()
-            showInfo("Purchases reset.")
+        if QMessageBox.question(self, tr("reset"), tr("reset_purchases_confirm"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            nook_level = _nook_level_module()
+            nook_level.manager.reset_purchases()
+            showInfo(tr("purchases_reset_info"))
+
+    # ------------------------------------------------------------------ #
+    # Chip colour helpers                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _style_restaurant_chip_color_label_button(self, button):
+        tokens = self._theme_tokens()
+        button.setObjectName("restaurantChipColorLabel")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFixedHeight(36)
+        button.setStyleSheet(f"""
+            QPushButton#restaurantChipColorLabel {{
+                background-color: transparent;
+                color: {tokens["fg"]};
+                border: none;
+                text-align: left;
+                padding: 0px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton#restaurantChipColorLabel:hover,
+            QPushButton#restaurantChipColorLabel:pressed {{
+                background-color: transparent;
+                border: none;
+            }}
+        """)
+
+    def _create_restaurant_chip_color_card(self, label_text, button):
+        tokens = self._theme_tokens()
+        label_button = QPushButton(label_text)
+        self._style_restaurant_chip_color_label_button(label_button)
+        label_button.clicked.connect(button.click)
+        button.setProperty("settingsColorSelector", True)
+        button.setMinimumWidth(140)
+
+        card = QFrame()
+        card.setObjectName("restaurantChipColorCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setStyleSheet(f"""
+            QFrame#restaurantChipColorCard {{
+                background-color: {tokens["panel"]};
+                border: 1px solid {tokens["border"]};
+                border-radius: 16px;
+            }}
+        """)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(16, 8, 10, 8)
+        layout.setSpacing(12)
+        layout.addWidget(label_button, 0)
+        layout.addStretch(1)
+        layout.addWidget(button, 0)
+        return card
+
+    def _create_restaurant_chip_bg_control(self, label_text, button):
+        tokens = self._theme_tokens()
+        control = QWidget()
+        layout = QVBoxLayout(control)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        opacity_row = QWidget()
+        opacity_layout = QHBoxLayout(opacity_row)
+        opacity_layout.setContentsMargins(16, 0, 10, 0)
+        opacity_layout.setSpacing(12)
+        opacity_label = QLabel("Opacity")
+        opacity_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 700;")
+
+        slider_track = tokens["surface"]
+        slider_border = tokens["border"]
+        self.rl_chip_bg_opacity_slider = MainBackgroundEffectSlider(self.accent_color, slider_track, slider_border)
+        self.rl_chip_bg_opacity_slider.setRange(0, 100)
+        self.rl_chip_bg_opacity_value_label = QLabel("100%")
+        self.rl_chip_bg_opacity_value_label.setFixedWidth(48)
+        self.rl_chip_bg_opacity_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.rl_chip_bg_opacity_value_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 700;")
+
+        current_alpha = 100
+        cur_color = self._current_chip_bg_color
+        if cur_color:
+            _qc = QColor(cur_color)
+            if _qc.isValid():
+                current_alpha = int(_qc.alphaF() * 100)
+        self.rl_chip_bg_opacity_slider.setValue(current_alpha)
+        self.rl_chip_bg_opacity_value_label.setText(f"{current_alpha}%")
+
+        def on_opacity_changed(val):
+            self.rl_chip_bg_opacity_value_label.setText(f"{val}%")
+            is_dark = config.effective_night_mode(self.current_config)
+            base = self._current_chip_bg_color if self._current_chip_bg_color else ("#000000" if is_dark else "#ffffff")
+            curr_color = QColor(base)
+            curr_color.setAlphaF(val / 100.0)
+            self._current_chip_bg_color = curr_color.name(QColor.NameFormat.HexArgb)
+            self._update_restaurant_chip_preview()
+
+        self.rl_chip_bg_opacity_slider.valueChanged.connect(on_opacity_changed)
+        opacity_layout.addWidget(opacity_label, 0)
+        opacity_layout.addWidget(self.rl_chip_bg_opacity_slider, 1)
+        opacity_layout.addWidget(self.rl_chip_bg_opacity_value_label, 0)
+
+        layout.addWidget(opacity_row)
+        layout.addWidget(self._create_restaurant_chip_color_card(label_text, button))
+        return control
+
+    @property
+    def _current_chip_bg_color(self):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            return self.rl_chip_bg_color
+        return self.rl_chip_bg_color_dark if getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1 else self.rl_chip_bg_color_light
+
+    @_current_chip_bg_color.setter
+    def _current_chip_bg_color(self, value):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            self.rl_chip_bg_color = value
+        elif getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1:
+            self.rl_chip_bg_color_dark = value
+        else:
+            self.rl_chip_bg_color_light = value
+
+    @property
+    def _current_chip_progress_color(self):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            return self.rl_chip_progress_color
+        return self.rl_chip_progress_color_dark if getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1 else self.rl_chip_progress_color_light
+
+    @_current_chip_progress_color.setter
+    def _current_chip_progress_color(self, value):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            self.rl_chip_progress_color = value
+        elif getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1:
+            self.rl_chip_progress_color_dark = value
+        else:
+            self.rl_chip_progress_color_light = value
+
+    @property
+    def _current_chip_text_color(self):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            return self.rl_chip_text_color
+        return self.rl_chip_text_color_dark if getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1 else self.rl_chip_text_color_light
+
+    @_current_chip_text_color.setter
+    def _current_chip_text_color(self, value):
+        if not getattr(self, "rl_dynamic_chip_colors", False):
+            self.rl_chip_text_color = value
+        elif getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1:
+            self.rl_chip_text_color_dark = value
+        else:
+            self.rl_chip_text_color_light = value
+
+    def _resolved_restaurant_chip_colors(self):
+        try:
+            nook_level = _nook_level_module()
+            preview_conf = copy.deepcopy(self.current_config)
+            preview_conf.setdefault("restaurant_level", {})
+            is_dark_preview = config.effective_night_mode(self.current_config)
+            if getattr(self, "rl_dynamic_chip_colors", False):
+                is_dark_preview = getattr(self, "rl_theme_btn_group", None) and self.rl_theme_btn_group.checkedId() == 1
+                preview_conf["restaurant_level"]["dynamic_chip_colors"]       = True
+                preview_conf["restaurant_level"]["chip_bg_color_light"]       = self.rl_chip_bg_color_light
+                preview_conf["restaurant_level"]["chip_bg_color_dark"]        = self.rl_chip_bg_color_dark
+                preview_conf["restaurant_level"]["chip_progress_color_light"] = self.rl_chip_progress_color_light
+                preview_conf["restaurant_level"]["chip_progress_color_dark"]  = self.rl_chip_progress_color_dark
+                preview_conf["restaurant_level"]["chip_text_color_light"]     = self.rl_chip_text_color_light
+                preview_conf["restaurant_level"]["chip_text_color_dark"]      = self.rl_chip_text_color_dark
+            else:
+                preview_conf["restaurant_level"]["dynamic_chip_colors"]   = False
+                preview_conf["restaurant_level"]["chip_bg_color"]         = self.rl_chip_bg_color
+                preview_conf["restaurant_level"]["chip_progress_color"]   = self.rl_chip_progress_color
+                preview_conf["restaurant_level"]["chip_text_color"]       = self.rl_chip_text_color
+            return nook_level.get_chip_style_values(conf=preview_conf, is_dark=is_dark_preview)
+        except Exception as exc:
+            print(f"[Onigiri] Could not resolve Nook Level chip colors: {exc}")
+            return {"bg": CHIP_PREVIEW_DEFAULTS["chip_bg"], "progress": CHIP_PREVIEW_DEFAULTS["chip_progress"], "text": "#ffffff"}
+
+    def _style_restaurant_chip_color_button(self, button, color_value, fallback="#888888"):
+        color      = color_value if color_value and QColor(color_value).isValid() else fallback
+        qcolor     = QColor(color)
+        text_color = "#111827" if qcolor.lightness() > 150 else "#ffffff"
+        settings_selector = bool(button.property("settingsColorSelector"))
+        radius = 12 if settings_selector else 21
+        height = 36 if settings_selector else 42
+        padding = "0px 18px" if settings_selector else "0px 16px"
+        button.setText(qcolor.name(QColor.NameFormat.HexRgb).upper())
+        button.setStyleSheet(f"""
+            QPushButton#restaurantChipColorButton {{
+                background-color: {color};
+                color: {text_color};
+                border: 1px solid rgba(128,128,128,0.4);
+                border-radius: {radius}px;
+                min-height: {height}px;
+                max-height: {height}px;
+                padding: {padding};
+                font-size: 13px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+            }}
+            QPushButton#restaurantChipColorButton:hover,
+            QPushButton#restaurantChipColorButton:pressed {{
+                border-radius: {radius}px;
+            }}
+        """)
+
+    def _update_restaurant_chip_preview(self):
+        if not hasattr(self, "rl_chip_preview"):
+            return
+        colors = self._resolved_restaurant_chip_colors()
+        self._style_restaurant_chip_color_button(self.rl_chip_bg_button,       self._current_chip_bg_color,       colors["bg"])
+        self._style_restaurant_chip_color_button(self.rl_chip_progress_button, self._current_chip_progress_color, colors["progress"])
+        self._style_restaurant_chip_color_button(
+            self.rl_chip_text_button,
+            self._current_chip_text_color,
+            colors["text"] or ("#ffffff" if config.effective_night_mode(self.current_config) else "#111827"),
+        )
+        self.rl_chip_preview.set_chip_colors(colors["bg"], colors["progress"], colors["text"])
+        if hasattr(self, "rl_chip_bg_opacity_slider"):
+            self.rl_chip_bg_opacity_slider.blockSignals(True)
+            qcolor = QColor(self._current_chip_bg_color if self._current_chip_bg_color else colors["bg"])
+            if qcolor.isValid():
+                self.rl_chip_bg_opacity_slider.setValue(int(qcolor.alphaF() * 100))
+                self.rl_chip_bg_opacity_value_label.setText(f"{self.rl_chip_bg_opacity_slider.value()}%")
+            self.rl_chip_bg_opacity_slider.blockSignals(False)
+
+    def _choose_restaurant_chip_color(self, target):
+        from .onigiri_color_picker import OnigiriColorDialog
+        colors  = self._resolved_restaurant_chip_colors()
+        current = {
+            "bg":       self._current_chip_bg_color       or colors["bg"],
+            "progress": self._current_chip_progress_color or colors["progress"],
+            "text":     self._current_chip_text_color     or colors["text"] or "#ffffff",
+        }.get(target, "#ffffff")
+        chosen, ok = OnigiriColorDialog.getColor(current, self)
+        if not ok:
+            return
+        if target == "bg":
+            c = QColor(chosen)
+            if hasattr(self, "rl_chip_bg_opacity_slider"):
+                c.setAlphaF(self.rl_chip_bg_opacity_slider.value() / 100.0)
+            self._current_chip_bg_color = c.name(QColor.NameFormat.HexArgb)
+        elif target == "progress":
+            self._current_chip_progress_color = chosen
+        else:
+            self._current_chip_text_color = chosen
+        self._update_restaurant_chip_preview()
+
+    def _reset_restaurant_chip_colors(self):
+        if getattr(self, "rl_dynamic_chip_colors", False):
+            self.rl_chip_bg_color_light = self.rl_chip_bg_color_dark = ""
+            self.rl_chip_progress_color_light = self.rl_chip_progress_color_dark = ""
+            self.rl_chip_text_color_light = self.rl_chip_text_color_dark = ""
+        else:
+            self.rl_chip_bg_color = self.rl_chip_progress_color = self.rl_chip_text_color = ""
+        self._update_restaurant_chip_preview()
 
     def save_settings(self):
+        if getattr(self, "_is_saving", False):
+            return
+        self._is_saving = True
+        self.save_button.setEnabled(False)
+
         # Master Toggle
         self.current_config["gamificationMode"] = self.gamification_mode_toggle.isChecked()
+        self.current_config["onigiri_notification_duration_ms"] = self.notification_duration_spinbox.value() * 1000
         
         # Focused Gaming — if enabled, force restaurant notifications off
         focused = self.focused_gaming_toggle.isChecked()
         self.current_config["focusedGaming"] = focused
         
         # Update current_config from widgets
-        # Restaurant Level
+        # Nook Level
         res_conf = self.current_config.setdefault("restaurant_level", {})
-        res_conf["enabled"] = self.restaurant_level_toggle.isChecked()
+        res_conf["enabled"] = self.nook_level_toggle.isChecked()
         res_conf["notifications_enabled"] = self.restaurant_notifications_toggle.isChecked()
         res_conf["show_profile_bar_progress"] = self.restaurant_bar_toggle.isChecked()
         res_conf["show_reviewer_header"] = self.restaurant_reviewer_toggle.isChecked()
-        
+
+        # Keep the persisted gamification state in sync with the config toggles above.
+        # get_progress() only pulls from config on first migration; after that it trusts
+        # this state, so without these calls the chip stays stuck at its first-ever value.
+        nook_level = _nook_level_module()
+        nook_level.manager.set_enabled(res_conf["enabled"])
+        nook_level.manager.set_notifications_enabled(res_conf["notifications_enabled"])
+        nook_level.manager.set_profile_bar_visibility(res_conf["show_profile_bar_progress"])
+
         selected_diff = "Apprendice"
         for data, btn in self.difficulty_widgets.items():
             if btn.isChecked():
@@ -1155,69 +3252,208 @@ class GamificationSettingsDialog(QDialog):
                 break
         res_conf["difficulty"] = selected_diff
         
-        if hasattr(self, "restaurant_name_input"):
-            restaurant_level.manager.set_restaurant_name(self.restaurant_name_input.text())
+        if "Nook Level" in self._loaded_pages:
+            res_conf["chip_bg_color"]              = getattr(self, "rl_chip_bg_color",              "") or ""
+            res_conf["chip_progress_color"]        = getattr(self, "rl_chip_progress_color",        "") or ""
+            res_conf["chip_text_color"]            = getattr(self, "rl_chip_text_color",            "") or ""
+            res_conf["dynamic_chip_colors"]        = getattr(self, "rl_dynamic_chip_colors",        False)
+            res_conf["chip_bg_color_light"]        = getattr(self, "rl_chip_bg_color_light",        "") or ""
+            res_conf["chip_bg_color_dark"]         = getattr(self, "rl_chip_bg_color_dark",         "") or ""
+            res_conf["chip_progress_color_light"]  = getattr(self, "rl_chip_progress_color_light",  "") or ""
+            res_conf["chip_progress_color_dark"]   = getattr(self, "rl_chip_progress_color_dark",   "") or ""
+            res_conf["chip_text_color_light"]      = getattr(self, "rl_chip_text_color_light",      "") or ""
+            res_conf["chip_text_color_dark"]       = getattr(self, "rl_chip_text_color_dark",       "") or ""
+
+        if "Nook Level" in self._loaded_pages and hasattr(self, "restaurant_name_input"):
+            nook_level = _nook_level_module()
+            nook_level.manager.set_restaurant_name(self.restaurant_name_input.text())
 
         # Onigimon
         oni_conf = self.current_config.setdefault("onigimon", {})
         oni_conf["enabled"] = self.onigimon_toggle.isChecked()
-        oni_conf["notifications_enabled"] = self.onigimon_notifications_toggle.isChecked()
-        oni_conf["daily_surprise_enabled"] = self.onigimon_daily_toggle.isChecked()
         oni_conf["allow_ankimon_updates"] = self.onigimon_ankimon_updates_toggle.isChecked()
-        oni_conf["reward_interval"] = self.onigimon_reward_interval_spinbox.value()
-        oni_conf["widget_style"] = self.onigimon_widget_style_combo.currentText()
-        oni_conf["sprite_motion"] = self.onigimon_sprite_motion_combo.currentData()
-        if self.onigimon_selected_companion_id:
+        selected_onigimon_difficulty = "pikachu"
+        for data, btn in self.onigimon_difficulty_widgets.items():
+            if btn.isChecked():
+                selected_onigimon_difficulty = data
+                break
+        oni_conf["difficulty"] = selected_onigimon_difficulty
+        oni_conf["sprite_motion"] = self.onigimon_sprite_motion
+        oni_conf["scene_background_color"] = self.onigimon_scene_color
+        oni_conf["scene_background_image"] = self.onigimon_scene_image
+        oni_conf["scene_background_blur"] = self.onigimon_scene_blur_slider.value()
+        oni_conf["scene_background_opacity"] = self.onigimon_scene_opacity_slider.value()
+        if "Onigimon" in self._loaded_pages and self.onigimon_selected_companion_id:
+            onigimon = _onigimon_module()
             onigimon.manager.set_active_companion(str(self.onigimon_selected_companion_id))
             onigimon.manager.rename_active_companion(self.onigimon_name_input.text().strip())
-
+        
         # Mochi
         mochi_conf = self.current_config.setdefault("mochi_messages", {})
         mochi_conf["enabled"] = self.mochi_messages_toggle.isChecked()
         mochi_conf["cards_interval"] = self.mochi_interval_spinbox.value()
-        mochi_conf["messages"] = [l.strip() for l in self.mochi_messages_editor.toPlainText().split("\n") if l.strip()]
+        mochi_conf["messages"] = self.mochi_messages_editor.messages()
 
         # Focus Dango
         dango_conf = self.achievements_config.setdefault("focusDango", {})
         dango_conf["enabled"] = self.focus_dango_toggle.isChecked()
-        dango_conf["messages"] = [l.strip() for l in self.focus_dango_message_editor.toPlainText().split("\n") if l.strip()]
+        dango_conf["messages"] = self.focus_dango_message_editor.messages()
+        dango_conf["self_sabotage"] = self.focus_dango_self_sabotage_toggle.isChecked()
+
+
+        # Hexagon Land
+        hex_conf = self.current_config.setdefault("hexagon_land", {})
+        hex_conf["enabled"] = self.hexagon_land_toggle.isChecked()
+        hex_conf["theme"] = "island"
+        hex_conf["survival_mode"] = self.hexagon_survival_toggle.isChecked()
+        if "Hexagon Land" in self._loaded_pages and hasattr(self, "hexagon_island_name_input"):
+            hexagon_land = _hexagon_land_module()
+            state = hexagon_land.manager.load()
+            if getattr(state, "keys_of_the_island", False):
+                hexagon_land.manager.set_island_name(self.hexagon_island_name_input.text())
 
         # Save config
         config.write_config(self.current_config)
+
+        try:
+            from .refresh import schedule_ui_refresh
+
+            schedule_ui_refresh()
+        except Exception:
+            pass
         self.accept()
-        if mw:
-            mw.reset()
+        QTimer.singleShot(300, self._initialize_enabled_hooks_after_save)
+
+    def _initialize_enabled_hooks_after_save(self):
+        try:
+            restaurant_conf = self.current_config.get("restaurant_level", {})
+            if restaurant_conf.get("enabled", False):
+                from .gamification import nook_level as _nook_level  # noqa: F401
+            if self.current_config.get("onigimon", {}).get("enabled", False):
+                from .gamification import onigimon as _onigimon  # noqa: F401
+            if self.current_config.get("mochi_messages", {}).get("enabled", False):
+                from .gamification import mochi_messages as _mochi_messages  # noqa: F401
+            focus_conf = self.current_config.get("achievements", {}).get("focusDango", {})
+            if focus_conf.get("enabled", False):
+                from .gamification import focus_dango
+
+                focus_dango.setup_focus_dango()
+        except Exception as e:
+            print(f"Onigiri: Error refreshing gamification hooks after save: {e}")
 
     def apply_stylesheet(self):
-        is_dark = theme_manager.night_mode
-        if is_dark:
-            # Dialog bg matches content panel bg — only 2 visible layers: sidebar + content
-            bg = "#2e2e2e"
-            content_bg = "#2e2e2e"
-            fg = "#e0e0e0"
-            sidebar_bg = "#1a1a1a"
-            inner_group_bg = "#252525"
-            border = "#444444"
-            hover_bg = "#333333"
-        else:
-            bg = "#f0f0f0"
-            content_bg = "#f0f0f0"
-            fg = "#212121"
-            sidebar_bg = "#d5d5d5"
-            inner_group_bg = "#ffffff"
-            border = "#d0d0d0"
-            hover_bg = "#e8e8e8"
+        tokens = self._theme_tokens()
+        bg = tokens["bg"]
+        content_bg = tokens["panel"]
+        fg = tokens["fg"]
+        muted = tokens["muted"]
+        inner_group_bg = tokens["panel"]
+        surface_bg = tokens["surface"]
+        border = tokens["border"]
+        hover_bg = tokens["surface"]
+        accent = tokens["accent"]
+        scrollbar_thumb = "rgba(255, 255, 255, 0.20)" if theme_manager.night_mode else "rgba(17, 24, 39, 0.16)"
+        scrollbar_thumb_hover = "rgba(255, 255, 255, 0.34)" if theme_manager.night_mode else "rgba(17, 24, 39, 0.28)"
+        notification_checked_bg = self._rgba_from_hex(accent, 0.16)
+        notification_spinbox_up_icon = self._tinted_stylesheet_svg_path("up.svg", fg)
+        notification_spinbox_down_icon = self._tinted_stylesheet_svg_path("down.svg", fg)
+        study_zone_spinbox_up_icon = self._tinted_stylesheet_svg_path("up.svg", fg)
+        study_zone_spinbox_down_icon = self._tinted_stylesheet_svg_path("down.svg", fg)
 
         self.setStyleSheet(f"""
             QDialog {{ background-color: {bg}; color: {fg}; }}
-            #sidebarContainer {{ 
-                background-color: {sidebar_bg}; 
-                border-radius: 20px; 
+            QWidget#settingsSidebarWrapper {{
+                background-color: {bg};
+                border: none;
             }}
-            /* Content container - same bg as dialog so only sidebar is distinct */
-            QWidget#contentContainer {{
+            #sidebarContainer {{ 
+                background-color: {bg};
+                border: none;
+            }}
+            QScrollArea#sidebarNavScrollArea {{
+                background-color: {bg};
+                border: none;
+            }}
+            QWidget#sidebarNavViewport {{
+                background-color: {bg};
+            }}
+            /* Minimal sidebar — section headers (collapsible) */
+            QPushButton#sidebarSectionToggle {{
+                color: {muted};
+                background: transparent;
+                border: none;
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.7px;
+                padding: 4px 8px;
+                text-align: left;
+            }}
+            QPushButton#sidebarSectionToggle:hover {{
+                color: {fg};
+                background-color: {surface_bg};
+            }}
+            QPushButton#sidebarSectionToggle:checked {{
+                color: {muted};
+                background: transparent;
+                font-weight: 700;
+            }}
+            QWidget#sidebarSectionContent {{
+                background: transparent;
+                border: none;
+            }}
+            /* Minimal sidebar — nav buttons */
+            QPushButton#sidebarNavButton {{
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 18px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                text-align: left;
+                font-size: 13px;
+                font-weight: 500;
+                color: {muted};
+            }}
+            QPushButton#sidebarNavButton:hover {{
+                background-color: {surface_bg};
+                color: {fg};
+                border-color: transparent;
+            }}
+            QPushButton#sidebarNavButton:checked {{
+                background-color: {surface_bg};
+                color: {fg};
+                border-color: transparent;
+                font-weight: 600;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar:vertical {{
+                border: none;
+                background-color: transparent;
+                width: 6px;
+                margin: 12px 2px 12px 2px;
+                border-radius: 3px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical {{
+                background-color: {scrollbar_thumb};
+                min-height: 38px;
+                border-radius: 3px;
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::handle:vertical:hover {{
+                background-color: {scrollbar_thumb_hover};
+            }}
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-line:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::add-page:vertical,
+            QScrollArea#sidebarNavScrollArea QScrollBar::sub-page:vertical {{
+                height: 0;
+                width: 0;
+                background: none;
+                border: none;
+            }}
+            /* Rounded content shell around each page (matches Onigiri) */
+            QFrame#contentContainer {{
                 background-color: {content_bg};
-                border-radius: 16px;
+                border: none;
+                border-radius: 28px;
             }}
             QStackedWidget#contentStack {{
                 background-color: transparent;
@@ -1225,8 +3461,8 @@ class GamificationSettingsDialog(QDialog):
             
             /* Save button - always white pill with fixed height */
             QPushButton#saveButton {{
-                background-color: #ffffff;
-                color: #000000;
+                background-color: {accent};
+                color: #ffffff;
                 border: none;
                 border-radius: 19px;
                 min-height: 38px;
@@ -1236,35 +3472,250 @@ class GamificationSettingsDialog(QDialog):
                 font-weight: bold;
             }}
             QPushButton#saveButton:hover {{
-                background-color: #f0f0f0;
+                background-color: {accent};
             }}
             QPushButton#saveButton:pressed {{
-                background-color: #dddddd;
+                background-color: {accent};
+            }}
+            QPushButton#cancelButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 19px;
+                min-height: 38px;
+                max-height: 38px;
+                padding: 0px 14px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton#cancelButton:hover {{
+                background-color: {hover_bg};
+            }}
+            QPushButton#cancelButton:pressed {{
+                background-color: {border};
             }}
 
             QWidget#gamificationModeHero, QWidget#focusedGamingHero {{ 
-                background-color: {'#353535' if is_dark else '#ffffff'}; 
+                background-color: {surface_bg}; 
                 border: 1px solid {border}; 
                 border-radius: 20px; 
             }}
+
+            QFrame#studyZoneHeader {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 18px;
+            }}
+            QLabel#studyZoneTitle {{
+                color: {fg};
+                background: transparent;
+                font-size: 22px;
+                font-weight: 800;
+            }}
+            QLabel#studyZoneDescription {{
+                color: {muted};
+                background: transparent;
+                font-size: 13px;
+                line-height: 18px;
+            }}
+            QFrame#studyZoneCard {{
+                background-color: {inner_group_bg};
+                border: 1px solid {border};
+                border-radius: 24px;
+            }}
+            QFrame#studyZoneCard QPushButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 18px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }}
+            QFrame#studyZoneCard QPushButton:hover {{
+                border: 1px solid {accent};
+            }}
+            QFrame#studyZoneCard QLineEdit {{
+                background-color: {inner_group_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 12px;
+                padding: 5px 12px;
+            }}
+            QPushButton[contentRoundedButton="true"] {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 18px;
+                padding: 8px 16px;
+                min-height: 36px;
+                font-weight: 600;
+                outline: none;
+            }}
+            QPushButton[contentRoundedButton="true"]:hover,
+            QPushButton[contentRoundedButton="true"]:focus {{
+                border: 1px solid {accent};
+                border-radius: 18px;
+                outline: none;
+            }}
+            QPushButton[contentRoundedButton="true"]:pressed {{
+                background-color: {border};
+                border-radius: 18px;
+            }}
+            QPushButton[contentRoundedButton="true"]:disabled {{
+                color: {muted};
+                border-radius: 18px;
+            }}
+            QLineEdit[contentRoundedInput="true"],
+            QSpinBox[contentRoundedInput="true"],
+            QComboBox[contentRoundedInput="true"] {{
+                background-color: {inner_group_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 16px;
+                padding: 5px 12px;
+            }}
+            QLineEdit[contentRoundedInput="true"]:focus,
+            QSpinBox[contentRoundedInput="true"]:focus,
+            QComboBox[contentRoundedInput="true"]:focus {{
+                border: 1px solid {accent};
+                border-radius: 16px;
+                outline: none;
+            }}
+            QLabel#studyZoneCardTitle {{
+                color: {fg};
+                background: transparent;
+                font-size: 15px;
+                font-weight: 700;
+            }}
+            QLabel#studyZoneCardDescription {{
+                color: {muted};
+                background: transparent;
+                font-size: 12px;
+            }}
+            QWidget#studyZoneMessageListEditor,
+            QWidget#studyZoneMessageRows {{
+                background: transparent;
+                border: none;
+            }}
+            QFrame#studyZoneMessageRow {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 12px;
+            }}
+            QLineEdit#studyZoneMessageInput {{
+                background-color: transparent;
+                color: {fg};
+                border: none;
+                padding: 5px 2px;
+                selection-background-color: {accent};
+                font-size: 13px;
+            }}
+            QLineEdit#studyZoneMessageInput:focus {{
+                border: none;
+            }}
+            QWidget#studyZonePinInput {{
+                background: transparent;
+                border: none;
+            }}
+            QLineEdit#studyZonePinDigit {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 9px;
+                padding: 0px;
+                selection-background-color: {accent};
+            }}
+            QLineEdit#studyZonePinDigit:focus {{
+                border-color: {accent};
+            }}
+            QPushButton#studyZoneMessageIconButton {{
+                background-color: transparent;
+                color: {muted};
+                border: none;
+                border-radius: 15px;
+                padding: 0px;
+            }}
+            QPushButton#studyZoneMessageIconButton:hover {{
+                background-color: {hover_bg};
+                color: {fg};
+            }}
+            QPushButton#studyZoneMessageIconButton:disabled {{
+                background-color: transparent;
+                color: {border};
+            }}
+            QPushButton#studyZoneAddMessageButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 16px;
+                padding: 6px 14px;
+                min-height: 32px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton#studyZoneAddMessageButton:hover {{
+                border: 1px solid {accent};
+            }}
+            QSpinBox#studyZoneSpinBox {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 14px;
+                padding: 5px 34px 5px 12px;
+                min-height: 28px;
+                min-width: 126px;
+            }}
+            QSpinBox#studyZoneSpinBox:focus {{
+                border: 1px solid {accent};
+            }}
+            QSpinBox#studyZoneSpinBox::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 28px;
+                height: 16px;
+                right: 5px;
+                top: 2px;
+                border: none;
+                background: transparent;
+            }}
+            QSpinBox#studyZoneSpinBox::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 28px;
+                height: 16px;
+                right: 5px;
+                bottom: 2px;
+                border: none;
+                background: transparent;
+            }}
+            QSpinBox#studyZoneSpinBox::up-arrow {{
+                width: 16px;
+                height: 16px;
+                image: url("{study_zone_spinbox_up_icon}");
+            }}
+            QSpinBox#studyZoneSpinBox::down-arrow {{
+                width: 16px;
+                height: 16px;
+                image: url("{study_zone_spinbox_down_icon}");
+            }}
             
-            QWidget#innerGroup {{ background-color: {inner_group_bg}; border: 1px solid {border}; border-radius: 12px; }}
+            QWidget#innerGroup {{ background-color: {inner_group_bg}; border: 1px solid {border}; border-radius: 24px; }}
             
             /* General QPushButton fallback (for content area buttons only) */
-            QPushButton {{ background-color: {'#4a4a4a' if is_dark else '#e8e8e8'}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 6px; }}
+            QPushButton {{ background-color: {surface_bg}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 18px; }}
             QPushButton:pressed {{ background-color: {border}; }}
             
-            QPushButton#dangerButton {{ color: #ff6b6b; font-weight: bold; border: 1px solid #ff6b6b; border-radius: 6px; padding: 8px; }}
+            QPushButton#dangerButton {{ color: #ff6b6b; font-weight: bold; border: 1px solid #ff6b6b; border-radius: 16px; padding: 8px; }}
             QPushButton#dangerButton:hover {{ background-color: #ff6b6b; color: white; }}
             
-            QComboBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
+            QComboBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 12px; padding: 5px 12px; }}
             QComboBox QAbstractItemView {{ background-color: {inner_group_bg}; color: {fg}; selection-background-color: {border}; }}
             
             QPushButton#difficultyCard {{
                 background-color: {inner_group_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 8px;
+                border-radius: 16px;
                 padding: 15px;
                 text-align: left;
             }}
@@ -1281,36 +3732,115 @@ class GamificationSettingsDialog(QDialog):
                 background-color: transparent;
             }}
             QPushButton#onigimonCompanionTile {{
-                background-color: {'#3a3a3a' if is_dark else '#f0f0f0'};
+                background-color: {surface_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 8px;
+                border-radius: 12px;
                 padding: 4px;
                 font-size: 11px;
                 font-weight: 700;
             }}
             QPushButton#onigimonCompanionTile:hover {{
+                border: 1px solid #F2B705;
                 background-color: {hover_bg};
-                border-color: #70c6a6;
             }}
             QPushButton#onigimonCompanionTile:checked {{
-                border: 2px solid #70c6a6;
-                background-color: {'rgba(112,198,166,0.18)' if is_dark else 'rgba(112,198,166,0.15)'};
+                border: 2px solid #F2B705;
+                background-color: rgba(242, 183, 5, 0.18);
+            }}
+            QPushButton#onigimonSceneButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 15px;
+                padding: 4px 14px;
+                min-height: 28px;
+            }}
+            QPushButton#onigimonSceneButton:hover {{
+                border: 1px solid #F2B705;
+                background-color: {hover_bg};
+            }}
+            QLabel#onigimonSceneBlurValue {{
+                color: {fg};
+                min-width: 42px;
             }}
 
+            QPushButton#notificationPositionButton {{
+                background-color: transparent;
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 16px;
+                font-size: 20px;
+                padding: 0;
+            }}
+            QPushButton#notificationPositionButton:hover {{
+                background-color: {hover_bg};
+            }}
+            QPushButton#notificationPositionButton:checked {{
+                background-color: {notification_checked_bg};
+                color: {fg};
+                border: 1px solid {accent};
+            }}
+            QWidget#notificationPositionPreview {{
+                border: 2px solid {border};
+                border-radius: 20px;
+                background-color: transparent;
+            }}
+            QLabel#notificationPositionPreviewRect {{
+                background-color: {accent};
+                border-radius: 8px;
+            }}
+            
             QLabel, QRadioButton {{ color: {fg}; }}
-            QLineEdit, QSpinBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 5px; }}
+            QLineEdit, QSpinBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 12px; padding: 5px 12px; }}
+            QSpinBox#notificationDurationSpinBox {{
+                min-height: 44px;
+                min-width: 148px;
+                padding: 5px 36px 5px 14px;
+                font-size: 16px;
+            }}
+            QSpinBox#notificationDurationSpinBox::up-button {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 30px;
+                height: 22px;
+                right: 6px;
+                top: 3px;
+                border: none;
+                background: transparent;
+            }}
+            QSpinBox#notificationDurationSpinBox::down-button {{
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 30px;
+                height: 22px;
+                right: 6px;
+                bottom: 3px;
+                border: none;
+                background: transparent;
+            }}
+            QSpinBox#notificationDurationSpinBox::up-arrow {{
+                width: 18px;
+                height: 18px;
+                image: url("{notification_spinbox_up_icon}");
+            }}
+            QSpinBox#notificationDurationSpinBox::down-arrow {{
+                width: 18px;
+                height: 18px;
+                image: url("{notification_spinbox_down_icon}");
+            }}
             QScrollBar:vertical {{ border: none; background: transparent; width: 8px; margin: 0; }}
-            QScrollBar::handle:vertical {{ background: {border}; min-height: 20px; border-radius: 4px; }}
+            QScrollBar::handle:vertical {{ background: {border}; min-height: 20px; border-radius: 8px; }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 height: 0px; background: none; border: none;
             }}
         """)
+        self._prepare_content_controls(self.content_stack)
 
 _gamification_dialog = None
 
-def open_gamification_settings():
+def open_gamification_settings(page_name=None):
     global _gamification_dialog
     if _gamification_dialog is not None:
         _gamification_dialog.close()
@@ -1321,3 +3851,7 @@ def open_gamification_settings():
         addon_path=addon_path
     )
     _gamification_dialog.show()
+    _gamification_dialog.raise_()
+    _gamification_dialog.activateWindow()
+    if page_name:
+        _gamification_dialog.navigate_to_page(page_name)

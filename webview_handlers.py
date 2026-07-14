@@ -9,7 +9,7 @@ from . import deck_drag_drop
 from . import move_deck
 from aqt import mw
 from aqt.qt import QFileDialog
-from aqt.utils import tooltip
+from .onigiri_notifications import notify as tooltip
 from . import sort_dialog
 from .color_utils import normalize_color_string
 
@@ -151,34 +151,118 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
+    # Ignore commands originating from OnigimonCareDialog to avoid double execution/tooltips
+    if type(context).__name__ == "OnigimonCareDialog":
+        return handled
+    parent = getattr(context, "parent", None)
+    if parent and callable(parent) and type(parent()).__name__ == "OnigimonCareDialog":
+        return handled
+
+    if cmd == "onigiri_welcome_dismissed":
+        try:
+            from . import config
+            conf = config.get_config()
+            conf["showWelcomePopup"] = False
+            config.write_config(conf)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error dismissing welcome: {e}")
+            return (True, None)
+
+    if cmd == "openGamificationSettings":
+        try:
+            from . import gamification_settings
+            gamification_settings.open_gamification_settings()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening gamification settings: {e}")
+            return (True, None)
+
+    if cmd == "openOnigimonSettings":
+        try:
+            from . import gamification_settings
+            gamification_settings.open_gamification_settings("Onigimon")
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Onigimon settings: {e}")
+            return (True, None)
+
+    if cmd == "openPrepStation":
+        try:
+            from . import prep_station
+            prep_station.open_prep_station()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Prep Station: {e}")
+            return (True, None)
+
+    if cmd == "openHexagonLand":
+        try:
+            from .gamification import hexagon_land
+            hexagon_land.open_hexagon_land_dialog()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Hexagon Land: {e}")
+            return (True, None)
+
+    if cmd == "buyHexCoins":
+        try:
+            from .gamification import hexagon_land
+            hexagon_land.open_buy_hex_coins()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Hex Coin link: {e}")
+            return (True, None)
+
     if cmd.startswith("onigimon_feed:"):
         try:
             from .gamification import onigimon
             item_key = cmd.split(":", 1)[1]
             message = onigimon.manager.use_item(item_key)
-            tooltip(message or "No Onigimon item available.")
+            _refresh_deck_browser_locally(context)
+            if message:
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            else:
+                tooltip("No Onigimon item available.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
         except Exception as e:
             print(f"Onigiri: Error feeding Onigimon: {e}")
-        return (True, None)
+            return (True, None)
+
+    if cmd.startswith("onigimon_category:"):
+        try:
+            from .gamification import onigimon
+            category_id = cmd.split(":", 1)[1]
+            message = onigimon.manager.category_status_message(category_id)
+            if message:
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error reading Onigimon category: {e}")
+            return (True, None)
 
     if cmd == "onigimon_play":
         try:
             from .gamification import onigimon
             message = onigimon.manager.play()
+            _refresh_deck_browser_locally(context)
             if message:
-                tooltip(message)
+                tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
         except Exception as e:
             print(f"Onigiri: Error playing with Onigimon: {e}")
-        return (True, None)
+            return (True, None)
 
     if cmd == "onigimon_daily_gift":
         try:
             from .gamification import onigimon
             message = onigimon.manager.claim_daily_gift()
-            tooltip(message or "Today's Onigimon gift is already claimed.")
+            _refresh_deck_browser_locally(context)
+            tooltip(message or "Today's Onigimon gift is already claimed.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
         except Exception as e:
             print(f"Onigiri: Error claiming Onigimon gift: {e}")
-        return (True, None)
+            return (True, None)
 
     if cmd.startswith("onigimon_rename:"):
         try:
@@ -188,12 +272,13 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 tooltip("Choose a name first.")
                 return (True, None)
             if onigimon.manager.rename_active_companion(name):
-                tooltip(f"Renamed to {name}.")
+                tooltip(f"Renamed to {name}.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             else:
-                tooltip("Choose an Onigimon companion first.")
+                tooltip("Choose an Onigimon companion first.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+            return (True, None)
         except Exception as e:
             print(f"Onigiri: Error renaming Onigimon: {e}")
-        return (True, None)
+            return (True, None)
 
     if cmd == "onigiri_create_deck":
         try:
@@ -995,6 +1080,49 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 context.refresh()
             elif tree_deferred:
                 deck_tree_updater.refresh_deck_tree_state(context)
+        return (True, None)
+
+    if cmd.startswith("onigiri_learner_stats_select_deck:"):
+        try:
+            raw_payload = cmd.split(":", 1)[1]
+            try:
+                data = json.loads(unquote(raw_payload))
+                widget_id = str(data.get("widgetId") or "")
+                deck_id = str(data.get("deckId") or "all")
+            except Exception:
+                _prefix, widget_id, deck_id = cmd.split(":", 2)
+
+            saved_decks = mw.col.conf.get("onigiri_learner_stats_decks", {})
+            if not isinstance(saved_decks, dict):
+                saved_decks = {}
+            saved_decks[widget_id] = deck_id
+
+            mw.col.conf["onigiri_learner_stats_decks"] = saved_decks
+            mw.col.setMod()
+
+            try:
+                from . import learner_stats_widget
+                updated_html = learner_stats_widget._render_widget(context, widget_id)
+                context.web.eval(
+                    "if(window.OnigiriLearnerStatsDialog&&typeof OnigiriLearnerStatsDialog.finish==='function')"
+                    f"{{OnigiriLearnerStatsDialog.finish({json.dumps(widget_id)}, {json.dumps(updated_html)});}}"
+                    "else{pycmd('onigiri_learner_stats_refresh_fallback');}"
+                )
+            except Exception as render_error:
+                print(f"Onigiri: Error updating learner stats widget in place: {render_error}")
+                if isinstance(context, DeckBrowser):
+                    _refresh_deck_browser_locally(context)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error saving learner stats deck: {e}")
+            return (True, None)
+
+    if cmd == "onigiri_learner_stats_refresh_fallback":
+        try:
+            if isinstance(context, DeckBrowser):
+                _refresh_deck_browser_locally(context)
+        except Exception as e:
+            print(f"Onigiri: Error refreshing learner stats fallback: {e}")
         return (True, None)
 
     return handled

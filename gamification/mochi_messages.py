@@ -49,24 +49,13 @@ class MochiMessenger:
             "icon": "🍡",
         }, ensure_ascii=False)
 
-        state = getattr(mw, "state", None)
+        if getattr(mw, "state", None) != "review":
+            return
+
         reviewer = getattr(mw, "reviewer", None)
-        overview = getattr(mw, "overview", None)
-        deck_browser = getattr(mw, "deckBrowser", None)
-
-        webviews = []
-        if state == "review" and reviewer and getattr(reviewer, "web", None):
-            webviews.append(reviewer.web)
-        elif state == "overview" and overview and getattr(overview, "web", None):
-            webviews.append(overview.web)
-        elif state == "deckBrowser" and deck_browser and getattr(deck_browser, "web", None):
-            webviews.append(deck_browser.web)
-
-        for web in [reviewer and getattr(reviewer, "web", None),
-                    overview and getattr(overview, "web", None),
-                    deck_browser and getattr(deck_browser, "web", None)]:
-            if web and web not in webviews:
-                webviews.append(web)
+        web = reviewer and getattr(reviewer, "web", None)
+        if not web:
+            return
 
         script = (
             "if (window.OnigiriNotifications) {"
@@ -74,14 +63,10 @@ class MochiMessenger:
             "}"
         )
 
-        for web in webviews:
-            if not web:
-                continue
-            try:
-                web.eval(script)
-                break
-            except Exception:
-                continue
+        try:
+            web.eval(script)
+        except Exception:
+            pass
 
     def _select_message(self) -> Optional[str]:
         messages = self._messages()

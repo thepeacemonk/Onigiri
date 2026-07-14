@@ -8,9 +8,10 @@ from PyQt6.QtGui import QPixmap, QFont, QColor, QPainter, QPainterPath, QImage
 import os
 import random
 from aqt import gui_hooks, mw
-from . import restaurant_level
+from . import nook_level
 from .gamification import get_gamification_manager
 from .. import config
+from ..translations import tr
 
 class NavButton(QLabel):
     clicked = pyqtSignal()
@@ -135,10 +136,10 @@ class SnowOverlay(QWidget):
         for flake in self.snowflakes:
             painter.drawEllipse(flake["x"], flake["y"], flake["size"], flake["size"])
 
-class RestaurantLevelWidget(QWidget):
+class NookLevelWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.manager = restaurant_level.manager
+        self.manager = nook_level.manager
         self.gamification = get_gamification_manager()
         self.addon_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.image_base = os.path.join(self.addon_path, "system_files", "gamification_images")
@@ -197,8 +198,8 @@ class RestaurantLevelWidget(QWidget):
         pill_layout.setContentsMargins(5, 5, 5, 5)
         pill_layout.setSpacing(0)
         
-        self.btn_restaurant = NavButton("Restaurant")
-        self.btn_specials = NavButton("Specials")
+        self.btn_restaurant = NavButton(tr("restaurant_tab"))
+        self.btn_specials = NavButton(tr("specials_tab"))
         
         self.btn_restaurant.clicked.connect(lambda: self.switch_page(0))
         self.btn_specials.clicked.connect(lambda: self.switch_page(1))
@@ -308,19 +309,19 @@ class RestaurantLevelWidget(QWidget):
         stats_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Title
-        self.restaurant_title = QLabel("Restaurant Level")
+        self.restaurant_title = QLabel(tr("restaurant_level_title"))
         self.restaurant_title.setStyleSheet(f"font-size: 32px; font-weight: 800; color: {self.colors['text_main']};")
         self.restaurant_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(self.restaurant_title)
         
         # Subtitle
-        subtitle = QLabel("Serve knowledge daily to grow your restaurant!")
+        subtitle = QLabel(tr("restaurant_subtitle"))
         subtitle.setStyleSheet(f"font-size: 14px; color: {self.colors['text_sub']}; margin-bottom: 20px;")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(subtitle)
         
         # Level Badge (Pill)
-        self.level_badge = QLabel("Level 0")
+        self.level_badge = QLabel(f"{tr('level_prefix')} 0")
         self.level_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.level_badge.setFixedSize(140, 40)
         # Style will be set in refresh_data
@@ -340,7 +341,7 @@ class RestaurantLevelWidget(QWidget):
         stats_layout.addWidget(badge_container)
         
         # XP Text
-        self.xp_text = QLabel("0 / 0 XP")
+        self.xp_text = QLabel(f"0 / 0 {tr('xp_label')}")
         self.xp_text.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 14px; margin-top: 5px; margin-bottom: 10px;")
         self.xp_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stats_layout.addWidget(self.xp_text)
@@ -375,13 +376,13 @@ class RestaurantLevelWidget(QWidget):
         equip_layout.setSpacing(10)
         
         # Header
-        equip_header = QLabel("Current Restaurant")
+        equip_header = QLabel(tr("current_restaurant_header"))
         equip_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         equip_header.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {self.colors['text_main']};")
         equip_layout.addWidget(equip_header)
         
         # Equip Name
-        self.equip_name = QLabel("Loading...")
+        self.equip_name = QLabel(tr("loading"))
         self.equip_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.equip_name.setStyleSheet(f"font-size: 24px; font-weight: 700; color: {self.colors['text_main']}; margin-top: 5px;")
         equip_layout.addWidget(self.equip_name)
@@ -402,12 +403,12 @@ class RestaurantLevelWidget(QWidget):
         collection_layout.setSpacing(20)
         
         # Main Header
-        coll_header = QLabel("Restaurant Collection")
+        coll_header = QLabel(tr("restaurant_collection_header"))
         coll_header.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {self.colors['text_main']};")
         collection_layout.addWidget(coll_header)
         
         # 1. Restaurants Subsection
-        lbl_rest = QLabel("Restaurants")
+        lbl_rest = QLabel(tr("restaurants_header"))
         lbl_rest.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.colors['text_sub']};")
         collection_layout.addWidget(lbl_rest)
         
@@ -416,14 +417,23 @@ class RestaurantLevelWidget(QWidget):
         collection_layout.addLayout(self.restaurant_grid)
         
         # 2. Evolutions Subsection
-        lbl_evo = QLabel("Evolutions")
+        lbl_evo = QLabel(tr("evolutions_header"))
         lbl_evo.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.colors['text_sub']}; margin-top: 10px;")
         collection_layout.addWidget(lbl_evo)
         
         self.evolution_grid = QGridLayout()
         self.evolution_grid.setSpacing(15)
         collection_layout.addLayout(self.evolution_grid)
-        
+
+        # 3. Shops Subsection
+        lbl_shops = QLabel(tr("shops_header"))
+        lbl_shops.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.colors['text_sub']}; margin-top: 10px;")
+        collection_layout.addWidget(lbl_shops)
+
+        self.shop_grid = QGridLayout()
+        self.shop_grid.setSpacing(15)
+        collection_layout.addLayout(self.shop_grid)
+
         layout.addWidget(self.collection_card)
 
         layout.addStretch()
@@ -441,21 +451,24 @@ class RestaurantLevelWidget(QWidget):
         self.specials_layout.setContentsMargins(10, 0, 15, 0)
         self.specials_layout.setSpacing(20) # Match page spacing
 
-        # --- Daily Special Section ---
+        # --- Nook Rush Section ---
+        # The header shows the current shop's own Rush name (e.g. "Sushi Rush",
+        # "Coffee Rush", "Poké Rush") instead of a single generic title - see
+        # refresh_data(), which updates self.ds_title from the server ticket.
         self.special_card = RoundedFrame(bg_color=self.colors["card_bg"])
         special_layout = QVBoxLayout(self.special_card)
         special_layout.setContentsMargins(30, 25, 30, 30)
         special_layout.setSpacing(10)
-        
+
         # Header Row
         header_row = QHBoxLayout()
-        ds_title = QLabel("Daily Special")
-        ds_title.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self.colors['text_main']};")
-        
-        self.countdown_label = QLabel("00:00:00 left")
+        self.ds_title = QLabel(tr("recipe_rush_title", "Nook Rush"))
+        self.ds_title.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self.colors['text_main']};")
+
+        self.countdown_label = QLabel(tr("time_left_placeholder"))
         self.countdown_label.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {self.colors['text_main']};")
-        
-        header_row.addWidget(ds_title)
+
+        header_row.addWidget(self.ds_title)
         header_row.addStretch()
         header_row.addWidget(self.countdown_label)
         special_layout.addLayout(header_row)
@@ -466,7 +479,7 @@ class RestaurantLevelWidget(QWidget):
         
         # Left side: Name and Desc
         text_col = QVBoxLayout()
-        self.special_name = QLabel("Loading...")
+        self.special_name = QLabel(tr("loading"))
         self.special_name.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {self.colors['text_main']};")
         
         self.special_desc = QLabel("...")
@@ -483,14 +496,14 @@ class RestaurantLevelWidget(QWidget):
         badges_col.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         badges_col.setSpacing(8)
         
-        self.xp_badge = QLabel("0 XP")
+        self.xp_badge = QLabel(f"0 {tr('xp_label')}")
         self.xp_badge.setFixedSize(120, 32)
         self.xp_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.xp_badge.setStyleSheet("""
             background-color: #FCD34D; color: #000; border-radius: 16px; font-weight: bold; font-size: 14px;
         """)
         
-        self.rarity_badge = QLabel("Common")
+        self.rarity_badge = QLabel(tr("rarity_common"))
         self.rarity_badge.setFixedSize(120, 32)
         self.rarity_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rarity_badge.setStyleSheet("""
@@ -517,12 +530,45 @@ class RestaurantLevelWidget(QWidget):
         
         # Footer Text
         footer_row = QHBoxLayout()
-        self.progress_text = QLabel("0/0 cards")
+        self.progress_text = QLabel(f"0/0 {tr('cards')}")
         self.progress_text.setStyleSheet(f"font-size: 14px; color: {self.colors['text_sub']};")
+
+        self.stage_text = QLabel(tr("recipe_rush_stage_collect", "Collect ingredients"))
+        self.stage_text.setStyleSheet(f"font-size: 14px; font-weight: 800; color: {self.colors['text_main']};")
         
         footer_row.addWidget(self.progress_text)
         footer_row.addStretch()
+        footer_row.addWidget(self.stage_text)
         special_layout.addLayout(footer_row)
+
+        self.ticket_panel = RoundedFrame(bg_color=self.colors["recent_bg"], radius=12)
+        ticket_layout = QVBoxLayout(self.ticket_panel)
+        ticket_layout.setContentsMargins(16, 14, 16, 14)
+        ticket_layout.setSpacing(12)
+
+        self.ingredients_header = QLabel(tr("recipe_rush_ingredients", "Ingredients"))
+        self.ingredients_header.setStyleSheet(f"font-size: 12px; font-weight: 900; color: {self.colors['text_main']};")
+        ticket_layout.addWidget(self.ingredients_header)
+
+        self.ingredients_grid = QGridLayout()
+        self.ingredients_grid.setHorizontalSpacing(8)
+        self.ingredients_grid.setVerticalSpacing(8)
+        ticket_layout.addLayout(self.ingredients_grid)
+
+        self.recipe_steps_row = QHBoxLayout()
+        self.recipe_steps_row.setSpacing(10)
+        self.recipe_step_widgets = {}
+        for key, title in (
+            ("collect", tr("recipe_rush_stage_collect", "Collect ingredients")),
+            ("prepare", tr("recipe_rush_stage_prepare", "Prepare")),
+            ("deliver", tr("recipe_rush_stage_deliver", "Deliver")),
+        ):
+            step = self._create_recipe_step_card(title)
+            self.recipe_step_widgets[key] = step
+            self.recipe_steps_row.addWidget(step["frame"], 1)
+        ticket_layout.addLayout(self.recipe_steps_row)
+
+        special_layout.addWidget(self.ticket_panel)
         
         self.footer_msg = QLabel("To prepare, study X cards today before the restaurant closes.")
         self.footer_msg.setStyleSheet(f"font-size: 14px; color: {self.colors['text_sub']}; margin-top: 5px;")
@@ -531,7 +577,7 @@ class RestaurantLevelWidget(QWidget):
         self.specials_layout.addWidget(self.special_card)
 
         # --- Recipe Collection Section ---
-        collection_title = QLabel("Recipe Collection")
+        collection_title = QLabel(tr("recipe_collection_header"))
         collection_title.setStyleSheet(f"font-size: 20px; font-weight: bold; margin-top: 10px; color: {self.colors['text_main']};")
         self.specials_layout.addWidget(collection_title)
 
@@ -568,18 +614,18 @@ class RestaurantLevelWidget(QWidget):
             collection_grid.addWidget(card, row, col, 1, colspan)
             return lbl_count
 
-        self.common_count = create_recipe_card("Common", "#00C853", 0, 0)
-        self.uncommon_count = create_recipe_card("Uncommon", "#2979FF", 0, 1)
-        self.rare_count = create_recipe_card("Rare", "#D500F9", 1, 0)
-        self.epic_count = create_recipe_card("Epic", "#FF6D00", 1, 1)
+        self.common_count = create_recipe_card(tr("rarity_common"), "#00C853", 0, 0)
+        self.uncommon_count = create_recipe_card(tr("rarity_uncommon"), "#2979FF", 0, 1)
+        self.rare_count = create_recipe_card(tr("rarity_rare"), "#D500F9", 1, 0)
+        self.epic_count = create_recipe_card(tr("rarity_epic"), "#FF6D00", 1, 1)
         
         # Legendary takes the whole bottom row
-        self.legendary_count = create_recipe_card("Legendary", "#FFD600", 2, 0, colspan=2)
+        self.legendary_count = create_recipe_card(tr("rarity_legendary"), "#FFD600", 2, 0, colspan=2)
 
         self.specials_layout.addLayout(collection_grid)
 
         # --- Specials Book Section (All Recipe History) ---
-        specials_book_title = QLabel("Specials Book")
+        specials_book_title = QLabel(tr("specials_book_header"))
         specials_book_title.setStyleSheet(f"font-size: 20px; font-weight: bold; margin-top: 10px; color: {self.colors['text_main']};")
         self.specials_layout.addWidget(specials_book_title)
 
@@ -591,6 +637,172 @@ class RestaurantLevelWidget(QWidget):
 
         scroll.setWidget(content)
         self.page_specials_layout.addWidget(scroll)
+
+    def _create_recipe_step_card(self, title):
+        frame = RoundedFrame(bg_color=self.colors["card_bg"], radius=10)
+        frame.setMinimumHeight(76)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(f"font-size: 12px; font-weight: 900; color: {self.colors['text_main']};")
+
+        detail_label = QLabel("")
+        detail_label.setWordWrap(True)
+        detail_label.setStyleSheet(f"font-size: 11px; color: {self.colors['text_sub']};")
+
+        layout.addWidget(title_label)
+        layout.addWidget(detail_label)
+        layout.addStretch()
+        return {"frame": frame, "title": title_label, "detail": detail_label}
+
+    def _set_recipe_step_state(self, key, state, detail, theme_color, title=None):
+        step = self.recipe_step_widgets.get(key)
+        if not step:
+            return
+
+        if title:
+            step["title"].setText(title)
+
+        if state == "done":
+            bg = theme_color
+            border = theme_color
+            title_color = "#111111"
+            detail_color = "#222222"
+        elif state == "active":
+            bg = self.colors["card_bg"]
+            border = theme_color
+            title_color = self.colors["text_main"]
+            detail_color = self.colors["text_sub"]
+        else:
+            bg = self.colors["recent_bg"]
+            border = self.colors["progress_bg"]
+            title_color = self.colors["text_sub"]
+            detail_color = self.colors["text_sub"]
+
+        step["frame"].setStyleSheet(f"""
+            RoundedFrame {{
+                background-color: {bg};
+                border: 2px solid {border};
+                border-radius: 10px;
+            }}
+        """)
+        step["title"].setStyleSheet(f"font-size: 12px; font-weight: 900; color: {title_color};")
+        step["detail"].setText(detail)
+        step["detail"].setStyleSheet(f"font-size: 11px; color: {detail_color};")
+
+    def _clear_recipe_ingredients(self):
+        while self.ingredients_grid.count():
+            child = self.ingredients_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def _add_ingredient_chip(self, name, cards, done, row, col, theme_color):
+        chip = QLabel(f"{name} | {cards} {tr('cards')}")
+        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        chip.setMinimumHeight(30)
+        chip.setWordWrap(True)
+        if done:
+            bg = theme_color
+            fg = "#111111"
+            border = theme_color
+        else:
+            bg = self.colors["card_bg"]
+            fg = self.colors["text_main"]
+            border = self.colors["progress_bg"]
+        chip.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 15px;
+                padding: 5px 10px;
+                font-size: 12px;
+                font-weight: 800;
+            }}
+        """)
+        self.ingredients_grid.addWidget(chip, row, col)
+
+    def _update_recipe_ticket_details(self, ds_status, current, target, stage, theme_color, stage_labels, is_shop=False):
+        ingredients = ds_status.get("ingredients", [])
+        if not isinstance(ingredients, list):
+            ingredients = []
+
+        self._clear_recipe_ingredients()
+        cumulative = 0
+        ingredient_total = 0
+        rendered = 0
+        for index, item in enumerate(ingredients):
+            if isinstance(item, dict):
+                ing_name = str(item.get("name", "")).strip()
+                ing_cards = int(item.get("cards", 0) or 0)
+            else:
+                ing_name = str(item).strip()
+                ing_cards = 1
+            if not ing_name:
+                continue
+            ing_cards = max(1, ing_cards)
+            cumulative += ing_cards
+            ingredient_total += ing_cards
+            self._add_ingredient_chip(
+                ing_name,
+                ing_cards,
+                current >= cumulative,
+                rendered // 3,
+                rendered % 3,
+                theme_color,
+            )
+            rendered += 1
+
+        if rendered == 0:
+            self._add_ingredient_chip(
+                tr("recipe_rush_no_ingredients_shop", "Items ready") if is_shop
+                else tr("recipe_rush_no_ingredients", "Ingredients ready"),
+                max(1, target),
+                current >= target,
+                0,
+                0,
+                theme_color,
+            )
+            ingredient_total = max(1, int(target * 0.7))
+
+        prep_cards = max(1, int(ds_status.get("prep_cards", max(1, int(target * 0.2))) or 1))
+        delivery_cards = max(1, int(ds_status.get("delivery_cards", max(1, target - ingredient_total - prep_cards)) or 1))
+        prep_text = ds_status.get("preparation") or tr("recipe_rush_default_preparation", "Prepare the recipe.")
+        delivery_text = ds_status.get("delivery") or tr("recipe_rush_default_delivery", "Deliver before the Anki day ends.")
+
+        collect_state = "done" if current >= ingredient_total else "active"
+        prep_state = "locked"
+        deliver_state = "locked"
+        if current >= ingredient_total + prep_cards:
+            prep_state = "done"
+            deliver_state = "done" if current >= target or stage == "completed" else "active"
+        elif current >= ingredient_total:
+            prep_state = "active"
+
+        self._set_recipe_step_state(
+            "collect",
+            collect_state,
+            f"{min(current, ingredient_total)}/{ingredient_total} {tr('cards')}",
+            theme_color,
+            title=stage_labels.get("collect"),
+        )
+        self._set_recipe_step_state(
+            "prepare",
+            prep_state,
+            f"{prep_text} ({prep_cards} {tr('cards')})",
+            theme_color,
+            title=stage_labels.get("prepare"),
+        )
+        self._set_recipe_step_state(
+            "deliver",
+            deliver_state,
+            f"{delivery_text} ({delivery_cards} {tr('cards')})",
+            theme_color,
+            title=stage_labels.get("deliver"),
+        )
 
     def refresh_data(self):
         self.update_theme()
@@ -609,7 +821,7 @@ class RestaurantLevelWidget(QWidget):
         self.restaurant_title.setText(progress.name)
         
         # Update Level (with theme color)
-        self.level_badge.setText(f"Level {progress.level}")
+        self.level_badge.setText(f"{tr('level_prefix')} {progress.level}")
         self.level_badge.setStyleSheet(f"""
             background-color: transparent; 
             color: {self.colors['text_main']}; 
@@ -630,18 +842,18 @@ class RestaurantLevelWidget(QWidget):
         if xp_to_next > 0:
             self.xp_bar.setMaximum(xp_to_next)
             self.xp_bar.setValue(xp_into)
-            self.xp_text.setText(f"{xp_into} / {xp_to_next} XP")
+            self.xp_text.setText(f"{xp_into} / {xp_to_next} {tr('xp_label')}")
         else:
             self.xp_bar.setMaximum(100)
             self.xp_bar.setValue(100)
-            self.xp_text.setText("Max Level")
+            self.xp_text.setText(tr("max_level"))
 
         # 2. Update Header Image
         # Get equipped item image
         # Using manager's method
         img_name = self.manager.get_current_theme_image()
         # Full path
-        img_path = os.path.join(self.addon_path, "system_files", "gamification_images", "restaurant_folder", img_name)
+        img_path = os.path.join(self.addon_path, "system_files", "gamification_images", "nook_folder", img_name)
         
         if os.path.exists(img_path):
             pixmap = QPixmap(img_path)
@@ -665,88 +877,118 @@ class RestaurantLevelWidget(QWidget):
         
         # 3. Update Equipment Details
         current_id = self.manager.get_current_theme_id()
-        store_data = self.manager.get_store_data() # This fetches data from restaurant_level.py which now has descriptions!
+        store_data = self.manager.get_store_data() # This fetches data from nook_level.py which now has descriptions!
         
         # Find item data
         item_data = None
         if current_id == "default":
-             # Should have a default entry or construct one? 
+             # Should have a default entry or construct one?
              # store_data["restaurants"] doesn't have "default" explicitly usually?
-             # Let's check RESTRAURANTS in restaurant_level.py again. 
-             # It does NOT have "default". 
+             # Let's check RESTRAURANTS in nook_level.py again.
+             # It does NOT have "default".
              # Let's provide a fallback.
-             item_data = {
-                 "name": "Onigiri Stand",
-                 "description": "A humble food cart serving fresh Onigiri. The start of something great."
-             }
+              item_data = {
+                  "name": tr("onigiri_stand_name"),
+                  "description": tr("onigiri_stand_desc")
+              }
+              is_shop = False
         else:
              restaurants = store_data.get("restaurants", {})
              evolutions = store_data.get("evolutions", {})
-             item_data = restaurants.get(current_id) or evolutions.get(current_id)
+             shops = store_data.get("shops", {})
+             item_data = restaurants.get(current_id) or evolutions.get(current_id) or shops.get(current_id)
+             is_shop = current_id in shops
              
         if item_data:
              self.equip_name.setText(item_data.get("name", "Unknown"))
-             self.equip_desc.setText(item_data.get("description", "No description available."))
+             self.equip_desc.setText(item_data.get("description", tr("no_description_available")))
         
         
-        # 4. Update Daily Special
+        # 4. Update Nook Rush
         ds_status = self.manager.get_daily_special_status()
-        from datetime import datetime, timedelta
-        today = datetime.now().strftime('%Y-%m-%d')
-        
+        today = self.manager._get_anki_today_date()
+
         completed_today_special = next(
-            (s for s in self.gamification.daily_specials if s.completed_date and s.completed_date.startswith(today)),
+            (s for s in self.gamification.daily_specials if s.id == f"recipe_rush_{today}" and s.completed),
             None
         )
+
+        target = int(ds_status.get("target", 100) or 100)
+        current = int(ds_status.get("current_progress", 0) or 0)
+
+        rush_name = (ds_status.get("rush_name") if ds_status else None) or tr("recipe_rush_title", "Nook Rush")
+        self.ds_title.setText(rush_name)
+
+        name = rush_name
+        desc = tr("complete_your_reviews")
+        diff = "common"
+        xp_reward = int(ds_status.get("xp_reward", 0) or 0)
+
+        if ds_status:
+            name = ds_status.get("name", name)
+            desc = ds_status.get("description", desc)
+            diff = str(ds_status.get("difficulty", diff) or diff).lower()
+            if xp_reward <= 0:
+                xp_reward = target * 5
+                if diff == "uncommon": xp_reward = int(xp_reward * 1.2)
+                elif diff == "rare": xp_reward = int(xp_reward * 1.5)
+                elif diff == "epic": xp_reward = int(xp_reward * 2)
+                elif diff == "legendary": xp_reward = int(xp_reward * 2.5)
+                xp_reward = max(50, xp_reward)
         
-        target = ds_status.get("target", 100)
-        current = ds_status.get("current_progress", 0)
-        
-        # Try to get metadata
-        special_data = self.manager._get_daily_special_data() # Returns dict from JS/JSON logic usually, might need fallback
-        
-        name = "Daily Special"
-        desc = "Complete your reviews"
-        diff = "Common"
-        xp_reward = target * 5 # Approximation
-        
-        if special_data:
-            name = special_data.get("name", name)
-            desc = special_data.get("description", desc)
-            diff = special_data.get("difficulty", diff)
-            
-            # Simple XP calc logic if not available
-            if diff == "Uncommon": xp_reward = int(xp_reward * 1.5)
-            elif diff == "Rare": xp_reward = xp_reward * 2
-        
+        # Localize rarity for badge
+        localized_rarity = tr(f"rarity_{diff}") if diff in ["common", "uncommon", "rare", "epic", "legendary"] else diff.capitalize()
+
+        stage = ds_status.get("stage", "collect")
+        # Stage/ingredient terminology comes from the Apps Script ticket so it can
+        # vary by nook type (Restaurant/Sushi vs. Shop) - see ingredients_label /
+        # stage_*_label in nook_level.py::_normalize_recipe_rush_ticket. These
+        # generic tr() strings are only the fallback when the ticket omits them.
+        self.ingredients_header.setText(
+            ds_status.get("ingredients_label")
+            or (tr("recipe_rush_items", "Items") if is_shop else tr("recipe_rush_ingredients", "Ingredients"))
+        )
+        stage_labels = {
+            "collect": ds_status.get("stage_collect_label") or (
+                tr("recipe_rush_stage_collect_shop", "Collect items") if is_shop
+                else tr("recipe_rush_stage_collect", "Collect ingredients")
+            ),
+            "prepare": ds_status.get("stage_prepare_label") or tr("recipe_rush_stage_prepare", "Prepare"),
+            "deliver": ds_status.get("stage_deliver_label") or tr("recipe_rush_stage_deliver", "Deliver"),
+            "completed": ds_status.get("stage_completed_label") or tr("recipe_rush_stage_completed", "Delivered"),
+        }
+        self.stage_text.setText(stage_labels.get(stage, stage_labels["collect"]))
+        self._update_recipe_ticket_details(ds_status, current, target, stage, theme_color, stage_labels, is_shop)
+
         if completed_today_special:
              self.special_name.setText(completed_today_special.name)
              self.special_desc.setText(completed_today_special.description)
-             self.rarity_badge.setText(completed_today_special.difficulty.capitalize())
-             self.xp_badge.setText(f" {completed_today_special.xp_earned} XP")
+             self.rarity_badge.setText(localized_rarity)
+             self.xp_badge.setText(f" {completed_today_special.xp_earned} {tr('xp_label')}")
              
              self.special_progress_bar.setMaximum(target)
              self.special_progress_bar.setValue(target)
-             self.progress_text.setText(f"{target}/{target} cards")
-             self.footer_msg.setText("All done for today! Great job!")
+             self.progress_text.setText(f"{target}/{target} {tr('cards')}")
+             self.stage_text.setText(stage_labels["completed"])
+             self.footer_msg.setText(tr("all_done_msg"))
              self.update_badges(completed_today_special.difficulty)
              
         else:
             self.special_name.setText(name)
             self.special_desc.setText(desc)
-            self.rarity_badge.setText(diff.capitalize())
-            self.xp_badge.setText(f" {xp_reward} XP")
+            self.rarity_badge.setText(localized_rarity)
+            self.xp_badge.setText(f" {xp_reward} {tr('xp_label')}")
             self.update_badges(diff)
             
             self.special_progress_bar.setMaximum(target)
             self.special_progress_bar.setValue(min(current, target))
-            self.progress_text.setText(f"{current}/{target} cards")
+            self.progress_text.setText(f"{current}/{target} {tr('cards')}")
             
             needed = target - current
             if needed <= 0:
-                 self.footer_msg.setText("Goal reached! Syncing...")
+                 self.footer_msg.setText(tr("goal_reached_sync"))
             else:
-                 self.footer_msg.setText(f"To prepare, study {needed} cards today before the restaurant closes.")
+                 self.footer_msg.setText(f"{tr('prepare_msg_prefix')} {needed} {tr('prepare_msg_suffix')}")
 
         # 5. Update Specials Book (all recipe history)
         while self.recent_list.count():
@@ -869,6 +1111,11 @@ class RestaurantLevelWidget(QWidget):
         evolutions = store_data.get("evolutions", {})
         self._fill_grid(self.evolution_grid, evolutions, owned_items)
 
+        # 3. Shops
+        self.clear_layout(self.shop_grid)
+        shops = store_data.get("shops", {})
+        self._fill_grid(self.shop_grid, shops, owned_items)
+
     def _fill_grid(self, grid, items_dict, owned_items):
         row, col = 0, 0
         cols_per_row = 4
@@ -906,9 +1153,9 @@ class RestaurantLevelWidget(QWidget):
             
             # Load Image
             img_name = data.get("image")
-            img_path = os.path.join(self.addon_path, "system_files", "gamification_images", "restaurant_folder", img_name)
-            
-            if os.path.exists(img_path):
+            img_path = os.path.join(self.addon_path, "system_files", "gamification_images", "nook_folder", img_name) if img_name else None
+
+            if img_path and os.path.exists(img_path):
                 image = QImage(img_path)
                 
                 # Pre-scale to efficient size first (optimization)
@@ -1015,4 +1262,4 @@ class RestaurantLevelWidget(QWidget):
         m = (diff % 3600) // 60
         s = diff % 60
         
-        self.countdown_label.setText(f"{h:02d}:{m:02d}:{s:02d} left")
+        self.countdown_label.setText(f"{h:02d}:{m:02d}:{s:02d} {tr('time_left_suffix')}")

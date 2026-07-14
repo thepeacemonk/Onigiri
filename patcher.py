@@ -34,13 +34,13 @@ from . import onigiri_renderer
 from . import deck_tree_updater
 from . import profile_background
 from .color_utils import normalize_color_string, parse_color_string, get_contrast_text_color
-from .gamification import restaurant_level
+from .gamification import nook_level
 from . import settings, heatmap, fonts, gamification_settings
 from .gamification.gamification import get_gamification_manager
 from .fonts import get_all_fonts
 from .gamification import focus_dango
 from .constants import COLOR_LABELS
-from .gamification.restaurant_level_ui import RestaurantLevelWidget
+from .gamification.nook_level_ui import NookLevelWidget
 
 # --- Menu Styling ---
 def apply_menu_styling():
@@ -480,17 +480,30 @@ class RestaurantLevelDialog(QDialog):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         
-        self.widget = RestaurantLevelWidget(self)
+        self.widget = NookLevelWidget(self)
         layout.addWidget(self.widget)
         
         self.setLayout(layout)
 
-def open_restaurant_level_dialog():
+def open_nook_level_dialog():
     global _restaurant_dialog
     if _restaurant_dialog is not None:
         _restaurant_dialog.close()
     _restaurant_dialog = RestaurantLevelDialog(mw)
     _restaurant_dialog.show()
+
+
+_onigimon_care_dialog = None
+
+
+def open_onigimon_care_dialog():
+    global _onigimon_care_dialog
+    from .gamification.onigimon_care_ui import OnigimonCareDialog
+    if _onigimon_care_dialog is not None:
+        _onigimon_care_dialog.close()
+    _onigimon_care_dialog = OnigimonCareDialog(mw)
+    _onigimon_care_dialog.show()
+    return _onigimon_care_dialog
 
 
 class MrTaiyakiStoreDialog(QDialog):
@@ -514,7 +527,7 @@ class MrTaiyakiStoreDialog(QDialog):
         conf = config.get_config()
         addon_package = mw.addonManager.addonFromModule(__name__)
         
-        store_data = restaurant_level.manager.get_store_data()
+        store_data = nook_level.manager.get_store_data()
         store_data["image_base_path"] = f"/_addons/{addon_package}/system_files/gamification_images/restaurant_folder/"
         store_data["coin_image_path"] = f"/_addons/{addon_package}/system_files/gamification_images/Tayaki_coin.png"
         
@@ -534,8 +547,8 @@ class MrTaiyakiStoreDialog(QDialog):
     def _on_bridge_cmd(self, cmd: str) -> Any:
         if cmd.startswith("buy_item:"):
             item_id = cmd.split(":", 1)[1]
-            success, msg = restaurant_level.manager.buy_item(item_id)
-            new_data = restaurant_level.manager.get_store_data()
+            success, msg = nook_level.manager.buy_item(item_id)
+            new_data = nook_level.manager.get_store_data()
             return {
                 "success": success,
                 "message": msg,
@@ -546,7 +559,7 @@ class MrTaiyakiStoreDialog(QDialog):
             }
         elif cmd.startswith("equip_item:"):
             item_id = cmd.split(":", 1)[1]
-            success, msg = restaurant_level.manager.equip_item(item_id)
+            success, msg = nook_level.manager.equip_item(item_id)
             return {"success": success, "message": msg}
             
         return None
@@ -807,7 +820,7 @@ def _get_stats_html():
 
 
 def _get_restaurant_level_profile_html() -> str:
-    payload = restaurant_level.manager.get_progress_payload()
+    payload = nook_level.manager.get_progress_payload()
     if not payload.get("enabled") or not payload.get("showProfilePage"):
         return ""
 
@@ -836,7 +849,7 @@ def _get_restaurant_level_profile_html() -> str:
     if bar_mode == "custom":
         bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
     else:
-        bar_color = restaurant_level.manager.get_current_theme_color()
+        bar_color = nook_level.manager.get_current_theme_color()
 
     style_attr = ""
     if bar_color:
@@ -1125,12 +1138,26 @@ def on_webview_js_message(handled, message, context):
     """
     Unified handler for messages from all webviews.
     """
+    if message.startswith("openHashiNotes"):
+        from . import hashi_notes
+
+        parts = message.split(":", 1)
+        hn_context = parts[1] if len(parts) > 1 and parts[1] else "reviewer"
+        hashi_notes.open_hashi_note_popup(hn_context, mw)
+        return (True, None)
+
+    if message == "togglePomodoro":
+        from . import pomodoro
+
+        pomodoro.toggle_widget(mw)
+        return (True, None)
+
     if isinstance(context, Reviewer):
         if focus_dango.is_focus_dango_enabled():
             exit_commands = ["decks", "add", "browse", "stats", "sync"]
             if message in exit_commands:
                 if focus_dango.intercept_exit_attempt(message):
-                    focus_dango.show_dango_dialog()
+                    focus_dango.show_dango_dialog(message)
                     return (True, None)
     if message.startswith("saveImage:") and _profile_dialog and _profile_dialog.isVisible():
         try:
@@ -1163,8 +1190,30 @@ def on_webview_js_message(handled, message, context):
             from .gamification.taiyaki_store import open_taiyaki_store
             open_taiyaki_store()
             return (True, None)
-        if cmd == "openRestaurantLevel":
-            open_restaurant_level_dialog()
+        if cmd in ("openRestaurantLevel", "restaurant_level"):
+            open_nook_level_dialog()
+            return (True, None)
+        if cmd == "openOnigimonCare":
+            open_onigimon_care_dialog()
+            return (True, None)
+        if cmd.startswith("hex_land_widget_pan:"):
+            try:
+                from .gamification import hexagon_land
+                coords = cmd.split(":", 1)[1]
+                data = json.loads(unquote(coords))
+                state = hexagon_land.manager.load()
+                state.widget_offset_x = float(data.get("x", 0))
+                state.widget_offset_y = float(data.get("y", 0))
+                if "s" in data:
+                    state.widget_scale = float(data.get("s", 0))
+                hexagon_land.manager.save(state)
+            except Exception as e:
+                print(f"Error saving Hexagon Land widget pan: {e}")
+            return (True, None)
+        if cmd == "redeemReward:hex":
+            from .gamification.reward_redemption import open_reward_redeem_dialog
+
+            open_reward_redeem_dialog(context="hex")
             return (True, None)
         if cmd == "showGamification":
             open_gamification_dialog()
@@ -2480,8 +2529,8 @@ def generate_reviewer_top_bar_html_and_css():
     if (restaurant_conf.get("enabled", False) and 
         restaurant_conf.get("show_reviewer_header", False)):
         try:
-            from .gamification import restaurant_level
-            progress = restaurant_level.manager.get_progress()
+            from .gamification import nook_level
+            progress = nook_level.manager.get_progress()
             if progress and progress.enabled:
                 show_restaurant_chip = True
                 # Get progress data using the correct property names
@@ -2494,7 +2543,7 @@ def generate_reviewer_top_bar_html_and_css():
                 if bar_mode == "custom":
                     bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
                 else:
-                    bar_color = restaurant_level.manager.get_current_theme_color()
+                    bar_color = nook_level.manager.get_current_theme_color()
                 
                 chip_style = ""
                 if bar_color:
@@ -2700,7 +2749,7 @@ def generate_reviewer_top_bar_html_and_css():
     
     # Inject theme color CSS if a theme is active
     if show_restaurant_chip:
-        theme_color = restaurant_level.manager.get_current_theme_color()
+        theme_color = nook_level.manager.get_current_theme_color()
         if theme_color:
             # Convert hex to RGB for shadow
             r = int(theme_color[1:3], 16)
@@ -3936,10 +3985,10 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
 def update_reviewer_chip():
     """Update the restaurant level chip in the reviewer. Can be called from anywhere."""
     try:
-        from .gamification import restaurant_level
+        from .gamification import nook_level
         
         # Get the latest progress data
-        progress = restaurant_level.manager.get_progress()
+        progress = nook_level.manager.get_progress()
         if not progress or not getattr(progress, 'enabled', False):
             return
             

@@ -11,7 +11,7 @@ from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 
 from . import config, heatmap, deck_tree_updater, sidebar_api, profile_background
 from . import patcher
-from .gamification import onigimon, restaurant_level
+from .gamification import onigimon, nook_level
 from .templates import custom_body_template
 
 
@@ -452,10 +452,10 @@ def _get_onigiri_restaurant_level_html() -> str:
     """
     # Invalidate cache to ensure fresh data when deck browser is rendered
     # REVERTED: Do NOT invalidate here. It causes lag on every render.
-    # restaurant_level.manager.invalidate_daily_cache()
+    # nook_level.manager.invalidate_daily_cache()
     
     # Get Restaurant Level Data
-    rl_payload = restaurant_level.manager.get_progress_payload()
+    rl_payload = nook_level.manager.get_progress_payload()
     if not rl_payload.get("enabled"):
         return """
         <div class="onigiri-restaurant-level-widget disabled">
@@ -480,7 +480,7 @@ def _get_onigiri_restaurant_level_html() -> str:
         xp_text = f"{xp_into} / {xp_next} XP"
 
     # Theme Color
-    theme_color = restaurant_level.manager.get_current_theme_color()
+    theme_color = nook_level.manager.get_current_theme_color()
     bar_color = theme_color if theme_color else "var(--accent-color, #007bff)"
     
     # Background for expanded view
@@ -490,7 +490,7 @@ def _get_onigiri_restaurant_level_html() -> str:
         bg_style_value = "linear-gradient(135deg, #ff6b6b, #ffb347)"
     
     # Get Image and check if it's Santa's Coffee
-    image_file = restaurant_level.manager.get_current_theme_image()
+    image_file = nook_level.manager.get_current_theme_image()
     if not image_file:
         image_file = "restaurant_level.png" # Default
     
@@ -530,7 +530,7 @@ def _get_onigiri_restaurant_level_html() -> str:
     """
     
     # Get Daily Special Data
-    daily_special = restaurant_level.manager.get_daily_special_status()
+    daily_special = nook_level.manager.get_daily_special_status()
     ds_enabled = daily_special.get("enabled", False)
     ds_progress = daily_special.get("current_progress", 0)
     ds_target = daily_special.get("target", 100)
@@ -623,6 +623,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     time_today_minutes = time_today_seconds / 60
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
 
+    def _render_hexagon_land_widget():
+        from .gamification import hexagon_land
+        return hexagon_land.render_widget_html()
+
+    def _render_learner_stats_widget():
+        from . import learner_stats_widget
+        return learner_stats_widget._render_widget(self, "deck_stats")
+
+    def _render_prep_station_widget(slot_count=4):
+        from . import prep_station
+        return prep_station.render_widget_html(slot_count=slot_count)
+
     widget_generators = {
         "studied": lambda: _get_onigiri_stat_card_html("Studied", f"{cards_today} cards", "studied"),
         "time": lambda: _get_onigiri_stat_card_html("Time", f"{time_today_minutes:.1f} min", "time"),
@@ -632,18 +644,56 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "favorites": _get_onigiri_favorites_html, # <-- ADD THIS LINE
         "restaurant_level": _get_onigiri_restaurant_level_html,
         "onigimon": onigimon.render_widget_html,
+        "hexagon_land": _render_hexagon_land_widget,
+        "deck_stats": _render_learner_stats_widget,
+        "prep_station": _render_prep_station_widget,
     }
-    
+
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
             if widget_id in widget_generators:
                 pos = widget_config.get("pos", 0)
                 row_span = widget_config.get("row", 1)
                 col_span = widget_config.get("col", 1)
+                if widget_id == "deck_stats":
+                    try:
+                        row_span = max(1, min(2, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(2, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 1
+                elif widget_id == "hexagon_land":
+                    try:
+                        row_span = max(1, min(4, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(4, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 2
+
                 row = pos // col_count + 1
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
-                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_generators[widget_id]()}</div>'
+                if widget_id == "prep_station":
+                    widget_html = _render_prep_station_widget(slot_count=col_span)
+                elif widget_id == "onigimon":
+                    try:
+                        onigimon_row_span = int(row_span)
+                    except (TypeError, ValueError):
+                        onigimon_row_span = 2
+                    try:
+                        onigimon_col_span = int(col_span)
+                    except (TypeError, ValueError):
+                        onigimon_col_span = 1
+                    widget_html = onigimon.render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
+                else:
+                    widget_html = widget_generators[widget_id]()
+                if not str(widget_html or "").strip():
+                    continue
+                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_html}</div>'
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
@@ -664,7 +714,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     if col_count > 0:
         for hook_id, widget_config in grid_config.items():
-            if hook_html := external_widgets_data.get(hook_id):
+            if "learner_stats_widget" in hook_id:
+                try:
+                    from . import learner_stats_widget
+                    hook_html = learner_stats_widget._render_widget(self, hook_id)
+                except Exception as e:
+                    hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
+            else:
+                hook_html = external_widgets_data.get(hook_id)
+            if hook_html:
                 pos = widget_config.get("grid_position", 0)
                 row = pos // col_count + 1
                 col = pos % col_count + 1
@@ -1118,7 +1176,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     profile_pic_html_expanded = _get_profile_pic_html(user_name, addon_package)
 
-    rl_payload = restaurant_level.manager.get_progress_payload()
+    rl_payload = nook_level.manager.get_progress_payload()
     rl_chip = ""
     if rl_payload.get("enabled") and rl_payload.get("showProfileBar"):
         percent = rl_payload.get("progressFraction") or 0.0
@@ -1154,7 +1212,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     if bar_mode == "custom":
         rl_theme_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
     else:
-        rl_theme_color = restaurant_level.manager.get_current_theme_color()
+        rl_theme_color = nook_level.manager.get_current_theme_color()
 
     if rl_theme_color:
         theme_css = f"""
