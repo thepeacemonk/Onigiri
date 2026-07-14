@@ -166,7 +166,7 @@ class InfraMixin:
 
     def _refresh_save_button_icon(self):
         if hasattr(self, "save_button"):
-            self.save_button.setIcon(self._themed_icon("check.svg", self._save_button_icon_color(), 18))
+            self.save_button.setIcon(self._themed_icon("hg-check.svg", self._save_button_icon_color(), 16))
             self.save_button.setIconSize(QSize(18, 18))
 
     def _decorate_nav_sub_buttons(self, toggle_widget, icon_map):
