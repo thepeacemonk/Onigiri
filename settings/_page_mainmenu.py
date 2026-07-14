@@ -622,7 +622,7 @@ class PageMainmenuMixin:
         controls_left_layout.addStretch(1)
 
         bottom_columns = ResponsivePairWidget(
-            controls_left, shape_column, spacing=18, breakpoint=760,
+            controls_left, shape_column, spacing=18, breakpoint=100000,
             left_stretch=2, right_stretch=1
         )
         outer.addWidget(bottom_columns)
