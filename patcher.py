@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs, urlencode, unquote, quote_plus
 from typing import Optional, Dict, List, Tuple, Any, Callable, Union
 from . import config
+from .translations import tr
 from . import onigiri_renderer
 from . import deck_tree_updater
 from . import profile_background
@@ -447,7 +448,7 @@ def _load_mr_taiyaki_store_html() -> str:
 class RestaurantLevelDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Restaurant Level")
+        self.setWindowTitle(tr("restaurant_level", "Nook Level"))
         
         # Calculate adaptive window size based on screen geometry
         try:
@@ -859,7 +860,7 @@ def _get_restaurant_level_profile_html() -> str:
     <section class="profile-restaurant-level" data-level="{level}" {style_attr}>
         <header class="prl-header">
             <div class="prl-title-group">
-                <span class="prl-title">Restaurant Level</span>
+                <span class="prl-title">{tr("restaurant_level", "Nook Level")}</span>
                 <span class="prl-level">Lv {level}</span>
             </div>
             <span class="prl-total">{html.escape(total_label, quote=False)}</span>
