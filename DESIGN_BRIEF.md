@@ -84,3 +84,16 @@ H. Full verify sweep (compile all, node --check, unresolved names) + commit.
   square-corner scrollbar hunt — page-level QScrollArea handle (user still sees
   square corners; global QSS has 3px radius — find which scrollbar is unstyled,
   possibly the webview or a per-page style overriding).
+
+## PAGE-BY-PAGE REBUILD PROGRAM (agreed 2026-07-14; one page per round, screenshot-verified)
+Ground rules per page: reference anatomy (bold section header + desc; rows title-left/
+control-right; hairlines; no giant previews; kill per-section sun/moon+Restore header
+clutter — one theme preview control per page max; overflow text fades not ellipsis).
+Order: 1. Main menu (worst offender; split Organize/Grid/Box/Widget-bg/Background/
+Heatmap into clean sections) → 2. Sidebar → 3. Modes → 4. Profile → 5. Reviewer →
+6. Overviewer → 7. Fonts → 8. Themes/Gallery/Languages/Sync → 9. Study tool pages →
+10. gamification hub → 11. non-settings dialogs (prep/hashi/pomodoro/care).
+Done so far at dialog level: fixed neutral scheme (#1e1e1d warm dark / paper light),
+inline live nav search (field feeds Search page), profile pill removed from nav,
+30px tight nav rows, thin scrollbars, flat designer frames, clamped previews,
+capped inputs, global control family.
