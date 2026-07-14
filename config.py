@@ -88,7 +88,7 @@ DEFAULTS = {
     },
     "restaurant_level": {
         "enabled": False,
-        "name": "Restaurant Level",
+        "name": "Nook Level",
         "total_xp": 0,
         "level": 0,
         "difficulty": "Apprendice",

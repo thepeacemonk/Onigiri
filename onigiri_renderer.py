@@ -1921,15 +1921,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             width: 16px;
             height: 16px;
             margin-left: 4px;
-            background-color: currentColor;
-            mask-image: var(--rl-nav-icon);
-            -webkit-mask-image: var(--rl-nav-icon);
-            mask-size: contain;
-            -webkit-mask-size: contain;
-            mask-repeat: no-repeat;
-            -webkit-mask-repeat: no-repeat;
-            mask-position: center;
-            -webkit-mask-position: center;
+            fill: currentColor;
         }}
         
         /* Style for expanded view - reduce button visibility */

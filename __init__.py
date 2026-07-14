@@ -441,7 +441,17 @@ def on_profile_did_open():
     Logic that requires access to `mw.col` (collection/database/config) goes here.
     """
     # Trigger config migration
-    config.get_config()
+    conf = config.get_config()
+
+    # One-time rename: the level system's old default title carries over in
+    # saved configs; migrate it to the current default so the UI says Nook.
+    try:
+        rl_conf = conf.get("restaurant_level")
+        if isinstance(rl_conf, dict) and rl_conf.get("name") == "Restaurant Level":
+            rl_conf["name"] = "Nook Level"
+            config.write_config(conf)
+    except Exception as e:
+        print(f"Onigiri: nook name migration skipped: {e}")
     
     # Update the Qt startup overlay's background color now that mw.col is available,
     # so it accurately matches the user's configured theme color.
