@@ -342,7 +342,7 @@ class PageColorsMixin:
 
         retention_section = self._create_box_effect_retention_star_section()
         bottom_columns = ResponsivePairWidget(
-            settings_column, retention_section, spacing=18, breakpoint=0,
+            settings_column, retention_section, spacing=18, breakpoint=100000,
             left_stretch=1, right_stretch=1
         )
         outer.addWidget(bottom_columns)
