@@ -30,19 +30,32 @@ def get_heatmap_data():
     # Get the local date string for today (e.g., "2025-10-23")
     today_date_key = datetime.fromtimestamp(today_start_seconds).strftime('%Y-%m-%d')
 
+
     # --- 1. Fetch Past Reviews (excluding today) ---
-    # Use STRFTIME with 'localtime' and the offset to correctly group reviews
-    # by the local day, just like the reference add-on.
-    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
+    # Fetch all review timestamps and group them in Python.
+    # This avoids SQLite's STRFTIME with the 'localtime' modifier,
+    # which is extremely slow on large collections.
     query_past = """
-        SELECT 
-            STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day') as day_key,
-            COUNT()
+        SELECT id
         FROM revlog
-        WHERE type IN (0,1,2,3) AND id < ? -- Only actual reviews *before* the start of today
-        GROUP BY day_key
+        WHERE type IN (0,1,2,3) AND id < ?
     """
-    reviews_by_day = dict(mw.col.db.all(query_past, offset_seconds, today_start_ms))
+    raw_past_reviews = mw.col.db.list(query_past, today_start_ms)
+
+    from collections import defaultdict
+    from datetime import date
+
+    counts = defaultdict(int)
+    from_timestamp = date.fromtimestamp
+
+    for row_id in raw_past_reviews:
+        ts = row_id / 1000 - offset_seconds
+        counts[from_timestamp(ts)] += 1
+
+    reviews_by_day = {
+        dt.strftime('%Y-%m-%d'): count
+        for dt, count in counts.items()
+    }
 
     # --- 2. Fetch Today's Review Count ---
     # Get a precise count for reviews *since* the start of today
@@ -77,16 +90,21 @@ def get_heatmap_data():
         future_date_key = datetime.fromtimestamp(future_timestamp_s).strftime('%Y-%m-%d')
         due_by_day[future_date_key] = count
 
+
     # --- 4. Calculate Streak ---
-    # We must use the same date logic for all review days
-    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
+    # Fetch distinct days safely in Python
     all_review_days_query = """
-        SELECT DISTINCT STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day')
+        SELECT id
         FROM revlog
         WHERE type IN (0,1,2,3)
     """
-    review_days_set = set(mw.col.db.list(all_review_days_query, offset_seconds))
+    raw_all_reviews = mw.col.db.list(all_review_days_query)
     
+    review_days_set = set()
+    for row_id in raw_all_reviews:
+        ts = row_id / 1000 - offset_seconds
+        dt = from_timestamp(ts)
+        review_days_set.add(dt.strftime('%Y-%m-%d'))
     streak = 0
     yesterday_key = datetime.fromtimestamp(today_start_seconds - 86400).strftime('%Y-%m-%d')
 
