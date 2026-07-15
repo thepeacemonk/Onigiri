@@ -216,7 +216,7 @@
 .nav-btn svg {
     width: 14px;
     height: 14px;
-    fill: var(--fg);
+    fill: currentColor;
     pointer-events: none;
 }
 
