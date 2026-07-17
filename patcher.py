@@ -6281,9 +6281,9 @@ def generate_reviewer_buttons_css(conf):
         :root {{
             --onigiri-reviewer-new-count-bg: {_overview_count_color("light", "new_bubble", "--new-count-bubble-bg", "#1e8cff")};
             --onigiri-reviewer-new-count-fg: {_overview_count_color("light", "new_text", "--new-count-bubble-fg", "#ffffff")};
-            --onigiri-reviewer-learn-count-bg: {_overview_count_color("light", "learn_bubble", "--learn-count-bubble-bg", "#19c96b")};
+            --onigiri-reviewer-learn-count-bg: {_overview_count_color("light", "learn_bubble", "--learn-count-bubble-bg", "#ff5757")};
             --onigiri-reviewer-learn-count-fg: {_overview_count_color("light", "learn_text", "--learn-count-bubble-fg", "#ffffff")};
-            --onigiri-reviewer-review-count-bg: {_overview_count_color("light", "review_bubble", "--review-count-bubble-bg", "#ff5757")};
+            --onigiri-reviewer-review-count-bg: {_overview_count_color("light", "review_bubble", "--review-count-bubble-bg", "#19c96b")};
             --onigiri-reviewer-review-count-fg: {_overview_count_color("light", "review_text", "--review-count-bubble-fg", "#ffffff")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_light};
         }}
@@ -6292,9 +6292,9 @@ def generate_reviewer_buttons_css(conf):
         .night-mode {{
             --onigiri-reviewer-new-count-bg: {_overview_count_color("dark", "new_bubble", "--new-count-bubble-bg", "#0a84ff")};
             --onigiri-reviewer-new-count-fg: {_overview_count_color("dark", "new_text", "--new-count-bubble-fg", "#f7fbff")};
-            --onigiri-reviewer-learn-count-bg: {_overview_count_color("dark", "learn_bubble", "--learn-count-bubble-bg", "#12b765")};
+            --onigiri-reviewer-learn-count-bg: {_overview_count_color("dark", "learn_bubble", "--learn-count-bubble-bg", "#ff453a")};
             --onigiri-reviewer-learn-count-fg: {_overview_count_color("dark", "learn_text", "--learn-count-bubble-fg", "#f4fff8")};
-            --onigiri-reviewer-review-count-bg: {_overview_count_color("dark", "review_bubble", "--review-count-bubble-bg", "#ff453a")};
+            --onigiri-reviewer-review-count-bg: {_overview_count_color("dark", "review_bubble", "--review-count-bubble-bg", "#12b765")};
             --onigiri-reviewer-review-count-fg: {_overview_count_color("dark", "review_text", "--review-count-bubble-fg", "#fff5f5")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_dark};
         }}
@@ -6866,7 +6866,7 @@ def generate_reviewer_buttons_css(conf):
             // rebuild of the button wipes it for good). Cache the last real read so
             // a later empty scrape - caused by our own rebuild, not a real change -
             // doesn't blank the pills out.
-            let onigiriLastKnownStats = null;
+            let onigiriLastKnownStats = { counts: [], activeIndex: -1 };
 
             function cleanText(value) {
                 return (value || '').replace(/\\s+/g, ' ').trim();
@@ -7074,31 +7074,35 @@ def generate_reviewer_buttons_css(conf):
             }
 
             function collectPreAnswerCounts(timerNode, timerText) {
-                // Anki can render the new/learn/review counts either as separate
-                // .stattxt nodes ("7268", "+", "68", "+", "5") or as a single
-                // .stattxt node whose textContent is already "7268 + 68 + 5" - and
-                // on builds with the answer timer on, that same node (or a sibling
-                // sharing the .stattxt class) can also carry the "0:09" timer text.
-                // Rather than dropping a whole node when it merely contains the
-                // timer text, cut just that substring out before splitting, so real
-                // counts sharing a node with the timer still come through.
                 const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
                     .filter(node => !node.closest('.onigiri-pre-answer-counts'));
                 nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
-                let combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
+
+                let combinedText = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
+                let combinedHtml = nodes.map(node => node.innerHTML || '').filter(Boolean).join(' ');
+
                 if (timerNode && timerText) {
-                    combined = combined.split(timerText).map(part => cleanText(part)).filter(Boolean).join(' ');
+                    combinedText = combinedText.split(timerText).map(part => cleanText(part)).filter(Boolean).join(' ');
+                    combinedHtml = combinedHtml.split(timerText).join(' ');
                 }
-                const scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
+
+                const scraped = combinedText.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
+
+                // Identify active count (underlined)
+                let activeIndex = -1;
+                const htmlParts = combinedHtml.split('+');
+                for (let i = 0; i < Math.min(htmlParts.length, 3); i++) {
+                    if (htmlParts[i] && htmlParts[i].includes('<u') || htmlParts[i] && htmlParts[i].includes('text-decoration: underline')) {
+                        activeIndex = i;
+                        break;
+                    }
+                }
+
                 if (scraped.length > 0) {
-                    onigiriLastKnownStats = scraped;
-                    return scraped;
+                    onigiriLastKnownStats = { counts: scraped, activeIndex: activeIndex };
+                    return onigiriLastKnownStats;
                 }
-                // Empty scrape: almost always means our own earlier rebuild already
-                // wiped the native counts node for this card, not that the counts
-                // themselves vanished. Fall back to the last real read instead of
-                // reporting "no counts" (which would blank the pills every tick).
-                return onigiriLastKnownStats || [];
+                return onigiriLastKnownStats || { counts: [], activeIndex: -1 };
             }
 
             function prepareShowAnswerCounts(buttons) {
@@ -7114,7 +7118,9 @@ def generate_reviewer_buttons_css(conf):
 
                 const timerNode = findOnigiriNativeTimerNode();
                 const timerText = timerNode ? cleanText(timerNode.textContent) : '';
-                const stats = collectPreAnswerCounts(timerNode, timerText);
+                const statsData = collectPreAnswerCounts(timerNode, timerText);
+                const stats = statsData.counts;
+                const activeIndex = statsData.activeIndex;
                 if (timerNode) forceHideNativeNumberElement(timerNode, 'onigiri-native-timer-source');
 
                 if (ONIGIRI_TIMER_POSITION === 'out') {
@@ -7143,7 +7149,7 @@ def generate_reviewer_buttons_css(conf):
                 // button would rebuild every second and lose the counts after the
                 // very first tick. The timer text itself is still updated live,
                 // in place, below, without triggering a rebuild.
-                const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0');
+                const structureKey = stats.join('|') + '::' + activeIndex + '::' + (hasInsideTimer ? '1' : '0');
                 const label = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
                 showButton.classList.add('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
                 showButton.setAttribute('data-onigiri-show-answer-label', label || 'Show Answer');
@@ -7169,6 +7175,11 @@ def generate_reviewer_buttons_css(conf):
                     ['new', 'learn', 'review'].forEach((kind, index) => {
                         const pill = document.createElement('span');
                         pill.className = 'onigiri-count-pill onigiri-count-pill-' + kind;
+                        if (index === activeIndex) {
+                            pill.style.textDecoration = 'underline';
+                            pill.style.textUnderlineOffset = '3px';
+                            pill.style.textDecorationThickness = '2px';
+                        }
                         pill.textContent = stats[index] || '0';
                         container.appendChild(pill);
                     });
