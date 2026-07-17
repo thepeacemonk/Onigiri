@@ -2009,8 +2009,19 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
         hp_line = " · ".join(hp_bits)
         hp_line_html = f"<span>{escape(hp_line)}</span>" if hp_line else ""
 
+        meters = f"""
+            {_meter("HP", health_value, "#08c46b", str(current_hp))}
+            {_meter(tr("onigimon_status_happiness"), int(status_values.get("happiness", 0)), "#ffbd55", str(int(companion.get("happiness", 0) or 0)))}
+            {_meter(tr("onigimon_status_hygiene"), int(status_values.get("hygiene", 0)), "#21b7d6", str(int(companion.get("cleanliness", 0) or 0)))}
+            {_meter(tr("onigimon_status_training"), int(status_values.get("training", 0)), "#c866e5", str(int(companion.get("training", 0) or 0)))}
+            {_meter(tr("onigimon_status_hunger"), int(status_values.get("hunger", 0)), "#f45bb3", str(int(companion.get("hunger", 0) or 0)))}
+        """
+        # One continuous card: a coloured top section (sprite + name) fused to a
+        # neutral lower section (stat meters) with a flat seam, mirroring the
+        # Prep Station card structure.
         body = f"""
-            <div class="onigimon-main onigimon-scene" {_onigimon_scene_style_attr()}>
+        <div class="onigimon-card">
+            <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr()}>
                 {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
                 <div class="onigimon-info">
@@ -2018,11 +2029,8 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
                     <span>{escape(tr("onigimon_level"))} {int(companion.get("level") or 1)}</span>
                 </div>
             </div>
-            {_meter("HP", health_value, "#08c46b", str(current_hp))}
-            {_meter(tr("onigimon_status_happiness"), int(status_values.get("happiness", 0)), "#ffbd55", str(int(companion.get("happiness", 0) or 0)))}
-            {_meter(tr("onigimon_status_hygiene"), int(status_values.get("hygiene", 0)), "#21b7d6", str(int(companion.get("cleanliness", 0) or 0)))}
-            {_meter(tr("onigimon_status_training"), int(status_values.get("training", 0)), "#c866e5", str(int(companion.get("training", 0) or 0)))}
-            {_meter(tr("onigimon_status_hunger"), int(status_values.get("hunger", 0)), "#f45bb3", str(int(companion.get("hunger", 0) or 0)))}
+            <div class="onigimon-bottom">{meters}</div>
+        </div>
         """
 
     return f"""
@@ -2102,7 +2110,7 @@ def _normalize_scene_color(value: Any) -> str:
     text = str(value or "").strip()
     if re.match(r"^#[0-9a-fA-F]{6}$", text):
         return text
-    return "#7FD179"
+    return "#6ea96a"
 
 
 def _onigimon_scene_image_url() -> str:
@@ -2123,7 +2131,7 @@ def _onigimon_scene_image_url() -> str:
 
 
 def _onigimon_scene_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#6ea96a"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))
@@ -2147,7 +2155,7 @@ def _onigimon_scene_style_attr() -> str:
 
 
 def _onigimon_scene_background_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#6ea96a"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))

@@ -417,12 +417,12 @@ custom_body_template = """
         background: #e5e5e5;
         border: 1px solid var(--border);
         border-radius: 10px;
-        padding: 6px 6px 6px 12px;
+        padding: 5px 5px 5px 10px;
         outline: none;
         transition: none;
     }
     .night-mode #onigiri-deck-search-bar {
-        background: #252525;
+        background: var(--highlight-bg);
     }
     .sidebar-left.sidebar-mode-minimal #onigiri-deck-search-bar {
         top: 87.5px;

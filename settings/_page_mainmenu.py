@@ -1650,7 +1650,7 @@ class PageMainmenuMixin:
         show_settings_toast(self, tr("heatmap_colors_reset_toast", "Heatmap colors reset — press Save to apply"))
 
     def _save_main_menu_settings(self):
-        mw.col.conf["modern_menu_statsTitle"] = self.stats_title_input.text()
+        mw.col.conf["modern_menu_statsTitle"] = self.stats_title_input.text().strip()
         
         # Save Heatmap Default View
         if hasattr(self, "heatmap_view_group"):

@@ -982,7 +982,10 @@ class PageGalleryMixin:
         dialog.setWindowTitle("Select from your Gallery")
         dialog.resize(760, 520)
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 8, 0, 8)
+        # Zero horizontal margins here left the hint bar, tile grid, and Done
+        # button all sitting flush against the dialog's edges — the main
+        # source of the "not clean" look. Give it real breathing room.
+        layout.setContentsMargins(18, 14, 18, 16)
         layout.setSpacing(10)
         self._style_background_gallery_dialog(dialog)
         layout.addWidget(self._create_background_gallery_hint_bar("single"))
@@ -992,7 +995,7 @@ class PageGalleryMixin:
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
         content.setObjectName("backgroundGalleryContent")
-        flow = FlowLayout(content, margin=0, spacing=10)
+        flow = FlowLayout(content, margin=4, spacing=10)
         tiles = []
 
         def refresh_badges():

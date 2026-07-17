@@ -24,9 +24,9 @@
 /* --- Nav bar — absolute top, fixed position for all views --- */
 .onigiri-heatmap-header {
     position: absolute;
-    top: 15px;
-    left: 15px;
-    right: 15px;
+    top: 16px;
+    left: 18px;
+    right: 18px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -45,6 +45,23 @@
     min-width: 0;
 }
 
+/* Widget title — matches the caps header used on the other dashboard widgets
+   (12px / 700 / 0.08em uppercase, muted). Forced with !important so the
+   heatmap's own control typography can't override the size/spacing. */
+.onigiri-heatmap-header .heatmap-widget-title {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: var(--fg-subtle, #8a8a8a) !important;
+    text-align: left !important;
+    white-space: nowrap;
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif) !important;
+}
+
 .onigiri-heatmap-header .header-right {
     flex: 0 0 auto;
 }
@@ -53,14 +70,14 @@
 .heatmap-nav {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0px;
 }
 
 /* --- Streak Counter — inline flex child of .heatmap-nav, to the right of year selector --- */
 .streak-counter {
     font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--fg-subtle);
     background-color: var(--highlight-bg);
     border-radius: var(--heatmap-control-radius);
@@ -286,55 +303,27 @@
     position: relative;
 }
 
+/* Year selector: a plain button with no chevron. It also carries the
+   .nav-btn class, so it inherits that button's background + hover + active
+   feedback (and native-style reset) — this block only widens it to fit the
+   year label instead of the fixed 26px icon-button width. */
 .year-select-btn {
+    width: auto !important;
+    min-width: 0 !important;
+    height: var(--heatmap-control-height) !important;
+    padding: 0 10px !important;
+    gap: 0 !important;
     font-size: 13px;
     font-weight: 500;
-    color: var(--fg);
-    background-color: var(--highlight-bg);
-    border: none !important;
-    border-radius: 8px !important;
-    height: 24px;
-    padding: 0 8px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    outline: none !important;
+    line-height: 1 !important;
     white-space: nowrap;
     font-family: var(--font-main, system-ui, sans-serif);
-    box-shadow: none !important;
-    -webkit-appearance: none;
-    appearance: none;
 }
 
-/* No hover effect — suppress any browser/Anki default button styling */
-.year-select-btn:hover,
-.year-select-btn:focus,
-.year-select-btn:focus-visible,
-.year-select-btn:active {
-    background-color: var(--highlight-bg);
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-/* When dropdown is open, show the highlighted state */
+/* Dropdown open → same highlighted state as a hovered nav button. */
 .year-select-btn.open,
-.year-select-btn.open:hover,
-.year-select-btn.open:focus,
-.year-select-btn.open:active {
-    background-color: var(--highlight-bg);
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-}
-
-.year-select-btn .heatmap-year-chevron {
-    color: var(--icon-color);
-}
-
-.year-select-btn.open .heatmap-year-chevron {
-    transform: rotate(180deg);
+.year-select-btn.open:hover {
+    background-color: rgba(128, 128, 128, 0.18) !important;
 }
 
 .year-dropdown-menu {

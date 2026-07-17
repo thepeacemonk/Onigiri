@@ -1271,7 +1271,8 @@ def on_webview_js_message(handled, message, context):
             set_sync_status_indicator()
             return (True, None)
         if cmd == "openOnigiriSettings":
-            settings.open_settings(0)
+            from . import main_menu_dialog
+            main_menu_dialog.open_main_menu(context)
             return (True, None)
         if cmd == "openGamificationSettings":
             gamification_settings.open_gamification_settings()
@@ -3656,6 +3657,38 @@ def _mix_colors(c1, c2, ratio):
 
 	return f"rgba({int(r)}, {int(g)}, {int(b)}, {a:.2f})"
 
+_PROFILE_BG_AVG_CACHE = {}
+
+
+def _profile_bg_average_hex():
+	"""Average colour of the profile-bar background image, so the name colour can
+	be chosen for contrast against the actual image (not just the theme mode).
+	Returns a #RRGGBB hex string, or None if the image can't be resolved.
+	Cached by file path + mtime to avoid re-decoding on every render."""
+	try:
+		addon_dir = os.path.dirname(__file__)
+		filename = mw.col.conf.get("modern_menu_profile_bg_image", "")
+		path = os.path.join(addon_dir, "user_files", "profile_bg", filename) if filename else ""
+		if not path or not os.path.exists(path):
+			path = os.path.join(addon_dir, "system_files", "profile_default", "onigiri-bg.png")
+		if not os.path.exists(path):
+			return None
+		mtime = os.path.getmtime(path)
+		cached = _PROFILE_BG_AVG_CACHE.get(path)
+		if cached and cached[0] == mtime:
+			return cached[1]
+		img = QImage(path)
+		if img.isNull():
+			return None
+		scaled = img.scaled(1, 1, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+		color = QColor(scaled.pixel(0, 0))
+		hex_str = f"#{color.red():02x}{color.green():02x}{color.blue():02x}"
+		_PROFILE_BG_AVG_CACHE[path] = (mtime, hex_str)
+		return hex_str
+	except Exception:
+		return None
+
+
 def generate_dynamic_css(conf):
 	# ADDED to get the add-on's path for font files
 	addon_package = mw.addonManager.addonFromModule(__name__)
@@ -3812,8 +3845,15 @@ def generate_dynamic_css(conf):
 
 	profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "accent")
 	if profile_bg_mode == "image":
-		profile_name_color_light = "#ffffff"
-		profile_name_color_dark = "#ffffff"
+		# Detect the actual image's luminance and pick pure black/white for
+		# contrast, rather than always assuming a dark image.
+		image_avg_hex = _profile_bg_average_hex()
+		if image_avg_hex:
+			profile_name_color_light = get_contrast_text_color(image_avg_hex)
+			profile_name_color_dark = get_contrast_text_color(image_avg_hex)
+		else:
+			profile_name_color_light = "#ffffff"
+			profile_name_color_dark = "#ffffff"
 	elif profile_bg_mode == "custom":
 		profile_name_color_light = get_contrast_text_color(profile_light_color)
 		profile_name_color_dark = get_contrast_text_color(profile_dark_color)

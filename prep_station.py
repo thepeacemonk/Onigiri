@@ -777,12 +777,9 @@ def render_widget_html(slot_count: int = 4) -> str:
   </div>
 </div>"""
 
-    plan_word = tr("prep_plan") if len(active_plans) == 1 else tr("prep_plans")
-    count_label = html.escape(tr("prep_count_tpl").format(len(active_plans), plan_word))
     return f"""
 <div class="prep-station-widget" onclick="pycmd('openPrepStation')">
   <div class="prep-widget-header">
-    <span class="prep-widget-count">{count_label}</span>
     <span class="prep-widget-title">{widget_title}</span>
   </div>
   <div class="prep-plan-cards" style="grid-template-columns: repeat({slot_count}, 1fr);">

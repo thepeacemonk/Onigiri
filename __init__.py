@@ -170,6 +170,11 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/move_to_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/add_subdeck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/create_deck_dialog.js"></script>'
+        web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/main_menu_dialog.css">'
+        web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/widget_layout_editor.css">'
+        web_content.head += f'<script src="{web_assets_root}/onigiri_modal.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/main_menu_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/widget_layout_editor.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         
@@ -446,9 +451,18 @@ def on_profile_did_open():
     # One-time rename: the level system's old default title carries over in
     # saved configs; migrate it to the current default so the UI says Nook.
     try:
+        needs_write = False
         rl_conf = conf.get("restaurant_level")
         if isinstance(rl_conf, dict) and rl_conf.get("name") == "Restaurant Level":
             rl_conf["name"] = "Nook Level"
+            needs_write = True
+        # Also fix stale display_name in onigiriWidgetLayout.grid.restaurant_level
+        wl_grid = conf.get("onigiriWidgetLayout", {}).get("grid", {})
+        rl_tile = wl_grid.get("restaurant_level", {})
+        if isinstance(rl_tile, dict) and rl_tile.get("display_name") == "Restaurant Level":
+            rl_tile["display_name"] = "Nook Level"
+            needs_write = True
+        if needs_write:
             config.write_config(conf)
         # The level system's live state is stored per-profile alongside the
         # settings; normalize the legacy default title there as well.

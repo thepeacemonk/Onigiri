@@ -980,7 +980,7 @@ td.count {
 
 .sidebar-toolbar {
     --collapsed-toolbar-button-bg: var(--hover-deck-bg);
-    --collapsed-toolbar-button-hover-bg: color-mix(in srgb, var(--hover-deck-bg) 94%, black 5%);
+    --collapsed-toolbar-button-hover-bg: var(--highlight-bg);
     position: static;
     display: none;
     flex-direction: row;
@@ -997,7 +997,7 @@ td.count {
 }
 
 .night-mode .sidebar-toolbar {
-    --collapsed-toolbar-button-hover-bg: color-mix(in srgb, var(--hover-deck-bg) 94%, white 6%);
+    --collapsed-toolbar-button-hover-bg: var(--highlight-bg);
 }
 
 .sidebar-left.sidebar-actions-compact .sidebar-toolbar {
@@ -1734,7 +1734,7 @@ tr.deck .learn-count-bubble.zero {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
     border-radius: 15px;
-    padding: 20px;
+    padding: 14px;
     height: 100%;
     box-sizing: border-box;
     display: flex;
@@ -1796,13 +1796,35 @@ tr.deck .learn-count-bubble.zero {
     align-items: center;
     gap: 12px;
     padding: 0 12px;
-    background-color: var(--hover-deck-bg);
-    border: 1px solid transparent;
+    background-color: var(--collapsed-toolbar-button-bg, var(--hover-deck-bg));
+    background-image: none !important;
+    border: none !important;
+    border-radius: 12px;
     color: var(--fg) !important;
     font-size: 14px;
     font-weight: 500;
     text-decoration: none !important;
-    transition: all 0.2s ease;
+    transition: transform 0.08s ease, background-color 0.2s ease, color 0.2s ease;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    outline: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+}
+
+.favorite-deck-link:hover,
+.favorite-deck-link:focus,
+.favorite-deck-link:focus-visible,
+.favorite-deck-link:active {
+    background-color: var(--collapsed-toolbar-button-hover-bg, var(--button-hover-bg, var(--hover-deck-bg))) !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.favorite-deck-link:active {
+    transform: translateY(1px);
 }
 
 .fav-deck-icon {

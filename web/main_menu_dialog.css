@@ -1,0 +1,748 @@
+/*
+    Onigiri Main Menu Settings Dialog
+    Claude-desktop-inspired dark palette, row-based settings layout.
+*/
+
+#onigiri-main-menu-backdrop {
+    /* Design tokens — a small, deliberate grey scale instead of a dozen
+       one-off hex values. Each step should read as visibly distinct from
+       its neighbour against the modal's own background (--mm-surface-1). */
+    --mm-surface-0: #1c1c1c;   /* sidebar */
+    --mm-surface-1: #242424;   /* modal body */
+    --mm-surface-2: #2e2e2e;   /* inputs, buttons, swatches, icon chips */
+    --mm-surface-3: #3a3a3a;   /* raised: segmented/sub-tab track, hover states */
+    --mm-surface-4: #4a4a4a;   /* active pill inside segmented/sub-tab controls */
+    --mm-border: rgba(255,255,255,0.09);
+    --mm-border-strong: rgba(255,255,255,0.16);
+    --mm-text-primary: #f0f0f0;
+    --mm-text-secondary: #a8a8a8;
+    --mm-text-tertiary: #7a7a7a;
+    --mm-accent: #3b82f6;
+    --mm-accent-hover: #4c8bf7;
+
+    position: fixed;
+    inset: 0;
+    z-index: 200000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.58);
+    contain: layout paint style;
+    isolation: isolate;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+#onigiri-main-menu-backdrop.is-preparing { visibility: hidden; }
+#onigiri-main-menu-backdrop * { box-sizing: border-box; }
+#onigiri-main-menu-backdrop button,
+#onigiri-main-menu-backdrop input,
+#onigiri-main-menu-backdrop select,
+#onigiri-main-menu-backdrop textarea {
+    appearance: none;
+    -webkit-appearance: none;
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+}
+#onigiri-main-menu-backdrop button {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+    margin: 0 !important; /* Anki's webview.css sets a global `button { margin: 0 4px; }` — kill it here */
+    cursor: pointer;
+}
+
+/* Suppress QtWebEngine's large default scrollbar arrow buttons globally
+   inside the dialog. Mirrors the fix in icon_chooser.css. */
+#onigiri-main-menu-backdrop ::-webkit-scrollbar        { width: 6px; height: 6px; }
+#onigiri-main-menu-backdrop ::-webkit-scrollbar-track  { background: transparent; }
+#onigiri-main-menu-backdrop ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.18); border-radius: 999px; }
+#onigiri-main-menu-backdrop ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
+#onigiri-main-menu-backdrop ::-webkit-scrollbar-corner { background: transparent; }
+#onigiri-main-menu-backdrop ::-webkit-scrollbar-button { display: none; width: 0 !important; height: 0 !important; }
+
+/* ================= Modal shell ================= */
+
+.mm-modal {
+    width: 1040px;
+    max-width: 96vw;
+    height: 700px;
+    max-height: 92vh;
+    display: flex;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid #2c2c2c;
+    background: #242424;
+    color: #ededed;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.44);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translateZ(0);
+    contain: layout paint style;
+    isolation: isolate;
+    position: relative;
+    font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+}
+
+/* ================= Close button ================= */
+
+.mm-close {
+    position: absolute;
+    top: 13px;
+    right: 13px;
+    width: 30px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px !important;
+    background: transparent !important;
+    color: #888888;
+    z-index: 5;
+}
+.mm-close:hover { background: rgba(255,255,255,0.09) !important; color: #e0e0e0; }
+.mm-close-icon {
+    display: block;
+    width: 16px; height: 16px;
+    background-color: currentColor;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+
+/* ================= Sidebar ================= */
+
+.mm-sidebar {
+    width: 236px; min-width: 236px;
+    background: #1c1c1c;
+    border-right: 1px solid #2a2a2a;
+    display: flex; flex-direction: column;
+    padding: 16px 0 0;
+    position: relative; overflow: hidden;
+}
+
+.mm-search {
+    margin: 0 12px 14px;
+    background: #2a2a2a; border-radius: 8px;
+    padding: 7px 10px;
+    display: flex; align-items: center; gap: 7px;
+}
+.mm-search-icon {
+    width: 13px; height: 13px; flex-shrink: 0;
+    background-color: #7a7a7a;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+.mm-search input {
+    background: transparent; border: none;
+    color: #ededed; font-size: 13px;
+    flex: 1; min-width: 0; outline: none;
+}
+.mm-search input::placeholder { color: #7a7a7a; }
+
+.mm-nav {
+    flex: 1; min-height: 0;
+    overflow-y: auto; overflow-x: hidden;
+    padding-bottom: 24px;
+}
+.mm-nav-group { margin-bottom: 20px; }
+.mm-nav-group-title {
+    font-size: 10px; color: #5e5e5e;
+    padding: 0 14px; margin-bottom: 3px;
+    font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+}
+
+.mm-nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 10px; margin: 1px 6px;
+    border-radius: 8px;
+    font-size: 13px; color: #b0b0b0;
+    cursor: default; user-select: none; line-height: 1.3;
+}
+.mm-nav-icon {
+    width: 15px; height: 15px; flex-shrink: 0;
+    background-color: #8a8a8a;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+.mm-nav-item.is-active { background: #2c2c2c; color: #ffffff; font-weight: 600; }
+.mm-nav-item.is-active .mm-nav-icon { background-color: #ffffff; }
+.mm-nav-item.is-disabled { opacity: 0.40; cursor: not-allowed; }
+.mm-nav-soon {
+    margin-left: auto; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.02em; color: #7a7a7a; background: #272727;
+    border-radius: 999px; padding: 2px 6px;
+    flex-shrink: 0; white-space: nowrap;
+}
+
+.mm-nav-fade { display: none; }
+
+.mm-sidebar-footer {
+    margin: 0 6px; padding-top: 10px;
+    border-top: 1px solid #2a2a2a; padding-bottom: 12px;
+}
+.mm-footer-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px; font-size: 12.5px; color: #a8a8a8;
+    border-radius: 7px; cursor: pointer;
+}
+.mm-footer-row:hover { background: rgba(255,255,255,0.05); }
+
+.mm-footer-actions { display: flex; gap: 6px; padding: 10px 8px 0; }
+.mm-btn {
+    flex: 1; text-align: center; padding: 8px;
+    border-radius: 10px !important; font-size: 12.5px; font-weight: 600;
+}
+.mm-btn-save { background: #3b82f6; color: #fff; }
+.mm-btn-save:hover { background: #4c8bf7 !important; }
+.mm-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+.mm-btn-cancel { background: transparent !important; border: 1px solid #383838 !important; color: #c7c7c7; }
+.mm-btn-cancel:hover { background: rgba(255,255,255,0.05) !important; }
+
+/* ================= Content area ================= */
+
+.mm-content {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    padding: 22px 0 24px 28px; /* left 28px gives content breathing room from sidebar border */
+    overflow: hidden;
+}
+
+.mm-tabs {
+    display: flex; gap: 22px;
+    margin-bottom: 28px; flex-shrink: 0;
+    border-bottom: 1px solid #2a2a2a;
+}
+.mm-tab {
+    padding: 8px 1px 9px; border-radius: 0 !important;
+    font-size: 13px; font-weight: 500; color: #9a9a9a; line-height: 1;
+    background: transparent !important;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: -1px; /* overlap the container's separator line so the accent underline sits flush on it */
+}
+.mm-tab:hover { color: #cfcfcf; }
+/* #onigiri-main-menu-backdrop button sets `border: none !important`, which
+   also zeroes border-bottom (same shorthand) at higher specificity than a
+   bare .mm-tab rule would have — so the underline needs the ID prefix too. */
+#onigiri-main-menu-backdrop .mm-tab {
+    border-bottom: 2px solid transparent !important;
+}
+#onigiri-main-menu-backdrop .mm-tab.is-active {
+    background: transparent !important; color: #ffffff; font-weight: 600;
+    border-bottom: 2px solid #3b82f6 !important;
+}
+
+/* Scrollable panel — scrollbar sits flush at the right edge of mm-content */
+.mm-panels {
+    flex: 1; min-height: 0;
+    overflow-y: auto; overflow-x: hidden;
+    padding-right: 20px; /* breathing room before right edge where scrollbar lives */
+}
+.mm-panel { display: none; max-width: 640px; }
+.mm-panel.is-active { display: block; }
+
+/* ================= Typography hierarchy ================= */
+
+.mm-section-title {
+    font-size: 16px; font-weight: 700; color: var(--mm-text-primary);
+    margin: 0 0 4px; letter-spacing: -0.01em;
+}
+.mm-section-title:not(:first-child) { margin-top: 44px; }
+.mm-section-desc {
+    font-size: 12.5px; color: var(--mm-text-tertiary);
+    margin: 0; line-height: 1.5;
+}
+/* Exception: a preview card sitting directly under the description still
+   needs real breathing room — restore the old gap for that case only. */
+.mm-section-desc + .mm-preview-card { margin-top: 16px; }
+
+/* Sub-heading: one visual tier below .mm-section-title, for a sub-concept
+   within a section rather than a sibling section of its own — a smaller
+   header, not a muted uppercase eyebrow label. The dialog uses exactly four
+   text tiers: header, subheader, label, description. Its control (e.g. a
+   segmented picker) sits inline on the same row. Bottom margin matches
+   .mm-section-title's exactly so the gap to a following description reads
+   the same regardless of which heading tier precedes it — but when a row
+   follows DIRECTLY with no description in between (e.g. "View" → "Default
+   view"), that 4px alone reads as too tight against a 13px row-label, so
+   the adjacent-sibling rule below adds a bit more room for that case only. */
+.mm-subhead {
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 40px 0 4px;
+}
+.mm-subhead + .mm-row,
+.mm-subhead + .mm-slider-row { margin-top: 6px; }
+.mm-subhead-label-line { display: flex; align-items: center; }
+.mm-subhead-label {
+    font-size: 15px; font-weight: 700; color: var(--mm-text-primary);
+    letter-spacing: -0.005em;
+}
+
+/* ================= Row anatomy ================= */
+
+.mm-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.055);
+}
+.mm-row.no-border { border-bottom: none; }
+.mm-row-text { max-width: 58%; min-width: 0; }
+.mm-row-label-line { display: flex; align-items: center; margin-bottom: 3px; }
+.mm-row-label { font-size: 13px; font-weight: 600; color: var(--mm-text-primary); line-height: 1.3; }
+.mm-row-desc { font-size: 12px; color: var(--mm-text-tertiary); line-height: 1.5; }
+.mm-row-control { flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
+
+/* ================= Info icon + tooltip =================
+   Use sparingly — only for supplementary context on non-obvious enum-style
+   choices, not as a default replacement for every row description. */
+
+.mm-info-icon {
+    display: inline-flex; flex-shrink: 0;
+    background-color: var(--mm-text-tertiary);
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+    cursor: help; margin-left: 6px;
+    position: relative;
+}
+.mm-info-icon:hover { background-color: var(--mm-text-secondary); }
+/* Anchored to the icon's LEFT edge (not centered) so the tooltip only ever
+   grows rightward — a centered tooltip on an icon near the left edge of a
+   row would push its own left half into negative X and get clipped by
+   .mm-panels' overflow-x:hidden, cutting off the start of every line.
+   Opens DOWNWARD, not upward: these icons sit next to section headers near
+   the top of the scroll panel, where there's little to no room above. */
+.mm-info-icon::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 8px); left: 0;
+    width: max-content; max-width: 230px;
+    background: #161616; color: #ededed;
+    font-size: 11.5px; font-weight: 400; line-height: 1.45;
+    padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--mm-border-strong);
+    box-shadow: 0 10px 26px rgba(0,0,0,0.45);
+    opacity: 0; pointer-events: none;
+    z-index: 40; text-align: left;
+}
+.mm-info-icon::before {
+    content: "";
+    position: absolute; top: calc(100% + 3px); left: 4px;
+    border: 5px solid transparent; border-bottom-color: #161616;
+    opacity: 0; pointer-events: none; z-index: 40;
+}
+.mm-info-icon:hover::after, .mm-info-icon:hover::before { opacity: 1; }
+
+/* Paired light/dark swatch in a single row */
+.mm-row-control.mm-pair { gap: 16px; }
+.mm-pair-item { display: flex; flex-direction: row; align-items: center; gap: 7px; }
+.mm-pair-item-label { font-size: 11px; color: var(--mm-text-tertiary); min-width: 26px; }
+
+/* ================= Controls: toggle (settings) ================= */
+
+.mm-toggle {
+    width: 34px; height: 20px; border-radius: 999px !important;
+    background: #3a3a3a !important;
+    position: relative; flex-shrink: 0;
+    padding: 0 !important;
+}
+.mm-toggle.is-on { background: #3b82f6 !important; }
+.mm-toggle-knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff;
+    pointer-events: none; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.mm-toggle.is-on .mm-toggle-knob { left: 16px; }
+
+/* Preview-only theme toggle — sun/moon icon button, distinct from real
+   setting toggles (which use .mm-toggle) */
+.mm-preview-theme-btn {
+    width: 26px; height: 22px; padding: 0; border-radius: 7px !important;
+    background: #2e2e2e !important; border: 1px solid #3a3a3a;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.mm-preview-theme-btn:hover { background: #363636 !important; }
+.mm-preview-theme-btn.is-light { background: #dedede !important; border-color: #c0c0c0; }
+.mm-preview-theme-icon {
+    background-color: #a0a0a0;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+.mm-preview-theme-btn:hover .mm-preview-theme-icon { background-color: #d0d0d0; }
+.mm-preview-theme-btn.is-light .mm-preview-theme-icon { background-color: #444; }
+
+/* ================= Controls: segmented ================= */
+
+.mm-segmented { display: inline-flex; gap: 2px; background: var(--mm-surface-3); border-radius: 12px; padding: 2px; }
+.mm-segment {
+    padding: 5px 12px; border-radius: 10px !important;
+    font-size: 12.5px; color: var(--mm-text-secondary); line-height: 1;
+    background: transparent !important; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.mm-segment.is-active { background: var(--mm-surface-4) !important; color: #fff; font-weight: 600; }
+
+/* ================= Controls: number/text input ================= */
+
+.mm-input {
+    width: 72px;
+    background: #2e2e2e; border: 1px solid #3a3a3a;
+    border-radius: 8px; padding: 6px 10px;
+    font-size: 13px; color: #ededed; text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+/* Suppress Chromium's native spin buttons — the global appearance:none on
+   button/input does NOT remove them. Custom steppers replace them. */
+.mm-input[type="number"]::-webkit-inner-spin-button,
+.mm-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; display: none; }
+.mm-input[type="number"] { -moz-appearance: textfield; }
+.mm-input:focus { border-color: #3b82f6; outline: none; }
+.mm-input.mm-input-wide { width: 220px; text-align: left; }
+
+/* Number wrap: input + optional unit label + custom ▲/▼ steppers, all fused.
+   Fixed total width so every numeric value shares one right edge regardless
+   of whether a unit label is present. */
+.mm-number-wrap { display: flex; align-items: stretch; }
+.mm-number-wrap .mm-input {
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    width: 58px;
+    min-width: 0;
+}
+.mm-number-wrap.has-unit .mm-input { width: 46px; }
+.mm-number-unit {
+    font-size: 11.5px; color: #777;
+    background: #282828; border: 1px solid #3a3a3a;
+    border-left: none; border-right: none;
+    border-radius: 0;
+    padding: 6px 6px 6px 4px;
+    display: flex; align-items: center;
+    white-space: nowrap; line-height: 1;
+}
+.mm-number-steppers {
+    display: flex; flex-direction: column;
+    border: 1px solid #3a3a3a; border-radius: 0 8px 8px 0;
+    overflow: hidden; flex-shrink: 0;
+}
+.mm-number-step {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: #282828 !important; width: 22px; padding: 2px 0;
+    border-radius: 0 !important;
+}
+.mm-number-step:first-child { border-bottom: 1px solid #3a3a3a; border-radius: 0 8px 0 0 !important; }
+.mm-number-step:last-child { border-radius: 0 0 8px 0 !important; }
+.mm-number-step:hover { background: #363636 !important; }
+.mm-number-step-icon {
+    display: block;
+    background-color: #7a7a7a;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+
+/* ================= Controls: dropdown ================= */
+
+.mm-dropdown { position: relative; }
+.mm-dropdown-trigger {
+    background: #2e2e2e !important; border: 1px solid #3a3a3a;
+    border-radius: 10px !important; padding: 7px 12px;
+    font-size: 13px; color: #ededed;
+    display: flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.mm-dropdown-chevron {
+    width: 11px; height: 11px; background-color: #949494;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+.mm-dropdown-menu {
+    display: none; position: absolute; top: calc(100% + 4px); right: 0;
+    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 10px;
+    padding: 5px; min-width: 170px; z-index: 20;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    max-height: 260px; overflow-y: auto;
+}
+.mm-dropdown-menu.is-open { display: block; }
+.mm-dropdown-option {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 7px 10px; border-radius: 6px;
+    font-size: 13px; color: #cfcfcf; cursor: pointer;
+}
+.mm-dropdown-option:hover { background: rgba(255,255,255,0.07); }
+.mm-dropdown-option.is-selected { color: #ffffff; }
+.mm-dropdown-check {
+    width: 12px; height: 12px; background-color: #3b82f6;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+
+/* ================= Controls: slider ================= */
+
+.mm-slider-row { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.055); }
+.mm-slider-row.no-border { border-bottom: none; }
+.mm-slider-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.mm-slider-label { font-size: 13px; font-weight: 600; color: var(--mm-text-primary); }
+.mm-slider-value { font-size: 12px; color: var(--mm-text-tertiary); font-variant-numeric: tabular-nums; }
+.mm-slider-track {
+    position: relative; height: 8px;
+    background: #363636; border-radius: 4px; cursor: pointer;
+    margin-bottom: 6px;
+}
+.mm-slider-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #3b82f6; border-radius: 4px; pointer-events: none; }
+.mm-slider-thumb {
+    position: absolute; top: 50%;
+    width: 16px; height: 16px;
+    background: #fff; border-radius: 50%;
+    /* left is set in JS via calc((100% - 16px) * pct) so the thumb's own
+       left edge — not its center — is positioned; this keeps the thumb
+       fully inside the track's box at 0% and 100% (no ancestor clipping). */
+    transform: translateY(-50%);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+    pointer-events: none; z-index: 2;
+}
+/* Hairline ticks INSIDE the track (JS appends these as children of .mm-slider-track) */
+.mm-slider-inner-ticks { position: absolute; inset: 0; pointer-events: none; }
+.mm-slider-inner-tick {
+    position: absolute; top: 2px; bottom: 2px;
+    width: 1px; background: rgba(255,255,255,0.22);
+    transform: translateX(-50%);
+}
+/* Min / mid / max labels below track */
+.mm-slider-labels { display: flex; justify-content: space-between; margin-top: 4px; }
+.mm-slider-label-item { font-size: 9.5px; color: #555; white-space: nowrap; }
+
+/* ================= Controls: color swatch ================= */
+
+.mm-swatch {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 10px 5px 5px; border-radius: 9px;
+    background: var(--mm-surface-2) !important;
+    border: 1px solid var(--mm-border);
+    cursor: pointer;
+}
+.mm-swatch:hover { background: var(--mm-surface-3) !important; border-color: var(--mm-border-strong); }
+.mm-swatch-chip {
+    width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.18);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2);
+}
+.mm-swatch-hex {
+    font-size: 11.5px; font-weight: 500; color: var(--mm-text-secondary);
+    font-family: "SF Mono", Consolas, monospace; letter-spacing: 0.01em;
+}
+
+/* ================= Controls: icon picker button ================= */
+
+.mm-icon-picker-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px 6px 8px;
+    border-radius: 10px !important; font-size: 12.5px; font-weight: 600;
+    background: #2e2e2e !important; color: #ededed;
+    border: 1px solid #3a3a3a;
+}
+.mm-icon-picker-btn:hover { background: #363636 !important; }
+.mm-icon-picker-preview {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: #222; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
+    font-size: 14px; overflow: hidden;
+}
+.mm-icon-picker-preview-glyph {
+    width: 14px; height: 14px; background-color: #ededed;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+
+/* ================= Embedded widget-layout editor ================= */
+/* Preview-style host for OnigiriWidgetLayoutEditor.mountInline — same
+   inset/rounded treatment as .mm-preview-card so the editor reads as a
+   live preview panel consistent with the other tabs. */
+.mm-layout-editor {
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 12px;
+    background: #1e1e1e; padding: 14px;
+    margin: 6px 0 12px; overflow: hidden;
+}
+
+/* ================= Preview card (standard) ================= */
+
+.mm-preview-card {
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 12px;
+    overflow: hidden; margin: 4px 0 20px; background: #1e1e1e;
+}
+.mm-preview-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: #232323;
+}
+.mm-preview-head-label {
+    font-size: 12px; font-weight: 600; color: var(--mm-text-tertiary);
+}
+.mm-preview-body { padding: 22px; display: flex; justify-content: center; align-items: center; min-height: 90px; }
+
+/* Light-mode preview variant (toggled by JS adding .is-light-preview) */
+.mm-preview-card.is-light-preview { background: #f4f4f4; border-color: rgba(0,0,0,0.1); }
+.mm-preview-card.is-light-preview .mm-preview-head { background: #ececec; border-bottom-color: rgba(0,0,0,0.08); }
+.mm-preview-card.is-light-preview .mm-preview-head-label { color: #8a8a8a; }
+
+/* ================= Inline action buttons ================= */
+
+.mm-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.mm-inline-btn {
+    padding: 7px 14px; border-radius: 10px !important;
+    font-size: 12.5px; font-weight: 600;
+    background: #2e2e2e !important; color: #ededed;
+    border: 1px solid #3a3a3a; white-space: nowrap;
+}
+.mm-inline-btn:hover { background: #363636 !important; }
+.mm-inline-btn.mm-inline-btn-danger { color: #f27272; border-color: rgba(242,114,114,0.3); }
+.mm-inline-btn.mm-inline-btn-danger:hover { background: rgba(242,114,114,0.07) !important; }
+.mm-inline-btn.mm-inline-btn-accent { background: #3b82f6 !important; color: #fff; border-color: #3b82f6; }
+.mm-inline-btn.mm-inline-btn-accent:hover { background: #4c8bf7 !important; }
+
+/* ================= Heatmap preview card =================
+   .mm-heatmap-widget mirrors #onigiri-heatmap-container's real CSS values
+   exactly (heatmap.css:5-21 — padding:15px, radius:15px, canvas-inset bg,
+   border colour) instead of relying on the generic .mm-preview-card body
+   padding, so this reads as a genuine miniature of the real widget. Its
+   background/border colour come from the SAME colorGet("--canvas-inset"/
+   "--border") values the real widget itself resolves from, set in JS.
+   Header control sizing (26px height, 8px radius, 13px icons) matches
+   heatmap.css's --heatmap-control-height/-radius/--heatmap-ui-icon-size.
+
+   Cell shape is drawn with CSS clip-path/border-radius, NOT an SVG mask —
+   heatmap_system_icons/ is read server-side only (heatmap.py, embedded as
+   a data-URI) and has no /_addons/ route the way system_icons/ does, so a
+   mask-image url() pointed at it can only ever fail silently. The streak
+   icon uses system_icons/fire.svg instead (that folder IS servable) rather
+   than the user's configured heatmapStreakIcon, for the same reason. */
+
+.mm-heatmap-preview-inner { width: 100%; }
+
+.mm-heatmap-widget {
+    padding: 15px; border-radius: 15px;
+    /* background/border set inline in JS from colorGet(mode, "--canvas-inset"/"--border") */
+}
+
+.mm-heatmap-widget-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+}
+.mm-heatmap-preview-headleft,
+.mm-heatmap-preview-headright { display: flex; align-items: center; gap: 6px; }
+.mm-heatmap-preview-title {
+    font-size: 12px; font-weight: 700; color: var(--mm-text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.08em;
+}
+.mm-heatmap-preview-navbtn {
+    width: 26px; height: 26px; border-radius: 8px !important;
+    background: rgba(128,128,128,0.16) !important;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: default !important;
+}
+.mm-heatmap-preview-navicon { background-color: var(--mm-text-secondary); }
+.mm-heatmap-preview-year {
+    height: 26px; font-size: 12px; font-weight: 500; color: var(--mm-text-primary);
+    padding: 0 10px; border-radius: 8px; background: rgba(128,128,128,0.16);
+    display: inline-flex; align-items: center;
+}
+.mm-heatmap-preview-streak {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 26px; padding: 0 10px; border-radius: 8px;
+    background: rgba(128,128,128,0.16);
+    font-size: 12px; font-weight: 600; color: var(--mm-text-secondary);
+}
+.mm-heatmap-preview-streak-icon {
+    display: inline-block;
+    width: 13px; height: 13px; flex-shrink: 0;
+    background-color: #ff9142;
+    mask-size: contain; -webkit-mask-size: contain;
+    mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+    mask-position: center; -webkit-mask-position: center;
+}
+.mm-heatmap-preview-time {
+    display: flex; gap: 0; height: 26px; padding: 3px;
+    border-radius: 8px; background: rgba(128,128,128,0.16);
+}
+.mm-heatmap-preview-time-btn {
+    font-size: 12px; font-weight: 500; padding: 0 8px; line-height: 1;
+    border-radius: 6px !important; color: var(--mm-text-tertiary);
+    background: transparent !important;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.mm-heatmap-preview-time-btn.is-active {
+    background: rgba(128,128,128,0.28) !important; color: var(--mm-text-primary);
+    font-weight: 600;
+}
+
+/* Cell — shared by all three views. Shape rendered via SVG mask-image
+   (heatmap_system_icons/ is served by setWebExports), colour via
+   background-color. Emoji variant just shows the character. */
+.mm-heatmap-cell { display: block; }
+.mm-heatmap-cell.is-future { opacity: 0.5; }
+.mm-heatmap-cell-emoji { display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+
+/* Year view — fixed pixel height (NOT aspect-ratio-driven) so the 7 grid
+   rows always have real, non-zero size regardless of auto-column sizing. */
+.mm-heatmap-preview-yearview { width: 100%; }
+.mm-heatmap-preview-months {
+    display: flex; justify-content: space-between;
+    padding-left: 24px; margin-bottom: 5px;
+    font-size: 9.5px; color: var(--mm-text-tertiary);
+}
+.mm-heatmap-preview-yearbody { display: flex; gap: 5px; }
+.mm-heatmap-preview-weekdays {
+    display: flex; flex-direction: column; justify-content: space-between;
+    width: 20px; flex-shrink: 0; height: 126px; padding: 1px 0;
+    font-size: 8.5px; color: var(--mm-text-tertiary); line-height: 1;
+}
+.mm-heatmap-grid-wrap { flex: 1; min-width: 0; overflow: hidden; }
+.mm-heatmap-grid {
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    height: 126px;
+    gap: 3px;
+}
+
+/* Month view: 7 fixed-30px columns, matching heatmap.css:673-678 */
+.mm-heatmap-preview-monthheader {
+    display: grid; grid-template-columns: repeat(7, 30px);
+    width: fit-content; margin: 0 auto 5px;
+    font-size: 9.5px; color: var(--mm-text-tertiary); text-align: center;
+}
+.mm-heatmap-preview-monthgrid {
+    display: grid; grid-template-columns: repeat(7, 30px); grid-auto-rows: 30px;
+    width: fit-content; margin: 0 auto; gap: 4px;
+}
+
+/* Week view: 7 fixed-40px columns, matching heatmap.css:714-718 */
+.mm-heatmap-preview-weekheader {
+    display: grid; grid-template-columns: repeat(7, 40px);
+    width: fit-content; margin: 0 auto 6px;
+    font-size: 9.5px; color: var(--mm-text-tertiary); text-align: center;
+}
+.mm-heatmap-preview-weekgrid { display: grid; grid-template-columns: repeat(7, 40px); grid-auto-rows: 40px; width: fit-content; margin: 0 auto; gap: 4px; }
+
+/* Light-mode preview for heatmap */
+.mm-preview-card.is-light-preview .mm-heatmap-preview-title,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-year,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-streak,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-time-btn,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-months,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-weekdays,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-monthheader,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-weekheader { color: #6a6a6a; }
+.mm-preview-card.is-light-preview .mm-heatmap-preview-time-btn.is-active { color: #222; }
+.mm-preview-card.is-light-preview .mm-heatmap-preview-navbtn,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-year,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-streak,
+.mm-preview-card.is-light-preview .mm-heatmap-preview-time { background: rgba(0,0,0,0.06) !important; }
+.mm-preview-card.is-light-preview .mm-heatmap-preview-time-btn.is-active { background: rgba(0,0,0,0.12) !important; }
+.mm-preview-card.is-light-preview .mm-heatmap-preview-navicon { background-color: #6a6a6a; }

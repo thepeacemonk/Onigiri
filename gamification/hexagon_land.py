@@ -2331,7 +2331,18 @@ def _stat_row_html(label: str, value: int, icon_html: str) -> str:
 def render_widget_html() -> str:
     state = manager.load()
     if not manager.is_enabled():
-        return ""
+        # Render a visible disabled placeholder (matching how the Onigimon and
+        # Nook Level widgets behave when their feature is off) instead of an
+        # empty string. Returning "" makes the deck-browser grid drop the widget
+        # entirely, so a widget placed in the grid would silently vanish.
+        return f"""
+    <div class="hex-land-widget disabled" ondblclick="pycmd('openHexagonLand')">
+        <div class="hex-land-copy">
+            <h3>{escape(tr('hexland_title'))}</h3>
+            <p>{escape(tr('hexland_enable_settings', 'Enable Hexagon Land in Gamification Settings.'))}</p>
+        </div>
+    </div>
+    """
     layers, width, height = manager.preview_layers()
     land_conf = manager.config()
     widget_display = "land_only"

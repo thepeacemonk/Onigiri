@@ -4,6 +4,7 @@ from datetime import datetime
 from aqt import mw
 from . import config
 from .config import DEFAULTS
+from .translations import tr
 
 def get_heatmap_data():
     """
@@ -162,6 +163,11 @@ def get_heatmap_and_config():
     # Read selected SVG shape file
     addon_path = os.path.dirname(__file__)
     shape_filename = conf.get("heatmapShape", DEFAULTS["heatmapShape"])
+    # Strip prefix written by the icon picker (e.g. "system:hexagon.svg" → "hexagon.svg")
+    if shape_filename.startswith("system:"):
+        shape_filename = shape_filename[7:]
+    elif shape_filename.startswith("emoji:"):
+        shape_filename = DEFAULTS["heatmapShape"]
     shape_path = os.path.join(addon_path, "system_files", "heatmap_system_icons", shape_filename)
 
     svg_content = ""
@@ -176,13 +182,21 @@ def get_heatmap_and_config():
         except (FileNotFoundError, IOError):
             svg_content = '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>'
 
+    streak_icon = conf.get("heatmapStreakIcon", DEFAULTS.get("heatmapStreakIcon", "fire.svg"))
+    if streak_icon.startswith("system:"):
+        streak_icon = streak_icon[7:]
+    elif streak_icon.startswith("emoji:"):
+        streak_icon = "fire.svg"
+
     heatmap_config = {
         "heatmapSvgContent": svg_content,
+        "heatmapActivityLabel": tr("heatmap_activity_label"),
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
         "heatmapShowMonths": conf.get("heatmapShowMonths", DEFAULTS["heatmapShowMonths"]),
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
         "heatmapWeekStart": conf.get("heatmapWeekStart", DEFAULTS.get("heatmapWeekStart", "monday")),
+        "heatmapStreakIcon": streak_icon,
     }
     return heatmap_data, heatmap_config
