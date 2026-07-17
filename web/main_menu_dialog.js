@@ -23,12 +23,8 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         var url = iconUrl(filename);
         span.style.maskImage = "url('" + url + "')";
         span.style.webkitMaskImage = "url('" + url + "')";
-        // A bare <span> is inline by default, and inline elements ignore
-        // explicit width/height — the icon silently collapses to 0×0 unless
-        // its parent happens to be flex/grid (which blockifies children).
-        // OnigiriEngine.applyMaskIcon (engine.js) sets this explicitly for
-        // the same reason; do the same here instead of relying on parent
-        // context to save us by accident.
+        // inline-block required: bare <span> collapses to 0×0 with explicit
+        // width/height because inline elements ignore size properties.
         span.style.display = "inline-block";
         span.style.flexShrink = "0";
         if (size) { span.style.width = size + "px"; span.style.height = size + "px"; }
@@ -373,13 +369,13 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
     var iconPickCounter  = 0;
 
     function heatmapIconUrl(filename) {
-        var pkg = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage;
+        var pkg = state.draft && state.draft.config && state.draft.config.addonPackage;
         return pkg ? "/_addons/" + pkg + "/system_files/heatmap_system_icons/" + filename
             : "../system_files/heatmap_system_icons/" + filename;
     }
 
     function mainBgImageUrl(filename) {
-        var pkg = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage;
+        var pkg = state.draft && state.draft.config && state.draft.config.addonPackage;
         return pkg ? "/_addons/" + pkg + "/user_files/main_bg/" + filename
             : "../user_files/main_bg/" + filename;
     }
@@ -394,6 +390,24 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         return { kind: "file", value: filename };
     }
 
+    // URL for an icon value as returned by the picker (handles "system:" prefix).
+    // "system:X" means the icon came from available_for_users/ in the picker dialog;
+    // bare filenames (e.g. "star_filled.svg") are root system_icons/ assets.
+    function resolvedIconUrl(iconValue) {
+        var text = String(iconValue || "");
+        if (text.indexOf("system:") === 0) {
+            var name = text.slice(7);
+            var pkg = state.draft && state.draft.config && state.draft.config.addonPackage;
+            return pkg ? "/_addons/" + pkg + "/system_files/system_icons/available_for_users/" + name
+                : "../system_files/system_icons/available_for_users/" + name;
+        }
+        return iconUrl(text);
+    }
+
+    // Build the small icon glyph shown inside an iconPickerButton.
+    // folder="heatmap" → heatmap_system_icons/ (strip any "system:" prefix first).
+    // All other icons with "system:" prefix → available_for_users/ via resolvedIconUrl.
+    // Bare filenames without a prefix → root system_icons/ via iconUrl.
     function buildIconGlyph(iconValue, folder) {
         var resolved = resolveIcon(iconValue);
         if (resolved.kind === "emoji") {
@@ -401,14 +415,12 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             span.style.fontSize = "13px";
             return span;
         }
-        if (folder === "heatmap") {
-            var glyph = el("span", "mm-icon-picker-preview-glyph");
-            var url   = heatmapIconUrl(resolved.value);
-            glyph.style.maskImage = "url('" + url + "')";
-            glyph.style.webkitMaskImage = "url('" + url + "')";
-            return glyph;
-        }
-        return maskIcon("mm-icon-picker-preview-glyph", resolved.value);
+        var url = folder === "heatmap" ? heatmapIconUrl(resolved.value) : resolvedIconUrl(iconValue);
+        var glyph = el("span", "mm-icon-picker-preview-glyph");
+        glyph.style.maskImage = "url('" + url + "')";
+        glyph.style.webkitMaskImage = "url('" + url + "')";
+        glyph.style.display = "inline-block";
+        return glyph;
     }
 
     function iconPickerButton(currentIconValue, colorOptions, previewColorKey, onApply, folder) {
@@ -542,7 +554,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         panel.appendChild(row("Columns",   "", colsField.el));
         panel.appendChild(row("Width",     "", widthField.el));
         panel.appendChild(row("Height",    "", heightField.el));
-        panel.appendChild(row("Alignment", "", alignField.el, { noBorder: true }));
+        panel.appendChild(row("Alignment", "", alignField.el));
 
         state.layoutFields = { rows: rowsField, cols: colsField, width: widthField, align: alignField, height: heightField };
 
@@ -647,17 +659,6 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
     }
 
     // ================= Tab: Appearance — Widgets =================
-    //
-    // NOTE ON THE UNDERLYING CONFIG: onigiri_widget_bg_mode / _main_effect_mode
-    // computes the ACTUAL --canvas-inset value used by .stat-card etc. — the
-    // "Card colour" swatch below is only honoured when style === "solid"; in
-    // Glass/Tint mode the computed value silently wins. Corner radius, border
-    // width, background blur and opacity (in "Advanced") do NOT affect the
-    // real .stat-card at all (those are hardcoded 15px/1px in menu.css) — they
-    // only feed the settings preview and bento_api.get_widget_radius() for
-    // compatible add-on widgets. This layout makes both facts explicit instead
-    // of presenting two competing colour pickers and four decorative sliders
-    // as if they all did something to your actual cards.
 
     function renderWidgetCardsTab(panel) {
         panel.appendChild(sectionTitle("Widgets"));
@@ -707,7 +708,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
                 var hideStars = !!state.draft.json.hideRetentionStars;
                 retentionStarRatingEl.style.display = hideStars ? "none" : "flex";
                 var starIconFile = state.draft.colConf.modern_menu_icon_retention_star || "star_filled.svg";
-                var starIconUrl = iconUrl(starIconFile);
+                var starIconUrl = resolvedIconUrl(starIconFile);
                 var starColor = colorGet(mode, "--star-color") || (mode === "light" ? "#f5a623" : "#ffe082");
                 var emptyColor = colorGet(mode, "--empty-star-color") || (mode === "light" ? "#d0d0d0" : "#4a4a4a");
                 retentionStarRatingEl.querySelectorAll(".mm-preview-star").forEach(function (star) {
@@ -842,11 +843,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         panel.appendChild(solidTransparencyRow);
         panel.appendChild(themeAwareRow);
 
-        // borderColourRow is always visible, but it's no longer always the
-        // last row (it sits right after the mode's colour row, so solid
-        // mode still has rows after it) — so which row is genuinely last
-        // varies by mode, and needs tracking instead of a static noBorder.
-        var allStyleRows = [glassRow, tintIntensityRow, tintColorRow, solidColorRow, borderColourRow, solidTransparencyRow, themeAwareRow];
+        var widgetStyleRows = [glassRow, tintIntensityRow, tintColorRow, solidColorRow, borderColourRow, solidTransparencyRow, themeAwareRow];
         function refreshVisibility(styleValue) {
             glassRow.style.display            = styleValue === "glass" ? "" : "none";
             tintIntensityRow.style.display     = styleValue === "tint"  ? "" : "none";
@@ -854,8 +851,8 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             solidColorRow.style.display        = styleValue === "solid" ? "" : "none";
             solidTransparencyRow.style.display = styleValue === "solid" ? "" : "none";
             themeAwareRow.style.display        = styleValue === "solid" ? "" : "none";
-            allStyleRows.forEach(function (r) { r.classList.remove("no-border"); });
-            var visible = allStyleRows.filter(function (r) { return r.style.display !== "none"; });
+            widgetStyleRows.forEach(function (r) { r.classList.remove("no-border"); });
+            var visible = widgetStyleRows.filter(function (r) { return r.style.display !== "none"; });
             if (visible.length) visible[visible.length - 1].classList.add("no-border");
         }
         refreshVisibility(initialMode);
@@ -878,15 +875,16 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
 
         var hideStarsField = toggle(!!state.draft.json.hideRetentionStars, function (v) {
             state.draft.json.hideRetentionStars = v;
+            paintPreview();
         });
         panel.appendChild(row("Hide retention stars", "", hideStarsField.el));
 
         var retentionIconPicker = iconPickerButton(
             state.draft.colConf.modern_menu_icon_retention_star || "star_filled.svg",
             [], null,
-            function (result) { if (result.icon) state.draft.colConf.modern_menu_icon_retention_star = result.icon; }
+            function (result) { if (result.icon) { state.draft.colConf.modern_menu_icon_retention_star = result.icon; paintPreview(); } }
         );
-        panel.appendChild(row("Star icon", "", retentionIconPicker.el, { noBorder: true }));
+        panel.appendChild(row("Star icon", "", retentionIconPicker.el));
 
         // ---- Advanced: shared style values for compatible add-on widgets ----
         // These don't touch the built-in cards above (radius/border there are
@@ -906,7 +904,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         }, { label: "Background blur", suffix: "px" });
         var opacityField = slider(0, 100, state.draft.colConf.onigiri_canvas_inset_effect_opacity != null ? state.draft.colConf.onigiri_canvas_inset_effect_opacity : 100, 1, function (v) {
             state.draft.colConf.onigiri_canvas_inset_effect_opacity = v;
-        }, { label: "Opacity", suffix: "%", noBorder: true });
+        }, { label: "Opacity", suffix: "%" });
         panel.appendChild(radiusField.el);
         panel.appendChild(widthField.el);
         panel.appendChild(blurField.el);
@@ -976,7 +974,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             } else {
                 preview.sample.style.backgroundImage = "none";
             }
-            preview.sample.style.filter  = "blur(" + blur + "px)";
+            preview.sample.style.filter  = "blur(" + (blur * 0.2) + "px)";
             preview.sample.style.opacity = String(opacity / 100);
         }
 
@@ -1071,10 +1069,15 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             state.draft.colConf.modern_menu_background_blur = v; paintPreview(previewIsLight);
         }, { label: "Blur", suffix: "%" });
 
+        var opacityField = slider(0, 100, state.draft.colConf.modern_menu_background_opacity != null ? state.draft.colConf.modern_menu_background_opacity : 100, 1, function (v) {
+            state.draft.colConf.modern_menu_background_opacity = v; paintPreview(previewIsLight);
+        }, { label: "Opacity", suffix: "%" });
+
         panel.appendChild(btnRow);
         panel.appendChild(slideshowRow);
         panel.appendChild(intervalRow);
         panel.appendChild(blurField.el);
+        panel.appendChild(opacityField.el);
 
         // ---- Colour-mode fields ----
         var lightSwatch = swatch(state.draft.colConf.modern_menu_bg_color_light || "#EEEEEE", function (hex) {
@@ -1099,37 +1102,27 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
 
         function refreshBgVisibility(style) {
             var isImage = style === "image";
-            btnRow.style.display        = isImage ? "" : "none";
-            slideshowRow.style.display  = isImage ? "" : "none";
-            intervalRow.style.display   = (isImage && slideshowField.get()) ? "" : "none";
-            blurField.el.style.display  = isImage ? "" : "none";
-            bgColorRow.style.display    = isImage ? "none" : "";
-            themeAwareRow.style.display = isImage ? "none" : "";
+            btnRow.style.display          = isImage ? "" : "none";
+            slideshowRow.style.display    = isImage ? "" : "none";
+            intervalRow.style.display     = (isImage && slideshowField.get()) ? "" : "none";
+            blurField.el.style.display    = isImage ? "" : "none";
+            opacityField.el.style.display = isImage ? "" : "none";
+            bgColorRow.style.display      = isImage ? "none" : "";
+            themeAwareRow.style.display   = isImage ? "none" : "";
+            var allBgRows = [btnRow, slideshowRow, intervalRow, blurField.el, opacityField.el, bgColorRow, themeAwareRow];
+            allBgRows.forEach(function (r) { r.classList.remove("no-border"); });
+            var visible = allBgRows.filter(function (r) { return r.style.display !== "none"; });
+            if (visible.length) visible[visible.length - 1].classList.add("no-border");
         }
         refreshBgVisibility(initialBgStyle);
-
-        // ---- Shared: applies regardless of style, always the last row ----
-        var opacityField = slider(0, 100, state.draft.colConf.modern_menu_background_opacity != null ? state.draft.colConf.modern_menu_background_opacity : 100, 1, function (v) {
-            state.draft.colConf.modern_menu_background_opacity = v; paintPreview(previewIsLight);
-        }, { label: "Opacity", suffix: "%", noBorder: true });
-        panel.appendChild(opacityField.el);
     }
 
     // ================= Tab: Heatmap =================
     //
-    // Preview mirrors the real widget's structure and actual CSS values
-    // (web/heatmap.js + heatmap.css): a 7-row grid-auto-flow:column grid
-    // for year view, a 7-col calendar grid for month view, a single row of
-    // 7 for week view, and a --canvas-inset/--border-backed container that
-    // matches #onigiri-heatmap-container exactly instead of the generic
-    // preview-card body padding. Colour uses a multi-level mix instead of
-    // flat on/off, and the streak icon/colour/visibility and month/weekday
-    // label visibility all reflect the real config keys live.
-    //
-    // Cell shape uses a real SVG mask-image from heatmap_system_icons/ —
-    // heatmap_system_icons/ is served via setWebExports(__name__, r"(.*)"),
-    // which makes every addon file fetchable over /_addons/. resolveIcon()
-    // strips the "system:" prefix the picker writes so the URL is correct.
+    // Preview mirrors the real widget structure. Cell shape and streak icon
+    // use mask-image with URLs from heatmap_system_icons/ (served via
+    // setWebExports). resolveIcon() strips the "system:" prefix the picker
+    // writes before building the URL.
 
     function buildHeatmapPreviewCard() {
         var card = el("div", "mm-preview-card");
@@ -1294,7 +1287,6 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             var showStreak = state.draft.json.heatmapShowStreak != null ? state.draft.json.heatmapShowStreak : true;
             streakEl.style.display = showStreak ? "" : "none";
 
-            // Update streak icon to reflect current heatmapStreakIcon config
             var resolvedStreak = resolveIcon(state.draft.json.heatmapStreakIcon || "fire.svg");
             if (resolvedStreak.kind === "emoji") {
                 streakIcon.textContent = resolvedStreak.value;
@@ -1355,7 +1347,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         ], state.draft.json.heatmapWeekStart || "monday", function (v) {
             state.draft.json.heatmapWeekStart = v;
         });
-        panel.appendChild(row("Week starts on", "", weekStartField.el, { noBorder: true }));
+        panel.appendChild(row("Week starts on", "", weekStartField.el));
 
         // ---- Labels ----
         panel.appendChild(subhead("Labels"));
@@ -1367,10 +1359,16 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             });
             return row(labelText, "", field.el, opts);
         }
-        panel.appendChild(labelToggleRow("Show streak counter", "heatmapShowStreak",     true));
+        var streakPickerRow; // forward ref — set after streakPicker is built in Icons section
+        var streakToggleField = toggle(state.draft.json.heatmapShowStreak != null ? state.draft.json.heatmapShowStreak : true, function (v) {
+            state.draft.json.heatmapShowStreak = v;
+            if (streakPickerRow) streakPickerRow.style.display = v ? "" : "none";
+            heatmapPreview.paint();
+        });
+        panel.appendChild(row("Show streak counter", "", streakToggleField.el));
         panel.appendChild(labelToggleRow("Show month labels",   "heatmapShowMonths",     true));
         panel.appendChild(labelToggleRow("Show weekday labels", "heatmapShowWeekdays",   true));
-        panel.appendChild(labelToggleRow("Show day number",     "heatmapShowWeekHeader", true, { noBorder: true }));
+        panel.appendChild(labelToggleRow("Show day number",     "heatmapShowWeekHeader", true));
 
         // ---- Colours ----
         panel.appendChild(subhead("Colours"));
@@ -1388,7 +1386,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         var zeroDarkSwatch  = heatmapModeSwatch("dark",  "--heatmap-color-zero");
 
         panel.appendChild(pairedSwatchRow("Cell colour",      "", [{ label: "Light", swatch: cellLightSwatch }, { label: "Dark", swatch: cellDarkSwatch  }]));
-        panel.appendChild(pairedSwatchRow("No-review colour", "", [{ label: "Light", swatch: zeroLightSwatch }, { label: "Dark", swatch: zeroDarkSwatch  }], { noBorder: true }));
+        panel.appendChild(pairedSwatchRow("No-review colour", "", [{ label: "Light", swatch: zeroLightSwatch }, { label: "Dark", swatch: zeroDarkSwatch  }]));
 
         var resetBtn = el("button", "mm-inline-btn", "Reset colours to default");
         resetBtn.type = "button";
@@ -1459,7 +1457,9 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
                 heatmapPreview.paint();
             }
         );
-        panel.appendChild(row("Streak icon", "", streakPicker.el, { noBorder: true }));
+        streakPickerRow = row("Streak icon", "", streakPicker.el);
+        streakPickerRow.style.display = (state.draft.json.heatmapShowStreak != null ? state.draft.json.heatmapShowStreak : true) ? "" : "none";
+        panel.appendChild(streakPickerRow);
     }
 
     // ================= Shell (sidebar + tab switcher) =================
@@ -1481,11 +1481,6 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         return nav;
     }
 
-    // Widgets and Background used to be nested under one "Appearance" tab
-    // via a sub-tab switcher. They're now top-level tabs in their own
-    // right, sitting where "Appearance" used to be, since each is a
-    // distinct scope (individual stat cards vs. the whole-dashboard
-    // backdrop) rather than genuinely one shared sub-topic.
     var TAB_GROUPS = [
         { key: "layout",     label: "Layout",     render: renderLayoutTab },
         { key: "background", label: "Background", render: renderMainBackgroundTab },
