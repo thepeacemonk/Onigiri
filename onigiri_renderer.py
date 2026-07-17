@@ -300,21 +300,40 @@ _PORTED_WIDGET_CSS = """
    Appended last so it wins the cascade over per-widget styles.
    ==================================================================== */
 .stat-card, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget,
-.prep-station-widget, .onigiri-restaurant-level-widget, #onigiri-heatmap-container {
+.prep-station-widget, .onigiri-restaurant-level-widget, .learner-stats-widget,
+#onigiri-heatmap-container {
     border-radius: 14px !important;
+    box-shadow: none !important;
+    padding: 18px !important;
+}
+
+button, select, input, textarea {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    border: none !important;
+    outline: none !important;
     box-shadow: none !important;
 }
 
-/* One shared card-title style: small caps, muted, left-aligned. */
+button:hover, button:focus, button:active,
+select:hover, select:focus, select:active,
+input:hover, input:focus, input:active,
+textarea:hover, textarea:focus, textarea:active {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* One shared card-title style: small caps, muted, consistently aligned. */
 .onigiri-favorites-widget h3,
 .onigimon-header h3,
-.learner-stats-header h3,
 .prep-widget-title,
 .onigiri-restaurant-level-widget .restaurant-info h3,
 .hex-land-header h3,
 .hex-land-copy h3,
 .stat-card h3 {
-    font-size: 11px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     letter-spacing: 0.08em !important;
     text-transform: uppercase !important;
@@ -322,6 +341,37 @@ _PORTED_WIDGET_CSS = """
     margin: 0 0 10px 0 !important;
     text-align: left !important;
     font-family: var(--font-main, inherit) !important;
+}
+
+.learner-stats-header h3,
+.learner-stats-header-row {
+    margin: 0 !important;
+    min-height: 20px !important;
+    height: 20px !important;
+    line-height: 20px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+.learner-stats-header h3 {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    color: var(--fg-subtle, #8a8a8a) !important;
+    text-align: left !important;
+    font-family: var(--font-main, inherit) !important;
+}
+
+.learner-stats-header-row {
+    width: 100% !important;
+    gap: 8px !important;
+    justify-content: space-between !important;
+    overflow: hidden !important;
+}
+
+.stat-card h3 {
+    text-align: center !important;
 }
 
 /* Card headers align their title left, controls right. */
@@ -334,41 +384,42 @@ _PORTED_WIDGET_CSS = """
 /* Big metric numbers share one scale. */
 .stat-card p {
     font-size: 24px !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
     margin: 0 !important;
 }
         /* Prep Station widget */
         .prep-station-widget {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            padding: 10px 12px 12px 12px;
+            gap: 14px;
+            padding: 20px;
             cursor: pointer;
             overflow: hidden;
             font-family: inherit;
-            /* background + border-radius/width fall back here, then get
-               overridden !important by the Box Color & Effect settings */
-            background-color: var(--canvas-inset, #f2f2f2);
+            background: color-mix(in srgb, var(--canvas-inset, #f2f2f2) 92%, transparent);
             border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
-            border-radius: 15px;
+            border-radius: 16px;
         }
         .prep-widget-header {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: space-between;
             gap: 8px;
             flex-shrink: 0;
         }
         .prep-widget-title {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: .1em;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
-            opacity: 0.55;
+            color: var(--fg-subtle, #7f7f87);
+            opacity: 1;
         }
         .prep-widget-count {
-            font-size: 9px;
-            opacity: 0.45;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--fg-subtle, #7f7f87);
+            opacity: 0.78;
             margin-right: auto;
         }
         .prep-widget-empty {
@@ -376,9 +427,14 @@ _PORTED_WIDGET_CSS = """
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
-            opacity: 0.45;
+            min-height: 84px;
+            font-size: 12px;
+            color: var(--fg-subtle, #7f7f87);
+            opacity: 0.7;
             font-style: italic;
+            border: 1px dashed var(--border, rgba(128, 128, 128, 0.24));
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--canvas, #ffffff) 76%, transparent);
         }
 
         /* Mini exam-card previews, echoing the Prep Station dialog's ExamCard.
@@ -388,7 +444,7 @@ _PORTED_WIDGET_CSS = """
         .prep-plan-cards {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
+            gap: 10px;
             flex: 1;
             min-height: 0;
         }
@@ -397,9 +453,9 @@ _PORTED_WIDGET_CSS = """
             min-height: 0;
             display: flex;
             flex-direction: column;
-            border-radius: 12px;
+            border-radius: 14px;
             overflow: hidden;
-            background: var(--canvas-inset, #f2f2f2);
+            background: color-mix(in srgb, var(--canvas, #ffffff) 84%, transparent);
             border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
         }
         .prep-card-band {
@@ -407,8 +463,8 @@ _PORTED_WIDGET_CSS = """
             flex-direction: column;
             justify-content: space-between;
             flex: 0 0 auto;
-            padding: 6px 7px;
-            min-height: 40%;
+            padding: 8px 9px;
+            min-height: 25%;
             color: #ffffff;
         }
         .prep-card-band-top {
@@ -424,28 +480,28 @@ _PORTED_WIDGET_CSS = """
             min-width: 0;
         }
         .prep-card-icon {
-            font-size: 13px;
+            font-size: 15px;
             line-height: 1;
             flex-shrink: 0;
         }
         img.prep-card-icon {
-            width: 13px;
-            height: 13px;
+            width: 15px;
+            height: 15px;
             object-fit: contain;
             display: block;
             flex-shrink: 0;
         }
         .prep-card-badge {
-            font-size: 7px;
+            font-size: 9px;
             font-weight: 700;
             white-space: nowrap;
-            background: rgba(0, 0, 0, 0.35);
-            padding: 2px 5px;
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 3px 6px;
+            border-radius: 999px;
         }
         .prep-card-name {
-            font-size: 10px;
-            font-weight: 700;
+            font-size: 16px;
+            font-weight: 800;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -458,8 +514,14 @@ _PORTED_WIDGET_CSS = """
             justify-content: space-between;
             flex: 1;
             min-height: 0;
-            padding: 6px 7px 7px 7px;
-            gap: 4px;
+            padding: 8px 9px 9px 9px;
+            gap: 6px;
+            background: #efefec;
+            color: #2b2b2b;
+        }
+        .night-mode .prep-card-body {
+            background: #2E2E2D;
+            color: #f5f5f2;
         }
         .prep-card-pace {
             display: flex;
@@ -468,13 +530,14 @@ _PORTED_WIDGET_CSS = """
             min-width: 0;
         }
         .prep-card-pace-num {
-            font-size: 17px;
-            font-weight: 700;
+            font-size: 40px;
+            font-weight: 900;
             line-height: 1;
+            color: #f5f5f2;
         }
         .prep-card-pace-unit {
-            font-size: 8px;
-            opacity: 0.55;
+            font-size: 11px;
+            opacity: 0.8;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -496,8 +559,9 @@ _PORTED_WIDGET_CSS = """
             border-radius: 2px;
         }
         .prep-card-progress-label {
-            font-size: 8px;
-            opacity: 0.55;
+            font-size: 9px;
+            color: var(--fg-subtle, #7f7f87);
+            opacity: 0.8;
             white-space: nowrap;
             flex-shrink: 0;
         }
@@ -578,10 +642,13 @@ _PORTED_WIDGET_CSS = """
         .hex-land-header h3,
         .hex-land-copy h3 {
             margin: 0;
-            font-size: 15px;
+            font-size: 12px !important;
             line-height: 1.2;
-            font-weight: 700;
-            color: var(--fg, #111);
+            font-weight: 700 !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+            color: var(--fg-subtle, #8a8a8a) !important;
+            text-align: left !important;
         }
 
         .hex-land-header button {
@@ -691,21 +758,40 @@ _PORTED_WIDGET_CSS = """
         }
 
         .onigimon-widget, .onigimon-widget * {
-            font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
+            font-family: var(--font-main, inherit) !important;
+        }
+
+        .onigimon-header {
+            width: 100%;
+            justify-content: flex-start !important;
         }
 
         .onigimon-widget {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 6px;
             padding: 14px;
             border-radius: 15px;
             border: 1px solid var(--border, #e0e0e0);
             background: var(--canvas-inset, #ffffff);
-            color: var(--fg, #222);
+            color: var(--fg, #222) !important;
             overflow: hidden;
             position: relative;
             cursor: pointer;
+        }
+
+        /* Continuous card: coloured top section fused to a neutral lower section
+           with a flat seam (mirrors the Prep Station card structure). The card's
+           overflow:hidden clips the top's top-corners and the bottom's
+           bottom-corners to the shared radius. */
+        .onigimon-card {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border, #e0e0e0);
         }
 
         .onigimon-header,
@@ -722,18 +808,104 @@ _PORTED_WIDGET_CSS = """
 
         .onigimon-header h3 {
             margin: 0;
-            font-size: 15px;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+            color: var(--fg-subtle, #8a8a8a) !important;
+            text-align: left !important;
         }
 
         .onigimon-body {
             display: flex;
             flex-direction: column;
             gap: 6px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Coloured top section (sprite + name). Reuses .onigimon-scene for the
+           background image/blur machinery, but drops the scene's own border and
+           radius — the enclosing .onigimon-card owns the grey border + corners. */
+        .onigimon-top {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-height: 100px;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+        }
+
+        /* Combined selector so these win over the later `.onigimon-scene` block
+           (padding/border/radius) — the top section is applied as
+           `class="onigimon-top onigimon-scene"`. */
+        .onigimon-top.onigimon-scene {
+            border: none;
+            border-radius: 0;
+            padding: 16px 14px;
+        }
+
+        /* Fixed 100px companion sprite. */
+        .onigimon-top .onigimon-sprite {
+            width: 100px;
+            height: 100px;
+            flex: 0 0 100px;
+            border-radius: 0;
+            background: transparent;
+        }
+
+        .onigimon-top .onigimon-sprite img {
+            width: 96px;
+            height: 96px;
+        }
+
+        /* Character name — fixed colour by mode, NOT theme-variable driven. */
+        .onigimon-top .onigimon-info strong {
+            color: #000000;
+        }
+
+        .night-mode .onigimon-top .onigimon-info strong {
+            color: #ffffff;
+        }
+
+        /* Level subtext sits on the coloured section — keep it legible in both modes. */
+        .onigimon-top .onigimon-info span {
+            color: rgba(0, 0, 0, 0.68);
+        }
+
+        .night-mode .onigimon-top .onigimon-info span {
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        /* Neutral lower section (stat meters). Same shade as the Prep Station
+           card body, switching with light/dark mode. */
+        .onigimon-bottom {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 5px;
+            padding: 12px 14px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            background: #efefec;
+            color: var(--fg, #222);
+        }
+
+        .night-mode .onigimon-bottom {
+            background: #2e2e2d;
+        }
+
+        /* Stat labels are theme-variable driven so they adapt light/dark. */
+        .onigimon-bottom .onigimon-meter span {
+            color: var(--fg, #222);
+            text-align: left;
+            justify-self: start;
         }
 
         .onigimon-header span,
         .onigimon-info span {
-            color: var(--fg-subtle, #757575);
+            color: var(--fg-faint, #757575);
             font-size: 12px;
         }
         
@@ -877,8 +1049,8 @@ _PORTED_WIDGET_CSS = """
 
         .onigimon-meter {
             display: grid;
-            grid-template-columns: 80px 40px minmax(0, 1fr);
-            gap: 8px;
+            grid-template-columns: 68px 34px minmax(0, 1fr);
+            gap: 6px;
             align-items: center;
             font-size: 12px;
         }
@@ -1427,10 +1599,12 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int 
             <img src="{image_path}" class="restaurant-image">
             {snowflakes_html}
         </div>
+        <div class="rl-header-row">
+            <span class="level-label">{name}</span>
+            {nav_buttons_html}
+        </div>
         <div class="restaurant-info">
             <div class="level-display">
-                {nav_buttons_html}
-                <span class="level-label">{name}</span>
                 <span class="level-value">{level}</span>
                 <div class="level-progress-container">
                     <div class="lp-bar">
@@ -1606,7 +1780,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     # --- Part 3: Assemble the Final Stats Block ---
     stats_title = mw.col.conf.get("modern_menu_statsTitle", config.DEFAULTS["statsTitle"])
-    title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
+    title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title and stats_title.strip() else ""
 
     # Combine both Onigiri and External widgets into a single unified grid
     unified_grid_html = onigiri_grid_html + external_widgets_html
@@ -1630,7 +1804,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .unified-grid {{
             display: grid;
-            gap: 15px;
+            gap: 12px;
             /* grid-auto-rows ensures every '1 row' has a fixed minimum height (e.g. 110px) */
             grid-auto-rows: minmax(110px, auto);
             grid-template-columns: repeat({col_count}, 1fr);
@@ -1687,7 +1861,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             align-items: center;
             justify-content: center;
             background: var(--canvas-inset);
-            padding: 10px;
+            padding: 25px 4px 10px 4px;
             position: relative;
             transition: all 0.3s ease;
             box-sizing: border-box;
@@ -1705,7 +1879,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             /* Dynamic Padding based on col_count */
             padding-top: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
             padding-bottom: {40 if col_count == 4 else (20 if col_count > 4 else 60)}px !important;
-            padding-left: 110px !important;
+            padding-left: 6% !important;
             padding-right: 40px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
@@ -1765,6 +1939,21 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             padding: 15px 20px;
             gap: 15px;
             transition: opacity 0.2s ease;
+            position: relative;
+        }}
+
+        /* Header row pinned to the panel's top corners: NOOK LEVEL label 18px
+           from the top-left, nav icons 18px from the top-right (mirrored). */
+        .rl-header-row {{
+            position: absolute;
+            top: 18px;
+            left: 18px;
+            right: 18px;
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            gap: 8px;
+            z-index: 20;
         }}
         
         .onigiri-restaurant-level-widget.expanded-view .restaurant-info {{
@@ -1776,15 +1965,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             align-items: flex-start;
+            width: 100%;
         }}
 
         .level-label {{
-            font-size: 0.75em;
+            font-size: 12px !important;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--fg-subtle, #888);
-            font-weight: 600;
-            margin-bottom: 2px;
+            letter-spacing: 0.08em;
+            color: var(--fg-subtle, #8a8a8a);
+            font-weight: 700;
+            margin: 0 !important;
+            text-align: left;
         }}
 
         .level-value {{
@@ -1800,9 +1991,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
         
         .lp-bar {{
-            height: 6px;
+            height: 7px;
             background: var(--border, #e0e0e0);
-            border-radius: 3px;
+            border-radius: 999px;
             overflow: hidden;
             width: 100%;
             margin-bottom: 2px;
@@ -1810,7 +2001,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         
         .lp-fill {{
             height: 100%;
-            border-radius: 3px;
+            border-radius: 999px;
             transition: width 0.5s ease;
         }}
         
@@ -1841,9 +2032,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .ds-progress-bar {{
-            height: 8px;
+            height: 7px;
             background: var(--border, #e0e0e0);
-            border-radius: 4px;
+            border-radius: 999px;
             overflow: hidden;
             width: 100%;
         }}
@@ -1851,7 +2042,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .ds-progress-fill {{
             height: 100%;
             background: var(--accent-color, #007bff);
-            border-radius: 4px;
+            border-radius: 999px;
             transition: width 0.5s ease;
         }}
 
@@ -1903,11 +2094,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         /* Navigation buttons for Restaurant Level Widget */
         .rl-widget-nav-buttons {{
             display: flex;
-            gap: 0;
+            gap: 2px;
             z-index: 20;
-            margin-bottom: 2px;
-            margin-left: 0; 
-            padding-left: 0;
+            margin-top: -2px;
+            padding: 0;
+            align-items: center;
         }}
         
         .rl-nav-btn {{
@@ -1925,11 +2116,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             cursor: pointer;
             display: flex;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: center;
             transition: color 0.2s ease;
             color: var(--fg-subtle, #757575);
         }}
-        
+
         .night .rl-nav-btn {{
             background: transparent !important;
             color: var(--fg-subtle, #9e9e9e);
@@ -1963,7 +2154,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: inline-block;
             width: 16px;
             height: 16px;
-            margin-left: 4px;
+            margin-left: 0;
             fill: currentColor;
         }}
         
@@ -2441,7 +2632,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             cursor: pointer;
             user-select: none;
             border-radius: 6px;
-            padding: 0 2px;
+            padding: 0px;
             outline: none;
             transition: color 0.15s ease, opacity 0.15s ease;
         }}

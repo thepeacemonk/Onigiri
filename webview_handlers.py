@@ -158,6 +158,12 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if parent and callable(parent) and type(parent()).__name__ == "OnigimonCareDialog":
         return handled
 
+    # Main Menu web-settings dialog (delegated so its many pycmds don't grow
+    # this if-chain). Widget Layout Editor rides on the same save round-trip.
+    if cmd.startswith("onigiri_mainmenu_"):
+        from . import main_menu_dialog
+        return main_menu_dialog.handle_cmd(cmd, context)
+
     if cmd == "onigiri_welcome_dismissed":
         try:
             from . import config

@@ -75,6 +75,7 @@ TRANSLATIONS = {
         'hexland_refresh': 'Refresh',
 
         'hexland_title': 'Hexagon Land',
+        'hexland_enable_settings': 'Enable Hexagon Land in Gamification Settings.',
         'hexland_reviews_today': 'reviews today',
         'hexland_lifetime_reviews': 'lifetime reviews',
         'hexland_hex_coins': 'Hex Coins',

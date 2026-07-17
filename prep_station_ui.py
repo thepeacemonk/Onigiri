@@ -2272,8 +2272,25 @@ class IconButton(QPushButton):
             from .icon_picker import DeckIconPickerDialog
             dlg = DeckIconPickerDialog(self._icon_value, self.addon_path, self.window(), allow_emoji=True)
             dlg.iconSelected.connect(self._on_selected)
+            # The picker is frameless with no auto-placement. Center it on the
+            # plan dialog (mirroring how Settings opens the same picker); an
+            # unpositioned frameless dialog otherwise lands at the screen origin
+            # or behind the modal edit dialog, so it looks like nothing opened.
+            parent_win = self.window()
+            if parent_win is not None:
+                pg = parent_win.geometry()
+                dg = dlg.frameGeometry()
+                dlg.move(
+                    pg.x() + (pg.width() - dg.width()) // 2,
+                    pg.y() + (pg.height() - dg.height()) // 2,
+                )
             dlg.exec()
         except Exception as e:
+            try:
+                from aqt.utils import tooltip
+                tooltip(f"Icon picker error: {e}")
+            except Exception:
+                pass
             print(f"Prep Station: icon picker error: {e}")
         finally:
             # DeckIconPickerDialog is frameless + always-on-top; closing it can

@@ -949,6 +949,11 @@ class PageBackgroundsMixin:
 
     def _style_background_gallery_dialog(self, dialog):
         colors = self._background_gallery_dialog_colors()
+        # QPushButton has no rule of its own by default, so the "Done" button
+        # renders with plain OS chrome — a jarring native-grey button inside
+        # an otherwise fully custom-painted dark dialog. Style it to match
+        # the accent-filled, rounded buttons used everywhere else.
+        accent = QColor(self.accent_color)
         dialog.setStyleSheet(f"""
             QDialog {{
                 background-color: {colors["bg"]};
@@ -957,6 +962,20 @@ class PageBackgroundsMixin:
             QScrollArea {{
                 background-color: {colors["bg"]};
                 border: none;
+            }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 8px;
+                margin: 4px 0 4px 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {colors["border"]};
+                border-radius: 4px;
+                min-height: 24px;
+            }}
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {{
+                height: 0;
             }}
             QWidget#backgroundGalleryContent {{
                 background-color: {colors["content"]};
@@ -977,6 +996,20 @@ class PageBackgroundsMixin:
             QLabel#backgroundGalleryEmpty {{
                 color: {colors["muted"]};
                 font-size: 13px;
+            }}
+            QPushButton {{
+                background-color: {accent.name()};
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 7px 18px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {accent.lighter(112).name()};
+            }}
+            QPushButton:pressed {{
+                background-color: {accent.darker(108).name()};
             }}
         """)
 

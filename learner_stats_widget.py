@@ -111,9 +111,7 @@ def get_card_stats(selected_did, all_decks):
 
 def _deck_display_name(deck_name: str) -> str:
     leaf_name = str(deck_name or "").split("::")[-1]
-    if len(leaf_name) > 34:
-        return leaf_name[:15] + "..." + leaf_name[-16:]
-    return leaf_name
+    return leaf_name.strip()
 
 def _selected_deck_label(selected_did, all_decks, labels) -> str:
     if selected_did == "all":
@@ -328,7 +326,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         background-color: var(--canvas-inset, #ffffff);
         border: 1px solid var(--border, #e0e0e0);
         border-radius: var(--onigiri-box-effect-radius, 15px);
-        padding: 14px;
+        padding: 20px;
         height: 100%;
         box-sizing: border-box;
         display: flex;
@@ -339,52 +337,93 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     .learner-stats-header {
         display: flex;
         flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
+        align-items: stretch;
+        gap: 8px;
         width: 100%;
         box-sizing: border-box;
+        overflow: hidden;
+    }
+    .learner-stats-header-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 20px;
+        line-height: 0;
         overflow: hidden;
     }
     .learner-stats-header h3 {
         margin: 0;
-        font-size: 13px;
+        flex: 0 0 auto;
+        min-width: 0;
+        font-size: 11px;
         text-transform: uppercase;
         color: var(--fg-subtle, #757575);
-        font-weight: 600;
-        letter-spacing: 0;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        min-height: 20px;
+        line-height: 20px;
     }
     .learner-stats-deck-trigger {
-        appearance: none;
-        -webkit-appearance: none;
         font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 20px;
         margin: 0;
-        background: var(--highlight-bg, #eeeeee);
-        color: var(--fg, #222222);
-        border: 1px solid var(--border, #e0e0e0);
-        border-radius: 8px;
-        padding: 4px 8px;
-        font-size: 11px;
-        width: 100%;
-        max-width: 100%;
+        margin-left: auto;
+        background: var(--collapsed-toolbar-button-bg, var(--hover-deck-bg, #eeeeee)) !important;
+        background-image: none !important;
+        color: var(--fg, #222222) !important;
+        border: none !important;
+        border-radius: 7px !important;
+        padding: 6px;
+        height: 20px;
+        min-height: 20px;
+        width: auto;
+        max-width: min(60%, 320px);
+        min-width: 0;
         box-sizing: border-box;
-        outline: none;
+        outline: none !important;
         cursor: pointer;
-        transition: border-color 0.2s ease;
+        transition: transform 0.08s ease, background-color 0.15s ease, color 0.15s ease;
         text-align: left;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        filter: none !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        flex: 0 1 auto;
+        flex-shrink: 1;
+        position: relative;
+        top: 0;
+        vertical-align: middle;
+    }
+    .learner-stats-deck-trigger-label {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
         overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
     }
     .learner-stats-deck-trigger:hover,
-    .learner-stats-deck-trigger:focus {
-        border-color: var(--border, #e0e0e0) !important;
-        background: var(--highlight-bg, #eeeeee) !important;
+    .learner-stats-deck-trigger:focus,
+    .learner-stats-deck-trigger:focus-visible,
+    .learner-stats-deck-trigger:active {
+        background: var(--collapsed-toolbar-button-hover-bg, var(--button-hover-bg, var(--hover-deck-bg))) !important;
+        background-image: none !important;
+        color: var(--fg, #222222) !important;
         filter: none !important;
         outline: none !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    .learner-stats-deck-trigger:active {
+        transform: translateY(1px);
     }
     .learner-stats-grid {
         display: grid;
@@ -394,24 +433,18 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     }
     .learner-stat-card {
         background: color-mix(in srgb, var(--fg, #222) 3%, transparent);
-        border: 1px solid var(--border, #e0e0e0);
+        border: none;
         border-radius: 10px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 4px 2px;
-        transition: all 0.2s ease;
+        padding: 6px 2px;
         box-sizing: border-box;
         min-width: 0;
     }
-    .learner-stat-card:hover {
-        background: color-mix(in srgb, var(--accent-color, #007aff) 6%, transparent);
-        border-color: var(--accent-color, #007aff);
-        transform: translateY(-1px);
-    }
     .learner-stat-label {
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 500;
         color: var(--fg-subtle, #757575);
         text-align: center;
@@ -423,7 +456,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         letter-spacing: 0;
     }
     .learner-stat-val {
-        font-size: 13px;
+        font-size: 16px;
         font-weight: 700;
         color: var(--fg, #222222);
     }
@@ -440,19 +473,16 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         display: flex;
         width: 100%;
         height: 10px;
-        border-radius: 5px;
+        border-radius: 999px;
         overflow: hidden;
         background-color: color-mix(in srgb, var(--fg, #222) 8%, transparent);
-        margin-top: 4px;
+        margin-top: 6px;
         box-sizing: border-box;
     }
     .learner-stats-stacked-segment {
         height: 100%;
-        transition: width 0.3s ease, opacity 0.2s ease;
-        cursor: pointer;
-    }
-    .learner-stats-stacked-segment:hover {
-        opacity: 0.8;
+        transition: width 0.3s ease;
+        cursor: default;
     }
     .learner-stats-stacked-mature {
         background-color: #2ecc71;
@@ -515,10 +545,12 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     }
     .learner-stats-modal-header h3 {
         margin: 0;
-        color: var(--fg, #222222);
+        color: var(--fg-subtle, #757575);
         font-size: 16px;
         font-weight: 700;
-        letter-spacing: 0;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-family: var(--font-main, inherit);
     }
     .learner-stats-modal-close {
         margin: 0;
@@ -617,9 +649,6 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         font-size: 13px;
         color: var(--fg, #222222);
         box-sizing: border-box;
-    }
-    .learner-stats-picker-row:hover {
-        background: var(--highlight-bg, #eeeeee);
     }
     .learner-stats-picker-row.learner-stats-picker-selected {
         background: color-mix(in srgb, var(--accent-color, #007aff) 16%, transparent);
@@ -858,8 +887,10 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     {dynamic_css}
     <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}">
         <div class="learner-stats-header">
-            <h3>{labels["title"]}</h3>
-            <button class="learner-stats-deck-trigger" type="button" onclick="window.OnigiriLearnerStatsDialog && window.OnigiriLearnerStatsDialog.open(this);">{html.escape(deck_label)}</button>
+            <div class="learner-stats-header-row">
+                <h3>{labels["title"]}</h3>
+                <div class="learner-stats-deck-trigger" role="button" tabindex="0" onclick="window.OnigiriLearnerStatsDialog && window.OnigiriLearnerStatsDialog.open(this);"><span class="learner-stats-deck-trigger-label">{html.escape(deck_label)}</span></div>
+            </div>
             <div class="learner-stats-stacked-bar">
                 <div class="learner-stats-stacked-segment learner-stats-stacked-mature" style="width: {mature_pct}%;"></div>
                 <div class="learner-stats-stacked-segment learner-stats-stacked-young" style="width: {young_pct}%;"></div>

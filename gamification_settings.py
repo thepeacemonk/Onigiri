@@ -1232,9 +1232,9 @@ class GamificationSettingsDialog(QDialog):
         def _on_onigimon_sprite_mode_changed(value):
             self.onigimon_sprite_motion = "gif" if value == "gif" else "static"
         self.onigimon_sprite_mode_widget.modeChanged.connect(_on_onigimon_sprite_mode_changed)
-        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#7FD179") or "#7FD179")
+        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#6ea96a") or "#6ea96a")
         if not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color):
-            self.onigimon_scene_color = "#7FD179"
+            self.onigimon_scene_color = "#6ea96a"
         self.onigimon_scene_image = str(self.onigimon_config.get("scene_background_image", "") or "")
         self.onigimon_scene_color_button = QPushButton(tr("onigimon_scene_color_button"))
         self.onigimon_scene_color_button.setObjectName("onigimonSceneButton")
@@ -2427,7 +2427,7 @@ class GamificationSettingsDialog(QDialog):
             print(f"Warning: Could not refresh Onigimon care after blur change: {exc}")
 
     def _update_onigimon_scene_controls(self):
-        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#7FD179"
+        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#6ea96a"
         self.onigimon_scene_color_button.setStyleSheet(
             f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111; border: 1px solid rgba(0,0,0,0.18); border-radius: 15px; padding: 4px 14px; min-height: 28px; }}"
         )

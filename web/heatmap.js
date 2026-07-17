@@ -11,6 +11,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
     const state = {
         view: "year",
         targetDate: new Date(),
+        firstYear: new Date().getFullYear(),
     };
 
     const TRANSITION_DURATION_MS = 500;
@@ -276,12 +277,32 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return `<span class="heatmap-ui-icon heatmap-system-icon ${className}" style="mask-image:url('${iconUrl}');-webkit-mask-image:url('${iconUrl}');"></span>`;
     }
 
-    function renderFlameIcon(hasStreak) {
-        return renderSystemIcon(`heatmap-fire-icon ${hasStreak ? "active" : "inactive"}`, "fire.svg");
+    function renderFlameIcon(hasStreak, config) {
+        const raw = (config && config.heatmapStreakIcon) || "fire.svg";
+        const filename = raw.startsWith("system:") ? raw.slice(7) : raw;
+        return renderSystemIcon(`heatmap-fire-icon ${hasStreak ? "active" : "inactive"}`, filename);
     }
 
     function renderYearChevron() {
         return renderSystemIcon("heatmap-year-chevron", "down.svg");
+    }
+
+    function buildYearSelect() {
+        const currentYear = state.targetDate.getFullYear();
+        const thisYear = new Date().getFullYear();
+        const firstYear = Math.min(state.firstYear || thisYear, thisYear);
+        let items = "";
+        for (let y = thisYear; y >= firstYear; y--) {
+            items += `<div class="year-dropdown-item ${y === currentYear ? "selected" : ""}" data-year="${y}">${y}</div>`;
+        }
+        return `
+            <div class="year-select-wrapper">
+                <button class="year-select-btn nav-btn" type="button">
+                    <span class="year-select-label">${currentYear}</span>
+                </button>
+                <div class="year-dropdown-menu">${items}</div>
+            </div>
+        `;
     }
 
     function buildNavContent(config) {
@@ -291,7 +312,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         if (state.view === "year") {
             return `
                 <button class="nav-btn" data-nav="-1">${leftArrow}</button>
-                <span class="nav-title">${state.targetDate.getFullYear()}</span>
+                ${buildYearSelect()}
                 <button class="nav-btn" data-nav="1">${rightArrow}</button>
             `;
         }
@@ -318,7 +339,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
     function bindNavButtons(navEl) {
         navEl.addEventListener("click", (event) => {
-            const btn = event.target.closest(".nav-btn");
+            // Only the prev/next arrows carry data-nav. The year button also has
+            // the .nav-btn class (for shared styling) but must NOT trigger a
+            // navigation — it opens the dropdown via its own handler.
+            const btn = event.target.closest(".nav-btn[data-nav]");
             if (!btn) return;
             if (isTransitioning) return;
 
@@ -335,6 +359,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         const preparedData = prepareData(data);
 
+        if (typeof data.firstYear === "number") {
+            state.firstYear = data.firstYear;
+        }
+
         if (config.heatmapDefaultView) {
             state.view = config.heatmapDefaultView;
         }
@@ -347,11 +375,13 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 ? `Longest streak: ${longestStreak} day${longestStreak !== 1 ? "s" : ""}`
                 : "No streak yet";
             const streakMarkup = config.heatmapShowStreak
-                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(longestStreakTip)}">${renderFlameIcon(hasStreak)}<span>${data.streak}</span></div>`
+                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(longestStreakTip)}">${renderFlameIcon(hasStreak, config)}<span>${data.streak}</span></div>`
                 : "";
 
+            const activityLabel = config.heatmapActivityLabel || i18n.activity || "Activity";
             return `
                 <div class="header-left">
+                    <h3 class="heatmap-widget-title">${activityLabel}</h3>
                     <div class="heatmap-nav">${buildNavContent(config)}</div>
                 </div>
                 <div class="header-right">
@@ -403,6 +433,37 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 state.view = btn.dataset.view;
                 state.targetDate = new Date();
                 renderCurrentView();
+            });
+
+            // Year dropdown — delegated on the container so it survives the
+            // in-place nav rebuilds (navEl.innerHTML) done on filter/nav clicks.
+            container.addEventListener("click", (event) => {
+                const menu = container.querySelector(".year-dropdown-menu");
+                const selectBtn = container.querySelector(".year-select-btn");
+                const closeDropdown = () => {
+                    if (menu) menu.classList.remove("open");
+                    if (selectBtn) selectBtn.classList.remove("open");
+                };
+
+                const item = event.target.closest(".year-dropdown-item");
+                if (item) {
+                    const year = parseInt(item.dataset.year, 10);
+                    if (!isNaN(year) && year !== state.targetDate.getFullYear()) {
+                        state.targetDate.setFullYear(year);
+                        renderCurrentView();
+                    } else {
+                        closeDropdown();
+                    }
+                    return;
+                }
+
+                if (event.target.closest(".year-select-btn")) {
+                    if (menu) menu.classList.toggle("open");
+                    if (selectBtn) selectBtn.classList.toggle("open");
+                    return;
+                }
+
+                closeDropdown();
             });
         }
 

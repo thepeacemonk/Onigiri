@@ -8,9 +8,16 @@ from aqt.qt import (
     QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QIcon, QLabel,
     QLineEdit, QMessageBox, QPainter, QPainterPath, QPixmap,
     QPropertyAnimation, QPushButton, QRectF, QScrollArea, QSize,
-    QSizePolicy, QStackedWidget, QSvgRenderer, QTabWidget, QTimer,
+    QSizePolicy, QStackedWidget, QTabWidget, QTimer,
     QVBoxLayout, QWidget, Qt, pyqtSignal,
 )
+
+# QSvgRenderer lives in QtSvg; some Anki/Qt builds don't re-export it via
+# aqt.qt, so import it directly (mirroring every other module in this add-on).
+try:
+    from PyQt6.QtSvg import QSvgRenderer
+except ImportError:  # Qt5 fallback
+    from PyQt5.QtSvg import QSvgRenderer
 
 try:
     from aqt.qt import sip
