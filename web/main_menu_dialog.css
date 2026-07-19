@@ -583,7 +583,7 @@
 .mm-preview-head-label {
     font-size: 12px; font-weight: 600; color: var(--mm-text-tertiary);
 }
-.mm-preview-body { padding: 22px; display: flex; justify-content: center; align-items: center; min-height: 90px; }
+.mm-preview-body { padding: 22px; display: flex; justify-content: center; align-items: center; min-height: 120px; }
 
 /* Light-mode preview variant (toggled by JS adding .is-light-preview) */
 .mm-preview-card.is-light-preview { background: #f4f4f4; border-color: rgba(0,0,0,0.1); }
@@ -592,7 +592,7 @@
 
 /* ================= Inline action buttons ================= */
 
-.mm-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.mm-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px 0; }
 .mm-inline-btn {
     padding: 7px 14px; border-radius: 10px !important;
     font-size: 12.5px; font-weight: 600;
@@ -708,7 +708,7 @@
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     height: 126px;
-    gap: 3px;
+    gap: 1px;
 }
 
 /* Month view: 7 fixed-30px columns, matching heatmap.css:673-678 */
