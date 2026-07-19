@@ -604,7 +604,7 @@ def on_profile_did_open():
 
     # Check for sync conflicts on startup
     if onigiri_sync.is_enabled():
-        QTimer.singleShot(1000, on_sync_did_finish)
+        QTimer.singleShot(3000, on_sync_did_finish)
 
     # Show birthday popup if it's the user's birthday (requires mw.col)
     # Delay to ensure the main window is fully rendered before opening a dialog.
