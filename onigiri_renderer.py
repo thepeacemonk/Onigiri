@@ -343,17 +343,13 @@ textarea:hover, textarea:focus, textarea:active {
     font-family: var(--font-main, inherit) !important;
 }
 
-.learner-stats-header h3,
-.learner-stats-header-row {
+.learner-stats-header h3 {
     margin: 0 !important;
     min-height: 20px !important;
     height: 20px !important;
     line-height: 20px !important;
     display: inline-flex !important;
     align-items: center !important;
-}
-
-.learner-stats-header h3 {
     font-size: 12px !important;
     font-weight: 700 !important;
     letter-spacing: 0.08em !important;
@@ -364,6 +360,11 @@ textarea:hover, textarea:focus, textarea:active {
 }
 
 .learner-stats-header-row {
+    margin: 0 !important;
+    min-height: 26px !important;
+    height: 26px !important;
+    display: flex !important;
+    align-items: center !important;
     width: 100% !important;
     gap: 8px !important;
     justify-content: space-between !important;
@@ -831,7 +832,7 @@ textarea:hover, textarea:focus, textarea:active {
             display: flex;
             align-items: center;
             gap: 14px;
-            min-height: 100px;
+            min-height: 80px;
             box-sizing: border-box;
             flex: 0 0 auto;
         }
@@ -843,20 +844,43 @@ textarea:hover, textarea:focus, textarea:active {
             border: none;
             border-radius: 0;
             padding: 16px 14px;
+            background: radial-gradient(
+                circle at 22% 32%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 92%, white 8%) 0%,
+                var(--onigimon-color, #6ea96a) 70%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 90%, black 10%) 100%
+            ) !important;
         }
 
-        /* Fixed 100px companion sprite. */
+        /* Fixed 80px companion sprite. */
         .onigimon-top .onigimon-sprite {
-            width: 100px;
-            height: 100px;
-            flex: 0 0 100px;
+            position: relative;
+            width: 80px;
+            height: 80px;
+            flex: 0 0 80px;
             border-radius: 0;
             background: transparent;
         }
 
+        .onigimon-top .onigimon-sprite::before {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 76px;
+            height: 18px;
+            background: rgba(0, 0, 0, 0.24);
+            border-radius: 50%;
+            filter: blur(9px);
+            z-index: 0;
+        }
+
         .onigimon-top .onigimon-sprite img {
-            width: 96px;
-            height: 96px;
+            width: 72px;
+            height: 72px;
+            position: relative;
+            z-index: 1;
         }
 
         /* Character name — fixed colour by mode, NOT theme-variable driven. */
@@ -1671,9 +1695,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         from .gamification import hexagon_land
         return hexagon_land.render_widget_html()
 
-    def _render_learner_stats_widget():
+    def _render_learner_stats_widget(row_span=2):
         from . import learner_stats_widget
-        return learner_stats_widget._render_widget(self, "deck_stats")
+        return learner_stats_widget._render_widget(self, "deck_stats", row_span=row_span)
 
     def _render_prep_station_widget(slot_count=4):
         from . import prep_station
@@ -1735,6 +1759,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                     except (TypeError, ValueError):
                         onigimon_col_span = 1
                     widget_html = onigimon.render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
+                elif widget_id == "deck_stats":
+                    widget_html = _render_learner_stats_widget(row_span=row_span)
                 else:
                     widget_html = widget_generators[widget_id]()
                 if not str(widget_html or "").strip():
@@ -1760,10 +1786,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
     if col_count > 0:
         for hook_id, widget_config in grid_config.items():
+            hook_row_span = widget_config.get("row_span", 1)
             if "learner_stats_widget" in hook_id:
                 try:
                     from . import learner_stats_widget
-                    hook_html = learner_stats_widget._render_widget(self, hook_id)
+                    hook_html = learner_stats_widget._render_widget(self, hook_id, row_span=hook_row_span)
                 except Exception as e:
                     hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
             else:
@@ -1772,7 +1799,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                 pos = widget_config.get("grid_position", 0)
                 row = pos // col_count + 1
                 col = pos % col_count + 1
-                row_span = widget_config.get("row_span", 1)
+                row_span = hook_row_span
                 col_span = widget_config.get("column_span", 1)
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
                 # Add external widgets to the same grid as Onigiri widgets
@@ -2301,7 +2328,13 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     theme_css += action_icons_css
 
     # Custom profile name color (light/dark aware), managed from Settings > Profile.
-    if _col_conf_get("modern_menu_profile_name_color_enabled", False):
+    # Skipped for "image" and "gradient" backgrounds: those already compute a
+    # hardcoded black/white contrast color from the actual background (image
+    # luminance / gradient midpoint) at the root (--profile-name-color in
+    # generate_dynamic_css). A flat custom color has no way to know whether it
+    # stays readable against a two-tone gradient or a photo, so it must not be
+    # allowed to override the computed contrast color for those modes.
+    if profile_bg_mode not in ("image", profile_background.PROFILE_BG_MODE_GRADIENT) and _col_conf_get("modern_menu_profile_name_color_enabled", False):
         name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
         name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
         name_dark = _col_conf_get("modern_menu_profile_name_color_dark", name_light) if name_dynamic else name_light

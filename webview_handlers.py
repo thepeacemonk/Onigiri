@@ -1123,6 +1123,27 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             print(f"Onigiri: Error saving learner stats deck: {e}")
             return (True, None)
 
+    if cmd.startswith("onigiri_learner_stats_select_view:"):
+        try:
+            raw_payload = cmd.split(":", 1)[1]
+            data = json.loads(unquote(raw_payload))
+            widget_id = str(data.get("widgetId") or "")
+            view = str(data.get("view") or "grouped")
+            if view not in ("grouped", "bars", "donut"):
+                view = "grouped"
+
+            saved_views = mw.col.conf.get("onigiri_learner_stats_view", {})
+            if not isinstance(saved_views, dict):
+                saved_views = {}
+            saved_views[widget_id] = view
+
+            mw.col.conf["onigiri_learner_stats_view"] = saved_views
+            mw.col.setMod()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error saving learner stats view: {e}")
+            return (True, None)
+
     if cmd == "onigiri_learner_stats_refresh_fallback":
         try:
             if isinstance(context, DeckBrowser):

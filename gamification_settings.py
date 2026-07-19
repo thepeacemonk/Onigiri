@@ -14,7 +14,7 @@ from aqt.qt import (
 from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtGui import QImage, QFont
-from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
+from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene, QGraphicsDropShadowEffect
 from aqt import mw
 from aqt.theme import theme_manager
 from aqt.qt import (
@@ -2433,11 +2433,21 @@ class GamificationSettingsDialog(QDialog):
         )
 
         if hasattr(self, "onigimon_scene_preview"):
+            # Mirrors the live widget's CSS radial-gradient (onigiri_renderer.py,
+            # ".onigimon-top.onigimon-scene") using Qt's own qradialgradient
+            # syntax, since QSS has no color-mix() — the light/dark stops are
+            # computed here instead.
+            light = self._mix_hex_color(color, "#ffffff", 0.92)
+            dark = self._mix_hex_color(color, "#000000", 0.90)
+            gradient = (
+                "qradialgradient(cx:0.22, cy:0.32, radius:1.05, fx:0.22, fy:0.32, "
+                f"stop:0 {light}, stop:0.7 {color}, stop:1 {dark})"
+            )
             self.onigimon_scene_preview.setStyleSheet(
                 "QFrame#onigimonScenePreview {"
                 "border: 1px solid rgba(120,120,120,0.42);"
                 "border-radius: 14px;"
-                f"background-color: {color};"
+                f"background: {gradient};"
                 "}"
             )
             self._update_onigimon_scene_preview_background()
@@ -2463,6 +2473,14 @@ class GamificationSettingsDialog(QDialog):
             else:
                 self.onigimon_scene_preview_sprite.setPixmap(QPixmap())
                 self.onigimon_scene_preview_sprite.setText("Onigimon")
+            # Mirrors the live widget's blurred drop-shadow ellipse under the
+            # sprite (".onigimon-top .onigimon-sprite::before") using Qt's
+            # native blur-capable shadow effect, since QSS has no filter/blur.
+            shadow = QGraphicsDropShadowEffect(self.onigimon_scene_preview_sprite)
+            shadow.setBlurRadius(18)
+            shadow.setOffset(0, 10)
+            shadow.setColor(QColor(0, 0, 0, 61))
+            self.onigimon_scene_preview_sprite.setGraphicsEffect(shadow)
 
     def _choose_onigimon_scene_color(self):
         chosen, ok = OnigiriColorDialog.getColor(self.onigimon_scene_color, self)
@@ -2665,6 +2683,20 @@ class GamificationSettingsDialog(QDialog):
         if not qcolor.isValid():
             return f"rgba(120, 120, 120, {alpha})"
         return f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, {alpha})"
+
+    def _mix_hex_color(self, color, other, self_pct):
+        """Equivalent of CSS color-mix(in srgb, color self_pct%, other (100-self_pct)%)."""
+        qcolor = QColor(color)
+        qother = QColor(other)
+        if not qcolor.isValid():
+            qcolor = QColor("#6ea96a")
+        if not qother.isValid():
+            qother = QColor("#ffffff")
+        other_pct = 1.0 - self_pct
+        r = round(qcolor.red() * self_pct + qother.red() * other_pct)
+        g = round(qcolor.green() * self_pct + qother.green() * other_pct)
+        b = round(qcolor.blue() * self_pct + qother.blue() * other_pct)
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def _create_study_zone_header(self, title, description, image_filename, accent, toggle=None):
         header = QFrame()

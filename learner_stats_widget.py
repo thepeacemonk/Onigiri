@@ -24,7 +24,14 @@ def get_translated_labels():
             "unseen": "Chưa xem (Unseen)",
             "buried": "Bị chôn (Buried)",
             "suspended": "Đình chỉ (Suspended)",
-            "total": "Tổng cộng (Total)"
+            "total": "Tổng cộng (Total)",
+            "total_short": "tổng",
+            "group_in_progress": "Đang tiến triển",
+            "group_mastered": "Thành thạo",
+            "group_not_active": "Không hoạt động",
+            "view_grouped": "Nhóm",
+            "view_bars": "Thanh",
+            "view_donut": "Vòng tròn"
         }
     else:
         return {
@@ -38,7 +45,14 @@ def get_translated_labels():
             "unseen": "Unseen",
             "buried": "Buried",
             "suspended": "Suspended",
-            "total": "Total"
+            "total": "Total",
+            "total_short": "total",
+            "group_in_progress": "In Progress",
+            "group_mastered": "Mastered",
+            "group_not_active": "Not Active",
+            "view_grouped": "Grouped",
+            "view_bars": "Bars",
+            "view_donut": "Donut"
         }
 
 def get_card_stats(selected_did, all_decks):
@@ -274,8 +288,9 @@ def _render_deck_picker_html(deck_browser: DeckBrowser, selected_did, labels) ->
     </div>
     """
 
-def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
+def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = 2) -> str:
     labels = get_translated_labels()
+    is_compact = row_span <= 1
     
     # Persistent settings mapping widget ID to selected deck ID
     saved_decks = mw.col.conf.get("onigiri_learner_stats_decks", {})
@@ -297,15 +312,39 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     # Get statistics
     (new_cnt, learn_cnt, mature_cnt, young_cnt, learned_cnt, unseen_cnt, buried_cnt, suspended_cnt, total_cnt) = get_card_stats(selected_did, all_decks)
 
-    # Calculate percentages for the stacked bar: Mature, Young, New, Unseen
-    bar_total = mature_cnt + young_cnt + new_cnt + unseen_cnt
-    if bar_total > 0:
-        mature_pct = (mature_cnt / bar_total) * 100
-        young_pct = (young_cnt / bar_total) * 100
-        new_pct = (new_cnt / bar_total) * 100
-        unseen_pct = (unseen_cnt / bar_total) * 100
-    else:
-        mature_pct = young_pct = new_pct = unseen_pct = 0
+    # Two-tone grouping used by the grouped bar / donut ring / bar-view fills:
+    # "in progress" (new + learning + young) vs "mastered" (mature). Learned is
+    # not folded in here since it's already the sum of mature+young (see
+    # get_card_stats) and would double-count against the same total.
+    in_progress_cnt = new_cnt + learn_cnt + young_cnt
+
+    def _pct_of(count: int) -> float:
+        if total_cnt <= 0:
+            return 0.0
+        return round(min(100.0, (count / total_cnt) * 100), 2)
+
+    in_progress_pct = _pct_of(in_progress_cnt)
+    mastered_pct = _pct_of(mature_cnt)
+
+    # Donut ring geometry: r=15.5 circle, matching the stroke-dasharray scheme.
+    import math
+    ring_circumference = round(2 * math.pi * 15.5, 2)
+    in_progress_arc = round(ring_circumference * in_progress_pct / 100, 2)
+    mastered_arc = round(ring_circumference * mastered_pct / 100, 2)
+    mastered_offset = -in_progress_arc
+
+    # Per-category bar-view fill widths, each relative to the deck total.
+    new_bar_pct = _pct_of(new_cnt)
+    learn_bar_pct = _pct_of(learn_cnt)
+    young_bar_pct = _pct_of(young_cnt)
+    mature_bar_pct = _pct_of(mature_cnt)
+    learned_bar_pct = _pct_of(learned_cnt)
+    unseen_bar_pct = _pct_of(unseen_cnt)
+
+    saved_views = mw.col.conf.get("onigiri_learner_stats_view", {})
+    active_view = saved_views.get(widget_id, "grouped") if isinstance(saved_views, dict) else "grouped"
+    if active_view not in ("grouped", "bars", "donut"):
+        active_view = "grouped"
 
     deck_label = _selected_deck_label(selected_did, all_decks, labels)
     escaped_widget_id = html.escape(str(widget_id), quote=True)
@@ -328,11 +367,13 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         border-radius: var(--onigiri-box-effect-radius, 15px);
         padding: 20px;
         height: 100%;
+        width: 100%;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
         gap: 10px;
         overflow: hidden;
+        text-align: left;
     }
     .learner-stats-header {
         display: flex;
@@ -340,6 +381,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         align-items: stretch;
         gap: 8px;
         width: 100%;
+        flex: 0 0 auto;
         box-sizing: border-box;
         overflow: hidden;
     }
@@ -348,9 +390,109 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         align-items: center;
         gap: 8px;
         width: 100%;
-        min-height: 20px;
+        min-height: 26px;
         line-height: 0;
         overflow: hidden;
+    }
+    .learner-stats-header-controls {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        margin: 0 0 0 auto !important;
+        padding: 0 !important;
+        min-width: 0;
+        flex: 0 1 auto !important;
+    }
+    .learner-stats-switcher {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+        height: 26px;
+        min-height: 26px;
+        box-sizing: border-box;
+        padding: 2px;
+        border-radius: 8px;
+        background-color: var(--highlight-bg, #eeeeee);
+    }
+    .learner-stats-switcher-indicator {
+        position: absolute;
+        left: 2px;
+        top: 50%;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 90%, var(--fg, #222222) 10%);
+        transform: translateY(-50%);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Light and dark perceive the same mix ratio differently — a darker gray
+       patch on a light track reads as more prominent than the equivalent
+       lighter patch on a dark track — so dark mode gets a bit more tint. */
+    .night-mode .learner-stats-switcher-indicator {
+        background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 85%, var(--fg, #222222) 15%);
+    }
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-switcher-indicator {
+        transform: translateY(-50%) translateX(24px);
+    }
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-switcher-indicator {
+        transform: translateY(-50%) translateX(48px);
+    }
+    .learner-stats-switcher-btn {
+        position: relative !important;
+        z-index: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        vertical-align: middle !important;
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        min-height: 22px !important;
+        max-width: 22px !important;
+        max-height: 22px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 6px !important;
+        background: transparent !important;
+        color: var(--fg-subtle, #757575) !important;
+        cursor: pointer !important;
+        transition: color 0.2s ease !important;
+        flex: 0 0 22px !important;
+        box-sizing: border-box !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+        overflow: visible !important;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .learner-stats-switcher-btn,
+    .learner-stats-switcher-btn:hover,
+    .learner-stats-switcher-btn:focus,
+    .learner-stats-switcher-btn:focus-visible,
+    .learner-stats-switcher-btn:active {
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        border: none !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+    }
+    .learner-stats-switcher-btn svg {
+        display: block !important;
+        pointer-events: none;
+        overflow: visible;
+        width: 15px !important;
+        height: 15px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        flex: 0 0 auto !important;
+    }
+    .learner-stats-widget[data-active-view="grouped"] .learner-stats-switcher-btn[data-view="grouped"],
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-switcher-btn[data-view="bars"],
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-switcher-btn[data-view="donut"] {
+        color: var(--fg, #222222) !important;
     }
     .learner-stats-header h3 {
         margin: 0;
@@ -367,25 +509,25 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         min-height: 20px;
         line-height: 20px;
     }
-    .learner-stats-deck-trigger {
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger {
         font-family: inherit;
         font-size: 12px;
-        font-weight: 500;
-        line-height: 20px;
-        margin: 0;
-        margin-left: auto;
-        background: var(--collapsed-toolbar-button-bg, var(--hover-deck-bg, #eeeeee)) !important;
+        font-weight: 600;
+        line-height: 1;
+        margin: 0 !important;
+        gap: 6px;
+        background: var(--highlight-bg, #eeeeee) !important;
         background-image: none !important;
         color: var(--fg, #222222) !important;
         border: none !important;
-        border-radius: 7px !important;
-        padding: 6px;
-        height: 20px;
-        min-height: 20px;
-        width: auto;
-        max-width: min(60%, 320px);
-        min-width: 0;
-        box-sizing: border-box;
+        border-radius: 8px !important;
+        padding: 0 18px !important;
+        height: 26px !important;
+        min-height: 26px !important;
+        width: auto !important;
+        max-width: 320px !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
         outline: none !important;
         cursor: pointer;
         transition: transform 0.08s ease, background-color 0.15s ease, color 0.15s ease;
@@ -393,14 +535,17 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         box-shadow: none !important;
         text-shadow: none !important;
         filter: none !important;
-        display: inline-flex;
-        align-items: center;
-        justify-content: flex-start;
-        flex: 0 1 auto;
-        flex-shrink: 1;
-        position: relative;
-        top: 0;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        flex: 0 1 auto !important;
+        flex-shrink: 1 !important;
+        position: relative !important;
+        top: 0 !important;
         vertical-align: middle;
+        float: none !important;
+        right: auto !important;
+        inset-inline-end: auto !important;
     }
     .learner-stats-deck-trigger-label {
         display: block;
@@ -410,10 +555,15 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         white-space: nowrap;
         text-overflow: ellipsis;
     }
-    .learner-stats-deck-trigger:hover,
-    .learner-stats-deck-trigger:focus,
-    .learner-stats-deck-trigger:focus-visible,
-    .learner-stats-deck-trigger:active {
+    .learner-stats-deck-trigger-chevron {
+        flex: 0 0 auto;
+        display: block;
+        color: var(--fg-subtle, #757575);
+    }
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:hover,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:focus,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:focus-visible,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:active {
         background: var(--collapsed-toolbar-button-hover-bg, var(--button-hover-bg, var(--hover-deck-bg))) !important;
         background-image: none !important;
         color: var(--fg, #222222) !important;
@@ -421,81 +571,351 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         outline: none !important;
         border: none !important;
         box-shadow: none !important;
+        margin: 0 !important;
     }
-    .learner-stats-deck-trigger:active {
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:active {
         transform: translateY(1px);
     }
-    .learner-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-        flex-grow: 1;
-    }
+    /* ---- Shared: category → tint mapping (in-progress / mastered / neutral) ---- */
     .learner-stat-card {
-        background: color-mix(in srgb, var(--fg, #222) 3%, transparent);
         border: none;
         border-radius: 10px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 6px 2px;
+        padding: 3px 2px;
         box-sizing: border-box;
         min-width: 0;
+        background: color-mix(in srgb, var(--fg, #222) 3%, transparent);
+    }
+    .learner-stat-card.is-inprogress {
+        background: color-mix(in srgb, #007aff 12%, transparent);
+    }
+    .learner-stat-card.is-mastered {
+        background: color-mix(in srgb, #2ecc71 12%, transparent);
     }
     .learner-stat-label {
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 500;
         color: var(--fg-subtle, #757575);
         text-align: center;
-        margin-bottom: 2px;
+        margin-bottom: 1px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         width: 100%;
         letter-spacing: 0;
     }
+    /* Kept close to --fg-subtle (which is already tuned for legible contrast
+       on the card background in every theme) with just a light color hint —
+       a 55/45 mix here read fine in the mockup's fixed dark palette but
+       dropped well below WCAG AA against the tinted tile background once
+       real theme colors (light mode especially) were plugged in. */
+    .is-inprogress .learner-stat-label {
+        color: color-mix(in srgb, #007aff 18%, var(--fg-subtle, #757575) 82%);
+    }
+    .is-mastered .learner-stat-label {
+        color: color-mix(in srgb, #2ecc71 10%, var(--fg-subtle, #757575) 90%);
+    }
     .learner-stat-val {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         color: var(--fg, #222222);
+        line-height: 1.1;
     }
-    .learner-stat-new .learner-stat-val { color: var(--accent-color, #007aff); }
-    .learner-stat-learning .learner-stat-val { color: #f08a5d; }
-    .learner-stat-mature .learner-stat-val { color: #2ecc71; }
-    .learner-stat-young .learner-stat-val { color: #3498db; }
-    .learner-stat-learned .learner-stat-val { color: #1abc9c; }
-    .learner-stat-unseen .learner-stat-val { color: var(--fg-subtle, #757575); }
-    .learner-stat-buried .learner-stat-val { color: #9b59b6; }
-    .learner-stat-suspended .learner-stat-val { color: #e67e22; }
-    .learner-stat-total .learner-stat-val { color: var(--fg, #222222); font-size: 15px; }
-    .learner-stats-stacked-bar {
+    .learner-stat-total .learner-stat-val { font-size: 13px; }
+
+    /* ---- View switching: one card, three swappable bodies ---- */
+    .learner-stats-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .learner-stats-view {
+        display: none;
+        flex-direction: column;
+        gap: 22px;
+        min-height: 0;
+        flex: 1 1 auto;
+        width: 100%;
+    }
+    .learner-stats-widget[data-active-view="grouped"] .learner-stats-view-grouped,
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-view-bars,
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-view-donut {
+        display: flex;
+    }
+    /* Every view anchors its "header" element (progress bar / donut ring /
+       first bar row) to the top and never centers-as-a-block — that way if a
+       very short card ever can't fit everything, only the bottom clips,
+       never the top. The region below the header element is flex:1 and
+       grows to consume all leftover height itself (see each view's own
+       flexible region below), which is what pushes footers to the bottom. */
+    .learner-stats-view-grouped,
+    .learner-stats-view-bars,
+    .learner-stats-view-donut { justify-content: flex-start; }
+    .learner-stats-view-grouped { gap: 10px; }
+    .learner-stats-view-bars { gap: 16px; }
+
+    /* Donut's top block and tile grid keep the view's normal rhythm; the
+       footer gets its own tighter, explicit gap so it doesn't inherit
+       whatever the view-level gap happens to be. */
+    .learner-stats-donut-content {
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-view-donut { gap: 8px; }
+
+    /* Groups collectively fill all height left after the progress bar,
+       each claiming an equal share — the same "1fr" idea the tile columns
+       already use, just on the row axis. */
+    .learner-stats-grouped-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    /* ---- Grouped view: two-tone progress bar + three meaning-based groups ---- */
+    .learner-stats-groupbar {
         display: flex;
         width: 100%;
-        height: 10px;
+        height: 6px;
         border-radius: 999px;
         overflow: hidden;
-        background-color: color-mix(in srgb, var(--fg, #222) 8%, transparent);
-        margin-top: 6px;
+        background: color-mix(in srgb, var(--fg, #222) 8%, transparent);
+        flex: 0 0 auto;
         box-sizing: border-box;
     }
-    .learner-stats-stacked-segment {
+    .learner-stats-groupbar-seg {
         height: 100%;
         transition: width 0.3s ease;
-        cursor: default;
     }
-    .learner-stats-stacked-mature {
-        background-color: #2ecc71;
+    .learner-stats-groupbar-inprogress { background: #007aff; }
+    .learner-stats-groupbar-mastered { background: #2ecc71; }
+
+    /* ---- Compact body: 1-row cards can't fit any of the three detailed
+       views, so this replaces them entirely with a bar + total glance. ---- */
+    .learner-stats-compact-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
     }
-    .learner-stats-stacked-young {
-        background-color: #3498db;
+    .learner-stats-compact-total {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--fg, #222222);
+        text-align: center;
+        white-space: nowrap;
     }
-    .learner-stats-stacked-new {
-        background-color: var(--accent-color, #007aff);
+    .learner-stats-compact-total span {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        margin-left: 4px;
     }
-    .learner-stats-stacked-unseen {
-        background-color: var(--fg-subtle, #757575);
+    .learner-stats-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1 1 0;
+        min-height: 0;
     }
+    .learner-stats-group-title {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* Same reasoning as the tile-label mix above: pure accent-color / pure
+       #2ecc71 as small text reads fine on the mockup's fixed dark palette
+       but fails WCAG contrast against real light-theme backgrounds. */
+    .learner-stats-group-title.is-inprogress { color: color-mix(in srgb, #007aff 22%, var(--fg-subtle, #757575) 78%); }
+    .learner-stats-group-title.is-mastered { color: color-mix(in srgb, #2ecc71 12%, var(--fg-subtle, #757575) 88%); }
+    .learner-stats-group-title.is-neutral { color: var(--fg-subtle, #757575); }
+    .learner-stats-tile-grid {
+        display: grid;
+        grid-auto-rows: 1fr;
+        gap: 6px;
+        min-width: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-tile-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .learner-stats-tile-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .learner-stats-tile-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    /* ---- Bars view: labeled horizontal bars + footer totals ----
+       The list fills all leftover height itself; a fixed-ratio spacer
+       sits before the first row and between every row after it (so the
+       top gap matches the inter-row gaps) and soaks up the growth. Rows
+       and the track stay a fixed height — same 7px track used by every
+       other widget's bars in this app — capped so the gaps never get
+       out of hand on a very tall card. */
+    .learner-stats-bar-list {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-bar-spacer {
+        flex: 1 1 0;
+        min-height: 2px;
+        max-height: 13px;
+    }
+    .learner-stats-bar-row {
+        display: grid;
+        grid-template-columns: minmax(28px, 0.6fr) minmax(0, 2.2fr) minmax(20px, auto);
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 0 0 auto;
+    }
+    .learner-stats-bar-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .learner-stats-bar-track {
+        display: block;
+        height: 7px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg, #222) 10%, transparent);
+        overflow: hidden;
+        min-width: 0;
+    }
+    .learner-stats-bar-fill {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .learner-stats-bar-fill.is-inprogress { background: #007aff; }
+    .learner-stats-bar-fill.is-mastered { background: #2ecc71; }
+    .learner-stats-bar-fill.is-neutral { background: color-mix(in srgb, var(--fg, #222) 35%, transparent); }
+    .learner-stats-bar-value {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--fg, #222222);
+        text-align: right;
+        white-space: nowrap;
+    }
+    .learner-stats-footer-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 0;
+        padding-top: 6px;
+        border-top: 1px solid var(--border, #e0e0e0);
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+    .learner-stats-footer-item {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .learner-stats-footer-item b {
+        color: var(--fg, #222222);
+        font-weight: 700;
+    }
+    .learner-stats-footer-item.is-total { font-weight: 600; }
+
+    /* ---- Donut view: ring + legend + flat tile list ---- */
+    .learner-stats-donut-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+    .learner-stats-donut-ring {
+        flex: 0 0 auto;
+        transform: rotate(-90deg);
+        width: 38px;
+        height: 38px;
+    }
+    .learner-stats-donut-track { stroke: color-mix(in srgb, var(--fg, #222) 10%, transparent); }
+    .learner-stats-donut-arc-inprogress { stroke: #007aff; }
+    .learner-stats-donut-arc-mastered { stroke: #2ecc71; }
+    .learner-stats-donut-total {
+        min-width: 0;
+    }
+    .learner-stats-donut-num {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.1;
+        color: var(--fg, #222222);
+        white-space: nowrap;
+    }
+    .learner-stats-donut-num span {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+    }
+    .learner-stats-donut-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 3px;
+    }
+    .learner-stats-donut-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+    }
+    .learner-stats-donut-legend-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+    }
+    .learner-stats-donut-legend-dot.is-inprogress { background: #007aff; }
+    .learner-stats-donut-legend-dot.is-mastered { background: #2ecc71; }
+    .learner-stat-card.is-flat {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 16px;
+        gap: 6px;
+    }
+    .learner-stat-card.is-flat .learner-stat-label {
+        margin-bottom: 0;
+        text-align: left;
+        width: auto;
+        flex: 1 1 auto;
+        font-size: 11px;
+    }
+    .learner-stat-card.is-flat .learner-stat-val {
+        font-size: 12px;
+        flex: 0 0 auto;
+    }
+
     .learner-stats-deck-template {
         display: none;
     }
@@ -847,6 +1267,18 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
                 this.state = null;
             }
         };
+
+        window.OnigiriLearnerStats = window.OnigiriLearnerStats || {
+            setView(trigger, view) {
+                const widget = trigger && trigger.closest ? trigger.closest('.learner-stats-widget') : null;
+                if (!widget || widget.getAttribute('data-active-view') === view) return;
+                widget.setAttribute('data-active-view', view);
+                const widgetId = widget.dataset.widgetId;
+                if (typeof pycmd === 'function' && widgetId) {
+                    pycmd('onigiri_learner_stats_select_view:' + encodeURIComponent(JSON.stringify({ widgetId, view })));
+                }
+            }
+        };
     })();
     </script>
     """
@@ -882,65 +1314,169 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     """
 
     # Generate widget content
-    html_content = f"""
-    {css_html}
-    {dynamic_css}
-    <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}">
+    icon_grouped = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5h16M4 12h16M4 19h16"/></svg>'
+    icon_bars = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5h12M4 12h16M4 19h8" transform="rotate(-90 12 12)"/></svg>'
+    icon_donut = '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"/></svg>'
+    icon_chevron = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'
+
+    def _tile(label: str, value: int, tone: str, flat: bool = False) -> str:
+        classes = "learner-stat-card"
+        if tone != "neutral":
+            classes += f" is-{tone}"
+        if flat:
+            classes += " is-flat"
+        return (
+            f'<div class="{classes}">'
+            f'<span class="learner-stat-label">{html.escape(label)}</span>'
+            f'<span class="learner-stat-val">{value}</span>'
+            f'</div>'
+        )
+
+    def _bar_row(label: str, value: int, pct: float, tone: str) -> str:
+        return f"""
+            <div class="learner-stats-bar-row">
+                <span class="learner-stats-bar-label">{html.escape(label)}</span>
+                <span class="learner-stats-bar-track"><span class="learner-stats-bar-fill is-{tone}" style="width: {pct}%;"></span></span>
+                <span class="learner-stats-bar-value">{value}</span>
+            </div>"""
+
+    footer_row_html = f"""
+            <div class="learner-stats-footer-row">
+                <span class="learner-stats-footer-item">{labels["buried"]} <b>{buried_cnt}</b></span>
+                <span class="learner-stats-footer-item">{labels["suspended"]} <b>{suspended_cnt}</b></span>
+                <span class="learner-stats-footer-item is-total">{labels["total"]} <b>{total_cnt}</b></span>
+            </div>"""
+
+    grouped_view_html = f"""
+        <div class="learner-stats-view learner-stats-view-grouped" data-view="grouped">
+            <div class="learner-stats-groupbar">
+                <div class="learner-stats-groupbar-seg learner-stats-groupbar-inprogress" style="width: {in_progress_pct}%;"></div>
+                <div class="learner-stats-groupbar-seg learner-stats-groupbar-mastered" style="width: {mastered_pct}%;"></div>
+            </div>
+            <div class="learner-stats-grouped-groups">
+                <div class="learner-stats-group">
+                    <div class="learner-stats-group-title is-inprogress">{labels["group_in_progress"]}</div>
+                    <div class="learner-stats-tile-grid learner-stats-tile-grid-3">
+                        {_tile(labels["new"], new_cnt, "inprogress")}
+                        {_tile(labels["learning"], learn_cnt, "inprogress")}
+                        {_tile(labels["young"], young_cnt, "inprogress")}
+                    </div>
+                </div>
+                <div class="learner-stats-group">
+                    <div class="learner-stats-group-title is-mastered">{labels["group_mastered"]}</div>
+                    <div class="learner-stats-tile-grid learner-stats-tile-grid-2">
+                        {_tile(labels["mature"], mature_cnt, "mastered")}
+                        {_tile(labels["learned"], learned_cnt, "mastered")}
+                    </div>
+                </div>
+                <div class="learner-stats-group">
+                    <div class="learner-stats-group-title is-neutral">{labels["group_not_active"]}</div>
+                    <div class="learner-stats-tile-grid learner-stats-tile-grid-4">
+                        {_tile(labels["unseen"], unseen_cnt, "neutral")}
+                        {_tile(labels["buried"], buried_cnt, "neutral")}
+                        {_tile(labels["suspended"], suspended_cnt, "neutral")}
+                        {_tile(labels["total"], total_cnt, "neutral")}
+                    </div>
+                </div>
+            </div>
+        </div>"""
+
+    bar_spacer = '<div class="learner-stats-bar-spacer"></div>'
+    bar_rows = [
+        (labels["new"], new_cnt, new_bar_pct, "inprogress"),
+        (labels["learning"], learn_cnt, learn_bar_pct, "inprogress"),
+        (labels["young"], young_cnt, young_bar_pct, "inprogress"),
+        (labels["mature"], mature_cnt, mature_bar_pct, "mastered"),
+        (labels["learned"], learned_cnt, learned_bar_pct, "mastered"),
+        (labels["unseen"], unseen_cnt, unseen_bar_pct, "neutral"),
+    ]
+    bar_list_html = bar_spacer.join(_bar_row(*row) for row in bar_rows)
+    bars_view_html = f"""
+        <div class="learner-stats-view learner-stats-view-bars" data-view="bars">
+            <div class="learner-stats-bar-list">
+                {bar_spacer}{bar_list_html}
+            </div>
+            {footer_row_html}
+        </div>"""
+
+    donut_view_html = f"""
+        <div class="learner-stats-view learner-stats-view-donut" data-view="donut">
+            <div class="learner-stats-donut-content">
+                <div class="learner-stats-donut-top">
+                    <svg width="52" height="52" viewBox="0 0 36 36" class="learner-stats-donut-ring">
+                        <circle class="learner-stats-donut-track" cx="18" cy="18" r="15.5" fill="none" stroke-width="4"></circle>
+                        <circle class="learner-stats-donut-arc-inprogress" cx="18" cy="18" r="15.5" fill="none" stroke-width="4" stroke-dasharray="{in_progress_arc} {ring_circumference}" stroke-dashoffset="0" stroke-linecap="round"></circle>
+                        <circle class="learner-stats-donut-arc-mastered" cx="18" cy="18" r="15.5" fill="none" stroke-width="4" stroke-dasharray="{mastered_arc} {ring_circumference}" stroke-dashoffset="{mastered_offset}" stroke-linecap="round"></circle>
+                    </svg>
+                    <div class="learner-stats-donut-total">
+                        <div class="learner-stats-donut-num">{total_cnt} <span>{labels["total_short"]}</span></div>
+                        <div class="learner-stats-donut-legend">
+                            <span class="learner-stats-donut-legend-item"><span class="learner-stats-donut-legend-dot is-inprogress"></span>{labels["group_in_progress"]}</span>
+                            <span class="learner-stats-donut-legend-item"><span class="learner-stats-donut-legend-dot is-mastered"></span>{labels["group_mastered"]}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="learner-stats-tile-grid learner-stats-tile-grid-2">
+                    {_tile(labels["new"], new_cnt, "neutral", flat=True)}
+                    {_tile(labels["learning"], learn_cnt, "neutral", flat=True)}
+                    {_tile(labels["young"], young_cnt, "neutral", flat=True)}
+                    {_tile(labels["mature"], mature_cnt, "neutral", flat=True)}
+                    {_tile(labels["learned"], learned_cnt, "neutral", flat=True)}
+                    {_tile(labels["unseen"], unseen_cnt, "neutral", flat=True)}
+                </div>
+            </div>
+            {footer_row_html}
+        </div>"""
+
+    switcher_html = "" if is_compact else f"""
+                    <div class="learner-stats-switcher" role="tablist" aria-label="Stats view">
+                        <div class="learner-stats-switcher-indicator"></div>
+                        <button type="button" class="learner-stats-switcher-btn" data-view="grouped" aria-label="{labels["view_grouped"]}" title="{labels["view_grouped"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'grouped');">{icon_grouped}</button>
+                        <button type="button" class="learner-stats-switcher-btn" data-view="bars" aria-label="{labels["view_bars"]}" title="{labels["view_bars"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'bars');">{icon_bars}</button>
+                        <button type="button" class="learner-stats-switcher-btn" data-view="donut" aria-label="{labels["view_donut"]}" title="{labels["view_donut"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'donut');">{icon_donut}</button>
+                    </div>"""
+
+    # Below ~1 grid row there's no room for any of the three detailed views
+    # (each needs 150px+ of body height); fall back to a single glance line.
+    compact_body_html = f"""
+        <div class="learner-stats-compact-body">
+            <div class="learner-stats-groupbar">
+                <div class="learner-stats-groupbar-seg learner-stats-groupbar-inprogress" style="width: {in_progress_pct}%;"></div>
+                <div class="learner-stats-groupbar-seg learner-stats-groupbar-mastered" style="width: {mastered_pct}%;"></div>
+            </div>
+            <div class="learner-stats-compact-total">{total_cnt} <span>{labels["total_short"]}</span></div>
+        </div>"""
+
+    body_html = compact_body_html if is_compact else f"""
+            {grouped_view_html}
+            {bars_view_html}
+            {donut_view_html}"""
+
+    html_widget = f"""
+    <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}" data-active-view="{active_view}">
         <div class="learner-stats-header">
             <div class="learner-stats-header-row">
                 <h3>{labels["title"]}</h3>
-                <div class="learner-stats-deck-trigger" role="button" tabindex="0" onclick="window.OnigiriLearnerStatsDialog && window.OnigiriLearnerStatsDialog.open(this);"><span class="learner-stats-deck-trigger-label">{html.escape(deck_label)}</span></div>
-            </div>
-            <div class="learner-stats-stacked-bar">
-                <div class="learner-stats-stacked-segment learner-stats-stacked-mature" style="width: {mature_pct}%;"></div>
-                <div class="learner-stats-stacked-segment learner-stats-stacked-young" style="width: {young_pct}%;"></div>
-                <div class="learner-stats-stacked-segment learner-stats-stacked-new" style="width: {new_pct}%;"></div>
-                <div class="learner-stats-stacked-segment learner-stats-stacked-unseen" style="width: {unseen_pct}%;"></div>
+                <div class="learner-stats-header-controls">
+                    {switcher_html}
+                    <div class="learner-stats-deck-trigger" role="button" tabindex="0" onclick="window.OnigiriLearnerStatsDialog && window.OnigiriLearnerStatsDialog.open(this);"><span class="learner-stats-deck-trigger-label">{html.escape(deck_label)}</span><span class="learner-stats-deck-trigger-chevron">{icon_chevron}</span></div>
+                </div>
             </div>
         </div>
-        <div class="learner-stats-grid">
-            <div class="learner-stat-card learner-stat-new">
-                <span class="learner-stat-label">{labels["new"]}</span>
-                <span class="learner-stat-val">{new_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-learning">
-                <span class="learner-stat-label">{labels["learning"]}</span>
-                <span class="learner-stat-val">{learn_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-mature">
-                <span class="learner-stat-label">{labels["mature"]}</span>
-                <span class="learner-stat-val">{mature_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-young">
-                <span class="learner-stat-label">{labels["young"]}</span>
-                <span class="learner-stat-val">{young_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-learned">
-                <span class="learner-stat-label">{labels["learned"]}</span>
-                <span class="learner-stat-val">{learned_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-unseen">
-                <span class="learner-stat-label">{labels["unseen"]}</span>
-                <span class="learner-stat-val">{unseen_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-buried">
-                <span class="learner-stat-label">{labels["buried"]}</span>
-                <span class="learner-stat-val">{buried_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-suspended">
-                <span class="learner-stat-label">{labels["suspended"]}</span>
-                <span class="learner-stat-val">{suspended_cnt}</span>
-            </div>
-            <div class="learner-stat-card learner-stat-total">
-                <span class="learner-stat-label">{labels["total"]}</span>
-                <span class="learner-stat-val">{total_cnt}</span>
-            </div>
+        <div class="learner-stats-body">
+            {body_html}
         </div>
         <template class="learner-stats-deck-template">
             {picker_html}
         </template>
     </div>
     {script_html}
+    """
+
+    html_content = f"""
+    {css_html}
+    {dynamic_css}
+    {html_widget}
     """
     return html_content
 

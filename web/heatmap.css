@@ -163,9 +163,10 @@
     background-color: var(--highlight-bg);
     border-radius: var(--heatmap-control-radius);
     min-height: var(--heatmap-control-height);
-    padding: 0px;
+    padding: 2px;
     align-items: center;
-    gap: 0;
+    gap: 2px;
+    box-sizing: border-box;
 }
 
 /* --- Filter Buttons (Fixed Height) --- */
@@ -177,8 +178,8 @@
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    height: calc(var(--heatmap-control-height) - 8px);
-    background-color: rgba(128, 128, 128, 0.18);
+    height: calc(var(--heatmap-control-height) - 4px);
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 90%, var(--heatmap-control-fg, var(--fg, #222)) 10%);
     border-radius: 6px;
     pointer-events: none;
     transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
@@ -186,10 +187,17 @@
     z-index: 0;
 }
 
+/* Same mix ratio reads more prominent on a light track than the equivalent
+   on a dark one, so dark mode gets a bit more tint here. */
+.night-mode .filter-indicator {
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 85%, var(--heatmap-control-fg, var(--fg, #222)) 15%);
+}
+
 .filter-btn {
     position: relative;
     z-index: 1;
-    border: none;
+    border: none !important;
+    margin: 0 !important;
     background-color: transparent;
     background-image: none !important;
     border-radius: 6px !important;
@@ -201,9 +209,11 @@
     box-shadow: none !important;
     filter: none !important;
     text-shadow: none !important;
-    height: calc(var(--heatmap-control-height) - 8px);
+    height: calc(var(--heatmap-control-height) - 4px) !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
     min-width: 0;
-    padding: 0 8px;
+    padding: 0 8px !important;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -262,13 +272,20 @@
 .nav-btn:active {
     border: none;
     outline: none;
-    background-color: rgba(128, 128, 128, 0.18);
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 90%, var(--heatmap-control-fg, var(--fg, #222)) 10%);
     background-image: none !important;
     box-shadow: none !important;
     color: var(--heatmap-control-fg);
     opacity: 1;
     filter: none !important;
     text-shadow: none !important;
+}
+
+.night-mode .nav-btn:hover,
+.night-mode .nav-btn:focus,
+.night-mode .nav-btn:focus-visible,
+.night-mode .nav-btn:active {
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 85%, var(--heatmap-control-fg, var(--fg, #222)) 15%);
 }
 
 .nav-btn:active {
@@ -323,7 +340,11 @@
 /* Dropdown open → same highlighted state as a hovered nav button. */
 .year-select-btn.open,
 .year-select-btn.open:hover {
-    background-color: rgba(128, 128, 128, 0.18) !important;
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 90%, var(--heatmap-control-fg, var(--fg, #222)) 10%) !important;
+}
+.night-mode .year-select-btn.open,
+.night-mode .year-select-btn.open:hover {
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 85%, var(--heatmap-control-fg, var(--fg, #222)) 15%) !important;
 }
 
 .year-dropdown-menu {
@@ -358,7 +379,10 @@
 }
 
 .year-dropdown-item:hover {
-    background-color: rgba(128, 128, 128, 0.18);
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 90%, var(--heatmap-control-fg, var(--fg, #222)) 10%);
+}
+.night-mode .year-dropdown-item:hover {
+    background-color: color-mix(in srgb, var(--heatmap-control-bg, var(--highlight-bg, #eeeeee)) 85%, var(--heatmap-control-fg, var(--fg, #222)) 15%);
 }
 
 .year-dropdown-item.selected {
