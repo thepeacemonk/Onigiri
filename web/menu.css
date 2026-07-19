@@ -1108,6 +1108,8 @@ td.count {
     flex: 0 0 auto;
     margin-left: 10px;
     transition: opacity 0.15s ease;
+    font-weight: 700;
+    letter-spacing: 0.08em;
 }
 
 .sidebar-left.sidebar-actions-full.deck-focus-mode #deck-list-header h2 {

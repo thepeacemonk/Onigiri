@@ -993,6 +993,8 @@ custom_body_template = """
         flex: 0 0 auto;
         margin-left: 10px;
         transition: opacity 0.15s ease;
+        font-weight: 700;
+        letter-spacing: 0.08em;
     }
     #deck-list-header h2.deck-focus-label {
         cursor: pointer;
