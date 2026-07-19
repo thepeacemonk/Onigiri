@@ -2143,6 +2143,7 @@ def _onigimon_scene_style_attr() -> str:
         opacity = 0.9
     parts = [
         f"background-color: {color}",
+        f"--onigimon-color: {color}",
         "--onigimon-scene-image: none",
         f"--onigimon-scene-blur: {blur}px",
         f"--onigimon-scene-opacity: {opacity:.2f}",
