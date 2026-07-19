@@ -554,7 +554,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         panel.appendChild(row("Columns",   "", colsField.el));
         panel.appendChild(row("Width",     "", widthField.el));
         panel.appendChild(row("Height",    "", heightField.el));
-        panel.appendChild(row("Alignment", "", alignField.el));
+        panel.appendChild(row("Alignment", "", alignField.el, { noBorder: true }));
 
         state.layoutFields = { rows: rowsField, cols: colsField, width: widthField, align: alignField, height: heightField };
 
@@ -671,8 +671,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
                 : (state.draft.colConf.onigiri_widget_bg_main_effect_mode === "opaque" ? "tint" : "glass");
             if (styleMode === "solid") {
                 var solidColor = colorGet(mode, "--canvas-inset") || (mode === "light" ? "#ffffff" : "#2c2c2c");
-                var transparency = state.draft.colConf.onigiri_widget_bg_solid_transparency != null ? state.draft.colConf.onigiri_widget_bg_solid_transparency : 0;
-                return "color-mix(in srgb," + solidColor + " " + (100 - transparency) + "%, transparent)";
+                return solidColor;
             }
             if (styleMode === "tint") {
                 var tintColor = mode === "light"
@@ -734,7 +733,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             starRating.style.cssText = "display:flex;gap:4px;align-items:center;";
             for (var s = 0; s < 5; s++) {
                 var star = el("i", "mm-preview-star" + (s >= 4 ? " empty" : ""));
-                star.style.cssText = "display:inline-block;width:16px;height:16px;flex-shrink:0;mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;";
+                star.style.cssText = "display:inline-block;width:20px;height:20px;flex-shrink:0;mask-size:contain;-webkit-mask-size:contain;mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;";
                 starRating.appendChild(star);
             }
             retentionStarRatingEl = starRating;
@@ -809,11 +808,6 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         });
         var solidColorRow = pairedSwatchRow("Card colour", "", [{ label: "Light", swatch: solidLightSwatch }, { label: "Dark", swatch: solidDarkSwatch }]);
 
-        var solidTransparencyField = slider(0, 100, state.draft.colConf.onigiri_widget_bg_solid_transparency != null ? state.draft.colConf.onigiri_widget_bg_solid_transparency : 0, 1, function (v) {
-            state.draft.colConf.onigiri_widget_bg_solid_transparency = v; paintPreview();
-        }, { label: "Transparency", suffix: "%" });
-        var solidTransparencyRow = solidTransparencyField.el;
-
         var themeAwareField = toggle(state.draft.colConf.onigiri_canvas_inset_color_theme_mode === "separate", function (v) {
             state.draft.colConf.onigiri_canvas_inset_color_theme_mode = v ? "separate" : "single";
         });
@@ -840,17 +834,15 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         panel.appendChild(tintColorRow);
         panel.appendChild(solidColorRow);
         panel.appendChild(borderColourRow);
-        panel.appendChild(solidTransparencyRow);
         panel.appendChild(themeAwareRow);
 
-        var widgetStyleRows = [glassRow, tintIntensityRow, tintColorRow, solidColorRow, borderColourRow, solidTransparencyRow, themeAwareRow];
+        var widgetStyleRows = [glassRow, tintIntensityRow, tintColorRow, solidColorRow, borderColourRow, themeAwareRow];
         function refreshVisibility(styleValue) {
-            glassRow.style.display            = styleValue === "glass" ? "" : "none";
-            tintIntensityRow.style.display     = styleValue === "tint"  ? "" : "none";
-            tintColorRow.style.display         = styleValue === "tint"  ? "" : "none";
-            solidColorRow.style.display        = styleValue === "solid" ? "" : "none";
-            solidTransparencyRow.style.display = styleValue === "solid" ? "" : "none";
-            themeAwareRow.style.display        = styleValue === "solid" ? "" : "none";
+            glassRow.style.display        = styleValue === "glass" ? "" : "none";
+            tintIntensityRow.style.display = styleValue === "tint"  ? "" : "none";
+            tintColorRow.style.display     = styleValue === "tint"  ? "" : "none";
+            solidColorRow.style.display    = styleValue === "solid" ? "" : "none";
+            themeAwareRow.style.display    = styleValue === "solid" ? "" : "none";
             widgetStyleRows.forEach(function (r) { r.classList.remove("no-border"); });
             var visible = widgetStyleRows.filter(function (r) { return r.style.display !== "none"; });
             if (visible.length) visible[visible.length - 1].classList.add("no-border");
@@ -884,7 +876,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             [], null,
             function (result) { if (result.icon) { state.draft.colConf.modern_menu_icon_retention_star = result.icon; paintPreview(); } }
         );
-        panel.appendChild(row("Star icon", "", retentionIconPicker.el));
+        panel.appendChild(row("Star icon", "", retentionIconPicker.el, { noBorder: true }));
 
         // ---- Advanced: shared style values for compatible add-on widgets ----
         // These don't touch the built-in cards above (radius/border there are
@@ -904,7 +896,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         }, { label: "Background blur", suffix: "px" });
         var opacityField = slider(0, 100, state.draft.colConf.onigiri_canvas_inset_effect_opacity != null ? state.draft.colConf.onigiri_canvas_inset_effect_opacity : 100, 1, function (v) {
             state.draft.colConf.onigiri_canvas_inset_effect_opacity = v;
-        }, { label: "Opacity", suffix: "%" });
+        }, { label: "Opacity", suffix: "%", noBorder: true });
         panel.appendChild(radiusField.el);
         panel.appendChild(widthField.el);
         panel.appendChild(blurField.el);
@@ -935,7 +927,8 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
             glassField.set(50); tintIntensityField.set(30);
             tintLightSwatch.set("#ffffff"); tintDarkSwatch.set("#2c2c2c");
             solidLightSwatch.set("#ffffff"); solidDarkSwatch.set("#2c2c2c");
-            solidTransparencyField.set(0); themeAwareField.set(false);
+            state.draft.colConf.onigiri_widget_bg_solid_transparency = 0;
+            themeAwareField.set(false);
             borderLightSwatch.set("#e0e0e0"); borderDarkSwatch.set("#3a3a3a");
             starLightSwatch.set("#f5a623"); starDarkSwatch.set("#ffe082");
             emptyLightSwatch.set("#d0d0d0"); emptyDarkSwatch.set("#4a4a4a");
@@ -980,7 +973,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
 
         var preview = buildLivePreviewCard(function () {
             var sample = el("div");
-            sample.style.cssText = "width:100%;height:100%;min-height:80px;";
+            sample.style.cssText = "width:100%;height:100%;min-height:120px;";
             return sample;
         }, function (isLight) {
             previewIsLight = isLight;
@@ -1347,7 +1340,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         ], state.draft.json.heatmapWeekStart || "monday", function (v) {
             state.draft.json.heatmapWeekStart = v;
         });
-        panel.appendChild(row("Week starts on", "", weekStartField.el));
+        panel.appendChild(row("Week starts on", "", weekStartField.el, { noBorder: true }));
 
         // ---- Labels ----
         panel.appendChild(subhead("Labels"));
@@ -1368,7 +1361,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         panel.appendChild(row("Show streak counter", "", streakToggleField.el));
         panel.appendChild(labelToggleRow("Show month labels",   "heatmapShowMonths",     true));
         panel.appendChild(labelToggleRow("Show weekday labels", "heatmapShowWeekdays",   true));
-        panel.appendChild(labelToggleRow("Show day number",     "heatmapShowWeekHeader", true));
+        panel.appendChild(labelToggleRow("Show day number",     "heatmapShowWeekHeader", true, { noBorder: true }));
 
         // ---- Colours ----
         panel.appendChild(subhead("Colours"));
@@ -1386,7 +1379,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
         var zeroDarkSwatch  = heatmapModeSwatch("dark",  "--heatmap-color-zero");
 
         panel.appendChild(pairedSwatchRow("Cell colour",      "", [{ label: "Light", swatch: cellLightSwatch }, { label: "Dark", swatch: cellDarkSwatch  }]));
-        panel.appendChild(pairedSwatchRow("No-review colour", "", [{ label: "Light", swatch: zeroLightSwatch }, { label: "Dark", swatch: zeroDarkSwatch  }]));
+        panel.appendChild(pairedSwatchRow("No-review colour", "", [{ label: "Light", swatch: zeroLightSwatch }, { label: "Dark", swatch: zeroDarkSwatch  }], { noBorder: true }));
 
         var resetBtn = el("button", "mm-inline-btn", "Reset colours to default");
         resetBtn.type = "button";
@@ -1457,7 +1450,7 @@ window.OnigiriMainMenuDialog = window.OnigiriMainMenuDialog || (function () {
                 heatmapPreview.paint();
             }
         );
-        streakPickerRow = row("Streak icon", "", streakPicker.el);
+        streakPickerRow = row("Streak icon", "", streakPicker.el, { noBorder: true });
         streakPickerRow.style.display = (state.draft.json.heatmapShowStreak != null ? state.draft.json.heatmapShowStreak : true) ? "" : "none";
         panel.appendChild(streakPickerRow);
     }
