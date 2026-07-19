@@ -123,7 +123,7 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--profile-name-color, var(--fg));
+    color: var(--profile-name-color, var(--fg)) !important;
 }
 
 .profile-bar::after {

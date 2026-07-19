@@ -3050,7 +3050,7 @@ def generate_profile_bar_fix_css():
     white-space: nowrap;
     min-width: 0;
     flex: 0 1 auto;
-    color: var(--profile-name-color, var(--fg));
+    color: var(--profile-name-color, var(--fg)) !important;
 }
 
 </style>
