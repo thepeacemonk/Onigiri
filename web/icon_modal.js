@@ -312,6 +312,10 @@ window.OnigiriIconChooser = (function () {
                 font-size: 13px !important;
                 font-weight: 600 !important;
             }
+            .onigiri-icon-custom-emoji button:hover {
+                border-color: var(--accent-color, #007aff) !important;
+                border-radius: 10px !important;
+            }
             .onigiri-icon-custom-emoji input {
                 flex: 1;
                 min-width: 80px;
@@ -410,6 +414,8 @@ window.OnigiriIconChooser = (function () {
             }
             .onigiri-icon-btn:hover {
                 background: rgba(128, 128, 128, 0.22) !important;
+                border-radius: 8px !important;
+                border-color: transparent !important;
             }
             .onigiri-icon-btn.primary {
                 min-width: 72px !important;
@@ -418,7 +424,9 @@ window.OnigiriIconChooser = (function () {
                 font-weight: 650 !important;
             }
             .onigiri-icon-btn.primary:hover {
-                opacity: 0.88;
+                opacity: 0.88 !important;
+                border-radius: 8px !important;
+                border-color: transparent !important;
             }
             .onigiri-icon-upload {
                 box-sizing: border-box !important;
