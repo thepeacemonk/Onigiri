@@ -427,7 +427,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         font-weight: 700;
         color: var(--fg, #222222);
     }
-    .learner-stat-new .learner-stat-val { color: var(--accent-color, #007aff); }
+    .learner-stat-new .learner-stat-val { color: #007aff; }
     .learner-stat-learning .learner-stat-val { color: #f08a5d; }
     .learner-stat-mature .learner-stat-val { color: #2ecc71; }
     .learner-stat-young .learner-stat-val { color: #3498db; }
@@ -461,7 +461,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
         background-color: #3498db;
     }
     .learner-stats-stacked-new {
-        background-color: var(--accent-color, #007aff);
+        background-color: #007aff;
     }
     .learner-stats-stacked-unseen {
         background-color: var(--fg-subtle, #757575);
@@ -624,6 +624,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str) -> str:
     .learner-stats-picker-row.learner-stats-picker-selected {
         background: color-mix(in srgb, var(--accent-color, #007aff) 16%, transparent);
         border-color: var(--accent-color, #007aff);
+        color: var(--accent-color, #007aff);
         font-weight: 600;
     }
     .learner-stats-picker-row.learner-stats-picker-all {
