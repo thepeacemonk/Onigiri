@@ -829,6 +829,7 @@ class WidgetGridEditorV2(QWidget):
             f"QPushButton{{background:{accent};color:{fg};border:none;"
             f"border-radius:{radius}px;padding:8px 16px;font-weight:700;font-size:13px;}}"
             f"QPushButton:hover{{background:{_shade(accent, 0.9)};}}"
+            f"QPushButton:pressed{{background:{_shade(accent, 0.8)};border-radius:{radius}px;}}"
         )
 
     def _cell_height_for(self, widget_height):

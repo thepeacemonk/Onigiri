@@ -182,17 +182,21 @@ class FontPickerDialog(QDialog):
             f"QPushButton {{ background: rgba(128,128,128,0.10); color: {self._fg};"
             f" border: 1px solid {self._border}; border-radius: 18px; padding: 0 18px; font-weight: 700; }}"
             f" QPushButton:hover {{ border-color: {self._accent}; }}"
+            f" QPushButton:pressed {{ background: rgba(128,128,128,0.20); border-radius: 18px; }}"
         )
         hover = QColor(self._accent).lighter(110).name()
+        pressed = QColor(self._accent).darker(110).name()
         self.save_btn.setStyleSheet(
             f"QPushButton {{ background: {self._accent}; color: #ffffff; border: none;"
             f" border-radius: 18px; padding: 0 20px; font-weight: 700; }}"
             f" QPushButton:hover {{ background: {hover}; }}"
+            f" QPushButton:pressed {{ background: {pressed}; border-radius: 18px; }}"
         )
         for btn in (self.cancel_btn, self.reset_btn):
             btn.setStyleSheet(
                 f"QPushButton {{ background: {self._surface}; color: {self._fg};"
                 f" border: 1px solid {self._border}; border-radius: 18px; padding: 0 18px; }}"
+                f" QPushButton:pressed {{ background: rgba(128,128,128,0.10); border-radius: 18px; }}"
             )
 
     def _on_preview_mode_toggled(self, mode):
