@@ -133,7 +133,9 @@ def _icon_payload(deck_id: str) -> dict:
         "deckId": str(deck_id),
         "current": {
             "icon": current.get("icon", ""),
-            "color": current.get("color", "#888888"),
+            # "" means "follow the theme's --icon-color", the default for decks
+            # that have never had an explicit colour picked.
+            "color": current.get("color", ""),
         },
         "emojiBaseUrl": f"/_addons/{addon_package}/system_files/emojis",
         "icons": icons,
@@ -315,6 +317,30 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening Onigimon settings: {e}")
+            return (True, None)
+
+    if cmd == "openHashiGallery":
+        try:
+            from . import hashi_notes
+            hashi_notes.open_hashi_gallery(mw)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Hashi Notes gallery: {e}")
+            return (True, None)
+
+    if cmd.startswith("hashiWidget:open:"):
+        # The dashboard widget opens a note straight into the editor pop-up;
+        # a note that has since been trashed falls back to the gallery.
+        try:
+            from . import hashi_notes
+            note = hashi_notes.get_note(cmd[len("hashiWidget:open:"):])
+            if note and not note.get("trashed_at"):
+                hashi_notes.open_hashi_note_popup("deckbrowser", mw, note=note)
+            else:
+                hashi_notes.open_hashi_gallery(mw)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error opening Hashi note from widget: {e}")
             return (True, None)
 
     if cmd == "openPrepStation":
@@ -887,7 +913,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             if icon_name:
                 custom_icons[str(deck_id)] = {
                     "icon": icon_name,
-                    "color": data.get("color", "#888888"),
+                    "color": data.get("color", ""),
                 }
             else:
                 custom_icons.pop(str(deck_id), None)
@@ -1074,6 +1100,27 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error saving learner stats deck: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigiri_learner_stats_select_view:"):
+        try:
+            raw_payload = cmd.split(":", 1)[1]
+            data = json.loads(unquote(raw_payload))
+            widget_id = str(data.get("widgetId") or "")
+            view = str(data.get("view") or "grouped")
+            if view not in ("grouped", "bars", "donut"):
+                view = "grouped"
+
+            saved_views = mw.col.conf.get("onigiri_learner_stats_view", {})
+            if not isinstance(saved_views, dict):
+                saved_views = {}
+            saved_views[widget_id] = view
+
+            mw.col.conf["onigiri_learner_stats_view"] = saved_views
+            mw.col.setMod()
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error saving learner stats view: {e}")
             return (True, None)
 
     if cmd == "onigiri_learner_stats_refresh_fallback":

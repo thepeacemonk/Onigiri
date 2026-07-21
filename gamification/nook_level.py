@@ -287,12 +287,6 @@ class NookLevelManager:
         self._last_daily_sync_time = 0
         self._cached_daily_count = -1
 
-    def refresh_state(self) -> None:
-        """Force reload of gamification state from disk."""
-        # GamificationManager handles reloading if needed, but for now we assume it's up to date
-        # or we could add a reload method to it.
-        self.invalidate_daily_cache()  # Also invalidate cache when refreshing state
-
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

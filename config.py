@@ -34,16 +34,6 @@ def effective_night_mode(conf=None):
 
 # Default settings for the add-on
 DEFAULTS = {
-    # ... (content remains same, will be merged by tool if unreferenced, but I should be careful not to delete DEFAULTS content if I can help it. 
-    # Actually wait, replace_file_content replaces the WHOLE chunk. I need to keep DEFAULTS intact. 
-    # I will target the imports and the functions at the end, leaving DEFAULTS in the middle untouched if possible.
-    # Ah, I cannot "leave in the middle untouched" easily with one chunk if I want to wrap everything.
-    # I will use multiple chunks.)
-}
-
-# ... (I will use multi_replace to target specific areas)
-
-DEFAULTS = {
     "userName": "USER",
     "statsTitle": "Welcome to Onigiri!",
     "studyNowText": "Study Now",
@@ -138,6 +128,10 @@ DEFAULTS = {
     "mochi_messages": {
         "enabled": False,
         "cards_interval": 15,
+        "icon_choice": "mochi",
+        "custom_icon": "",
+        "text_color": "",
+        "font": "system",
         "messages": [
             "Mochi is rooting for you — keep going!",
             "Great pace! Mochi loves your dedication.",
@@ -155,10 +149,12 @@ DEFAULTS = {
         "reward_generosity": "normal",
         "sprite_source": "ankimon_then_pokesprite",
         "sprite_motion": "static",
-        "scene_background_color": "#7FD179",
+        "scene_background_color": "#6ea96a",
         "scene_background_image": "",
         "scene_background_blur": 9,
         "scene_background_opacity": 90,
+        # Empty = use the widget's own light/dark stats-panel shade.
+        "scene_bottom_color": "",
         "allow_ankimon_updates": True,
     },
     "hexagon_land": {
@@ -184,13 +180,14 @@ DEFAULTS = {
     },
     "onigiriWidgetLayout": {
     "grid": {
-        "studied": {"pos": 0, "row": 1, "col": 1},
-        "time": {"pos": 1, "row": 1, "col": 1},
-        "pace": {"pos": 2, "row": 1, "col": 1},
-        "retention": {"pos": 3, "row": 1, "col": 1},
-        "heatmap": {"pos": 4, "row": 2, "col": 4}
+        "stats_title": {"pos": 0, "row": 1, "col": 4},
+        "studied": {"pos": 4, "row": 1, "col": 1},
+        "time": {"pos": 5, "row": 1, "col": 1},
+        "pace": {"pos": 6, "row": 1, "col": 1},
+        "retention": {"pos": 7, "row": 1, "col": 1},
+        "heatmap": {"pos": 8, "row": 2, "col": 4}
         },
-    "archive": ["favorites", "onigimon", "hexagon_land", "deck_stats", "prep_station"],
+    "archive": ["favorites", "onigimon", "hexagon_land", "deck_stats", "prep_station", "hashi_notes"],
     "grid_width": 230,
     "grid_alignment": "center",
     "widget_height": 120,
@@ -201,6 +198,9 @@ DEFAULTS = {
     # --- NEW: Sidebar Action Buttons Mode ---
     # "list" (default), "collapsed" (toolbar icons), "archived" (hidden)
     "sidebarActionsMode": "list",
+
+    # Dashed call-to-action outline around the sidebar "Add" button (list mode).
+    "sidebarAddDashed": False,
 
     # --- ADDED: Sidebar Button Layout ---
     "sidebarButtonLayout": {
@@ -243,6 +243,7 @@ DEFAULTS = {
     "onigiri_reviewer_slideshow_images": [],
     "onigiri_reviewer_slideshow_interval": 10,
     # --- Reviewer Notification Position ---
+    "onigiri_reviewer_notification_mode": "classic",  # "classic" or "mini"
     "onigiri_reviewer_notification_position": "top-center", # top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
     "onigiri_reviewer_silent_notifications": False,
     "onigiri_notification_duration_ms": 5200,
@@ -275,7 +276,6 @@ DEFAULTS = {
     "language": "English (Default)",
     "deck_indentation_mode": "default", # default, smaller, bigger, custom
     "deck_indentation_custom_px": 20, # px per level
-    "onigiri_reviewer_btn_radius": 12, # px
     "onigiri_reviewer_btn_radius": 12, # px
     "onigiri_reviewer_btn_padding": 5, # px (affects size)
     "onigiri_reviewer_btn_height": 40, # px (button height)
@@ -319,12 +319,12 @@ DEFAULTS = {
     "onigiri_reviewer_show_answer_bar_bg_dark": "#e0e0e0",
 
     # --- Stat Text (.stattxt) Colors (intervals like "10m", "4d" and "+" signs) ---
-    "onigiri_reviewer_stattxt_mode": "hover",  # "hover" | "fixed" | "off"
+    "onigiri_reviewer_stattxt_mode": "hover",  # "hover" | "inverted" | "fixed" | "off"
     "onigiri_reviewer_stattxt_color_light": "#666666",
     "onigiri_reviewer_stattxt_color_dark": "#aaaaaa",
 
     # --- Timer (deck options "Show answer timer") adaptation ---
-    "onigiri_reviewer_timer_position": "right",  # "right" | "left" | "out"
+    "onigiri_reviewer_timer_position": "right",  # "right" | "left" | "out" | "off"
     "onigiri_reviewer_timer_bg_light": "#e5e5e5",
     "onigiri_reviewer_timer_text_light": "#2c2c2c",
     "onigiri_reviewer_timer_bg_dark": "#3a3a3a",
@@ -374,6 +374,143 @@ DEFAULTS = {
                 "learn_text": "#f4fff8",
                 "review_bubble": "#ff453a",
                 "review_text": "#fff5f5",
+            },
+        },
+    },
+    # Today's Stats widgets (Studied / Time / Pace / Retention) look & colors.
+    #
+    # "design" picks the card layout:
+    #   "minimal"    - label + value only, left aligned, tight. Closest to the
+    #                  original cards but better distributed.
+    #   "expressive" - icon chip, oversized value, unit suffix and an optional
+    #                  7-day sparkline; each widget carries its own accent.
+    "stats_widgets_style": {
+        "design": "minimal",
+        "sync_box_effect": True,
+        "dynamic": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+        # Font key from fonts.py, or "sync" to keep inheriting the Small Titles
+        # / Titles fonts like every other widget.
+        "font": "sync",
+        "show_icons": True,
+        "show_units": True,
+        "show_sparkline": True,
+        # Expressive only: how the 7-day trend line is drawn.
+        #   "sharp"  - straight segments between days, angular corners.
+        #   "smooth" - a Catmull-Rom curve through the same points.
+        "chart_shape": "sharp",
+        "show_retention_stars": True,
+        # Value type scale, in percent of the design's base size.
+        "value_scale": 100,
+        "icons": {
+            "studied": "system:check.svg",
+            "time": "system:pomodoro.svg",
+            "pace": "system:bolt.svg",
+            "retention": "system:star.svg",
+        },
+        "colors": {
+            "light": {
+                "box_bg": "#ffffff",
+                "box_border": "#e0e0e0",
+                "label": "#757575",
+                "value": "#212121",
+                "studied": "#5eaadf",
+                "time": "#8b7bd8",
+                "pace": "#f5a05a",
+                "retention": "#26a641",
+            },
+            "dark": {
+                "box_bg": "#2c2c2c",
+                "box_border": "#424242",
+                "label": "#9c9c9c",
+                "value": "#f0f0f0",
+                "studied": "#6bb6ec",
+                "time": "#a294ea",
+                "pace": "#f7ad6b",
+                "retention": "#35b850",
+            },
+        },
+    },
+    # Hashi Notes dashboard widget. "gallery" shows a small card grid of recent
+    # notes; "single" pins one note and shows a longer excerpt.
+    "hashi_widget_style": {
+        "mode": "gallery",
+        "note_id": "",
+        "limit": 4,
+        "show_excerpt": True,
+        "show_icon": True,
+        "show_date": True,
+        "sync_box_effect": True,
+        "dynamic": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+        "colors": {
+            "light": {
+                "box_bg": "#ffffff",
+                "box_border": "#e0e0e0",
+                "card_bg": "#f5f5f5",
+                "title": "#212121",
+                "excerpt": "#757575",
+                "accent": "#0077C8",
+            },
+            "dark": {
+                "box_bg": "#2c2c2c",
+                "box_border": "#424242",
+                "card_bg": "#363636",
+                "title": "#f0f0f0",
+                "excerpt": "#9c9c9c",
+                "accent": "#4da3e8",
+            },
+        },
+    },
+    # Deck Stats widget (learner_stats_widget) look & colors. The category
+    # colors default to Anki's own Card Counts palette so an untouched install
+    # matches the native graph.
+    "deck_stats_style": {
+        # "minimal" keeps the In Progress / Mastered grouping; "full" drops it
+        # and charts every card category on its own.
+        "chart_type": "minimal",
+        "sync_box_effect": True,
+        "dynamic": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+        "colors": {
+            "light": {
+                "box_bg": "#ffffff",
+                "box_border": "#e0e0e0",
+                "in_progress": "#5eaadf",
+                "mastered": "#26a641",
+                "new": "#5eaadf",
+                "learning": "#f5a05a",
+                "relearning": "#f4685f",
+                "young": "#7cc87c",
+                "mature": "#26a641",
+                "unseen": "#b0b4b9",
+                "suspended": "#ffdc41",
+                "buried": "#9e9e9e",
+                "total": "#6f7177",
+            },
+            "dark": {
+                "box_bg": "#2c2c2c",
+                "box_border": "#424242",
+                "in_progress": "#6bb6ec",
+                "mastered": "#35b850",
+                "new": "#6bb6ec",
+                "learning": "#f7ad6b",
+                "relearning": "#f8776e",
+                "young": "#8ad48a",
+                "mature": "#35b850",
+                "unseen": "#7a7f85",
+                "suspended": "#ffe066",
+                "buried": "#a8a8a8",
+                "total": "#c4c4c4",
             },
         },
     },
@@ -578,6 +715,78 @@ def normalize_accent_color_defaults(conf):
     return conf
 
 
+def _widget_layout_occupied_cells(grid_conf, col_count, skip_id=None):
+    """Every (row, col) cell the grid's widgets currently cover."""
+    cells = set()
+    for widget_id, widget_conf in grid_conf.items():
+        if widget_id == skip_id or not isinstance(widget_conf, dict):
+            continue
+        try:
+            pos = int(widget_conf.get("pos", 0))
+            row_span = max(1, int(widget_conf.get("row", 1)))
+            col_span = max(1, int(widget_conf.get("col", 1)))
+        except (TypeError, ValueError):
+            continue
+        row, col = divmod(max(0, pos), col_count)
+        for r in range(row, row + row_span):
+            for c in range(col, min(col + col_span, col_count)):
+                cells.add((r, c))
+    return cells
+
+
+def _place_stats_title_widget(layout_conf):
+    """Keep the Stats Title widget on a free slot.
+
+    It used to render above the grid, so layouts saved before it became a
+    widget have nothing reserved for it and the default position collides with
+    whatever already sits there. CSS grid would silently stack them, so move it
+    to the first free run of cells instead.
+    """
+    grid_conf = layout_conf.get("grid")
+    if not isinstance(grid_conf, dict):
+        return
+    title_conf = grid_conf.get("stats_title")
+    if not isinstance(title_conf, dict):
+        return
+
+    try:
+        col_count = int(layout_conf.get("column_count", 4))
+    except (TypeError, ValueError):
+        col_count = 4
+    if col_count < 1:
+        # Sidebar-only mode renders no grid at all; leave the config untouched.
+        return
+
+    title_conf["row"] = 1
+    try:
+        col_span = int(title_conf.get("col", 4))
+    except (TypeError, ValueError):
+        col_span = 4
+    col_span = max(1, min(col_count, col_span))
+    title_conf["col"] = col_span
+
+    occupied = _widget_layout_occupied_cells(grid_conf, col_count, skip_id="stats_title")
+
+    def fits(candidate):
+        row, col = divmod(candidate, col_count)
+        if col + col_span > col_count:
+            return False
+        return all((row, c) not in occupied for c in range(col, col + col_span))
+
+    try:
+        current_pos = int(title_conf.get("pos", 0))
+    except (TypeError, ValueError):
+        current_pos = 0
+    if current_pos >= 0 and fits(current_pos):
+        title_conf["pos"] = current_pos
+        return
+
+    for candidate in range(col_count * 200):
+        if fits(candidate):
+            title_conf["pos"] = candidate
+            return
+
+
 # A unique ID for our add-on's configuration
 config_id = None
 def get_config_id():
@@ -605,11 +814,59 @@ def _get_settings_path() -> str:
         print(f"Error determining settings path: {e}")
         return ""
 
+# Cached result of _build_config(). Rebuilding costs a deepcopy of DEFAULTS plus
+# a JSON read on every call, and the render path calls get_config() dozens of
+# times per screen change, so the result is memoised until the settings file
+# changes on disk (or write_config()/invalidate_config_cache() clears it).
+_CONFIG_CACHE = None
+_CONFIG_CACHE_KEY = None
+
+
+def invalidate_config_cache():
+    """Drops the memoised config so the next read rebuilds it from disk."""
+    global _CONFIG_CACHE, _CONFIG_CACHE_KEY
+    _CONFIG_CACHE = None
+    _CONFIG_CACHE_KEY = None
+
+
+def _config_cache_key():
+    """Identity of the on-disk settings, so external edits are picked up."""
+    settings_path = _get_settings_path()
+    try:
+        stat = os.stat(settings_path)
+        return (settings_path, stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return (settings_path, 0, 0)
+
+
+def _cached_config():
+    """The shared, merged config. Never hand this out to a caller that mutates."""
+    global _CONFIG_CACHE, _CONFIG_CACHE_KEY
+    key = _config_cache_key()
+    if _CONFIG_CACHE is None or key != _CONFIG_CACHE_KEY:
+        _CONFIG_CACHE = _build_config()
+        _CONFIG_CACHE_KEY = key
+    return _CONFIG_CACHE
+
+
+def get_config_readonly():
+    """
+    Shared config for read-only callers on hot paths (event filters, CSS
+    generators). The returned dict MUST NOT be mutated - use get_config() when
+    the caller intends to change and save settings.
+    """
+    return _cached_config()
+
+
 def get_config():
     """
     Loads the add-on's configuration from the profile-specific JSON file,
     falling back to Anki's shared config for migration or defaults.
     """
+    return copy.deepcopy(_cached_config())
+
+
+def _build_config():
     # Start with a clean copy of the defaults
     clean_config = copy.deepcopy(DEFAULTS)
 
@@ -778,6 +1035,8 @@ def get_config():
             except (TypeError, ValueError):
                 deck_stats_conf["col"] = 1
 
+        _place_stats_title_widget(layout_conf)
+
         try:
             widget_height = int(layout_conf.get("widget_height", 120))
         except (TypeError, ValueError):
@@ -832,6 +1091,7 @@ def write_config(config):
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Error writing settings to {settings_path}: {e}")
+    invalidate_config_cache()
             
     # Optional: We could also write to Anki's config as a backup, 
     # but we want to simulate isolation, so maybe better not to, 

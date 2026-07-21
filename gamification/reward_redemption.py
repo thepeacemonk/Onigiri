@@ -10,6 +10,7 @@ from aqt import mw
 from aqt.qt import *
 
 from ..onigiri_notifications import notify_info as showInfo
+from . import redeem_net
 
 
 REWARD_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
@@ -497,11 +498,26 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
             "client": "onigiri",
             "profile": _profile_name(),
             "context": context,
+            # Stable across retries of the same code, so a lost response can be
+            # replayed by the server instead of burning the code.
+            "request_id": redeem_net.request_id_for_code(code),
         }
-        response = requests.post(REWARD_API_URL, json=payload, timeout=12)
+        mw.progress.start(label="Redeeming code...", immediate=True)
+        try:
+            response = redeem_net.post_redeem(REWARD_API_URL, payload)
+        finally:
+            mw.progress.finish()
         data = response.json()
+        redeem_net.clear_request_id(code)
+    except requests.exceptions.ReadTimeout:
+        showInfo(
+            "The server took too long to answer.\n\n"
+            "Your code was not lost - just enter the same code again and the "
+            "reward will be added."
+        )
+        return False
     except requests.exceptions.Timeout:
-        showInfo("Request timed out. Please check your internet connection.")
+        showInfo("Could not reach the reward server. Please check your internet connection.")
         return False
     except requests.exceptions.ConnectionError:
         showInfo("Could not connect to the reward server.")

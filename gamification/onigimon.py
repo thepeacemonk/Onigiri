@@ -1970,15 +1970,39 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
         addon_package = "1011095603"
     pokeball_icon = f"/_addons/{addon_package}/system_files/system_icons/available_for_users/circle.svg"
 
+    # 1-4 rows by 1-2 columns. 1 row is the compact scene (name only when it
+    # has 2 columns), 2x2 is the wide card (scene beside the meters), and every
+    # other size is the stacked card, which keeps the same design at every
+    # height — the extra rows go to the meters section.
+    try:
+        row_span = max(1, min(4, int(row_span)))
+    except (TypeError, ValueError):
+        row_span = 2
+    try:
+        col_span = max(1, min(2, int(col_span)))
+    except (TypeError, ValueError):
+        col_span = 1
+    span_class = f"onigimon-span-{row_span}x{col_span}"
+
     if companion and row_span <= 1:
         name = escape(manager.companion_display_name(companion))
         sprite_urls = manager.sprite_urls_for_companion(companion)
         img = _sprite_img_html(sprite_urls, name, fallback_class="onigimon-placeholder")
+        # The extra column buys room for the name/level beside the companion.
+        info_html = ""
+        if col_span >= 2:
+            info_html = f"""
+                <div class="onigimon-info">
+                    <strong>{name}</strong>
+                    <span>{escape(tr("onigimon_level"))} {int(companion.get("level") or 1)}</span>
+                </div>
+            """
         return f"""
-        <div class="onigimon-widget onigimon-widget-compact" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+        <div class="onigimon-widget onigimon-widget-compact {span_class}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
             <div class="onigimon-main onigimon-scene onigimon-scene-compact" {_onigimon_scene_style_attr()}>
                 {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
+                {info_html}
             </div>
         </div>
         """
@@ -2012,8 +2036,26 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
         hp_line = " · ".join(hp_bits)
         hp_line_html = f"<span>{escape(hp_line)}</span>" if hp_line else ""
 
+        meters = f"""
+            {_meter("HP", health_value, "#08c46b", str(current_hp))}
+            {_meter(tr("onigimon_status_happiness"), int(status_values.get("happiness", 0)), "#ffbd55", str(int(companion.get("happiness", 0) or 0)))}
+            {_meter(tr("onigimon_status_hygiene"), int(status_values.get("hygiene", 0)), "#21b7d6", str(int(companion.get("cleanliness", 0) or 0)))}
+            {_meter(tr("onigimon_status_training"), int(status_values.get("training", 0)), "#c866e5", str(int(companion.get("training", 0) or 0)))}
+            {_meter(tr("onigimon_status_hunger"), int(status_values.get("hunger", 0)), "#f45bb3", str(int(companion.get("hunger", 0) or 0)))}
+        """
+        # One continuous card: a coloured top section (sprite + name) fused to a
+        # neutral lower section (stat meters) with a flat seam, mirroring the
+        # Prep Station card structure.
+        # At exactly 2x2 the two sections sit side by side; once there are extra
+        # rows to fill, stacking reads better and keeps the scene large.
+        card_class = (
+            "onigimon-card onigimon-card-wide"
+            if (col_span >= 2 and row_span <= 2)
+            else "onigimon-card"
+        )
         body = f"""
-            <div class="onigimon-main onigimon-scene" {_onigimon_scene_style_attr()}>
+        <div class="{card_class}">
+            <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr()}>
                 {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
                 <div class="onigimon-info">
@@ -2021,16 +2063,13 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
                     <span>{escape(tr("onigimon_level"))} {int(companion.get("level") or 1)}</span>
                 </div>
             </div>
-            {_meter("HP", health_value, "#08c46b", str(current_hp))}
-            {_meter(tr("onigimon_status_happiness"), int(status_values.get("happiness", 0)), "#ffbd55", str(int(companion.get("happiness", 0) or 0)))}
-            {_meter(tr("onigimon_status_hygiene"), int(status_values.get("hygiene", 0)), "#21b7d6", str(int(companion.get("cleanliness", 0) or 0)))}
-            {_meter(tr("onigimon_status_training"), int(status_values.get("training", 0)), "#c866e5", str(int(companion.get("training", 0) or 0)))}
-            {_meter(tr("onigimon_status_hunger"), int(status_values.get("hunger", 0)), "#f45bb3", str(int(companion.get("hunger", 0) or 0)))}
+            <div class="onigimon-bottom" {_onigimon_bottom_style_attr()}>{meters}</div>
+        </div>
         """
 
     return f"""
-    <div class="onigimon-widget" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
-        <div class="onigimon-header">
+    <div class="onigimon-widget {span_class}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+        <div class="onigimon-header onigiri-widget-head">
             <h3>Onigimon</h3>
         </div>
         <div class="onigimon-body">{body}</div>
@@ -2105,7 +2144,7 @@ def _normalize_scene_color(value: Any) -> str:
     text = str(value or "").strip()
     if re.match(r"^#[0-9a-fA-F]{6}$", text):
         return text
-    return "#7FD179"
+    return "#6ea96a"
 
 
 def _onigimon_scene_image_url() -> str:
@@ -2126,7 +2165,7 @@ def _onigimon_scene_image_url() -> str:
 
 
 def _onigimon_scene_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#6ea96a"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))
@@ -2138,6 +2177,7 @@ def _onigimon_scene_style_attr() -> str:
         opacity = 0.9
     parts = [
         f"background-color: {color}",
+        f"--onigimon-color: {color}",
         "--onigimon-scene-image: none",
         f"--onigimon-scene-blur: {blur}px",
         f"--onigimon-scene-opacity: {opacity:.2f}",
@@ -2149,8 +2189,27 @@ def _onigimon_scene_style_attr() -> str:
     return f'style="{"; ".join(parts)};"'
 
 
+def _onigimon_bottom_style_attr() -> str:
+    """Inline background for `.onigimon-bottom` when the user picked a stats
+    panel colour in Gamification Settings; empty config = the CSS default."""
+    color = str(manager.config().get("scene_bottom_color", "") or "").strip()
+    if not re.match(r"^#[0-9a-fA-F]{6}$", color):
+        return ""
+    # Keep the meter text readable against whatever shade was chosen.
+    try:
+        luminance = (
+            int(color[1:3], 16) * 0.299
+            + int(color[3:5], 16) * 0.587
+            + int(color[5:7], 16) * 0.114
+        )
+    except ValueError:
+        return ""
+    fg = "#f0f0f0" if luminance < 140 else "#222222"
+    return f'style="background: {escape(color)} !important; color: {fg} !important;"'
+
+
 def _onigimon_scene_background_style_attr() -> str:
-    color = _normalize_scene_color(manager.config().get("scene_background_color", "#7FD179"))
+    color = _normalize_scene_color(manager.config().get("scene_background_color", "#6ea96a"))
     image_url = _onigimon_scene_image_url()
     try:
         blur = max(0, min(40, int(manager.config().get("scene_background_blur", 9) or 0)))

@@ -22,8 +22,51 @@ from ..translations import tr
 
 
 BUY_HEX_COINS_URL = "https://buymeacoffee.com/peacemonk"
-KEYS_OF_THE_ISLAND_COST = 250
+HEXLAND_GUIDE_URL = "https://onigiri-addon-guide.notion.site/Hexagon-Land-3a43d4f0321380c19e8adfe630ca9a40"
+KEYS_OF_THE_ISLAND_COST = 5000
 SANDBOX_MODE = False
+
+# --- Island leveling -------------------------------------------------------
+# Level is derived from the number of land hexagons the island has:
+#     level = floor(sqrt(2 * lands))   <=>   lands to reach level L = ceil(L^2 / 2)
+# This hits exactly 50 lands at level 10, and stays achievable forever: the
+# land requirement is always finite and each level only asks for ~L more lands.
+# New-land price scales with level but is capped, so expanding never becomes
+# impossible no matter how high the level climbs.
+HEXLAND_EXPAND_COST_BASE = 18
+HEXLAND_EXPAND_COST_STEP = 5
+HEXLAND_EXPAND_COST_CAP = 140
+
+# (min level, translation key, default title) - highest matching threshold wins.
+HEXLAND_LEVEL_TITLES = [
+    (0, "hexland_rank_castaway", "Castaway"),
+    (2, "hexland_rank_beachcomber", "Beachcomber"),
+    (4, "hexland_rank_settler", "Settler"),
+    (6, "hexland_rank_homesteader", "Homesteader"),
+    (8, "hexland_rank_landkeeper", "Landkeeper"),
+    (10, "hexland_rank_ruler", "Ruler of the Island"),
+    (13, "hexland_rank_baron", "Isle Baron"),
+    (16, "hexland_rank_warden", "Warden of the Archipelago"),
+    (20, "hexland_rank_sovereign", "Sovereign of the Tides"),
+    (25, "hexland_rank_legend", "Living Legend of the Isles"),
+]
+
+
+def hexland_level_from_lands(lands: int) -> int:
+    return int(math.isqrt(max(0, 2 * int(lands or 0))))
+
+
+def hexland_lands_for_level(level: int) -> int:
+    level = max(0, int(level or 0))
+    return (level * level + 1) // 2
+
+
+def hexland_level_title(level: int) -> Tuple[str, str]:
+    title_key, title = HEXLAND_LEVEL_TITLES[0][1], HEXLAND_LEVEL_TITLES[0][2]
+    for threshold, key, name in HEXLAND_LEVEL_TITLES:
+        if level >= threshold:
+            title_key, title = key, name
+    return title_key, title
 
 TERRAIN_ITEMS = {
     "grass": {
@@ -287,9 +330,9 @@ BUILDING_PART_OVERRIDES = {
 }
 
 ERASE_ITEMS = {
-    "tile": {"label": "Delete land", "hint": "Click a tile to remove the whole land tile.", "icon": "delete"},
-    "layer": {"label": "Remove top layer", "hint": "Click a tile to remove the topmost stacked terrain layer.", "icon": "down"},
-    "spot": {"label": "Clear spot", "hint": "Click a tile spot to clear only that spot.", "icon": "cancel"},
+    "tile": {"label": "Delete land", "hint": "Removes the whole tile and refunds its Hex Coins.", "icon": "delete"},
+    "layer": {"label": "Remove top layer", "hint": "Takes one stacked terrain layer off.", "icon": "down"},
+    "spot": {"label": "Clear spot", "hint": "Clears a single spot on a tile.", "icon": "cancel"},
 }
 
 INHABITANT_ITEMS = {
@@ -1539,6 +1582,13 @@ class HexagonLandManager:
         today = _anki_today()
         today_iso = today.isoformat()
 
+        # A new day must clear the counter even when nothing was studied yet,
+        # otherwise yesterday's total keeps showing as "reviews today".
+        # Streak/day-stamping still waits for the first real review.
+        if state.last_study_day != today_iso and int(getattr(state, "today_reviews", 0) or 0) != 0:
+            state.today_reviews = 0
+            changed = True
+
         if anki_count > 0 and state.last_study_day != today_iso:
             changed = self._prepare_study_day(state, today) or changed
 
@@ -1851,7 +1901,15 @@ class HexagonLandManager:
                 expand_cost = self._expand_cost(state)
                 if not self._spend(state, expand_cost):
                     return self._cost_message("Expand land", expand_cost)
-                tile = {"terrain": item_key, "height": 1, "parts": []}
+                # Remember the claim price so deleting the tile refunds exactly
+                # what it cost, no matter how the level-scaled price has moved
+                # since.
+                tile = {
+                    "terrain": item_key,
+                    "height": 1,
+                    "parts": [],
+                    "land_cost": int(expand_cost.get("coins", 0)),
+                }
                 state.tiles[coord] = tile
                 return f"Expanded the island with {terrains[item_key]['label']}."
             if tile.get("building") or tile.get("parts"):
@@ -1973,6 +2031,47 @@ class HexagonLandManager:
 
         return "Choose something to build."
 
+    def _tile_refund(self, state: HexagonLandState, tile: Dict[str, Any]) -> int:
+        """Coins owed for scrapping a tile: the claim price plus everything
+        currently standing on it.
+
+        Valued from the tile's present contents rather than a running total, so
+        removing a layer or a decoration first simply lowers the refund instead
+        of leaving a stale balance behind."""
+        terrains = terrain_catalog()
+        decors = decor_catalog()
+        inhabitants = inhabitant_catalog()
+        parts = building_part_catalog()
+
+        def coins(item: Optional[Dict[str, Any]]) -> int:
+            if not isinstance(item, dict):
+                return 0
+            return int((item.get("cost") or {}).get("coins", 0) or 0)
+
+        # Tiles claimed before land_cost was recorded fall back to today's price.
+        refund = int(tile.get("land_cost", self._expand_cost(state).get("coins", 0)) or 0)
+
+        # Every stacked terrain layer above the base was bought separately.
+        height = max(1, int(tile.get("height", 1) or 1))
+        layers = tile.get("layers")
+        for index in range(1, height):
+            terrain_key = layers[index] if isinstance(layers, list) and index < len(layers) else tile.get("terrain")
+            refund += coins(terrains.get(str(terrain_key or "")))
+
+        for _spot, entry in _spot_entries(tile):
+            category = str(entry.get("category") or "")
+            item_key = str(entry.get("item") or "")
+            if category == "decor":
+                refund += coins(decors.get(item_key))
+            elif category == "inhabitant":
+                refund += coins(inhabitants.get(item_key))
+
+        if tile.get("building"):
+            refund += coins(BUILDING_ITEMS.get(str(tile.get("building"))))
+        for part in tile.get("parts") or []:
+            refund += coins(parts.get(str(part).split(":")[0]))
+        return max(0, refund)
+
     def _clear_tile(self, state: HexagonLandState, payload: Dict[str, Any]) -> str:
         coord = _coord_key(int(payload.get("q", 0)), int(payload.get("r", 0)))
         tile = state.tiles.get(coord)
@@ -1982,7 +2081,11 @@ class HexagonLandManager:
         if layer == "tile":
             if len(state.tiles) <= 1:
                 return "Keep at least one land tile."
+            refund = self._tile_refund(state, tile)
             state.tiles.pop(coord, None)
+            if refund > 0 and not SANDBOX_MODE:
+                state.hex_coins += refund
+                return f"Deleted land tile. Refunded {refund} {tr('hexland_hex_coins', 'Hex Coins')}."
             return "Deleted land tile."
         if layer == "construction":
             removed = False
@@ -2064,9 +2167,37 @@ class HexagonLandManager:
                 return True
         return False
 
+    def level_info(self, state: Optional[HexagonLandState] = None) -> Dict[str, Any]:
+        """Island level derived from land count. See HEXLAND_* notes above."""
+        if state is None:
+            state = self.load()
+        lands = len(state.tiles)
+        level = hexland_level_from_lands(lands)
+        cur_floor = hexland_lands_for_level(level)
+        next_floor = hexland_lands_for_level(level + 1)
+        span = max(1, next_floor - cur_floor)
+        fraction = max(0.0, min(1.0, (lands - cur_floor) / span))
+        title_key, title = hexland_level_title(level)
+        return {
+            "level": level,
+            "titleKey": title_key,
+            "title": tr(title_key, title),
+            "lands": lands,
+            "landsForLevel": cur_floor,
+            "landsForNext": next_floor,
+            "landsToNext": max(0, next_floor - lands),
+            "fraction": fraction,
+        }
+
     def _expand_cost(self, state: HexagonLandState) -> Dict[str, int]:
-        tile_count = len(state.tiles)
-        return {"coins": 24 + max(0, tile_count - 7) * 3}
+        # Price rises with island level but is capped so buying new land never
+        # becomes impossible.
+        level = hexland_level_from_lands(len(state.tiles))
+        coins = min(
+            HEXLAND_EXPAND_COST_CAP,
+            HEXLAND_EXPAND_COST_BASE + level * HEXLAND_EXPAND_COST_STEP,
+        )
+        return {"coins": coins}
 
     def _spend(self, state: HexagonLandState, cost: Dict[str, int]) -> bool:
         if SANDBOX_MODE:
@@ -2092,9 +2223,14 @@ class HexagonLandManager:
         inhabitants = inhabitant_catalog()
         building_parts = building_part_catalog()
         
+        # Read the count straight from revlog so the UI never shows a stale
+        # cached total; fall back to the stored counter if the DB is unavailable.
+        live_reviews = self._anki_today_review_count()
+        today_reviews = int(state.today_reviews if live_reviews is None else live_reviews)
+
         risk_tile = None
         survival_mode = bool(self.config().get("survival_mode", False))
-        if survival_mode and state.today_reviews == 0 and len(state.tiles) > 1:
+        if survival_mode and today_reviews == 0 and len(state.tiles) > 1:
             try:
                 risk_tile = min(state.tiles.keys(), key=lambda k: (
                     sum(1 for dq, dr in DIRECTIONS if _coord_key(_parse_coord(k)[0] + dq, _parse_coord(k)[1] + dr) in state.tiles),
@@ -2102,7 +2238,7 @@ class HexagonLandManager:
                 ))
                 if risk_tile == "0,0": risk_tile = None
             except Exception: pass
-            
+
         import copy
         from ..translations import tr
         
@@ -2130,13 +2266,18 @@ class HexagonLandManager:
                             item["label"] = tr(key, orig_label)
                         if "hint" in item:
                             orig_hint = str(item["hint"])
-                            key = "hexland_hint_" + orig_hint.lower().split()[0]
-                            item["hint"] = tr(key, orig_hint)
+                            # Key off the whole hint, not its first word -- every
+                            # erase hint starts with "Click", so a first-word key
+                            # collapsed all three onto one translation and made
+                            # the buttons describe each other.
+                            slug = re.sub(r"[^a-z0-9]+", "_", orig_hint.lower()).strip("_")
+                            item["hint"] = tr("hexland_hint_" + slug[:60], orig_hint)
                         if "group" in item:
                             orig_group = str(item["group"])
                             key = "hexland_group_" + orig_group.lower().replace(" ", "_")
                             item["groupKey"] = orig_group
                             item["groupLabel"] = tr(key, orig_group)
+        info = self.level_info(state)
         return {
             "enabled": self.is_enabled(),
             "state": asdict(state),
@@ -2145,7 +2286,14 @@ class HexagonLandManager:
             "coinRate": self.coin_rate(state),
             "trees": trees,
             "flowers": flowers,
+            "todayReviews": today_reviews,
             "builtLands": len(state.tiles),
+            "level": info["level"],
+            "levelTitle": info["title"],
+            "levelLandsForLevel": info["landsForLevel"],
+            "levelFraction": info["fraction"],
+            "levelLandsToNext": info["landsToNext"],
+            "levelLandsForNext": info["landsForNext"],
             "unlockedTerrains": self.unlocked_terrains(state),
             "adjacent": [{"q": q, "r": r} for q, r in self.adjacent_empty_coords(state)],
             "expandCost": self._expand_cost(state),
@@ -2193,7 +2341,9 @@ class HexagonLandManager:
 
         risk_tile = None
         survival_mode = bool(self.config().get("survival_mode", False))
-        if survival_mode and state.today_reviews == 0 and len(state.tiles) > 1:
+        live_reviews = self._anki_today_review_count()
+        today_reviews = int(state.today_reviews if live_reviews is None else live_reviews)
+        if survival_mode and today_reviews == 0 and len(state.tiles) > 1:
             try:
                 risk_tile = min(state.tiles.keys(), key=lambda k: (
                     sum(1 for dq, dr in DIRECTIONS if _coord_key(_parse_coord(k)[0] + dq, _parse_coord(k)[1] + dr) in state.tiles),
@@ -2331,7 +2481,18 @@ def _stat_row_html(label: str, value: int, icon_html: str) -> str:
 def render_widget_html() -> str:
     state = manager.load()
     if not manager.is_enabled():
-        return ""
+        # Render a visible disabled placeholder (matching how the Onigimon and
+        # Nook Level widgets behave when their feature is off) instead of an
+        # empty string. Returning "" makes the deck-browser grid drop the widget
+        # entirely, so a widget placed in the grid would silently vanish.
+        return f"""
+    <div class="hex-land-widget disabled" ondblclick="pycmd('openHexagonLand')">
+        <div class="hex-land-copy">
+            <h3>{escape(tr('hexland_title'))}</h3>
+            <p>{escape(tr('hexland_enable_settings', 'Enable Hexagon Land in Gamification Settings.'))}</p>
+        </div>
+    </div>
+    """
     layers, width, height = manager.preview_layers()
     land_conf = manager.config()
     widget_display = "land_only"
@@ -2371,7 +2532,7 @@ def render_widget_html() -> str:
             <div class="hex-land-preview-stage" style="width:{width}px;height:{height}px; transform: translate(calc(-50% + {state.widget_offset_x}px), calc(-50% + {state.widget_offset_y}px)) scale(var(--hl-scale, .72));">
                 {''.join(layers)}
             </div>
-            <button class="hl-pin-btn" onclick="event.stopPropagation(); window.pinHexLandWidget(this);" style="display: none; position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; color: #24363e; z-index: 10;">{tr('hexland_pin_position', 'Pin Position')}</button>
+            <button class="hl-pin-btn" onclick="event.stopPropagation(); window.pinHexLandWidget(this);" style="display: none; position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; color: #24363e; z-index: 10;">{tr('hexland_pin_position', 'Pin Position')}</button>
         </div>
         <script>
             (function() {{
@@ -2480,6 +2641,11 @@ class HexagonLandDialog(QDialog):
         super().closeEvent(event)
 
     def _on_bridge_cmd(self, cmd: str) -> bool:
+        if cmd == "hex_land_guide":
+            from aqt.utils import openLink
+
+            openLink(HEXLAND_GUIDE_URL)
+            return True
         if cmd == "hex_land_buy":
             from .reward_redemption import open_reward_redeem_dialog
 
@@ -2556,20 +2722,127 @@ def _dialog_html(payload: Dict[str, Any]) -> str:
 .risk-tile {
     animation: riskBlink 4s ease-in-out infinite;
 }
+/* Mirrors POPPINS_WEIGHTS in fonts.py: typography is capped at Medium (500),
+   so Medium claims the whole 500-900 range. Anything asking for a heavier
+   weight then matches a real face and renders Medium instead of falling back
+   to synthetic bolding. Poppins-Bold.ttf is deliberately not declared, and
+   Poppins-Black.ttf does not ship at all. Do not add either. */
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-Light.ttf'); font-weight: 300; font-style: normal; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-LightItalic.ttf'); font-weight: 300; font-style: italic; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-Regular.ttf'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-Italic.ttf'); font-weight: 400; font-style: italic; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-Medium.ttf'); font-weight: 500 900; font-style: normal; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/__ADDON__/system_files/fonts/system_fonts/Poppins/Poppins-MediumItalic.ttf'); font-weight: 500 900; font-style: italic; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--ocean-bottom);
     color: #21313a;
 }
+/* Anki's webview.css fights us on three fronts, each at a specificity a bare
+   element selector cannot beat, so every rule below is scoped to .app:
+     .fancy button      -> drop shadow on every button (body gets class "fancy")
+     .fancy button:hover-> a second, larger shadow plus a transition
+     .isMac button      -> hard font-size:13px, overriding our type scale
+     * { box-sizing: content-box } -> padding added to every declared width */
+.app,
+.app *,
+.app *::before,
+.app *::after {
+    box-sizing: border-box;
+}
+.app button {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: 0;
+    margin: 0;
+    outline: none;
+    box-shadow: none;
+    transition: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+/* Deliberately no `padding: 0` above. At (0,1,1) it outranked every
+   single-class control rule and silently flattened their padding; Anki's own
+   `button { padding: 8px 10px }` is only (0,0,1), so any class rule beats it.
+   Every button-classed control therefore states its own padding -- keep it
+   that way when adding new ones. */
+.app .actions button    { padding: 9px 12px; }
+.app .land-choice button { padding: 9px 12px; }
+.app button:hover,
+.app button:focus,
+.app button:active {
+    box-shadow: none;
+    transform: none;
+    filter: none;
+    transition: none;
+    border: 0;
+}
+/* ---------------------------------------------------------------------------
+   CORNER SCALE. Every control here is a <button>, so each rule needs two
+   classes to outrank Anki's `.fancy button { border-radius: 15px }` (0,1,1);
+   a single-class rule silently loses and the control renders with Anki's
+   corner instead of ours.
+     18 floating card | 16 control bar | 14 cards & blocks
+     12 chips & tabs  | 10 small buttons
+   --------------------------------------------------------------------------- */
+.app .tool              { border-radius: 14px; }
+.app .tab               { border-radius: 12px; }
+.app .tool-group-toggle { border-radius: 12px; }
+.app .side-toggle       { border-radius: 12px; }
+.app .actions button    { border-radius: 12px; }
+.app .hl-icon-btn       { border-radius: 10px; }
+.app .hl-wallet-add     { border-radius: 10px; }
+.app .zoom-controls button { border-radius: 10px; }
+/* The tools panel floats over a full-bleed ocean instead of splitting the
+   window into two columns, so the island always owns the whole canvas.
+   --side-w / --side-gap are read back by the JS that keeps the island centred
+   in the space the panel leaves free. */
 .app {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 328px;
+    --side-w: 348px;
+    --side-gap: 16px;
+    position: relative;
     height: 100vh;
     min-width: 0;
+    overflow: hidden;
+}
+.app.side-collapsed {
+    --side-w: 0px;
+}
+.app.side-collapsed .side {
+    display: none;
+}
+.side-toggle {
+    position: absolute;
+    top: 22px;
+    right: calc(var(--side-gap) + var(--side-w) + 10px);
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,.92);
+    border: 1px solid rgba(33,49,58,.14);
+    box-shadow: 0 2px 6px rgba(15,45,60,.14);
+    cursor: pointer;
+    z-index: 40;
+}
+.side-toggle .ui-icon {
+    width: 15px;
+    height: 15px;
+}
+.side-toggle:hover {
+    background: #ffffff;
 }
 .world {
-    position: relative;
+    position: absolute;
+    inset: 0;
     min-width: 0;
     overflow: hidden;
     background-color: var(--ocean-bottom);
@@ -2633,7 +2906,7 @@ body {
     margin: 5px 0 0;
     color: #5d7681;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 500;
 }
 .wallet {
     display: flex;
@@ -2642,7 +2915,7 @@ body {
     padding: 10px 12px;
     border-radius: 14px;
     font-size: 13px;
-    font-weight: 850;
+    font-weight: 500;
 }
 .wallet button, .side button, .tool {
     border: 0;
@@ -2681,7 +2954,7 @@ body {
     border-radius: 14px;
     color: #39525b;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 500;
 }
 .stage-wrap {
     position: absolute;
@@ -2725,6 +2998,12 @@ body {
     height: 89px;
     cursor: pointer;
     opacity: 1;
+}
+/* Expanding costs the island-level expand price, not the terrain price shown
+   in the palette. Edge tiles you cannot afford yet are desaturated; the price
+   itself is stated once, in the sidebar. */
+.ghost-unaffordable .ghost-tile {
+    filter: grayscale(.7);
 }
 .ghost-tile,
 .placement-preview {
@@ -2779,20 +3058,69 @@ body {
     pointer-events: none;
 }
 .side {
+    position: absolute;
+    top: var(--side-gap);
+    right: var(--side-gap);
+    bottom: var(--side-gap);
+    width: var(--side-w);
     display: flex;
     flex-direction: column;
     min-width: 0;
-    gap: 12px;
+    gap: 14px;
     padding: 16px;
-    background: #ffffff;
-    border-left: 2px solid rgba(33,49,58,.10);
+    background: rgba(255,255,255,.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,.6);
+    border-radius: 18px;
+    box-shadow: 0 18px 44px rgba(10,40,56,.24), 0 2px 6px rgba(10,40,56,.10);
     overflow: auto;
+    overscroll-behavior: contain;
+    z-index: 30;
 }
+/* Scrollbar tuned for the floating card: a thin rounded thumb floating in a
+   transparent track, inset far enough that the card's 18px corners never clip
+   it. The transparent border plus background-clip is what creates the inset --
+   ::-webkit-scrollbar-thumb has no margin.
+   Do NOT add scrollbar-width/scrollbar-color here: in Chromium the standard
+   properties and the ::-webkit-scrollbar pseudo-elements are mutually
+   exclusive, and the standard ones win, which silently reverts all of this to
+   a default overlay bar. */
+.side::-webkit-scrollbar {
+    width: 10px;
+}
+.side::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 10px 0;
+}
+.side::-webkit-scrollbar-thumb {
+    min-height: 32px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    background-color: rgba(33,49,58,.20);
+    border-radius: 999px;
+    transition: background-color .15s ease;
+}
+.side::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(33,49,58,.34);
+}
+.side::-webkit-scrollbar-thumb:active {
+    background-color: rgba(33,49,58,.46);
+}
+.side::-webkit-scrollbar-corner {
+    background: transparent;
+}
+/* Panels are sections of the floating card, not cards of their own -- nesting
+   bordered boxes inside a bordered box reads as clutter. */
 .panel {
-    border: 2px solid rgba(33,49,58,.10);
-    border-radius: 8px;
-    background: #ffffff;
-    padding: 12px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+}
+.panel + .panel {
+    border-top: 1px solid rgba(33,49,58,.10);
+    padding-top: 14px;
 }
 .panel h2 {
     margin: 0 0 10px;
@@ -2800,56 +3128,167 @@ body {
 }
 .resources-panel {
     display: grid;
-    gap: 10px;
+    gap: 12px;
 }
-.resource-header {
+.resources-panel.is-collapsed .hl-top-body {
+    display: none;
+}
+.hl-top-body {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 10px;
+    gap: 12px;
+}
+/* Header: name + rank on the left, level pill and the three panel controls
+   (guide, minimise details, hide panel) on the right. */
+.hl-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
     align-items: center;
 }
-.resource-title h2 {
+.hl-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    margin-right: -6px;
+}
+/* Title and controls share a row; the subtitle gets the full width below so it
+   is never squeezed into an ellipsis by the control cluster. */
+.hl-head-block {
+    display: grid;
+    gap: 2px;
+}
+.hl-head h2 {
+    min-width: 0;
     margin: 0;
-    font-size: 20px;
-    line-height: 1.05;
+    font-size: 19px;
+    line-height: 1.15;
+    letter-spacing: -.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.resource-title p {
-    margin: 4px 0 0;
-    color: #5d7681;
-    font-size: 12px;
-    font-weight: 800;
+.hl-subtitle {
+    margin: 0;
+    color: #7d919b;
+    font-size: 11.5px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.resource-manual-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 999px;
-    background: #eef7fb;
-    border: 2px solid rgba(33,49,58,.10) !important;
+.hl-icon-btn {
+    width: 26px;
+    height: 26px;
     display: grid;
     place-items: center;
     padding: 0;
+    border-radius: 10px;
+    background: transparent;
+    border: 0 !important;
+    cursor: pointer;
 }
-.resource-manual-btn .ui-icon {
-    width: 20px;
-    height: 20px;
+.hl-icon-btn:hover {
+    background: rgba(33,49,58,.06);
 }
-.resource-wallet {
+.hl-icon-btn .ui-icon {
+    width: 13px;
+    height: 13px;
+    opacity: .45;
+}
+.hl-icon-btn:hover .ui-icon {
+    opacity: .75;
+}
+.hl-level-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(33,49,58,.06);
+    border: 0;
+    color: #3b515c;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    letter-spacing: .01em;
+    white-space: nowrap;
+}
+.hl-level-progress {
+    display: grid;
+    gap: 6px;
+}
+.hl-level-progress-track {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(33,49,58,.09);
+    overflow: hidden;
+}
+.hl-level-progress-track span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: #24363e;
+    transition: width .25s ease;
+}
+.hl-level-progress-meta {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    color: #7d919b;
+    font-size: 11px;
+    font-weight: 500;
+}
+/* Wallet and expand price: soft filled pills, no outlines. */
+.hl-wallet {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
-    border-radius: 8px;
-    background: #f5f5f5;
-    padding: 10px;
+    padding: 11px 11px 11px 13px;
+    border-radius: 14px;
+    background: rgba(33,49,58,.05);
 }
-.resource-wallet-value,
+.hl-wallet-coin {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    flex: 0 0 auto;
+}
+.hl-wallet-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: -.01em;
+}
+/* Text button rather than a bare "+" glyph: it says what it does, and a flat
+   background swap is the only thing that happens on hover. */
+.hl-wallet-add {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: rgba(33,49,58,.07);
+    color: #3b515c;
+    border: 0 !important;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .01em;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.hl-wallet-add:hover {
+    background: rgba(33,49,58,.13);
+}
+/* .coin-value is still used by the dashboard widget markup. */
 .coin-value {
     display: inline-flex;
     align-items: center;
     gap: 7px;
     min-width: 0;
     font-size: 15px;
-    font-weight: 850;
+    font-weight: 500;
 }
 .coin-value img {
     width: 22px;
@@ -2857,32 +3296,17 @@ body {
     object-fit: contain;
     flex: 0 0 auto;
 }
-.resource-wallet button {
-    width: 24px;
-    height: 24px;
-    border-radius: 999px;
-    background: #f5bf36;
-    color: #3b2604;
-    display: grid;
-    place-items: center;
-    padding: 0;
-    font-weight: 900;
-}
-.resource-wallet button .ui-icon {
-    width: 14px;
-    height: 14px;
-}
 .resource-status {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border-radius: 8px;
-    background: #f5f5f5;
-    color: #39525b;
-    padding: 9px 10px;
+    border-radius: 12px;
+    background: transparent;
+    color: #6c828c;
+    padding: 2px 0;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 500;
 }
 .stats {
     display: grid;
@@ -2890,9 +3314,10 @@ body {
     gap: 8px;
 }
 .stat {
-    border-radius: 8px;
-    background: #f5f5f5;
-    padding: 9px;
+    border-radius: 14px;
+    background: rgba(33,49,58,.05);
+    border: 0;
+    padding: 10px 11px;
     min-width: 0;
 }
 .stat b {
@@ -2902,14 +3327,14 @@ body {
 .stat span {
     color: #5e7168;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 500;
 }
 .stat small {
     display: block;
     margin-top: 4px;
     color: #0b7c60;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 500;
 }
 .tabs {
     display: grid;
@@ -2917,7 +3342,7 @@ body {
     gap: 6px;
 }
 .tab {
-    border-radius: 8px;
+    border-radius: 12px;
     background: #f0f0f0;
     min-height: 42px;
     display: grid;
@@ -2925,7 +3350,7 @@ body {
     padding: 8px 4px;
     color: #42534c;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 500;
 }
 .tab .ui-icon {
     width: 22px;
@@ -2942,12 +3367,20 @@ body {
     gap: 8px;
     margin-top: 10px;
 }
+/* Gallery layout: sprites read as a browsable grid instead of one tall
+   scrolling column. Headings and subgroup labels span the full width. */
 .tool-group {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    align-items: stretch;
     gap: 8px;
 }
 .tool-group + .tool-group {
     margin-top: 6px;
+}
+.tool-group > h3,
+.tool-group > .tool-subgroup {
+    grid-column: 1 / -1;
 }
 .tool-group h3 {
     margin: 0;
@@ -2961,10 +3394,10 @@ body {
     padding: 0 14px;
     background: #f0f0f0;
     border: 0;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #26383f;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 500;
     letter-spacing: 0.2px;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
@@ -2983,34 +3416,113 @@ body {
     padding: 0 4px;
     color: #65757d;
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 500;
     letter-spacing: 0.2px;
     text-transform: uppercase;
 }
+/* Fixed-height media row, then the label. Every sprite kind -- flat png, cropped
+   svg, composite building, blank icon -- centres inside the same box, so cards
+   line up whatever they hold and nothing sits flush against an edge. */
 .tool {
     display: grid;
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 9px;
+    grid-template-rows: 72px auto;
     align-items: center;
+    justify-items: center;
+    gap: 9px;
     width: 100%;
-    min-height: 76px;
-    text-align: left;
-    border-radius: 8px;
-    padding: 7px;
+    text-align: center;
+    border-radius: 14px;
+    padding: 14px 8px 15px;
     background: #fafafa;
     color: #24363e;
     border: 2px solid rgba(33,49,58,.08);
+}
+.tool .tool-media {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+}
+.tool .tool-label {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+.tool .tool-label small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
 }
 .tool.active {
     border-color: #0e7f60;
     background: #e8f8e8;
 }
+/* Erase actions: one full-width row each, icon chip beside the text. */
+.tool-group-actions {
+    grid-template-columns: minmax(0, 1fr);
+}
+/* Erase entries opt out of the sprite grid and lay out as a row instead. */
+.tool-action {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 11px;
+    min-height: 0;
+    padding: 12px;
+    text-align: left;
+}
+/* Two-class selectors on purpose: the sprite-card rule `.tool > span` stretches
+   every child span to full width and pins it to the bottom, and it outranks a
+   single class. These rows lay out side by side instead. */
+.tool-action .tool-action-icon {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    margin-top: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(33,49,58,.07);
+}
+.tool-action .tool-action-icon .ui-icon {
+    width: 16px;
+    height: 16px;
+    opacity: .72;
+}
+.tool-action .tool-action-text {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    margin-top: 0;
+}
+.tool-action strong {
+    font-size: 12.5px;
+    white-space: normal;
+}
+.tool-action small {
+    display: block;
+    margin-top: 1px;
+    color: #7d919b;
+    font-size: 10.5px;
+    line-height: 1.35;
+    white-space: normal;
+    justify-content: flex-start;
+}
+.tool-action.active .tool-action-icon {
+    background: rgba(14,127,96,.14);
+}
 .tool.locked {
     opacity: .48;
     cursor: not-allowed;
 }
-.tool > img,
-.tool > svg {
+.tool .tool-media > img,
+.tool .tool-media > svg {
+    max-width: 100%;
     width: 64px;
     height: 58px;
     object-fit: contain;
@@ -3034,24 +3546,27 @@ body {
     height: 58px;
     display: grid;
     place-items: center;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #f0f0f0;
     color: #333333;
     font-size: 20px;
-    font-weight: 900;
+    font-weight: 500;
 }
 .tool strong {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.3;
 }
 .tool small {
     display: block;
     color: #687971;
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1.25;
+    /* markup sets display:flex inline, so centre the cost row here */
+    justify-content: center;
 }
 .actions {
     display: grid;
@@ -3060,10 +3575,10 @@ body {
 }
 .actions button {
     min-height: 38px;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #333333;
     color: #fff;
-    font-weight: 850;
+    font-weight: 500;
 }
 .actions button.secondary {
     background: #f0f0f0;
@@ -3078,7 +3593,7 @@ body {
     align-items: center;
     gap: 8px;
     padding: 8px;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 2px solid rgba(33,49,58,.10);
     background: rgba(255,255,255,.92);
 }
@@ -3086,7 +3601,7 @@ body {
     width: 34px;
     height: 34px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #333333;
     color: #ffffff;
     display: grid;
@@ -3105,7 +3620,7 @@ body {
     min-width: 48px;
     text-align: center;
     font-size: 12px;
-    font-weight: 900;
+    font-weight: 500;
     color: #21313a;
 }
 .land-choice {
@@ -3127,7 +3642,7 @@ body {
     background: #333333;
     color: #ffffff;
     font-size: 12px;
-    font-weight: 900;
+    font-weight: 500;
 }
 @keyframes waterHover {
     0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
@@ -3136,26 +3651,81 @@ body {
 .water-tile.water-hover {
     animation: waterHover 1.8s ease-in-out infinite;
 }
+/* Narrow windows: the panel becomes a floating bottom sheet. */
 @media (max-width: 900px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 300px; }
-    .side { border-left: 0; border-top: 1px solid rgba(61,88,94,.14); }
+    .app { --side-w: auto; }
+    .side {
+        top: auto;
+        left: var(--side-gap);
+        right: var(--side-gap);
+        bottom: var(--side-gap);
+        width: auto;
+        max-height: 46vh;
+    }
+    .side-toggle { right: var(--side-gap); }
 }
 body.nightMode .brand, body.nightMode .wallet, body.nightMode .notice, body.nightMode .side, body.nightMode .tool, body.nightMode .panel, body.nightMode .zoom-controls, body.nightMode .land-choice {
     background: rgba(38, 38, 38, .92);
     border-color: rgba(255, 255, 255, .1);
     color: #e0e0e0;
 }
-body.nightMode .side { background: #1f1f1f; border-color: rgba(255, 255, 255, .1); }
+body.nightMode .side {
+    background: rgba(28,28,30,.94);
+    border-color: rgba(255,255,255,.10);
+    box-shadow: 0 18px 44px rgba(0,0,0,.46), 0 2px 6px rgba(0,0,0,.28);
+}
+body.nightMode .side::-webkit-scrollbar-thumb {
+    background-color: rgba(255,255,255,.20);
+}
+body.nightMode .side::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255,255,255,.34);
+}
+body.nightMode .side::-webkit-scrollbar-thumb:active {
+    background-color: rgba(255,255,255,.46);
+}
+body.nightMode .panel {
+    background: transparent;
+    border: 0;
+}
+body.nightMode .panel + .panel {
+    border-top: 1px solid rgba(255,255,255,.10);
+}
 body.nightMode .brand p { color: #a0aab0; }
 body.nightMode .stat,
-body.nightMode .resource-wallet,
-body.nightMode .resource-status,
-body.nightMode .resource-manual-btn {
-    background: #2c2c2c;
+body.nightMode .hl-wallet,
+body.nightMode .hl-level-badge,
+body.nightMode .hl-wallet-add {
+    background: rgba(255,255,255,.07);
+    border-color: transparent;
+}
+body.nightMode .hl-wallet-add {
+    color: #cdd6dc;
+}
+body.nightMode .hl-icon-btn:hover,
+body.nightMode .hl-wallet-add:hover {
+    background: rgba(255,255,255,.14);
+}
+body.nightMode .resource-status {
+    background: transparent;
 }
 body.nightMode .stat span,
-body.nightMode .resource-title p {
+body.nightMode .hl-subtitle,
+body.nightMode .resource-status,
+body.nightMode .hl-level-progress-meta {
     color: #8a9ba3;
+}
+body.nightMode .hl-level-badge {
+    color: #d7e0e5;
+}
+body.nightMode .hl-level-progress-track {
+    background: rgba(255,255,255,.12);
+}
+body.nightMode .hl-level-progress-track span {
+    background: #e0e0e0;
+}
+body.nightMode .side-toggle {
+    background: rgba(38,38,38,.94);
+    border-color: rgba(255,255,255,.16);
 }
 body.nightMode .resource-status { color: #cdd6dc; }
 body.nightMode .stat small { color: #65d7aa; }
@@ -3165,6 +3735,8 @@ body.nightMode .tab.active .ui-icon { filter: brightness(0); }
 body.nightMode .tool { background: #262626; color: #e0e0e0; border-color: rgba(255,255,255,.05); }
 body.nightMode .tool.active { border-color: #4faede; background: #333333; }
 body.nightMode .tool small { color: #8a9ba3; }
+body.nightMode .tool-action-icon { background: rgba(255,255,255,.09); }
+body.nightMode .tool-action.active .tool-action-icon { background: rgba(79,174,222,.22); }
 body.nightMode .tool-blank { background: #2c2c2c; color: #a0aab0; }
 body.nightMode .tool-group-toggle { background: #2c2c2c; color: #e0e0e0; }
 body.nightMode .tool-group-toggle:hover { background: #333333; }
@@ -3174,6 +3746,50 @@ body.nightMode .zoom-controls button { background: #2c2c2c; color: #e0e0e0; }
 body.nightMode .zoom-controls span { color: #e0e0e0; }
 body.nightMode .land-choice button { background: #2c2c2c; color: #e0e0e0; }
 body.nightMode .ui-icon:not(.gold-icon) { filter: brightness(0) invert(1); }
+
+/* ---------------------------------------------------------------------------
+   TYPE SCALE — single source of truth.
+   One family (Poppins), two weights: 400 for everything, 500 for the few things
+   that lead a block. Nothing here may exceed 500: heavier values have no real
+   face behind them and get synthesised, which is what made the panel look like
+   several fonts at once. Sizes are fixed px, not rem: Anki sets
+   html { font-size: 15px }, so rem units would drift with its theme.
+   --------------------------------------------------------------------------- */
+.side {
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.45;
+    letter-spacing: 0;
+}
+/* UA defaults ask for bold on headings and b/strong. Cap them at Medium so no
+   rule in this panel ever requests a weight the design does not use. */
+.app h1, .app h2, .app h3, .app h4, .app h5, .app h6,
+.app b, .app strong {
+    font-weight: 500;
+}
+.hl-head h2        { font-size: 17px; font-weight: 500; letter-spacing: -.01em; }
+.hl-subtitle       { font-size: 11.5px; font-weight: 400; }
+.hl-level-badge    { font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.hl-level-progress-meta { font-size: 11px; font-weight: 400; }
+.side .hl-wallet-value  { font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.side .hl-wallet-add    { font-size: 11.5px; font-weight: 500; }
+.resource-status   { font-size: 11.5px; font-weight: 400; }
+.stat b            { font-size: 17px; font-weight: 500; letter-spacing: -.01em; }
+.stat span         { font-size: 11px; font-weight: 400; }
+.stat small        { font-size: 10.5px; font-weight: 400; }
+.panel h2          { font-size: 12.5px; font-weight: 500; letter-spacing: .01em; }
+.side .tab         { font-size: 10.5px; font-weight: 400; }
+/* The toggle is a <button> inside an <h3>. `.app button { font-weight: inherit }`
+   outranks a single-class rule, so it picks up the h3's default bold unless the
+   heading itself is normalised. */
+.tool-group h3 { font-weight: 400; }
+.side .tool-group-toggle { font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.tool-subgroup     { font-size: 10.5px; font-weight: 400; letter-spacing: .04em; }
+.tool strong       { font-size: 11px; font-weight: 400; }
+.tool small        { font-size: 10px; font-weight: 400; }
+.tool-action strong { font-size: 12px; font-weight: 500; }
+.tool-action small  { font-size: 10.5px; font-weight: 400; }
+.side .zoom-controls span { font-weight: 400; }
 </style>
 </head>
 <body>
@@ -3232,6 +3848,9 @@ let panX = Number(localStorage.getItem('hexLandPanX') || 0);
 let panY = Number(localStorage.getItem('hexLandPanY') || 0);
 let collapsedToolGroups = JSON.parse(localStorage.getItem('hexLandCollapsedGroups') || '{}');
 let toolFlipped = localStorage.getItem('hexLandToolFlipped') === 'true';
+let sideCollapsed = localStorage.getItem('hexLandSideCollapsed') === 'true';
+let topCollapsed = localStorage.getItem('hexLandTopCollapsed') === 'true';
+const hasSavedView = localStorage.getItem('hexLandZoom') !== null;
 
 let audioCtx = null;
 let layoutCache = null;
@@ -3340,9 +3959,33 @@ function projectedPoints() {
     return points.map(([q,r]) => ({x:(q-r)*STEP_X, y:(q+r)*STEP_Y}));
 }
 
+// The tools panel floats on top of the canvas, so "centred" means centred in
+// what the panel leaves visible, not in the raw stage. Derived from constants
+// rather than the DOM because computeLayout runs while the markup is being
+// rebuilt, when .side still holds its previous geometry.
+const SIDE_WIDTH = 348;
+const SIDE_GAP = 16;
+const SIDE_BREAKPOINT = 900;
+
+function sideInsetX() {
+    if (sideCollapsed || window.innerWidth <= SIDE_BREAKPOINT) return 0;
+    return SIDE_WIDTH + SIDE_GAP * 2;
+}
+
+function sideInsetY() {
+    if (sideCollapsed || window.innerWidth > SIDE_BREAKPOINT) return 0;
+    const side = document.querySelector('.side');
+    const sheetH = side ? side.getBoundingClientRect().height : window.innerHeight * 0.46;
+    return sheetH + SIDE_GAP * 2;
+}
+
+// Keep the island centred in the stage itself. Offsetting it here would be
+// multiplied by the zoom (.stage-content scales about its own centre); the
+// floating panel is compensated for with pan instead, which sits outside the
+// scaled element and so stays in screen pixels.
 function computeLayout() {
     const stage = document.querySelector('.stage');
-    const width = stage ? stage.clientWidth : Math.max(640, window.innerWidth - 360);
+    const width = stage ? stage.clientWidth : Math.max(640, window.innerWidth);
     const height = stage ? stage.clientHeight : Math.max(420, window.innerHeight - 170);
     const projected = projectedPoints();
     const minX = Math.min(...projected.map(p => p.x));
@@ -3351,11 +3994,14 @@ function computeLayout() {
     const maxY = Math.max(...projected.map(p => p.y));
     const islandW = (maxX - minX) + TILE_W;
     const islandH = (maxY - minY) + TILE_H + 74;
+    // Centre unconditionally. Clamping the origin used to shove oversized
+    // islands into the top-left corner, which broke centred zooming because
+    // .stage-content scales about its own centre.
     return {
         minX,
         minY,
-        originX: Math.max(26, (width - islandW) / 2),
-        originY: Math.max(18, (height - islandH) / 2 + 20)
+        originX: (width - islandW) / 2,
+        originY: (height - islandH) / 2 + 20
     };
 }
 
@@ -3374,6 +4020,83 @@ function setZoom(nextZoom) {
     render();
     softSound(330, 0.04, 0.01);
 }
+
+function islandBounds() {
+    const projected = projectedPoints();
+    const xs = projected.map(p => p.x);
+    const ys = projected.map(p => p.y);
+    return {
+        w: (Math.max(...xs) - Math.min(...xs)) + TILE_W,
+        h: (Math.max(...ys) - Math.min(...ys)) + TILE_H + 74
+    };
+}
+
+// Resets pan and picks the largest zoom that still shows the whole island.
+// computeLayout() already centres the island inside .stage, so pan 0/0 plus a
+// fitted scale puts it dead centre in the window.
+function fitIsland(silent = false) {
+    const wrap = document.querySelector('.stage-wrap');
+    if (!wrap) return;
+    const box = islandBounds();
+    const insetX = sideInsetX();
+    const insetY = sideInsetY();
+    const availW = Math.max(120, wrap.clientWidth - 56 - insetX);
+    const availH = Math.max(120, wrap.clientHeight - 56 - insetY);
+    const ratio = Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h));
+    // Slide the stage clear of the floating panel. Pan is applied outside the
+    // scaled content, so this stays a plain screen-pixel offset.
+    panX = -insetX / 2;
+    panY = -insetY / 2;
+    zoom = Math.max(0.55, Math.min(3.0, ratio));
+    localStorage.setItem('hexLandPanX', String(panX));
+    localStorage.setItem('hexLandPanY', String(panY));
+    localStorage.setItem('hexLandZoom', String(zoom));
+    render();
+    if (!silent) softSound(380, 0.05, 0.012);
+}
+
+function toggleSide() {
+    const wasX = sideInsetX();
+    const wasY = sideInsetY();
+    sideCollapsed = !sideCollapsed;
+    localStorage.setItem('hexLandSideCollapsed', sideCollapsed ? 'true' : 'false');
+    // Reclaiming (or giving up) the panel's footprint moves the free area's
+    // centre; slide the island by half that so it stays put visually.
+    panX += (wasX - sideInsetX()) / 2;
+    panY += (wasY - sideInsetY()) / 2;
+    localStorage.setItem('hexLandPanX', String(panX));
+    localStorage.setItem('hexLandPanY', String(panY));
+    render();
+    softSound(sideCollapsed ? 300 : 460, 0.04, 0.012);
+}
+
+function toggleTopInfo() {
+    topCollapsed = !topCollapsed;
+    localStorage.setItem('hexLandTopCollapsed', topCollapsed ? 'true' : 'false');
+    render();
+    softSound(topCollapsed ? 320 : 440, 0.04, 0.012);
+}
+
+// Land count -> level progress. Level N needs ceil(N^2 / 2) lands, so the bar
+// fills across the current level's band, not from zero. The caption states the
+// lands still owed rather than a ratio -- an absolute "7 / 8" next to a bar
+// measuring the band (5 -> 8) reads as two different numbers for one thing.
+function levelProgressHtml() {
+    const data = window.HEX_LAND_DATA;
+    const toNext = Math.max(0, Number(data.levelLandsToNext) || 0);
+    const pct = Math.round(Math.max(0, Math.min(1, Number(data.levelFraction) || 0)) * 100);
+    const nextLevel = (Number(data.level) || 0) + 1;
+    const landWord = toNext === 1
+        ? "{tr('hexland_land_singular', 'land')}"
+        : "{tr('hexland_lands', 'lands')}";
+    return `<div class="hl-level-progress">
+        <div class="hl-level-progress-track"><span style="width:${pct}%"></span></div>
+        <div class="hl-level-progress-meta">
+            <span>${toNext} ${landWord} {tr('hexland_to_level', 'to')} {tr('hexland_level_short', 'Lv')} ${nextLevel}</span>
+        </div>
+    </div>`;
+}
+
 
 function normalizeSelectedTool() {
     const data = window.HEX_LAND_DATA;
@@ -3787,10 +4510,12 @@ function renderStage() {
         layers.push(`<div class="hit" onmousemove="trackPlacementPreview(event,'${key}')" onmouseenter="setWaterHover('${key}', true); trackPlacementPreview(event,'${key}')" onmouseleave="setWaterHover('${key}', false); togglePlacementPreview('${key}', false)" onclick="placeAtEvent(event,${q},${r})" oncontextmenu="event.preventDefault(); clearAtEvent(event,${q},${r})" style="left:${p.x}px;top:${topY - elevatedOffsetY}px;z-index:${z(q,r,height + 140)}"></div>`);
     });
     if (selected.category === 'terrain') {
+        const expandCoins = Number((data.expandCost || {}).coins) || 0;
+        const canAfford = (Number(data.state.hex_coins) || 0) >= expandCoins;
         data.adjacent.forEach(c => {
             const p = pos(c.q, c.r);
             const src = selectedTerrainPreview();
-            layers.push(`<div class="ghost" onclick="placeAt(${c.q},${c.r})" style="left:${p.x}px;top:${p.y}px;z-index:${z(c.q,c.r)}">${spriteHtml(src, 'ghost-tile', '')}</div>`);
+            layers.push(`<div class="ghost ${canAfford ? '' : 'ghost-unaffordable'}" onclick="placeAt(${c.q},${c.r})" style="left:${p.x}px;top:${p.y}px;z-index:${z(c.q,c.r)}">${spriteHtml(src, 'ghost-tile', '')}</div>`);
         });
     }
 
@@ -3956,23 +4681,57 @@ function tools() {
             if (category === 'subgroup') {
                 return `<div class="tool-subgroup">${esc(item.label || id)}</div>`;
             }
-            const locked = (category === 'terrain' && !data.unlockedTerrains.includes(id)) || (category === 'inhabitant' && data.builtLands < (item.unlock_lands || 0));
             const active = selected.category === category && selected.item === id;
+            // Erase entries are actions, not sprites: a full-width row with the
+            // icon beside the text, so nothing is squeezed into an empty
+            // thumbnail box or truncated to an ellipsis.
+            if (category === 'erase') {
+                const iconName = item.icon || 'delete';
+                return `<button class="tool tool-action ${active ? 'active' : ''}" onclick="selectTool('${category}','${id}')">
+                    <span class="tool-action-icon">${faIcon(iconName)}</span>
+                    <span class="tool-action-text"><strong>${esc(item.label)}</strong><small>${esc(item.hint || '')}</small></span>
+                </button>`;
+            }
+            const locked = (category === 'terrain' && !data.unlockedTerrains.includes(id)) || (category === 'inhabitant' && data.builtLands < (item.unlock_lands || 0));
             const unlock = item.hint || (locked ? (category === 'inhabitant' ? `{tr('hexland_unlocks_at', 'Unlocks at')} ${item.unlock_lands || 0} {tr('hexland_lands', 'lands')}` : `{tr('hexland_unlocks_after', 'Unlocks after')} ${item.unlock} {tr('hexland_reviews', 'reviews')}`) : costText(item.cost || {}));
-            const unlockHtml = (unlock === item.hint || locked || unlock === 'Free') ? esc(unlock) : `<span style="display: inline-block; width: 12px; height: 12px; margin-right: 4px; opacity: 0.7; background-color: currentColor; -webkit-mask: url(/_addons/__ADDON__/system_files/system_icons/available_for_users/hexagon.svg) no-repeat center / contain; mask: url(/_addons/__ADDON__/system_files/system_icons/available_for_users/hexagon.svg) no-repeat center / contain;"></span>` + esc(unlock);
+            // Beside a hex-coin glyph the words "Hex Coins" are redundant, and
+            // spelling them out wraps the price onto two lines in a card this
+            // narrow. Show the number; the full phrasing stays in the tooltip.
+            const coinCost = Number((item.cost || {}).coins) || 0;
+            const compactCost = coinCost ? String(coinCost) : unlock;
+            const unlockHtml = (unlock === item.hint || locked || unlock === 'Free') ? esc(unlock) : `<span style="display: inline-block; width: 11px; height: 11px; flex: 0 0 auto; opacity: 0.7; background-color: currentColor; -webkit-mask: url(/_addons/__ADDON__/system_files/system_icons/available_for_users/hexagon.svg) no-repeat center / contain; mask: url(/_addons/__ADDON__/system_files/system_icons/available_for_users/hexagon.svg) no-repeat center / contain;"></span>` + esc(compactCost);
             return `<button class="tool ${active ? 'active' : ''} ${locked ? 'locked' : ''}" ${locked ? '' : `onclick="selectTool('${category}','${id}')"`}>
-                ${toolPreviewHtml(category, id)}
-                <span><strong>${esc(item.label)}</strong><small style="display:flex;align-items:center;">${unlockHtml}</small></span>
+                <span class="tool-media">${toolPreviewHtml(category, id)}</span>
+                <span class="tool-label"><strong>${esc(item.label)}</strong><small title="${esc(unlock)}">${unlockHtml}</small></span>
             </button>`;
         }).join('');
         const header = groupName ? `<h3><button class="tool-group-toggle" onclick="toggleToolGroup('${esc(groupName)}')"><span>${esc(groupLabel || groupName)}</span>${faIcon(collapsed ? 'right' : 'down')}</button></h3>` : '';
-        return `<div class="tool-group">${header}${collapsed ? '' : buttons}</div>`;
+        return `<div class="tool-group ${activeTab === 'erase' ? 'tool-group-actions' : ''}">${header}${collapsed ? '' : buttons}</div>`;
     }).join('');
 }
 
 function coinLabelHtml(value, label = null) {
     const displayLabel = label || "{tr('hexland_hex_coins', 'Hex Coins')}";
     return `<span class="coin-value"><img src="/_addons/__ADDON__/system_files/gamification_images/hex_coin.webp" alt=""> <span>${esc(value)} ${esc(displayLabel)}</span></span>`;
+}
+
+// Wallets can reach ten digits; abbreviate so the pill never wraps. The exact
+// figure stays available as a tooltip.
+function formatCoins(value) {
+    const n = Math.floor(Number(value) || 0);
+    if (n < 100000) return n.toLocaleString();
+    const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+    for (const [size, suffix] of units) {
+        if (n >= size) {
+            const scaled = n / size;
+            return (scaled >= 100 ? Math.round(scaled) : scaled.toFixed(1).replace(/\\.0$/, '')) + suffix;
+        }
+    }
+    return String(n);
+}
+
+function fullCoinText(value) {
+    return `${(Math.floor(Number(value) || 0)).toLocaleString()} {tr('hexland_hex_coins', 'Hex Coins')}`;
 }
 
 function formatCoinRate(value) {
@@ -4000,58 +4759,59 @@ function render() {
     const treeCoinBonus = (Number(data.trees) || 0) * 0.10;
     const flowerCoinBonus = (Number(data.flowers) || 0) * 0.05;
     const totalNatureBonus = Math.min(treeCoinBonus + flowerCoinBonus, 20);
+    const todayReviews = Number(data.todayReviews ?? s.today_reviews) || 0;
     let noticeText = compactStatusText(s.last_message);
     if (selected.category === 'buildingPart' && isDetailPart(selected.item)) {
         const label = data.catalog.buildingParts[selected.item]?.label || selected.item;
         noticeText = `Placing ${label}. Press [R] to flip direction (current: ${toolFlipped ? 'flipped' : 'normal'}).`;
     }
     document.getElementById('app').innerHTML = `
-        <div class="app">
+        <div class="app ${sideCollapsed ? 'side-collapsed' : ''}">
             <main class="world">
                 <div class="stage-wrap"><div class="stage" style="transform:translate(${panX}px, ${panY}px);"><div class="stage-content" style="transform:scale(${zoom});">${renderStage()}</div></div></div>
+                ${sideCollapsed ? `<button class="side-toggle" aria-label="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" title="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" onclick="toggleSide()">${faIcon('angle-left')}</button>` : ''}
                 <div class="zoom-controls">
                     <button aria-label="Zoom out" onclick="setZoom(zoom - 0.1)">${faIcon('minus', 'dark-icon')}</button>
                     <span>${Math.round(zoom * 100)}%</span>
                     <button aria-label="Zoom in" onclick="setZoom(zoom + 0.1)">${faIcon('add', 'dark-icon')}</button>
+                    <button aria-label="{tr('hexland_fit_island', 'Fit island to view')}" title="{tr('hexland_fit_island', 'Fit island to view')}" onclick="fitIsland()">${faIcon('mode-focus-eye', 'dark-icon')}</button>
                     <button aria-label="Clear spot" class="${selected.category === 'erase' && selected.item === 'spot' ? 'active' : ''}" onclick="selectTool('erase','spot')">${faIcon('cancel', 'dark-icon')}</button>
                 </div>
-                <dialog id="manualDialog" style="border: 2px solid rgba(33,49,58,.10); border-radius: 16px; padding: 24px; max-width: 500px; background: #fff; color: #24363e;">
-                    <h2 style="margin-top: 0;">{tr('hexland_how_to_play', 'How to Play Hexagon Land')}</h2>
-                    <p><b>{tr('hexland_basics', 'Basics')}:</b> {tr('hexland_basics_desc', 'Study cards in Anki to earn')} {tr('hexland_hex_coins', 'Hex Coins')} {tr('hexland_basics_desc2', 'and materials (Wood, Stone, Sand, Crystal). Use these resources to build out your island.')}</p>
-                    <p><b>{tr('hexland_tools', 'Tools')}:</b> {tr('hexland_tools_desc', 'Use the Tools panel on the right to select terrains, buildings, or decorations. Click an empty spot to build, or click an existing tile to upgrade or replace it.')}</p>
-                    <p><b>{tr('hexland_tips', 'Tips')}:</b> {tr('hexland_tips_desc', 'Planted trees increase your hex coins gained per Anki card (max +20). Inhabitants near water will sometimes fish and find extra coins! If you do not study for a day, the land starting from the edges will be deleted. Tiles at risk of deletion will be highlighted softly in red.')}</p>
-                    <p><b>{tr('hexland_dashboard_widget', 'Dashboard Widget')}:</b> {tr('hexland_dashboard_widget_desc', 'The widget on the Anki dashboard shows a live preview of your island.')} <b>{tr('hexland_drag_scroll', 'Hold Shift and Drag/Scroll')}</b> {tr('hexland_drag_scroll_desc', 'on the widget to pan and zoom. Click the')} <b>{tr('hexland_pin_position', 'Pin Position')}</b> {tr('hexland_pin_position_desc', 'button that appears on the widget to lock your desired view in place!')}</p>
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button onclick="document.getElementById('manualDialog').close()" style="background: var(--ocean-bottom, #1597d1); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold;">{tr('hexland_got_it', 'Got it')}</button>
-                    </div>
-                </dialog>
             </main>
             <aside class="side">
-                <section class="panel resources-panel">
-                    <div class="resource-header">
-                        <div class="resource-title">
+                <section class="panel resources-panel ${topCollapsed ? 'is-collapsed' : ''}">
+                    <div class="hl-head-block">
+                        <div class="hl-head">
                             <h2>{tr('hexland_title', 'Hexagon Land')}</h2>
-                            <p>${s.today_reviews} {tr('hexland_reviews_today', 'reviews today')}</p>
+                            <div class="hl-head-actions">
+                            <span class="hl-level-badge">{tr('hexland_level_short', 'Lv')} ${data.level}</span>
+                            <button class="hl-icon-btn" aria-label="{tr('hexland_open_guide', 'Open the Hexagon Land guide')}" title="{tr('hexland_open_guide', 'Open the Hexagon Land guide')}" onclick="pycmd('hex_land_guide'); softSound(560);">${faIcon('info-circle')}</button>
+                            <button class="hl-icon-btn" aria-label="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" title="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" aria-expanded="${topCollapsed ? 'false' : 'true'}" onclick="toggleTopInfo()">${faIcon(topCollapsed ? 'down' : 'up')}</button>
+                            <button class="hl-icon-btn" aria-label="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" title="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" onclick="toggleSide()">${faIcon('right')}</button>
+                            </div>
                         </div>
-                        <button class="resource-manual-btn" aria-label="Manual" onclick="document.getElementById('manualDialog').showModal()">${faIcon('info-circle')}</button>
+                        <p class="hl-subtitle">${esc(data.levelTitle)} &middot; ${todayReviews} {tr('hexland_reviews_today', 'reviews today')}</p>
                     </div>
-                    <div class="resource-wallet">
-                        <span class="resource-wallet-value">${coinLabelHtml(s.hex_coins)}</span>
-                        <button aria-label="Redeem {tr('hexland_hex_coins', 'Hex Coins')}" onclick="event.stopPropagation(); pycmd('hex_land_buy'); softSound(700);">${faIcon('add')}</button>
-                    </div>
-                    <div class="resource-status">${esc(noticeText)}</div>
-                    <div class="stats">
-                        <div class="stat"><b>${data.builtLands}</b><span>{tr('hexland_lands', 'lands')}</span></div>
-                        <div class="stat"><b>${formatCoinRate(data.coinRate)}x</b><span>{tr('hexland_coin_rate', 'coin rate')}</span><small>+${Math.round(totalNatureBonus * 100)}%</small></div>
-                        <div class="stat"><b>${data.trees}</b><span>{tr('hexland_trees', 'trees')}</span><small>+${Math.round(treeCoinBonus * 100)}%</small></div>
-                        <div class="stat"><b>${data.flowers}</b><span>{tr('hexland_flowers', 'flowers')}</span><small>+${Math.round(flowerCoinBonus * 100)}%</small></div>
+                    <div class="hl-top-body">
+                        ${levelProgressHtml()}
+                        <div class="hl-wallet">
+                            <img class="hl-wallet-coin" src="/_addons/__ADDON__/system_files/gamification_images/hex_coin.webp" alt="">
+                            <span class="hl-wallet-value" title="${esc(fullCoinText(s.hex_coins))}">${esc(formatCoins(s.hex_coins))}</span>
+                            <button class="hl-wallet-add" aria-label="Redeem {tr('hexland_hex_coins', 'Hex Coins')}" onclick="event.stopPropagation(); pycmd('hex_land_buy'); softSound(700);">{tr('hexland_get_more', 'Get more')}</button>
+                        </div>
+                        <div class="resource-status">${esc(noticeText)}</div>
+                        <div class="stats">
+                            <div class="stat"><b>${data.builtLands}</b><span>{tr('hexland_lands', 'lands')}</span></div>
+                            <div class="stat"><b>${formatCoinRate(data.coinRate)}x</b><span>{tr('hexland_coin_rate', 'coin rate')}</span><small>+${Math.round(totalNatureBonus * 100)}%</small></div>
+                            <div class="stat"><b>${data.trees}</b><span>{tr('hexland_trees', 'trees')}</span><small>+${Math.round(treeCoinBonus * 100)}%</small></div>
+                            <div class="stat"><b>${data.flowers}</b><span>{tr('hexland_flowers', 'flowers')}</span><small>+${Math.round(flowerCoinBonus * 100)}%</small></div>
+                        </div>
                     </div>
                 </section>
                 <section class="panel">
-                    <h2>{tr('hexland_tools_panel', 'Tools')}</h2>
+                    <h2>{tr('hexland_hexagons_panel', 'Hexagons')}</h2>
                     <div class="tabs">${tabs()}</div>
                     <div class="tools">${tools()}</div>
-                </section>
                 </section>
             </aside>
         </div>`;
@@ -4138,6 +4898,18 @@ document.addEventListener('keydown', e => {
 
 render();
 
+// First ever open: frame the whole island instead of dropping the user at 100%
+// on an arbitrary corner. Deferred so .stage-wrap has real dimensions.
+if (!hasSavedView) {
+    requestAnimationFrame(() => fitIsland(true));
+}
+
+let resizeFitTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeFitTimer);
+    resizeFitTimer = setTimeout(() => render(), 120);
+});
+
 if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pendingMaterials || {}).length > 0) {
     const data = window.HEX_LAND_DATA;
     const toast = document.createElement('div');
@@ -4158,7 +4930,7 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
     setTimeout(() => { toast.style.opacity = '0'; }, 3000);
     setTimeout(() => { toast.remove(); }, 3500);
     
-    const walletSpan = document.querySelector('.resource-wallet-value');
+    const walletSpan = document.querySelector('.hl-wallet-value');
     if (walletSpan && data.pendingCoins > 0) {
         let current = data.state.hex_coins;
         let target = current + data.pendingCoins;
@@ -4170,7 +4942,8 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
                 clearInterval(intv);
                 pycmd('claim_pending');
             }
-            walletSpan.innerHTML = coinLabelHtml(current);
+            walletSpan.textContent = formatCoins(current);
+            walletSpan.title = fullCoinText(current);
         }, 50);
     } else {
         pycmd('claim_pending');

@@ -17,6 +17,7 @@ from .decks import tree_updater as deck_tree_updater
 from . import heatmap
 from .api import sidebar as sidebar_api
 from .api import bento as bento_api
+from . import fsrs_helper_integration
 from . import learner_stats_widget
 from .sync import onigiri_sync
 
@@ -30,6 +31,9 @@ sys.modules[__name__].addon_path = addon_path
 
 def generate_notification_position_css_text(conf):
     """Generates CSS text for notification positioning logic."""
+    if conf.get("onigiri_reviewer_notification_mode", "classic") == "mini":
+        return ""
+        
     pos = conf.get("onigiri_reviewer_notification_position", "top-right")
     
     css = ".onigiri-notification-stack { "
@@ -99,6 +103,27 @@ def quiet_state_change_css() -> str:
     </style>
     """
 
+def versioned_web_asset(filename: str) -> str:
+    """URL for a file in web/, cache-busted by its mtime."""
+    try:
+        version = int(os.path.getmtime(os.path.join(addon_path, "web", filename)))
+        return f"{web_assets_root}/{filename}?v={version}"
+    except OSError:
+        return f"{web_assets_root}/{filename}"
+
+
+def stylesheet_link(filename: str) -> str:
+    """
+    Link a stylesheet instead of inlining its text.
+
+    Anki rebuilds the page HTML on every screen change, so an inlined
+    stylesheet is re-parsed by Chromium each time. menu.css alone is ~80KB;
+    inlining it made every deck browser/overview entry progressively slower the
+    longer Anki stayed open. Served over a URL it is parsed once and reused.
+    """
+    return f'<link rel="stylesheet" href="{versioned_web_asset(filename)}">'
+
+
 def inject_menu_files(web_content, context):
     conf = config.get_config()
     should_hide = conf.get("hideNativeHeaderAndBottomBar", False)
@@ -128,8 +153,14 @@ def inject_menu_files(web_content, context):
                 style.id = "onigiri-welcome-style";
                 style.innerHTML = `
                     @font-face {{
-                        font-family: 'OnigiriMontserrat';
-                        src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Montserrat.ttf') format('truetype');
+                        font-family: 'OnigiriPoppins';
+                        src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Regular.ttf');
+                        font-weight: 400;
+                    }}
+                    @font-face {{
+                        font-family: 'OnigiriPoppins';
+                        src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Medium.ttf');
+                        font-weight: 500 900;
                     }}
                     #onigiri-welcome-overlay {{
                         position: fixed; inset: 0; z-index: 2147483647;
@@ -137,12 +168,12 @@ def inject_menu_files(web_content, context):
                         backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
                         background: rgba(0, 0, 0, 0.55);
                         color: white;
-                        font-family: 'OnigiriMontserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+                        font-family: 'OnigiriPoppins', -apple-system, BlinkMacSystemFont, sans-serif;
                         opacity: 0; transition: opacity 0.4s ease;
                     }}
                     #onigiri-welcome-overlay .btn-continue {{
                         margin-top: 36px; padding: 16px 48px; font-size: 21px; font-weight: 700;
-                        font-family: 'OnigiriMontserrat', sans-serif; color: #123034; background: white;
+                        font-family: 'OnigiriPoppins', sans-serif; color: #123034; background: white;
                         border: none; border-radius: 40px; cursor: pointer;
                         box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;
                     }}
@@ -178,25 +209,10 @@ def inject_menu_files(web_content, context):
             </script>
             """
     if is_deck_browser:
-        def versioned_web_asset(filename: str) -> str:
-            try:
-                version = int(os.path.getmtime(os.path.join(addon_path, "web", filename)))
-                return f"{web_assets_root}/{filename}?v={version}"
-            except Exception:
-                return f"{web_assets_root}/{filename}"
-
-        css_path = os.path.join(addon_path, "web", "menu.css")
-        try:
-            with open(css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
-        heatmap_css_path = os.path.join(addon_path, "web", "heatmap.css")
-        try:
-            with open(heatmap_css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
+        web_content.head += stylesheet_link("menu.css")
+        web_content.head += stylesheet_link("heatmap.css")
+        web_content.head += stylesheet_link("learner_stats.css")
+        patcher.set_main_webview_background_color(patcher._deckbrowser_base_bg_color())
         web_content.head += patcher.generate_profile_bar_fix_css()
         web_content.head += patcher.generate_deck_browser_backgrounds(addon_path)
         web_content.head += patcher.generate_icon_css(addon_package, conf)
@@ -230,6 +246,7 @@ def inject_menu_files(web_content, context):
         
     elif is_reviewer:
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
+        patcher.set_main_webview_background_color(patcher._reviewer_base_bg_color(conf))
         web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
         top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css(include_overview_class=False)
@@ -252,12 +269,16 @@ def inject_menu_files(web_content, context):
                 notification_css_text = f.read()
         except FileNotFoundError:
             pass
+            
+        reviewer_shadow_css += f"\n<style id=\"onigiri-notification-shadow-css\">\n{notification_css_text}\n</style>"
+        
         js_injector = f"""
         <script>
             window.onigiriIsReviewerCardWebview = true;
             window.onigiriSilentNotifications = {silent_notifs};
             window.onigiriNotificationCssText = {json.dumps(notification_css_text)};
             window.onigiriNotificationPositionCssText = {json.dumps(generate_notification_position_css_text(conf))};
+            window.onigiriNotificationMode = {json.dumps(conf.get("onigiri_reviewer_notification_mode", "classic"))};
 
             document.addEventListener('DOMContentLoaded', function() {{
                 const hostId = 'onigiri-reviewer-ui-host';
@@ -405,17 +426,13 @@ def inject_menu_files(web_content, context):
         web_content.head += js_injector
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     elif is_overview:
+        patcher.set_main_webview_background_color(patcher._overview_base_bg_color(conf))
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_overview_background_css(addon_path)
         _top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
-        css_path = os.path.join(addon_path, "web", "overview.css")
-        try:
-            with open(css_path, "r", encoding="utf-8") as f:
-                web_content.head += f"<style>{f.read()}</style>"
-        except FileNotFoundError:
-            pass
+        web_content.head += stylesheet_link("overview.css")
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
     if is_reviewer_bottom_bar:
         patcher.apply_reviewer_bottom_bar_height(conf)
@@ -576,11 +593,60 @@ def setup_global_hooks():
     sidebar_api.ensure_capture_hook_is_last()
     learner_stats_widget.init()
 
+def migrate_nook_level_names():
+    """One-time rename: the level system used to be called "Restaurant Level".
+    Saved configs and per-profile game state still carry that title, so the UI
+    keeps saying Restaurant Level even though every default is Nook Level now.
+    Normalize it in the add-on config, in the saved widget-layout tile name, and
+    in the profile's gamification state. Idempotent — only writes when it finds
+    a stale value."""
+    try:
+        conf = config.get_config()
+        needs_write = False
+
+        rl_conf = conf.get("restaurant_level")
+        if isinstance(rl_conf, dict) and rl_conf.get("name") == "Restaurant Level":
+            rl_conf["name"] = "Nook Level"
+            needs_write = True
+
+        rl_tile = conf.get("onigiriWidgetLayout", {}).get("grid", {}).get("restaurant_level")
+        if isinstance(rl_tile, dict) and rl_tile.get("display_name") == "Restaurant Level":
+            rl_tile["display_name"] = "Nook Level"
+            needs_write = True
+
+        if needs_write:
+            config.write_config(conf)
+
+        profile_name = mw.pm.name if mw.pm else None
+        if profile_name:
+            gam_path = os.path.join(addon_path, "user_files", f"gamification_{profile_name}.json")
+            if os.path.exists(gam_path):
+                with open(gam_path, "r", encoding="utf-8") as f:
+                    gam_data = json.load(f)
+                rl_state = gam_data.get("restaurant_level")
+                if isinstance(rl_state, dict) and rl_state.get("name") == "Restaurant Level":
+                    rl_state["name"] = "Nook Level"
+                    with open(gam_path, "w", encoding="utf-8") as f:
+                        json.dump(gam_data, f, indent=2)
+    except Exception as e:
+        print(f"[Onigiri] Nook Level name migration skipped: {e}")
+
+
 def on_profile_did_open():
     """
     Runs when a profile is successfully loaded.
     Logic that requires access to `mw.col` (collection/database/config) goes here.
     """
+    # Register Poppins (the add-on's default typeface) into Qt so native
+    # dialogs that set font-family: 'Poppins' in QSS resolve it.
+    try:
+        from .fonts import register_poppins_qt
+        register_poppins_qt(addon_path)
+    except Exception as e:
+        print(f"[Onigiri] Could not register Poppins fonts: {e}")
+
+    migrate_nook_level_names()
+
     # Now it is safe to patch overview since mw.col is available
     patcher.patch_overview()
     patcher.ensure_synapsepro_overview_bridge_hook()
@@ -628,6 +694,9 @@ def on_profile_did_open():
         mw.toolbar.draw()
     except Exception as e:
         pass
+
+    # Register FSRS4Anki Helper's sidebar entry, if the addon is installed
+    fsrs_helper_integration.setup_fsrs_helper_integration()
 
 # --- INITIALIZATION ---
 
@@ -735,6 +804,10 @@ def _hashi_notes_purge():
 gui_hooks.profile_did_open.append(_hashi_notes_purge)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
+def _invalidate_heatmap_cache_on_answer(*args):
+    from . import heatmap
+    heatmap.invalidate_heatmap_cache()
+gui_hooks.reviewer_did_answer_card.append(_invalidate_heatmap_cache_on_answer)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)
 # MODIFICATION: Use the current, correct hook instead of the outdated one.
 gui_hooks.webview_did_receive_js_message.append(_on_webview_cmd)

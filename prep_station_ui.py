@@ -21,7 +21,7 @@ from aqt.qt import (
     QPropertyAnimation, QEasingCurve, QIcon, QPixmap, QFont,
     QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
 )
-from PyQt6.QtCore import pyqtSignal, pyqtProperty, QDate, QTimer
+from PyQt6.QtCore import pyqtSignal, pyqtProperty, QDate, QTimer, QPoint
 from PyQt6.QtGui import QImage, QLinearGradient, QConicalGradient, QFontMetrics, QFontDatabase, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -103,7 +103,7 @@ def small_title_font_css(dark: bool | None = None) -> str:
                     if families:
                         family = families[0]
 
-    family_css = f"'{family}', " if family else ""
+    family_css = f"'{family}', " if family else "'Poppins', "
     return f"font-family: {family_css}-apple-system, 'Segoe UI', sans-serif; font-size: {size}px; color: {color};"
 
 
@@ -167,7 +167,7 @@ def readable_on(color: str) -> str:
 def build_qss(p: dict) -> str:
     accent = p["accent"]
     return f"""
-    QWidget {{ font-family: 'DM Sans', -apple-system, 'Segoe UI', sans-serif; color: {p['fg']}; }}
+    QWidget {{ font-family: 'Poppins', -apple-system, 'Segoe UI', sans-serif; color: {p['fg']}; }}
     QLabel {{ background: transparent; }}
     QLineEdit, QTextEdit, QAbstractSpinBox {{
         background: {p['surface']};
@@ -487,8 +487,13 @@ class WeeklyChart(QWidget):
         self._fill_top = QColor(59, 130, 246, 80)
         self._fill_bottom = QColor(59, 130, 246, 0)
         self._label_color = QColor(255, 255, 255, 180)
+        self._number_mode = "hide"
+        self._tooltip_pal = None
+        self._points = []
+        self._bubble = None
         self.setMinimumSize(220, 72)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMouseTracking(True)
         self._opacity_effect = QGraphicsOpacityEffect(self)
         self._opacity_effect.setOpacity(1.0)
         self.setGraphicsEffect(self._opacity_effect)
@@ -496,9 +501,19 @@ class WeeklyChart(QWidget):
     def set_opacity(self, percent: int) -> None:
         self._opacity_effect.setOpacity(max(0, min(100, percent)) / 100.0)
 
+    def set_number_mode(self, mode: str) -> None:
+        self._number_mode = mode if mode in ("show", "hover", "hide") else "hide"
+        if self._number_mode != "hover":
+            self._hide_bubble()
+        self.update()
+
+    def set_tooltip_palette(self, pal: dict) -> None:
+        self._tooltip_pal = dict(pal) if pal else None
+
     def set_data(self, values: list, labels: list) -> None:
         self._values = list(values) if values else [0] * 7
         self._labels = list(labels) if labels else [""] * len(self._values)
+        self._hide_bubble()
         self.update()
 
     def set_colors(self, line_color: str, label_color: str, fill_intensity: int = 50) -> None:
@@ -531,10 +546,12 @@ class WeeklyChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        pad_top, pad_bottom, pad_side = 8, 20, 8
+        pad_top = 20 if self._number_mode == "show" else 8
+        pad_bottom, pad_side = 20, 8
         w = self.width() - pad_side * 2
         h = self.height() - pad_top - pad_bottom
         if w <= 0 or h <= 0 or not self._values:
+            self._points = []
             return
 
         max_val = max(max(self._values), 1)
@@ -544,6 +561,7 @@ class WeeklyChart(QWidget):
             QPointF(pad_side + i * step, pad_top + h - (v / max_val) * h)
             for i, v in enumerate(self._values)
         ]
+        self._points = points
 
         line_path = self._smooth_path(points)
 
@@ -580,6 +598,167 @@ class WeeklyChart(QWidget):
             label = self._labels[i] if i < len(self._labels) else ""
             rect = QRectF(pt.x() - step / 2, pad_top + h + 3, step, pad_bottom - 2)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+
+        # Static value labels above each point ("show" mode)
+        if self._number_mode == "show":
+            num_color = QColor(self._label_color)
+            num_color.setAlpha(255)
+            painter.setPen(QPen(num_color))
+            num_font = QFont()
+            num_font.setPointSize(8)
+            num_font.setBold(True)
+            painter.setFont(num_font)
+            for i, pt in enumerate(points):
+                v = self._values[i] if i < len(self._values) else 0
+                rect = QRectF(pt.x() - step / 2, pt.y() - 16, step, 13)
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(v))
+
+    # ── Hover popover ("hover" mode) ──────────────────────────────────────────
+    def _nearest_index(self, x: float):
+        if not self._points:
+            return None
+        best, best_d = None, 1e9
+        for i, pt in enumerate(self._points):
+            d = abs(pt.x() - x)
+            if d < best_d:
+                best_d, best = d, i
+        return best
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._number_mode == "hover" and self._points:
+            idx = self._nearest_index(event.position().x())
+            if idx is not None:
+                self._show_bubble(idx)
+            else:
+                self._hide_bubble()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hide_bubble()
+        super().leaveEvent(event)
+
+    def hideEvent(self, event) -> None:
+        self._hide_bubble()
+        super().hideEvent(event)
+
+    def _show_bubble(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self._points):
+            return
+        if self._bubble is None:
+            self._bubble = _ChartHoverBubble(self)
+        if self._tooltip_pal:
+            self._bubble.set_palette(self._tooltip_pal)
+        value = self._values[idx] if idx < len(self._values) else 0
+        label = self._labels[idx] if idx < len(self._labels) else ""
+        pt = self._points[idx]
+        anchor = self.mapToGlobal(QPoint(int(pt.x()), int(pt.y())))
+        self._bubble.show_for(value, label, anchor)
+
+    def _hide_bubble(self) -> None:
+        if self._bubble is not None:
+            self._bubble.hide()
+
+
+class _ChartHoverBubble(QWidget):
+    """Prep-Station-styled popover showing a single day's reviewed-card count.
+
+    A frameless tool-window bubble (rounded body + downward tail) that follows
+    the WeeklyChart data point the cursor is nearest to, when the chart's number
+    mode is set to "hover" in Prep Station settings."""
+
+    TAIL_H = 7
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent,
+            Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint,
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self._value_text = ""
+        self._title_text = ""
+        self._body_w = 10
+        self._body_h = 10
+        self._pal = {
+            "surface": "#ffffff", "border": "#e0e0e0",
+            "fg": "#202124", "fg3": "#8a8a8a", "accent": "#00A982",
+        }
+
+    def set_palette(self, pal: dict) -> None:
+        for k in ("surface", "border", "fg", "fg3", "accent"):
+            if pal.get(k):
+                self._pal[k] = pal[k]
+
+    def _value_font(self) -> QFont:
+        f = QFont()
+        f.setPointSize(10)
+        f.setBold(True)
+        return f
+
+    def _title_font(self) -> QFont:
+        f = QFont()
+        f.setPointSize(8)
+        return f
+
+    def show_for(self, value, title: str, anchor_global: QPoint) -> None:
+        self._value_text = f"{value} {tr('cards')}"
+        self._title_text = str(title or "")
+        vm = QFontMetrics(self._value_font())
+        tm = QFontMetrics(self._title_font())
+        text_w = max(vm.horizontalAdvance(self._value_text),
+                     tm.horizontalAdvance(self._title_text) if self._title_text else 0)
+        pad_x, pad_y = 12, 8
+        self._body_w = text_w + pad_x * 2
+        self._body_h = vm.height() + (tm.height() if self._title_text else 0) + pad_y * 2
+        self.resize(self._body_w, self._body_h + self.TAIL_H)
+        gx = anchor_global.x() - self._body_w // 2
+        gy = anchor_global.y() - self._body_h - self.TAIL_H - 4
+        self.move(int(gx), int(gy))
+        self.update()
+        if not self.isVisible():
+            self.show()
+        else:
+            self.raise_()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p = self._pal
+        body_rect = QRectF(0.5, 0.5, self._body_w - 1, self._body_h - 1)
+        path = QPainterPath()
+        path.addRoundedRect(body_rect, 10, 10)
+        cx = self._body_w / 2.0
+        tail = QPainterPath()
+        tail.moveTo(cx - 6, self._body_h - 1.5)
+        tail.lineTo(cx, self._body_h - 1.5 + self.TAIL_H)
+        tail.lineTo(cx + 6, self._body_h - 1.5)
+        tail.closeSubpath()
+        path = path.united(tail)
+        painter.setPen(QPen(QColor(p["border"]), 1))
+        painter.setBrush(QBrush(QColor(p["surface"])))
+        painter.drawPath(path)
+
+        y = 8.0
+        if self._title_text:
+            tf = self._title_font()
+            tm = QFontMetrics(tf)
+            painter.setFont(tf)
+            painter.setPen(QColor(p["fg3"]))
+            painter.drawText(
+                QRectF(0, y, self._body_w, tm.height()),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                self._title_text,
+            )
+            y += tm.height()
+        vf = self._value_font()
+        vm = QFontMetrics(vf)
+        painter.setFont(vf)
+        painter.setPen(QColor(p["accent"]))
+        painter.drawText(
+            QRectF(0, y, self._body_w, vm.height()),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            self._value_text,
+        )
 
 
 # ─── Settings live previews ───────────────────────────────────────────────────
@@ -638,8 +817,12 @@ class ChartPreview(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 10, 14, 6)
         self.chart = WeeklyChart(self)
+        self.chart.set_tooltip_palette(pal)
         self.chart.set_data(self.SAMPLE, weekday_letters())
         lay.addWidget(self.chart)
+
+    def set_number_mode(self, mode: str) -> None:
+        self.chart.set_number_mode(mode)
 
     def set_band(self, color_hex: str, image: QPixmap | None, opacity: int) -> None:
         self._band_color = QColor(color_hex or self.pal["accent"])
@@ -1319,12 +1502,13 @@ class _StackedBar(QWidget):
         self.pal = pal
         self._due = 0
         self._new = 0
+        self._susp = 0
         self._color = pal["accent"]
         self.setFixedHeight(6)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_data(self, new: int, due: int, color: str) -> None:
-        self._new, self._due, self._color = max(0, new), max(0, due), color
+    def set_data(self, new: int, due: int, color: str, susp: int = 0) -> None:
+        self._new, self._due, self._susp, self._color = max(0, new), max(0, due), max(0, susp), color
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -1334,14 +1518,19 @@ class _StackedBar(QWidget):
         r = rect.height() / 2
         track = QPainterPath(); track.addRoundedRect(rect, r, r)
         painter.fillPath(track, QBrush(QColor(self.pal["surface2"])))
-        total = self._new + self._due
+        total = self._new + self._due + self._susp
         if total <= 0 or rect.width() <= 0:
             return
         painter.setClipPath(track)
         due_w = rect.width() * (self._due / total)
         painter.fillRect(QRectF(0, 0, due_w, rect.height()), QBrush(QColor(self._color)))
+        new_w = rect.width() * (self._new / total)
         soft = QColor(self._color); soft.setAlpha(95)
-        painter.fillRect(QRectF(due_w, 0, rect.width() - due_w, rect.height()), QBrush(soft))
+        painter.fillRect(QRectF(due_w, 0, new_w, rect.height()), QBrush(soft))
+        if self._susp > 0:
+            susp_w = rect.width() - due_w - new_w
+            faint = QColor(self.pal["fg3"]); faint.setAlpha(120)
+            painter.fillRect(QRectF(due_w + new_w, 0, susp_w, rect.height()), QBrush(faint))
 
 
 class _RatioBar(QWidget):
@@ -1408,7 +1597,7 @@ class _DeckBreakdownCard(QFrame):
         outer.addLayout(self.rows_holder)
         outer.addStretch(1)
 
-    def set_decks(self, deck_counts: dict, color: str) -> None:
+    def set_decks(self, deck_counts: dict, color: str, include_susp: bool = False) -> None:
         p = self.pal
         while self.rows_holder.count():
             it = self.rows_holder.takeAt(0)
@@ -1417,12 +1606,18 @@ class _DeckBreakdownCard(QFrame):
 
         qc = QColor(color)
         soft_rgba = f"rgba({qc.red()},{qc.green()},{qc.blue()},0.42)"
-        self.legend.setText(
+        legend_html = (
             f'<span style="color:{color};">&#9679;</span> '
             f'<span style="color:{p["fg3"]};">{tr("prep_legend_due", "due")}</span>'
             f'&nbsp;&nbsp;<span style="color:{soft_rgba};">&#9679;</span> '
             f'<span style="color:{p["fg3"]};">{tr("prep_legend_new", "new")}</span>'
         )
+        if include_susp:
+            legend_html += (
+                f'&nbsp;&nbsp;<span style="color:{p["fg3"]};">&#9679;</span> '
+                f'<span style="color:{p["fg3"]};">{tr("prep_legend_susp", "susp")}</span>'
+            )
+        self.legend.setText(legend_html)
 
         if not deck_counts:
             empty = QLabel(tr("prep_no_decks", "No decks assigned to this plan yet."))
@@ -1432,12 +1627,14 @@ class _DeckBreakdownCard(QFrame):
 
         items = sorted(
             deck_counts.items(),
-            key=lambda kv: -((kv[1].get("new", 0)) + (kv[1].get("due", 0))),
+            key=lambda kv: -((kv[1].get("new", 0)) + (kv[1].get("due", 0))
+                             + (kv[1].get("susp", 0) if include_susp else 0)),
         )
         for name, c in items[:8]:
             new_n = int(c.get("new", 0))
             due_n = int(c.get("due", 0))
-            pending = new_n + due_n
+            susp_n = int(c.get("susp", 0)) if include_susp else 0
+            pending = new_n + due_n + susp_n
 
             row = QWidget()
             rl = QVBoxLayout(row)
@@ -1459,13 +1656,17 @@ class _DeckBreakdownCard(QFrame):
                 count_label = QLabel(tr("prep_deck_done", "done ✓"))
                 count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
             else:
-                count_label = QLabel(tr("prep_new_due_split", "{0} new · {1} due").format(new_n, due_n))
+                if susp_n > 0:
+                    count_text = tr("prep_new_due_susp_split", "{0} new · {1} due · {2} susp").format(new_n, due_n, susp_n)
+                else:
+                    count_text = tr("prep_new_due_split", "{0} new · {1} due").format(new_n, due_n)
+                count_label = QLabel(count_text)
                 count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg2']}; background: transparent;")
             top.addWidget(count_label, 0)
             rl.addLayout(top)
 
             bar = _StackedBar(p)
-            bar.set_data(new_n, due_n, color)
+            bar.set_data(new_n, due_n, color, susp_n)
             rl.addWidget(bar)
 
             self.rows_holder.addWidget(row)
@@ -1676,25 +1877,29 @@ class PlanDetailView(QWidget):
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedHeight(34)
+        # ID selector: a plain "QPushButton { border-radius: ... }" rule on an
+        # ancestor stylesheet outranks this widget's own type-selector rule and
+        # would square the pill off. #psPillButton always wins.
+        btn.setObjectName("psPillButton")
         if kind == "primary":
             accent = pal["accent"]
             hover = QColor(accent).lighter(112).name()
             btn.setStyleSheet(
-                f"QPushButton {{ background: {accent}; color: #ffffff; border: none; "
+                f"QPushButton#psPillButton {{ background: {accent}; color: #ffffff; border: none; "
                 f"border-radius: 17px; padding: 0 18px; font-weight: 700; }}"
-                f"QPushButton:hover {{ background: {hover}; }}"
+                f"QPushButton#psPillButton:hover {{ background: {hover}; }}"
             )
         elif kind == "danger":
             btn.setStyleSheet(
-                "QPushButton { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.45); "
+                "QPushButton#psPillButton { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.45); "
                 "border-radius: 17px; padding: 0 16px; font-weight: 600; }"
-                "QPushButton:hover { background: rgba(239,68,68,0.14); }"
+                "QPushButton#psPillButton:hover { background: rgba(239,68,68,0.14); }"
             )
         else:
             btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
+                f"QPushButton#psPillButton {{ background: transparent; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
                 f"border-radius: 17px; padding: 0 16px; font-weight: 600; }}"
-                f"QPushButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
+                f"QPushButton#psPillButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
             )
         return btn
 
@@ -1735,14 +1940,20 @@ class PlanDetailView(QWidget):
         total_pending = int(pace.get("total_pending", 0) or 0)
         total_new = int(pace.get("total_new", 0) or 0)
         total_due = int(pace.get("total_due", 0) or 0)
+        total_susp = int(pace.get("total_susp", 0) or 0)
+        include_susp = bool(pace.get("include_suspended", False))
         if req is None:
             self.remaining_tile.set_value("—", tr("prep_cards_remaining", "cards remaining"))
         elif total_pending == 0:
             self.remaining_tile.set_value("0", tr("prep_all_caught_up"))
         else:
+            if include_susp and total_susp > 0:
+                subtext = tr("prep_new_due_susp_split", "{0} new · {1} due · {2} susp").format(total_new, total_due, total_susp)
+            else:
+                subtext = tr("prep_new_due_split", "{0} new · {1} due").format(total_new, total_due)
             self.remaining_tile.set_value(
                 f"{total_pending:,}".replace(",", " "),
-                tr("prep_new_due_split", "{0} new · {1} due").format(total_new, total_due),
+                subtext,
             )
 
         # Reviewed-this-week tile
@@ -1753,7 +1964,7 @@ class PlanDetailView(QWidget):
         )
 
         # Deck breakdown + pace insight
-        self.deck_card.set_decks(pace.get("deck_counts", {}) or {}, plan_color)
+        self.deck_card.set_decks(pace.get("deck_counts", {}) or {}, plan_color, include_susp)
         self.pace_card.set_data(pace, weekly_counts, plan_color)
 
         self.chart.set_data(weekly_counts, weekly_labels)
@@ -2272,8 +2483,25 @@ class IconButton(QPushButton):
             from .settings._icon_picker import DeckIconPickerDialog
             dlg = DeckIconPickerDialog(self._icon_value, self.addon_path, self.window(), allow_emoji=True)
             dlg.iconSelected.connect(self._on_selected)
+            # The picker is frameless with no auto-placement. Center it on the
+            # plan dialog (mirroring how Settings opens the same picker); an
+            # unpositioned frameless dialog otherwise lands at the screen origin
+            # or behind the modal edit dialog, so it looks like nothing opened.
+            parent_win = self.window()
+            if parent_win is not None:
+                pg = parent_win.geometry()
+                dg = dlg.frameGeometry()
+                dlg.move(
+                    pg.x() + (pg.width() - dg.width()) // 2,
+                    pg.y() + (pg.height() - dg.height()) // 2,
+                )
             dlg.exec()
         except Exception as e:
+            try:
+                from aqt.utils import tooltip
+                tooltip(f"Icon picker error: {e}")
+            except Exception:
+                pass
             print(f"Prep Station: icon picker error: {e}")
         finally:
             # DeckIconPickerDialog is frameless + always-on-top; closing it can
@@ -2848,28 +3076,32 @@ class PlanEditDialog(QDialog):
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedHeight(40)
+        # ID selector: a plain "QPushButton { border-radius: ... }" rule on an
+        # ancestor stylesheet outranks this widget's own type-selector rule and
+        # would square the pill off. #psFooterPill always wins.
+        btn.setObjectName("psFooterPill")
         if kind == "primary":
             accent = pal["accent"]
             hover = QColor(accent).lighter(112).name()
             btn.setStyleSheet(
-                f"QPushButton {{ background: {accent}; color: #ffffff; border: none; "
+                f"QPushButton#psFooterPill {{ background: {accent}; color: #ffffff; border: none; "
                 f"border-radius: 20px; padding: 0 14px 0 20px; font-weight: 700; }}"
-                f"QPushButton:hover {{ background: {hover}; }}"
+                f"QPushButton#psFooterPill:hover {{ background: {hover}; }}"
             )
         elif kind == "danger":
             btn.setStyleSheet(
-                "QPushButton { background: rgba(239,68,68,0.10); color: #ef4444; "
+                "QPushButton#psFooterPill { background: rgba(239,68,68,0.10); color: #ef4444; "
                 "border: 1px solid rgba(239,68,68,0.45); "
                 "border-radius: 20px; padding: 0 18px; font-weight: 600; }"
-                "QPushButton:hover { background: rgba(239,68,68,0.18); }"
-                "QPushButton:disabled { background: rgba(239,68,68,0.05); color: rgba(239,68,68,0.35); "
+                "QPushButton#psFooterPill:hover { background: rgba(239,68,68,0.18); }"
+                "QPushButton#psFooterPill:disabled { background: rgba(239,68,68,0.05); color: rgba(239,68,68,0.35); "
                 "border: 1px solid rgba(239,68,68,0.18); }"
             )
         else:
             btn.setStyleSheet(
-                f"QPushButton {{ background: {pal['surface2']}; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
+                f"QPushButton#psFooterPill {{ background: {pal['surface2']}; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
                 f"border-radius: 20px; padding: 0 18px; font-weight: 600; }}"
-                f"QPushButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
+                f"QPushButton#psFooterPill:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
             )
         return btn
 

@@ -1,0 +1,952 @@
+/* Learner Stats widget styles.
+   Linked once per deck-browser page from __init__.inject_menu_files instead of
+   being inlined into every widget instance's HTML -- this block is fully static,
+   and inlining it cost ~26 KB of webview payload per widget on every render. */
+
+/* Shared dialog theme tokens -- the deck-picker modal is an opaque surface on
+   top of the page, so it must follow Anki's light/dark theme (same neutral
+   palette the Qt settings dialog uses) instead of the Onigiri page palette,
+   which is tuned for the background image and renders unreadable on white. */
+:root {
+    --odlg-surface: #ffffff;
+    --odlg-inset: #ffffff;
+    --odlg-fg: #202124;
+    --odlg-fg-subtle: #6f7177;
+    --odlg-border: #dcdde1;
+    --odlg-highlight: #f2f2f2;
+    --odlg-hover: #e9e9e9;
+    --odlg-accent: var(--accent-color, #0077C8);
+    --odlg-scrim: rgba(0, 0, 0, 0.45);
+}
+.night-mode, .nightMode {
+    --odlg-surface: #242424;
+    --odlg-inset: #242424;
+    --odlg-fg: #f4f4f5;
+    --odlg-fg-subtle: #c4c4c4;
+    --odlg-border: #454545;
+    --odlg-highlight: #303030;
+    --odlg-hover: #3a3a3a;
+    --odlg-accent: var(--accent-color, #0077C8);
+    --odlg-scrim: rgba(0, 0, 0, 0.62);
+}
+
+.learner-stats-widget {
+        /* --stats-box-* are emitted per theme by the Deck Stats settings
+           section; they fall back to the shared box color/effect values, which
+           is exactly what "Sync with Widget Color and Effect" produces. */
+        background-color: var(--stats-box-bg, var(--canvas-inset, #ffffff));
+        border: var(--stats-box-stroke, 1px) solid var(--stats-box-border, var(--border, #e0e0e0));
+        border-radius: var(--stats-box-radius, var(--onigiri-box-effect-radius, 15px));
+        backdrop-filter: blur(var(--stats-box-blur, 0px));
+        -webkit-backdrop-filter: blur(var(--stats-box-blur, 0px));
+        padding: calc(14px * var(--onigiri-widget-pad-scale));
+        height: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow: hidden;
+        text-align: left;
+    }
+    .learner-stats-header {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        width: 100%;
+        flex: 0 0 auto;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .learner-stats-header-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 26px;
+        line-height: 0;
+        overflow: hidden;
+    }
+    .learner-stats-header-controls {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        margin: 0 0 0 auto !important;
+        padding: 0 !important;
+        min-width: 0;
+        flex: 0 1 auto !important;
+    }
+    .learner-stats-switcher {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+        height: 26px;
+        min-height: 26px;
+        box-sizing: border-box;
+        padding: 2px;
+        border-radius: 8px;
+        background-color: var(--highlight-bg, #eeeeee);
+    }
+    .learner-stats-switcher-indicator {
+        position: absolute;
+        left: 2px;
+        top: 50%;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 90%, var(--fg, #222222) 10%);
+        transform: translateY(-50%);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Light and dark perceive the same mix ratio differently — a darker gray
+       patch on a light track reads as more prominent than the equivalent
+       lighter patch on a dark track — so dark mode gets a bit more tint. */
+    .night-mode .learner-stats-switcher-indicator {
+        background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 85%, var(--fg, #222222) 15%);
+    }
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-switcher-indicator {
+        transform: translateY(-50%) translateX(24px);
+    }
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-switcher-indicator {
+        transform: translateY(-50%) translateX(48px);
+    }
+    .learner-stats-switcher-btn {
+        position: relative !important;
+        z-index: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        vertical-align: middle !important;
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        min-height: 22px !important;
+        max-width: 22px !important;
+        max-height: 22px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 6px !important;
+        background: transparent !important;
+        color: var(--fg-subtle, #757575) !important;
+        cursor: pointer !important;
+        transition: color 0.2s ease !important;
+        flex: 0 0 22px !important;
+        box-sizing: border-box !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+        overflow: visible !important;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .learner-stats-switcher-btn,
+    .learner-stats-switcher-btn:hover,
+    .learner-stats-switcher-btn:focus,
+    .learner-stats-switcher-btn:focus-visible,
+    .learner-stats-switcher-btn:active {
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        border: none !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+    }
+    .learner-stats-switcher-btn svg {
+        display: block !important;
+        pointer-events: none;
+        overflow: visible;
+        width: 15px !important;
+        height: 15px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        flex: 0 0 auto !important;
+    }
+    .learner-stats-widget[data-active-view="grouped"] .learner-stats-switcher-btn[data-view="grouped"],
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-switcher-btn[data-view="bars"],
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-switcher-btn[data-view="donut"] {
+        color: var(--fg, #222222) !important;
+    }
+    /* Layout only. Typography is deliberately left to menu.css's shared
+       `.onigiri-widget-head>h3` rule so this title keeps following the
+       user-configurable Small Title font/size/color like every other widget. */
+    .learner-stats-header h3 {
+        margin: 0;
+        flex: 0 0 auto;
+        min-width: 0;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        min-height: 20px;
+        line-height: 20px;
+    }
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger {
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+        margin: 0 !important;
+        gap: 6px;
+        background: var(--highlight-bg, #eeeeee) !important;
+        background-image: none !important;
+        color: var(--fg, #222222) !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0 18px !important;
+        height: 26px !important;
+        min-height: 26px !important;
+        width: auto !important;
+        max-width: 320px !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        outline: none !important;
+        cursor: pointer;
+        transition: transform 0.08s ease, background-color 0.15s ease, color 0.15s ease;
+        text-align: left;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        filter: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        flex: 0 1 auto !important;
+        flex-shrink: 1 !important;
+        position: relative !important;
+        top: 0 !important;
+        vertical-align: middle;
+        float: none !important;
+        right: auto !important;
+        inset-inline-end: auto !important;
+    }
+    .learner-stats-deck-trigger-label {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .learner-stats-deck-trigger-chevron {
+        flex: 0 0 auto;
+        display: block;
+        color: var(--fg-subtle, #757575);
+    }
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:hover,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:focus,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:focus-visible,
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:active {
+        /* The last link of the chain needs a literal fallback: an unresolved
+           var() makes `background` invalid at computed-value time, which drops
+           it to transparent and made the pill vanish on hover. */
+        background: var(--collapsed-toolbar-button-hover-bg, var(--button-hover-bg, var(--hover-deck-bg, color-mix(in srgb, var(--fg, #222222) 12%, var(--highlight-bg, #eeeeee))))) !important;
+        background-image: none !important;
+        color: var(--fg, #222222) !important;
+        filter: none !important;
+        outline: none !important;
+        border: none !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+    .learner-stats-widget .learner-stats-deck-trigger.learner-stats-deck-trigger:active {
+        transform: translateY(1px);
+    }
+    /* ---- Shared: category → tint mapping (in-progress / mastered / neutral) ---- */
+    .learner-stat-card {
+        border: none;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 2px;
+        box-sizing: border-box;
+        min-width: 0;
+        /* Rows are minmax(0, 1fr), so a tile can be handed less height than its
+           text wants; clip inside the tile instead of spilling onto whatever
+           is below it. */
+        min-height: 0;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--fg, #222) 3%, transparent);
+    }
+    /* Every toned element carries its category color inline as --stat-tone
+       (see _render_widget), so one rule covers all of New/Learning/… without a
+       class per category. */
+    .learner-stat-card.is-toned {
+        background: color-mix(in srgb, var(--stat-tone, #007aff) 12%, transparent);
+    }
+    .learner-stat-label {
+        font-size: 9px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        text-align: center;
+        margin-bottom: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 100%;
+        letter-spacing: 0;
+    }
+    /* Kept close to --fg-subtle (which is already tuned for legible contrast
+       on the card background in every theme) with just a light color hint —
+       a 55/45 mix here read fine in the mockup's fixed dark palette but
+       dropped well below WCAG AA against the tinted tile background once
+       real theme colors (light mode especially) were plugged in. */
+    .is-toned .learner-stat-label {
+        color: color-mix(in srgb, var(--stat-tone, #007aff) 18%, var(--fg-subtle, #757575) 82%);
+    }
+    .learner-stat-val {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--fg, #222222);
+        line-height: 1.1;
+    }
+    .learner-stat-total .learner-stat-val { font-size: 13px; }
+
+    /* ---- View switching: one card, three swappable bodies ---- */
+    .learner-stats-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .learner-stats-view {
+        display: none;
+        flex-direction: column;
+        gap: 22px;
+        min-height: 0;
+        flex: 1 1 auto;
+        width: 100%;
+    }
+    .learner-stats-widget[data-active-view="grouped"] .learner-stats-view-grouped,
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-view-bars,
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-view-donut {
+        display: flex;
+    }
+    /* Every view anchors its "header" element (progress bar / donut ring /
+       first bar row) to the top and never centers-as-a-block — that way if a
+       very short card ever can't fit everything, only the bottom clips,
+       never the top. The region below the header element is flex:1 and
+       grows to consume all leftover height itself (see each view's own
+       flexible region below), which is what pushes footers to the bottom. */
+    .learner-stats-view-grouped,
+    .learner-stats-view-bars,
+    .learner-stats-view-donut { justify-content: flex-start; }
+    .learner-stats-view-grouped { gap: 10px; }
+    .learner-stats-view-bars { gap: 16px; }
+
+    /* Donut's top block and tile grid keep the view's normal rhythm; the
+       footer gets its own tighter, explicit gap so it doesn't inherit
+       whatever the view-level gap happens to be. */
+    .learner-stats-donut-content {
+        display: flex;
+        flex-direction: column;
+        /* Was 22px. The donut view has to fit ring + 3 tile rows + footer in the
+           same box the other two views use, and the wide gap was starving the
+           tile grid. */
+        gap: 10px;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-view-donut { gap: 6px; }
+
+    /* Groups collectively fill all height left after the progress bar,
+       each claiming an equal share — the same "1fr" idea the tile columns
+       already use, just on the row axis. */
+    .learner-stats-grouped-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    /* ---- Grouped view: two-tone progress bar + three meaning-based groups ---- */
+    .learner-stats-groupbar {
+        display: flex;
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--fg, #222) 8%, transparent);
+        flex: 0 0 auto;
+        box-sizing: border-box;
+    }
+    .learner-stats-groupbar-seg {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+    .learner-stats-groupbar-inprogress { background: var(--stats-in-progress-color, #007aff); }
+    .learner-stats-groupbar-mastered { background: var(--stats-mastered-color, #2ecc71); }
+    /* Full chart mode: one segment per card category, each carrying its own
+       --stat-tone inline instead of a dedicated class. */
+    .learner-stats-groupbar-cat { background: var(--stat-tone, #9e9e9e); }
+
+    /* ---- Compact body: 1-row cards can't fit any of the three detailed
+       views, so this replaces them entirely with a bar + total glance. ---- */
+    .learner-stats-compact-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-compact-total {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--fg, #222222);
+        text-align: center;
+        white-space: nowrap;
+    }
+    .learner-stats-compact-total span {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        margin-left: 4px;
+    }
+    .learner-stats-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1 1 0;
+        min-height: 0;
+    }
+    .learner-stats-group-title {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* Same reasoning as the tile-label mix above: pure accent-color / pure
+       #2ecc71 as small text reads fine on the mockup's fixed dark palette
+       but fails WCAG contrast against real light-theme backgrounds. */
+    .learner-stats-group-title.is-toned { color: color-mix(in srgb, var(--stat-tone, #007aff) 22%, var(--fg-subtle, #757575) 78%); }
+    .learner-stats-group-title.is-neutral { color: var(--fg-subtle, #757575); }
+    .learner-stats-tile-grid {
+        display: grid;
+        /* minmax(0, 1fr), NOT 1fr. Bare `1fr` means minmax(auto, 1fr), and that
+           `auto` floor stops rows shrinking below their content height. The
+           flex `min-height: 0` below collapses the grid's *box* to whatever
+           height is left over, but the rows keep their full height and paint
+           straight over the footer row. minmax(0, ...) lets rows actually
+           shrink into the space they were given. */
+        grid-auto-rows: minmax(0, 1fr);
+        gap: 6px;
+        min-width: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        /* Belt and braces: whatever the widget size, nothing escapes this box. */
+        overflow: hidden;
+    }
+    .learner-stats-tile-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .learner-stats-tile-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* Donut stacks three tile rows under the ring; tighter gutter than the
+       grouped view, which only ever shows one or two rows. */
+    .learner-stats-view-donut .learner-stats-tile-grid { gap: 4px; }
+    .learner-stats-tile-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    /* ---- Bars view: labeled horizontal bars + footer totals ----
+       The list fills all leftover height itself; a fixed-ratio spacer
+       sits before the first row and between every row after it (so the
+       top gap matches the inter-row gaps) and soaks up the growth. Rows
+       and the track stay a fixed height — same 7px track used by every
+       other widget's bars in this app — capped so the gaps never get
+       out of hand on a very tall card. */
+    .learner-stats-bar-list {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .learner-stats-bar-spacer {
+        flex: 1 1 0;
+        min-height: 2px;
+        max-height: 13px;
+    }
+    .learner-stats-bar-row {
+        display: grid;
+        grid-template-columns: minmax(28px, 0.6fr) minmax(0, 2.2fr) minmax(20px, auto);
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 0 0 auto;
+    }
+    .learner-stats-bar-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .learner-stats-bar-track {
+        display: block;
+        height: 7px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg, #222) 10%, transparent);
+        overflow: hidden;
+        min-width: 0;
+    }
+    .learner-stats-bar-fill {
+        display: block;
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .learner-stats-bar-fill { background: var(--stat-tone, color-mix(in srgb, var(--fg, #222) 35%, transparent)); }
+    .learner-stats-bar-value {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--fg, #222222);
+        text-align: right;
+        white-space: nowrap;
+    }
+    .learner-stats-footer-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 0;
+        padding-top: 6px;
+        border-top: 1px solid var(--border, #e0e0e0);
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+    .learner-stats-footer-item {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .learner-stats-footer-item b {
+        color: var(--fg, #222222);
+        font-weight: 700;
+    }
+    .learner-stats-footer-item.is-total { font-weight: 600; }
+
+    /* ---- Donut view: ring + legend + flat tile list ---- */
+    .learner-stats-donut-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+    .learner-stats-donut-ring {
+        flex: 0 0 auto;
+        transform: rotate(-90deg);
+        width: 38px;
+        height: 38px;
+    }
+    .learner-stats-donut-track { stroke: color-mix(in srgb, var(--fg, #222) 10%, transparent); }
+    .learner-stats-donut-arc-inprogress { stroke: var(--stats-in-progress-color, #007aff); }
+    .learner-stats-donut-arc-mastered { stroke: var(--stats-mastered-color, #2ecc71); }
+    .learner-stats-donut-arc-cat { stroke: var(--stat-tone, #9e9e9e); }
+    .learner-stats-donut-total {
+        min-width: 0;
+    }
+    .learner-stats-donut-num {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.1;
+        color: var(--fg, #222222);
+        white-space: nowrap;
+    }
+    .learner-stats-donut-num span {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+    }
+    .learner-stats-donut-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 2px;
+    }
+    .learner-stats-donut-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+    }
+    .learner-stats-donut-legend-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+    }
+    .learner-stats-donut-legend-dot.is-inprogress { background: var(--stats-in-progress-color, #007aff); }
+    .learner-stats-donut-legend-dot.is-mastered { background: var(--stats-mastered-color, #2ecc71); }
+    .learner-stats-donut-legend-dot.is-cat { background: var(--stat-tone, #9e9e9e); }
+    /* Full chart mode swaps the 2-item legend for one entry per category, so
+       the legend has to get tighter or it pushes the tile grid off the card. */
+    .learner-stats-widget[data-chart-type="full"] .learner-stats-donut-legend {
+        gap: 4px 8px;
+    }
+    .learner-stats-widget[data-chart-type="full"] .learner-stats-donut-legend-item {
+        font-size: 10px;
+        gap: 4px;
+    }
+    .learner-stats-widget[data-chart-type="full"] .learner-stats-donut-legend-dot {
+        width: 6px;
+        height: 6px;
+    }
+    .learner-stat-card.is-wide { grid-column: 1 / -1; }
+    .learner-stat-card.is-flat {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 12px;
+        gap: 6px;
+        line-height: 1.25;
+    }
+    .learner-stat-card.is-flat .learner-stat-label {
+        margin-bottom: 0;
+        text-align: left;
+        width: auto;
+        flex: 1 1 auto;
+        font-size: 10px;
+        line-height: 1.25;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .learner-stat-card.is-flat .learner-stat-val {
+        font-size: 11px;
+        line-height: 1.25;
+        flex: 0 0 auto;
+    }
+
+    .learner-stats-deck-template {
+        display: none;
+    }
+    .learner-stats-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        background: var(--odlg-scrim, rgba(20, 20, 25, 0.45));
+    }
+    /* Anki's own button styles apply inside the deck-browser webview and change
+       border/padding on :hover, which reflowed the footer and resized the whole
+       dialog. Pin the box model so hover can only ever repaint, never relayout. */
+    .learner-stats-modal-backdrop * {
+        box-sizing: border-box;
+    }
+    .learner-stats-modal-backdrop button {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+        outline: none !important;
+        box-shadow: none !important;
+        background-image: none !important;
+        font-family: var(--font-main, inherit);
+        transition: none !important;
+    }
+    .learner-stats-modal {
+        width: min(620px, calc(100vw - 48px));
+        max-height: min(720px, calc(100vh - 48px));
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 18px;
+        box-sizing: border-box;
+        color: var(--odlg-fg, #202124);
+        background: var(--odlg-surface, #ffffff);
+        border: 1px solid var(--odlg-border, #dcdde1);
+        border-radius: 18px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+        overflow: hidden;
+        transition: width 0.22s ease, max-height 0.22s ease, padding 0.22s ease, transform 0.22s ease;
+    }
+    .learner-stats-modal.is-preparing {
+        width: min(330px, calc(100vw - 48px));
+        max-height: 170px;
+        padding: 22px;
+        align-items: center;
+        justify-content: center;
+        transform: scale(0.96);
+    }
+    .learner-stats-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        flex: 0 0 auto;
+    }
+    .learner-stats-modal-header-icon {
+        flex: 0 0 auto;
+        margin-top: 2px;
+        width: 20px;
+        height: 20px;
+        background-color: var(--odlg-accent, #0077C8);
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-position: center;
+        mask-position: center;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+    }
+    .learner-stats-modal-header h3 {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        color: var(--odlg-fg, #202124);
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.2;
+        font-family: var(--font-main, inherit);
+    }
+    .learner-stats-modal-close {
+        margin: 0;
+        width: 30px;
+        min-width: 30px;
+        height: 30px;
+        padding: 0 !important;
+        border: 1px solid transparent !important;
+        border-radius: 8px !important;
+        background: transparent !important;
+        color: var(--odlg-fg-subtle, #6f7177);
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+    }
+    .learner-stats-modal-title-wrap {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .learner-stats-modal-subtitle {
+        margin-top: 5px;
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--odlg-fg-subtle, #6f7177);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .learner-stats-modal-search-wrap {
+        position: relative;
+        flex: 0 0 auto;
+    }
+    .learner-stats-modal-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        width: 15px;
+        height: 15px;
+        transform: translateY(-50%);
+        pointer-events: none;
+        background-color: var(--odlg-fg-subtle, #6f7177);
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-position: center;
+        mask-position: center;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+    }
+    .learner-stats-modal-search {
+        width: 100%;
+        height: 36px;
+        padding: 0 13px 0 36px !important;
+        border: 1px solid transparent !important;
+        border-radius: 10px !important;
+        background: var(--odlg-highlight, #f2f2f2);
+        color: var(--odlg-fg, #202124);
+        font-family: var(--font-main, inherit);
+        font-size: 13px;
+        outline: none !important;
+        box-shadow: none !important;
+        box-sizing: border-box;
+        transition: none !important;
+    }
+    .learner-stats-modal-search::placeholder {
+        color: var(--odlg-fg-subtle, #6f7177);
+    }
+    .learner-stats-modal-search:focus {
+        border-color: var(--odlg-accent, #0077C8) !important;
+    }
+    .learner-stats-modal.is-preparing .learner-stats-modal-search-wrap {
+        display: none;
+    }
+    .learner-stats-modal-body {
+        min-height: 0;
+        overflow: auto;
+        border: none;
+        background: transparent;
+    }
+    .learner-stats-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+    .learner-stats-modal-btn {
+        margin: 0;
+        min-width: 88px;
+        height: 34px;
+        height: 34px;
+        min-width: 88px;
+        padding: 0 15px !important;
+        border: 1px solid transparent !important;
+        border-radius: 9px !important;
+        background: var(--odlg-highlight, #f2f2f2);
+        color: var(--odlg-fg, #202124);
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1;
+    }
+    .learner-stats-modal-btn:hover,
+    .learner-stats-modal-btn:focus,
+    .learner-stats-modal-btn:active {
+        border: 1px solid transparent !important;
+        background: var(--odlg-highlight, #f2f2f2);
+    }
+    .learner-stats-modal-btn.primary,
+    .learner-stats-modal-btn.primary:hover,
+    .learner-stats-modal-btn.primary:focus,
+    .learner-stats-modal-btn.primary:active {
+        background: var(--odlg-accent, #0077C8);
+        color: #ffffff;
+    }
+    .learner-stats-modal-preparing {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 84px;
+        color: var(--odlg-fg, #202124);
+        font-size: 15px;
+        font-weight: 700;
+        text-align: center;
+    }
+    .learner-stats-modal-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid color-mix(in srgb, var(--odlg-fg, #202124) 16%, transparent);
+        border-top-color: var(--odlg-accent, #0077C8);
+        border-radius: 50%;
+        animation: learner-stats-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+    }
+    .learner-stats-modal.is-preparing .learner-stats-modal-header,
+    .learner-stats-modal.is-preparing .learner-stats-modal-body,
+    .learner-stats-modal.is-preparing .learner-stats-modal-footer {
+        display: none;
+    }
+    .learner-stats-modal.is-preparing .learner-stats-modal-preparing {
+        display: flex;
+    }
+    .learner-stats-picker-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 2px 0;
+        box-sizing: border-box;
+        min-width: 0;
+    }
+    .learner-stats-picker-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 9px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--odlg-fg, #202124);
+        box-sizing: border-box;
+    }
+    .learner-stats-picker-row:hover {
+        background: var(--odlg-highlight, #f2f2f2);
+    }
+    .learner-stats-picker-row.learner-stats-picker-selected {
+        background: color-mix(in srgb, var(--odlg-accent, #0077C8) 14%, transparent);
+    }
+    .learner-stats-picker-row.learner-stats-picker-selected .learner-stats-picker-name {
+        font-weight: 700;
+    }
+    .learner-stats-picker-row.is-hidden {
+        display: none;
+    }
+    .learner-stats-picker-text {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .learner-stats-picker-name {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .learner-stats-picker-path {
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.25;
+        margin-top: 2px;
+        color: var(--odlg-fg-subtle, #6f7177);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .learner-stats-picker-empty {
+        min-height: 160px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 20px;
+        color: var(--odlg-fg-subtle, #6f7177);
+        font-size: 13px;
+    }
+    .learner-stats-picker-icon {
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+        background-color: var(--odlg-fg-subtle, #6f7177);
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-position: center;
+        mask-position: center;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        transition: none;
+    }
+    .learner-stats-picker-row.learner-stats-picker-selected .learner-stats-picker-icon {
+        background-color: var(--odlg-accent, #0077C8);
+    }
+    .learner-stats-picker-icon.emoji-icon {
+        background-color: transparent !important;
+        mask-image: none !important;
+        -webkit-mask-image: none !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        color: var(--odlg-fg, #202124);
+    }
+    @keyframes learner-stats-spin {
+        to { transform: rotate(360deg); }
+    }

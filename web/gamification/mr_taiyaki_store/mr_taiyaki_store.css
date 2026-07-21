@@ -1,3 +1,8 @@
+@font-face { font-family: 'Poppins'; src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Medium.ttf'); font-weight: 500; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'Poppins'; src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Black.ttf'); font-weight: 900; }
+
 :root {
     --primary-color: #CFA13D;
     --secondary-color: #8a6922;
@@ -17,7 +22,7 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
     background-color: var(--bg-color);

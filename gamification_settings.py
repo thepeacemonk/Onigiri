@@ -13,8 +13,8 @@ from aqt.qt import (
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty, QEvent, QTimer
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtGui import QImage, QFont
-from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
+from PyQt6.QtGui import QImage, QFont, QFontDatabase
+from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene, QGraphicsDropShadowEffect
 from aqt import mw
 from aqt.theme import theme_manager
 from aqt.qt import (
@@ -27,6 +27,8 @@ from .config import DEFAULTS
 from .themes import THEMES
 from .settings import FlowLayout
 from .settings._widgets import MainBackgroundEffectSlider
+from .settings._font_picker import FontPickerDialog
+from .fonts import get_all_fonts, register_poppins_qt
 from .translations import tr
 from .onigiri_notifications import notify_info as showInfo
 from .onigiri_color_picker import OnigiriColorDialog
@@ -75,6 +77,17 @@ def _safe_device_pixel_ratio(widget=None) -> float:
         if ratio > 0:
             return max(1.0, min(ratio, 4.0))
     return 1.0
+
+# Key glyph for the Hexagon Land "Keys of the Island" card. Kept inline (rather
+# than as a file under system_icons/) so it never shows up in the user-facing
+# icon pickers — it belongs to this one card.
+ISLAND_KEY_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <path d="M0 0h24v24H0z" fill="none" />
+    <g fill="none" stroke="{color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+        <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+        <circle cx="16.5" cy="7.5" r=".5" fill="{color}" />
+    </g>
+</svg>"""
 
 CHIP_PREVIEW_DEFAULTS = {
     "chip_bg":       "#29ffffff",
@@ -159,7 +172,7 @@ class RestaurantLevelChipPreviewLabel(QWidget):
 
                 level_font = painter.font()
                 level_font.setPointSize(8)
-                level_font.setBold(True)
+                level_font.setWeight(QFont.Weight.Medium)
                 painter.setFont(level_font)
                 painter.setPen(text_color)
                 painter.drawText(
@@ -255,7 +268,7 @@ class ProfileBarWidget(QWidget):
             self.pic_label.setPixmap(circular_pixmap)
 
         self.name_label = QLabel(user_name)
-        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; color: white; background: transparent;")
+        self.name_label.setStyleSheet("font-weight: 500; font-size: 14px; color: white; background: transparent;")
 
         layout.addWidget(self.pic_label)
         layout.addWidget(self.name_label)
@@ -490,9 +503,12 @@ class GooeyPillSwitch(QWidget):
         painter.setBrush(self._accent_color)
         painter.drawRoundedRect(indicator_rect, indicator_rect.height() / 2.0, indicator_rect.height() / 2.0)
 
+        # Label size scales with the pill's height so a taller switch gets
+        # proportionally bigger text instead of a fixed 9pt label floating in it.
         font = painter.font()
-        font.setBold(True)
-        font.setPointSize(9)
+        font.setFamily("Poppins")
+        font.setWeight(QFont.Weight.Medium)
+        font.setPixelSize(max(11, int(rect.height() * 0.38)))
         painter.setFont(font)
         for i, text in enumerate(self._labels):
             seg_rect = QRectF(pad + half_w * i, 0, half_w, rect.height())
@@ -510,7 +526,7 @@ class SectionGroup(QWidget):
         main_layout.setContentsMargins(0, 5, 0, 0)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; font-size: 20px; margin-bottom: 5px;")
+        title_label.setStyleSheet("font-weight: 500; font-size: 20px; margin-bottom: 5px;")
         main_layout.addWidget(title_label)
 
         if description:
@@ -579,7 +595,8 @@ class StudyZoneMessageListEditor(QWidget):
     def _make_icon_button(self, filename, tooltip, callback):
         button = QPushButton()
         button.setObjectName("studyZoneMessageIconButton")
-        button.setFixedSize(30, 30)
+        # 34px box against the 17px QSS radius = a perfect circle.
+        button.setFixedSize(34, 34)
         button.setIcon(self._icon(filename, 15))
         button.setIconSize(QSize(15, 15))
         button.setToolTip(tooltip)
@@ -593,8 +610,8 @@ class StudyZoneMessageListEditor(QWidget):
         row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(10, 8, 8, 8)
-        row_layout.setSpacing(8)
+        row_layout.setContentsMargins(8, 8, 8, 8)
+        row_layout.setSpacing(6)
 
         input_widget = QLineEdit(str(text or ""))
         input_widget.setObjectName("studyZoneMessageInput")
@@ -695,7 +712,7 @@ class StudyZonePinInput(QWidget):
             box.setMaxLength(1)
             box.setFixedSize(36, 42)
             box.setTextMargins(0, 0, 0, 0)
-            box.setFont(QFont(box.font().family(), 15, QFont.Weight.Bold))
+            box.setFont(QFont(box.font().family(), 15, QFont.Weight.Medium))
             box.textEdited.connect(lambda text, i=index: self._handle_text_edited(i, text))
             layout.addWidget(box)
             self._boxes.append(box)
@@ -744,7 +761,7 @@ class StudyZonePinInput(QWidget):
         return "".join(box.text() for box in self._boxes)
 
 class DifficultyCardWidget(QPushButton):
-    def __init__(self, title, description, emoji, accent_color=None):
+    def __init__(self, title, description, emoji, accent_color=None, icon_size=40):
         super().__init__()
         self.setCheckable(True)
         self.setObjectName("difficultyCard")
@@ -770,17 +787,17 @@ class DifficultyCardWidget(QPushButton):
         self.icon_label = QLabel(emoji)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.icon_label.setStyleSheet("""
-            QLabel {
+        self.icon_label.setStyleSheet(f"""
+            QLabel {{
                 background-color: transparent;
                 color: inherit;
-                border-radius: 20px;
+                border-radius: {icon_size // 2}px;
                 font-size: 24px;
-                min-width: 40px;
-                max-width: 40px;
-                min-height: 40px;
-                max-height: 40px;
-            }
+                min-width: {icon_size}px;
+                max-width: {icon_size}px;
+                min-height: {icon_size}px;
+                max-height: {icon_size}px;
+            }}
         """)
 
         text_layout = QVBoxLayout()
@@ -788,7 +805,7 @@ class DifficultyCardWidget(QPushButton):
         
         self.title_label = QLabel(title)
         self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 14px; background: transparent;")
+        self.title_label.setStyleSheet("font-weight: 500; font-size: 14px; background: transparent;")
         
         self.desc_label = QLabel(description)
         self.desc_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -808,20 +825,24 @@ class DifficultyCardWidget(QPushButton):
 class GamificationSettingsDialog(QDialog):
     def __init__(self, parent=None, addon_path=None):
         super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        # Do NOT force WindowStaysOnTopHint: the Gamification Settings window must
+        # only appear while Anki itself is the active app. With the on-top hint it
+        # floated over every other application on the computer; without it the
+        # window tracks Anki's normal stacking and hides behind other apps.
         self.addon_path = addon_path
+        # Poppins is the dialog's only typeface (weights capped at 500). Qt only
+        # resolves `font-family: 'Poppins'` in QSS once the .ttf files are in the
+        # application font database, so register them before any stylesheet runs.
+        try:
+            register_poppins_qt(addon_path)
+        except Exception as exc:
+            print(f"Onigiri: Could not register Poppins for gamification settings: {exc}")
         self.current_config = config.get_config()
         self.setWindowTitle(tr("gamification_settings_title"))
         self._loaded_pages = set()
         self._is_saving = False
 
-        # --- Screen Proportional Sizing ---
-        screen = mw.app.primaryScreen()
-        if screen:
-            self.resize(int(screen.availableGeometry().width() * 0.45), 
-                        int(screen.availableGeometry().height() * 0.55))
-        else:
-            self.resize(800, 600)
+        self._apply_default_geometry()
 
         # Initialize achievement config for reference
         self.achievements_config = self.current_config.get("achievements", {})
@@ -971,7 +992,9 @@ class GamificationSettingsDialog(QDialog):
         content_outer = QWidget()
         content_outer.setObjectName("contentOuter")
         content_outer_layout = QVBoxLayout(content_outer)
-        content_outer_layout.setContentsMargins(8, 10, 8, 10)
+        # No bottom margin: the page shell runs into the window edge so its two
+        # square bottom corners are invisible and only the top ones read as round.
+        content_outer_layout.setContentsMargins(8, 10, 8, 0)
         content_outer_layout.setSpacing(0)
         content_outer_layout.addWidget(content_container)
 
@@ -983,6 +1006,56 @@ class GamificationSettingsDialog(QDialog):
 
         # Default page
         self.navigate_to_page("General")
+
+    def _apply_default_geometry(self):
+        """Size the dialog so no page is ever clipped, on any display.
+
+        A purely proportional size (the old 45% x 55%) cropped the wider pages on
+        small laptops — the notification position picker and the Onigimon scene
+        rows have fixed-width controls that simply do not fit in ~570px. So the
+        proportional size is treated as a *floor-checked* preference: it is
+        raised to MIN_DIALOG_* when the screen is big enough, and clamped back
+        down when it is not (page scroll areas cover that last case).
+        """
+        # Sidebar at its widest (240) plus its 12/12 margins, beside a content
+        # column that fits the widest fixed-size control on any page.
+        MIN_SIDEBAR_WIDTH = 264
+        MIN_CONTENT_WIDTH = 600
+        MIN_DIALOG_WIDTH = MIN_SIDEBAR_WIDTH + MIN_CONTENT_WIDTH
+        MIN_DIALOG_HEIGHT = 560
+
+        screen = None
+        parent = self.parentWidget()
+        if parent is not None:
+            try:
+                screen = parent.screen()
+            except Exception:
+                screen = None
+        if screen is None:
+            try:
+                app = getattr(mw, "app", None)
+                screen = app.primaryScreen() if app else None
+            except Exception:
+                screen = None
+
+        if screen is None:
+            self.setMinimumSize(MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT)
+            self.resize(MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT)
+            return
+
+        available = screen.availableGeometry()
+        # Never demand more than the screen offers: on a display too small for
+        # the ideal minimum, the minimum shrinks to fit and the scroll areas
+        # take over rather than the window opening off-screen.
+        max_w = max(320, int(available.width() * 0.96))
+        max_h = max(320, int(available.height() * 0.96))
+        min_w = min(MIN_DIALOG_WIDTH, max_w)
+        min_h = min(MIN_DIALOG_HEIGHT, max_h)
+        self.setMinimumSize(min_w, min_h)
+
+        width = min(max_w, max(min_w, int(available.width() * 0.45)))
+        height = min(max_h, max(min_h, int(available.height() * 0.55)))
+        self.resize(width, height)
 
     def _theme_tokens(self):
         # Mirror Onigiri Settings' neutral palette (hardcoded high-contrast
@@ -1125,7 +1198,7 @@ class GamificationSettingsDialog(QDialog):
                         border: 1px solid transparent;
                         text-align: left;
                         font-size: 13px;
-                        font-weight: 600;
+                        font-weight: 500;
                         color: {color};
                     }}
                 """)
@@ -1152,6 +1225,16 @@ class GamificationSettingsDialog(QDialog):
         except (TypeError, ValueError):
             notification_duration_seconds = 5
         self.notification_duration_spinbox.setValue(max(1, min(30, notification_duration_seconds)))
+
+        current_mode = self.current_config.get("onigiri_reviewer_notification_mode", "classic")
+        self.notification_mode_widget = GooeyPillSwitch(
+            "classic", "mini",
+            tr("notification_mode_classic", "Classic"), tr("notification_mode_mini", "Mini"),
+            accent_color=self.accent_color,
+        )
+        self.notification_mode_widget.setFixedHeight(44)
+        self.notification_mode_widget.setMinimumWidth(300)
+        self.notification_mode_widget.setValue(current_mode, animate=False)
 
         restaurant_conf = self.current_config.get("restaurant_level", {})
         self.nook_level_toggle = AnimatedToggleButton(accent_color="#B94632")
@@ -1193,6 +1276,11 @@ class GamificationSettingsDialog(QDialog):
         self.rl_chip_reset_colors_button = QPushButton(tr("reset_colors"))
         self.rl_chip_reset_colors_button.clicked.connect(self._reset_restaurant_chip_colors)
 
+        # Which game drives the profile Level chip: nook | onigimon | hexagon
+        self.profile_level_game = str(self.current_config.get("profile_level_game", "nook") or "nook").lower()
+        if self.profile_level_game not in ("nook", "onigimon", "hexagon"):
+            self.profile_level_game = "nook"
+
         # Onigimon
         self.onigimon_config = self.current_config.get("onigimon", {})
         if not isinstance(self.onigimon_config, dict):
@@ -1205,9 +1293,10 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_difficulty_group.setExclusive(True)
         self.onigimon_difficulty_widgets = {}
         def _get_sprite(name):
+            # 48px = the previous 32px bumped by 50%.
             path = os.path.join(os.path.dirname(__file__), "system_files", "gamification_images", "onigimon", name)
             url = QUrl.fromLocalFile(path).toString()
-            return f'<img src="{url}" width="32" height="32">'
+            return f'<img src="{url}" width="48" height="48">'
 
         onigimon_difficulties = [
             ("bulbassaur", "Bulbassaur", tr("onigimon_diff_easy_desc"), _get_sprite("bulbasaur_pixel.webp"), "#4CAF50"),
@@ -1215,7 +1304,9 @@ class GamificationSettingsDialog(QDialog):
             ("charizard", "Charizard", tr("onigimon_diff_hard_desc"), _get_sprite("charizard_pixel.webp"), "#E8562F"),
         ]
         for data, title, description, badge, accent in onigimon_difficulties:
-            btn = DifficultyCardWidget(title, description, badge, accent_color=accent)
+            # icon_size 60 = the shared 40px badge box scaled up 50% to fit the
+            # larger Onigimon sprites.
+            btn = DifficultyCardWidget(title, description, badge, accent_color=accent, icon_size=60)
             self.onigimon_difficulty_group.addButton(btn)
             self.onigimon_difficulty_widgets[data] = btn
         current_onigimon_difficulty = str(self.onigimon_config.get("difficulty", "pikachu") or "pikachu").lower()
@@ -1232,9 +1323,9 @@ class GamificationSettingsDialog(QDialog):
         def _on_onigimon_sprite_mode_changed(value):
             self.onigimon_sprite_motion = "gif" if value == "gif" else "static"
         self.onigimon_sprite_mode_widget.modeChanged.connect(_on_onigimon_sprite_mode_changed)
-        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#7FD179") or "#7FD179")
+        self.onigimon_scene_color = str(self.onigimon_config.get("scene_background_color", "#6ea96a") or "#6ea96a")
         if not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color):
-            self.onigimon_scene_color = "#7FD179"
+            self.onigimon_scene_color = "#6ea96a"
         self.onigimon_scene_image = str(self.onigimon_config.get("scene_background_image", "") or "")
         self.onigimon_scene_color_button = QPushButton(tr("onigimon_scene_color_button"))
         self.onigimon_scene_color_button.setObjectName("onigimonSceneButton")
@@ -1245,6 +1336,17 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_scene_clear_button = QPushButton(tr("onigimon_clear_image_button"))
         self.onigimon_scene_clear_button.setObjectName("onigimonSceneButton")
         self.onigimon_scene_clear_button.clicked.connect(self._clear_onigimon_scene_background)
+        # Stats panel (.onigimon-bottom) colour — empty means "use the widget's
+        # own light/dark default".
+        self.onigimon_bottom_color = str(self.onigimon_config.get("scene_bottom_color", "") or "")
+        if self.onigimon_bottom_color and not re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_bottom_color):
+            self.onigimon_bottom_color = ""
+        self.onigimon_bottom_color_button = QPushButton(tr("onigimon_stats_panel_color", "Panel color"))
+        self.onigimon_bottom_color_button.setObjectName("onigimonSceneButton")
+        self.onigimon_bottom_color_button.clicked.connect(self._choose_onigimon_bottom_color)
+        self.onigimon_bottom_reset_button = QPushButton(tr("reset", "Reset"))
+        self.onigimon_bottom_reset_button.setObjectName("onigimonSceneButton")
+        self.onigimon_bottom_reset_button.clicked.connect(self._reset_onigimon_bottom_color)
         scene_slider_tokens = self._theme_tokens()
         blur_value = int(self.onigimon_config.get("scene_background_blur", 9) or 0)
         self.onigimon_scene_blur_slider = MainBackgroundEffectSlider("#F2B705", scene_slider_tokens["surface"], scene_slider_tokens["border"])
@@ -1343,6 +1445,17 @@ class GamificationSettingsDialog(QDialog):
             self._study_zone_message_icon,
             self,
         )
+        self.mochi_icon_choice = str(self.mochi_messages_config.get("icon_choice", "mochi") or "mochi")
+        if self.mochi_icon_choice not in ("mochi", "custom"):
+            self.mochi_icon_choice = "mochi"
+        self.mochi_custom_icon = str(self.mochi_messages_config.get("custom_icon", "") or "")
+        self.mochi_text_color = str(self.mochi_messages_config.get("text_color", "") or "")
+        self.mochi_font_key = str(self.mochi_messages_config.get("font", "system") or "system")
+        self._mochi_font_family_cache = {}
+        self.mochi_title_name_input = QLineEdit(str(self.mochi_messages_config.get("title_name", "") or ""))
+        self.mochi_title_name_input.setPlaceholderText(tr("mochi_title_placeholder", "Mochi says…"))
+        self.mochi_hide_title_toggle = AnimatedToggleButton(accent_color="#00935C")
+        self.mochi_hide_title_toggle.setChecked(bool(self.mochi_messages_config.get("hide_title", False)))
 
         # Focus Dango
         focus_dango_conf = self.achievements_config.get("focusDango", {})
@@ -1370,8 +1483,32 @@ class GamificationSettingsDialog(QDialog):
         self.hexagon_land_toggle = AnimatedToggleButton(accent_color="#2D8CFF")
         self.hexagon_land_toggle.setChecked(bool(self.hexagon_land_config.get("enabled", False)))
 
-        self.hexagon_survival_toggle = AnimatedToggleButton(accent_color="#e53e3e")
-        self.hexagon_survival_toggle.setChecked(bool(self.hexagon_land_config.get("survival_mode", False)))
+        # Keep Gamification Mode and the individual games in sync: turning any
+        # game or Study Zone game on auto-enables Gamification Mode (they're
+        # gated behind it at runtime and would otherwise do nothing silently),
+        # and turning Gamification Mode off turns every game off with it.
+        self._game_toggles = (
+            self.nook_level_toggle,
+            self.onigimon_toggle,
+            self.hexagon_land_toggle,
+            self.focus_dango_toggle,
+            self.mochi_messages_toggle,
+        )
+
+        def _auto_enable_gamification_mode(checked):
+            if checked and not self.gamification_mode_toggle.isChecked():
+                self.gamification_mode_toggle.setChecked(True)
+
+        for game_toggle in self._game_toggles:
+            game_toggle.toggled.connect(_auto_enable_gamification_mode)
+
+        def _on_gamification_mode_toggled(checked):
+            if checked:
+                return
+            for game_toggle in self._game_toggles:
+                game_toggle.setChecked(False)
+
+        self.gamification_mode_toggle.toggled.connect(_on_gamification_mode_toggled)
 
     def navigate_to_page(self, name):
         if not name: return
@@ -1437,7 +1574,7 @@ class GamificationSettingsDialog(QDialog):
                 border-radius: 18px;
                 padding: 8px 16px;
                 min-height: 36px;
-                font-weight: 600;
+                font-weight: 500;
                 outline: none;
             }}
             QPushButton:hover,
@@ -1513,7 +1650,10 @@ class GamificationSettingsDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # AsNeeded, not AlwaysOff: with the bar forced off, a window narrower
+        # than a page's fixed-width controls clipped them with no way to reach
+        # them. The minimum window size means this bar normally never appears.
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("background: transparent;")
         
         scroll_content = QWidget()
@@ -1698,7 +1838,7 @@ class GamificationSettingsDialog(QDialog):
                     padding: 0px 22px;
                     background-color: {tokens["surface"]};
                     border: 1px solid {tokens["border"]};
-                    font-weight: bold;
+                    font-weight: 500;
                     color: {tokens["fg"]};
                 }}
                 QPushButton:hover {{
@@ -1821,7 +1961,7 @@ class GamificationSettingsDialog(QDialog):
         text_layout.addStretch()
         t_label = QLabel(title)
         t_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        t_label.setStyleSheet(f"font-weight: bold; font-size: 24px; color: {text_color}; background: transparent;")
+        t_label.setStyleSheet(f"font-weight: 500; font-size: 24px; color: {text_color}; background: transparent;")
         s_label = QLabel(subtitle)
         s_label.setWordWrap(True)
         s_label.setMinimumHeight(46)
@@ -1845,12 +1985,44 @@ class GamificationSettingsDialog(QDialog):
     def _attach_hero_toggle(self, card, toggle):
         card.layout().addWidget(toggle, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-    def create_notification_position_section(self):
-        section = SectionGroup(tr("reviewer_notification_pos_title"), self)
+    def create_notifications_section(self):
+        """Notification Style plus every other notification setting in one card:
+        style switch, position picker (hidden in Mini mode) and display time."""
+        card, layout = self._create_study_zone_card(tr("notifications", "Notifications"))
 
+        style_row = QHBoxLayout()
+        style_row.setContentsMargins(0, 4, 0, 4)
+        style_row.setSpacing(10)
+        style_row.addStretch()
+        style_row.addWidget(self.notification_mode_widget)
+        style_row.addStretch()
+        layout.addLayout(style_row)
+
+        self.notification_pos_section = QWidget()
+        pos_section_layout = QVBoxLayout(self.notification_pos_section)
+        pos_section_layout.setContentsMargins(0, 0, 0, 0)
+        pos_section_layout.setSpacing(8)
+        pos_caption = QLabel(tr("reviewer_notification_pos_title", "Notification Position"))
+        pos_caption.setObjectName("studyZoneCardDescription")
+        pos_section_layout.addWidget(pos_caption)
+        pos_section_layout.addWidget(self._create_notification_position_widget())
+        layout.addWidget(self.notification_pos_section)
+
+        duration_row = QHBoxLayout()
+        duration_row.setContentsMargins(0, 0, 0, 0)
+        duration_row.setSpacing(12)
+        duration_row.addWidget(QLabel(tr("notification_display_time", "Show notifications for")))
+        duration_row.addStretch()
+        duration_row.addWidget(self.notification_duration_spinbox)
+        layout.addLayout(duration_row)
+
+        return card
+
+    def _create_notification_position_widget(self):
         container = QWidget()
+        container.setObjectName("notificationPositionSection")
         main_layout = QHBoxLayout(container)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setContentsMargins(0, 4, 0, 4)
         main_layout.setSpacing(28)
 
         grid_container = QWidget()
@@ -1903,8 +2075,7 @@ class GamificationSettingsDialog(QDialog):
         main_layout.addWidget(self.notif_preview_widget)
         main_layout.addStretch()
 
-        section.add_widget(container)
-        return section
+        return container
 
     def _update_notification_position(self, pos_id):
         self.current_config["onigiri_reviewer_notification_position"] = pos_id
@@ -1935,100 +2106,82 @@ class GamificationSettingsDialog(QDialog):
         self.notif_rect.raise_()
         self.notif_rect.show()
 
-    def create_notification_duration_section(self):
-        section = SectionGroup("Notification Display Time", self)
-        row = QWidget()
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(8, 8, 8, 8)
-        row_layout.setSpacing(12)
-        row_layout.addWidget(QLabel("Show notifications for"))
-        row_layout.addStretch()
-        row_layout.addWidget(self.notification_duration_spinbox)
-        section.add_widget(row)
-        return section
-
     # --- PAGES ---
 
-    def create_general_page(self):
-        page, layout = self._create_scrollable_page()
-        layout.setSpacing(16)
+    def _create_profile_level_selector_card(self):
+        """Segmented Nook / Onigimon XP / Hexagon Land selector picking which
+        game's level the profile Level chip shows."""
+        group, group_layout = self._create_study_zone_card(tr("profile_level_title", "Profile Level"))
+        note = QLabel(tr("profile_level_desc", "Choose which game's level is shown on your profile."))
+        note.setWordWrap(True)
+        group_layout.addWidget(note)
 
-        layout.addWidget(self._create_study_zone_header(
-            tr("gamification_mode"),
-            tr("gamification_mode_desc"),
-            "gamepad.svg",
-            self.accent_color,
-            self.gamification_mode_toggle
-        ))
+        container = QWidget()
+        container.setObjectName("profileLevelSegment")
+        seg_layout = QHBoxLayout(container)
+        seg_layout.setContentsMargins(4, 4, 4, 4)
+        seg_layout.setSpacing(0)
+        container.setStyleSheet("""
+            QWidget#profileLevelSegment {
+                background-color: rgba(120, 120, 120, 0.15);
+                border-radius: 21px;
+            }
+        """)
+        # Pill track (21px radius on a ~42px box) with pill thumbs (17px radius
+        # on a ~34px button), restated per state so the selected option never
+        # renders with square corners.
+        btn_style = f"""
+            QPushButton#profileLevelButton {{
+                background-color: transparent;
+                border: none;
+                padding: 8px 16px;
+                min-height: 34px;
+                font-weight: 500;
+                font-size: 12px;
+                color: #888888;
+                border-radius: 17px;
+            }}
+            QPushButton#profileLevelButton:hover {{ color: #aaaaaa; border-radius: 17px; }}
+            QPushButton#profileLevelButton:checked {{
+                background-color: {self.accent_color};
+                color: white;
+                border-radius: 17px;
+            }}
+        """
+        self.profile_level_game_group = QButtonGroup(self)
+        options = [
+            ("nook", tr("profile_level_opt_nook", "Nook")),
+            ("onigimon", tr("profile_level_opt_onigimon", "Onigimon XP")),
+            ("hexagon", tr("profile_level_opt_hexagon", "Hexagon Land")),
+        ]
+        for idx, (key, label) in enumerate(options):
+            btn = QPushButton(label)
+            btn.setObjectName("profileLevelButton")
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(btn_style)
+            btn.setProperty("gameKey", key)
+            if key == self.profile_level_game:
+                btn.setChecked(True)
+            seg_layout.addWidget(btn)
+            self.profile_level_game_group.addButton(btn, idx)
 
-        layout.addWidget(self._create_study_zone_header(
-            tr("focused_gaming"),
-            tr("focused_gaming_desc"),
-            "arrow.svg",
-            "#5b8dee",
-            self.focused_gaming_toggle
-        ))
-
-        layout.addWidget(self.create_notification_position_section())
-        layout.addWidget(self.create_notification_duration_section())
-        
-        # Lock logic: disable Restaurant Level notifications when Focused Gaming is on
-        # Only locks notifications_enabled - the reviewer header/progress bar is unaffected
-        def _on_focused_gaming_changed(checked):
+        def _on_game_changed(button, checked):
             if checked:
-                # Force notifications OFF and lock the toggle
-                self.restaurant_notifications_toggle.setChecked(False)
-            # Always update enabled state (locked when focused gaming is on)
-            self.restaurant_notifications_toggle.setEnabled(not checked)
-        
-        self.focused_gaming_toggle.toggled.connect(_on_focused_gaming_changed)
-        # Apply initial state
-        _on_focused_gaming_changed(self.focused_gaming_toggle.isChecked())
-        
-        layout.addStretch()
-        
-        return page
+                self.profile_level_game = str(button.property("gameKey") or "nook")
 
-    def create_nook_level_page(self):
-        page, layout = self._create_scrollable_page()
-        layout.setSpacing(16)
-        nook_level = _nook_level_module()
-        
-        hero = self._create_study_zone_header(
-            tr("restaurant_level"),
-            tr("grow_restaurant_desc"),
-            "nook.webp",
-            "#B94632",
-            self.nook_level_toggle
-        )
-        layout.addWidget(hero)
+        self.profile_level_game_group.buttonToggled.connect(_on_game_changed)
 
-        # Name settings
-        name_group, name_layout = self._create_study_zone_card(tr("restaurant_name"))
-        try:
-            progress = nook_level.manager.get_progress()
-            progress_level = int(getattr(progress, "level", 0) or 0)
-            progress_name = str(getattr(progress, "name", "Nook Level") or "Nook Level")
-        except Exception as exc:
-            print(f"[Onigiri] Could not load Nook Level progress: {exc}")
-            progress_level = 0
-            progress_name = "Nook Level"
-        if progress_level >= 5:
-            self.restaurant_name_input = QLineEdit(progress_name)
-            name_layout.addWidget(QLabel(tr("custom_name")))
-            name_layout.addWidget(self.restaurant_name_input)
-        else:
-            name_layout.addWidget(QLabel(tr("reach_level_5").format(level=progress_level)))
-        layout.addWidget(name_group)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(container)
+        row.addStretch()
+        group_layout.addLayout(row)
+        return group
 
-        # Notifications & Visibility
-        vis_group, vis_layout = self._create_study_zone_card(tr("notifications_visibility"))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, tr("show_levelup_notifications")))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, tr("show_progress_sidebar")))
-        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, tr("show_level_reviewer")))
-        layout.addWidget(vis_group)
-        
-        # Level Chip Appearance
+    def _create_level_chip_card(self):
+        """Level Chip Appearance card (colors + light/dark dynamic theme).
+        Shared across games; lives on the General page."""
         chip_group, chip_layout = self._create_study_zone_card(tr("level_chip_appearance"))
         chip_note = QLabel(tr("level_chip_appearance_desc"))
         chip_note.setWordWrap(True)
@@ -2052,7 +2205,7 @@ class GamificationSettingsDialog(QDialog):
         self.rl_dynamic_chip_theme_widget.setStyleSheet("""
             QWidget#dynamicChipThemeContainer {
                 background-color: rgba(120, 120, 120, 0.15);
-                border-radius: 14px;
+                border-radius: 21px;
             }
         """)
 
@@ -2081,16 +2234,18 @@ class GamificationSettingsDialog(QDialog):
             QPushButton#dynamicThemeButton {{
                 background-color: transparent;
                 border: none;
-                padding: 6px 16px;
-                font-weight: 600;
+                padding: 8px 16px;
+                min-height: 34px;
+                font-weight: 500;
                 font-size: 12px;
                 color: #888888;
-                border-radius: 10px;
+                border-radius: 17px;
             }}
-            QPushButton#dynamicThemeButton:hover  {{ color: #aaaaaa; }}
+            QPushButton#dynamicThemeButton:hover  {{ color: #aaaaaa; border-radius: 17px; }}
             QPushButton#dynamicThemeButton:checked {{
                 background-color: {self.accent_color};
                 color: white;
+                border-radius: 17px;
             }}
         """
         self.rl_theme_light_btn = QPushButton(f" {tr('light_mode')}")
@@ -2141,8 +2296,102 @@ class GamificationSettingsDialog(QDialog):
         reset_row.addWidget(self.rl_chip_reset_colors_button)
         reset_row.addStretch()
         chip_layout.addLayout(reset_row)
-        layout.addWidget(chip_group)
         self._update_restaurant_chip_preview()
+        return chip_group
+
+    def create_general_page(self):
+        page, layout = self._create_scrollable_page()
+        layout.setSpacing(16)
+
+        layout.addWidget(self._create_study_zone_header(
+            tr("gamification_mode"),
+            tr("gamification_mode_desc"),
+            "gamepad.svg",
+            self.accent_color,
+            self.gamification_mode_toggle
+        ))
+
+        layout.addWidget(self._create_study_zone_header(
+            tr("focused_gaming"),
+            tr("focused_gaming_desc"),
+            "arrow.svg",
+            "#5b8dee",
+            self.focused_gaming_toggle
+        ))
+
+        self.notification_mode_section = self.create_notifications_section()
+        layout.addWidget(self.notification_mode_section)
+
+
+        def _on_notification_mode_changed(value):
+            is_mini = (value == "mini")
+            self.notification_pos_section.setVisible(not is_mini)
+        
+        self.notification_mode_widget.modeChanged.connect(_on_notification_mode_changed)
+        _on_notification_mode_changed(self.notification_mode_widget.value())
+        
+        # Lock logic: disable Restaurant Level notifications when Focused Gaming is on
+        # Only locks notifications_enabled - the reviewer header/progress bar is unaffected
+        def _on_focused_gaming_changed(checked):
+            if checked:
+                # Force notifications OFF and lock the toggle
+                self.restaurant_notifications_toggle.setChecked(False)
+            # Always update enabled state (locked when focused gaming is on)
+            self.restaurant_notifications_toggle.setEnabled(not checked)
+        
+        self.focused_gaming_toggle.toggled.connect(_on_focused_gaming_changed)
+        # Apply initial state
+        _on_focused_gaming_changed(self.focused_gaming_toggle.isChecked())
+
+        # Profile Level: which game drives the profile chip + its shared styling
+        layout.addWidget(self._create_profile_level_selector_card())
+        layout.addWidget(self._create_level_chip_card())
+
+        layout.addStretch()
+
+        return page
+
+    def create_nook_level_page(self):
+        page, layout = self._create_scrollable_page()
+        layout.setSpacing(16)
+        nook_level = _nook_level_module()
+        
+        hero = self._create_study_zone_header(
+            tr("restaurant_level"),
+            tr("grow_restaurant_desc"),
+            "nook.webp",
+            "#B94632",
+            self.nook_level_toggle
+        )
+        layout.addWidget(hero)
+
+        # Name settings
+        name_group, name_layout = self._create_study_zone_card(tr("restaurant_name"))
+        try:
+            progress = nook_level.manager.get_progress()
+            progress_level = int(getattr(progress, "level", 0) or 0)
+            progress_name = str(getattr(progress, "name", "Nook Level") or "Nook Level")
+        except Exception as exc:
+            print(f"[Onigiri] Could not load Nook Level progress: {exc}")
+            progress_level = 0
+            progress_name = "Nook Level"
+        if progress_level >= 5:
+            self.restaurant_name_input = QLineEdit(progress_name)
+            name_layout.addWidget(QLabel(tr("custom_name")))
+            name_layout.addWidget(self.restaurant_name_input)
+        else:
+            name_layout.addWidget(QLabel(tr("reach_level_5").format(level=progress_level)))
+        layout.addWidget(name_group)
+
+        # Notifications & Visibility
+        vis_group, vis_layout = self._create_study_zone_card(tr("notifications_visibility"))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_notifications_toggle, tr("show_levelup_notifications")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_bar_toggle, tr("show_progress_sidebar")))
+        vis_layout.addWidget(self._create_toggle_row(self.restaurant_reviewer_toggle, tr("show_level_reviewer")))
+        layout.addWidget(vis_group)
+
+        # (The Level Chip Appearance card now lives on the General page, shared
+        #  across games via the Profile Level selector.)
 
         # Difficulty
 
@@ -2161,7 +2410,7 @@ class GamificationSettingsDialog(QDialog):
         sync_note = QLabel(tr(
             "recipe_rush_sync_desc",
             "If the equipped Nook's Rush still shows a generic ticket, force a fresh pick "
-            "from the Apps Script for today - today's card progress is kept.",
+            "for today - today's card progress is kept.",
         ))
         sync_note.setWordWrap(True)
         sync_layout.addWidget(sync_note)
@@ -2427,20 +2676,91 @@ class GamificationSettingsDialog(QDialog):
             print(f"Warning: Could not refresh Onigimon care after blur change: {exc}")
 
     def _update_onigimon_scene_controls(self):
-        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#7FD179"
+        color = self.onigimon_scene_color if re.match(r"^#[0-9a-fA-F]{6}$", self.onigimon_scene_color) else "#6ea96a"
         self.onigimon_scene_color_button.setStyleSheet(
-            f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111; border: 1px solid rgba(0,0,0,0.18); border-radius: 15px; padding: 4px 14px; min-height: 28px; }}"
+            f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: #111111;"
+            " border: 1px solid rgba(0,0,0,0.18); border-radius: 18px; padding: 8px 16px;"
+            " min-height: 36px; font-weight: 500; }"
         )
 
         if hasattr(self, "onigimon_scene_preview"):
+            # Mirrors the live widget's CSS radial-gradient (onigiri_renderer.py,
+            # ".onigimon-top.onigimon-scene") using Qt's own qradialgradient
+            # syntax, since QSS has no color-mix() — the light/dark stops are
+            # computed here instead.
+            light = self._mix_hex_color(color, "#ffffff", 0.92)
+            dark = self._mix_hex_color(color, "#000000", 0.90)
+            gradient = (
+                "qradialgradient(cx:0.22, cy:0.32, radius:1.05, fx:0.22, fy:0.32, "
+                f"stop:0 {light}, stop:0.7 {color}, stop:1 {dark})"
+            )
+            # Top section: rounded on top only, flat seam into the stats panel —
+            # exactly how `.onigimon-top` sits inside `.onigimon-card`.
             self.onigimon_scene_preview.setStyleSheet(
                 "QFrame#onigimonScenePreview {"
                 "border: 1px solid rgba(120,120,120,0.42);"
-                "border-radius: 14px;"
-                f"background-color: {color};"
+                "border-bottom: none;"
+                "border-top-left-radius: 14px;"
+                "border-top-right-radius: 14px;"
+                "border-bottom-left-radius: 0px;"
+                "border-bottom-right-radius: 0px;"
+                f"background: {gradient};"
                 "}"
             )
             self._update_onigimon_scene_preview_background()
+
+        if hasattr(self, "onigimon_bottom_preview"):
+            bottom_color = self.onigimon_bottom_color or self._default_onigimon_bottom_color()
+            meter_fg = "#f0f0f0" if QColor(bottom_color).lightness() < 128 else "#222222"
+            self.onigimon_bottom_preview.setStyleSheet(f"""
+                QFrame#onigimonBottomPreview {{
+                    background-color: {bottom_color};
+                    border: 1px solid rgba(120,120,120,0.42);
+                    border-top: none;
+                    border-top-left-radius: 0px;
+                    border-top-right-radius: 0px;
+                    border-bottom-left-radius: 14px;
+                    border-bottom-right-radius: 14px;
+                }}
+                QFrame#onigimonBottomPreview QLabel#onigimonPreviewMeterLabel,
+                QFrame#onigimonBottomPreview QLabel#onigimonPreviewMeterValue {{
+                    color: {meter_fg};
+                    background: transparent;
+                    font-size: 12px;
+                }}
+                QFrame#onigimonBottomPreview QLabel#onigimonPreviewMeterValue {{
+                    font-weight: 500;
+                }}
+                QFrame#onigimonBottomPreview QFrame#onigimonPreviewMeterTrack {{
+                    background-color: {self._rgba_from_hex(meter_fg, 0.14)};
+                    border-radius: 3px;
+                }}
+            """)
+            self._style_onigimon_bottom_color_button()
+
+        if hasattr(self, "onigimon_preview_name_label"):
+            # Name/level sit on the coloured scene, so they take the same fixed
+            # per-mode colours as `.onigimon-top .onigimon-info`.
+            info_fg = "#ffffff" if theme_manager.night_mode else "#000000"
+            info_muted = "rgba(255,255,255,0.82)" if theme_manager.night_mode else "rgba(0,0,0,0.68)"
+            self.onigimon_preview_name_label.setStyleSheet(
+                f"color: {info_fg}; font-size: 16px; font-weight: 500; background: transparent;"
+            )
+            self.onigimon_preview_level_label.setStyleSheet(
+                f"color: {info_muted}; font-size: 12px; background: transparent;"
+            )
+            companion_name = ""
+            try:
+                onigimon = _onigimon_module()
+                companion = onigimon.manager.active_companion()
+                if companion:
+                    companion_name = str(onigimon.manager.companion_display_name(companion))
+                    self.onigimon_preview_level_label.setText(
+                        f"{tr('onigimon_level', 'Level')} {int(getattr(companion, 'level', 1) or 1)}"
+                    )
+            except Exception:
+                companion_name = ""
+            self.onigimon_preview_name_label.setText(companion_name or "Onigimon")
         if hasattr(self, "onigimon_scene_preview_sprite"):
             sprite_url = ""
             selected_id = str(getattr(self, "onigimon_selected_companion_id", "") or "")
@@ -2456,13 +2776,23 @@ class GamificationSettingsDialog(QDialog):
             sprite_path = self._onigimon_sprite_local_path(sprite_url)
             pixmap = QPixmap(sprite_path) if sprite_path and os.path.exists(sprite_path) else QPixmap()
             if not pixmap.isNull():
+                # 86px inside a 96px box — the live widget's
+                # `.onigimon-top .onigimon-sprite img` size.
                 self.onigimon_scene_preview_sprite.setPixmap(
-                    self._scaled_for_display(pixmap, 74, 74)
+                    self._scaled_for_display(pixmap, 86, 86)
                 )
                 self.onigimon_scene_preview_sprite.setText("")
             else:
                 self.onigimon_scene_preview_sprite.setPixmap(QPixmap())
                 self.onigimon_scene_preview_sprite.setText("Onigimon")
+            # Mirrors the live widget's blurred drop-shadow ellipse under the
+            # sprite (".onigimon-top .onigimon-sprite::before") using Qt's
+            # native blur-capable shadow effect, since QSS has no filter/blur.
+            shadow = QGraphicsDropShadowEffect(self.onigimon_scene_preview_sprite)
+            shadow.setBlurRadius(18)
+            shadow.setOffset(0, 10)
+            shadow.setColor(QColor(0, 0, 0, 61))
+            self.onigimon_scene_preview_sprite.setGraphicsEffect(shadow)
 
     def _choose_onigimon_scene_color(self):
         chosen, ok = OnigiriColorDialog.getColor(self.onigimon_scene_color, self)
@@ -2490,6 +2820,447 @@ class GamificationSettingsDialog(QDialog):
     def _clear_onigimon_scene_background(self):
         self.onigimon_scene_image = ""
         self._update_onigimon_scene_controls()
+
+    # --- Mochi messenger image -------------------------------------------------
+    def _mochi_custom_icon_dir(self):
+        path = os.path.join(self.addon_path, "user_files", "mochi_messenger")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _mochi_custom_icon_abs_path(self):
+        if not self.mochi_custom_icon:
+            return ""
+        if os.path.isabs(self.mochi_custom_icon):
+            return self.mochi_custom_icon
+        return os.path.join(self.addon_path, self.mochi_custom_icon)
+
+    def _unique_mochi_custom_icon_path(self, source_path):
+        directory = self._mochi_custom_icon_dir()
+        base, ext = os.path.splitext(os.path.basename(source_path))
+        safe_base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip(".-") or "mochi-messenger"
+        ext = ext.lower() if ext else ".webp"
+        candidate = os.path.join(directory, safe_base + ext)
+        index = 2
+        while os.path.exists(candidate):
+            candidate = os.path.join(directory, f"{safe_base}-{index}{ext}")
+            index += 1
+        return candidate
+
+    def _import_mochi_custom_icon(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("mochi_import_image", "Choose a messenger image"),
+            "",
+            "Images (*.webp *.png *.jpg *.jpeg *.gif)"
+        )
+        if not path:
+            return
+        try:
+            dest = self._unique_mochi_custom_icon_path(path)
+            shutil.copy2(path, dest)
+            self.mochi_custom_icon = os.path.relpath(dest, self.addon_path)
+            self.mochi_icon_choice = "custom"
+            self._update_mochi_icon_controls()
+        except Exception as exc:
+            showInfo(tr("mochi_import_failed", "Could not import the image: {error}").format(error=exc))
+
+    def _clear_mochi_custom_icon(self):
+        self.mochi_custom_icon = ""
+        self.mochi_icon_choice = "mochi"
+        self._update_mochi_icon_controls()
+
+    def _set_mochi_icon_choice(self, choice):
+        if choice == "custom" and not self._mochi_custom_icon_abs_path():
+            # No image imported yet — prompt for one instead of selecting an empty
+            # option. The refresh afterwards re-syncs the source switch if the
+            # file dialog was cancelled.
+            self._import_mochi_custom_icon()
+            self._update_mochi_icon_controls()
+            return
+        self.mochi_icon_choice = "custom" if choice == "custom" else "mochi"
+        self._update_mochi_icon_controls()
+
+    def _update_mochi_icon_controls(self):
+        has_custom = bool(self._mochi_custom_icon_abs_path()) and os.path.exists(self._mochi_custom_icon_abs_path())
+        if self.mochi_icon_choice == "custom" and not has_custom:
+            self.mochi_icon_choice = "mochi"
+        active = self.mochi_icon_choice
+
+        if hasattr(self, "mochi_icon_source_widget"):
+            # Also snaps the pill back when "Custom" was picked but the import
+            # dialog was cancelled, so the switch never lies about the source.
+            with QSignalBlocker(self.mochi_icon_source_widget):
+                self.mochi_icon_source_widget.setValue(active, animate=True)
+
+        if hasattr(self, "mochi_custom_remove_btn"):
+            self.mochi_custom_remove_btn.setVisible(has_custom)
+
+        if hasattr(self, "mochi_icon_preview"):
+            pixmap = QPixmap()
+            if active == "custom" and has_custom:
+                pixmap = QPixmap(self._mochi_custom_icon_abs_path())
+            else:
+                default_path = os.path.join(
+                    self.addon_path, "system_files", "gamification_images", "mochi_messenger.webp"
+                )
+                if os.path.exists(default_path):
+                    pixmap = QPixmap(default_path)
+            if not pixmap.isNull():
+                # Fit inside the 56px shell with breathing room, so the sprite
+                # sits centred instead of overflowing and reading as off-centre.
+                self.mochi_icon_preview.setPixmap(self._scaled_for_display(pixmap, 40, 40))
+                self.mochi_icon_preview.setText("")
+                self.mochi_icon_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            else:
+                self.mochi_icon_preview.setPixmap(QPixmap())
+                self.mochi_icon_preview.setText("🍡")
+
+        if hasattr(self, "mochi_import_btn"):
+            self.mochi_import_btn.setText(
+                tr("mochi_replace_image", "Replace image") if has_custom
+                else tr("mochi_choose_image", "Choose image…")
+            )
+
+    # --- Onigimon: Ankimon dependency status ---------------------------------
+    def _ankimon_status(self):
+        """(state, title, detail) for the Ankimon dependency banner.
+
+        state is one of: ok | warn | error — it only drives the banner colour.
+        """
+        try:
+            onigimon = _onigimon_module()
+            status = onigimon.manager.bridge.status()
+        except Exception as exc:
+            return (
+                "error",
+                tr("ankimon_status_unknown", "Could not check Ankimon"),
+                str(exc),
+            )
+
+        if status == "missing":
+            return (
+                "error",
+                tr("ankimon_status_missing_title", "Ankimon is not installed"),
+                tr(
+                    "ankimon_status_missing_detail",
+                    "Onigimon runs on top of Ankimon. Install the Ankimon add-on, restart "
+                    "Anki, then choose a Pokémon in Ankimon's Pokémon PC.",
+                ),
+            )
+        if status in ("starter_needed", "no_collection"):
+            return (
+                "warn",
+                tr("ankimon_status_no_pokemon_title", "No Pokémon chosen yet"),
+                tr(
+                    "ankimon_status_no_pokemon_detail",
+                    "Ankimon is installed. Open Ankimon's Pokémon PC and pick a Pokémon — "
+                    "that Pokémon becomes your Onigimon companion.",
+                ),
+            )
+        return (
+            "ok",
+            tr("ankimon_status_ready_title", "Ankimon is installed"),
+            tr(
+                "ankimon_status_ready_detail",
+                "The active Pokémon in Ankimon's Pokémon PC is your Onigimon companion.",
+            ),
+        )
+
+    def _create_ankimon_status_card(self):
+        state, title, detail = self._ankimon_status()
+        colors = {
+            "ok": "#2FA36B",
+            "warn": "#E0912F",
+            "error": "#E05252",
+        }
+        color = colors.get(state, colors["warn"])
+
+        card = QFrame()
+        card.setObjectName("ankimonStatusCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setStyleSheet(f"""
+            QFrame#ankimonStatusCard {{
+                background-color: {self._rgba_from_hex(color, 0.10)};
+                border: 1px solid {self._rgba_from_hex(color, 0.32)};
+                border-radius: 18px;
+            }}
+        """)
+
+        row = QHBoxLayout(card)
+        row.setContentsMargins(16, 14, 16, 14)
+        row.setSpacing(12)
+
+        # Centrado no bloco de texto inteiro (título + descrição), não na linha
+        # do título.
+        dot = QLabel()
+        dot.setFixedSize(10, 10)
+        dot.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+        row.addWidget(dot, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        text_box = QWidget()
+        text_box.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(text_box)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"font-size: 14px; font-weight: 500; color: {color}; background: transparent;")
+        text_layout.addWidget(title_label)
+
+        detail_label = QLabel(detail)
+        detail_label.setObjectName("studyZoneCardDescription")
+        detail_label.setWordWrap(True)
+        detail_label.setMinimumWidth(0)
+        text_layout.addWidget(detail_label)
+
+        row.addWidget(text_box, 1)
+        return card
+
+    # --- Onigimon: scene card ------------------------------------------------
+    def _create_onigimon_widget_preview(self):
+        """A 1:1 mock of the real 2x3 Onigimon widget: title bar, coloured scene
+        on top, neutral meter panel underneath, fused with a flat seam.
+
+        Mirrors onigimon.py's `.onigimon-card` markup and onigiri_renderer.py's
+        `.onigimon-top` / `.onigimon-bottom` rules so what the user styles here
+        is what the deck browser shows.
+        """
+        tokens = self._theme_tokens()
+
+        shell = QFrame()
+        shell.setObjectName("onigimonWidgetPreview")
+        shell.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        shell.setStyleSheet(f"""
+            QFrame#onigimonWidgetPreview {{
+                background-color: {tokens["panel"]};
+                border: 1px solid {tokens["border"]};
+                border-radius: 18px;
+            }}
+        """)
+        shell_layout = QVBoxLayout(shell)
+        shell_layout.setContentsMargins(14, 12, 14, 14)
+        shell_layout.setSpacing(10)
+
+        head = QLabel("ONIGIMON")
+        head.setStyleSheet(
+            f"color: {tokens['muted']}; font-size: 11px; font-weight: 500;"
+            " letter-spacing: 1.2px; background: transparent;"
+        )
+        shell_layout.addWidget(head)
+
+        # The card: top + bottom fused, card owns the outer corners.
+        card = QFrame()
+        card.setObjectName("onigimonPreviewCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
+
+        # --- top (coloured scene) ---
+        self.onigimon_scene_preview = QFrame()
+        self.onigimon_scene_preview.setObjectName("onigimonScenePreview")
+        self.onigimon_scene_preview.setMinimumHeight(112)
+        self.onigimon_scene_preview.installEventFilter(self)
+        self.onigimon_scene_preview_bg = QLabel(self.onigimon_scene_preview)
+        self.onigimon_scene_preview_bg.setObjectName("onigimonScenePreviewBackground")
+        self.onigimon_scene_preview_bg.setScaledContents(False)
+        self.onigimon_scene_preview_bg.lower()
+
+        top_layout = QHBoxLayout(self.onigimon_scene_preview)
+        top_layout.setContentsMargins(14, 16, 14, 16)
+        top_layout.setSpacing(14)
+
+        self.onigimon_scene_preview_sprite = QLabel()
+        self.onigimon_scene_preview_sprite.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.onigimon_scene_preview_sprite.setFixedSize(96, 96)
+        self.onigimon_scene_preview_sprite.setStyleSheet(
+            "font-weight: 500; background: transparent; color: rgba(0,0,0,0.58);"
+        )
+        top_layout.addWidget(self.onigimon_scene_preview_sprite, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        info_box = QWidget()
+        info_box.setStyleSheet("background: transparent;")
+        info_layout = QVBoxLayout(info_box)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(3)
+        self.onigimon_preview_name_label = QLabel("Onigimon")
+        self.onigimon_preview_level_label = QLabel(f"{tr('onigimon_level', 'Level')} 1")
+        info_layout.addWidget(self.onigimon_preview_name_label)
+        info_layout.addWidget(self.onigimon_preview_level_label)
+        top_layout.addWidget(info_box, 1)
+
+        card_layout.addWidget(self.onigimon_scene_preview)
+
+        # --- bottom (meter panel) ---
+        self.onigimon_bottom_preview = QFrame()
+        self.onigimon_bottom_preview.setObjectName("onigimonBottomPreview")
+        self.onigimon_bottom_preview.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        bottom_layout = QVBoxLayout(self.onigimon_bottom_preview)
+        bottom_layout.setContentsMargins(14, 12, 14, 12)
+        bottom_layout.setSpacing(5)
+
+        self.onigimon_preview_meters = []
+        meters = [
+            ("HP", 100, "#08c46b", "20"),
+            (tr("onigimon_status_happiness", "Happiness"), 62, "#ffbd55", "31"),
+            (tr("onigimon_status_hygiene", "Hygiene"), 80, "#21b7d6", "40"),
+            (tr("onigimon_status_training", "Training"), 45, "#c866e5", "30"),
+            (tr("onigimon_status_hunger", "Hunger"), 26, "#f45bb3", "26"),
+        ]
+        for label_text, fraction, color, value_text in meters:
+            bottom_layout.addLayout(self._create_onigimon_preview_meter(label_text, fraction, color, value_text))
+
+        card_layout.addWidget(self.onigimon_bottom_preview)
+        shell_layout.addWidget(card)
+        return shell
+
+    def _create_onigimon_preview_meter(self, label_text, fraction, color, value_text):
+        """One meter row, matching `.onigimon-meter`'s 68px / 34px / rest grid."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+
+        name = QLabel(str(label_text).upper())
+        name.setFixedWidth(68)
+        name.setObjectName("onigimonPreviewMeterLabel")
+        row.addWidget(name)
+
+        value = QLabel(str(value_text))
+        value.setFixedWidth(34)
+        value.setObjectName("onigimonPreviewMeterValue")
+        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(value)
+
+        track = QFrame()
+        track.setObjectName("onigimonPreviewMeterTrack")
+        track.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        track.setFixedHeight(7)
+        track_layout = QHBoxLayout(track)
+        track_layout.setContentsMargins(0, 0, 0, 0)
+        track_layout.setSpacing(0)
+
+        fill = QFrame()
+        fill.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill.setStyleSheet(f"background-color: {color}; border-radius: 3px;")
+        track_layout.addWidget(fill, max(1, int(fraction)))
+        if fraction < 100:
+            spacer = QWidget()
+            spacer.setStyleSheet("background: transparent;")
+            track_layout.addWidget(spacer, 100 - int(fraction))
+
+        row.addWidget(track, 1)
+        self.onigimon_preview_meters.append((name, value, track))
+        return row
+
+    def _create_onigimon_scene_card(self):
+        """Scene settings, reorganised: one live widget preview on top, then a
+        flat list of labelled setting rows instead of buttons scattered across
+        the card. The two colour rows lead — they pair with the two halves of
+        the preview above — and the effect controls follow."""
+        card, layout = self._create_study_zone_card(
+            tr("onigimon_scene_title", "Scene"),
+            tr(
+                "onigimon_scene_desc",
+                "Everything below styles the deck-browser widget shown here.",
+            ),
+        )
+
+        layout.addWidget(self._create_onigimon_widget_preview())
+
+        # Rows 1/2 — the two colours, stacked: the scene on top of the card,
+        # then the stats panel underneath it, same order as the preview.
+        layout.addWidget(self._create_setting_row(
+            tr("background_color", "Background"),
+            [self.onigimon_scene_color_button,
+             self.onigimon_scene_import_button,
+             self.onigimon_scene_clear_button],
+        ))
+        layout.addWidget(self._create_setting_row(
+            tr("onigimon_stats_panel", "Stats panel"),
+            [self.onigimon_bottom_color_button, self.onigimon_bottom_reset_button],
+        ))
+
+        # Rows 3/4 — background effect sliders.
+        layout.addWidget(self._create_slider_row(
+            tr("onigimon_blur_intensity", "Blur"),
+            self.onigimon_scene_blur_slider,
+            self.onigimon_scene_blur_value_label,
+        ))
+        layout.addWidget(self._create_slider_row(
+            tr("background_opacity", "Opacity"),
+            self.onigimon_scene_opacity_slider,
+            self.onigimon_scene_opacity_value_label,
+        ))
+
+        # Row 5 — sprite mode.
+        layout.addWidget(self._create_setting_row(
+            tr("onigimon_sprite_mode_label", "Sprite mode"),
+            [self.onigimon_sprite_mode_widget],
+        ))
+
+        self._update_onigimon_scene_controls()
+        return card
+
+    def _create_setting_row(self, label_text, controls):
+        """Label on the left, controls right-aligned — one consistent shape used
+        by every settings card so no control floats loose."""
+        row = QFrame()
+        row.setObjectName("settingRow")
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(16, 8, 10, 8)
+        layout.setSpacing(8)
+        layout.addWidget(QLabel(label_text), 0)
+        layout.addStretch(1)
+        for control in controls:
+            layout.addWidget(control, 0)
+        return row
+
+    def _create_slider_row(self, label_text, slider, value_label):
+        row = QFrame()
+        row.setObjectName("settingRow")
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setSpacing(12)
+        label = QLabel(label_text)
+        label.setMinimumWidth(110)
+        layout.addWidget(label, 0)
+        layout.addWidget(slider, 1)
+        layout.addWidget(value_label, 0)
+        return row
+
+    def _style_onigimon_bottom_color_button(self):
+        """Paint the panel swatch with the colour it applies, and hide the reset
+        button while the widget default is still in use."""
+        if not hasattr(self, "onigimon_bottom_color_button"):
+            return
+        color = self.onigimon_bottom_color or self._default_onigimon_bottom_color()
+        text_color = "#f0f0f0" if QColor(color).lightness() < 128 else "#111111"
+        self.onigimon_bottom_color_button.setStyleSheet(
+            f"QPushButton#onigimonSceneButton {{ background-color: {color}; color: {text_color};"
+            " border: 1px solid rgba(120,120,120,0.42); border-radius: 18px; padding: 8px 16px;"
+            " min-height: 36px; font-weight: 500; }"
+        )
+        if hasattr(self, "onigimon_bottom_reset_button"):
+            self.onigimon_bottom_reset_button.setVisible(bool(self.onigimon_bottom_color))
+
+    def _choose_onigimon_bottom_color(self):
+        current = self.onigimon_bottom_color or self._default_onigimon_bottom_color()
+        chosen, ok = OnigiriColorDialog.getColor(current, self, anchor=self.onigimon_bottom_color_button)
+        if ok:
+            self.onigimon_bottom_color = chosen.name() if isinstance(chosen, QColor) else str(chosen)
+            self._update_onigimon_scene_controls()
+
+    def _reset_onigimon_bottom_color(self):
+        self.onigimon_bottom_color = ""
+        self._update_onigimon_scene_controls()
+
+    def _default_onigimon_bottom_color(self):
+        """The widget's built-in stats-panel shade (onigiri_renderer.py
+        `.onigimon-bottom`), used when the user hasn't picked one."""
+        return "#2e2e2d" if theme_manager.night_mode else "#efefec"
 
     def _create_onigimon_hero(self):
         hero = QFrame()
@@ -2534,7 +3305,7 @@ class GamificationSettingsDialog(QDialog):
         text_layout.setSpacing(5)
 
         title = QLabel("Onigimon")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: white; background: transparent;")
+        title.setStyleSheet("font-size: 20px; font-weight: 500; color: white; background: transparent;")
         title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         desc = QLabel("Use Ankimon's Pokémon PC to choose the active Pokémon, then feed, clean, train, and play while Onigimon updates Ankimon.")
         desc.setWordWrap(True)
@@ -2561,6 +3332,8 @@ class GamificationSettingsDialog(QDialog):
             self.onigimon_toggle
         ))
 
+        layout.addWidget(self._create_ankimon_status_card())
+
         companion_group, companion_layout = self._create_study_zone_card(tr("onigimon_companion_title"))
         companion_layout.addWidget(self.onigimon_companion_status_label)
         companion_layout.addWidget(QLabel(tr("onigimon_nickname_label")))
@@ -2582,54 +3355,7 @@ class GamificationSettingsDialog(QDialog):
         companion_layout.addWidget(starter_note)
         layout.addWidget(companion_group)
 
-        scene_group, scene_layout = self._create_study_zone_card(tr("onigimon_scene_title"))
-        self.onigimon_scene_preview = QFrame()
-        self.onigimon_scene_preview.setObjectName("onigimonScenePreview")
-        self.onigimon_scene_preview.setMinimumHeight(128)
-        self.onigimon_scene_preview.installEventFilter(self)
-        self.onigimon_scene_preview_bg = QLabel(self.onigimon_scene_preview)
-        self.onigimon_scene_preview_bg.setObjectName("onigimonScenePreviewBackground")
-        self.onigimon_scene_preview_bg.setScaledContents(False)
-        self.onigimon_scene_preview_bg.lower()
-        preview_layout = QVBoxLayout(self.onigimon_scene_preview)
-        preview_layout.setContentsMargins(12, 12, 12, 12)
-        preview_layout.addStretch()
-        self.onigimon_scene_preview_sprite = QLabel()
-        self.onigimon_scene_preview_sprite.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.onigimon_scene_preview_sprite.setFixedHeight(82)
-        self.onigimon_scene_preview_sprite.setStyleSheet("font-weight: 700; background: transparent; color: rgba(0,0,0,0.58);")
-        preview_layout.addWidget(self.onigimon_scene_preview_sprite)
-        preview_layout.addStretch()
-        scene_layout.addWidget(self.onigimon_scene_preview)
-        image_row = QHBoxLayout()
-        image_row.addWidget(self.onigimon_scene_import_button)
-        image_row.addWidget(self.onigimon_scene_clear_button)
-        image_row.addStretch()
-        scene_layout.addLayout(image_row)
-        color_row = QHBoxLayout()
-        color_row.addWidget(QLabel(tr("background_color")))
-        color_row.addWidget(self.onigimon_scene_color_button)
-        color_row.addStretch()
-        scene_layout.addLayout(color_row)
-        blur_row = QHBoxLayout()
-        blur_row.addWidget(QLabel(tr("onigimon_blur_intensity")))
-        blur_row.addWidget(self.onigimon_scene_blur_slider, 1)
-        blur_row.addWidget(self.onigimon_scene_blur_value_label)
-        blur_row.addStretch()
-        scene_layout.addLayout(blur_row)
-        opacity_row = QHBoxLayout()
-        opacity_row.addWidget(QLabel(tr("background_opacity")))
-        opacity_row.addWidget(self.onigimon_scene_opacity_slider, 1)
-        opacity_row.addWidget(self.onigimon_scene_opacity_value_label)
-        opacity_row.addStretch()
-        scene_layout.addLayout(opacity_row)
-        sprite_mode_row = QHBoxLayout()
-        sprite_mode_row.addWidget(QLabel(tr("onigimon_sprite_mode_label")))
-        sprite_mode_row.addStretch()
-        sprite_mode_row.addWidget(self.onigimon_sprite_mode_widget)
-        scene_layout.addLayout(sprite_mode_row)
-        self._update_onigimon_scene_controls()
-        layout.addWidget(scene_group)
+        layout.addWidget(self._create_onigimon_scene_card())
 
         difficulty_group, difficulty_layout = self._create_study_zone_card(tr("onigimon_difficulty_title"))
         difficulty_note = QLabel(tr("onigimon_difficulty_note"))
@@ -2665,6 +3391,20 @@ class GamificationSettingsDialog(QDialog):
         if not qcolor.isValid():
             return f"rgba(120, 120, 120, {alpha})"
         return f"rgba({qcolor.red()}, {qcolor.green()}, {qcolor.blue()}, {alpha})"
+
+    def _mix_hex_color(self, color, other, self_pct):
+        """Equivalent of CSS color-mix(in srgb, color self_pct%, other (100-self_pct)%)."""
+        qcolor = QColor(color)
+        qother = QColor(other)
+        if not qcolor.isValid():
+            qcolor = QColor("#6ea96a")
+        if not qother.isValid():
+            qother = QColor("#ffffff")
+        other_pct = 1.0 - self_pct
+        r = round(qcolor.red() * self_pct + qother.red() * other_pct)
+        g = round(qcolor.green() * self_pct + qother.green() * other_pct)
+        b = round(qcolor.blue() * self_pct + qother.blue() * other_pct)
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def _create_study_zone_header(self, title, description, image_filename, accent, toggle=None):
         header = QFrame()
@@ -2820,6 +3560,8 @@ class GamificationSettingsDialog(QDialog):
         timing_layout.addLayout(interval_row)
         layout.addWidget(timing_card)
 
+        layout.addWidget(self._create_mochi_looks_card())
+
         layout.addWidget(self._create_study_zone_message_card(
             tr("mochi_messages_title"),
             tr("message_editor_desc", "Create one message per card. Add, reorder, or remove them without worrying about line breaks."),
@@ -2829,6 +3571,234 @@ class GamificationSettingsDialog(QDialog):
 
         layout.addStretch()
         return page
+
+    def _create_mochi_looks_card(self):
+        """Messenger Looks — one card for everything visual about the Mochi
+        notification: who sends it, and how its text and title read.
+
+        A single tinted hero (preview + source switch) sits on top, then a flat
+        run of identical setting rows. Previously this was two cards with two
+        different internal layouts.
+        """
+        accent = "#00935C"
+        tokens = self._theme_tokens()
+
+        card, layout = self._create_study_zone_card(
+            tr("mochi_looks_title", "Messenger Looks"),
+            tr(
+                "mochi_looks_desc",
+                "Choose who delivers the messages, and how the notification text reads.",
+            ),
+        )
+
+        # --- hero: the preview and who it is ------------------------------
+        hero = QFrame()
+        hero.setObjectName("mochiLooksHero")
+        hero.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        hero.setStyleSheet(f"""
+            QFrame#mochiLooksHero {{
+                background-color: {self._rgba_from_hex(accent, 0.08)};
+                border: 1px solid {self._rgba_from_hex(accent, 0.22)};
+                border-radius: 18px;
+            }}
+            QFrame#mochiLooksHero QLabel {{ background: transparent; }}
+        """)
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(14, 12, 14, 12)
+        hero_layout.setSpacing(14)
+
+        self.mochi_icon_preview = QLabel()
+        self.mochi_icon_preview.setFixedSize(56, 56)
+        self.mochi_icon_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mochi_icon_preview.setStyleSheet(
+            "QLabel {"
+            f"  border: 1px solid {self._rgba_from_hex(accent, 0.26)};"
+            "  border-radius: 18px;"
+            f"  background: {self._rgba_from_hex(accent, 0.10)};"
+            "  font-size: 26px;"
+            "}"
+        )
+        hero_layout.addWidget(self.mochi_icon_preview, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        hero_label = QLabel(tr("mochi_source_label", "Messenger"))
+        hero_label.setStyleSheet(f"font-size: 13px; color: {tokens['fg']};")
+        hero_layout.addWidget(hero_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        hero_layout.addStretch(1)
+
+        self.mochi_icon_source_widget = GooeyPillSwitch(
+            "mochi", "custom",
+            tr("mochi_option_mochi", "Mochi"), tr("mochi_option_custom", "Custom"),
+            accent_color=accent,
+        )
+        self.mochi_icon_source_widget.setFixedHeight(38)
+        self.mochi_icon_source_widget.setMinimumWidth(180)
+        self.mochi_icon_source_widget.setValue(self.mochi_icon_choice, animate=False)
+        self.mochi_icon_source_widget.modeChanged.connect(self._set_mochi_icon_choice)
+        hero_layout.addWidget(self.mochi_icon_source_widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(hero)
+
+        # --- image ---------------------------------------------------------
+        self.mochi_import_btn = QPushButton(tr("mochi_choose_image", "Choose image…"))
+        self.mochi_import_btn.clicked.connect(self._import_mochi_custom_icon)
+        self.mochi_custom_remove_btn = QPushButton(tr("mochi_remove_image", "Remove"))
+        self.mochi_custom_remove_btn.clicked.connect(self._clear_mochi_custom_icon)
+        layout.addWidget(self._create_setting_row(
+            tr("mochi_custom_image_label", "Custom image"),
+            [self.mochi_import_btn, self.mochi_custom_remove_btn],
+        ))
+
+        hint = QLabel(tr(
+            "mochi_image_hint_short",
+            "WebP, PNG, JPG or GIF — a square ~256×256 px image with a transparent "
+            "background looks best.",
+        ))
+        hint.setObjectName("studyZoneCardDescription")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        # --- text ----------------------------------------------------------
+        self.mochi_color_reset_btn = QPushButton(tr("mochi_color_default", "Default"))
+        self.mochi_color_reset_btn.clicked.connect(self._reset_mochi_text_color)
+        self.mochi_color_swatch = QPushButton()
+        self.mochi_color_swatch.setCursor(Qt.CursorShape.PointingHandCursor)
+        # No fixed size and no stylesheet of its own: it takes the same chrome as
+        # "Choose image…" and the font button next to it, and shows the colour as
+        # a dot icon instead of being one big coloured slab.
+        self.mochi_color_swatch.setIconSize(QSize(14, 14))
+        self.mochi_color_swatch.clicked.connect(self._choose_mochi_text_color)
+        layout.addWidget(self._create_setting_row(
+            tr("mochi_message_color", "Message color"),
+            [self.mochi_color_reset_btn, self.mochi_color_swatch],
+        ))
+
+        self.mochi_font_button = QPushButton()
+        self.mochi_font_button.setMinimumWidth(150)
+        self.mochi_font_button.clicked.connect(self._open_mochi_font_picker)
+        layout.addWidget(self._create_setting_row(
+            tr("mochi_message_font", "Message font"),
+            [self.mochi_font_button],
+        ))
+
+        self.mochi_title_name_input.setFixedWidth(180)
+        self.mochi_title_row = self._create_setting_row(
+            tr("mochi_title_label", "Title text"),
+            [self.mochi_title_name_input],
+        )
+        layout.addWidget(self.mochi_title_row)
+        layout.addWidget(self._create_setting_row(
+            tr("mochi_hide_title", "Hide notification title"),
+            [self.mochi_hide_title_toggle],
+        ))
+
+        # Dim the title field while the title is hidden — it has no effect then.
+        self.mochi_hide_title_toggle.toggled.connect(self._update_mochi_title_row_state)
+        self._update_mochi_title_row_state(self.mochi_hide_title_toggle.isChecked())
+
+        self._update_mochi_icon_controls()
+        self._update_mochi_style_controls()
+        return card
+
+    def _update_mochi_title_row_state(self, hidden):
+        if hasattr(self, "mochi_title_row"):
+            self.mochi_title_row.setEnabled(not hidden)
+
+    def _mochi_font_family(self, font_key):
+        if not font_key or font_key == "system":
+            return ""
+        cache = self._mochi_font_family_cache
+        if font_key in cache:
+            return cache[font_key]
+        info = get_all_fonts(self.addon_path).get(font_key, {})
+        font_file = info.get("file")
+        if not font_file:
+            cache[font_key] = info.get("family", "")
+            return cache[font_key]
+        if info.get("user"):
+            path = os.path.join(self.addon_path, "user_files", "fonts", font_file)
+        else:
+            path = os.path.join(self.addon_path, "system_files", "fonts", "system_fonts", font_file)
+        if not os.path.exists(path):
+            cache[font_key] = info.get("family", "")
+            return cache[font_key]
+        font_id = QFontDatabase.addApplicationFont(path)
+        families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
+        cache[font_key] = families[0] if families else info.get("family", "")
+        return cache[font_key]
+
+    def _update_mochi_style_controls(self):
+        if hasattr(self, "mochi_color_swatch"):
+            # A normal row button — same fill, border and radius as the buttons
+            # around it — carrying a colour dot plus the hex, rather than being
+            # one big coloured slab. When nothing is configured this shows the
+            # notification's own default colour (web/notifications.css).
+            is_custom = bool(self.mochi_text_color) and QColor(self.mochi_text_color).isValid()
+            color = self.mochi_text_color if is_custom else self._mochi_default_text_color()
+            qcolor = QColor(color)
+            self.mochi_color_swatch.setIcon(QIcon(self._color_dot_pixmap(qcolor)))
+            self.mochi_color_swatch.setText(qcolor.name().upper())
+            self.mochi_color_reset_btn.setVisible(is_custom)
+
+        if hasattr(self, "mochi_font_button"):
+            key = self.mochi_font_key or "system"
+            info = get_all_fonts(self.addon_path).get(key, {})
+            display = tr("system") if key == "system" else info.get("name", key)
+            # Just the family name — the row's own label already says what it is,
+            # so the old "… · click to change" suffix was noise.
+            self.mochi_font_button.setText(display)
+            font = QFont()
+            family = self._mochi_font_family(key)
+            if family:
+                font.setFamily(family)
+            self.mochi_font_button.setFont(font)
+
+    def _color_dot_pixmap(self, color, size=14):
+        """A filled circle with a hairline ring, for use as a button icon."""
+        device_ratio = _safe_device_pixel_ratio(self)
+        render = max(1, int(round(size * device_ratio)))
+        pixmap = QPixmap(render, render)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QColor(color))
+        painter.setPen(QPen(QColor(0, 0, 0, 60), max(1.0, device_ratio)))
+        inset = device_ratio
+        painter.drawEllipse(QRectF(inset, inset, render - inset * 2, render - inset * 2))
+        painter.end()
+        pixmap.setDevicePixelRatio(device_ratio)
+        return pixmap
+
+    def _mochi_default_text_color(self):
+        """The colour the notification uses when none is configured — mirrors
+        --onigiri-notification-text-{light,dark} in web/notifications.css."""
+        return "#ffffff" if theme_manager.night_mode else "#2c2c2c"
+
+    def _choose_mochi_text_color(self):
+        current = self.mochi_text_color or self._mochi_default_text_color()
+        chosen, ok = OnigiriColorDialog.getColor(current, self, anchor=self.mochi_color_swatch)
+        if ok:
+            color = chosen.name() if isinstance(chosen, QColor) else str(chosen)
+            self.mochi_text_color = color
+            self._update_mochi_style_controls()
+
+    def _reset_mochi_text_color(self):
+        self.mochi_text_color = ""
+        self._update_mochi_style_controls()
+
+    def _open_mochi_font_picker(self):
+        dialog = FontPickerDialog(
+            self.mochi_font_key or "system",
+            self.addon_path,
+            self,
+            sample_text=tr("mochi_font_sample", "Keep going!"),
+            title=tr("mochi_message_font", "Message font"),
+        )
+
+        def on_selected(font_key):
+            self.mochi_font_key = font_key or "system"
+            self._update_mochi_style_controls()
+
+        dialog.fontSelected.connect(on_selected)
+        dialog.exec()
 
     def create_hexagon_land_page(self):
         page, layout = self._create_scrollable_page()
@@ -2855,46 +3825,113 @@ class GamificationSettingsDialog(QDialog):
         settings_layout.addWidget(buy_btn)
         layout.addWidget(settings_group)
 
-        keys_group, keys_layout = self._create_study_zone_card("Keys of the Island")
-        keys_note = QLabel(f"Buy the Keys of the Island for {hexagon_land.KEYS_OF_THE_ISLAND_COST} Hex Coins to name your island.")
-        keys_note.setWordWrap(True)
-        keys_layout.addWidget(keys_note)
-
-        self.hexagon_keys_status_label = QLabel()
-        self.hexagon_keys_status_label.setWordWrap(True)
-        keys_layout.addWidget(self.hexagon_keys_status_label)
-
-        name_row = QHBoxLayout()
-        name_row.addWidget(QLabel("Island name"))
-        self.hexagon_island_name_input = QLineEdit()
-        self.hexagon_island_name_input.setMaxLength(40)
-        name_row.addWidget(self.hexagon_island_name_input, 1)
-        self.hexagon_island_name_save_btn = QPushButton("Save Name")
-        self.hexagon_island_name_save_btn.clicked.connect(self._save_hexagon_island_name)
-        name_row.addWidget(self.hexagon_island_name_save_btn)
-        keys_layout.addLayout(name_row)
-
-        self.hexagon_keys_button = QPushButton("Buy Keys of the Island")
-        self.hexagon_keys_button.clicked.connect(self._buy_hexagon_keys)
-        keys_layout.addWidget(self.hexagon_keys_button)
-        layout.addWidget(keys_group)
-
-        survival_group, survival_layout = self._create_study_zone_card("Survival Mode")
-        survival_desc = QLabel("If enabled, the larger your streak, the more land tiles you will lose if you miss a study day.")
-        survival_desc.setWordWrap(True)
-        survival_desc.setStyleSheet("color: #888;")
-        survival_layout.addWidget(survival_desc)
-        survival_row = QHBoxLayout()
-        survival_row.addWidget(QLabel("Survival Mode"))
-        survival_row.addStretch()
-        survival_row.addWidget(self.hexagon_survival_toggle)
-        survival_layout.addLayout(survival_row)
-        layout.addWidget(survival_group)
+        layout.addWidget(self._create_hexagon_keys_card(hexagon_land))
 
         self._refresh_hexagon_island_controls()
 
         layout.addStretch()
         return page
+
+    def _render_island_key_pixmap(self, size=28, color="#FFFFFF"):
+        """Render ISLAND_KEY_SVG at the screen's pixel ratio in the given tint."""
+        device_ratio = _safe_device_pixel_ratio(self)
+        render_size = max(1, int(round(size * device_ratio)))
+        pixmap = QPixmap(render_size, render_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        try:
+            renderer = QSvgRenderer(ISLAND_KEY_SVG.format(color=color).encode("utf-8"))
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            renderer.render(painter)
+            painter.end()
+        except Exception as exc:
+            print(f"Onigiri: Could not render island key icon: {exc}")
+        pixmap.setDevicePixelRatio(device_ratio)
+        return pixmap
+
+    def _create_hexagon_keys_card(self, hexagon_land):
+        """Keys of the Island.
+
+        Uses the same card shell as every other settings card — the only thing
+        setting it apart is an accent-tinted key banner, matching how the page
+        heroes tint their icon shell. Everything below that is a standard row
+        so it reads as part of the same dialog.
+        """
+        tokens = self._theme_tokens()
+        accent = "#1F6FE0"
+
+        card, layout = self._create_study_zone_card(
+            tr("hexagon_keys_title", "Keys of the Island"),
+            tr(
+                "hexagon_keys_desc",
+                "Buy the keys to name your island. The name appears on the Hexagon Land widget.",
+            ),
+        )
+
+        # Accent banner: key glyph, cost, and the live balance on the right.
+        banner = QFrame()
+        banner.setObjectName("hexagonKeysBanner")
+        banner.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        banner.setStyleSheet(f"""
+            QFrame#hexagonKeysBanner {{
+                background-color: {self._rgba_from_hex(accent, 0.10)};
+                border: 1px solid {self._rgba_from_hex(accent, 0.26)};
+                border-radius: 18px;
+            }}
+            QFrame#hexagonKeysBanner QLabel {{ background: transparent; }}
+        """)
+        banner_layout = QHBoxLayout(banner)
+        banner_layout.setContentsMargins(14, 12, 16, 12)
+        banner_layout.setSpacing(12)
+
+        key_shell = QLabel()
+        key_shell.setFixedSize(40, 40)
+        key_shell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        key_shell.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        key_shell.setStyleSheet(
+            f"background-color: {self._rgba_from_hex(accent, 0.16)};"
+            f" border: 1px solid {self._rgba_from_hex(accent, 0.30)};"
+            " border-radius: 13px;"
+        )
+        key_shell.setPixmap(self._render_island_key_pixmap(20, accent))
+        banner_layout.addWidget(key_shell, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        cost_label = QLabel(
+            tr("hexagon_keys_cost", "{cost} Hex Coins").format(
+                cost=f"{hexagon_land.KEYS_OF_THE_ISLAND_COST:,}"
+            )
+        )
+        cost_label.setStyleSheet(f"font-size: 14px; font-weight: 500; color: {tokens['fg']};")
+        banner_layout.addWidget(cost_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        banner_layout.addStretch(1)
+
+        self.hexagon_keys_status_label = QLabel()
+        self.hexagon_keys_status_label.setStyleSheet(f"font-size: 13px; color: {tokens['muted']};")
+        self.hexagon_keys_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        banner_layout.addWidget(self.hexagon_keys_status_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(banner)
+
+        # Island name — a standard setting row, styled by the dialog stylesheet.
+        self.hexagon_island_name_input = QLineEdit()
+        self.hexagon_island_name_input.setMaxLength(40)
+        self.hexagon_island_name_input.setMinimumWidth(180)
+        self.hexagon_island_name_input.setPlaceholderText(tr("hexagon_island_name", "Island name"))
+        self.hexagon_island_name_save_btn = QPushButton(tr("save", "Save"))
+        self.hexagon_island_name_save_btn.clicked.connect(self._save_hexagon_island_name)
+        layout.addWidget(self._create_setting_row(
+            tr("hexagon_island_name", "Island name"),
+            [self.hexagon_island_name_input, self.hexagon_island_name_save_btn],
+        ))
+
+        self.hexagon_keys_button = QPushButton(tr("hexagon_keys_buy", "Buy Keys of the Island"))
+        self.hexagon_keys_button.setIcon(QIcon(self._render_island_key_pixmap(16, tokens["fg"])))
+        self.hexagon_keys_button.setIconSize(QSize(16, 16))
+        self.hexagon_keys_button.clicked.connect(self._buy_hexagon_keys)
+        layout.addWidget(self.hexagon_keys_button)
+
+        return card
 
     def create_coming_soon_page(self):
         return self.create_hexagon_land_page()
@@ -2909,10 +3946,17 @@ class GamificationSettingsDialog(QDialog):
         self.hexagon_island_name_input.setEnabled(owns_keys)
         self.hexagon_island_name_save_btn.setEnabled(owns_keys)
         self.hexagon_keys_button.setVisible(not owns_keys)
+        # Short, because this now sits right-aligned on one meta line beside the
+        # cost rather than on its own wrapped row.
         if owns_keys:
-            self.hexagon_keys_status_label.setText("Keys owned. Your island name appears on the Hexagon Land widget.")
+            self.hexagon_keys_status_label.setText(tr("hexagon_keys_owned", "owned"))
         else:
-            self.hexagon_keys_status_label.setText(f"Current balance: {state.hex_coins} Hex Coins.")
+            self.hexagon_keys_status_label.setText(
+                f"{state.hex_coins:,} / {hexagon_land.KEYS_OF_THE_ISLAND_COST:,}"
+            )
+            self.hexagon_keys_button.setEnabled(
+                state.hex_coins >= hexagon_land.KEYS_OF_THE_ISLAND_COST
+            )
 
     def _buy_hexagon_keys(self):
         hexagon_land = _hexagon_land_module()
@@ -2934,7 +3978,7 @@ class GamificationSettingsDialog(QDialog):
             tr("recipe_rush_sync_title", "Nook Rush Sync"),
             tr(
                 "recipe_rush_sync_confirm",
-                "Pick a fresh Nook Rush from the Apps Script for the currently equipped Nook, "
+                "Pick a fresh Nook Rush for the currently equipped Nook, "
                 "replacing today's ticket? Today's card progress is kept.",
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2981,7 +4025,7 @@ class GamificationSettingsDialog(QDialog):
                 text-align: left;
                 padding: 0px;
                 font-size: 13px;
-                font-weight: 700;
+                font-weight: 500;
             }}
             QPushButton#restaurantChipColorLabel:hover,
             QPushButton#restaurantChipColorLabel:pressed {{
@@ -3028,7 +4072,7 @@ class GamificationSettingsDialog(QDialog):
         opacity_layout.setContentsMargins(16, 0, 10, 0)
         opacity_layout.setSpacing(12)
         opacity_label = QLabel("Opacity")
-        opacity_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 700;")
+        opacity_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 500;")
 
         slider_track = tokens["surface"]
         slider_border = tokens["border"]
@@ -3037,7 +4081,7 @@ class GamificationSettingsDialog(QDialog):
         self.rl_chip_bg_opacity_value_label = QLabel("100%")
         self.rl_chip_bg_opacity_value_label.setFixedWidth(48)
         self.rl_chip_bg_opacity_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.rl_chip_bg_opacity_value_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 700;")
+        self.rl_chip_bg_opacity_value_label.setStyleSheet(f"color: {tokens['fg']}; font-size: 13px; font-weight: 500;")
 
         current_alpha = 100
         cur_color = self._current_chip_bg_color
@@ -3155,7 +4199,7 @@ class GamificationSettingsDialog(QDialog):
                 max-height: {height}px;
                 padding: {padding};
                 font-size: 13px;
-                font-weight: 700;
+                font-weight: 500;
                 letter-spacing: 0.2px;
             }}
             QPushButton#restaurantChipColorButton:hover,
@@ -3225,6 +4269,8 @@ class GamificationSettingsDialog(QDialog):
         self.current_config["gamificationMode"] = self.gamification_mode_toggle.isChecked()
         self.current_config["onigiri_notification_duration_ms"] = self.notification_duration_spinbox.value() * 1000
         
+        self.current_config["onigiri_reviewer_notification_mode"] = self.notification_mode_widget.value()
+        
         # Focused Gaming — if enabled, force restaurant notifications off
         focused = self.focused_gaming_toggle.isChecked()
         self.current_config["focusedGaming"] = focused
@@ -3252,7 +4298,11 @@ class GamificationSettingsDialog(QDialog):
                 break
         res_conf["difficulty"] = selected_diff
         
-        if "Nook Level" in self._loaded_pages:
+        # Profile Level chip: which game it reflects (General page selector)
+        self.current_config["profile_level_game"] = getattr(self, "profile_level_game", "nook")
+
+        # Level Chip Appearance colors now live on the always-loaded General page.
+        if "General" in self._loaded_pages:
             res_conf["chip_bg_color"]              = getattr(self, "rl_chip_bg_color",              "") or ""
             res_conf["chip_progress_color"]        = getattr(self, "rl_chip_progress_color",        "") or ""
             res_conf["chip_text_color"]            = getattr(self, "rl_chip_text_color",            "") or ""
@@ -3283,6 +4333,7 @@ class GamificationSettingsDialog(QDialog):
         oni_conf["scene_background_image"] = self.onigimon_scene_image
         oni_conf["scene_background_blur"] = self.onigimon_scene_blur_slider.value()
         oni_conf["scene_background_opacity"] = self.onigimon_scene_opacity_slider.value()
+        oni_conf["scene_bottom_color"] = getattr(self, "onigimon_bottom_color", "") or ""
         if "Onigimon" in self._loaded_pages and self.onigimon_selected_companion_id:
             onigimon = _onigimon_module()
             onigimon.manager.set_active_companion(str(self.onigimon_selected_companion_id))
@@ -3293,6 +4344,18 @@ class GamificationSettingsDialog(QDialog):
         mochi_conf["enabled"] = self.mochi_messages_toggle.isChecked()
         mochi_conf["cards_interval"] = self.mochi_interval_spinbox.value()
         mochi_conf["messages"] = self.mochi_messages_editor.messages()
+        # Fall back to Mochi if the custom image is missing/removed.
+        if self.mochi_icon_choice == "custom" and self._mochi_custom_icon_abs_path() \
+                and os.path.exists(self._mochi_custom_icon_abs_path()):
+            mochi_conf["icon_choice"] = "custom"
+            mochi_conf["custom_icon"] = self.mochi_custom_icon
+        else:
+            mochi_conf["icon_choice"] = "mochi"
+            mochi_conf["custom_icon"] = self.mochi_custom_icon
+        mochi_conf["text_color"] = self.mochi_text_color or ""
+        mochi_conf["font"] = self.mochi_font_key or "system"
+        mochi_conf["title_name"] = self.mochi_title_name_input.text().strip()
+        mochi_conf["hide_title"] = self.mochi_hide_title_toggle.isChecked()
 
         # Focus Dango
         dango_conf = self.achievements_config.setdefault("focusDango", {})
@@ -3305,7 +4368,6 @@ class GamificationSettingsDialog(QDialog):
         hex_conf = self.current_config.setdefault("hexagon_land", {})
         hex_conf["enabled"] = self.hexagon_land_toggle.isChecked()
         hex_conf["theme"] = "island"
-        hex_conf["survival_mode"] = self.hexagon_survival_toggle.isChecked()
         if "Hexagon Land" in self._loaded_pages and hasattr(self, "hexagon_island_name_input"):
             hexagon_land = _hexagon_land_module()
             state = hexagon_land.manager.load()
@@ -3361,6 +4423,12 @@ class GamificationSettingsDialog(QDialog):
         study_zone_spinbox_down_icon = self._tinted_stylesheet_svg_path("down.svg", fg)
 
         self.setStyleSheet(f"""
+            /* Poppins everywhere, never heavier than Medium (500). Registered
+               into Qt in __init__ via register_poppins_qt(). */
+            * {{
+                font-family: 'Poppins';
+                font-weight: 400;
+            }}
             QDialog {{ background-color: {bg}; color: {fg}; }}
             QWidget#settingsSidebarWrapper {{
                 background-color: {bg};
@@ -3384,7 +4452,7 @@ class GamificationSettingsDialog(QDialog):
                 border: none;
                 border-radius: 12px;
                 font-size: 10px;
-                font-weight: 700;
+                font-weight: 500;
                 letter-spacing: 0.7px;
                 padding: 4px 8px;
                 text-align: left;
@@ -3396,7 +4464,7 @@ class GamificationSettingsDialog(QDialog):
             QPushButton#sidebarSectionToggle:checked {{
                 color: {muted};
                 background: transparent;
-                font-weight: 700;
+                font-weight: 500;
             }}
             QWidget#sidebarSectionContent {{
                 background: transparent;
@@ -3423,7 +4491,7 @@ class GamificationSettingsDialog(QDialog):
                 background-color: {surface_bg};
                 color: {fg};
                 border-color: transparent;
-                font-weight: 600;
+                font-weight: 500;
             }}
             QScrollArea#sidebarNavScrollArea QScrollBar:vertical {{
                 border: none;
@@ -3450,10 +4518,16 @@ class GamificationSettingsDialog(QDialog):
                 border: none;
             }}
             /* Rounded content shell around each page (matches Onigiri) */
+            /* Only the top corners are rounded — the two bottom edges stay
+               square so each settings page reads as a sheet rising from the
+               bottom of the window. */
             QFrame#contentContainer {{
                 background-color: {content_bg};
                 border: none;
-                border-radius: 28px;
+                border-top-left-radius: 28px;
+                border-top-right-radius: 28px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
             }}
             QStackedWidget#contentStack {{
                 background-color: transparent;
@@ -3469,7 +4543,7 @@ class GamificationSettingsDialog(QDialog):
                 max-height: 38px;
                 padding: 0px 14px;
                 font-size: 13px;
-                font-weight: bold;
+                font-weight: 500;
             }}
             QPushButton#saveButton:hover {{
                 background-color: {accent};
@@ -3486,7 +4560,7 @@ class GamificationSettingsDialog(QDialog):
                 max-height: 38px;
                 padding: 0px 14px;
                 font-size: 13px;
-                font-weight: bold;
+                font-weight: 500;
             }}
             QPushButton#cancelButton:hover {{
                 background-color: {hover_bg};
@@ -3510,7 +4584,7 @@ class GamificationSettingsDialog(QDialog):
                 color: {fg};
                 background: transparent;
                 font-size: 22px;
-                font-weight: 800;
+                font-weight: 500;
             }}
             QLabel#studyZoneDescription {{
                 color: {muted};
@@ -3529,7 +4603,7 @@ class GamificationSettingsDialog(QDialog):
                 border: 1px solid {border};
                 border-radius: 18px;
                 padding: 8px 16px;
-                font-weight: 600;
+                font-weight: 500;
             }}
             QFrame#studyZoneCard QPushButton:hover {{
                 border: 1px solid {accent};
@@ -3548,7 +4622,7 @@ class GamificationSettingsDialog(QDialog):
                 border-radius: 18px;
                 padding: 8px 16px;
                 min-height: 36px;
-                font-weight: 600;
+                font-weight: 500;
                 outline: none;
             }}
             QPushButton[contentRoundedButton="true"]:hover,
@@ -3585,7 +4659,7 @@ class GamificationSettingsDialog(QDialog):
                 color: {fg};
                 background: transparent;
                 font-size: 15px;
-                font-weight: 700;
+                font-weight: 500;
             }}
             QLabel#studyZoneCardDescription {{
                 color: {muted};
@@ -3597,21 +4671,42 @@ class GamificationSettingsDialog(QDialog):
                 background: transparent;
                 border: none;
             }}
+            /* Message rows are fully pill-shaped, and every pseudo-state
+               restates the radius so the corners never snap back to square
+               on hover/focus/disabled. */
             QFrame#studyZoneMessageRow {{
                 background-color: {surface_bg};
                 border: 1px solid {border};
-                border-radius: 12px;
+                border-radius: 25px;
             }}
+            QFrame#studyZoneMessageRow:hover {{
+                border: 1px solid {border};
+                border-radius: 25px;
+            }}
+            /* Scoped twin for the same specificity reason as the icon buttons:
+               `QFrame#studyZoneCard QLineEdit` would otherwise impose its own
+               12px radius on the message inputs. */
+            QFrame#studyZoneCard QLineEdit#studyZoneMessageInput,
             QLineEdit#studyZoneMessageInput {{
-                background-color: transparent;
+                background-color: {inner_group_bg};
                 color: {fg};
-                border: none;
-                padding: 5px 2px;
+                border: 1px solid {border};
+                border-radius: 17px;
+                padding: 6px 14px;
+                min-height: 22px;
                 selection-background-color: {accent};
                 font-size: 13px;
             }}
+            QFrame#studyZoneCard QLineEdit#studyZoneMessageInput:focus,
             QLineEdit#studyZoneMessageInput:focus {{
-                border: none;
+                border: 1px solid {accent};
+                border-radius: 17px;
+                padding: 6px 14px;
+            }}
+            QFrame#studyZoneCard QLineEdit#studyZoneMessageInput:hover,
+            QLineEdit#studyZoneMessageInput:hover {{
+                border-radius: 17px;
+                padding: 6px 14px;
             }}
             QWidget#studyZonePinInput {{
                 background: transparent;
@@ -3628,33 +4723,68 @@ class GamificationSettingsDialog(QDialog):
             QLineEdit#studyZonePinDigit:focus {{
                 border-color: {accent};
             }}
+            /* Circular icon buttons (34px box, 17px radius) in every state.
+               Each selector is repeated in a `QFrame#studyZoneCard ...` form:
+               Qt ranks `QFrame#studyZoneCard QPushButton` (1 id + 2 type names)
+               ABOVE a plain `QPushButton#studyZoneMessageIconButton` (1 id +
+               1 type name), so without the scoped twin the card's generic
+               `padding: 8px 16px` won on a 34px-wide button, collapsed the
+               content box and made Qt drop the rounded corners. Only the
+               disabled state escaped, which is why the buttons rendered round
+               when greyed out and square when active. `padding` is restated in
+               every state for the same reason. */
+            QFrame#studyZoneCard QPushButton#studyZoneMessageIconButton,
             QPushButton#studyZoneMessageIconButton {{
-                background-color: transparent;
+                background-color: {inner_group_bg};
                 color: {muted};
-                border: none;
-                border-radius: 15px;
+                border: 1px solid {border};
+                border-radius: 17px;
                 padding: 0px;
+                min-height: 0px;
+                min-width: 0px;
             }}
+            QFrame#studyZoneCard QPushButton#studyZoneMessageIconButton:hover,
             QPushButton#studyZoneMessageIconButton:hover {{
                 background-color: {hover_bg};
                 color: {fg};
+                border: 1px solid {accent};
+                border-radius: 17px;
+                padding: 0px;
             }}
+            QFrame#studyZoneCard QPushButton#studyZoneMessageIconButton:pressed,
+            QPushButton#studyZoneMessageIconButton:pressed {{
+                background-color: {border};
+                border-radius: 17px;
+                padding: 0px;
+            }}
+            QFrame#studyZoneCard QPushButton#studyZoneMessageIconButton:disabled,
             QPushButton#studyZoneMessageIconButton:disabled {{
-                background-color: transparent;
+                background-color: {inner_group_bg};
                 color: {border};
+                border: 1px solid {border};
+                border-radius: 17px;
+                padding: 0px;
             }}
+            QFrame#studyZoneCard QPushButton#studyZoneAddMessageButton,
             QPushButton#studyZoneAddMessageButton {{
                 background-color: {surface_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 16px;
-                padding: 6px 14px;
-                min-height: 32px;
+                border-radius: 18px;
+                padding: 8px 16px;
+                min-height: 36px;
                 font-size: 13px;
-                font-weight: 700;
+                font-weight: 500;
             }}
+            QFrame#studyZoneCard QPushButton#studyZoneAddMessageButton:hover,
             QPushButton#studyZoneAddMessageButton:hover {{
                 border: 1px solid {accent};
+                border-radius: 18px;
+            }}
+            QFrame#studyZoneCard QPushButton#studyZoneAddMessageButton:pressed,
+            QPushButton#studyZoneAddMessageButton:pressed {{
+                background-color: {border};
+                border-radius: 18px;
             }}
             QSpinBox#studyZoneSpinBox {{
                 background-color: {surface_bg};
@@ -3699,14 +4829,55 @@ class GamificationSettingsDialog(QDialog):
                 image: url("{study_zone_spinbox_down_icon}");
             }}
             
+            /* Shared "label left, controls right" row used by every card. */
+            QFrame#settingRow {{
+                background-color: {surface_bg};
+                border: 1px solid {border};
+                border-radius: 18px;
+            }}
+            QFrame#settingRow QLabel {{
+                background: transparent;
+                font-size: 13px;
+            }}
+            /* Explicit disabled colours: the blanket `QLabel {{ color: fg }}`
+               rule below beats Qt's disabled palette, so a row switched off with
+               setEnabled(False) would otherwise look fully active. */
+            QFrame#settingRow QLabel:disabled {{
+                color: {muted};
+            }}
+            QFrame#settingRow QLineEdit:disabled {{
+                color: {muted};
+                border: 1px solid {border};
+            }}
+
             QWidget#innerGroup {{ background-color: {inner_group_bg}; border: 1px solid {border}; border-radius: 24px; }}
             
-            /* General QPushButton fallback (for content area buttons only) */
-            QPushButton {{ background-color: {surface_bg}; color: {fg}; border: 1px solid {border}; padding: 8px 12px; border-radius: 18px; }}
+            /* General QPushButton fallback (for content area buttons only).
+               Every content button shares this one geometry — radius 18,
+               36px tall, 8/16 padding — so no button ever reads as a
+               different shape from its neighbours. */
+            QPushButton {{
+                background-color: {surface_bg};
+                color: {fg};
+                border: 1px solid {border};
+                padding: 8px 16px;
+                min-height: 36px;
+                border-radius: 18px;
+            }}
             QPushButton:pressed {{ background-color: {border}; }}
-            
-            QPushButton#dangerButton {{ color: #ff6b6b; font-weight: bold; border: 1px solid #ff6b6b; border-radius: 16px; padding: 8px; }}
-            QPushButton#dangerButton:hover {{ background-color: #ff6b6b; color: white; }}
+
+            /* Danger buttons differ only in colour, never in shape. */
+            QPushButton#dangerButton {{
+                background-color: {surface_bg};
+                color: #ff6b6b;
+                font-weight: 500;
+                border: 1px solid #ff6b6b;
+                border-radius: 18px;
+                padding: 8px 16px;
+                min-height: 36px;
+            }}
+            QPushButton#dangerButton:hover {{ background-color: #ff6b6b; color: white; border-radius: 18px; }}
+            QPushButton#dangerButton:pressed {{ background-color: #e85c5c; color: white; border-radius: 18px; }}
             
             QComboBox {{ background-color: {inner_group_bg}; color: {fg}; border: 1px solid {border}; border-radius: 12px; padding: 5px 12px; }}
             QComboBox QAbstractItemView {{ background-color: {inner_group_bg}; color: {fg}; selection-background-color: {border}; }}
@@ -3738,7 +4909,7 @@ class GamificationSettingsDialog(QDialog):
                 border-radius: 12px;
                 padding: 4px;
                 font-size: 11px;
-                font-weight: 700;
+                font-weight: 500;
             }}
             QPushButton#onigimonCompanionTile:hover {{
                 border: 1px solid #F2B705;
@@ -3752,13 +4923,19 @@ class GamificationSettingsDialog(QDialog):
                 background-color: {surface_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 15px;
-                padding: 4px 14px;
-                min-height: 28px;
+                border-radius: 18px;
+                padding: 8px 16px;
+                min-height: 36px;
+                font-weight: 500;
             }}
             QPushButton#onigimonSceneButton:hover {{
                 border: 1px solid #F2B705;
                 background-color: {hover_bg};
+                border-radius: 18px;
+            }}
+            QPushButton#onigimonSceneButton:pressed {{
+                background-color: {border};
+                border-radius: 18px;
             }}
             QLabel#onigimonSceneBlurValue {{
                 color: {fg};
@@ -3766,20 +4943,23 @@ class GamificationSettingsDialog(QDialog):
             }}
 
             QPushButton#notificationPositionButton {{
-                background-color: transparent;
+                background-color: {surface_bg};
                 color: {fg};
                 border: 1px solid {border};
-                border-radius: 16px;
+                border-radius: 18px;
                 font-size: 20px;
                 padding: 0;
+                min-height: 0px;
             }}
             QPushButton#notificationPositionButton:hover {{
                 background-color: {hover_bg};
+                border-radius: 18px;
             }}
             QPushButton#notificationPositionButton:checked {{
                 background-color: {notification_checked_bg};
                 color: {fg};
                 border: 1px solid {accent};
+                border-radius: 18px;
             }}
             QWidget#notificationPositionPreview {{
                 border: 2px solid {border};
@@ -3834,6 +5014,13 @@ class GamificationSettingsDialog(QDialog):
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 height: 0px; background: none; border: none;
+            }}
+            /* Horizontal twin, for the rare window too narrow for a page. */
+            QScrollBar:horizontal {{ border: none; background: transparent; height: 8px; margin: 0; }}
+            QScrollBar::handle:horizontal {{ background: {border}; min-width: 20px; border-radius: 8px; }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+                width: 0px; background: none; border: none;
             }}
         """)
         self._prepare_content_controls(self.content_stack)

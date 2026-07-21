@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from aqt import mw
 from . import patcher
+from . import fsrs_helper_integration
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
 from . import config, heatmap
@@ -38,6 +39,12 @@ def _hexagon_land():
     return hexagon_land
 
 
+def _mochi_messages():
+    from .gamification import mochi_messages
+
+    return mochi_messages
+
+
 def _onigimon():
     from .gamification import onigimon
 
@@ -54,6 +61,12 @@ def _prep_station():
     from . import prep_station
 
     return prep_station
+
+
+def _hashi_notes():
+    from . import hashi_notes
+
+    return hashi_notes
 
 
 def _is_deckline_hook_id(hook_id: str) -> bool:
@@ -306,7 +319,18 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     # But if there are overrides defined in settings, we should handle them.
     # sidebar_api.render_sidebar_entry already checks _load_icon_override.
     # So we mainly need to ensure the standard buttons get their CSS.
-    
+
+    # 3. Optional dashed call-to-action outline on "Add" (Action Button
+    #    Customization). Only meaningful in list mode; the collapsed toolbar
+    #    renders its own .action-btn markup via injector.js.
+    if conf.get("sidebarAddDashed", False):
+        css_lines.append("""
+        .sidebar-left .menu-item.action-add {
+            border: 1px dashed var(--border) !important;
+            border-radius: 8px !important;
+        }
+        """)
+
     return "<style>" + "\n".join(css_lines) + "</style>"
 
 
@@ -344,6 +368,445 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
     style = f"filter: blur({blur * 0.2}px); opacity: {opacity};" if blur or opacity < 1.0 else ""
     style_attr = f' style="{style}"' if style else ""
     return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
+
+
+def _chip_color_to_css(color: str) -> str:
+    """Qt's #AARRGGBB (from _valid_hex_color when alpha < 255) isn't a valid
+    CSS/SVG color; convert it to rgba(). Plain #RRGGBB passes through."""
+    text = str(color or "").strip()
+    if text.startswith("#") and len(text) == 9:
+        a = int(text[1:3], 16) / 255.0
+        r = int(text[3:5], 16)
+        g = int(text[5:7], 16)
+        b = int(text[7:9], 16)
+        return f"rgba({r}, {g}, {b}, {a:.3f})"
+    return text
+
+
+def _nook_level_progress():
+    """Returns (enabled, level, fraction, chip_color) for the ring/minimal
+    profile fill. `chip_color` is the Level Chip's own Progress color
+    (gamification_settings.py's Nook Level > Level Chip Appearance), so the
+    ring/minimal fill always matches the chip shown in the reviewer/sidebar.
+    `enabled` is True only when the Nook Level minigame is on AND set to show
+    profile-bar progress, matching the guards used by _get_nook_level_chip_html
+    in patcher.py."""
+    try:
+        conf = config.get_config()
+        restaurant_conf = conf.get("restaurant_level", {})
+        if not restaurant_conf:
+            restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
+        if not restaurant_conf.get("enabled", False):
+            return (False, 0, 0.0, "")
+        if not restaurant_conf.get("show_profile_bar_progress", True):
+            return (False, 0, 0.0, "")
+        nook = _nook_level()
+        progress = nook.manager.get_progress()
+        if not progress or not getattr(progress, "enabled", False):
+            return (False, 0, 0.0, "")
+        level = getattr(progress, "level", 0)
+        fraction = float(getattr(progress, "progress_fraction", 0.0) or 0.0)
+        fraction = max(0.0, min(1.0, fraction))
+        chip_color = _chip_color_to_css(nook.get_chip_style_values(conf).get("progress") or "")
+        return (True, level, fraction, chip_color)
+    except Exception as exc:
+        print(f"Onigiri: Error reading nook level progress: {exc}")
+        return (False, 0, 0.0, "")
+
+
+def _selected_profile_level_game():
+    """Which game drives the profile Level chip: 'nook' | 'onigimon' | 'hexagon'.
+    Chosen in gamification_settings.py > General > Profile Level."""
+    try:
+        return str(config.get_config().get("profile_level_game", "nook") or "nook").lower()
+    except Exception:
+        return "nook"
+
+
+def _shared_chip_progress_color():
+    """The user's Level Chip progress color (now a shared General setting).
+    Used so every game's profile level fills in the same picked color."""
+    try:
+        raw = _nook_level().get_chip_style_values(config.get_config()).get("progress") or ""
+        return _chip_color_to_css(raw)
+    except Exception:
+        return ""
+
+
+def _onigimon_level_progress():
+    """(enabled, level, fraction, color) for the Onigimon companion level."""
+    try:
+        onigimon = _onigimon()
+        if not onigimon.manager.is_enabled():
+            return (False, 0, 0.0, "")
+        payload = onigimon.manager.widget_payload(refresh_bridge=False)
+        if payload.get("status") != "ready":
+            return (False, 0, 0.0, "")
+        companion = payload.get("companion")
+        if not companion:
+            return (False, 0, 0.0, "")
+        level = int(companion.get("level") or 0)
+        xp = int(companion.get("xp") or 0)
+        # Medium-fast growth group: total xp for level n is n**3.
+        base = level ** 3
+        nxt = (level + 1) ** 3
+        span = max(1, nxt - base)
+        fraction = max(0.0, min(1.0, (xp - base) / span))
+        return (True, level, fraction, "#f5a623")
+    except Exception as exc:
+        print(f"Onigiri: Error reading onigimon level: {exc}")
+        return (False, 0, 0.0, "")
+
+
+def _hexagon_level_progress():
+    """(enabled, level, fraction, color) for the Hexagon Land island level."""
+    try:
+        conf = config.get_config()
+        hex_conf = conf.get("hexagon_land", conf.get("hexagon_world", {}))
+        if not hex_conf.get("enabled", False):
+            return (False, 0, 0.0, "")
+        hexagon = _hexagon_land()
+        if not hexagon.manager.is_enabled():
+            return (False, 0, 0.0, "")
+        info = hexagon.manager.level_info()
+        return (True, int(info["level"]), float(info["fraction"]), "#1597d1")
+    except Exception as exc:
+        print(f"Onigiri: Error reading hexagon level: {exc}")
+        return (False, 0, 0.0, "")
+
+
+def _profile_level_progress():
+    """Unified profile-card level, dispatched by the General profile-level game
+    selector. Returns (enabled, level, fraction, color). If the chosen game is
+    off/unavailable it returns disabled (no surprise fallback to another game)."""
+    game = _selected_profile_level_game()
+    if game == "onigimon":
+        result = _onigimon_level_progress()
+    elif game == "hexagon":
+        result = _hexagon_level_progress()
+    else:
+        return _nook_level_progress()
+    if not result[0]:
+        return (False, 0, 0.0, "")
+    # Prefer the user's shared Level Chip progress color for a consistent look.
+    shared = _shared_chip_progress_color()
+    if shared:
+        return (result[0], result[1], result[2], shared)
+    return result
+
+
+def _profile_fill_color():
+    """User-picked fallback fill color (theme-aware) used when Nook Level is off."""
+    try:
+        is_dark = bool(mw.pm.night_mode())
+    except Exception:
+        is_dark = False
+    theme_key = "dark" if is_dark else "light"
+    return _col_conf_get(f"modern_menu_profile_fill_color_{theme_key}", "#4f7cff") or "#4f7cff"
+
+
+def _profile_panel_accent_color():
+    """Weekly-chart color: the bar-mode name color when profile_type is 'bar',
+    else the same ring/minimal progress color used by build_profile_type_html."""
+    profile_type = _col_conf_get("modern_menu_profile_type", "bar")
+    if profile_type == "bar":
+        try:
+            is_dark = bool(mw.pm.night_mode())
+        except Exception:
+            is_dark = False
+        theme_key = "dark" if is_dark else "light"
+        return _col_conf_get(f"modern_menu_profile_name_color_{theme_key}", "#111827") or "#111827"
+    enabled, _level, _fraction, theme_color = _profile_level_progress()
+    return theme_color if (enabled and theme_color) else _profile_fill_color()
+
+
+def _nook_level_page_progress():
+    """Like _nook_level_progress but gated on show_profile_page_progress
+    (the profile-panel toggle) instead of show_profile_bar_progress."""
+    try:
+        conf = config.get_config()
+        restaurant_conf = conf.get("restaurant_level", {})
+        if not restaurant_conf.get("enabled", False):
+            return (False, 0, 0.0, "")
+        if not restaurant_conf.get("show_profile_page_progress", True):
+            return (False, 0, 0.0, "")
+        nook = _nook_level()
+        progress = nook.manager.get_progress()
+        if not progress or not getattr(progress, "enabled", False):
+            return (False, 0, 0.0, "")
+        level = getattr(progress, "level", 0)
+        fraction = float(getattr(progress, "progress_fraction", 0.0) or 0.0)
+        fraction = max(0.0, min(1.0, fraction))
+        chip_color = _chip_color_to_css(nook.get_chip_style_values(conf).get("progress") or "#B94632")
+        return (True, level, fraction, chip_color)
+    except Exception as exc:
+        print(f"Onigiri: Error reading nook level page progress: {exc}")
+        return (False, 0, 0.0, "")
+
+
+def _hexagon_land_count():
+    try:
+        conf = config.get_config()
+        hex_conf = conf.get("hexagon_land", conf.get("hexagon_world", {}))
+        if not hex_conf.get("enabled", False):
+            return (False, 0)
+        payload = _hexagon_land().manager.payload()
+        if not payload.get("enabled", False):
+            return (False, 0)
+        return (True, int(payload.get("builtLands", 0) or 0))
+    except Exception as exc:
+        print(f"Onigiri: Error reading hexagon land count: {exc}")
+        return (False, 0)
+
+
+def _onigimon_hp_summary():
+    try:
+        onigimon = _onigimon()
+        if not onigimon.manager.is_enabled():
+            return None
+        payload = onigimon.manager.widget_payload(refresh_bridge=False)
+        if payload.get("status") != "ready":
+            return None
+        companion = payload.get("companion")
+        if not companion:
+            return None
+        name = onigimon.manager.companion_display_name(companion)
+        current_hp = int(companion.get("hp") or 0)
+        max_hp = int(companion.get("max_hp") or 0)
+        health_pct = onigimon.manager.status_values(onigimon.OnigimonCompanion(**companion)).get("health", 0)
+        return {
+            "name": name,
+            "current_hp": current_hp,
+            "max_hp": max_hp,
+            "health_pct": max(0, min(100, int(health_pct or 0))),
+        }
+    except Exception as exc:
+        print(f"Onigiri: Error reading onigimon HP: {exc}")
+        return None
+
+
+def _weekly_chart_svg(values, color):
+    width, height = 260, 64
+    pad_x, pad_y = 6, 8
+    safe_values = [max(0, int(v)) for v in (values or [])] or [0] * 7
+    max_val = max(max(safe_values), 1)
+    n = len(safe_values)
+    step = (width - pad_x * 2) / max(n - 1, 1)
+    points = []
+    for i, v in enumerate(safe_values):
+        x = pad_x + step * i
+        y = pad_y + (height - pad_y * 2) * (1 - (v / max_val))
+        points.append((x, y))
+
+    def _smooth_path(pts):
+        if not pts:
+            return ""
+        d = f"M{pts[0][0]:.1f},{pts[0][1]:.1f} "
+        for i in range(len(pts) - 1):
+            x0, y0 = pts[i]
+            x1, y1 = pts[i + 1]
+            mx = (x0 + x1) / 2
+            d += f"C{mx:.1f},{y0:.1f} {mx:.1f},{y1:.1f} {x1:.1f},{y1:.1f} "
+        return d
+
+    line_d = _smooth_path(points)
+    fill_d = ""
+    if points:
+        fill_d = (
+            line_d
+            + f"L{points[-1][0]:.1f},{height - pad_y:.1f} "
+            + f"L{points[0][0]:.1f},{height - pad_y:.1f} Z"
+        )
+
+    return f"""
+    <svg class="onigiri-sidebar-profile-chart-svg" viewBox="0 0 {width} {height}" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+            <linearGradient id="opro-chart-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="{color}" stop-opacity="0.35"></stop>
+                <stop offset="100%" stop-color="{color}" stop-opacity="0"></stop>
+            </linearGradient>
+        </defs>
+        <path d="{fill_d}" fill="url(#opro-chart-fill)" stroke="none"></path>
+        <path d="{line_d}" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round"></path>
+    </svg>
+    """
+
+
+def _weekly_chart_html(color):
+    try:
+        from . import prep_station
+        values, labels = prep_station._weekly_review_counts()
+    except Exception as exc:
+        print(f"Onigiri: Error reading weekly review counts: {exc}")
+        return ""
+    chart_svg = _weekly_chart_svg(values, color)
+    labels_html = "".join(f"<span>{html.escape(str(label))}</span>" for label in labels)
+    return f"""
+    <section class="onigiri-sidebar-profile-chart">
+        <div class="onigiri-sidebar-profile-chart-head">
+            <h3>{html.escape(tr("profile_panel_weekly_chart", "Weekly Study Chart"))}</h3>
+            <span>{sum(values)}</span>
+        </div>
+        {chart_svg}
+        <div class="onigiri-sidebar-profile-chart-labels">{labels_html}</div>
+    </section>
+    """
+
+
+def _profile_gamification_summary_html(panel_conf):
+    items = []
+
+    enabled, level, fraction, color = _nook_level_page_progress()
+    if enabled:
+        pct = fraction * 100
+        items.append(f"""
+        <div class="onigiri-sidebar-profile-summary-row">
+            <span class="onigiri-sidebar-profile-summary-label">{html.escape(tr("restaurant_level", "Nook Level"))} {level}</span>
+            <div class="onigiri-sidebar-profile-summary-track">
+                <div class="onigiri-sidebar-profile-summary-fill" style="width: {pct:.1f}%; background: {color};"></div>
+            </div>
+        </div>
+        """)
+
+    if panel_conf.get("show_hexagon_land", True):
+        hex_enabled, count = _hexagon_land_count()
+        if hex_enabled:
+            items.append(f"""
+            <div class="onigiri-sidebar-profile-summary-row onigiri-sidebar-profile-summary-row-count">
+                <span class="onigiri-sidebar-profile-summary-label">{html.escape(tr("hexagon_land", "Hexagon Land"))}</span>
+                <span class="onigiri-sidebar-profile-summary-value" style="color: #2D8CFF;">{count}</span>
+            </div>
+            """)
+
+    if panel_conf.get("show_onigimon_hp", True):
+        hp = _onigimon_hp_summary()
+        if hp:
+            items.append(f"""
+            <div class="onigiri-sidebar-profile-summary-row">
+                <span class="onigiri-sidebar-profile-summary-label">{html.escape(hp["name"])} HP</span>
+                <div class="onigiri-sidebar-profile-summary-track">
+                    <div class="onigiri-sidebar-profile-summary-fill" style="width: {hp["health_pct"]}%; background: #08c46b;"></div>
+                </div>
+                <span class="onigiri-sidebar-profile-summary-detail">{hp["current_hp"]}/{hp["max_hp"]}</span>
+            </div>
+            """)
+
+    if not items:
+        return ""
+    return f"""
+    <section class="onigiri-sidebar-profile-summary">
+        {''.join(items)}
+    </section>
+    """
+
+
+def _profile_mantras_html():
+    try:
+        history = _mochi_messages().get_mantra_history()
+    except Exception as exc:
+        print(f"Onigiri: Error reading mantra history: {exc}")
+        history = []
+    if not history:
+        return ""
+    rows = "".join(
+        f'<li><span class="onigiri-sidebar-profile-mantra-text">{html.escape(str(item.get("text", "")))}</span>'
+        f'<span class="onigiri-sidebar-profile-mantra-date">{html.escape(str(item.get("date", "")))}</span></li>'
+        for item in history
+    )
+    return f"""
+    <section class="onigiri-sidebar-profile-mantras">
+        <h3>{html.escape(tr("profile_panel_mantras", "My Mantras"))}</h3>
+        <ul class="onigiri-sidebar-profile-mantras-list">{rows}</ul>
+    </section>
+    """
+
+
+def _profile_birthday_badge_html(birthday_str):
+    text = str(birthday_str or "").strip()
+    if not text:
+        return ""
+    try:
+        birth_month, birth_day = int(text[5:7]), int(text[8:10])
+    except (ValueError, IndexError):
+        return ""
+    today = date.today()
+    if (birth_month, birth_day) != (today.month, today.day):
+        return ""
+    return f'<p class="onigiri-sidebar-profile-birthday-badge">🎂 {html.escape(tr("happy_birthday", "Happy Birthday!"))}</p>'
+
+
+def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
+    """Ring/minimal profile widget shared by the sidebar, Overviewer and
+    Congrats surfaces. `surface` in {'sidebar','overview','congrats'} controls
+    the wrapper class and whether the sidebar profile-sidebar toggle is wired.
+    Returns '' for the 'bar' (or any unknown) type so callers keep their
+    existing horizontal-bar markup."""
+    if profile_type not in ("ring", "minimal"):
+        return ""
+
+    safe_name = html.escape(str(user_name), quote=False)
+    enabled, level, fraction, theme_color = _profile_level_progress()
+    fill_color = theme_color if (enabled and theme_color) else _profile_fill_color()
+    if not enabled:
+        fraction = 1.0  # static, full fill in the user color
+
+    surface_class = f"opro-surface-{surface}"
+    onclick_attr = (
+        ' onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)"'
+        if surface == "sidebar" else ""
+    )
+    level_html = (
+        f'<span class="opro-level">{tr("level_prefix")} {level}</span>' if enabled else ""
+    )
+
+    if profile_type == "ring":
+        import math
+        r = 20
+        circ = 2 * math.pi * r
+        offset = circ * (1 - fraction)
+        inner = f"""
+        <div class="opro-avatar-wrap">
+            <svg class="opro-ring" viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="opro-ring-track" cx="22" cy="22" r="{r}"></circle>
+                <circle class="opro-ring-fill" cx="22" cy="22" r="{r}"
+                    stroke="{fill_color}" stroke-dasharray="{circ:.2f}"
+                    stroke-dashoffset="{offset:.2f}"></circle>
+            </svg>
+            <div class="opro-avatar">{profile_pic_html}</div>
+        </div>
+        <div class="opro-text">
+            <span class="opro-name">{safe_name}</span>
+            {level_html}
+        </div>
+        """
+        type_class = "ring-profile"
+    else:  # minimal
+        bar_row_html = ""
+        if enabled:
+            pct = fraction * 100
+            bar_row_html = f"""
+            <div class="opro-bar-row">
+                <span class="opro-lv">{tr("level_short", "Lv")} {level}</span>
+                <div class="opro-track">
+                    <div class="opro-bar-fill" style="width: {pct:.1f}%; background: {fill_color};"></div>
+                </div>
+            </div>
+            """
+        inner = f"""
+        <div class="opro-top">
+            <div class="opro-avatar">{profile_pic_html}</div>
+            <span class="opro-name">{safe_name}</span>
+        </div>
+        {bar_row_html}
+        """
+        type_class = "minimal-profile"
+
+    classes = f"onigiri-profile {type_class} {surface_class}".strip()
+    return (
+        f'<div class="{classes}"{onclick_attr}>'
+        f'{inner}'
+        f'</div>'
+    )
 
 
 def _profile_background_render_parts(addon_package, include_default_image=True):
@@ -465,6 +928,7 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
 
     bio_html = f'<p class="onigiri-sidebar-profile-bio">{html.escape(profile["bio"], quote=False)}</p>' if profile["bio"] else ""
     status_html = f'<p class="onigiri-sidebar-profile-status">{html.escape(profile["status"], quote=False)}</p>' if profile["status"] else ""
+    birthday_html = _profile_birthday_badge_html(conf.get("userBirthday", ""))
     music_link = profile["musicLink"]
     music_html = ""
     if music_link:
@@ -483,6 +947,20 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
             </a>
             """
 
+    panel_conf = conf.get("onigiriProfilePanel", {})
+    if not isinstance(panel_conf, dict):
+        panel_conf = {}
+
+    chart_html = ""
+    if panel_conf.get("show_weekly_chart", True):
+        chart_html = _weekly_chart_html(_profile_panel_accent_color())
+
+    summary_html = _profile_gamification_summary_html(panel_conf)
+
+    mantras_html = ""
+    if panel_conf.get("show_mantras", True):
+        mantras_html = _profile_mantras_html()
+
     return f"""
     <section class="onigiri-sidebar-profile" data-profile-sidebar>
         <button type="button" class="onigiri-sidebar-profile-back" aria-label="Back" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.close(event)"></button>
@@ -492,23 +970,328 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
         <div class="onigiri-sidebar-profile-body">
             <div class="onigiri-sidebar-profile-avatar">{profile_pic_html}</div>
             <h2>{html.escape(user_name, quote=False)}</h2>
+            {birthday_html}
             {status_html}
             {bio_html}
             {music_html}
+            {chart_html}
+            {summary_html}
+            {mantras_html}
         </div>
     </section>
     """
 
 
+# ─── Today's Stats widgets (Studied / Time / Pace / Retention) ────────────────
+#
+# Two designs share one renderer:
+#   "minimal"    - label above, value below, left aligned. Same information as
+#                  the original cards, just better distributed.
+#   "expressive" - a tinted icon chip, an oversized value with a muted unit
+#                  suffix, and an optional 7-day sparkline along the bottom.
+#
+# Everything the two designs draw (box surface, accents, label/value colors,
+# radius, stroke, blur, type scale) arrives as --swidget-* CSS variables emitted
+# by patcher.generate_dynamic_css, so this function never hardcodes a color.
+
+_STATS_WIDGET_DEFAULT_ICONS = {
+    "studied": "system:check.svg",
+    "time": "system:pomodoro.svg",
+    "pace": "system:bolt.svg",
+    "retention": "system:star.svg",
+}
+
+
+def _stats_widgets_style() -> dict:
+    style = config.get_config_readonly().get("stats_widgets_style", {})
+    return style if isinstance(style, dict) else {}
+
+
+def _stats_widget_design() -> str:
+    design = str(_stats_widgets_style().get("design", "minimal"))
+    return design if design in ("minimal", "expressive") else "minimal"
+
+
+def _stats_widget_chart_shape() -> str:
+    """Trend line shape: "sharp" straight segments, or "smooth" curves."""
+    shape = str(_stats_widgets_style().get("chart_shape", "sharp"))
+    return shape if shape in ("sharp", "smooth") else "sharp"
+
+
+def _stats_widget_smooth_path(points) -> str:
+    """SVG path data through `points`, as a Catmull-Rom spline in cubic form.
+
+    Each segment's control points are the neighbours' slope scaled by 1/6, the
+    standard uniform Catmull-Rom to Bezier conversion. Endpoints reuse their own
+    coordinate as the missing neighbour so the curve starts and ends flat rather
+    than shooting past the card's edge.
+    """
+    if len(points) < 2:
+        return ""
+    parts = [f"M {points[0][0]:.1f},{points[0][1]:.1f}"]
+    for index in range(len(points) - 1):
+        p0 = points[index - 1] if index > 0 else points[index]
+        p1 = points[index]
+        p2 = points[index + 1]
+        p3 = points[index + 2] if index + 2 < len(points) else points[index + 1]
+        c1x = p1[0] + (p2[0] - p0[0]) / 6.0
+        c1y = p1[1] + (p2[1] - p0[1]) / 6.0
+        c2x = p2[0] - (p3[0] - p1[0]) / 6.0
+        c2y = p2[1] - (p3[1] - p1[1]) / 6.0
+        parts.append(f"C {c1x:.1f},{c1y:.1f} {c2x:.1f},{c2y:.1f} {p2[0]:.1f},{p2[1]:.1f}")
+    return " ".join(parts)
+
+
+def _stats_widget_minimal_stars_shown() -> bool:
+    """Whether the Retention card draws its stars.
+
+    Expressive never does — the icon chip already carries that card's identity
+    and the oversized number needs the height — so the setting only applies to
+    the minimal design. The legacy "hideRetentionStars" switch still wins.
+    """
+    if _stats_widget_design() != "minimal":
+        return False
+    if config.get_config_readonly().get("hideRetentionStars", False):
+        return False
+    return bool(_stats_widgets_style().get("show_retention_stars", True))
+
+
+def _stats_widget_icon_url(widget_id: str) -> str:
+    """Data URI for a stat card's icon, or "" when icons are off/unresolvable.
+
+    Mirrors the deck-icon resolution used elsewhere: a "system:" prefix points
+    into system_files/system_icons, anything else is looked up in the user's own
+    icon folders first. Emoji values are handled by the caller.
+    """
+    style = _stats_widgets_style()
+    if not style.get("show_icons", True):
+        return ""
+    icons = style.get("icons", {})
+    value = ""
+    if isinstance(icons, dict):
+        value = str(icons.get(widget_id) or "")
+    if not value:
+        value = _STATS_WIDGET_DEFAULT_ICONS.get(widget_id, "")
+    if not value or value.startswith("emoji:"):
+        return ""
+
+    from .settings._common import system_icon_path
+
+    addon_path = os.path.dirname(__file__)
+    if value.startswith("system:"):
+        path = system_icon_path(value[len("system:"):])
+    else:
+        path = ""
+        for folder in ("custom_deck_icons", "icons"):
+            candidate = os.path.join(addon_path, "user_files", folder, value)
+            if os.path.exists(candidate):
+                path = candidate
+                break
+        if not path:
+            path = system_icon_path(value)
+    if not path or not os.path.exists(path):
+        return ""
+    try:
+        import base64
+
+        with open(path, "rb") as handle:
+            encoded = base64.b64encode(handle.read()).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+    except Exception:
+        return ""
+
+
+def _stats_widget_icon_html(widget_id: str) -> str:
+    """The icon chip. Masked, so it always takes the widget's accent color."""
+    style = _stats_widgets_style()
+    if not style.get("show_icons", True):
+        return ""
+    icons = style.get("icons", {})
+    raw = ""
+    if isinstance(icons, dict):
+        raw = str(icons.get(widget_id) or "")
+    if raw.startswith("emoji:"):
+        glyph = raw[len("emoji:"):]
+        return f'<span class="stat-icon-chip"><span class="stat-icon-emoji">{html.escape(glyph)}</span></span>'
+    url = _stats_widget_icon_url(widget_id)
+    if not url:
+        return ""
+    return (
+        f'<span class="stat-icon-chip"><span class="stat-icon"'
+        f' style="-webkit-mask-image: url(\'{url}\'); mask-image: url(\'{url}\');"></span></span>'
+    )
+
+
+def _stats_widget_sparkline_html(series, widget_id: str) -> str:
+    """A tiny filled area chart of the last 7 days, normalised to its own max.
+
+    Drawn as inline SVG with `currentColor` so it inherits the card's accent and
+    needs no extra CSS variable of its own.
+    """
+    if not _stats_widgets_style().get("show_sparkline", True):
+        return ""
+    values = [max(0.0, float(v or 0)) for v in (series or [])]
+    if len(values) < 2 or max(values) <= 0:
+        return ""
+    # Normalised across the week's own min..max rather than 0..max, so a metric
+    # that barely moves (retention hovering near 80%) reads as a flat line
+    # instead of a solid block filling the whole box.
+    low, high = min(values), max(values)
+    flat = (high - low) < 1e-9
+    width, height = 100.0, 28.0
+    step = width / (len(values) - 1)
+    points = []
+    for index, value in enumerate(values):
+        x = index * step
+        fraction = 0.5 if flat else (value - low) / (high - low)
+        # 3px breathing room top and bottom so the stroke is never clipped.
+        y = height - 3 - fraction * (height - 6)
+        points.append((x, y))
+
+    if _stats_widget_chart_shape() == "smooth" and not flat:
+        line = _stats_widget_smooth_path(points)
+    else:
+        # A flat series has no curve to draw, so both shapes collapse to the
+        # same straight line.
+        line = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+
+    fill_html = ""
+    if not flat:
+        area = f"{line} L {width:.1f},{height:.1f} L 0,{height:.1f} Z"
+        fill_html = f'<path class="stat-spark-fill" d="{area}"></path>'
+    return f"""
+    <svg class="stat-spark" viewBox="0 0 {width:.0f} {height:.0f}" preserveAspectRatio="none" aria-hidden="true">
+        {fill_html}
+        <path class="stat-spark-line" d="{line}"></path>
+    </svg>
+    """
+
+
+def _stats_widget_card_html(
+    widget_id: str,
+    label: str,
+    value: str,
+    unit: str = "",
+    extra_body: str = "",
+    series=None,
+    row_span: int = 1,
+    col_span: int = 1,
+) -> str:
+    """Builds one stat card in whichever design is configured.
+
+    `row_span`/`col_span` are the widget's real size on the dashboard grid. They
+    only pick how tall the trend strip is; the strip itself is full-bleed along
+    the card's bottom edge in every size, with the number anchored above it.
+    """
+    style = _stats_widgets_style()
+    design = _stats_widget_design()
+    show_units = bool(style.get("show_units", True))
+    try:
+        row_span = max(1, int(row_span))
+        col_span = max(1, int(col_span))
+    except (TypeError, ValueError):
+        row_span = col_span = 1
+
+    unit_html = ""
+    if unit and show_units:
+        unit_html = f'<span class="stat-unit">{html.escape(unit, quote=False)}</span>'
+
+    icon_html = _stats_widget_icon_html(widget_id) if design == "expressive" else ""
+
+    spark_html = ""
+    size_class = ""
+    if design == "expressive":
+        spark_html = _stats_widget_sparkline_html(series, widget_id)
+        if spark_html:
+            # A taller card can afford a taller chart; a 1x1 keeps it slim so
+            # the oversized number still has room above it.
+            size_class = " has-trend" + (" is-tall" if row_span >= 2 else "")
+
+    head_html = f'<h3>{label}</h3>'
+    if icon_html:
+        head_html = f'<div class="stat-head">{icon_html}{head_html}</div>'
+
+    # Every minimal card reserves the star row's height, even the three that
+    # have no stars, so the four numbers sit on one line instead of Retention's
+    # value being pushed up by its own stars.
+    if design == "minimal" and _stats_widget_minimal_stars_shown() and not extra_body:
+        extra_body = '<div class="star-rating is-placeholder" aria-hidden="true"></div>'
+
+    body_html = f"""
+        <div class="stat-body">
+            <p class="stat-value">{value}{unit_html}</p>
+            {extra_body}
+        </div>
+    """
+
+    return f"""
+    <div class="stat-card onigiri-stat-card is-{design}{size_class} {widget_id}-card" data-stat="{widget_id}">
+        {head_html}
+        {body_html}
+        {spark_html}
+    </div>
+    """
+
+
 def _get_onigiri_stat_card_html(label: str, value: str, widget_id: str) -> str:
-    return f"""<div class="stat-card {widget_id}-card"><h3>{label}</h3><p>{value}</p></div>"""
+    """Back-compat entry point: `value` still arrives as one pre-joined string."""
+    return _stats_widget_card_html(widget_id, label, value)
 
 # Global Cache for stats to prevent re-querying on every render frame
 _DASHBOARD_STATS_CACHE = {}
 _DASHBOARD_LAST_UPDATE = 0
 _DASHBOARD_CACHE_TTL = 3 # 3 seconds is enough to prevent spam during animations, but keeps it fresh
 
-def _get_onigiri_retention_html() -> str:
+
+def _stats_widget_weekly_series() -> dict:
+    """Per-day review count / minutes for the last 7 days (oldest first).
+
+    One grouped query, cached alongside the today counters, so turning the
+    sparkline on costs a single extra scan every _DASHBOARD_CACHE_TTL seconds.
+    """
+    cached = _DASHBOARD_STATS_CACHE.get("weekly_series")
+    if cached is not None:
+        return cached
+
+    cutoff = mw.col.sched.day_cutoff
+    window_start = cutoff - 7 * 86400
+    empty = {"studied": [0] * 7, "time": [0.0] * 7, "pace": [0.0] * 7, "retention": [0.0] * 7}
+    try:
+        # The day index is measured forward from the window start so it is
+        # always >= 0 and SQLite's truncating cast behaves like floor().
+        rows = mw.col.db.all(
+            """
+            select cast((id/1000.0 - ?) / 86400.0 as int) as day,
+                   count(),
+                   sum(time)/1000.0,
+                   sum(case when type = 1 and ease > 1 then 1 else 0 end),
+                   sum(case when type = 1 then 1 else 0 end)
+            from revlog
+            where type in (0,1,2,3) and id > ?
+            group by day
+            """,
+            window_start,
+            window_start * 1000,
+        )
+    except Exception:
+        return empty
+
+    series = {key: list(values) for key, values in empty.items()}
+    for day, count, seconds, correct, reviewed in rows:
+        index = int(day)
+        if not 0 <= index < 7:
+            continue
+        count = count or 0
+        seconds = seconds or 0.0
+        series["studied"][index] = count
+        series["time"][index] = seconds / 60.0
+        series["pace"][index] = (seconds / count) if count else 0.0
+        series["retention"][index] = (correct / reviewed * 100.0) if reviewed else 0.0
+
+    _DASHBOARD_STATS_CACHE["weekly_series"] = series
+    return series
+
+def _get_onigiri_retention_html(row_span: int = 1, col_span: int = 1) -> str:
     # Query retention directly (fast index on id)
     total_reviews, correct_reviews = mw.col.db.first(
         "select count(*), sum(case when ease > 1 then 1 else 0 end) from revlog where type = 1 and id > ?",
@@ -525,22 +1308,24 @@ def _get_onigiri_retention_html() -> str:
     elif total_reviews > 0: stars = 1 # Use total_reviews from scope
     else: stars = 0
     
-    conf = config.get_config()
-    if conf.get("hideRetentionStars", False):
-        star_rating_html = ""
-    else:
+    if _stats_widget_minimal_stars_shown():
         star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
         star_rating_html = f'<div class="star-rating">{star_html}</div>'
+    else:
+        star_rating_html = ""
 
-    res_html = f"""
-    <div class="stat-card retention-card">
-        <h3>{tr("retention")}</h3>
-        <div class="retention-content">
-            <p>{retention_percentage:.0f}%</p>
-            {star_rating_html}
-        </div>
-    </div>
-    """
+    res_html = _stats_widget_card_html(
+        "retention",
+        tr("retention"),
+        # The percent sign is part of the number here, not a unit: hiding it
+        # with the "Show units" switch would leave a bare, ambiguous figure.
+        f"{retention_percentage:.0f}%",
+        unit="",
+        extra_body=star_rating_html,
+        series=_stats_widget_weekly_series().get("retention"),
+        row_span=row_span,
+        col_span=col_span,
+    )
     return process_tr_markers(res_html)
 
 def _get_onigiri_heatmap_html() -> str:
@@ -563,7 +1348,7 @@ def _get_onigiri_favorites_html() -> str:
         if not favorite_dids:
             fav_placeholder = """
             <div class="onigiri-favorites-widget">
-                <h3>{tr("favorites")}</h3>
+                <div class="onigiri-widget-head"><h3>{tr("favorites")}</h3></div>
                 <div class="favorites-placeholder">
                     {tr("no_favorites_selected")}
                     <br>
@@ -630,7 +1415,7 @@ def _get_onigiri_favorites_html() -> str:
         if not links_html:
             empty_fav = """
             <div class="onigiri-favorites-widget">
-                <h3>{tr("favorites")}</h3>
+                <div class="onigiri-widget-head"><h3>{tr("favorites")}</h3></div>
                 <div class="favorites-placeholder">
                     {tr("no_favorites_selected")}
                     <br>
@@ -642,7 +1427,7 @@ def _get_onigiri_favorites_html() -> str:
         
         fav_html = f"""
         <div class="onigiri-favorites-widget">
-            <h3>{tr("favorites")}</h3>
+            <div class="onigiri-widget-head"><h3>{tr("favorites")}</h3></div>
             <div class="favorites-list">
                 {''.join(links_html)}
             </div>
@@ -655,6 +1440,17 @@ def _get_onigiri_favorites_html() -> str:
         traceback.print_exc()
         return "<div class='onigiri-favorites-widget'>Error loading favorites.</div>"
 # --- END OF NEW FUNCTION ---
+
+def _get_onigiri_stats_title_html() -> str:
+    """The user's custom one-line phrase, rendered as a grid widget."""
+    # None == key never set (fresh install) -> show the welcome default.
+    # "" == user cleared the title on purpose -> keep it blank.
+    stats_title = _col_conf_get("modern_menu_statsTitle", None)
+    if stats_title is None:
+        stats_title = config.DEFAULTS["statsTitle"]
+    if not str(stats_title).strip():
+        return ""
+    return f'<h1 class="onigiri-widget-title">{stats_title}</h1>'
 
 def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int = 2, col_span: int = 2) -> str:
     """
@@ -742,7 +1538,7 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int 
     restaurant_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rl-nav-icon"><path fill="currentColor" d="m21 6.424v-2.424c1.654 0 3-1.346 3-3 0-.552-.447-1-1-1s-1 .448-1 1-.448 1-1 1h-19v-1c0-.552-.447-1-1-1s-1 .448-1 1v22c0 .552.447 1 1 1s1-.448 1-1v-19h5v2.424c-1.763.774-3 2.531-3 4.576v8c0 2.757 2.243 5 5 5h10c2.757 0 5-2.243 5-5v-8c0-2.045-1.237-3.802-3-4.576zm-12-2.424h10v2h-10zm13 15c0 1.654-1.346 3-3 3h-10c-1.654 0-3-1.346-3-3v-8c0-1.654 1.346-3 3-3h10c1.654 0 3 1.346 3 3zm-3-2c0-2.414-1.721-4.434-4-4.899v-.101c0-.552-.447-1-1-1s-1 .448-1 1v.101c-2.279.465-4 2.484-4 4.899-.553 0-1 .448-1 1s.447 1 1 1h10c.553 0 1-.448 1-1s-.447-1-1-1zm-5-3c1.654 0 3 1.346 3 3h-6c0-1.654 1.346-3 3-3z"/></svg>'''
     
     nav_buttons_html = f"""
-    <div class="rl-widget-nav-buttons">
+    <div class="rl-widget-nav-buttons onigiri-widget-head-aside">
         <button class="rl-nav-btn" onclick="event.stopPropagation(); pycmd('openTaiyakiStore');" title="{tr('open_taiyaki_store')}">
             {shop_svg}
         </button>
@@ -779,23 +1575,27 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int 
     widget_orientation = "vertical" if orientation == "vertical" else "horizontal"
     return process_tr_markers(f"""
     <div class="onigiri-restaurant-level-widget orientation-{widget_orientation} {snow_class}" style="--theme-bg: {bg_style_value}; --theme-color: {bar_color}">
-        <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
-            <img src="{image_path}" class="restaurant-image">
-            {snowflakes_html}
+        <div class="onigiri-widget-head rl-widget-head">
+            <h3>{name}</h3>
+            {nav_buttons_html}
         </div>
-        <div class="restaurant-info">
-            <div class="level-display">
-                {nav_buttons_html}
-                <span class="level-label">{name}</span>
-                <span class="level-value">{level}</span>
-                <div class="level-progress-container">
-                    <div class="lp-bar">
-                        <div class="lp-fill" style="width: {level_percent}%; background: {bar_color};"></div>
-                    </div>
-                    <div class="lp-text">{xp_text}</div>
-                </div>
+        <div class="rl-widget-body">
+            <div class="restaurant-image-container" onclick="this.closest('.onigiri-restaurant-level-widget').classList.toggle('expanded-view'); event.stopPropagation();" style="cursor: pointer;">
+                <img src="{image_path}" class="restaurant-image">
+                {snowflakes_html}
             </div>
-            {ds_html}
+            <div class="restaurant-info">
+                <div class="level-display">
+                    <span class="level-value">{level}</span>
+                    <div class="level-progress-container">
+                        <div class="lp-bar">
+                            <div class="lp-fill" style="width: {level_percent}%; background: {bar_color};"></div>
+                        </div>
+                        <div class="lp-text">{xp_text}</div>
+                    </div>
+                </div>
+                {ds_html}
+            </div>
         </div>
     </div>
     """)
@@ -830,7 +1630,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
         cards_today, time_today_seconds = self.mw.col.db.first("select count(), sum(time)/1000 from revlog where type IN (0,1,2,3) and id > ?", (self.mw.col.sched.day_cutoff - 86400) * 1000) or (0, 0)
         
-        # Update cache
+        # Update cache. The 7-day sparkline series rides the same TTL, so drop
+        # it here rather than letting it go stale forever.
+        _DASHBOARD_STATS_CACHE.pop("weekly_series", None)
         _DASHBOARD_STATS_CACHE["cards_today"] = cards_today
         _DASHBOARD_STATS_CACHE["time_today_seconds"] = time_today_seconds
         _DASHBOARD_LAST_UPDATE = now
@@ -843,9 +1645,26 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     seconds_per_card = time_today_seconds / cards_today if cards_today > 0 else 0
 
     widget_generators = {
-        "studied": lambda: _get_onigiri_stat_card_html(tr("studied"), f"{cards_today} {tr('cards')}", "studied"),
-        "time": lambda: _get_onigiri_stat_card_html(tr("time"), f"{time_today_minutes:.1f} {tr('minutes_unit')}", "time"),
-        "pace": lambda: _get_onigiri_stat_card_html(tr("pace"), f"{seconds_per_card:.1f} {tr('seconds_unit')}/{tr('card')}", "pace"),
+        "stats_title": _get_onigiri_stats_title_html,
+        # The stat cards take their grid span so the sparkline only appears on
+        # a card big enough for it; the loop below re-invokes them with the
+        # real spans, these zero-arg defaults are the 1x1 fallback.
+        "studied": lambda rs=1, cs=1: _stats_widget_card_html(
+            "studied", tr("studied"), f"{cards_today}", tr("cards"),
+            series=_stats_widget_weekly_series().get("studied"),
+            row_span=rs, col_span=cs,
+        ),
+        "time": lambda rs=1, cs=1: _stats_widget_card_html(
+            "time", tr("time"), f"{time_today_minutes:.1f}", tr("minutes_unit"),
+            series=_stats_widget_weekly_series().get("time"),
+            row_span=rs, col_span=cs,
+        ),
+        "pace": lambda rs=1, cs=1: _stats_widget_card_html(
+            "pace", tr("pace"), f"{seconds_per_card:.1f}",
+            f"{tr('seconds_unit')}/{tr('card')}",
+            series=_stats_widget_weekly_series().get("pace"),
+            row_span=rs, col_span=cs,
+        ),
         "retention": _get_onigiri_retention_html,
         "heatmap": _get_onigiri_heatmap_html,
         "favorites": _get_onigiri_favorites_html, 
@@ -854,6 +1673,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "hexagon_land": lambda: _hexagon_land().render_widget_html(),
         "deck_stats": lambda: _learner_stats_widget()._render_widget(self, "deck_stats"),
         "prep_station": lambda: _prep_station().render_widget_html(),
+        "hashi_notes": lambda: _hashi_notes().render_widget_html(),
     }
     
     if col_count > 0:
@@ -880,6 +1700,31 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                         col_span = max(1, min(4, int(col_span)))
                     except (TypeError, ValueError):
                         col_span = 2
+                elif widget_id == "onigimon":
+                    # Onigimon renders 1-4 rows by 1-2 columns.
+                    try:
+                        row_span = max(1, min(4, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(2, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 1
+                elif widget_id == "hashi_notes":
+                    try:
+                        row_span = max(1, min(4, int(row_span)))
+                    except (TypeError, ValueError):
+                        row_span = 2
+                    try:
+                        col_span = max(1, min(4, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 2
+                elif widget_id == "stats_title":
+                    row_span = 1
+                    try:
+                        col_span = max(1, min(4, int(col_span)))
+                    except (TypeError, ValueError):
+                        col_span = 4
 
                 row = pos // col_count + 1
                 col = pos % col_count + 1
@@ -888,6 +1733,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                     widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"), row_span=row_span, col_span=col_span)
                 elif widget_id == "prep_station":
                     widget_html = _prep_station().render_widget_html(slot_count=col_span)
+                elif widget_id == "hashi_notes":
+                    widget_html = _hashi_notes().render_widget_html(row_span=row_span, col_span=col_span)
+                elif widget_id in ("studied", "time", "pace"):
+                    widget_html = widget_generators[widget_id](row_span, col_span)
+                elif widget_id == "retention":
+                    widget_html = _get_onigiri_retention_html(row_span=row_span, col_span=col_span)
                 elif widget_id == "onigimon":
                     try:
                         onigimon_row_span = int(row_span)
@@ -898,6 +1749,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                     except (TypeError, ValueError):
                         onigimon_col_span = 1
                     widget_html = _onigimon().render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
+                elif widget_id == "deck_stats":
+                    # row_span drives the compact fallback body inside the widget.
+                    widget_html = _learner_stats_widget()._render_widget(self, "deck_stats", row_span=row_span)
                 else:
                     widget_html = widget_generators[widget_id]()
                 if not str(widget_html or "").strip():
@@ -944,7 +1798,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             if "learner_stats_widget" in hook_id:
                 try:
                     from . import learner_stats_widget
-                    hook_html = learner_stats_widget._render_widget(self, hook_id)
+                    try:
+                        hook_row_span = int(widget_config.get("row_span", 2))
+                    except (TypeError, ValueError):
+                        hook_row_span = 2
+                    hook_html = learner_stats_widget._render_widget(self, hook_id, row_span=hook_row_span)
                 except Exception as e:
                     hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
             else:
@@ -1023,13 +1881,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             """
 
     # --- Part 3: Assemble the Final Stats Block ---
-    # None == key never set (fresh install) -> show the welcome default.
-    # "" == user cleared the title on purpose -> keep it blank.
-    stats_title = _col_conf_get("modern_menu_statsTitle", None)
-    if stats_title is None:
-        stats_title = config.DEFAULTS["statsTitle"]
-    title_html = f'<h1 class="onigiri-widget-title">{stats_title}</h1>' if stats_title else ""
-
     # Combine both Onigiri and External widgets into a single unified grid
     unified_grid_html = onigiri_grid_html + external_widgets_html
     grid_gap = 15
@@ -1056,6 +1907,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         else 1180
     )
 
+    # Calculate row for stats_title to make its height min-content instead of grid_widget_height
+    title_row = 1
+    if "stats_title" in onigiri_layout and col_count > 0:
+        pos = onigiri_layout["stats_title"].get("pos", 0)
+        title_row = pos // col_count + 1
+    grid_template_rows = " ".join([f"{grid_widget_height}px"] * (title_row - 1)) + " min-content"
+    title_margin_top = "12px" if title_row == 1 else "-5px"
+
     # [CHANGED] Updated CSS to force grid expansion and row height
     stats_block_html = f"""
     <style>
@@ -1074,6 +1933,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .unified-grid {{
             display: grid;
             gap: {grid_gap}px;
+            grid-template-rows: {grid_template_rows};
             grid-auto-rows: {grid_widget_height}px;
             grid-template-columns: repeat({col_count}, minmax(0, {grid_column_width}px));
             justify-content: {grid_justify_content};
@@ -1094,7 +1954,20 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             max-width: {grid_content_width}px;
             box-sizing: border-box;
         }}
-        
+
+        /* As a grid widget the title fills its cell and sits on the vertical
+           centre line, so it lines up with the stat cards beside it. */
+        .onigiri-widget-container .onigiri-widget-title {{
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            margin: {title_margin_top} 0 0 0;
+            padding: 0;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+        }}
+
         /* Make the container expand to fill the grid area (rows/cols) */
         .onigiri-widget-container, .external-widget-container {{
             width: 100%;
@@ -1116,7 +1989,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
-        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget {{
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget, .hashi-notes-widget {{
             flex: 1;
             width: 100%;
             height: 100%;
@@ -1128,41 +2001,25 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             gap: 6px;
-            padding: 10px 12px 12px 12px;
+            padding: calc(10px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale));
             cursor: pointer;
             overflow: hidden;
             font-family: inherit;
             /* background + border-radius/width fall back here, then get
-               overridden !important by the Box Color & Effect settings */
+               overridden !important by the Widget Color & Effect settings */
             background-color: var(--canvas-inset, #f2f2f2);
             border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
             border-radius: 15px;
-        }}
-        .prep-widget-header {{
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 8px;
-            flex-shrink: 0;
-        }}
-        .prep-widget-title {{
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            opacity: 0.55;
-        }}
-        .prep-widget-count {{
-            font-size: 9px;
-            opacity: 0.45;
-            margin-right: auto;
         }}
         .prep-widget-empty {{
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: calc(11px * var(--prep-fs, 1));
             opacity: 0.45;
             font-style: italic;
         }}
@@ -1222,7 +2079,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex-shrink: 0;
         }}
         .prep-card-badge {{
-            font-size: 7px;
+            font-size: calc(7px * var(--prep-fs, 1));
             font-weight: 700;
             white-space: nowrap;
             background: rgba(0, 0, 0, 0.35);
@@ -1230,7 +2087,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             border-radius: 8px;
         }}
         .prep-card-name {{
-            font-size: 10px;
+            font-size: calc(10px * var(--prep-fs, 1));
             font-weight: 700;
             white-space: nowrap;
             overflow: hidden;
@@ -1254,12 +2111,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             min-width: 0;
         }}
         .prep-card-pace-num {{
-            font-size: 17px;
+            font-size: calc(17px * var(--prep-fs, 1));
             font-weight: 700;
             line-height: 1;
         }}
         .prep-card-pace-unit {{
-            font-size: 8px;
+            font-size: calc(8px * var(--prep-fs, 1));
             opacity: 0.55;
             white-space: nowrap;
             overflow: hidden;
@@ -1282,7 +2139,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             border-radius: 2px;
         }}
         .prep-card-progress-label {{
-            font-size: 8px;
+            font-size: calc(8px * var(--prep-fs, 1));
             opacity: 0.55;
             white-space: nowrap;
             flex-shrink: 0;
@@ -1292,7 +2149,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: grid;
             grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
             gap: 14px;
-            padding: 14px;
+            padding: calc(14px * var(--onigiri-widget-pad-scale));
             border-radius: 18px;
             border: 1px solid var(--border, #e0e0e0);
             background: var(--canvas-inset, #ffffff);
@@ -1303,7 +2160,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .hex-land-widget.land-only {{
             display: block;
-            padding: 10px;
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
         }}
 
         .hex-land-widget.disabled {{
@@ -1480,11 +2337,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
         }}
 
+        /* The header title opts out of the pixel font above so it reads as the
+           same Small Title as every other widget's; the body stays Silkscreen. */
+        .onigimon-widget .onigiri-widget-head > h3 {{
+            font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }}
+
         .onigimon-widget {{
             display: flex;
             flex-direction: column;
             gap: 10px;
-            padding: 14px;
+            padding: calc(14px * var(--onigiri-widget-pad-scale));
             border-radius: 15px;
             border: 1px solid var(--border, #e0e0e0);
             background: var(--canvas-inset, #ffffff);
@@ -1494,27 +2357,31 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             cursor: pointer;
         }}
 
-        .onigimon-header,
         .onigimon-main,
         .onigimon-inventory {{
             display: flex;
             align-items: center;
         }}
 
-        .onigimon-header {{
-            justify-content: space-between;
-            gap: 10px;
-        }}
-
-        .onigimon-header h3 {{
-            margin: 0;
-            font-size: 15px;
-        }}
-
         .onigimon-body {{
             display: flex;
             flex-direction: column;
             gap: 6px;
+            flex: 1;
+            min-height: 0;
+        }}
+
+        /* One continuous card: coloured top section (sprite + name) fused to a
+           neutral lower section (stat meters) with a flat seam. The card owns
+           the border and corners so the two sections meet with no gap. */
+        .onigimon-card {{
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border, #e0e0e0);
         }}
 
         .onigimon-header span,
@@ -1620,6 +2487,106 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             z-index: 0;
         }}
 
+        /* Coloured top section (sprite + name). Reuses .onigimon-scene for the
+           background image/blur machinery, but drops the scene's own border and
+           radius — the enclosing .onigimon-card owns the grey border + corners. */
+        .onigimon-top {{
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-height: 80px;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+        }}
+
+        /* Combined selector so these win over the later `.onigimon-scene` block
+           (padding/border/radius) — the top section is applied as
+           `class="onigimon-top onigimon-scene"`. */
+        .onigimon-top.onigimon-scene {{
+            border: none;
+            border-radius: 0;
+            padding: 16px 14px;
+            background: radial-gradient(
+                circle at 22% 32%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 92%, white 8%) 0%,
+                var(--onigimon-color, #6ea96a) 70%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 90%, black 10%) 100%
+            ) !important;
+        }}
+
+        /* Fixed 96px companion sprite. */
+        .onigimon-top .onigimon-sprite {{
+            position: relative;
+            width: 96px;
+            height: 96px;
+            flex: 0 0 96px;
+            border-radius: 0;
+            background: transparent;
+        }}
+
+        .onigimon-top .onigimon-sprite img {{
+            width: 86px;
+            height: 86px;
+            position: relative;
+            z-index: 1;
+        }}
+
+        /* Name and level sit on the coloured section, so they take fixed
+           per-mode colours instead of the theme's foreground variables. */
+        .onigimon-top .onigimon-info strong {{
+            color: #000000;
+        }}
+
+        .night-mode .onigimon-top .onigimon-info strong {{
+            color: #ffffff;
+        }}
+
+        .onigimon-top .onigimon-info span {{
+            color: rgba(0, 0, 0, 0.68);
+        }}
+
+        .night-mode .onigimon-top .onigimon-info span {{
+            color: rgba(255, 255, 255, 0.82);
+        }}
+
+        /* Neutral lower section (stat meters), matching the Prep Station card
+           body shade in both modes. */
+        .onigimon-bottom {{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 5px;
+            padding: 12px 14px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            background: #efefec;
+            color: var(--fg, #222);
+        }}
+
+        .night-mode .onigimon-bottom {{
+            background: #2e2e2d;
+        }}
+
+        /* `color: inherit` so a user-chosen stats-panel colour (set inline on
+           .onigimon-bottom from Gamification Settings) also drives the meter
+           text; with var(--fg) the labels stayed dark on a dark panel. */
+        .onigimon-bottom .onigimon-meter span,
+        .onigimon-bottom .onigimon-meter b {{
+            color: inherit;
+            text-align: left;
+            justify-self: start;
+        }}
+
+        .onigimon-bottom .onigimon-meter b {{
+            text-align: right;
+            justify-self: end;
+        }}
+
+        .onigimon-bottom .onigimon-meter > div {{
+            background: color-mix(in srgb, currentColor 14%, transparent);
+        }}
+
         .onigimon-sprite {{
             width: 58px;
             height: 58px;
@@ -1663,8 +2630,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .onigimon-meter {{
             display: grid;
-            grid-template-columns: 80px 40px minmax(0, 1fr);
-            gap: 8px;
+            grid-template-columns: 68px 34px minmax(0, 1fr);
+            gap: 6px;
             align-items: center;
             font-size: 12px;
         }}
@@ -1742,11 +2709,73 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 60px;
         }}
 
+        /* 1x2: the compact scene gains the name/level beside the companion, so
+           the pair is centred as a group instead of the sprite alone. */
+        .onigimon-span-1x2 .onigimon-scene-compact {{
+            gap: 14px;
+            padding: 10px 16px;
+        }}
+
+        .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong {{
+            font-size: 15px;
+            color: #000000;
+        }}
+
+        .night-mode .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong {{
+            color: #ffffff;
+        }}
+
+        .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span {{
+            color: rgba(0, 0, 0, 0.68);
+        }}
+
+        .night-mode .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span {{
+            color: rgba(255, 255, 255, 0.82);
+        }}
+
+        /* 2x2: the coloured scene and the meters sit side by side, each taking
+           half the card, instead of stacking. */
+        .onigimon-card-wide {{
+            flex-direction: row;
+        }}
+
+        .onigimon-card-wide > .onigimon-top {{
+            flex: 1 1 50%;
+            min-width: 0;
+            flex-direction: column;
+            justify-content: center;
+            gap: 8px;
+            text-align: center;
+        }}
+
+        .onigimon-card-wide > .onigimon-top .onigimon-info {{
+            justify-items: center;
+            text-align: center;
+            max-width: 100%;
+        }}
+
+        .onigimon-card-wide > .onigimon-top .onigimon-sprite {{
+            width: 96px;
+            height: 96px;
+            flex: 0 0 96px;
+        }}
+
+        .onigimon-card-wide > .onigimon-top .onigimon-sprite img {{
+            width: 88px;
+            height: 88px;
+        }}
+
+        .onigimon-card-wide > .onigimon-bottom {{
+            flex: 1 1 50%;
+            min-width: 0;
+            gap: 8px;
+            padding: 14px 16px;
+        }}
 
         /* Restaurant Level Widget Styles */
         .onigiri-restaurant-level-widget {{
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             background: var(--canvas-inset, #f5f5f5);
             border-radius: var(--onigiri-box-effect-radius, 15px);
             overflow: hidden;
@@ -1757,13 +2786,35 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             position: relative;
         }}
 
-        .onigiri-restaurant-level-widget.orientation-vertical {{
+        .rl-widget-head {{
+            padding: calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(14px * var(--onigiri-widget-pad-scale))
+                     0
+                     calc(14px * var(--onigiri-widget-pad-scale));
+        }}
+
+        /* The building and the level column sit below the header row; this is
+           the part the orientation setting flips, not the widget itself. */
+        .rl-widget-body {{
+            display: flex;
+            flex-direction: row;
+            flex: 1;
+            min-height: 0;
+            min-width: 0;
+        }}
+
+        .onigiri-restaurant-level-widget.orientation-vertical .rl-widget-body {{
             flex-direction: column;
         }}
 
         .onigiri-restaurant-level-widget.expanded-view {{
             background: var(--theme-bg) !important;
             border-color: transparent;
+        }}
+
+        /* Expanded view is the building alone, edge to edge. */
+        .onigiri-restaurant-level-widget.expanded-view .rl-widget-head {{
+            display: none;
         }}
         
         .night .onigiri-restaurant-level-widget {{
@@ -1777,7 +2828,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             align-items: center;
             justify-content: center;
             background: var(--canvas-inset);
-            padding: 10px;
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
             position: relative;
             transition: all 0.3s ease;
             box-sizing: border-box;
@@ -1792,7 +2843,10 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: auto;
             aspect-ratio: auto;
             min-height: 0;
-            padding: 8px 10px 0 10px;
+            padding: calc(8px * var(--onigiri-widget-pad-scale))
+                     calc(10px * var(--onigiri-widget-pad-scale))
+                     0
+                     calc(10px * var(--onigiri-widget-pad-scale));
         }}
 
         /* Unrestricted Sidebar resizing */
@@ -1801,8 +2855,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .main-content {{
-            /* Dynamic Padding based on col_count */
-            padding: {24 if col_count == 4 else (14 if col_count > 4 else 32)}px !important;
+            /* Dynamic Padding based on col_count. Top padding is explicitly 10px to align with sidebar top */
+            padding: 10px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
             display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
@@ -1828,7 +2882,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             width: 100%;
             height: 100%;
             background: transparent;
-            padding: 5px; /* Reduced padding to make image larger */
+            padding: calc(5px * var(--onigiri-widget-pad-scale)); /* Reduced padding to make image larger */
             z-index: 10;
         }}
         
@@ -1860,7 +2914,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex: 1;
             width: 100%;
             height: 100%;
-            padding: 10px;
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
             background: var(--theme-bg, var(--canvas-inset, #f5f5f5));
         }}
 
@@ -1870,14 +2924,20 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             justify-content: center;
-            padding: 15px 20px;
+            padding: calc(8px * var(--onigiri-widget-pad-scale))
+                     calc(20px * var(--onigiri-widget-pad-scale))
+                     calc(15px * var(--onigiri-widget-pad-scale))
+                     calc(20px * var(--onigiri-widget-pad-scale));
             gap: 15px;
             transition: opacity 0.2s ease;
         }}
 
         .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {{
             flex: 0 0 auto;
-            padding: 10px 16px 14px 16px;
+            padding: calc(6px * var(--onigiri-widget-pad-scale))
+                     calc(16px * var(--onigiri-widget-pad-scale))
+                     calc(14px * var(--onigiri-widget-pad-scale))
+                     calc(16px * var(--onigiri-widget-pad-scale));
             gap: 10px;
         }}
 
@@ -1890,15 +2950,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-        }}
-
-        .level-label {{
-            font-size: 0.75em;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--fg-subtle, #888);
-            font-weight: 600;
-            margin-bottom: 2px;
         }}
 
         .level-value {{
@@ -2016,14 +3067,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         
         /* Navigation buttons for Restaurant Level Widget */
         .rl-widget-nav-buttons {{
-            display: flex;
-            gap: 0;
             z-index: 20;
-            margin-bottom: 2px;
-            margin-left: 0; 
-            padding-left: 0;
         }}
-        
+
         .rl-nav-btn {{
             width: 24px;
             height: 24px;
@@ -2034,7 +3080,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             cursor: pointer;
             display: flex;
             align-items: center;
-            justify-content: flex-start;
+            justify-content: center;
             transition: all 0.2s ease;
             color: var(--fg-subtle, #757575);
             box-shadow: none !important;
@@ -2063,16 +3109,9 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .rl-nav-icon {{
             width: 16px;
             height: 16px;
-            margin-left: 4px;
-        }}
-        
-        /* Style for expanded view - reduce button visibility */
-        .onigiri-restaurant-level-widget.expanded-view .rl-widget-nav-buttons {{
-            opacity: 0.5;
         }}
     </style>
     {deckline_compat_html}
-    {title_html}
     <div class="unified-grid">{unified_grid_html}</div>
     """
 
@@ -2351,12 +3390,28 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         </style>
         """
 
-    profile_bar_html = (
-        f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
-        f"onclick=\"window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)\">"
-        f"{bg_layer_html}{profile_bar_contents}"
-        f"</div>"
-    )
+    # Hide the profile on the sidebar (Sidebar Customization option). Uses CSS so
+    # both the expanded bar and the collapsed-rail avatar drop out of the layout
+    # with no leftover gap.
+    if _col_conf_get("modern_menu_hide_profile_bar", False):
+        theme_css += """
+        <style id="hide-profile-bar">
+            .profile-bar, .onigiri-profile, .collapsed-profile-item { display: none !important; }
+        </style>
+        """
+
+    profile_type = _col_conf_get("modern_menu_profile_type", "bar")
+    if profile_type in ("ring", "minimal"):
+        profile_bar_html = build_profile_type_html(
+            "sidebar", profile_type, user_name, profile_pic_html_expanded
+        )
+    else:
+        profile_bar_html = (
+            f"<div class=\"profile-bar {bg_class_str}\" style=\"{bg_style_str}\" "
+            f"onclick=\"window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)\">"
+            f"{bg_layer_html}{profile_bar_contents}"
+            f"</div>"
+        )
     profile_sidebar_html = _build_profile_sidebar_html(
         conf,
         addon_package,
@@ -2429,6 +3484,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "sidebarPosition": sidebar_position,
         "deckSortMode": _col_conf_get("onigiri_sort_mode", "default"),
         "decklineAvailable": deckline_available,
+        "fsrsHelperAvailable": fsrs_helper_integration.is_available(),
         "markerColors": conf.get("markerColors", config.DEFAULTS.get("markerColors", {})),
         "markerIcons": conf.get("markerIcons", {}),
         "markerNames": conf.get("markerNames", {}),

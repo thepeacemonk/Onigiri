@@ -125,8 +125,14 @@ def _show_welcome_message():
                 style.id = "onigiri-welcome-style";
                 style.innerHTML = `
                     @font-face {
-                        font-family: 'OnigiriMontserrat';
-                        src: url('/_addons/1011095603/system_files/fonts/system_fonts/Montserrat.ttf') format('truetype');
+                        font-family: 'OnigiriPoppins';
+                        src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Regular.ttf');
+                        font-weight: 400;
+                    }
+                    @font-face {
+                        font-family: 'OnigiriPoppins';
+                        src: url('/_addons/1011095603/system_files/fonts/system_fonts/Poppins/Poppins-Medium.ttf');
+                        font-weight: 500 900;
                     }
                     #onigiri-welcome-overlay {
                         position: fixed; inset: 0; z-index: 2147483647;
@@ -134,12 +140,12 @@ def _show_welcome_message():
                         backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
                         background: rgba(0, 0, 0, 0.55);
                         color: white;
-                        font-family: 'OnigiriMontserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+                        font-family: 'OnigiriPoppins', -apple-system, BlinkMacSystemFont, sans-serif;
                         opacity: 0; transition: opacity 0.4s ease;
                     }
                     #onigiri-welcome-overlay .btn-continue {
                         margin-top: 36px; padding: 16px 48px; font-size: 21px; font-weight: 700;
-                        font-family: 'OnigiriMontserrat', sans-serif; color: #123034; background: white;
+                        font-family: 'OnigiriPoppins', sans-serif; color: #123034; background: white;
                         border: none; border-radius: 40px; cursor: pointer;
                         box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s;
                     }

@@ -209,6 +209,9 @@ def _ensure_layout_entry(entry: SidebarEntry) -> None:
         print(f"Onigiri: Failed to persist sidebar entry {entry.entry_id}: {exc}")
 
 
+_ICON_OVERRIDE_CACHE: Dict[str, str] = {}
+
+
 def _load_icon_override(entry_id: str) -> str:
     try:
         from aqt import mw
@@ -219,6 +222,11 @@ def _load_icon_override(entry_id: str) -> str:
     if not filename:
         return ""
 
+    cache_key = f"{entry_id}:{filename}"
+    cached = _ICON_OVERRIDE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     addon_root = os.path.dirname(os.path.dirname(__file__))
     icon_path = os.path.join(addon_root, "user_files", "icons", filename)
     if not os.path.exists(icon_path):
@@ -226,9 +234,12 @@ def _load_icon_override(entry_id: str) -> str:
 
     try:
         with open(icon_path, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
+            content = handle.read().strip()
     except Exception:
-        return ""
+        content = ""
+
+    _ICON_OVERRIDE_CACHE[cache_key] = content
+    return content
 
 
 def _extract_attr(html_str: str, attr: str) -> str:

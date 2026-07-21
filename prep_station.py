@@ -39,6 +39,8 @@ from .prep_station_ui import (
 _dialog: "PrepStationDialog | None" = None
 
 PREP_STATION_CONF_KEY = "onigiri_prep_station_plans"
+PREP_STATION_SUSPENDED_KEY = "onigiri_prep_station_include_suspended"
+PREP_STATION_CHART_NUMBERS_KEY = "onigiri_prep_station_chart_numbers"
 
 MOTIVATIONAL_PHRASES = [
     "Small steps every day add up to big results.",
@@ -118,23 +120,60 @@ def _get_deck_card_counts(deck_names: list) -> dict:
         for name in deck_names:
             dids = [d.id for d in all_decks if d.name == name or d.name.startswith(name + "::")]
             if not dids:
-                result[name] = {"new": 0, "due": 0, "total": 0}
+                result[name] = {"new": 0, "due": 0, "susp": 0, "total": 0}
                 continue
             dids_str = ",".join(str(d) for d in dids)
             rows = mw.col.db.all(
                 f"SELECT queue, count(*) FROM cards WHERE did IN ({dids_str}) GROUP BY queue"
             )
-            new_cnt = due_cnt = total_cnt = 0
+            new_cnt = due_cnt = susp_cnt = total_cnt = 0
             for queue, cnt in rows:
                 total_cnt += cnt
                 if queue == 0:
                     new_cnt += cnt
                 elif queue in (1, 2, 3):
                     due_cnt += cnt
-            result[name] = {"new": new_cnt, "due": due_cnt, "total": total_cnt}
+                elif queue == -1:
+                    susp_cnt += cnt
+            result[name] = {"new": new_cnt, "due": due_cnt, "susp": susp_cnt, "total": total_cnt}
     except Exception as e:
         print(f"Prep Station: deck count error: {e}")
     return result
+
+
+def _include_suspended() -> bool:
+    if not mw or not mw.col:
+        return False
+    try:
+        return bool(mw.col.conf.get(PREP_STATION_SUSPENDED_KEY, False))
+    except Exception:
+        return False
+
+
+PREP_STATION_WIDGET_FONT_KEY = "onigiri_prep_station_widget_font_scale"
+
+
+def _widget_font_scale() -> float:
+    """Font-size multiplier for the deck-browser Study Plans widget (stored as
+    a percentage, clamped 60–160)."""
+    if not mw or not mw.col:
+        return 1.0
+    try:
+        percent = int(mw.col.conf.get(PREP_STATION_WIDGET_FONT_KEY, 100) or 100)
+    except Exception:
+        percent = 100
+    percent = max(60, min(160, percent))
+    return percent / 100.0
+
+
+def _resolve_chart_number_mode() -> str:
+    if not mw or not mw.col:
+        return "hide"
+    try:
+        mode = mw.col.conf.get(PREP_STATION_CHART_NUMBERS_KEY, "hide")
+    except Exception:
+        mode = "hide"
+    return mode if mode in ("show", "hover", "hide") else "hide"
 
 
 def _enrich_plan(plan: dict) -> dict:
@@ -151,7 +190,9 @@ def _enrich_plan(plan: dict) -> dict:
         counts = _get_deck_card_counts(decks)
         total_new = sum(v["new"] for v in counts.values())
         total_due = sum(v["due"] for v in counts.values())
-        total_pending = total_new + total_due
+        total_susp = sum(v.get("susp", 0) for v in counts.values())
+        include_susp = _include_suspended()
+        total_pending = total_new + total_due + (total_susp if include_susp else 0)
 
         if days_left < 0:
             status = "expired"
@@ -174,6 +215,8 @@ def _enrich_plan(plan: dict) -> dict:
             "total_pending": total_pending,
             "total_new": total_new,
             "total_due": total_due,
+            "total_susp": total_susp,
+            "include_suspended": include_susp,
             "required_per_day": req,
             "deck_counts": counts,
         }
@@ -495,6 +538,8 @@ class PrepStationDialog(QDialog):
             label_color = label_color.name()
         self.header.chart.set_colors(line_color, label_color, fill_intensity)
         self.header.chart.set_opacity(chart_opacity)
+        self.header.chart.set_tooltip_palette(self.pal)
+        self.header.chart.set_number_mode(_resolve_chart_number_mode())
         self.header.chart.set_data(counts, labels)
 
         while self.cards_flow.count():
@@ -718,12 +763,13 @@ def render_widget_html(slot_count: int = 4) -> str:
             pass
 
     widget_title = html.escape(tr("prep_widget_title"))
+    font_style = f' style="--prep-fs: {_widget_font_scale():.3f};"'
 
     if not active_plans:
         return f"""
-<div class="prep-station-widget" onclick="pycmd('openPrepStation')">
-  <div class="prep-widget-header">
-    <span class="prep-widget-title">{widget_title}</span>
+<div class="prep-station-widget"{font_style} onclick="pycmd('openPrepStation')">
+  <div class="onigiri-widget-head">
+    <h3>{widget_title}</h3>
   </div>
   <div class="prep-widget-empty">{html.escape(tr("prep_no_active_plans"))}</div>
 </div>"""
@@ -777,13 +823,10 @@ def render_widget_html(slot_count: int = 4) -> str:
   </div>
 </div>"""
 
-    plan_word = tr("prep_plan") if len(active_plans) == 1 else tr("prep_plans")
-    count_label = html.escape(tr("prep_count_tpl").format(len(active_plans), plan_word))
     return f"""
-<div class="prep-station-widget" onclick="pycmd('openPrepStation')">
-  <div class="prep-widget-header">
-    <span class="prep-widget-count">{count_label}</span>
-    <span class="prep-widget-title">{widget_title}</span>
+<div class="prep-station-widget"{font_style} onclick="pycmd('openPrepStation')">
+  <div class="onigiri-widget-head">
+    <h3>{widget_title}</h3>
   </div>
   <div class="prep-plan-cards" style="grid-template-columns: repeat({slot_count}, 1fr);">
     {cards_html}

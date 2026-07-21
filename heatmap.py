@@ -6,6 +6,18 @@ from aqt import mw
 from . import config
 from .config import DEFAULTS
 
+# Cache to avoid re-scanning the whole revlog on every render frame
+# (state_did_change + deck_browser_did_render + autoRender all fire in
+# quick succession when returning to the main menu).
+_HEATMAP_CACHE = None
+_HEATMAP_CACHE_TIME = 0
+_HEATMAP_CACHE_TTL = 5  # seconds
+
+def invalidate_heatmap_cache():
+    global _HEATMAP_CACHE, _HEATMAP_CACHE_TIME
+    _HEATMAP_CACHE = None
+    _HEATMAP_CACHE_TIME = 0
+
 def get_heatmap_data():
     """
     Fetches review data (past) and due card data (today/future),
@@ -158,6 +170,11 @@ def get_heatmap_data():
 
 def get_heatmap_and_config():
     """Helper to bundle heatmap data and configuration together for JavaScript."""
+    global _HEATMAP_CACHE, _HEATMAP_CACHE_TIME
+    now = time.time()
+    if _HEATMAP_CACHE is not None and (now - _HEATMAP_CACHE_TIME) < _HEATMAP_CACHE_TTL:
+        return _HEATMAP_CACHE
+
     conf = config.get_config()
     heatmap_data = get_heatmap_data()
 
@@ -237,4 +254,6 @@ def get_heatmap_and_config():
             "day_streak": tr("heatmap_day_streak"),
         }
     }
-    return heatmap_data, heatmap_config
+    _HEATMAP_CACHE = (heatmap_data, heatmap_config)
+    _HEATMAP_CACHE_TIME = now
+    return _HEATMAP_CACHE

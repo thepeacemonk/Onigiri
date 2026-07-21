@@ -14,6 +14,7 @@ from .. import config
 from ..translations import tr
 from ..onigiri_notifications import notify as tooltip
 from ..onigiri_notifications import notify_info as showInfo
+from . import redeem_net
 
 # SVG rendering imports
 try:
@@ -1321,18 +1322,51 @@ class TaiyakiStoreWindow(QDialog):
         self.coins_btn.setText("Verifying...")
         self.coins_btn.setEnabled(False)
         QApplication.processEvents()
-        
+
         print(f"[ONIGIRI DEBUG] Starting redemption for code: {code}")
         print(f"[ONIGIRI DEBUG] API URL: {SHOP_API_URL}")
-        
-        try:
-            payload = {"code": code}
+
+        # The Apps Script backend can take a long time to answer (cold start
+        # plus a full sheet scan). Run the request off the UI thread so Anki
+        # never freezes, and let redeem_net own the timeout/retry policy.
+        self._pending_code = code
+
+        def _request():
+            payload = {
+                "code": code,
+                # Stable across retries of the same code, so a lost response
+                # can be replayed by the server instead of burning the code.
+                "request_id": redeem_net.request_id_for_code(code),
+            }
             print(f"[ONIGIRI DEBUG] Sending payload: {payload}")
-            
-            response = requests.post(SHOP_API_URL, json=payload, timeout=10)
+            return redeem_net.post_redeem(SHOP_API_URL, payload)
+
+        def _done(future):
+            if not self._still_alive():
+                return
+            try:
+                response = future.result()
+            except Exception as exc:
+                self._on_redeem_failed(exc)
+                return
+            self._on_redeem_response(response)
+
+        mw.taskman.run_in_background(_request, _done)
+
+    def _still_alive(self) -> bool:
+        """False once the store window has been closed and the C++ side freed."""
+        try:
+            self.isVisible()
+            return True
+        except RuntimeError:
+            return False
+
+    def _on_redeem_response(self, response):
+        """Handle a redemption response back on the UI thread."""
+        try:
             print(f"[ONIGIRI DEBUG] Response status code: {response.status_code}")
             print(f"[ONIGIRI DEBUG] Response text: {response.text}")
-            
+
             try:
                 data = response.json()
                 print(f"[ONIGIRI DEBUG] Parsed JSON data: {data}")
@@ -1341,7 +1375,11 @@ class TaiyakiStoreWindow(QDialog):
                 self.reset_coins_button()
                 showInfo(f"Server returned invalid response: {response.text[:100]}")
                 return
-            
+
+            # The server answered, so this attempt is settled either way and
+            # the retry id can be dropped.
+            redeem_net.clear_request_id(getattr(self, "_pending_code", ""))
+
             if data.get("result") == "success":
                 added_coins = int(data.get("coins", 0))
                 print(f"[ONIGIRI DEBUG] Redemption successful! Adding {added_coins} coins")
@@ -1369,22 +1407,39 @@ class TaiyakiStoreWindow(QDialog):
                 print(f"[ONIGIRI DEBUG] Redemption failed: {error_msg}")
                 self.reset_coins_button()
                 showInfo(f"Redemption Failed:\n{error_msg}")
-                
-        except requests.exceptions.Timeout:
-            print("[ONIGIRI DEBUG] Request timed out")
-            self.reset_coins_button()
-            showInfo("Request timed out. Please check your internet connection.")
-        except requests.exceptions.ConnectionError as ce:
-            print(f"[ONIGIRI DEBUG] Connection error: {str(ce)}")
-            self.reset_coins_button()
-            showInfo("Could not connect to server. Please check your internet connection.")
+
         except Exception as e:
             print(f"[ONIGIRI DEBUG] Unexpected error: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             self.reset_coins_button()
             showInfo(f"Error: {str(e)}")
-    
+
+    def _on_redeem_failed(self, exc):
+        """Handle a failed redemption request back on the UI thread."""
+        self.reset_coins_button()
+
+        if isinstance(exc, requests.exceptions.ReadTimeout):
+            # The request did reach the server, so the code may well have been
+            # consumed even though we never saw the answer. Say so instead of
+            # blaming the connection - retrying would only report "already used".
+            print("[ONIGIRI DEBUG] Read timed out")
+            showInfo(
+                "The server took too long to answer.\n\n"
+                "Your code was not lost - just enter the same code again and "
+                "the coins will be added."
+            )
+        elif isinstance(exc, requests.exceptions.Timeout):
+            print("[ONIGIRI DEBUG] Connect timed out")
+            showInfo("Could not reach the server. Please check your internet connection.")
+        elif isinstance(exc, requests.exceptions.ConnectionError):
+            print(f"[ONIGIRI DEBUG] Connection error: {str(exc)}")
+            showInfo("Could not connect to server. Please check your internet connection.")
+        else:
+            print(f"[ONIGIRI DEBUG] Unexpected error: {type(exc).__name__}: {str(exc)}")
+            showInfo(f"Error: {str(exc)}")
+
+
     def _sync_to_gamification_json(self):
         """Sync current store data to gamification.json using atomic write"""
         try:

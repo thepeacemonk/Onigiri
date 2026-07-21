@@ -579,8 +579,16 @@ def _render_html(template_name, note_data, dark, ctx_override=None):
     if not template:
         return "<html><body>Hashi Notes assets missing.</body></html>"
     ctx = ctx_override or _build_context_json(dark)
+    try:
+        from .fonts import poppins_font_face_css
+
+        pkg = mw.addonManager.addonFromModule(__name__)
+        font_face_css = poppins_font_face_css(pkg)
+    except Exception:
+        font_face_css = ""
     return (
         template
+        .replace("/*__HASHI_FONT_FACE__*/", font_face_css)
         .replace("/*__HASHI_CONTEXT__*/null", _safe_json(ctx))
         .replace("/*__HASHI_DATA__*/null", _safe_json(note_data))
     )
@@ -818,8 +826,22 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
             pass
         shell_layout.addWidget(self.web, 1)
 
+        # See present(): the window is shown fully transparent and only revealed
+        # once the page reports its first painted frame (hashi:ready).
+        self._revealed = False
+
         self.web.stdHtml(_render_html("hashi_notes.html", self.note, self.dark))
         self.web.set_bridge_command(self._on_bridge, self)
+
+    def _reveal(self):
+        """Makes the (already shown, fully transparent) window visible."""
+        if self._revealed:
+            return
+        self._revealed = True
+        try:
+            self.setWindowOpacity(1.0)
+        except RuntimeError:
+            pass  # dialog was closed/deleted while we were waiting
 
     def present(self, anchor):
         """Shows the popup at its centered position.
@@ -832,11 +854,24 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
         enter/leave events are being dispatched corrupted macOS's native
         cursor-image handling (crash in QWindowPrivate::setCursor ->
         QImage::toCGImage -> CGImageCreate). A stable, boring show sequence
-        is worth more than eliminating the last bit of visual polish."""
+        is worth more than eliminating the last bit of visual polish.
+
+        Keeping the window *hidden* until the webview finished loading does not
+        work either: QtWebEngine does not render (and throttles rAF) for a page
+        whose window is not visible, so the first painted frame still lands
+        after show() and the user sees the empty shell for a few hundred ms -
+        the "glitch". The window is therefore shown immediately but with
+        windowOpacity 0, which keeps the page visible to WebEngine while
+        invisible to the user; hashi_notes.html calls pycmd("hashi:ready")
+        once its first frame is painted, and _reveal() flips the opacity."""
         _position_centered(self, anchor)
+        self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
         self.activateWindow()
+        # Safety net: a JS error (or an old cached page) must never leave the
+        # window permanently invisible.
+        QTimer.singleShot(900, self._reveal)
 
     def _shell_qss(self, bg=None):
         pal = self.pal
@@ -847,9 +882,10 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
                 background: {shell_bg};
                 border: 1px solid {border};
                 border-radius: 20px;
+                font-family: 'Poppins';
             }}
             QFrame#hashiTopbar {{ background: transparent; }}
-            QLabel#hashiTitle {{ color: {pal['fg']}; font-size: 14px; font-weight: 700; background: transparent; }}
+            QLabel#hashiTitle {{ color: {pal['fg']}; font-size: 14px; font-weight: 700; background: transparent; font-family: 'Poppins'; }}
             QToolButton {{ background: transparent; border: none; border-radius: 12px; padding: 3px;
                 color: {pal['fg2']}; font-size: 16px; }}
             QToolButton:hover {{ background: {pal['hover']}; }}
@@ -887,6 +923,9 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
         super().mouseReleaseEvent(event)
 
     def closeEvent(self, event):
+        # A close that lands while present() is still waiting for hashi:ready
+        # must not be re-revealed by the pending timer.
+        self._revealed = True
         # Flush any pending edit before closing, then return focus to the opener.
         try:
             self.web.eval("window.hashiFlush && window.hashiFlush();")
@@ -918,6 +957,9 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
     # --- bridge from the editor JS ---
     def _on_bridge(self, cmd):
         try:
+            if cmd == "hashi:ready":
+                self._reveal()
+                return
             if self._handle_note_bridge(cmd):
                 return
             if cmd == "hashi:open_gallery":
@@ -1064,6 +1106,183 @@ def open_hashi_gallery(parent=None):
     _gallery.raise_()
     _gallery.activateWindow()
     return _gallery
+
+
+# ─── Dashboard widget (deck browser, HTML) ────────────────────────────────────
+#
+# Two modes, both driven by hashi_widget_style in the add-on config:
+#   "gallery" - a compact card grid of the most recently updated notes
+#   "single"  - one pinned note with a longer excerpt
+#
+# The surface colors arrive as --hashiw-* CSS variables from
+# patcher.generate_dynamic_css, so the widget follows Widget Color and Effect when
+# the user keeps that sync on.
+
+_HASHI_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def widget_style(conf=None) -> dict:
+    style = (conf or config.get_config_readonly()).get("hashi_widget_style", {})
+    return style if isinstance(style, dict) else {}
+
+
+def _plain_excerpt(body_html: str, limit: int = 160) -> str:
+    """Body text with markup stripped, collapsed to a single line."""
+    text = _HASHI_TAG_RE.sub(" ", str(body_html or ""))
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "…"
+    return text
+
+
+def _widget_icon_html(value: str) -> str:
+    """Note icon as a small chip. Mirrors _HashiNoteEditorMixin._icon_html."""
+    value = str(value or "")
+    if not value:
+        return ""
+    if value.startswith("emoji:"):
+        glyph = value.split(":", 1)[1]
+        asset = _emoji_sprite_map().get(glyph)
+        if asset:
+            return f'<img class="hashi-widget-icon" src="{_addon_uri("system_files/emojis/" + asset)}">'
+        return f'<span class="hashi-widget-icon">{html.escape(glyph)}</span>'
+    if value.startswith("system:"):
+        uri = _addon_uri(f"system_files/system_icons/available_for_users/{value.split(':', 1)[1]}")
+        return (
+            f'<span class="hashi-widget-icon hashi-widget-icon-mask" '
+            f'style="-webkit-mask-image:url(\'{uri}\');mask-image:url(\'{uri}\')"></span>'
+        )
+    uri = _addon_uri(f"user_files/custom_deck_icons/{value}")
+    return f'<img class="hashi-widget-icon" src="{uri}">'
+
+
+def _widget_date_label(iso: str) -> str:
+    """Short relative age, matching the gallery's "today / 3d ago" wording."""
+    parsed = _parse_iso(iso)
+    if not parsed:
+        return ""
+    delta = datetime.now(timezone.utc) - parsed
+    days = delta.days
+    if days <= 0:
+        return tr("hashi_today", "today")
+    if days == 1:
+        return tr("hashi_yesterday", "yesterday")
+    return tr("hashi_days_ago", "{}d ago").format(days)
+
+
+def widget_notes(style=None):
+    """Notes the widget should display, newest first, already limited."""
+    style = style if isinstance(style, dict) else widget_style()
+    notes = load_notes()
+    notes.sort(key=lambda n: str(n.get("updated_at") or n.get("created_at") or ""), reverse=True)
+    if style.get("mode") == "single":
+        note_id = str(style.get("note_id") or "")
+        if note_id:
+            for note in notes:
+                if note.get("id") == note_id:
+                    return [note]
+        # Falls back to the newest note so a deleted pin never blanks the widget.
+        return notes[:1]
+    try:
+        limit = int(style.get("limit", 4))
+    except (TypeError, ValueError):
+        limit = 4
+    return notes[:max(1, min(8, limit))]
+
+
+def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
+    style = widget_style()
+    mode = "single" if style.get("mode") == "single" else "gallery"
+    show_excerpt = bool(style.get("show_excerpt", True))
+    show_icon = bool(style.get("show_icon", True))
+    show_date = bool(style.get("show_date", True))
+
+    title_html = html.escape(tr("hashi_notes_title", "Hashi Notes"), quote=False)
+    notes = widget_notes(style)
+
+    # A note's colour tints the whole card (the same fill the editor pop-up
+    # paints its shell with), so the widget reads as a miniature of the pop-up
+    # instead of a plain card with an accent bar on its edge.
+    tint_dark = _is_dark_mode() if bool(style.get("dynamic", True)) else False
+
+    def _note_style(note):
+        color = str(note.get("color") or "").strip()
+        if not color:
+            return ""
+        try:
+            fill = _fill_tint(color, tint_dark)
+        except Exception:
+            return ""
+        return (
+            f' style="--hashiw-note-accent:{html.escape(color, quote=True)};'
+            f'--hashiw-note-fill:{html.escape(fill, quote=True)}"'
+        )
+
+    if not notes:
+        return f"""
+<div class="hashi-notes-widget is-{mode}" onclick="pycmd('openHashiGallery')">
+  <div class="onigiri-widget-head"><h3>{title_html}</h3></div>
+  <div class="hashi-widget-empty">{html.escape(tr("hashi_no_notes_yet", "No notes yet"), quote=False)}</div>
+</div>"""
+
+    if mode == "single":
+        note = notes[0]
+        note_title = html.escape(note.get("title") or tr("hashi_untitled", "Untitled"), quote=False)
+        accent_style = _note_style(note)
+        icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
+        date_html = ""
+        if show_date:
+            label = _widget_date_label(note.get("updated_at") or note.get("created_at"))
+            if label:
+                date_html = f'<span class="hashi-widget-date">{html.escape(label, quote=False)}</span>'
+        body_html = ""
+        if show_excerpt:
+            excerpt = _plain_excerpt(note.get("body_md"), 420)
+            body_html = (
+                f'<p class="hashi-widget-excerpt">{html.escape(excerpt, quote=False)}</p>'
+                if excerpt
+                else f'<p class="hashi-widget-excerpt is-empty">{html.escape(tr("hashi_empty_note", "Empty note"), quote=False)}</p>'
+            )
+        return f"""
+<div class="hashi-notes-widget is-single"{accent_style} onclick="pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
+  <div class="onigiri-widget-head">
+    <h3>{title_html}</h3>
+    {date_html}
+  </div>
+  <div class="hashi-widget-single">
+    <div class="hashi-widget-single-title">{icon_html}<span>{note_title}</span></div>
+    {body_html}
+  </div>
+</div>"""
+
+    cards_html = ""
+    for note in notes:
+        note_title = html.escape(note.get("title") or tr("hashi_untitled", "Untitled"), quote=False)
+        accent_style = _note_style(note)
+        icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
+        date_html = ""
+        if show_date:
+            label = _widget_date_label(note.get("updated_at") or note.get("created_at"))
+            if label:
+                date_html = f'<span class="hashi-widget-card-date">{html.escape(label, quote=False)}</span>'
+        excerpt_html = ""
+        if show_excerpt:
+            excerpt = _plain_excerpt(note.get("body_md"), 90)
+            if excerpt:
+                excerpt_html = f'<p class="hashi-widget-card-excerpt">{html.escape(excerpt, quote=False)}</p>'
+        cards_html += f"""
+<div class="hashi-widget-card"{accent_style} onclick="event.stopPropagation(); pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
+  <div class="hashi-widget-card-head">{icon_html}<span class="hashi-widget-card-title">{note_title}</span></div>
+  {excerpt_html}
+  {date_html}
+</div>"""
+
+    return f"""
+<div class="hashi-notes-widget is-gallery" onclick="pycmd('openHashiGallery')">
+  <div class="onigiri-widget-head"><h3>{title_html}</h3></div>
+  <div class="hashi-widget-cards">{cards_html}</div>
+</div>"""
 
 
 def _position_centered(dialog, anchor=None):

@@ -34,6 +34,7 @@ from aqt.qt import (
     Qt,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 from PyQt6.QtCore import QLocale, QObject, QPoint, QRect, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFontDatabase, QPainterPath, QPen
@@ -51,6 +52,58 @@ MAX_HISTORY = 500
 SOUNDS_SUBDIR = "pomodoro_sounds"
 DEFAULT_ICON = "system:pomodoro.svg"
 
+# Island size presets. "small" reproduces the original hard-coded island
+# exactly; "medium"/"big" scale the same shell up and switch on extra rows
+# ("progress" bar, "meta" line, "stats" tiles) - see PomodoroIslandView._build.
+SIZE_PRESETS = {
+    "small": {
+        "window": (230, 200),
+        "pad": (14, 10, 14, 14),
+        "spacing": 8,
+        "radius": 18,
+        "topbar_h": 26,
+        "icon": 16,
+        "chip": 22,
+        "phase_px": 11,
+        "time_px": 40,
+        "dot": 13,
+        "btn": 30,
+        "play": 38,
+        "rows": (),
+    },
+    "medium": {
+        "window": (270, 264),
+        "pad": (16, 12, 16, 16),
+        "spacing": 9,
+        "radius": 20,
+        "topbar_h": 28,
+        "icon": 17,
+        "chip": 24,
+        "phase_px": 11,
+        "time_px": 48,
+        "dot": 14,
+        "btn": 32,
+        "play": 42,
+        "rows": ("progress", "meta"),
+    },
+    "big": {
+        "window": (330, 372),
+        "pad": (20, 14, 20, 20),
+        "spacing": 11,
+        "radius": 24,
+        "topbar_h": 30,
+        "icon": 19,
+        "chip": 26,
+        "phase_px": 12,
+        "time_px": 60,
+        "dot": 16,
+        "btn": 36,
+        "play": 48,
+        "rows": ("progress", "meta", "stats"),
+    },
+}
+DEFAULT_SIZE = "small"
+
 DEFAULT_SETTINGS = {
     "focus_minutes": 25,
     "short_break_minutes": 5,
@@ -62,6 +115,8 @@ DEFAULT_SETTINGS = {
     "auto_start_next_phase": True,
     "icon": DEFAULT_ICON,
     "font_key": "system",
+    # "small" (default) / "medium" / "big" - see SIZE_PRESETS.
+    "size": DEFAULT_SIZE,
     "sound_enabled": True,
     "sound_file": "",
     # When True, the shell/accent/digits/icon roles switch between the
@@ -206,6 +261,39 @@ def blur_pixmap(pixmap, radius):
     scene.render(painter, target_rect, target_rect)
     painter.end()
     return result
+
+
+def get_preset(settings):
+    """Layout metrics for the island size chosen in Settings -> Pomodoro ->
+    Appearance. Both the real floating island and the Settings preview build
+    themselves from this same dict (see PomodoroIslandView)."""
+    key = (settings or {}).get("size") or DEFAULT_SIZE
+    return SIZE_PRESETS.get(key, SIZE_PRESETS[DEFAULT_SIZE])
+
+
+def format_minutes(total_minutes):
+    h, m = divmod(int(round(total_minutes)), 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+def session_stats(sessions=None):
+    """Aggregates used by the medium/big island's extra rows."""
+    sessions = get_sessions() if sessions is None else sessions
+    today = date.today().isoformat()
+    minutes_today = sum(s.get("actual_minutes", 0) for s in sessions if s.get("date") == today)
+    count_today = sum(1 for s in sessions if s.get("date") == today)
+    days = {s.get("date") for s in sessions if s.get("date")}
+    streak = 0
+    cursor = date.today()
+    while cursor.isoformat() in days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return {
+        "minutes_today": minutes_today,
+        "count_today": count_today,
+        "streak": streak,
+        "total_minutes": sum(s.get("actual_minutes", 0) for s in sessions),
+    }
 
 
 def _resolve_font_family(font_key):
@@ -541,6 +629,387 @@ class _PomoShellFrame(QFrame):
         painter.drawRoundedRect(rect, self._radius, self._radius)
 
 
+class _PomoProgressBar(QWidget):
+    """Thin rounded phase-progress bar (medium/big islands only)."""
+
+    def __init__(self, height, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(height)
+        self._fraction = 0.0
+        self._track = QColor(0, 0, 0, 40)
+        self._fill = QColor("#00A982")
+
+    def set_colors(self, track, fill):
+        self._track = QColor(track)
+        self._fill = QColor(fill)
+        self.update()
+
+    def set_fraction(self, fraction):
+        fraction = max(0.0, min(1.0, float(fraction)))
+        if abs(fraction - self._fraction) > 0.0005:
+            self._fraction = fraction
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        radius = self.height() / 2.0
+        painter.setBrush(QBrush(self._track))
+        painter.drawRoundedRect(QRectF(self.rect()), radius, radius)
+        width = self.width() * self._fraction
+        if width > 0:
+            painter.setBrush(QBrush(self._fill))
+            painter.drawRoundedRect(QRectF(0, 0, max(width, self.height()), self.height()), radius, radius)
+
+
+class PomodoroIslandView(_PomoShellFrame):
+    """The island's whole shell content, built purely from a settings dict.
+
+    Both the real floating window (PomodoroWidget) and the Settings preview
+    (settings/_page_pomodoro.py) instantiate this same class, so the preview
+    is the real thing rather than a look-alike. `callbacks` is None in the
+    preview, which also skips wiring the buttons."""
+
+    def __init__(self, settings, dark, callbacks=None, parent=None):
+        super().__init__(parent)
+        self.callbacks = callbacks or {}
+        self.settings = settings
+        self.dark = dark
+        self.pal = _palette(dark, settings)
+        self.preset = get_preset(settings)
+        self._state = {
+            "phase": "focus",
+            "remaining": 0,
+            "total": 1,
+            "focus_count": 0,
+            "cycle_total": 4,
+            "running": False,
+        }
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 0, 0, 0)
+        self._body = None
+        self._build()
+
+    # ─── Construction ────────────────────────────────────────────────────
+
+    def _build(self):
+        if self._body is not None:
+            self._outer.removeWidget(self._body)
+            # setParent(None) first: deleteLater alone leaves the old body
+            # painted on top of the new one until the event loop runs.
+            self._body.setParent(None)
+            self._body.deleteLater()
+        preset = self.preset
+        # New child widgets, so every refresh() cache is stale.
+        self._icon_sig = self._dots_sig = self._stats_sig = None
+        # No stylesheet on the body: a selector-less rule here ("background:
+        # transparent") would cascade to every child and beat the shell's
+        # QToolButton#pomoPlay / QFrame#pomoIslandTile backgrounds. A plain
+        # QWidget paints nothing anyway.
+        self._body = body = QWidget(self)
+        layout = QVBoxLayout(body)
+        left, top, right, bottom = preset["pad"]
+        layout.setContentsMargins(left, top, right, bottom)
+        layout.setSpacing(preset["spacing"])
+
+        layout.addWidget(self._build_topbar())
+
+        self.time_label = QLabel()
+        self.time_label.setObjectName("pomoTime")
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.time_label)
+
+        rows = preset["rows"]
+
+        self.progress_bar = None
+        if "progress" in rows:
+            self.progress_bar = _PomoProgressBar(6 if preset["dot"] < 16 else 8)
+            layout.addWidget(self.progress_bar)
+
+        self.dots_row = QHBoxLayout()
+        self.dots_row.setSpacing(5)
+        self.dots_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(self.dots_row)
+
+        self.meta_label = None
+        if "meta" in rows:
+            self.meta_label = QLabel()
+            self.meta_label.setObjectName("pomoMeta")
+            self.meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self.meta_label)
+
+        self.stat_values = {}
+        if "stats" in rows:
+            layout.addWidget(self._build_stats_row())
+
+        layout.addLayout(self._build_controls())
+
+        self._outer.addWidget(body)
+        self.setStyleSheet(self._shell_qss())
+        self.refresh()
+
+    def _build_topbar(self):
+        preset = self.preset
+        self.topbar = QFrame()
+        self.topbar.setObjectName("pomoTopbar")
+        self.topbar.setFixedHeight(preset["topbar_h"])
+        self.topbar.setCursor(
+            Qt.CursorShape.SizeAllCursor if self.callbacks else Qt.CursorShape.ArrowCursor
+        )
+        top = QHBoxLayout(self.topbar)
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(6)
+
+        self.topbar_icon = QLabel()
+        self.phase_label = QLabel()
+        self.phase_label.setObjectName("pomoPhase")
+
+        chip = preset["chip"]
+        self.stats_btn = QToolButton()
+        self.stats_btn.setFixedSize(chip, chip)
+        self.stats_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.stats_btn.setToolTip(tr("pomodoro_stats_title", "Pomodoro Stats"))
+
+        self.close_btn = QToolButton()
+        self.close_btn.setText("✕")
+        self.close_btn.setFixedSize(chip, chip)
+        self.close_btn.setCursor(Qt.CursorShape.ArrowCursor)
+        self.close_btn.setToolTip(tr("pomodoro_close", "Close"))
+
+        self._connect(self.stats_btn, "stats")
+        self._connect(self.close_btn, "close")
+
+        top.addWidget(self.topbar_icon)
+        top.addWidget(self.phase_label)
+        top.addStretch()
+        top.addWidget(self.stats_btn)
+        top.addWidget(self.close_btn)
+        return self.topbar
+
+    def _build_stats_row(self):
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        tiles = (
+            ("minutes_today", tr("pomodoro_today", "Today")),
+            ("count_today", tr("pomodoro_sessions", "Sessions")),
+            ("streak", tr("pomodoro_streak_short", "Streak")),
+        )
+        for key, label_text in tiles:
+            tile = QFrame()
+            tile.setObjectName("pomoIslandTile")
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(8, 6, 8, 6)
+            tile_layout.setSpacing(1)
+            caption = QLabel(label_text.upper())
+            caption.setObjectName("pomoTileCaption")
+            caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            value = QLabel("—")
+            value.setObjectName("pomoTileValue")
+            value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tile_layout.addWidget(caption)
+            tile_layout.addWidget(value)
+            self.stat_values[key] = value
+            layout.addWidget(tile, 1)
+        return row
+
+    def _build_controls(self):
+        preset = self.preset
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+
+        self.reset_btn = QToolButton()
+        self.reset_btn.setText("⟲")
+        self.reset_btn.setFixedSize(preset["btn"], preset["btn"])
+        self.reset_btn.setToolTip(tr("pomodoro_reset", "Reset"))
+        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.play_btn = QToolButton()
+        self.play_btn.setObjectName("pomoPlay")
+        self.play_btn.setFixedSize(preset["play"], preset["play"])
+        self.play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.skip_btn = QToolButton()
+        self.skip_btn.setText("⏭")
+        self.skip_btn.setFixedSize(preset["btn"], preset["btn"])
+        self.skip_btn.setToolTip(tr("pomodoro_skip", "Skip"))
+        self.skip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._connect(self.reset_btn, "reset")
+        self._connect(self.play_btn, "play")
+        self._connect(self.skip_btn, "skip")
+
+        controls.addStretch()
+        controls.addWidget(self.reset_btn)
+        controls.addWidget(self.play_btn)
+        controls.addWidget(self.skip_btn)
+        controls.addStretch()
+        return controls
+
+    def _connect(self, button, name):
+        handler = self.callbacks.get(name)
+        if handler is not None:
+            button.clicked.connect(handler)
+            return
+        # No callbacks at all means this is the static Settings preview: kill
+        # the hover states too (WA_TransparentForMouseEvents doesn't inherit,
+        # so setting it on the island alone wouldn't cover the buttons).
+        if not self.callbacks:
+            button.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            button.setCursor(Qt.CursorShape.ArrowCursor)
+
+    # ─── Styling ─────────────────────────────────────────────────────────
+
+    def _shell_qss(self):
+        pal = self.pal
+        preset = self.preset
+        family = _resolve_font_family(self.settings.get("font_key", "system"))
+        # Poppins is the add-on default; use it unless a custom font is chosen.
+        digits_font = f"font-family: '{family}';" if family else "font-family: 'Poppins';"
+        tile_bg = shell_alpha_color(pal["icon"], 10)
+        return f"""
+            QFrame#pomoTopbar {{ background: transparent; font-family: 'Poppins'; }}
+            QLabel#pomoPhase {{ color: {pal['icon']}; font-size: {preset['phase_px']}px; font-weight: 800;
+                letter-spacing: 1px; text-transform: uppercase; background: transparent; font-family: 'Poppins'; }}
+            QLabel#pomoTime {{ color: {pal['digits']}; font-size: {preset['time_px']}px; font-weight: 800; background: transparent; {digits_font} }}
+            QLabel#pomoMeta {{ color: {pal['icon']}; font-size: {max(9, preset['phase_px'] - 1)}px; font-weight: 700;
+                letter-spacing: 0.5px; background: transparent; font-family: 'Poppins'; }}
+            QFrame#pomoIslandTile {{ background: {tile_bg}; border: 1px solid {shell_alpha_color(pal['icon'], 18)}; border-radius: 10px; }}
+            QLabel#pomoTileCaption {{ color: {pal['icon']}; font-size: 8px; font-weight: 800; letter-spacing: 1px; background: transparent; font-family: 'Poppins'; }}
+            QLabel#pomoTileValue {{ color: {pal['digits']}; font-size: 14px; font-weight: 800; background: transparent; {digits_font} }}
+            QToolButton {{ background: transparent; border: none; border-radius: 8px; color: {pal['icon']}; font-size: {round(preset['btn'] / 2)}px; }}
+            QToolButton:hover {{ background: {pal['hover']}; }}
+            QToolButton#pomoPlay {{ background: {pal['accent']}; color: white; border-radius: {round(preset['play'] / 2)}px;
+                font-size: {round(preset['play'] * 0.42)}px; font-weight: 700; }}
+            QToolButton#pomoPlay:hover {{ background: {pal['accent']}; }}
+        """
+
+    def apply_settings(self, settings, dark, backdrop_pixmap=None):
+        """Re-applies a (possibly edited) settings dict - rebuilds the whole
+        body when the size preset changed, restyles in place otherwise."""
+        size_changed = get_preset(settings) is not self.preset
+        self.settings = settings
+        self.dark = dark
+        self.pal = _palette(dark, settings)
+        self.preset = get_preset(settings)
+        if size_changed:
+            self._build()
+        else:
+            self.setStyleSheet(self._shell_qss())
+            self.refresh()
+        self.apply_shell_appearance(backdrop_pixmap)
+
+    def apply_shell_appearance(self, backdrop_pixmap=None):
+        tint = shell_alpha_qcolor(self.pal["shell"], self.settings.get("shell_opacity", 100))
+        self.set_appearance(backdrop_pixmap, tint, QColor(self.pal["border"]), self.preset["radius"])
+
+    # ─── State ───────────────────────────────────────────────────────────
+
+    def set_state(self, phase, remaining, total, focus_count, cycle_total, running):
+        self._state = {
+            "phase": phase,
+            "remaining": remaining,
+            "total": max(1, total),
+            "focus_count": focus_count,
+            "cycle_total": max(1, cycle_total),
+            "running": running,
+        }
+        self.refresh()
+
+    @staticmethod
+    def _format_time(total_seconds):
+        total_seconds = max(0, int(total_seconds))
+        m, s = divmod(total_seconds, 60)
+        return f"{m:02d}:{s:02d}"
+
+    @staticmethod
+    def _phase_name(phase):
+        return {
+            "focus": tr("pomodoro_focus", "Focus"),
+            "short_break": tr("pomodoro_short_break", "Short Break"),
+            "long_break": tr("pomodoro_long_break", "Long Break"),
+        }.get(phase, phase)
+
+    def _next_phase(self):
+        state = self._state
+        if state["phase"] != "focus":
+            return "focus"
+        if state["focus_count"] + 1 >= state["cycle_total"]:
+            return "long_break"
+        return "short_break"
+
+    def refresh(self):
+        """Runs once per second while the timer ticks, so everything costly
+        (icon rasterization, dot rebuilds, the collection read behind the stats
+        tiles) is guarded by a signature and only redone when it changed."""
+        state = self._state
+        pal = self.pal
+        icon_value = self.settings.get("icon") or DEFAULT_ICON
+
+        icon_sig = (icon_value, pal["accent"], pal["icon"], self.preset["icon"])
+        if icon_sig != getattr(self, "_icon_sig", None):
+            self._icon_sig = icon_sig
+            self.topbar_icon.setPixmap(render_icon_pixmap(_addon_root(), icon_value, pal["accent"], self.preset["icon"]))
+            self.stats_btn.setIcon(_tinted_icon(_system_icon_path("stats.svg"), pal["icon"], self.preset["icon"] - 2))
+
+        self.phase_label.setText(self._phase_name(state["phase"]))
+        self.time_label.setText(self._format_time(state["remaining"]))
+        self.play_btn.setText("⏸" if state["running"] else "▶")
+
+        if self.progress_bar is not None:
+            # QColor can't parse an "rgba(...)" string - the track needs the
+            # QColor-returning helper, not the CSS one.
+            self.progress_bar.set_colors(shell_alpha_qcolor(pal["icon"], 22), pal["accent"])
+            self.progress_bar.set_fraction(1.0 - state["remaining"] / float(state["total"]))
+
+        dots_sig = (icon_sig, state["focus_count"], state["cycle_total"])
+        if dots_sig != getattr(self, "_dots_sig", None):
+            self._dots_sig = dots_sig
+            self._rebuild_dots()
+
+        if self.meta_label is not None:
+            self.meta_label.setText("{}  ·  {} {}".format(
+                tr("pomodoro_session_of", "Session {n} of {total}")
+                .replace("{n}", str(min(state["focus_count"] + 1, state["cycle_total"])))
+                .replace("{total}", str(state["cycle_total"])),
+                tr("pomodoro_next", "Next:"),
+                self._phase_name(self._next_phase()),
+            ))
+
+        # Sessions are only ever logged when a focus phase completes, so the
+        # tiles only need refreshing when the phase/cycle position moves.
+        stats_sig = (state["phase"], state["focus_count"])
+        if self.stat_values and stats_sig != getattr(self, "_stats_sig", None):
+            self._stats_sig = stats_sig
+            stats = session_stats()
+            self.stat_values["minutes_today"].setText(format_minutes(stats["minutes_today"]))
+            self.stat_values["count_today"].setText(str(stats["count_today"]))
+            self.stat_values["streak"].setText("{}d".format(stats["streak"]))
+
+    def _rebuild_dots(self):
+        while self.dots_row.count():
+            item = self.dots_row.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        state = self._state
+        total = state["cycle_total"]
+        filled = min(state["focus_count"], total)
+        icon_value = self.settings.get("icon") or DEFAULT_ICON
+        for i in range(total):
+            label = QLabel()
+            filled_slot = i < filled
+            color = self.pal["accent"] if filled_slot else self.pal["icon"]
+            label.setPixmap(render_icon_pixmap(_addon_root(), icon_value, color, self.preset["dot"]))
+            if not filled_slot:
+                effect = QGraphicsOpacityEffect(label)
+                effect.setOpacity(0.35)
+                label.setGraphicsEffect(effect)
+            self.dots_row.addWidget(label)
+
+
 class PomodoroWidget(QDialog):
     """Frameless floating timer. Copies HashiNotePopup's shell recipe from
     hashi_notes.py: a native Tool window with a slim draggable topbar, since
@@ -551,7 +1020,7 @@ class PomodoroWidget(QDialog):
         super().__init__(parent or mw)
         self.dark = _is_dark_mode()
         self.timer = get_timer()
-        self.pal = pal = _palette(self.dark, self.timer.settings)
+        self.pal = _palette(self.dark, self.timer.settings)
         self._drag_pos = None
         self._drag_snapshot = None
         self._drag_snapshot_origin = None
@@ -563,92 +1032,25 @@ class PomodoroWidget(QDialog):
             | Qt.WindowType.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setFixedSize(230, 200)
+        self.setFixedSize(*get_preset(self.timer.settings)["window"])
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
 
-        self.shell = shell = _PomoShellFrame()
+        self.shell = shell = PomodoroIslandView(
+            self.timer.settings,
+            self.dark,
+            callbacks={
+                "stats": self._open_stats,
+                "close": self.close,
+                "play": self._on_play_pause,
+                "reset": self._on_reset,
+                "skip": self._on_skip,
+            },
+        )
         shell.setObjectName("pomoShell")
-        shell.setStyleSheet(self._shell_qss())
         outer.addWidget(shell)
-
-        shell_layout = QVBoxLayout(shell)
-        shell_layout.setContentsMargins(14, 10, 14, 14)
-        shell_layout.setSpacing(8)
-
-        self.topbar = QFrame()
-        self.topbar.setObjectName("pomoTopbar")
-        self.topbar.setFixedHeight(26)
-        self.topbar.setCursor(Qt.CursorShape.SizeAllCursor)
-        top = QHBoxLayout(self.topbar)
-        top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(6)
-
-        icon_label = QLabel()
-        icon_label.setPixmap(render_icon_pixmap(_addon_root(), self.timer.settings.get("icon") or DEFAULT_ICON, pal["accent"], 16))
-        self.phase_label = QLabel()
-        self.phase_label.setObjectName("pomoPhase")
-
-        stats_btn = QToolButton()
-        stats_btn.setIcon(_tinted_icon(_system_icon_path("stats.svg"), pal["icon"], 14))
-        stats_btn.setFixedSize(22, 22)
-        stats_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        stats_btn.setToolTip(tr("pomodoro_stats_title", "Pomodoro Stats"))
-        stats_btn.clicked.connect(self._open_stats)
-
-        close_btn = QToolButton()
-        close_btn.setText("✕")
-        close_btn.setFixedSize(22, 22)
-        close_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        close_btn.setToolTip(tr("pomodoro_close", "Close"))
-        close_btn.clicked.connect(self.close)
-
-        top.addWidget(icon_label)
-        top.addWidget(self.phase_label)
-        top.addStretch()
-        top.addWidget(stats_btn)
-        top.addWidget(close_btn)
-        shell_layout.addWidget(self.topbar)
-
-        self.time_label = QLabel()
-        self.time_label.setObjectName("pomoTime")
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        shell_layout.addWidget(self.time_label)
-
-        self.dots_row = QHBoxLayout()
-        self.dots_row.setSpacing(5)
-        self.dots_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        shell_layout.addLayout(self.dots_row)
-
-        controls = QHBoxLayout()
-        controls.setSpacing(10)
-        self.reset_btn = QToolButton()
-        self.reset_btn.setText("⟲")
-        self.reset_btn.setFixedSize(30, 30)
-        self.reset_btn.setToolTip(tr("pomodoro_reset", "Reset"))
-        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reset_btn.clicked.connect(self._on_reset)
-
-        self.play_btn = QToolButton()
-        self.play_btn.setObjectName("pomoPlay")
-        self.play_btn.setFixedSize(38, 38)
-        self.play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.play_btn.clicked.connect(self._on_play_pause)
-
-        self.skip_btn = QToolButton()
-        self.skip_btn.setText("⏭")
-        self.skip_btn.setFixedSize(30, 30)
-        self.skip_btn.setToolTip(tr("pomodoro_skip", "Skip"))
-        self.skip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.skip_btn.clicked.connect(self._on_skip)
-
-        controls.addStretch()
-        controls.addWidget(self.reset_btn)
-        controls.addWidget(self.play_btn)
-        controls.addWidget(self.skip_btn)
-        controls.addStretch()
-        shell_layout.addLayout(controls)
+        self.topbar = shell.topbar
 
         self.timer.tick.connect(self._refresh)
         self.timer.phase_changed.connect(self._refresh_full)
@@ -656,24 +1058,19 @@ class PomodoroWidget(QDialog):
         self._apply_shell_appearance()
         self._refresh_full()
 
-    def _shell_qss(self):
-        pal = self.pal
-        family = _resolve_font_family(self.timer.settings.get("font_key", "system"))
-        digits_font = f"font-family: '{family}';" if family else ""
-        return f"""
-            QFrame#pomoTopbar {{ background: transparent; }}
-            QLabel#pomoPhase {{ color: {pal['icon']}; font-size: 11px; font-weight: 800;
-                letter-spacing: 1px; text-transform: uppercase; background: transparent; }}
-            QLabel#pomoTime {{ color: {pal['digits']}; font-size: 40px; font-weight: 800; background: transparent; {digits_font} }}
-            QToolButton {{ background: transparent; border: none; border-radius: 8px; color: {pal['icon']}; font-size: 15px; }}
-            QToolButton:hover {{ background: {pal['hover']}; }}
-            QToolButton#pomoPlay {{ background: {pal['accent']}; color: white; border-radius: 19px; font-size: 16px; font-weight: 700; }}
-            QToolButton#pomoPlay:hover {{ background: {pal['accent']}; }}
-        """
+    def reload_appearance(self):
+        """Re-reads the saved settings into the open island (called after the
+        Settings dialog saves, so size/colors apply without reopening)."""
+        self.timer.settings = get_settings()
+        self.pal = _palette(self.dark, self.timer.settings)
+        self.setFixedSize(*get_preset(self.timer.settings)["window"])
+        self.shell.apply_settings(self.timer.settings, self.dark)
+        self.topbar = self.shell.topbar
+        self._refresh_full()
+        self._refresh_static_backdrop()
 
     def _apply_shell_appearance(self, backdrop_pixmap=None):
-        tint = shell_alpha_qcolor(self.pal["shell"], self.timer.settings.get("shell_opacity", 100))
-        self.shell.set_appearance(backdrop_pixmap, tint, QColor(self.pal["border"]))
+        self.shell.apply_shell_appearance(backdrop_pixmap)
 
     def _grab_screen_pixmap(self):
         """Grabs the whole current screen, hiding this window (via full
@@ -742,48 +1139,19 @@ class PomodoroWidget(QDialog):
         self.activateWindow()
         self._refresh_static_backdrop()
 
-    @staticmethod
-    def _format_time(total_seconds):
-        total_seconds = max(0, int(total_seconds))
-        m, s = divmod(total_seconds, 60)
-        return f"{m:02d}:{s:02d}"
-
-    def _phase_display_name(self):
-        return {
-            "focus": tr("pomodoro_focus", "Focus"),
-            "short_break": tr("pomodoro_short_break", "Short Break"),
-            "long_break": tr("pomodoro_long_break", "Long Break"),
-        }[self.timer.session_type]
-
     def _refresh(self):
-        self.time_label.setText(self._format_time(self.timer.remaining_seconds))
-        self.play_btn.setText("⏸" if self.timer.running else "▶")
+        timer = self.timer
+        self.shell.set_state(
+            timer.session_type,
+            timer.remaining_seconds,
+            timer.phase_length_seconds(),
+            timer.focus_count,
+            max(1, timer.settings.get("sessions_until_long_break", 4)),
+            timer.running,
+        )
 
     def _refresh_full(self):
-        self.phase_label.setText(self._phase_display_name())
-        self._rebuild_progress_icons()
         self._refresh()
-
-    def _rebuild_progress_icons(self):
-        while self.dots_row.count():
-            item = self.dots_row.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-        settings = self.timer.settings
-        total = max(1, settings.get("sessions_until_long_break", 4))
-        filled = min(self.timer.focus_count, total)
-        icon_value = settings.get("icon") or DEFAULT_ICON
-        for i in range(total):
-            label = QLabel()
-            filled_slot = i < filled
-            color = self.pal["accent"] if filled_slot else self.pal["icon"]
-            label.setPixmap(render_icon_pixmap(_addon_root(), icon_value, color, 13))
-            if not filled_slot:
-                effect = QGraphicsOpacityEffect(label)
-                effect.setOpacity(0.35)
-                label.setGraphicsEffect(effect)
-            self.dots_row.addWidget(label)
 
     def _on_play_pause(self):
         if self.timer.running:
@@ -801,8 +1169,10 @@ class PomodoroWidget(QDialog):
         open_stats_dialog(self.parent())
 
     def _topbar_at(self, event):
+        # mapFrom walks the whole ancestor chain (the topbar now lives inside
+        # the island view's body widget, not directly under this dialog).
         pos = event.position().toPoint()
-        return self.topbar.geometry().contains(self.topbar.mapFrom(self, pos))
+        return self.topbar.rect().contains(self.topbar.mapFrom(self, pos))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self._topbar_at(event):
@@ -1060,6 +1430,17 @@ def toggle_widget(parent=None):
     _widget = PomodoroWidget(anchor)
     _widget.present(anchor)
     return _widget
+
+
+def reload_open_widget():
+    """Pushes freshly saved settings into an island that is already on screen
+    (called by the Settings page after it saves)."""
+    if _widget is None:
+        return
+    try:
+        _widget.reload_appearance()
+    except Exception as e:
+        print(f"Pomodoro: reload error: {e}")
 
 
 def open_stats_dialog(parent=None):

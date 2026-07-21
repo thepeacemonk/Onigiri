@@ -73,7 +73,7 @@ _FALLBACK_JS = r"""
         'background:rgba(255,255,255,.94)',
         'color:#243021',
         'box-shadow:0 18px 38px rgba(15,23,42,.24)',
-        'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif',
+        "font-family:'Poppins',-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif",
         'opacity:0',
         'transform:translateY(-10px) scale(.98)',
         'transition:opacity 180ms ease,transform 220ms cubic-bezier(.16,1,.3,1)',

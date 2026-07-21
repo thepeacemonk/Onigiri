@@ -102,6 +102,10 @@ def show_transfer_window(source_dids_json: str) -> None:
     <head>
         <meta charset="UTF-8">
         <style>
+            @font-face {{ font-family: 'Poppins'; src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Regular.ttf'); font-weight: 400; }}
+            @font-face {{ font-family: 'Poppins'; src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Medium.ttf'); font-weight: 500; }}
+            @font-face {{ font-family: 'Poppins'; src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Bold.ttf'); font-weight: 700; }}
+            @font-face {{ font-family: 'Poppins'; src: url('/_addons/{addon_package}/system_files/fonts/system_fonts/Poppins/Poppins-Black.ttf'); font-weight: 900; }}
             :root {{
                 {light_css}
             }}
@@ -109,7 +113,7 @@ def show_transfer_window(source_dids_json: str) -> None:
                 {dark_css}
             }}
             body {{
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 margin: 0;
                 padding: 0;
                 background-color: var(--canvas);

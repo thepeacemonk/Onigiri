@@ -132,7 +132,7 @@ def apply_menu_styling():
         border-radius: 12px;
         padding: 5px;
         color: {text_color};
-        font-family: -apple-system, sans-serif;
+        font-family: 'Poppins', -apple-system, sans-serif;
     }}
     QMenu::item {{
         background-color: transparent;
@@ -477,6 +477,8 @@ def take_control_of_synapsepro_overview_hook():
 
 
 def is_synapsepro_identified() -> bool:
+    if not synapsepro_addon_installed():
+        return False
     try:
         take_control_of_deck_browser_hook()
     except Exception:
@@ -751,6 +753,8 @@ def _strip_synapsepro_overview_assets(web_content) -> None:
 def inject_synapsepro_overview_widget(web_content, context):
     if not isinstance(context, Overview):
         return
+    if not synapsepro_addon_installed():
+        return
     take_control_of_synapsepro_overview_hook()
     take_control_of_synapsepro_overview_theme_hook()
     if not is_synapsepro_identified():
@@ -788,13 +792,51 @@ def inject_synapsepro_overview_widget(web_content, context):
 
 
 def capture_onigiri_overview_body(web_content, context):
+    if not synapsepro_addon_installed():
+        return
     if isinstance(context, Overview):
         take_control_of_synapsepro_overview_hook()
         take_control_of_synapsepro_overview_theme_hook()
         _synapsepro_overview_original_bodies[id(context)] = getattr(web_content, "body", "") or ""
 
 
+_synapsepro_installed_cache = None
+
+
+def synapsepro_addon_installed() -> bool:
+    """
+    Cheap, cached "is SynapsePro installed" check.
+
+    The full is_synapsepro_identified() walks sys.modules and every hook list;
+    running that on each screen change and each overview render was pure
+    overhead for the ~all users who do not have SynapsePro. The add-on list
+    cannot change without a restart, so this is safe to cache for the session.
+    """
+    global _synapsepro_installed_cache
+    if _synapsepro_installed_cache is not None:
+        return _synapsepro_installed_cache
+
+    present = False
+    try:
+        addon_manager = getattr(mw, "addonManager", None)
+        if addon_manager:
+            for addon_id in addon_manager.allAddons():
+                try:
+                    name = addon_manager.addonName(addon_id)
+                except Exception:
+                    name = ""
+                if "synapsepro" in f"{addon_id} {name}".lower() or "236979321" in str(addon_id):
+                    present = True
+                    break
+    except Exception:
+        present = False
+    _synapsepro_installed_cache = present
+    return present
+
+
 def ensure_synapsepro_overview_bridge_hook():
+    if not synapsepro_addon_installed():
+        return
     try:
         take_control_of_synapsepro_overview_hook()
         take_control_of_synapsepro_overview_theme_hook()
@@ -1380,29 +1422,52 @@ def open_mr_taiyaki_store_dialog():
     _store_dialog.show()
 
 
-def _get_nook_level_chip_html():
-    conf = config.get_config()
-    restaurant_conf = conf.get("restaurant_level", {})
-    if not restaurant_conf:
-        restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
-    if not restaurant_conf.get("enabled", False):
-        return ""
-    if not restaurant_conf.get("show_profile_bar_progress", True):
-        return ""
+def _profile_level_chip_detail(game, level):
+    """Tooltip text for the profile Level chip, per selected game."""
     try:
-        from .gamification import nook_level
-        progress = nook_level.manager.get_progress()
-        if not progress or not progress.enabled:
+        if game == "nook":
+            from .gamification import nook_level
+            progress = nook_level.manager.get_progress()
+            xp_into = max(0, getattr(progress, "xp_into_level", 0))
+            xp_next = max(1, getattr(progress, "xp_to_next_level", 100))
+            return f"{xp_into}/{xp_next} XP"
+        if game == "hexagon":
+            hexagon_land = _hexagon_land()
+            info = hexagon_land.manager.level_info()
+            return f"{info['title']} - {info['landsToNext']} lands to next level"
+        if game == "onigimon":
+            return f"Onigimon Lv {level}"
+    except Exception:
+        pass
+    return f"Lv {level}"
+
+
+def _get_nook_level_chip_html():
+    # Profile Level chip. Which game it reflects is chosen in
+    # gamification_settings.py > General > Profile Level.
+    try:
+        from . import onigiri_renderer
+        game = onigiri_renderer._selected_profile_level_game()
+        enabled, level, fraction, _color = onigiri_renderer._profile_level_progress()
+        if not enabled:
             return ""
-        level = getattr(progress, "level", 0)
-        xp_into_level = max(0, getattr(progress, "xp_into_level", 0))
-        xp_to_next_level = max(1, getattr(progress, "xp_to_next_level", 100))
-        progress_percent = min(100, max(0, (xp_into_level / xp_to_next_level) * 100))
+        # Nook keeps its own "show progress on profile bar" visibility gate.
+        if game == "nook":
+            conf = config.get_config()
+            restaurant_conf = conf.get("restaurant_level", {}) or conf.get("achievements", {}).get("restaurant_level", {})
+            if not restaurant_conf.get("show_profile_bar_progress", True):
+                return ""
+
+        from .gamification import nook_level
         chip_style = nook_level.build_chip_style_attr()
         style_attr = f' style="{chip_style}"' if chip_style else ""
-        xp_detail = f"{xp_into_level}/{xp_to_next_level} XP"
+
+        cmd_map = {"nook": "restaurant_level", "onigimon": "openOnigimonCare", "hexagon": "openHexagonLand"}
+        cmd = cmd_map.get(game, "restaurant_level")
+        progress_percent = min(100, max(0, fraction * 100))
+        detail = _profile_level_chip_detail(game, level)
         return f"""
-        <div class="restaurant-level-chip" onclick="event.stopPropagation(); pycmd('restaurant_level'); return false;" title="{html.escape(xp_detail, quote=True)}"{style_attr}>
+        <div class="restaurant-level-chip" onclick="event.stopPropagation(); pycmd('{cmd}'); return false;" title="{html.escape(detail, quote=True)}"{style_attr}>
             <span class="rl-chip-level">Lv {level}</span>
             <div class="rl-chip-progress">
                 <div class="rl-chip-progress-fill" style="width: {progress_percent:.2f}%"></div>
@@ -1410,7 +1475,7 @@ def _get_nook_level_chip_html():
         </div>
         """
     except Exception as e:
-        print(f"Onigiri: Error rendering restaurant level chip: {e}")
+        print(f"Onigiri: Error rendering profile level chip: {e}")
         return ""
 
 
@@ -2033,9 +2098,8 @@ def patch_overview():
 		mini_css = """
         <style id="onigiri-mini-overview-style">
             body {
-                align-items: flex-start !important;
+                align-items: center !important;
                 box-sizing: border-box;
-                padding-top: 32px;
             }
             .overview-center-container.mini-overview {
                 padding-top: 0 !important;
@@ -2082,6 +2146,9 @@ def patch_overview():
                 border-radius: var(--overview-box-radius, 12px);
                 backdrop-filter: blur(var(--overview-box-blur, 0px));
                 -webkit-backdrop-filter: blur(var(--overview-box-blur, 0px));
+            }
+            .mini-overview .stats-container.no-profile {
+                padding-top: 6px;
             }
             .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 14px); color: var(--fg); }
             .mini-overview .stats-row span:first-child { color: var(--fg); }
@@ -2134,7 +2201,8 @@ def patch_overview():
         """
 
 	profile_bar_html = ""
-	if conf.get("showOverviewProfileBar", True):
+	profile_type = mw.col.conf.get("modern_menu_profile_type", "bar")
+	if conf.get("showOverviewProfileBar", True) and profile_type == "bar":
 		user_name = conf.get("userName", "USER")
 		profile_pic_html = _get_profile_pic_html(user_name, mw.addonManager.addonFromModule(__name__), "profile-pic")
 		restaurant_chip_html = _get_nook_level_chip_html()
@@ -2191,7 +2259,7 @@ def patch_overview():
 			rows_html += (
 				'<div class="stats-row due-later-row">'
 				f"{later_html}"
-				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
+				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
 				'</div>'
 			)
 		
@@ -2223,9 +2291,10 @@ def patch_overview():
 					'</div>'
 				)
 
+		stats_container_class = "stats-container" if profile_bar_html else "stats-container no-profile"
 		return (
 			'<div class="overview-container">'
-				'<div class="stats-container">'
+				f'<div class="{stats_container_class}">'
 					f'{rows_html}'
 				'</div>'
 				f'<button id="study" class="add-button-dashed" onclick="pycmd(\'study\'); return false;" autofocus>'
@@ -2436,7 +2505,8 @@ def patch_congrats_page():
 
         # 1. Build Profile Bar HTML (if enabled)
         profile_bar_html = ""
-        if conf.get("showCongratsProfileBar", True):
+        profile_type = mw.col.conf.get("modern_menu_profile_type", "bar")
+        if conf.get("showCongratsProfileBar", True) and profile_type == "bar":
             user_name = conf.get("userName", "USER")
             profile_pic_html = _get_profile_pic_html(user_name, addon_package, "profile-pic")
             restaurant_chip_html = _get_nook_level_chip_html()
@@ -2449,15 +2519,15 @@ def patch_congrats_page():
                 bg_class_str = "with-image-bg"
                 if not mw.col.conf.get("modern_menu_profile_bg_image", "") and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
                     bg_class_str += " dynamic-default-bg"
-            
+
             profile_bar_html = f"""
-            <div class="overview-profile-bar profile-bar {bg_class_str}" style="{bg_style_str}">
-                {bg_layer_html}
-                {profile_pic_html}
-                <span class="profile-name">{user_name}</span>
-                {restaurant_chip_html}
-            </div>
-            """
+                <div class="overview-profile-bar profile-bar {bg_class_str}" style="{bg_style_str}">
+                    {bg_layer_html}
+                    {profile_pic_html}
+                    <span class="profile-name">{user_name}</span>
+                    {restaurant_chip_html}
+                </div>
+                """
 
         # 2. Get Custom Message with fallback to default
         message = conf.get("congratsMessage", DEFAULTS["congratsMessage"])
@@ -2511,11 +2581,12 @@ def patch_congrats_page():
         # nesting the header inside it caused `position: fixed` to be measured against
         # the container (dropping the buttons on top of the profile bar) instead of
         # the viewport. As a body-level sibling it pins cleanly to the top-center.
+        congrats_card_class = "congrats-card" if profile_bar_html else "congrats-card no-profile"
         body_html = f"""
         {header_html}
         <div class="congrats-container">
             {profile_bar_html}
-            <div class="congrats-card">
+            <div class="{congrats_card_class}">
                 <h1>{message}</h1>
                 {later_html}
             </div>
@@ -2544,7 +2615,13 @@ def patch_congrats_page():
             }
         """)
 
-    Overview._show_finished_screen = wrap(Overview._show_finished_screen, new_show_finished_screen, "around")
+    # patch_overview() re-runs on every settings save, so the wrapper must not
+    # stack: each extra layer is one more nested call on the congrats screen.
+    if not getattr(Overview._show_finished_screen, "_onigiri_wrapped", False):
+        Overview._show_finished_screen = wrap(
+            Overview._show_finished_screen, new_show_finished_screen, "around"
+        )
+        Overview._show_finished_screen._onigiri_wrapped = True
 
 
 def generate_deck_browser_backgrounds(addon_path):
@@ -2911,12 +2988,13 @@ def generate_deck_browser_backgrounds(addon_path):
                 </style>"""
     else: # sidebar_mode == 'main'
         effect_mode = mw.col.conf.get("onigiri_sidebar_main_bg_effect_mode", "opaque")
-        
+
         if effect_mode == "glassmorphism":
             intensity = mw.col.conf.get("onigiri_sidebar_main_bg_effect_intensity", 50)
             blur_px = (intensity / 100.0) * 15.0
             alpha = (intensity / 100.0) * 0.3
-            
+            main_tint = ("#FFFFFF", "#000000", alpha)
+
             sidebar_css = f"""
             <style id='modern-menu-sidebar-background-style'>
                 .sidebar-left {{
@@ -2935,7 +3013,8 @@ def generate_deck_browser_backgrounds(addon_path):
             
             light_color_hex = mw.col.conf.get("onigiri_sidebar_opaque_tint_color_light", "#FFFFFF")
             dark_color_hex = mw.col.conf.get("onigiri_sidebar_opaque_tint_color_dark", "#1D1D1D")
-            
+            main_tint = (light_color_hex, dark_color_hex, alpha)
+
             light_rgba = _hex_to_rgba(light_color_hex, alpha)
             dark_rgba = _hex_to_rgba(dark_color_hex, alpha)
 
@@ -2952,15 +3031,32 @@ def generate_deck_browser_backgrounds(addon_path):
         
     if sidebar_mode == 'custom' and side_mode == 'accent':
         ring_light_color = ring_dark_color = "var(--accent-color)"
+        menu_light_color, menu_dark_color = ring_light_color, ring_dark_color
     elif sidebar_mode == 'custom':
         ring_light_color, ring_dark_color = side_light_color, side_dark_color
+        menu_light_color, menu_dark_color = ring_light_color, ring_dark_color
     else:
         ring_light_color, ring_dark_color = main_light_color, main_dark_color
+        # In 'main' mode the sidebar is the main background seen through a tint
+        # layer, so flatten the two into the single colour that ends up on screen.
+        tint_light, tint_dark, tint_alpha = main_tint
+        menu_light_color = _mix_colors(tint_light, main_light_color, tint_alpha)
+        menu_dark_color = _mix_colors(tint_dark, main_dark_color, tint_alpha)
 
     ring_color_css = f"""
     <style id='modern-menu-sidebar-ring-style'>
         :root {{ --onigiri-profile-ring-color: {ring_light_color}; }}
         .night-mode {{ --onigiri-profile-ring-color: {ring_dark_color}; }}
+    </style>
+    """
+
+    # The quick menus pop up over the sidebar, so they follow its chosen colour.
+    # Opacity/blur are deliberately not carried over: a popup has to stay readable
+    # against whatever it covers.
+    quick_menu_css = f"""
+    <style id='modern-menu-quick-menu-style'>
+        :root {{ --onigiri-quick-menu-bg: {menu_light_color}; }}
+        .night-mode {{ --onigiri-quick-menu-bg: {menu_dark_color}; }}
     </style>
     """
 
@@ -2994,7 +3090,81 @@ def generate_deck_browser_backgrounds(addon_path):
     </style>
     """
 
-    return main_container_css + sidebar_css + sidebar_frame_css + ring_color_css
+    return main_container_css + sidebar_css + sidebar_frame_css + ring_color_css + quick_menu_css
+
+
+def _resolve_night_mode():
+    """Best-effort current night-mode state for the main window."""
+    try:
+        return bool(mw.pm.night_mode())
+    except Exception:
+        return False
+
+
+def _reviewer_base_bg_color(conf):
+    """The solid color painted behind the reviewer body, for the current theme.
+
+    Mirrors the ``body`` background-color chosen in
+    ``generate_reviewer_background_css`` so the Qt-level webview base color can
+    match it exactly.
+    """
+    night = _resolve_night_mode()
+    mode = conf.get("onigiri_reviewer_bg_mode", "main")
+    if mode == "main":
+        if night:
+            return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+    # "color", "image_color" and "slideshow" all paint the body with these keys.
+    if night:
+        return conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C")
+    return conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF")
+
+
+def _overview_base_bg_color(conf):
+    """The solid color painted behind the overview body, for the current theme."""
+    night = _resolve_night_mode()
+    mode = conf.get("onigiri_overview_bg_mode", "main")
+    if mode == "main":
+        if night:
+            return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+    if night:
+        return conf.get("onigiri_overview_bg_dark_color", "#2C2C2C")
+    return conf.get("onigiri_overview_bg_light_color", "#FFFFFF")
+
+
+def _deckbrowser_base_bg_color():
+    """The solid color painted behind the deck browser, for the current theme."""
+    if _resolve_night_mode():
+        return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+    return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+
+
+def set_main_webview_background_color(color):
+    """Paint the shared main webview's Qt base color to ``color``.
+
+    Anki reuses a single ``QWebEngineView`` (``mw.web``) for the deck browser,
+    overview and reviewer. Until the page's HTML ``body`` paints, the view shows
+    the page's *base* color, which defaults to a solid black. That produces the
+    black flash the user sees when the reviewer first opens, and again on the
+    repaint after grading a card. Setting the base color to match the screen's
+    background makes any such gap invisible. The value persists on the page, so
+    it also covers card transitions that don't re-fire ``webview_will_set_content``.
+    """
+    try:
+        from aqt.qt import QColor
+        qcolor = QColor(color) if color else QColor()
+        if not qcolor.isValid():
+            # A blank/invalid stored color must not become an invalid QColor,
+            # which Qt paints as black - the very flash we are trying to avoid.
+            qcolor = QColor("#2C2C2C") if _resolve_night_mode() else QColor("#F5F5F5")
+        web = getattr(mw, "web", None)
+        page = web.page() if web is not None else None
+        if page is not None:
+            page.setBackgroundColor(qcolor)
+    except Exception as e:
+        print(f"Onigiri: could not set main webview background color: {e}")
+
 
 def generate_reviewer_background_css(addon_path):
     """Generates CSS for the reviewer - exact copy of overview implementation with reviewer config keys."""
@@ -3170,7 +3340,7 @@ def generate_reviewer_background_css(addon_path):
         .night-mode body {{
             background-color: {dark_color} !important;
         }}
-        
+
         body::before {{
             content: '';
             position: fixed;
@@ -3193,11 +3363,11 @@ def generate_reviewer_background_css(addon_path):
         .night-mode body::before {{
             background-image: url('{dark_img_url}');
         }}
-        
+
         html, .overview-center-container, .congrats-container {{
             background: transparent !important;
         }}
-        
+
         /* Prevent body::before from affecting card content rendering */
         body.card {{
 
@@ -3569,6 +3739,7 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             flex-wrap: wrap;
             gap: 8px;
             min-width: 0;
+            position: relative;
         }
 
         /* Target A tags specifically to override card template global a {} styles */
@@ -3971,7 +4142,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                         background-image: url('{dark_img_url}');
                     }}
                 """
-    
+
     base_css += "</style>"
     return base_css
 
@@ -4520,12 +4691,16 @@ def generate_icon_css(addon_package, conf):
                         # SVG rendering style (mask for colorization)
                         url = get_data_uri(path)
                         if url:
+                            # No explicit colour: fall back to the shared
+                            # --icon-color so the icon tracks the theme like
+                            # every other deck icon SVG.
+                            icon_color_css = color if color else "var(--icon-color, #888888)"
                             css_rules.append(f"""
                             tr[data-did="{did}"] a.deck::before,
                             .onigiri-drag-preview[data-did="{did}"] a.deck::before {{
                                 mask-image: {url} !important;
                                 -webkit-mask-image: {url} !important;
-                                background-color: {color} !important;
+                                background-color: {icon_color_css} !important;
                                 display: inline-block !important;
                                 mask-size: contain;
                                 -webkit-mask-size: contain;
@@ -4665,9 +4840,11 @@ def generate_icon_css(addon_package, conf):
         flex: 1 1 0 !important;
         min-width: 0 !important;
         overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        text-overflow: clip !important;
         white-space: nowrap !important;
         display: block !important;
+        -webkit-mask-image: var(--onigiri-name-fade) !important;
+        mask-image: var(--onigiri-name-fade) !important;
     }}
 
     .deck-table a.deck .deck-mark-dot {{
@@ -4708,17 +4885,35 @@ def generate_font_css(addon_package):
     main_font_key = mw.col.conf.get("onigiri_font_main", "system")
     subtle_font_key = mw.col.conf.get("onigiri_font_subtle", "system")
     small_title_font_key = mw.col.conf.get("onigiri_font_small_title", "system")
-    
+    # Profile bar username font (set on the Profile settings page).
+    profile_name_font_key = mw.col.conf.get("modern_menu_profile_name_font", "system") or "system"
+    # Stats Title widget font ("sync" == follow the Titles font above).
+    stats_title_font_key = mw.col.conf.get("modern_menu_statsTitleFont", "sync") or "sync"
+    # Today's Stats cards font ("sync" == inherit Small Titles like before).
+    try:
+        from . import config as _onigiri_config
+        _sw_style = _onigiri_config.get_config_readonly().get("stats_widgets_style", {})
+        stats_widget_font_key = (_sw_style or {}).get("font", "sync") or "sync"
+    except Exception:
+        stats_widget_font_key = "sync"
+
     # --- NEW: Font Sizes ---
     main_font_size = mw.col.conf.get("onigiri_font_size_main", 14)
     subtle_font_size = mw.col.conf.get("onigiri_font_size_subtle", 20)
     small_title_font_size = mw.col.conf.get("onigiri_font_size_small_title", 15)
     # -----------------------
-    
-    # Avoid scanning/loading user fonts unless a selected key actually needs it.
-    from .fonts import FONTS, get_all_fonts
 
-    selected_font_keys = {main_font_key, subtle_font_key, small_title_font_key, "silkscreen"}
+    # Avoid scanning/loading user fonts unless a selected key actually needs it.
+    from .fonts import FONTS, get_all_fonts, poppins_font_face_css
+
+    # "sync" is a mode, not a font, so it never takes part in font lookups.
+    extra_font_keys = {profile_name_font_key, "silkscreen"}
+    if stats_title_font_key != "sync":
+        extra_font_keys.add(stats_title_font_key)
+    if stats_widget_font_key != "sync":
+        extra_font_keys.add(stats_widget_font_key)
+
+    selected_font_keys = {main_font_key, subtle_font_key, small_title_font_key} | extra_font_keys
     if selected_font_keys.issubset(FONTS.keys()):
         all_fonts = FONTS
     else:
@@ -4731,9 +4926,11 @@ def generate_font_css(addon_package):
     if not main_font_info or not subtle_font_info or not small_title_font_info:
         return ""
 
-    font_faces = ""
+    # Poppins is the add-on default (the "system" key resolves to it), so its
+    # @font-face must always be present regardless of which keys are selected.
+    font_faces = poppins_font_face_css(addon_package)
     # Use a set to avoid generating duplicate @font-face rules
-    fonts_to_load = {main_font_key, subtle_font_key, small_title_font_key, "silkscreen"}
+    fonts_to_load = {main_font_key, subtle_font_key, small_title_font_key} | extra_font_keys
     
     # <<< MODIFIED: Loop through all fonts to generate @font-face rules >>>
     for font_key in fonts_to_load:
@@ -4752,6 +4949,54 @@ def generate_font_css(addon_package):
                 }}
             """
     # <<< END MODIFIED >>>
+
+    # Profile bar username font — only override when a non-system font is chosen,
+    # so the default keeps inheriting the main menu font.
+    # Stats Title widget — only override when the user picked a dedicated font;
+    # "sync" leaves it inheriting --font-subtle like every other title.
+    stats_title_font_css = ""
+    stats_title_font_info = all_fonts.get(stats_title_font_key)
+    if stats_title_font_key != "sync" and stats_title_font_info and stats_title_font_info.get("family"):
+        family = stats_title_font_info["family"]
+        if stats_title_font_key == "system":
+            # The system entry is already a full CSS stack, not a bare family name.
+            font_stack = family
+        else:
+            font_stack = (
+                f"'{family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
+                " Roboto, Helvetica, Arial, sans-serif"
+            )
+        stats_title_font_css = f".onigiri-widget-title {{ font-family: {font_stack} !important; }}"
+
+    # Today's Stats cards — a dedicated font key overrides both the label and
+    # the value; "sync" leaves them on --font-small-title as before.
+    stats_widget_font_css = ""
+    stats_widget_font_info = all_fonts.get(stats_widget_font_key)
+    if stats_widget_font_key != "sync" and stats_widget_font_info and stats_widget_font_info.get("family"):
+        family = stats_widget_font_info["family"]
+        if stats_widget_font_key == "system":
+            sw_stack = family
+        else:
+            sw_stack = (
+                f"'{family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
+                " Roboto, Helvetica, Arial, sans-serif"
+            )
+        stats_widget_font_css = (
+            ".stat-card, .stat-card h3, .stat-card .stat-value, "
+            ".stat-card .stat-unit, .stat-card .stat-sub "
+            f"{{ font-family: {sw_stack} !important; }}"
+        )
+
+    profile_name_font_css = ""
+    profile_name_font_info = all_fonts.get(profile_name_font_key)
+    if profile_name_font_key != "system" and profile_name_font_info and profile_name_font_info.get("family"):
+        profile_name_font_css = (
+            ".profile-bar .profile-name, .onigiri-sidebar-profile-body h2, "
+            ".onigiri-profile .opro-name, .onigiri-profile .opro-level, "
+            ".onigiri-profile .opro-lv "
+            "{{ font-family: '{family}', "
+            "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif !important; }}"
+        ).format(family=profile_name_font_info["family"])
 
     # Generate the final CSS block
     font_css = f"""
@@ -4820,15 +5065,19 @@ def generate_font_css(addon_package):
             color: var(--fg-subtle) !important;
         }}
 
+        {stats_title_font_css}
+
         /* Small Titles - Sidebar Headers and Widget Titles */
         .sidebar-left h2, .stat-card h3, .onigiri-widget-container h3 {{
             font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
             font-size: var(--font-size-small-title) !important;
             color: var(--font-small-title-color, var(--fg)) !important;
         }}
+        {stats_widget_font_css}
+        {profile_name_font_css}
     </style>
     """
-    
+
     return font_css
 
 def _hex_to_rgba(hex_str: str, alpha: float) -> str:
@@ -4944,7 +5193,10 @@ def generate_scoped_main_font_css(addon_package, selector):
 	if not main_font_info:
 		return ""
 
-	font_face = ""
+	from .fonts import poppins_font_face_css
+	# Poppins backs the default ("system") font stack, so its faces must be
+	# available in this scoped webview even when no dedicated file is selected.
+	font_face = poppins_font_face_css(addon_package)
 	if main_font_info.get("file"):
 		if main_font_info.get("user"):
 			font_url = f"/_addons/{addon_package}/user_files/fonts/{main_font_info['file']}"
@@ -5105,6 +5357,10 @@ def generate_dynamic_css(conf):
 	light_colors = colors.get("light", {}).copy()
 	dark_colors = colors.get("dark", {}).copy()
 
+	# Captured before the opacity/blur effect so tooltips stay solid.
+	raw_box_light = light_colors.get("--canvas-inset", "#ffffff")
+	raw_box_dark = dark_colors.get("--canvas-inset", "#2c2c2c")
+
 	# Apply effects if enabled
 	_apply_canvas_inset_effect(light_colors)
 	_apply_canvas_inset_effect(dark_colors)
@@ -5216,6 +5472,209 @@ def generate_dynamic_css(conf):
 		f"    --overview-box-stroke: {overview_stroke}px !important;",
 	]
 
+	# --- Deck Stats widget (learner stats) look & category colors ---
+	deck_stats_style = conf.get("deck_stats_style", {}) if isinstance(conf.get("deck_stats_style", {}), dict) else {}
+	deck_stats_colors = deck_stats_style.get("colors", {}) if isinstance(deck_stats_style.get("colors", {}), dict) else {}
+	deck_stats_sync = bool(deck_stats_style.get("sync_box_effect", True))
+	deck_stats_dynamic = bool(deck_stats_style.get("dynamic", True))
+	deck_stats_blur = box_effect_blur if deck_stats_sync else max(0, min(100, int(deck_stats_style.get("blur", 0) or 0)))
+	deck_stats_opacity = box_effect_opacity if deck_stats_sync else max(0, min(100, int(deck_stats_style.get("opacity", 100) or 100)))
+	deck_stats_radius = box_effect_radius if deck_stats_sync else max(0, min(60, _int_style_value(deck_stats_style.get("radius", 20), 20)))
+	deck_stats_stroke = box_effect_stroke if deck_stats_sync else max(0, min(10, _int_style_value(deck_stats_style.get("stroke", 1), 1)))
+
+	def _deck_stats_color(mode: str, key: str, fallback: str) -> str:
+		# With Dynamic mode off there is a single palette; the "light" entry is
+		# the one the settings page writes, so it stands in for both themes.
+		source_mode = mode if deck_stats_dynamic else "light"
+		palette = deck_stats_colors.get(source_mode, {})
+		value = palette.get(key) if isinstance(palette, dict) else None
+		return value if isinstance(value, str) and value else fallback
+
+	def _deck_stats_box_bg(mode: str, fallback_key: str, fallback: str) -> str:
+		if deck_stats_sync:
+			# Already carries the box opacity/blur alpha from _apply_canvas_inset_effect.
+			source = light_colors if mode == "light" else dark_colors
+			return source.get(fallback_key, fallback)
+		color = _deck_stats_color(mode, "box_bg", fallback)
+		alpha = deck_stats_opacity / 100.0
+		if deck_stats_blur > 0:
+			alpha = min(alpha, 0.62)
+		if alpha < 1.0:
+			return _onigiri_css_color_with_alpha(color, alpha)
+		return color
+
+	# patcher's own DEFAULTS is a stub, so the Anki-native palette is repeated
+	# here as the last-resort fallback for a config that predates the feature.
+	deck_stats_fallback_colors = {
+		"light": {
+			"in_progress": "#5eaadf", "mastered": "#26a641", "new": "#5eaadf",
+			"learning": "#f5a05a", "relearning": "#f4685f", "young": "#7cc87c",
+			"mature": "#26a641", "unseen": "#b0b4b9",
+			"suspended": "#ffdc41", "buried": "#9e9e9e", "total": "#6f7177",
+		},
+		"dark": {
+			"in_progress": "#6bb6ec", "mastered": "#35b850", "new": "#6bb6ec",
+			"learning": "#f7ad6b", "relearning": "#f8776e", "young": "#8ad48a",
+			"mature": "#35b850", "unseen": "#7a7f85",
+			"suspended": "#ffe066", "buried": "#a8a8a8", "total": "#c4c4c4",
+		},
+	}
+
+	def _deck_stats_rules(mode: str, box_fallback: str, border_fallback: str) -> list:
+		defaults = deck_stats_fallback_colors.get(mode if deck_stats_dynamic else "light", {})
+		border = (
+			(light_colors if mode == "light" else dark_colors).get("--border", border_fallback)
+			if deck_stats_sync
+			else _deck_stats_color(mode, "box_border", border_fallback)
+		)
+		rules = [
+			f"    --stats-box-bg: {_deck_stats_box_bg(mode, '--canvas-inset', box_fallback)} !important;",
+			f"    --stats-box-border: {border} !important;",
+			f"    --stats-box-radius: {deck_stats_radius}px !important;",
+			f"    --stats-box-stroke: {deck_stats_stroke}px !important;",
+			f"    --stats-box-blur: {(deck_stats_blur / 100.0) * 20:.2f}px !important;",
+		]
+		for key in (
+			"in_progress", "mastered", "new", "learning", "relearning",
+			"young", "mature", "unseen", "suspended", "buried", "total",
+		):
+			var_name = "--stats-" + key.replace("_", "-") + "-color"
+			rules.append(f"    {var_name}: {_deck_stats_color(mode, key, defaults.get(key, '#808080'))} !important;")
+		return rules
+
+	overview_light_rules.extend(_deck_stats_rules("light", "#ffffff", "#e0e0e0"))
+	overview_dark_rules.extend(_deck_stats_rules("dark", "#2c2c2c", "#424242"))
+
+	# --- Today's Stats widgets (Studied / Time / Pace / Retention) ---
+	# Same shape as the Deck Stats block above: an optional sync to Box Color
+	# and Effect, an optional single-palette (non-dynamic) mode, then per-widget
+	# accent colors emitted as --swidget-* vars for menu.css to consume.
+	stats_widgets_style = conf.get("stats_widgets_style", {}) if isinstance(conf.get("stats_widgets_style", {}), dict) else {}
+	sw_colors = stats_widgets_style.get("colors", {}) if isinstance(stats_widgets_style.get("colors", {}), dict) else {}
+	sw_sync = bool(stats_widgets_style.get("sync_box_effect", True))
+	sw_dynamic = bool(stats_widgets_style.get("dynamic", True))
+	sw_blur = box_effect_blur if sw_sync else max(0, min(100, int(stats_widgets_style.get("blur", 0) or 0)))
+	sw_opacity = box_effect_opacity if sw_sync else max(0, min(100, int(stats_widgets_style.get("opacity", 100) or 100)))
+	sw_radius = box_effect_radius if sw_sync else max(0, min(60, _int_style_value(stats_widgets_style.get("radius", 20), 20)))
+	sw_stroke = box_effect_stroke if sw_sync else max(0, min(10, _int_style_value(stats_widgets_style.get("stroke", 1), 1)))
+	sw_value_scale = max(60, min(160, _int_style_value(stats_widgets_style.get("value_scale", 100), 100)))
+
+	sw_fallback_colors = {
+		"light": {
+			"box_bg": "#ffffff", "box_border": "#e0e0e0",
+			"label": "#757575", "value": "#212121",
+			"studied": "#5eaadf", "time": "#8b7bd8",
+			"pace": "#f5a05a", "retention": "#26a641",
+		},
+		"dark": {
+			"box_bg": "#2c2c2c", "box_border": "#424242",
+			"label": "#9c9c9c", "value": "#f0f0f0",
+			"studied": "#6bb6ec", "time": "#a294ea",
+			"pace": "#f7ad6b", "retention": "#35b850",
+		},
+	}
+
+	def _sw_color(mode: str, key: str) -> str:
+		source_mode = mode if sw_dynamic else "light"
+		palette = sw_colors.get(source_mode, {})
+		value = palette.get(key) if isinstance(palette, dict) else None
+		if isinstance(value, str) and value:
+			return value
+		return sw_fallback_colors.get(source_mode, {}).get(key, "#808080")
+
+	def _sw_rules(mode: str) -> list:
+		if sw_sync:
+			theme = light_colors if mode == "light" else dark_colors
+			box_bg = theme.get("--canvas-inset", sw_fallback_colors[mode]["box_bg"])
+			box_border = theme.get("--border", sw_fallback_colors[mode]["box_border"])
+		else:
+			box_bg = _sw_color(mode, "box_bg")
+			alpha = sw_opacity / 100.0
+			if sw_blur > 0:
+				alpha = min(alpha, 0.62)
+			if alpha < 1.0:
+				box_bg = _onigiri_css_color_with_alpha(box_bg, alpha)
+			box_border = _sw_color(mode, "box_border")
+		rules = [
+			f"    --swidget-box-bg: {box_bg} !important;",
+			f"    --swidget-box-border: {box_border} !important;",
+			f"    --swidget-box-radius: {sw_radius}px !important;",
+			f"    --swidget-box-stroke: {sw_stroke}px !important;",
+			f"    --swidget-box-blur: {(sw_blur / 100.0) * 20:.2f}px !important;",
+			f"    --swidget-label-color: {_sw_color(mode, 'label')} !important;",
+			f"    --swidget-value-color: {_sw_color(mode, 'value')} !important;",
+			f"    --swidget-value-scale: {sw_value_scale / 100.0:.2f} !important;",
+		]
+		for key in ("studied", "time", "pace", "retention"):
+			accent = _sw_color(mode, key)
+			rules.append(f"    --swidget-{key}-accent: {accent} !important;")
+			# Pre-mixed tints. CSS color-mix() is not dependable in the Qt
+			# WebEngine build Anki ships, so the alpha variants are computed
+			# here the same way the heatmap ramp is.
+			rules.append(f"    --swidget-{key}-chip: {_onigiri_css_color_with_alpha(accent, 0.16)} !important;")
+			rules.append(f"    --swidget-{key}-wash: {_onigiri_css_color_with_alpha(accent, 0.10)} !important;")
+		return rules
+
+	overview_light_rules.extend(_sw_rules("light"))
+	overview_dark_rules.extend(_sw_rules("dark"))
+
+	# --- Hashi Notes dashboard widget ---
+	hashi_widget_style = conf.get("hashi_widget_style", {}) if isinstance(conf.get("hashi_widget_style", {}), dict) else {}
+	hw_colors = hashi_widget_style.get("colors", {}) if isinstance(hashi_widget_style.get("colors", {}), dict) else {}
+	hw_sync = bool(hashi_widget_style.get("sync_box_effect", True))
+	hw_dynamic = bool(hashi_widget_style.get("dynamic", True))
+	hw_blur = box_effect_blur if hw_sync else max(0, min(100, int(hashi_widget_style.get("blur", 0) or 0)))
+	hw_opacity = box_effect_opacity if hw_sync else max(0, min(100, int(hashi_widget_style.get("opacity", 100) or 100)))
+	hw_radius = box_effect_radius if hw_sync else max(0, min(60, _int_style_value(hashi_widget_style.get("radius", 20), 20)))
+	hw_stroke = box_effect_stroke if hw_sync else max(0, min(10, _int_style_value(hashi_widget_style.get("stroke", 1), 1)))
+
+	hw_fallback_colors = {
+		"light": {
+			"box_bg": "#ffffff", "box_border": "#e0e0e0", "card_bg": "#f5f5f5",
+			"title": "#212121", "excerpt": "#757575", "accent": "#0077C8",
+		},
+		"dark": {
+			"box_bg": "#2c2c2c", "box_border": "#424242", "card_bg": "#363636",
+			"title": "#f0f0f0", "excerpt": "#9c9c9c", "accent": "#4da3e8",
+		},
+	}
+
+	def _hw_color(mode: str, key: str) -> str:
+		source_mode = mode if hw_dynamic else "light"
+		palette = hw_colors.get(source_mode, {})
+		value = palette.get(key) if isinstance(palette, dict) else None
+		if isinstance(value, str) and value:
+			return value
+		return hw_fallback_colors.get(source_mode, {}).get(key, "#808080")
+
+	def _hw_rules(mode: str) -> list:
+		if hw_sync:
+			theme = light_colors if mode == "light" else dark_colors
+			box_bg = theme.get("--canvas-inset", hw_fallback_colors[mode]["box_bg"])
+			box_border = theme.get("--border", hw_fallback_colors[mode]["box_border"])
+		else:
+			box_bg = _hw_color(mode, "box_bg")
+			alpha = hw_opacity / 100.0
+			if hw_blur > 0:
+				alpha = min(alpha, 0.62)
+			if alpha < 1.0:
+				box_bg = _onigiri_css_color_with_alpha(box_bg, alpha)
+			box_border = _hw_color(mode, "box_border")
+		return [
+			f"    --hashiw-box-bg: {box_bg} !important;",
+			f"    --hashiw-box-border: {box_border} !important;",
+			f"    --hashiw-box-radius: {hw_radius}px !important;",
+			f"    --hashiw-box-stroke: {hw_stroke}px !important;",
+			f"    --hashiw-box-blur: {(hw_blur / 100.0) * 20:.2f}px !important;",
+			f"    --hashiw-card-bg: {_hw_color(mode, 'card_bg')} !important;",
+			f"    --hashiw-title-color: {_hw_color(mode, 'title')} !important;",
+			f"    --hashiw-excerpt-color: {_hw_color(mode, 'excerpt')} !important;",
+			f"    --hashiw-accent: {_hw_color(mode, 'accent')} !important;",
+		]
+
+	overview_light_rules.extend(_hw_rules("light"))
+	overview_dark_rules.extend(_hw_rules("dark"))
+
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
 		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8")
@@ -5247,6 +5706,26 @@ def generate_dynamic_css(conf):
 	_generate_heatmap_colors(light_colors, False)
 	_generate_heatmap_colors(dark_colors, True)
 	# --- END: Calculate Heatmap Colors ---
+
+	# --- START: Calculate Tooltip Colors ---
+	def _generate_tooltip_colors(colors_dict, raw_box, is_night_mode):
+		"""Tooltips follow the box color, shifted 20% away from it (darker in
+		dark mode, lighter in light mode) so they read as a separate surface."""
+		mixed = _mix_colors("#000000" if is_night_mode else "#ffffff", raw_box, 0.20)
+		parts = mixed[mixed.find("(") + 1:mixed.rfind(")")].split(",")
+		colors_dict["--onigiri-tooltip-bg"] = (
+			f"rgb({parts[0].strip()}, {parts[1].strip()}, {parts[2].strip()})"
+		)
+		colors_dict["--onigiri-tooltip-fg"] = colors_dict.get(
+			"--fg", "#e0e0e0" if is_night_mode else "#333333"
+		)
+		colors_dict["--onigiri-tooltip-border"] = colors_dict.get(
+			"--border", "#3a3a3a" if is_night_mode else "#d9d9d9"
+		)
+
+	_generate_tooltip_colors(light_colors, raw_box_light, False)
+	_generate_tooltip_colors(dark_colors, raw_box_dark, True)
+	# --- END: Calculate Tooltip Colors ---
 
 	# Keep all colors, we'll apply them with proper scoping
 	light_rules = []
@@ -5400,7 +5879,9 @@ def _get_external_hooks():
 
 def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -> bool:
 	"""Prevents Anki's default hover-to-show-toolbar behavior."""
-	conf = config.get_config()
+	# Runs for every Qt event on the main webview (including each mouse move),
+	# so it must never rebuild the config.
+	conf = config.get_config_readonly()
 	should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False)
 
 	screens_to_interfere = ["deckBrowser", "overview", "review"]
@@ -5425,12 +5906,16 @@ def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -
 
 def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
     """This function is called by a hook every time the screen changes."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     if new_state == "overview":
         ensure_synapsepro_overview_bridge_hook()
     apply_synapsepro_sidebar_visibility(conf)
-    QTimer.singleShot(0, lambda: apply_synapsepro_sidebar_visibility(config.get_config()))
-    QTimer.singleShot(250, lambda: apply_synapsepro_sidebar_visibility(config.get_config()))
+    # Re-hiding the SynapsePro dock is only needed when that add-on is around to
+    # re-show it. Scheduling these unconditionally leaked two lambdas per screen
+    # change and ran a full mw.findChild() object-tree walk each time.
+    if conf.get("hideSynapseProSidebar", False):
+        QTimer.singleShot(0, lambda: apply_synapsepro_sidebar_visibility(config.get_config_readonly()))
+        QTimer.singleShot(250, lambda: apply_synapsepro_sidebar_visibility(config.get_config_readonly()))
     should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False)
     pro_hide = conf.get("proHide", False)
     max_hide = conf.get("maxHide", False)
@@ -5837,360 +6322,6 @@ def apply_patches():
     mw._onigiri_restaurant_hook_registered = True
     mw.progress.single_shot(0, lambda: _update_toolbar_visibility(mw.state, "startup"))
 
-def generate_reviewer_buttons_css(conf):
-    """
-    Generates CSS for the reviewer answer buttons based on user configuration.
-    """
-    css = []
-    scripts = []
-    
-    # Zen Mode: Hide the bottom bar (#outer) completely
-    max_hide = conf.get("maxHide", False)
-    if max_hide:
-        css.append("""
-        #outer {
-            display: none !important;
-        }
-        """)
-        # Return early since the bottom bar is hidden, no need for button styling
-        return "<style>" + "\\n".join(css) + "</style>"
-    
-    # Global Settings
-    border_color_light = conf.get("onigiri_reviewer_btn_border_color_light", "#DBDBDB")
-    border_color_dark = conf.get("onigiri_reviewer_btn_border_color_dark", "#444444")
-    
-    # New Settings
-    custom_enabled = conf.get("onigiri_reviewer_btn_custom_enabled", True)
-    radius = conf.get("onigiri_reviewer_btn_radius", 12)
-    padding = conf.get("onigiri_reviewer_btn_padding", 5)
-    btn_height = conf.get("onigiri_reviewer_btn_height", 40)
-    bar_height = _reviewer_bottom_bar_height_px(conf)
-    
-    interval_visible = conf.get("onigiri_reviewer_stattxt_visible", True)
-    interval_color_light = conf.get("onigiri_reviewer_stattxt_color_light", "#666666")
-    interval_color_dark = conf.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa")
-    interval_display = "inline-block" if interval_visible else "none"
-
-    css.append(f"""
-        /* Stat Text (.stattxt and .nobold) - intervals, counts, and + signs */
-        .stattxt, .nobold {{
-            color: {interval_color_light} !important;
-            opacity: 0.9 !important;
-            font-weight: normal !important;
-            display: {interval_display} !important;
-            font-size: 0.9em !important;
-        }}
-
-        .nightMode .stattxt, .nightMode .nobold,
-        .night-mode .stattxt, .night-mode .nobold {{
-             color: {interval_color_dark} !important;
-        }}
-
-    """)
-
-    if custom_enabled:
-        # Base button style (Applied to all buttons: Show Answer, Edit, More, and Answer Buttons)
-        css.append(f"""
-        /* Bottom Bar Height */
-        :root {{
-            --onigiri-reviewer-bottom-bar-height: {bar_height}px;
-        }}
-
-        html, body {{
-             height: var(--onigiri-reviewer-bottom-bar-height) !important;
-             min-height: var(--onigiri-reviewer-bottom-bar-height) !important;
-             max-height: var(--onigiri-reviewer-bottom-bar-height) !important;
-             margin: 0 !important;
-             padding: 0 !important;
-             overflow: hidden !important;
-        }}
-
-        #outer {{
-             height: var(--onigiri-reviewer-bottom-bar-height) !important;
-             min-height: {bar_height}px !important;
-             max-height: {bar_height}px !important;
-             display: block !important;
-             width: 100% !important;
-             margin: 0 !important;
-             padding: 0 !important;
-             overflow: hidden !important;
-             border: 0 !important;
-             box-sizing: border-box !important;
-        }}
-        
-        /* Flexbox-on-row approach for robust centering */
-        #outer > table {{
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 100% !important;
-            display: table !important; /* Keep table display but control rows */
-            border-collapse: collapse !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        #outer > table > tbody {{
-            display: table-row-group !important;
-            width: 100% !important;
-            height: 100% !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        #outer > table tr {{
-            display: flex !important;
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 100% !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        /* Left Cell (Edit) - Grows to fill space */
-        #outer > table td:first-child {{
-            display: flex !important;
-            flex: 1 !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-            padding-left: 10px !important;
-            width: auto !important; /* Override previous fixed width */
-            height: 100% !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        /* Right Cell (More) - Grows exactly as much as Left */
-        #outer > table td:last-child {{
-            display: flex !important;
-            flex: 1 !important;
-            justify-content: flex-end !important;
-            align-items: center !important;
-            padding-right: 10px !important;
-            width: auto !important; /* Override previous fixed width */
-            height: 100% !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        /* Middle Cell (Buttons) - Only takes needed space */
-        #outer > table td:nth-child(2) {{
-            display: flex !important;
-            flex: 0 0 auto !important; /* Don't grow or shrink */
-            justify-content: center !important;
-            align-items: center !important;
-            width: auto !important; /* Override previous fixed width */
-            height: 100% !important;
-            background: transparent !important;
-            background-color: transparent !important;
-            border: 0 !important;
-        }}
-        
-        /* Modernize ALL buttons in the bottom bar */
-        button {{
-            border: 2px solid transparent !important; /* Force transparent border */
-            border-radius: {radius}px !important; /* Customizable radius */
-            box-shadow: none !important; /* No shadow */
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; /* Smooth transition */
-            box-sizing: border-box !important;
-            cursor: pointer !important;
-            padding: {padding}px 15px !important; /* Customizable padding (size) */
-            margin: 0 5px !important; /* Spacing between buttons */
-            height: {btn_height}px !important; /* Customizable height */
-            min-height: {btn_height}px !important;
-        }}
-        
-        /* Hover effects for ease buttons only */
-        button[onclick*="ease"]:hover {{
-            transform: translateY(-2px);
-            box-shadow: none !important;
-        }}
-        
-        /* Other Buttons (Show Answer, Edit, More, etc.) - Explicit Colors with hover effects */
-        #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]) {{
-            background: {conf.get("onigiri_reviewer_other_btn_bg_light", "#f0f0f0")} !important;
-            background-color: {conf.get("onigiri_reviewer_other_btn_bg_light", "#f0f0f0")} !important;
-            background-image: none !important;
-            color: {conf.get("onigiri_reviewer_other_btn_text_light", "#2c2c2c")} !important;
-        }}
-        
-        #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):hover {{
-            background: {conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")} !important;
-            background-color: {conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")} !important;
-            background-image: none !important;
-            color: {conf.get("onigiri_reviewer_other_btn_hover_text_light", "#f0f0f0")} !important;
-            transform: translateY(-2px) !important;
-            box-shadow: none !important;
-        }}
-        
-        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]) {{
-            background: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
-            background-color: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
-            background-image: none !important;
-            color: {conf.get("onigiri_reviewer_other_btn_text_dark", "#e0e0e0")} !important;
-        }}
-        
-        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):hover {{
-            background: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
-            background-color: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
-            background-image: none !important;
-            color: {conf.get("onigiri_reviewer_other_btn_hover_text_dark", "#3a3a3a")} !important;
-            transform: translateY(-2px) !important;
-            box-shadow: none !important;
-        }}
-        
-        button:active {{
-            transform: translateY(0);
-            box-shadow: none !important;
-        }}
-        
-        .nightMode button {{
-            box-shadow: none !important;
-        }}
-        
-        .nightMode button:hover {{
-            box-shadow: none !important;
-        }}
-
-        /* Specific Answer Buttons Colors */
-        button[onclick*="ease"], button[data-cmd*="ease"], button[data-onigiri-ease] {{
-            overflow: visible !important; /* Ensure content isn't clipped */
-            display: inline-flex !important; /* Align content nicely */
-            flex-direction: column !important; /* Stack text and interval if needed */
-            justify-content: center !important;
-            align-items: center !important;
-        }}
-
-        /* Fix missing interval numbers */
-        button[onclick*="ease"] table, button[onclick*="ease"] tr, button[onclick*="ease"] td,
-        button[data-cmd*="ease"] table, button[data-cmd*="ease"] tr, button[data-cmd*="ease"] td,
-        button[data-onigiri-ease] table, button[data-onigiri-ease] tr, button[data-onigiri-ease] td {{
-            background: transparent !important;
-            border: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: inherit !important;
-        }}
-        
-        """)
-    
-        # Per-button settings
-        buttons = {
-            "1": "again",
-            "2": "hard",
-            "3": "good",
-            "4": "easy"
-        }
-        
-        defaults = {
-            "again": ("#ffb3b3", "#4d0000", "#ffcccb", "#4a0000"),
-            "hard": ("#ffe0b3", "#4d2600", "#ffd699", "#4d1d00"),
-            "good": ("#b3ffb3", "#004d00", "#90ee90", "#004000"),
-            "easy": ("#b3d9ff", "#00264d", "#add8e6", "#002952")
-        }
-        
-        for ease, key in buttons.items():
-            def_bg_l, def_txt_l, def_bg_d, def_txt_d = defaults[key]
-            
-            bg_light = conf.get(f"onigiri_reviewer_btn_{key}_bg_light", def_bg_l)
-            text_light = conf.get(f"onigiri_reviewer_btn_{key}_text_light", def_txt_l)
-            bg_dark = conf.get(f"onigiri_reviewer_btn_{key}_bg_dark", def_bg_d)
-            text_dark = conf.get(f"onigiri_reviewer_btn_{key}_text_dark", def_txt_d)
-            
-            css.append(f"""
-            #outer button[data-onigiri-ease="{ease}"],
-            #outer button[onclick*="ease{ease}"], 
-            #outer button[data-cmd="ease{ease}"], 
-            #outer #ease{ease} {{
-                background: {bg_light} !important;
-                background-color: {bg_light} !important;
-                background-image: none !important;
-                color: {text_light} !important;
-            }}
-            #outer button[data-onigiri-ease="{ease}"]:hover,
-            #outer button[onclick*="ease{ease}"]:hover, 
-            #outer button[data-cmd="ease{ease}"]:hover, 
-            #outer #ease{ease}:hover {{
-                background: {text_light} !important;
-                background-color: {text_light} !important;
-                background-image: none !important;
-                color: {bg_light} !important;
-                cursor: pointer !important;
-            }}
-
-            .nightMode #outer button[data-onigiri-ease="{ease}"],
-            .nightMode #outer button[onclick*="ease{ease}"], 
-            .nightMode #outer button[data-cmd="ease{ease}"], 
-            .nightMode #outer #ease{ease} {{
-                background: {bg_dark} !important;
-                background-color: {bg_dark} !important;
-                background-image: none !important;
-                color: {text_dark} !important;
-            }}
-            .nightMode #outer button[data-onigiri-ease="{ease}"]:hover,
-            .nightMode #outer button[onclick*="ease{ease}"]:hover, 
-            .nightMode #outer button[data-cmd="ease{ease}"]:hover, 
-            .nightMode #outer #ease{ease}:hover {{
-                background: {text_dark} !important;
-                background-color: {text_dark} !important;
-                background-image: none !important;
-                color: {bg_dark} !important;
-            }}
-            """)
-
-        # JS Injection for robust button detection
-        scripts.append("""
-        <script>
-        (function() {
-            function classifyButtons() {
-                const buttons = document.querySelectorAll('#outer button, button');
-                buttons.forEach(btn => {
-                    const onclick = btn.getAttribute('onclick') || '';
-                    const cmd = btn.getAttribute('data-cmd') || '';
-                    const id = btn.id || '';
-                    const text = btn.innerText.toLowerCase();
-
-                    let ease = null;
-                    
-                    // Heuristic 1: Standard IDs or Attributes
-                    if (onclick.includes('ease1') || cmd === 'ease1' || id === 'ease1') ease = "1";
-                    else if (onclick.includes('ease2') || cmd === 'ease2' || id === 'ease2') ease = "2";
-                    else if (onclick.includes('ease3') || cmd === 'ease3' || id === 'ease3') ease = "3";
-                    else if (onclick.includes('ease4') || cmd === 'ease4' || id === 'ease4') ease = "4";
-
-                    // Heuristic 2: Text Content (Fallback)
-                    if (!ease) {
-                        if (text.includes('again')) ease = "1";
-                        else if (text.includes('hard')) ease = "2";
-                        else if (text.includes('good')) ease = "3";
-                        else if (text.includes('easy')) ease = "4";
-                    }
-
-                    if (ease) {
-                        btn.setAttribute('data-onigiri-ease', ease);
-                    } else {
-                        btn.classList.add('onigiri-other-btn');
-                    }
-                });
-            }
-
-            // Run repeatedly to catch dynamic updates
-            setInterval(classifyButtons, 100);
-            
-            // Also run on mutation
-            const observer = new MutationObserver(classifyButtons);
-            observer.observe(document.body, { childList: true, subtree: true });
-        })();
-        </script>
-        """)
-        
-    return "<style>" + "\\n".join(css) + "</style>" + "\\n".join(scripts)
 
 
 def generate_reviewer_buttons_css(conf):
@@ -6208,33 +6339,63 @@ def generate_reviewer_buttons_css(conf):
     bar_height = _reviewer_bottom_bar_height_px(conf)
 
     stattxt_mode = conf.get("onigiri_reviewer_stattxt_mode", "hover")
-    if stattxt_mode not in {"hover", "fixed", "off"}:
+    if stattxt_mode not in {"hover", "inverted", "fixed", "off"}:
         stattxt_mode = "hover"
     interval_visible = stattxt_mode != "off"
     interval_color_light = conf.get("onigiri_reviewer_stattxt_color_light", "#666666")
     interval_color_dark = conf.get("onigiri_reviewer_stattxt_color_dark", "#aaaaaa")
     hover_numbers_display = "inline-flex" if interval_visible else "none"
     # Pre-answer counts (New/Learn/Review pills on the Show Answer button):
-    # "fixed" keeps them permanently visible instead of only on :hover.
-    pre_answer_counts_base_opacity = "1" if stattxt_mode == "fixed" else "0"
-    pre_answer_counts_base_visibility = "visible" if stattxt_mode == "fixed" else "hidden"
-    pre_answer_counts_base_transform = "scale(1)" if stattxt_mode == "fixed" else "scale(0.97)"
-    # "fixed" shows the "Show Answer" label and the counts together (stacked),
-    # so the label never fades away, even on hover.
+    # "fixed"    keeps them permanently visible (stacked under the label).
+    # "inverted" shows them at rest and swaps them for the "Show Answer" label
+    #            on hover - the mirror image of the default "hover" behavior.
+    counts_shown_at_rest = stattxt_mode in ("fixed", "inverted")
+    pre_answer_counts_base_opacity = "1" if counts_shown_at_rest else "0"
+    pre_answer_counts_base_visibility = "visible" if counts_shown_at_rest else "hidden"
+    pre_answer_counts_base_transform = "scale(1)" if counts_shown_at_rest else "scale(0.97)"
+    # On hover every mode reveals/keeps the counts except "inverted", which hides
+    # them again so the "Show Answer" label can take their place.
+    pre_answer_counts_hover_opacity = "0" if stattxt_mode == "inverted" else "1"
+    pre_answer_counts_hover_visibility = "hidden" if stattxt_mode == "inverted" else "visible"
+    pre_answer_counts_hover_transform = "scale(0.97)" if stattxt_mode == "inverted" else "scale(1)"
+    # "Show Answer" label. "inverted" hides it at rest (counts take its place)
+    # and reveals it on hover; every other mode keeps it visible at rest.
+    # On hover only plain "hover" fades the label out.
+    show_answer_label_base_opacity = "0" if stattxt_mode == "inverted" else "1"
     show_answer_label_hover_opacity = "0" if stattxt_mode == "hover" else "1"
     # Ease button (Again/Hard/Good/Easy) label + interval number:
-    # "hover" swaps label -> number on hover (absolute overlay, unchanged legacy behavior).
-    # "fixed" stacks label + number in normal flow, both always visible, no hover needed.
-    # "off" never shows the number.
+    # "hover"    swaps label -> number on hover (absolute overlay, legacy behavior).
+    # "inverted" swaps number -> label on hover (the same overlay, reversed).
+    # "fixed"    stacks label + number in normal flow, both always visible.
+    # "off"      never shows the number.
+    number_shown_at_rest = stattxt_mode in ("fixed", "inverted")
+    answer_label_base_opacity = "0" if stattxt_mode == "inverted" else "1"
     answer_label_hover_opacity = "0" if stattxt_mode == "hover" else "1"
-    answer_number_base_opacity = "1" if stattxt_mode == "fixed" else "0"
-    answer_number_base_visibility = "visible" if stattxt_mode == "fixed" else "hidden"
-    answer_number_hover_opacity = "1" if stattxt_mode == "hover" else answer_number_base_opacity
-    answer_number_hover_visibility = "visible" if stattxt_mode == "hover" else answer_number_base_visibility
+    answer_number_base_opacity = "1" if number_shown_at_rest else "0"
+    answer_number_base_visibility = "visible" if number_shown_at_rest else "hidden"
+    if stattxt_mode == "hover":
+        answer_number_hover_opacity = "1"
+        answer_number_hover_visibility = "visible"
+    elif stattxt_mode == "inverted":
+        answer_number_hover_opacity = "0"
+        answer_number_hover_visibility = "hidden"
+    else:
+        answer_number_hover_opacity = answer_number_base_opacity
+        answer_number_hover_visibility = answer_number_base_visibility
     answer_number_position = "static" if stattxt_mode == "fixed" else "absolute"
     answer_number_inset = "auto" if stattxt_mode == "fixed" else "0"
-    answer_number_transform = "none" if stattxt_mode == "fixed" else "translateY(1px) scale(0.98)"
-    answer_number_hover_transform = "none" if stattxt_mode == "fixed" else "translateY(0) scale(1)"
+    # Overlay swap transforms: the "hidden" side rests slightly offset/scaled and
+    # eases into place. "inverted" is shown at rest, so its base/hover transforms
+    # are the reverse of "hover"; "fixed" is stacked and never transforms.
+    if stattxt_mode == "fixed":
+        answer_number_transform = "none"
+        answer_number_hover_transform = "none"
+    elif stattxt_mode == "inverted":
+        answer_number_transform = "translateY(0) scale(1)"
+        answer_number_hover_transform = "translateY(1px) scale(0.98)"
+    else:
+        answer_number_transform = "translateY(1px) scale(0.98)"
+        answer_number_hover_transform = "translateY(0) scale(1)"
     answer_number_font_size = "0.66em" if stattxt_mode == "fixed" else "var(--onigiri-answer-number-font-size, 1em)"
     answer_hover_number_color_light = "currentColor" if str(interval_color_light).lower() == "#666666" else interval_color_light
     answer_hover_number_color_dark = "currentColor" if str(interval_color_dark).lower() == "#aaaaaa" else interval_color_dark
@@ -6245,7 +6406,7 @@ def generate_reviewer_buttons_css(conf):
     # New/Learn/Review counts. "out" moves the timer to the bottom bar itself, styled
     # like the other bottom-bar buttons (Edit/More), just to the left of Edit.
     timer_position = conf.get("onigiri_reviewer_timer_position", "right")
-    if timer_position not in {"right", "left", "out"}:
+    if timer_position not in {"right", "left", "out", "off"}:
         timer_position = "right"
     timer_bg_light = conf.get("onigiri_reviewer_timer_bg_light", "#e5e5e5")
     timer_text_light = conf.get("onigiri_reviewer_timer_text_light", "#2c2c2c")
@@ -6365,7 +6526,7 @@ def generate_reviewer_buttons_css(conf):
             align-items: center !important;
             justify-content: center !important;
             width: 100% !important;
-            opacity: 1 !important;
+            opacity: {answer_label_base_opacity} !important;
             transition: opacity 90ms ease-out !important;
             animation: none !important;
         }}
@@ -6387,7 +6548,7 @@ def generate_reviewer_buttons_css(conf):
         }}
 
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts .onigiri-show-answer-label {{
-            opacity: 1 !important;
+            opacity: {show_answer_label_base_opacity} !important;
         }}
 
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:hover .onigiri-show-answer-label {{
@@ -6395,9 +6556,9 @@ def generate_reviewer_buttons_css(conf):
         }}
 
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:hover .onigiri-pre-answer-counts {{
-            opacity: 1 !important;
-            visibility: visible !important;
-            transform: scale(1) !important;
+            opacity: {pre_answer_counts_hover_opacity} !important;
+            visibility: {pre_answer_counts_hover_visibility} !important;
+            transform: {pre_answer_counts_hover_transform} !important;
             transition-delay: 0s !important;
         }}
 
@@ -6529,7 +6690,7 @@ def generate_reviewer_buttons_css(conf):
 
     if stattxt_mode == "fixed":
         # Stack "Show Answer" above the New/Learn/Review counts instead of
-        # the hover swap-overlay used by "hover" mode.
+        # the hover swap-overlay used by "hover"/"inverted" mode.
         pre_answer_counts_fixed_height = max(16, int(btn_height * 0.5))
         css.append(f"""
         #outer .onigiri-pre-answer-counts {{
@@ -6539,10 +6700,14 @@ def generate_reviewer_buttons_css(conf):
             height: {pre_answer_counts_fixed_height}px !important;
             margin: 2px 0 0 0 !important;
         }}
+        """)
 
-        /* "fixed" mode keeps the counts panel visible without hovering, so the
-           Show Answer button needs the stats bar background at all times, not
-           just on :hover. */
+    if stattxt_mode in ("fixed", "inverted"):
+        # Both modes keep the counts panel visible without hovering, so the
+        # Show Answer button needs the stats bar background at all times, not
+        # just on :hover. ("inverted" swaps counts for the label on hover but
+        # keeps the same background so the transition stays seamless.)
+        css.append(f"""
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
             background: {show_answer_bar_bg_light} !important;
             background-color: {show_answer_bar_bg_light} !important;
@@ -6967,18 +7132,41 @@ def generate_reviewer_buttons_css(conf):
                 return null;
             }
 
-            function ensureOnigiriTimerOutButton(text) {
+            // Standalone timer button in the bottom bar. "where" decides the slot:
+            //   'left-of-more'  -> first child of the last cell (before the More
+            //                      button). Used by "out" mode (always) and by
+            //                      "right" mode after the card is flipped.
+            //   'right-of-edit' -> last child of the first cell (after the Edit
+            //                      button). Used by "left" mode after the flip.
+            // The timer is NEVER placed among the answer buttons (middle cell).
+            function ensureOnigiriTimerButton(where, text) {
                 const outer = document.getElementById('outer');
-                const lastCell = outer && outer.querySelector('table td:last-child');
-                if (!lastCell) return;
-                let btn = lastCell.querySelector('.onigiri-timer-out-btn');
+                if (!outer) return;
+                // Resolve the OUTER bottom-bar row's own cells only. A plain
+                // "table td:last-child" would match a nested answer-buttons
+                // table's last cell (in the middle, among the answers) - that is
+                // exactly the misplacement we must avoid. The Edit cell is the
+                // outer row's first cell; the More cell is its last cell.
+                const outerTable = outer.querySelector('table');
+                const row = outerTable && outerTable.querySelector(':scope > tbody > tr, :scope > tr');
+                const cells = row ? Array.from(row.children).filter(el => el.tagName === 'TD' || el.tagName === 'TH') : [];
+                if (!cells.length) return;
+                const cell = where === 'right-of-edit' ? cells[0] : cells[cells.length - 1];
+                if (!cell) return;
+                let btn = document.querySelector('.onigiri-timer-out-btn');
                 if (!btn) {
                     btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = 'onigiri-timer-out-btn onigiri-other-btn';
                     btn.setAttribute('tabindex', '-1');
                     btn.setAttribute('aria-hidden', 'true');
-                    lastCell.insertBefore(btn, lastCell.firstChild);
+                }
+                if (where === 'right-of-edit') {
+                    // After Edit: keep it as the cell's last child.
+                    if (btn.parentElement !== cell || cell.lastElementChild !== btn) cell.appendChild(btn);
+                } else {
+                    // Before More: keep it as the cell's first child.
+                    if (btn.parentElement !== cell || cell.firstElementChild !== btn) cell.insertBefore(btn, cell.firstChild);
                 }
                 if (btn.textContent !== text) btn.textContent = text;
             }
@@ -7056,7 +7244,16 @@ def generate_reviewer_buttons_css(conf):
             }
 
             function findShowAnswerButton(buttons) {
-                const candidates = Array.from(buttons).filter(btn => !btn.getAttribute('data-onigiri-ease'));
+                const all = Array.from(buttons);
+                // If any ease (Again/Hard/Good/Easy) buttons are present, the
+                // answer is revealed and there is NO Show Answer button. Never
+                // fall back to another bottom-bar button in this state: doing so
+                // builds the pre-answer counts/timer panel during the answer
+                // state, which flickers as Anki re-renders the bottom bar on
+                // every answer-timer tick. The pre-answer panel is a
+                // question-state-only feature.
+                if (all.some(btn => btn.getAttribute('data-onigiri-ease') || easeFromButton(btn))) return null;
+                const candidates = all.filter(btn => !btn.getAttribute('data-onigiri-ease'));
                 const direct = candidates.find(btn => {
                     const onclick = (btn.getAttribute('onclick') || '').toLowerCase();
                     const cmd = (btn.getAttribute('data-cmd') || '').toLowerCase();
@@ -7112,19 +7309,46 @@ def generate_reviewer_buttons_css(conf):
                     }
                 });
 
+                // Answer revealed once the ease buttons (Again/Hard/Good/Easy)
+                // are on screen.
+                const answerButtonsPresent = Array.from(buttons)
+                    .some(b => b.getAttribute('data-onigiri-ease') || easeFromButton(b));
+
                 const timerNode = findOnigiriNativeTimerNode();
                 const timerText = timerNode ? cleanText(timerNode.textContent) : '';
                 const stats = collectPreAnswerCounts(timerNode, timerText);
-                if (timerNode) forceHideNativeNumberElement(timerNode, 'onigiri-native-timer-source');
 
-                if (ONIGIRI_TIMER_POSITION === 'out') {
-                    if (timerNode) ensureOnigiriTimerOutButton(timerText);
-                    else removeOnigiriTimerOutButton();
+                // "off" hides the timer entirely: no pill inside the Show Answer
+                // button and no standalone button in the bottom bar. The native
+                // timer element is still hidden below so it can't leak through.
+                const timerEnabled = ONIGIRI_TIMER_POSITION !== 'off';
+
+                // Decide where the ticking timer lives:
+                //   - "out": standalone button left of More, in BOTH states.
+                //   - "right"/"left" before the flip: a pill inside the Show
+                //     Answer button (built further down via the pre-answer panel).
+                //   - "right"/"left" after the flip: a standalone button that
+                //     continues ticking - "right" to the right of Edit, "left"
+                //     to the left of More. Never among the answer buttons.
+                let standaloneTimerSlot = null;
+                if (timerNode && timerEnabled) {
+                    if (ONIGIRI_TIMER_POSITION === 'out') {
+                        standaloneTimerSlot = 'left-of-more';
+                    } else if (answerButtonsPresent) {
+                        standaloneTimerSlot = ONIGIRI_TIMER_POSITION === 'right' ? 'left-of-more' : 'right-of-edit';
+                    }
+                }
+
+                if (timerNode) forceHideNativeNumberElement(timerNode, 'onigiri-native-timer-source');
+                if (standaloneTimerSlot) {
+                    ensureOnigiriTimerButton(standaloneTimerSlot, timerText);
                 } else {
                     removeOnigiriTimerOutButton();
                 }
 
-                const hasInsideTimer = !!timerNode && ONIGIRI_TIMER_POSITION !== 'out';
+                // The inside-the-button timer pill only applies to the pre-flip
+                // Show Answer button (right/left mode, question state).
+                const hasInsideTimer = !!timerNode && timerEnabled && ONIGIRI_TIMER_POSITION !== 'out' && !answerButtonsPresent;
 
                 if (!showButton || (stats.length === 0 && !hasInsideTimer)) {
                     if (showButton) {
