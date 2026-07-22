@@ -3250,6 +3250,37 @@ class ThemePreviewNameLabel(QLabel):
 
 class ThemeCardWidget(QFrame):
     """A clickable card widget to display and select a theme."""
+
+    @staticmethod
+    def _ensure_contrast(text_color_hex, bg_color_hex):
+        def _luminance(hex_color):
+            hex_color = str(hex_color).lstrip('#')
+            if len(hex_color) == 3:
+                hex_color = ''.join([c*2 for c in hex_color])
+            elif len(hex_color) == 8:
+                hex_color = hex_color[:6]
+            elif len(hex_color) != 6:
+                return 1.0
+
+            try:
+                r, g, b = tuple(int(hex_color[i:i+2], 16) / 255.0 for i in (0, 2, 4))
+            except ValueError:
+                return 1.0
+
+            def adjust(c):
+                return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+            return 0.2126 * adjust(r) + 0.7152 * adjust(g) + 0.0722 * adjust(b)
+
+        l1 = _luminance(text_color_hex)
+        l2 = _luminance(bg_color_hex)
+
+        contrast = (l1 + 0.05) / (l2 + 0.05) if l1 > l2 else (l2 + 0.05) / (l1 + 0.05)
+
+        if contrast < 2.5: # 2.5 is very relaxed, just preventing unreadable text
+            return "#111827" if l2 > 0.5 else "#f9fafb"
+        return text_color_hex
+
     theme_selected = pyqtSignal(dict)
     delete_requested = pyqtSignal(str) # Signal to request deletion
 
@@ -3531,6 +3562,7 @@ class ThemeCardWidget(QFrame):
             "--bg",
             fallback_colors.get("--bg", "#ffffff" if self.preview_mode == "light" else "#242424"),
         )
+        text_color = self._ensure_contrast(text_color, card_bg)
         hover_border = preview_colors.get("--accent-color", fallback_colors.get("--accent-color", border_color))
         font_chip_bg = preview_colors.get(
             "--highlight-bg",
@@ -3615,6 +3647,7 @@ class ThemeCardWidget(QFrame):
                 fallback_colors.get("--bg", "#ffffff" if self.preview_mode == "light" else "#242424"),
             ),
         )
+        text_color = self._ensure_contrast(text_color, card_bg)
         hover_border = preview_colors.get("--accent-color", fallback_colors.get("--accent-color", border_color))
         accent_color = preview_colors.get("--accent-color", fallback_colors.get("--accent-color", hover_border))
         for swatch, color in zip(self.swatches, colors):
