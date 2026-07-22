@@ -556,7 +556,7 @@ THEMES = {
     ),
 
     # --- Second batch of User-Requested Themes ---
-    "Machiatto": define_theme(
+    "Macchiato": define_theme(
         {
             "--accent-color": "#8A6B5C",
             "--bg": "#F0E7D5",
