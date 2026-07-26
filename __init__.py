@@ -260,6 +260,8 @@ def inject_menu_files(web_content, context):
             window.onigiriNotificationPositionCssText = {json.dumps(generate_notification_position_css_text(conf))};
 
             document.addEventListener('DOMContentLoaded', function() {{
+                if (window.onigiriReviewerInitialized) return;
+                window.onigiriReviewerInitialized = true;
                 const hostId = 'onigiri-reviewer-ui-host';
                 const topBarHtml = {json.dumps(top_bar_html)};
                 const topBarCss = {json.dumps(reviewer_shadow_css)};
@@ -393,8 +395,12 @@ def inject_menu_files(web_content, context):
                     themeObserver.observe(document.body, {{ attributes: true, attributeFilter: ['class'] }});
                 }}
 
+                let qaObserverTimeout = null;
                 const qaObserver = new MutationObserver(() => {{
-                    applyQaOffset(window.onigiriReviewerHeaderOffsetPx || 0);
+                    if (qaObserverTimeout) clearTimeout(qaObserverTimeout);
+                    qaObserverTimeout = setTimeout(() => {{
+                        applyQaOffset(window.onigiriReviewerHeaderOffsetPx || 0);
+                    }}, 50);
                 }});
                 if (document.body) {{
                     qaObserver.observe(document.body, {{ childList: true, subtree: true }});
