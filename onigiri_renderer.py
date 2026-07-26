@@ -3353,6 +3353,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         rl_theme_color = chip_vals.get("progress", "")
 
     if rl_theme_color:
+
+        # Determine the stroke for the level chip
+        chip_stroke_size = conf.get("onigiri_canvas_inset_border_width", 1)
+        overview_style = conf.get("overview_style", {}) if isinstance(conf.get("overview_style", {}), dict) else {}
+        overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
+        chip_border_color_light = overview_colors.get("light", {}).get("box_border") or conf.get("colors", {}).get("light", {}).get("--border", "#e0e0e0")
+        chip_border_color_dark = overview_colors.get("dark", {}).get("box_border") or conf.get("colors", {}).get("dark", {}).get("--border", "#424242")
+
         theme_css = f"""
         <style id="profile-bar-theme-colors">
             .profile-bar .restaurant-level-chip .rl-chip-progress {{
@@ -3369,6 +3377,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             
             .level-progress-bar {{
                 background: {rl_theme_color} !important;
+            }}
+
+            .restaurant-level-chip {{
+                border: {chip_stroke_size}px solid {chip_border_color_light} !important;
+            }}
+
+            .night-mode .restaurant-level-chip,
+            .nightMode .restaurant-level-chip {{
+                border: {chip_stroke_size}px solid {chip_border_color_dark} !important;
             }}
         </style>
         """
