@@ -6336,6 +6336,15 @@ def generate_reviewer_buttons_css(conf):
     radius = conf.get("onigiri_reviewer_btn_radius", 12)
     padding = conf.get("onigiri_reviewer_btn_padding", 5)
     btn_height = conf.get("onigiri_reviewer_btn_height", 40)
+    border_size = conf.get("onigiri_canvas_inset_border_width", 1)
+
+    # We use the generic border color config if there's no specific reviewer config
+    # Fallback appropriately for standard widget border colors
+    overview_style = conf.get("overview_style", {}) if isinstance(conf.get("overview_style", {}), dict) else {}
+    overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
+
+    border_color_light = overview_colors.get("light", {}).get("box_border") or conf.get("colors", {}).get("light", {}).get("--border", "#e0e0e0")
+    border_color_dark = overview_colors.get("dark", {}).get("box_border") or conf.get("colors", {}).get("dark", {}).get("--border", "#424242")
     bar_height = _reviewer_bottom_bar_height_px(conf)
 
     stattxt_mode = conf.get("onigiri_reviewer_stattxt_mode", "hover")
@@ -6447,6 +6456,7 @@ def generate_reviewer_buttons_css(conf):
             --onigiri-reviewer-review-count-bg: {_overview_count_color("light", "review_bubble", "--review-count-bubble-bg", "#ff5757")};
             --onigiri-reviewer-review-count-fg: {_overview_count_color("light", "review_text", "--review-count-bubble-fg", "#ffffff")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_light};
+            --onigiri-reviewer-btn-border: {border_size}px solid {border_color_light};
         }}
 
         .nightMode,
@@ -6458,6 +6468,7 @@ def generate_reviewer_buttons_css(conf):
             --onigiri-reviewer-review-count-bg: {_overview_count_color("dark", "review_bubble", "--review-count-bubble-bg", "#ff453a")};
             --onigiri-reviewer-review-count-fg: {_overview_count_color("dark", "review_text", "--review-count-bubble-fg", "#fff5f5")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_dark};
+            --onigiri-reviewer-btn-border: {border_size}px solid {border_color_dark};
         }}
 
         body .stattxt:not(.onigiri-count-pill),
@@ -6836,7 +6847,7 @@ def generate_reviewer_buttons_css(conf):
         }}
 
         button {{
-            border: 2px solid transparent !important;
+            border: var(--onigiri-reviewer-btn-border, 2px solid transparent) !important;
             border-radius: {radius}px !important;
             box-shadow: none !important;
             /* Only color/background transition (quick hover feedback) - no

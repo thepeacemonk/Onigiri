@@ -57,7 +57,7 @@
         const expandedContent = sidebar ? sidebar.querySelector('.sidebar-expanded-content') : null;
         if (!toolbar || !expandedContent) return;
 
-        const profileBar = expandedContent.querySelector('.profile-bar');
+        const profileBar = expandedContent.querySelector('.profile-bar, .onigiri-profile');
         toolbar.classList.add('sidebar-actions-inline');
         if (profileBar) {
             profileBar.insertAdjacentElement('afterend', toolbar);
