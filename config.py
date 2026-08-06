@@ -156,6 +156,7 @@ DEFAULTS = {
         # Empty = use the widget's own light/dark stats-panel shade.
         "scene_bottom_color": "",
         "allow_ankimon_updates": True,
+        "show_streak_broken_warning": True,
     },
     "hexagon_land": {
         "enabled": False,

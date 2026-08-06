@@ -1419,7 +1419,8 @@ class OnigimonManager:
                 "onigimon_streak_broken_body",
                 "{streak}-answer streak broken! Answer cards correctly in a row for {name} to find items.",
             ).format(streak=streak, name=name)
-            self.notify(tr("onigimon_streak_broken_title", "Streak broken"), self.last_message, companion.sprite_url)
+            if self.config.get("show_streak_broken_warning", True):
+                self.notify(tr("onigimon_streak_broken_title", "Streak broken"), self.last_message, companion.sprite_url)
         else:
             self.last_message = f"{name} missed that one. Reward progress moved back and care stats dropped."
 

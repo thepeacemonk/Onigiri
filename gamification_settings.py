@@ -1289,6 +1289,8 @@ class GamificationSettingsDialog(QDialog):
         self.onigimon_toggle.setChecked(bool(self.onigimon_config.get("enabled", False)))
         self.onigimon_ankimon_updates_toggle = AnimatedToggleButton(accent_color="#F2B705")
         self.onigimon_ankimon_updates_toggle.setChecked(bool(self.onigimon_config.get("allow_ankimon_updates", True)))
+        self.onigimon_streak_warning_toggle = AnimatedToggleButton(accent_color="#F2B705")
+        self.onigimon_streak_warning_toggle.setChecked(bool(self.onigimon_config.get("show_streak_broken_warning", True)))
         self.onigimon_difficulty_group = QButtonGroup()
         self.onigimon_difficulty_group.setExclusive(True)
         self.onigimon_difficulty_widgets = {}
@@ -3370,6 +3372,7 @@ class GamificationSettingsDialog(QDialog):
 
         bridge_group, bridge_layout = self._create_study_zone_card(tr("onigimon_bridge_title"))
         bridge_layout.addWidget(self._create_toggle_row(self.onigimon_ankimon_updates_toggle, tr("onigimon_bridge_toggle")))
+        bridge_layout.addWidget(self._create_toggle_row(self.onigimon_streak_warning_toggle, tr("onigimon_streak_warning_toggle")))
         bridge_note = QLabel(tr("onigimon_bridge_note"))
         bridge_note.setWordWrap(True)
         bridge_layout.addWidget(bridge_note)
@@ -4322,6 +4325,7 @@ class GamificationSettingsDialog(QDialog):
         oni_conf = self.current_config.setdefault("onigimon", {})
         oni_conf["enabled"] = self.onigimon_toggle.isChecked()
         oni_conf["allow_ankimon_updates"] = self.onigimon_ankimon_updates_toggle.isChecked()
+        oni_conf["show_streak_broken_warning"] = self.onigimon_streak_warning_toggle.isChecked()
         selected_onigimon_difficulty = "pikachu"
         for data, btn in self.onigimon_difficulty_widgets.items():
             if btn.isChecked():
