@@ -485,9 +485,9 @@ class AnkimonBridge:
             mypokemon_path = os.path.join(self.addon_path, "user_files", "mypokemon.json")
             if os.path.isfile(mypokemon_path):
                 with open(mypokemon_path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        data = json.loads(content)
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
                         if isinstance(data, list):
                             res = []
                             for p in data:
@@ -998,9 +998,9 @@ class AnkimonBridge:
             candidate_json = os.path.join(self.addon_path, "user_files", "mainpokemon.json")
             if os.path.isfile(candidate_json):
                 with open(candidate_json, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        data = json.loads(content)
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
                         if isinstance(data, dict):
                             data["is_main"] = 1
                             return data
@@ -1047,9 +1047,9 @@ class AnkimonBridge:
             try:
                 # Read current to verify it's the right pokemon
                 with open(candidate_json, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        data = json.loads(content)
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
                         if self._pokemon_identity(data) != individual_id:
                             return False
 
