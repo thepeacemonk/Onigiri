@@ -6503,7 +6503,7 @@ def generate_reviewer_buttons_css(conf):
             position: relative !important;
             overflow: visible !important;
             display: flex !important;
-            flex-direction: column !important;
+            flex-direction: column-reverse !important;
             align-items: center !important;
             justify-content: center !important;
         }}
@@ -6698,7 +6698,7 @@ def generate_reviewer_buttons_css(conf):
             inset: auto !important;
             width: 100% !important;
             height: {pre_answer_counts_fixed_height}px !important;
-            margin: 2px 0 0 0 !important;
+            margin: 0 0 2px 0 !important;
         }}
         """)
 
@@ -6940,7 +6940,7 @@ def generate_reviewer_buttons_css(conf):
             max-width: var(--onigiri-answer-button-width, none) !important;
             flex: 0 0 var(--onigiri-answer-button-width, auto) !important;
             display: inline-flex !important;
-            flex-direction: column !important;
+            flex-direction: column-reverse !important;
             justify-content: center !important;
             align-items: center !important;
             transition: none !important;
