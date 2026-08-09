@@ -6578,6 +6578,12 @@ def generate_reviewer_buttons_css(conf):
             white-space: nowrap !important;
         }}
 
+
+        #outer .onigiri-count-pill.onigiri-count-pill-active {{
+            outline: 2px solid currentColor !important;
+            outline-offset: -2px !important;
+        }}
+
         #outer .onigiri-count-pill-new {{
             background: var(--onigiri-reviewer-new-count-bg) !important;
             color: var(--onigiri-reviewer-new-count-fg) !important;
@@ -7031,7 +7037,7 @@ def generate_reviewer_buttons_css(conf):
             // rebuild of the button wipes it for good). Cache the last real read so
             // a later empty scrape - caused by our own rebuild, not a real change -
             // doesn't blank the pills out.
-            let onigiriLastKnownStats = null;
+            let onigiriLastKnownStats = { counts: [], activeIndex: -1 };
 
             function cleanText(value) {
                 return (value || '').replace(/\\s+/g, ' ').trim();
@@ -7281,6 +7287,33 @@ def generate_reviewer_buttons_css(conf):
                 // counts sharing a node with the timer still come through.
                 const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
                     .filter(node => !node.closest('.onigiri-pre-answer-counts'));
+
+                // Determine active index by looking for <u> tag
+                let activeIndex = -1;
+                let textIndex = 0;
+                let activeFound = false;
+
+                // Handle single node vs multiple nodes
+                if (nodes.length === 1 && nodes[0].textContent.includes('+')) {
+                    // It's a single node like "1 + 2 + 3"
+                    // We can check the innerHTML to see which segment has the <u> tag.
+                    let htmlParts = nodes[0].innerHTML.split('+');
+                    activeIndex = htmlParts.findIndex(part => part.toLowerCase().includes('<u'));
+                } else {
+                    nodes.forEach(node => {
+                        const cleanContent = cleanText(node.textContent.replace(timerText, ''));
+                        if (cleanContent === '+' || !cleanContent) return; // skip plus signs and empties
+                        if (!activeFound && node.querySelector('u')) {
+                            activeIndex = textIndex;
+                            activeFound = true;
+                        } else if (!activeFound && node.tagName.toLowerCase() === 'u') {
+                            activeIndex = textIndex;
+                            activeFound = true;
+                        }
+                        textIndex++;
+                    });
+                }
+
                 nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
                 let combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
                 if (timerNode && timerText) {
@@ -7288,14 +7321,14 @@ def generate_reviewer_buttons_css(conf):
                 }
                 const scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
                 if (scraped.length > 0) {
-                    onigiriLastKnownStats = scraped;
-                    return scraped;
+                    onigiriLastKnownStats = { counts: scraped, activeIndex: activeIndex };
+                    return onigiriLastKnownStats;
                 }
                 // Empty scrape: almost always means our own earlier rebuild already
                 // wiped the native counts node for this card, not that the counts
                 // themselves vanished. Fall back to the last real read instead of
                 // reporting "no counts" (which would blank the pills every tick).
-                return onigiriLastKnownStats || [];
+                return onigiriLastKnownStats || { counts: [], activeIndex: -1 };
             }
 
             function prepareShowAnswerCounts(buttons) {
@@ -7316,7 +7349,9 @@ def generate_reviewer_buttons_css(conf):
 
                 const timerNode = findOnigiriNativeTimerNode();
                 const timerText = timerNode ? cleanText(timerNode.textContent) : '';
-                const stats = collectPreAnswerCounts(timerNode, timerText);
+                const statsObj = collectPreAnswerCounts(timerNode, timerText);
+                const stats = statsObj.counts;
+                const activeIndex = statsObj.activeIndex;
 
                 // "off" hides the timer entirely: no pill inside the Show Answer
                 // button and no standalone button in the bottom bar. The native
@@ -7367,7 +7402,7 @@ def generate_reviewer_buttons_css(conf):
                 // button would rebuild every second and lose the counts after the
                 // very first tick. The timer text itself is still updated live,
                 // in place, below, without triggering a rebuild.
-                const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0');
+                const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0') + '::' + activeIndex;
                 const label = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
                 showButton.classList.add('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
                 showButton.setAttribute('data-onigiri-show-answer-label', label || 'Show Answer');
@@ -7393,6 +7428,9 @@ def generate_reviewer_buttons_css(conf):
                     ['new', 'learn', 'review'].forEach((kind, index) => {
                         const pill = document.createElement('span');
                         pill.className = 'onigiri-count-pill onigiri-count-pill-' + kind;
+                        if (index === activeIndex) {
+                            pill.classList.add('onigiri-count-pill-active');
+                        }
                         pill.textContent = stats[index] || '0';
                         container.appendChild(pill);
                     });
