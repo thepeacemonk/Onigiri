@@ -7034,7 +7034,7 @@ def generate_reviewer_buttons_css(conf):
             let onigiriLastKnownStats = null;
 
             function cleanText(value) {
-                return (value || '').replace(/\\s+/g, ' ').trim();
+                return (value || '').replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '').replace(/\\s+/g, ' ').trim();
             }
 
             function buttonTextWithoutOnigiri(btn) {
@@ -7117,7 +7117,7 @@ def generate_reviewer_buttons_css(conf):
             // look for a leaf element whose own text matches the mm:ss shape, which
             // intervals/counts never do. Scoped to #outer so we never touch card text.
             function isOnigiriTimerText(text) {
-                return /^\d{1,2}:\d{2}$/.test(text);
+                return /^\D*\d{1,2}:\d{2}\D*$/.test(text);
             }
 
             function findOnigiriNativeTimerNode() {
