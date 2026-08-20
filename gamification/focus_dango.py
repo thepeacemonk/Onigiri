@@ -215,6 +215,18 @@ class KeyEventFilter(QtCore.QObject):
             ):
                 return False
 
+            # Don't intercept shortcuts if the active window is not the main Anki window
+            # (e.g., if the user is using the "Edit Current", "Add Card", or "Browse" dialogs)
+            active_window = mw.app.activeWindow()
+            if active_window is not mw:
+                return False
+
+            # Don't intercept shortcuts if focus is on any input field
+            focus_widget = mw.app.focusWidget()
+            from PyQt6.QtWidgets import QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox
+            if isinstance(focus_widget, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)):
+                return False
+
             navigation_keys = {
                 Qt.Key.Key_D: 'onDeckBrowser',  # 'd' key
                 Qt.Key.Key_B: 'onBrowse',       # 'b' key
