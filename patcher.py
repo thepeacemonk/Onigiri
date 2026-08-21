@@ -6714,7 +6714,8 @@ def generate_reviewer_buttons_css(conf):
             color: {show_answer_bar_text_light} !important;
         }}
 
-        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]),
+            .night-mode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
             background: {show_answer_bar_bg_dark} !important;
             background-color: {show_answer_bar_bg_dark} !important;
             color: {show_answer_bar_text_dark} !important;
@@ -6896,14 +6897,16 @@ def generate_reviewer_buttons_css(conf):
             box-shadow: none !important;
         }}
 
-        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]),
+            .night-mode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
             background: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
             background-color: {conf.get("onigiri_reviewer_other_btn_bg_dark", "#3a3a3a")} !important;
             background-image: none !important;
             color: {conf.get("onigiri_reviewer_other_btn_text_dark", "#e0e0e0")} !important;
         }}
 
-        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+        .nightMode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover,
+            .night-mode #outer button:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
             background: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
             background-color: {conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")} !important;
             background-image: none !important;
@@ -6921,7 +6924,8 @@ def generate_reviewer_buttons_css(conf):
             color: {show_answer_bar_text_light} !important;
         }}
 
-        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+        .nightMode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover,
+            .night-mode #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
             background: {show_answer_bar_bg_dark} !important;
             background-color: {show_answer_bar_bg_dark} !important;
             color: {show_answer_bar_text_dark} !important;
@@ -6998,18 +7002,26 @@ def generate_reviewer_buttons_css(conf):
             }}
 
             .nightMode #outer button[data-onigiri-ease="{ease}"],
+            .night-mode #outer button[data-onigiri-ease="{ease}"],
             .nightMode #outer button[onclick*="ease{ease}"],
+            .night-mode #outer button[onclick*="ease{ease}"],
             .nightMode #outer button[data-cmd="ease{ease}"],
-            .nightMode #outer #ease{ease} {{
+            .night-mode #outer button[data-cmd="ease{ease}"],
+            .nightMode #outer #ease{ease},
+            .night-mode #outer #ease{ease} {{
                 background: {bg_dark} !important;
                 background-color: {bg_dark} !important;
                 background-image: none !important;
                 color: {text_dark} !important;
             }}
             .nightMode #outer button[data-onigiri-ease="{ease}"]:hover,
+            .night-mode #outer button[data-onigiri-ease="{ease}"]:hover,
             .nightMode #outer button[onclick*="ease{ease}"]:hover,
+            .night-mode #outer button[onclick*="ease{ease}"]:hover,
             .nightMode #outer button[data-cmd="ease{ease}"]:hover,
-            .nightMode #outer #ease{ease}:hover {{
+            .night-mode #outer button[data-cmd="ease{ease}"]:hover,
+            .nightMode #outer #ease{ease}:hover,
+            .night-mode #outer #ease{ease}:hover {{
                 background: {bg_dark} !important;
                 background-color: {bg_dark} !important;
                 background-image: none !important;
