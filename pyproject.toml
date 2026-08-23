@@ -1,0 +1,28 @@
+[project]
+name = "onigiri"
+version = "0.1.0"
+description = "Modern, gamified UI revamp for Anki (development tooling metadata; the add-on itself is loaded by Anki)"
+requires-python = ">=3.9"
+
+[tool.ruff]
+# Generous because the codebase legitimately uses long HTML/CSS template lines.
+line-length = 500
+extend-exclude = ["user_files", "web/lib", ".venv"]
+
+[tool.ruff.lint]
+# Baseline gate: syntax errors and genuinely undefined names only.
+#
+# This is intentionally minimal while the existing 146K-line codebase is
+# grandfathered. The full default rule set flags ~2k style issues
+# (import-star usage from `aqt.qt import *`, unused imports used as
+# defensive re-exports, etc.). Tighten selectively over time; do not add
+# rules that fail on main.
+select = ["E9", "F821"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "visual: Playwright-based visual regression tests",
+    "qt: offscreen PyQt6 widget tests",
+]
