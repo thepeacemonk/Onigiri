@@ -34,6 +34,44 @@ SCREENS = {
     "deckbrowser": "_render_deckbrowser",
 }
 
+# Standalone web pages shown in QDialog webviews (birthday_dialog.py,
+# guide_dialog.py, ...). Each entry: (file, placeholder map factory,
+# default viewport). Rendered without the deck-browser injection head.
+ADDON_PLACEHOLDERS = {"%%ADDON_PACKAGE%%": STUB_PACKAGE}
+
+
+def _birthday_placeholders(theme):
+    if theme == "dark":
+        accent, card, text, dark = "#F472B6", "#1F2937", "#F9FAFB", "true"
+    else:
+        accent, card, text, dark = "#EC4899", "#FFFFFF", "#1F2937", "false"
+    logo_path = os.path.join(REPO_ROOT, "onigiri_logo.png")
+    if os.path.exists(logo_path):
+        import base64
+
+        with open(logo_path, "rb") as f:
+            icon = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    else:
+        icon = ""
+    return {
+        "%%ACCENT_COLOR%%": accent,
+        "%%BG_CARD%%": card,
+        "%%TEXT_COLOR%%": text,
+        "%%IS_DARK%%": dark,
+        "%%USER_NAME%%": "Kaicho",
+        "%%USER_AGE%%": "3",
+        "%%ICON_DATA%%": icon,
+        **ADDON_PLACEHOLDERS,
+    }
+
+
+WEB_PAGES = {
+    "birthday": ("birthday.html", _birthday_placeholders, (480, 640)),
+    "guide": ("guide.html", lambda theme: {**ADDON_PLACEHOLDERS}, (720, 900)),
+    "credits": ("credits.html", lambda theme: {**ADDON_PLACEHOLDERS}, (640, 720)),
+    "donations": ("donations.html", lambda theme: {**ADDON_PLACEHOLDERS}, (640, 780)),
+}
+
 HARNESS_TEMPLATE = """<!doctype html>
 <html lang="en" class="{theme_class}">
 <head>
@@ -203,9 +241,10 @@ def shoot(url, out_path, viewport):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("screen", choices=sorted(SCREENS))
+    all_screens = sorted(list(SCREENS) + list(WEB_PAGES))
+    parser.add_argument("screen", choices=all_screens)
     parser.add_argument("--theme", choices=("light", "dark"), default="light")
-    parser.add_argument("--viewport", default="1440x900")
+    parser.add_argument("--viewport", default=None)
     parser.add_argument("--out", default=None)
     parser.add_argument(
         "--config",
@@ -219,13 +258,31 @@ def main():
     except json.JSONDecodeError as e:
         sys.exit(f"--config is not valid JSON: {e}")
 
-    width, height = (int(x) for x in args.viewport.lower().split("x"))
+    entry = WEB_PAGES.get(args.screen)
+    default_viewport = entry[2] if entry else (1440, 900)
+    viewport_arg = args.viewport or f"{default_viewport[0]}x{default_viewport[1]}"
+    width, height = (int(x) for x in viewport_arg.lower().split("x"))
     out_path = args.out or os.path.join(".shots", f"{args.screen}_{args.theme}.png")
 
-    body, conf = render_deckbrowser(config_overrides, args.theme)
-    head = build_deckbrowser_head(conf)
-    theme_class = "night-mode" if args.theme == "dark" else ""
-    html = HARNESS_TEMPLATE.format(screen=args.screen, theme_class=theme_class, body=body, head=head)
+    if entry:
+        filename, placeholder_fn, _ = entry
+        with open(os.path.join(REPO_ROOT, "web", filename), encoding="utf-8") as f:
+            html = f.read()
+        for key, value in placeholder_fn(args.theme).items():
+            html = html.replace(key, value)
+        # Stub the bridge before any page script runs.
+        stub = (
+            "<script>window.__pycmd_log=[];window.pycmd=function(c){"
+            "window.__pycmd_log.push(String(c));return false;};</script>"
+        )
+        html = html.replace("<head>", "<head>" + stub, 1)
+    else:
+        body, conf = render_deckbrowser(config_overrides, args.theme)
+        head = build_deckbrowser_head(conf)
+        theme_class = "night-mode" if args.theme == "dark" else ""
+        html = HARNESS_TEMPLATE.format(
+            screen=args.screen, theme_class=theme_class, body=body, head=head
+        )
 
     build_path = os.path.join(".shots", "_harness", f"{args.screen}.html")
     os.makedirs(os.path.dirname(build_path), exist_ok=True)
