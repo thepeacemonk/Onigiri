@@ -26,6 +26,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 STUB_PACKAGE = "onigiri_under_test"
 
+# Make sibling helper modules (fake_anki.py) importable from test files.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 
 @pytest.fixture(scope="session")
 def stub_package():
@@ -33,6 +36,15 @@ def stub_package():
     pkg.__path__ = [REPO_ROOT]
     sys.modules[STUB_PACKAGE] = pkg
     return pkg
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--regen-golden",
+        action="store_true",
+        default=False,
+        help="Overwrite golden files with current renderer output.",
+    )
 
 
 def load_module(module_name):

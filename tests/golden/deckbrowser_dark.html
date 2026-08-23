@@ -1,0 +1,1850 @@
+
+<style>
+    #deck-list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding-right: 10px;
+        margin-top: 0;
+        margin-bottom: 15px;
+        min-height: 24px;
+        position: relative;
+    }
+
+    #deck-list-header h2 {
+        margin: 0;
+        line-height: 24px;
+        flex: 0 0 auto;
+        font-size: 14px;
+        text-transform: uppercase;
+        color: var(--fg-subtle);
+    }
+
+    .deck-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+    }
+
+    .deck-header-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--icon-color, var(--fg-subtle));
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        box-shadow: none !important;
+        opacity: 0.72;
+        outline: none !important;
+        transition: none !important;
+    }
+
+    .deck-header-btn:hover {
+        opacity: 1;
+        color: var(--accent-color);
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    .deck-header-btn svg {
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
+    }
+
+    @keyframes deckRowAppear {
+        from { opacity: 0.72; }
+        to { opacity: 1; }
+    }
+    tr.deck.deck-row-appear {
+        animation: deckRowAppear 0.06s linear both;
+    }
+    /* --- Sidebar Button Fix --- */
+    .sidebar-left .menu-item,
+    .sidebar-left .add-button-dashed,
+    .sidebar-left .menu-group summary {
+        display: flex !important;
+        align-items: center !important;
+        width: 100% !important;
+        padding: 8px 12px !important;
+        margin-bottom: 4px !important;
+        box-sizing: border-box !important;
+        border-radius: 6px !important;
+        cursor: pointer !important;
+        pointer-events: auto !important;
+        flex-shrink: 0;
+        min-height: 33px;
+    }
+
+    .sidebar-left .menu-item:hover,
+    .sidebar-left .add-button-dashed:hover,
+    .sidebar-left .menu-group summary:hover {
+        background-color: rgba(128, 128, 128, 0.15) !important;
+    }
+
+    .sidebar-left .icon {
+        margin-right: 12px !important;
+        flex-shrink: 0;
+    }
+    .sidebar-left .deck-focus-btn .icon {
+        margin-right: 0 !important;
+    }
+    
+    /* --- Deck List Click Area Fix --- */
+    .deck-table .decktd {
+        display: flex;
+        align-items: center;
+        padding: 0 5px !important;
+        pointer-events: auto !important;
+    }
+
+    .deck-table a.deck {
+        flex-grow: 1;
+        padding: 6px 8px;
+        border-radius: 4px;
+        display: block;
+        pointer-events: auto !important;
+    }
+
+    .deck-table tr:not(.drag-hover) a.deck:hover {
+         background-color: rgba(128, 128, 128, 0.1);
+    }
+    /* --- Deck List Scrolling Fix --- */
+    .sidebar-expanded-content {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+        background-color: transparent !important; /* Ensure no background */
+    }
+
+    #deck-list-container {
+        flex: 1; 
+        overflow-y: auto;
+        min-height: 0; 
+    }
+</style>
+<div class="container modern-main-menu ">
+    <div class="sidebar-left skeleton-loading " style="--onigiri-sidebar-width: 345px; width: 345px;">
+        
+        <div class="sidebar-expanded-content">
+            <div class="profile-bar with-image-bg dynamic-default-bg" style="background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)"><div class="profile-bg-layer" style="background-image: url('/_addons/ADDON_PKG/system_files/profile_default/onigiri-bg.png'); background-size: cover; background-position: center; filter: blur(0.0px); opacity: 0.5; transform: scale(1.0);"></div><div class="profile-content profile-content-main"><img src="/_addons/ADDON_PKG/system_files/profile_default/onigiri-san.png" class="profile-pic"><span class="profile-name">USER</span></div></div>
+
+        <div class="menu-item action-add" onclick="pycmd('add')">
+            <i class="icon"></i>
+            <span>Add</span>
+        </div>
+    
+
+        <div class="menu-item action-browse" onclick="pycmd('browse')">
+            <i class="icon"></i>
+            <span>Browse</span>
+        </div>
+    
+
+        <div class="menu-item action-stats" onclick="pycmd('stats')">
+            <i class="icon"></i>
+            <span>Stats</span>
+        </div>
+    
+
+        <div class="menu-item action-sync" onclick="pycmd('sync')">
+            <i class="icon"></i>
+            <span>Sync</span>
+        </div>
+    
+
+        <div class="menu-item action-settings" onclick="pycmd('openOnigiriSettings')">
+            <i class="icon"></i>
+            <span>Settings</span>
+        </div>
+    
+
+        <div class="menu-item action-gamification" onclick="pycmd('openGamificationSettings')">
+            <i class="icon"></i>
+            <span>Onigiri Games</span>
+        </div>
+    
+
+        <details class="menu-group">
+            <summary class="menu-item action-more">
+                <i class="icon"></i>
+                <span>More</span>
+            </summary>
+            <div class="menu-group-items">
+                <div class="menu-item action-get-shared" onclick="pycmd('shared')">
+                    <i class="icon"></i>
+                    <span>Get Shared</span>
+                </div>
+                <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
+                    <i class="icon"></i>
+                    <span>Create Deck</span>
+                </div>
+                <div class="menu-item action-import-file" onclick="pycmd('import')">
+                    <i class="icon"></i>
+                    <span>Import File</span>
+                </div>
+            </div>
+        </details>
+    
+            
+    <section class="onigiri-sidebar-profile" data-profile-sidebar>
+        <button type="button" class="onigiri-sidebar-profile-back" aria-label="Back" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.close(event)"></button>
+        <div class="onigiri-sidebar-profile-cover" style="background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;">
+            <div class="onigiri-sidebar-profile-bg-layer" style="background-image: url('/_addons/ADDON_PKG/system_files/profile_default/onigiri-bg.png'); background-size: cover; background-position: center; filter: blur(0.0px); opacity: 0.5; transform: scale(1.0);"></div>
+        </div>
+        <div class="onigiri-sidebar-profile-body">
+            <div class="onigiri-sidebar-profile-avatar"><img src="/_addons/ADDON_PKG/system_files/profile_default/onigiri-san.png" class="onigiri-sidebar-profile-img"></div>
+            <h2>USER</h2>
+            
+            
+            
+            
+            
+    <section class="onigiri-sidebar-profile-chart">
+        <div class="onigiri-sidebar-profile-chart-head">
+            <h3>Weekly Study Chart</h3>
+            <span>0</span>
+        </div>
+        
+    <svg class="onigiri-sidebar-profile-chart-svg" viewBox="0 0 260 64" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+            <linearGradient id="opro-chart-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#111827" stop-opacity="0.35"></stop>
+                <stop offset="100%" stop-color="#111827" stop-opacity="0"></stop>
+            </linearGradient>
+        </defs>
+        <path d="M6.0,56.0 C26.7,56.0 26.7,56.0 47.3,56.0 C68.0,56.0 68.0,56.0 88.7,56.0 C109.3,56.0 109.3,56.0 130.0,56.0 C150.7,56.0 150.7,56.0 171.3,56.0 C192.0,56.0 192.0,56.0 212.7,56.0 C233.3,56.0 233.3,56.0 254.0,56.0 L254.0,56.0 L6.0,56.0 Z" fill="url(#opro-chart-fill)" stroke="none"></path>
+        <path d="M6.0,56.0 C26.7,56.0 26.7,56.0 47.3,56.0 C68.0,56.0 68.0,56.0 88.7,56.0 C109.3,56.0 109.3,56.0 130.0,56.0 C150.7,56.0 150.7,56.0 171.3,56.0 C192.0,56.0 192.0,56.0 212.7,56.0 C233.3,56.0 233.3,56.0 254.0,56.0 " fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round"></path>
+    </svg>
+    
+        <div class="onigiri-sidebar-profile-chart-labels"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </section>
+    
+            
+            
+        </div>
+    </section>
+    
+            
+            <div id="deck-list-header">
+                <h2>DECKS</h2>
+                <div id="onigiri-deck-search-bar">
+                    <span class="onigiri-search-icon" aria-hidden="true"></span>
+                    <input type="text" id="onigiri-deck-search-input" placeholder="Search decks..." autocomplete="off" spellcheck="false" />
+                    <button id="onigiri-deck-search-close" aria-label="Close" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <div class="deck-header-actions">
+                    <button id="onigiri-search-toolbar-btn" class="deck-header-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="Search decks" type="button">
+                        <i class="search-btn-icon"></i>
+                    </button>
+                    <button id="onigiri-sort-toolbar-btn" class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><path d="M8 5.5h12M8 12h12M8 18.5h12"/><path stroke-linejoin="round" d="M4.375 5.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="deck-list-container">
+                <table class="deck-table" id="decktree">
+                    <tbody>
+                       <tr class='deck current is-deck' id='1' data-did='1'>
+    <td class=decktd colspan=7>
+        <div class="deck-info">
+            <span><span class=collapse></span></span>
+            <a class="deck " href=# onclick="return pycmd('open:1')">
+                <span class="deck-name">Default</span>
+            </a>
+        </div>
+        <div class="deck-counts"><span class="new-count-bubble">7</span><span class="learn-count-bubble">3</span><span class="review-count-bubble">11</span></div>
+    </td>
+    
+    <td align=center class=opts>
+      <a onclick='pycmd("opts:1"); return false;'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr><tr class='deck is-folder' id='-2' data-did='-2'>
+    <td class=decktd colspan=7>
+        <div class="deck-info">
+            <span><a class='collapse state-open' href=# onclick='return pycmd("onigiri_collapse:-2")'>-</a></span>
+            <a class="deck " href=# onclick="return pycmd('open:-2')">
+                <span class="deck-name">Japanese</span>
+            </a>
+        </div>
+        <div class="deck-counts"><span class="new-count-bubble">7</span><span class="learn-count-bubble">3</span><span class="review-count-bubble">11</span></div>
+    </td>
+    
+    <td align=center class=opts>
+      <a onclick='pycmd("opts:-2"); return false;'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr><tr class='deck is-subdeck' id='2' data-did='2'>
+    <td class=decktd colspan=7>
+        <div class="deck-info">
+            <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class=collapse></span></span>
+            <a class="deck " href=# onclick="return pycmd('open:2')">
+                <span class="deck-name">Core 2000</span>
+            </a>
+        </div>
+        <div class="deck-counts"><span class="new-count-bubble">7</span><span class="learn-count-bubble">3</span><span class="review-count-bubble">11</span></div>
+    </td>
+    
+    <td align=center class=opts>
+      <a onclick='pycmd("opts:2"); return false;'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr><tr class='deck is-folder' id='-3' data-did='-3'>
+    <td class=decktd colspan=7>
+        <div class="deck-info">
+            <span><a class='collapse state-open' href=# onclick='return pycmd("onigiri_collapse:-3")'>-</a></span>
+            <a class="deck " href=# onclick="return pycmd('open:-3')">
+                <span class="deck-name">Law</span>
+            </a>
+        </div>
+        <div class="deck-counts"><span class="new-count-bubble">7</span><span class="learn-count-bubble">3</span><span class="review-count-bubble">11</span></div>
+    </td>
+    
+    <td align=center class=opts>
+      <a onclick='pycmd("opts:-3"); return false;'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr><tr class='deck is-subdeck' id='3' data-did='3'>
+    <td class=decktd colspan=7>
+        <div class="deck-info">
+            <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class=collapse></span></span>
+            <a class="deck " href=# onclick="return pycmd('open:3')">
+                <span class="deck-name">Constitutional</span>
+            </a>
+        </div>
+        <div class="deck-counts"><span class="new-count-bubble">7</span><span class="learn-count-bubble">3</span><span class="review-count-bubble">11</span></div>
+    </td>
+    
+    <td align=center class=opts>
+      <a onclick='pycmd("opts:3"); return false;'>
+        <img src='/_anki/imgs/gears.svg' class=gears>
+      </a>
+    </td>
+    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="collapsed-content-wrapper">
+            <div class="sidebar-collapsed-content">
+                <div class="collapsed-placeholder welcome-placeholder"></div>
+                <div class="collapsed-profile-item" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.open(event)">
+                    <img src="/_addons/ADDON_PKG/system_files/profile_default/onigiri-san.png" class="collapsed-profile-pic">
+                </div>
+                <div class="collapsed-actions-placeholder">
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                    <div class="collapsed-placeholder action-placeholder"></div>
+                </div>
+                <div class="collapsed-placeholder decks-placeholder"></div>
+            </div>
+        </div>
+    </div>
+    <div class="sidebar-edge-toggle-zone" aria-hidden="true"></div>
+    <div id="onigiri-sidebar-edge-pill" aria-hidden="false">
+        <button id="onigiri-sidebar-edge-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" type="button">
+            <span class="sidebar-edge-toggle-icon" aria-hidden="true"></span>
+        </button>
+        <div class="resize-handle" aria-label="Select resize mode" role="button" tabindex="0">
+            <span class="resize-handle-indicator" aria-hidden="true"></span>
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="injected-stats-block">
+            
+    <style>
+        .evolution-graph-main-wrapper {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Dynamic Sidebar Max-Width removed to allow full stretching */
+        /*
+        .sidebar-left {
+            max-width: 800px !important;
+        }
+        */
+
+        .unified-grid {
+            display: grid;
+            gap: 15px;
+            grid-template-rows:  min-content;
+            grid-auto-rows: 120px;
+            grid-template-columns: repeat(4, minmax(0, 230px));
+            justify-content: center;
+            width: 100%;
+            max-width: 1180px;
+            box-sizing: border-box;
+            overflow: visible;
+        }
+
+        .injected-stats-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .onigiri-widget-title {
+            width: 100%;
+            max-width: 965px;
+            box-sizing: border-box;
+        }
+
+        /* As a grid widget the title fills its cell and sits on the vertical
+           centre line, so it lines up with the stat cards beside it. */
+        .onigiri-widget-container .onigiri-widget-title {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            margin: 12px 0 0 0;
+            padding: 0;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        /* Make the container expand to fill the grid area (rows/cols) */
+        .onigiri-widget-container, .external-widget-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .external-widget-container.shige-leaderboard-widget {
+            overflow: visible;
+            min-height: 100%;
+            z-index: 2;
+        }
+
+        .external-widget-container.shige-leaderboard-widget #shige-lb-container {
+            width: 100%;
+        }
+
+        /* Force the inner content (cards, heatmap, favorites) to fill the container */
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget, .hashi-notes-widget {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Prep Station widget */
+        .prep-station-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: calc(10px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(12px * var(--onigiri-widget-pad-scale));
+            cursor: pointer;
+            overflow: hidden;
+            font-family: inherit;
+            /* background + border-radius/width fall back here, then get
+               overridden !important by the Widget Color & Effect settings */
+            background-color: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+            border-radius: 15px;
+        }
+        .prep-widget-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: calc(11px * var(--prep-fs, 1));
+            opacity: 0.45;
+            font-style: italic;
+        }
+
+        /* Mini exam-card previews, echoing the Prep Station dialog's ExamCard.
+           grid-template-columns is set inline per-instance to the widget's
+           configured slot count, so a card only ever occupies one column's
+           width even when fewer plans than slots are active. */
+        .prep-plan-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+        }
+        .prep-plan-card {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--canvas-inset, #f2f2f2);
+            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+        }
+        .prep-card-band {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 0 0 auto;
+            padding: 6px 7px;
+            min-height: 40%;
+            color: #ffffff;
+        }
+        .prep-card-band-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+        }
+        .prep-card-name-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 4px;
+            min-width: 0;
+        }
+        .prep-card-icon {
+            font-size: 13px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        img.prep-card-icon {
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+        }
+        .prep-card-badge {
+            font-size: calc(7px * var(--prep-fs, 1));
+            font-weight: 700;
+            white-space: nowrap;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 2px 5px;
+            border-radius: 8px;
+        }
+        .prep-card-name {
+            font-size: calc(10px * var(--prep-fs, 1));
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: -0.01em;
+            text-align: left;
+        }
+        .prep-card-body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            flex: 1;
+            min-height: 0;
+            padding: 6px 7px 7px 7px;
+            gap: 4px;
+        }
+        .prep-card-pace {
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+            min-width: 0;
+        }
+        .prep-card-pace-num {
+            font-size: calc(17px * var(--prep-fs, 1));
+            font-weight: 700;
+            line-height: 1;
+        }
+        .prep-card-pace-unit {
+            font-size: calc(8px * var(--prep-fs, 1));
+            opacity: 0.55;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .prep-card-progress {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .prep-card-progress-track {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border, rgba(128, 128, 128, 0.25));
+            overflow: hidden;
+        }
+        .prep-card-progress-fill {
+            height: 100%;
+            border-radius: 2px;
+        }
+        .prep-card-progress-label {
+            font-size: calc(8px * var(--prep-fs, 1));
+            opacity: 0.55;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .hex-land-widget {
+            display: grid;
+            grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
+            gap: 14px;
+            padding: calc(14px * var(--onigiri-widget-pad-scale));
+            border-radius: 18px;
+            border: 1px solid var(--border, #e0e0e0);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .hex-land-widget.land-only {
+            display: block;
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
+        }
+
+        .hex-land-widget.disabled {
+            display: flex;
+            align-items: center;
+            background: var(--canvas-inset, #ffffff);
+        }
+
+        .hex-land-preview {
+            position: relative;
+            min-width: 0;
+            min-height: 120px;
+            height: 100%;
+            border-radius: 14px;
+            overflow: hidden;
+            background-color: var(--hl-bottom, #1597d1);
+            background-image: linear-gradient(180deg, var(--hl-top, #48c0ee), var(--hl-bottom, #1597d1));
+        }
+
+        .hex-land-widget.land-only .hex-land-preview {
+            min-height: 100%;
+        }
+
+        .hex-land-preview-stage {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(var(--hl-scale, .72));
+            transform-origin: center;
+        }
+
+        .hex-land-preview img,
+        .hex-land-preview svg {
+            position: absolute;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .hex-land-preview .hl-tile {
+            width: 65px;
+        }
+
+        .hex-land-copy {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .hex-land-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .hex-land-header h3,
+        .hex-land-copy h3 {
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.15;
+            font-weight: 900;
+            color: var(--fg, #111);
+        }
+
+        .hex-land-header button {
+            width: 25px;
+            height: 25px;
+            border: 0;
+            border-radius: 999px;
+            background: #f5bf36;
+            color: #3b2604;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .hex-land-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .hex-land-stat-row {
+            display: grid;
+            grid-template-columns: 36px 1fr;
+            align-items: center;
+            min-height: 34px;
+            padding: 4px 10px 4px 6px;
+            border: 1px solid var(--fg, #161616);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 92%, transparent);
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .hex-land-stat-icon {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .hex-land-stat-sprite {
+            display: block;
+            max-width: 31px;
+            max-height: 31px;
+            object-fit: contain;
+        }
+
+        .hex-land-stat-sprite.tree {
+            max-height: 34px;
+        }
+
+        .hex-land-stat-text {
+            min-width: 0;
+            text-align: center;
+            font-size: 15px;
+            line-height: 1.1;
+            font-weight: 900;
+            color: var(--fg, #111);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .hex-land-coin-fallback {
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 32% 28%, #fff4a8 0 18%, #f8c94d 19% 62%, #d18a19 63% 100%);
+            color: #593a04;
+            font-size: 9px;
+            font-weight: 900;
+            box-shadow: inset 0 -2px 0 rgba(89, 58, 4, .22);
+        }
+
+        .hex-land-coins {
+            font-size: 18px;
+            font-weight: 900;
+            color: #1f6f87;
+        }
+
+        .hex-land-meta,
+        .hex-land-copy p {
+            margin: 0;
+            color: var(--fg-subtle, #757575);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .hex-land-mats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: auto;
+        }
+
+        .hex-land-mats span {
+            padding: 5px 7px;
+            border-radius: 999px;
+            background: color-mix(in srgb, #58af82 14%, transparent);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .onigimon-widget, .onigimon-widget * {
+            font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
+        }
+
+        /* The header title opts out of the pixel font above so it reads as the
+           same Small Title as every other widget's; the body stays Silkscreen. */
+        .onigimon-widget .onigiri-widget-head > h3 {
+            font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+
+        .onigimon-widget {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: calc(14px * var(--onigiri-widget-pad-scale));
+            border-radius: 15px;
+            border: 1px solid var(--border, #e0e0e0);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .onigimon-main,
+        .onigimon-inventory {
+            display: flex;
+            align-items: center;
+        }
+
+        .onigimon-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* One continuous card: coloured top section (sprite + name) fused to a
+           neutral lower section (stat meters) with a flat seam. The card owns
+           the border and corners so the two sections meet with no gap. */
+        .onigimon-card {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border, #e0e0e0);
+        }
+
+        .onigimon-header span,
+        .onigimon-info span {
+            color: var(--fg-subtle, #757575);
+            font-size: 12px;
+        }
+        
+        .onigimon-ball-btn {
+            width: 24px;
+            height: 24px;
+            display: grid;
+            place-items: center;
+            flex: 0 0 24px;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 999px;
+            background: var(--canvas, #ffffff);
+            padding: 0;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .onigimon-ball-btn:hover {
+            background: var(--accent-color, #007aff);
+            border-color: var(--accent-color, #007aff);
+            box-shadow: 0 4px 8px color-mix(in srgb, var(--accent-color, #007aff) 30%, transparent);
+            transform: translateY(-1px);
+        }
+
+        .onigimon-ball-icon {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+            background-color: var(--fg, #222);
+            mask-size: contain;
+            -webkit-mask-size: contain;
+            mask-repeat: no-repeat;
+            -webkit-mask-repeat: no-repeat;
+            mask-position: center;
+            -webkit-mask-position: center;
+            transition: background-color 0.2s ease;
+        }
+
+        .onigimon-ball-btn:hover .onigimon-ball-icon {
+            background-color: #ffffff;
+        }
+
+        .onigimon-main {
+            gap: 12px;
+            min-height: 52px;
+        }
+
+        .onigimon-scene {
+            position: relative;
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 12px;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow: hidden;
+            isolation: isolate;
+        }
+
+        .onigimon-scene::before {
+            content: "";
+            position: absolute;
+            inset: -12px;
+            background-image: var(--onigimon-scene-image, none);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            filter: blur(var(--onigimon-scene-blur, 9px));
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: -2;
+            display: none;
+        }
+
+        .onigimon-scene-bg {
+            position: absolute;
+            inset: -12px;
+            transform: scale(1.05);
+            opacity: var(--onigimon-scene-opacity, 0.9);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .onigimon-scene::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: color-mix(in srgb, var(--canvas-inset, #ffffff) 16%, transparent);
+            z-index: 1;
+        }
+
+        .onigimon-scene > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        .onigimon-scene > .onigimon-scene-bg {
+            position: absolute;
+            z-index: 0;
+        }
+
+        /* Coloured top section (sprite + name). Reuses .onigimon-scene for the
+           background image/blur machinery, but drops the scene's own border and
+           radius — the enclosing .onigimon-card owns the grey border + corners. */
+        .onigimon-top {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-height: 80px;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+        }
+
+        /* Combined selector so these win over the later `.onigimon-scene` block
+           (padding/border/radius) — the top section is applied as
+           `class="onigimon-top onigimon-scene"`. */
+        .onigimon-top.onigimon-scene {
+            border: none;
+            border-radius: 0;
+            padding: 16px 14px;
+            background: radial-gradient(
+                circle at 22% 32%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 92%, white 8%) 0%,
+                var(--onigimon-color, #6ea96a) 70%,
+                color-mix(in srgb, var(--onigimon-color, #6ea96a) 90%, black 10%) 100%
+            ) !important;
+        }
+
+        /* Fixed 96px companion sprite. */
+        .onigimon-top .onigimon-sprite {
+            position: relative;
+            width: 96px;
+            height: 96px;
+            flex: 0 0 96px;
+            border-radius: 0;
+            background: transparent;
+        }
+
+        .onigimon-top .onigimon-sprite img {
+            width: 86px;
+            height: 86px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Name and level sit on the coloured section, so they take fixed
+           per-mode colours instead of the theme's foreground variables. */
+        .onigimon-top .onigimon-info strong {
+            color: #000000;
+        }
+
+        .night-mode .onigimon-top .onigimon-info strong {
+            color: #ffffff;
+        }
+
+        .onigimon-top .onigimon-info span {
+            color: rgba(0, 0, 0, 0.68);
+        }
+
+        .night-mode .onigimon-top .onigimon-info span {
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        /* Neutral lower section (stat meters), matching the Prep Station card
+           body shade in both modes. */
+        .onigimon-bottom {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 5px;
+            padding: 12px 14px;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            background: #efefec;
+            color: var(--fg, #222);
+        }
+
+        .night-mode .onigimon-bottom {
+            background: #2e2e2d;
+        }
+
+        /* `color: inherit` so a user-chosen stats-panel colour (set inline on
+           .onigimon-bottom from Gamification Settings) also drives the meter
+           text; with var(--fg) the labels stayed dark on a dark panel. */
+        .onigimon-bottom .onigimon-meter span,
+        .onigimon-bottom .onigimon-meter b {
+            color: inherit;
+            text-align: left;
+            justify-self: start;
+        }
+
+        .onigimon-bottom .onigimon-meter b {
+            text-align: right;
+            justify-self: end;
+        }
+
+        .onigimon-bottom .onigimon-meter > div {
+            background: color-mix(in srgb, currentColor 14%, transparent);
+        }
+
+        .onigimon-sprite {
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            flex: 0 0 58px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--accent-color, #007aff) 10%, transparent);
+        }
+
+        .onigimon-scene .onigimon-sprite {
+            background: transparent;
+        }
+
+        .onigimon-sprite img {
+            width: 54px;
+            height: 54px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
+        .onigimon-placeholder {
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+        }
+
+        .onigimon-info {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+            text-align: left;
+            justify-items: start;
+        }
+
+        .onigimon-info strong {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .onigimon-meter {
+            display: grid;
+            grid-template-columns: 68px 34px minmax(0, 1fr);
+            gap: 6px;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .onigimon-meter b {
+            color: var(--fg, #222);
+            font-weight: 800;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .onigimon-meter > div {
+            height: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--fg, #222) 10%, transparent);
+        }
+
+        .onigimon-meter i {
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+        }
+
+        .onigimon-inventory {
+            gap: 7px;
+            flex-wrap: wrap;
+            color: var(--fg, #222);
+            margin-top: auto;
+        }
+
+        .onigimon-inventory span {
+            min-width: 58px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--accent-color, #007aff) 10%, transparent);
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .onigimon-item-icon {
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
+            image-rendering: pixelated;
+            flex: 0 0 auto;
+        }
+
+        /* Compact 1-row Onigimon widget: just the companion over its background */
+        .onigimon-widget-compact {
+            padding: 8px;
+            gap: 0;
+        }
+
+        .onigimon-scene-compact {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            justify-content: center;
+        }
+
+        .onigimon-scene-compact .onigimon-sprite {
+            width: 64px;
+            height: 64px;
+            flex: 0 0 64px;
+        }
+
+        .onigimon-scene-compact .onigimon-sprite img {
+            width: 60px;
+            height: 60px;
+        }
+
+        /* 1x2: the compact scene gains the name/level beside the companion, so
+           the pair is centred as a group instead of the sprite alone. */
+        .onigimon-span-1x2 .onigimon-scene-compact {
+            gap: 14px;
+            padding: 10px 16px;
+        }
+
+        .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong {
+            font-size: 15px;
+            color: #000000;
+        }
+
+        .night-mode .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong {
+            color: #ffffff;
+        }
+
+        .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span {
+            color: rgba(0, 0, 0, 0.68);
+        }
+
+        .night-mode .onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span {
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        /* 2x2: the coloured scene and the meters sit side by side, each taking
+           half the card, instead of stacking. */
+        .onigimon-card-wide {
+            flex-direction: row;
+        }
+
+        .onigimon-card-wide > .onigimon-top {
+            flex: 1 1 50%;
+            min-width: 0;
+            flex-direction: column;
+            justify-content: center;
+            gap: 8px;
+            text-align: center;
+        }
+
+        .onigimon-card-wide > .onigimon-top .onigimon-info {
+            justify-items: center;
+            text-align: center;
+            max-width: 100%;
+        }
+
+        .onigimon-card-wide > .onigimon-top .onigimon-sprite {
+            width: 96px;
+            height: 96px;
+            flex: 0 0 96px;
+        }
+
+        .onigimon-card-wide > .onigimon-top .onigimon-sprite img {
+            width: 88px;
+            height: 88px;
+        }
+
+        .onigimon-card-wide > .onigimon-bottom {
+            flex: 1 1 50%;
+            min-width: 0;
+            gap: 8px;
+            padding: 14px 16px;
+        }
+
+        /* Restaurant Level Widget Styles */
+        .onigiri-restaurant-level-widget {
+            display: flex;
+            flex-direction: column;
+            background: var(--canvas-inset, #f5f5f5);
+            border-radius: var(--onigiri-box-effect-radius, 15px);
+            overflow: hidden;
+            height: 100%;
+            border: 1px solid var(--border, #e0e0e0);
+            /* cursor: pointer; removed - only image is clickable */
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .rl-widget-head {
+            padding: calc(12px * var(--onigiri-widget-pad-scale))
+                     calc(14px * var(--onigiri-widget-pad-scale))
+                     0
+                     calc(14px * var(--onigiri-widget-pad-scale));
+        }
+
+        /* The building and the level column sit below the header row; this is
+           the part the orientation setting flips, not the widget itself. */
+        .rl-widget-body {
+            display: flex;
+            flex-direction: row;
+            flex: 1;
+            min-height: 0;
+            min-width: 0;
+        }
+
+        .onigiri-restaurant-level-widget.orientation-vertical .rl-widget-body {
+            flex-direction: column;
+        }
+
+        .onigiri-restaurant-level-widget.expanded-view {
+            background: var(--theme-bg) !important;
+            border-color: transparent;
+        }
+
+        /* Expanded view is the building alone, edge to edge. */
+        .onigiri-restaurant-level-widget.expanded-view .rl-widget-head {
+            display: none;
+        }
+        
+        .night .onigiri-restaurant-level-widget {
+            background: var(--canvas-inset, #2c2c2c);
+            border-color: var(--border, #e0e0e0);
+        }
+
+        .restaurant-image-container {
+            flex: 0 0 45%; /* Fixed width percentage */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--canvas-inset);
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
+            position: relative;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-image-container {
+            flex: 1 1 0;
+            width: 100%;
+            height: auto;
+            aspect-ratio: auto;
+            min-height: 0;
+            padding: calc(8px * var(--onigiri-widget-pad-scale))
+                     calc(10px * var(--onigiri-widget-pad-scale))
+                     0
+                     calc(10px * var(--onigiri-widget-pad-scale));
+        }
+
+        /* Unrestricted Sidebar resizing */
+        .sidebar-left {
+            max-width: none !important;
+        }
+
+        .main-content {
+            /* Dynamic Padding based on col_count. Top padding is explicitly 10px to align with sidebar top */
+            padding: 10px 24px 24px 24px !important;
+            box-sizing: border-box !important;
+            /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
+            display: flex !important;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Center the sidebar if main content is hidden */
+        .modern-main-menu.container {
+            justify-content: flex-start !important;
+        }
+
+        /* Allow grid to expand beyond 900px if we have many columns */
+        .main-content > * {
+            width: 100%;
+            max-width: 1180px !important;
+        }
+
+        .onigiri-restaurant-level-widget.expanded-view .restaurant-image-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            padding: calc(5px * var(--onigiri-widget-pad-scale)); /* Reduced padding to make image larger */
+            z-index: 10;
+        }
+        
+        .night .restaurant-image-container {
+            background: var(--canvas-inset);
+        }
+
+        .restaurant-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+        
+        .onigiri-restaurant-level-widget:hover .restaurant-image {
+            transform: scale(1.05);
+        }
+        
+        .onigiri-restaurant-level-widget.expanded-view .restaurant-image {
+            transform: scale(1.0);
+        }
+
+        /* Compact 1-row Nook Level widget: just the building over its theme background */
+        .onigiri-restaurant-level-widget-compact {
+            cursor: pointer;
+        }
+
+        .onigiri-restaurant-level-widget-compact .restaurant-image-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            padding: calc(10px * var(--onigiri-widget-pad-scale));
+            background: var(--theme-bg, var(--canvas-inset, #f5f5f5));
+        }
+
+        .restaurant-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: calc(8px * var(--onigiri-widget-pad-scale))
+                     calc(20px * var(--onigiri-widget-pad-scale))
+                     calc(15px * var(--onigiri-widget-pad-scale))
+                     calc(20px * var(--onigiri-widget-pad-scale));
+            gap: 15px;
+            transition: opacity 0.2s ease;
+        }
+
+        .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {
+            flex: 0 0 auto;
+            padding: calc(6px * var(--onigiri-widget-pad-scale))
+                     calc(16px * var(--onigiri-widget-pad-scale))
+                     calc(14px * var(--onigiri-widget-pad-scale))
+                     calc(16px * var(--onigiri-widget-pad-scale));
+            gap: 10px;
+        }
+
+        .onigiri-restaurant-level-widget.expanded-view .restaurant-info {
+            display: none;
+            opacity: 0;
+        }
+
+        .level-display {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .level-value {
+            font-size: 2.8em;
+            font-weight: 800;
+            color: var(--fg, #333);
+            line-height: 1;
+        }
+
+        .level-progress-container {
+            width: 100%;
+            margin-top: 6px;
+        }
+        
+        .lp-bar {
+            height: 6px;
+            background: var(--border, #e0e0e0);
+            border-radius: 3px;
+            overflow: hidden;
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        
+        .lp-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .lp-text {
+            font-size: 0.7em;
+            color: var(--fg-subtle, #888);
+            text-align: right;
+            font-weight: 500;
+        }
+
+        .daily-special-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+        }
+        
+        .ds-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .ds-label {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: var(--fg, #333);
+        }
+
+        .ds-progress-bar {
+            height: 8px;
+            background: var(--border, #e0e0e0);
+            border-radius: 4px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .ds-progress-fill {
+            height: 100%;
+            background: var(--accent-color, #007bff);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .ds-text {
+            font-size: 0.85em;
+            color: var(--fg-subtle, #888);
+            font-weight: 500;
+        }
+        
+        /* Snow Animation for Santa's Coffee Theme */
+        .onigiri-restaurant-level-widget.with-snow .restaurant-image-container {
+            overflow: visible;
+        }
+        
+        .snowflake {
+            position: absolute;
+            top: -20px;
+            color: #fff;
+            font-size: 1.2em;
+            opacity: 0.8;
+            pointer-events: none;
+            animation: snowfall linear infinite;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+            z-index: 10;
+        }
+        
+        @keyframes snowfall {
+            0% {
+                transform: translateY(0) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.8;
+            }
+            90% {
+                opacity: 0.8;
+            }
+            100% {
+                transform: translateY(300px) translateX(20px);
+                opacity: 0;
+            }
+        }
+        
+        /* Make snowflakes visible in expanded view too */
+        .onigiri-restaurant-level-widget.expanded-view.with-snow .snowflake {
+            display: block;
+        }
+        
+        /* Navigation buttons for Restaurant Level Widget */
+        .rl-widget-nav-buttons {
+            z-index: 20;
+        }
+
+        .rl-nav-btn {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            margin-left: 0;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            color: var(--fg-subtle, #757575);
+            box-shadow: none !important;
+        }
+        
+        .night .rl-nav-btn {
+            background: transparent;
+            color: var(--fg-subtle, #9e9e9e);
+        }
+        
+        .rl-nav-btn:hover {
+            background: transparent;
+            color: var(--theme-color);
+            transform: none;
+            border: none;
+            box-shadow: none;
+            outline: none;
+        }
+        
+        .night .rl-nav-btn:hover {
+            background: transparent;
+            color: var(--theme-color);
+            border: none;
+        }
+        
+        .rl-nav-icon {
+            width: 16px;
+            height: 16px;
+        }
+    </style>
+    
+    <div class="unified-grid"><div class="onigiri-widget-container" style="grid-area: 1 / 1 / span 1 / span 4;"><h1 class="onigiri-widget-title">Welcome to Onigiri!</h1></div><div class="onigiri-widget-container" style="grid-area: 2 / 1 / span 1 / span 1;">
+    <div class="stat-card onigiri-stat-card is-minimal studied-card" data-stat="studied">
+        <h3>Studied</h3>
+        
+        <div class="stat-body">
+            <p class="stat-value">11<span class="stat-unit">cards</span></p>
+            <div class="star-rating is-placeholder" aria-hidden="true"></div>
+        </div>
+    
+        
+    </div>
+    </div><div class="onigiri-widget-container" style="grid-area: 2 / 2 / span 1 / span 1;">
+    <div class="stat-card onigiri-stat-card is-minimal time-card" data-stat="time">
+        <h3>Time</h3>
+        
+        <div class="stat-body">
+            <p class="stat-value">0.9<span class="stat-unit">min</span></p>
+            <div class="star-rating is-placeholder" aria-hidden="true"></div>
+        </div>
+    
+        
+    </div>
+    </div><div class="onigiri-widget-container" style="grid-area: 2 / 3 / span 1 / span 1;">
+    <div class="stat-card onigiri-stat-card is-minimal pace-card" data-stat="pace">
+        <h3>Pace</h3>
+        
+        <div class="stat-body">
+            <p class="stat-value">5.0<span class="stat-unit">s/card</span></p>
+            <div class="star-rating is-placeholder" aria-hidden="true"></div>
+        </div>
+    
+        
+    </div>
+    </div><div class="onigiri-widget-container" style="grid-area: 2 / 4 / span 1 / span 1;">
+    <div class="stat-card onigiri-stat-card is-minimal retention-card" data-stat="retention">
+        <h3>Retention</h3>
+        
+        <div class="stat-body">
+            <p class="stat-value">100%</p>
+            <div class="star-rating"><i class='star'></i><i class='star'></i><i class='star'></i><i class='star'></i><i class='star'></i></div>
+        </div>
+    
+        
+    </div>
+    </div><div class="onigiri-widget-container" style="grid-area: 3 / 1 / span 2 / span 4;">
+    <div id='onigiri-heatmap-container'>
+        <div class="heatmap-header-skeleton"><div class="header-left-skeleton"><div class="skeleton-title"></div><div class="skeleton-nav"></div></div><div class="header-right-skeleton"><div class="skeleton-streak"></div><div class="skeleton-filters"></div></div></div>
+        <div class="heatmap-grid-skeleton"><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div><div class='skeleton-cell'></div></div>
+    </div></div></div>
+    <style>
+        .action-add .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/add-card.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/add-card.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-browse .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/browse.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/browse.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-stats .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/stats.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/stats.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-sync .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/sync.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/sync.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-settings .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/settings.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/settings.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-gamification .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/gamepad.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/gamepad.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-more .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/more.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/more.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-get_shared .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/get_shared.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/get_shared.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-create_deck .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/add-deck.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/add-deck.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        
+
+        .action-import_file .icon {
+            display: inline-block !important;
+            width: 16px !important;
+            height: 16px !important;
+            mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/import_file.svg') !important;
+            -webkit-mask-image: url('/_addons/ADDON_PKG/system_files/system_icons/unavailable_for_users/import_file.svg') !important;
+            mask-size: contain !important;
+            -webkit-mask-size: contain !important;
+            mask-repeat: no-repeat !important;
+            -webkit-mask-repeat: no-repeat !important;
+            mask-position: center !important;
+            -webkit-mask-position: center !important;
+            background-color: var(--icon-color);
+        }
+        </style>
+    <script>
+        window.ONIGIRI_CONFIG = {"sidebarActionsMode": "list", "sidebarButtonLayout": {"visible": ["profile", "add", "browse", "stats", "sync", "settings", "gamification", "more"], "archived": []}, "addonPackage": "ADDON_PKG", "collapsedIcons": {"add": "", "browse": "", "stats": "", "sync": "", "settings": "", "more": "", "get_shared": "", "create_deck": "", "import_file": ""}, "deckCycleState": 0, "sidebarPosition": "left", "deckSortMode": "default", "decklineAvailable": false, "fsrsHelperAvailable": false, "markerColors": {"red": "#FF4B4B", "blue": "#4488FF", "green": "#44BB66", "yellow": "#FFB800"}, "markerIcons": {}, "markerNames": {}, "filters": {"favorites": false, "marked": false}};
+        window.ONIGIRI_SYNC_STATUS = "none";
+    </script>
+    
+        </div>
+    </div>
+</div>
+
+<script>
+// Disable Anki's default jQuery sortable on the deck tree. Onigiri owns deck
+// sorting/reparenting through its lightweight pointer-drag handles.
+(function() {
+    if (typeof $ !== 'undefined' && $.ui) {
+        const originalSortable = $.fn.sortable;
+        $.fn.sortable = function(options) {
+            if (this.selector === '#decktree > tbody' || this.parent().attr('id') === 'decktree') {
+                return this;
+            }
+            return originalSortable.call(this, options);
+        };
+        for (let prop in originalSortable) {
+            if (originalSortable.hasOwnProperty(prop)) {
+                $.fn.sortable[prop] = originalSortable[prop];
+            }
+        }
+    }
+})();
+
+// Compatibility shim for older Onigiri hooks.
+const OnigiriEditor = {
+    init: function() {},
+    enterEditMode: function() {},
+    exitEditMode: function() {},
+    reapplyEditModeState: function() {},
+};
+
+// Sync Status Manager
+const SyncStatusManager = {
+    setSyncStatus: function(status) {
+        const syncButtons = document.querySelectorAll('.action-sync');
+        if (!syncButtons.length) return;
+        
+        syncButtons.forEach(function(syncButton) {
+            syncButton.classList.remove('sync-needed');
+        
+            if (status === 'sync') {
+                syncButton.classList.add('sync-needed');
+            }
+        });
+        // If status is 'none', no class is added.
+    }, 
+    setSyncing: function(isSyncing) {
+        const syncButtons = document.querySelectorAll('.action-sync');
+        syncButtons.forEach(function(syncButton) {
+            if (isSyncing) {
+                syncButton.classList.add('is-syncing');
+            } else {
+                syncButton.classList.remove('is-syncing');
+            }
+        });
+    }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof anki !== 'undefined' && anki.setupDeckBrowser) {
+        anki.setupDeckBrowser();
+    }
+    OnigiriEditor.init();
+});
+</script>
