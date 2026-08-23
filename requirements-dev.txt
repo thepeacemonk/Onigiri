@@ -2,3 +2,8 @@ pytest>=8
 pytest-playwright>=0.5
 pytest-cov>=5
 ruff>=0.6
+
+# Pinned to the add-on's supported Anki versions (see AGENTS.md).
+# Provides real anki/aqt/PyQt6 so modules import headlessly in tests.
+anki==25.09
+aqt==25.09

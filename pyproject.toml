@@ -19,10 +19,6 @@ extend-exclude = ["user_files", "web/lib", ".venv"]
 # rules that fail on main.
 select = ["E9", "F821"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-ra"
-markers = [
-    "visual: Playwright-based visual regression tests",
-    "qt: offscreen PyQt6 widget tests",
-]
+# NOTE: pytest configuration intentionally lives in tests/pytest.ini so
+# the pytest rootdir stays anchored at tests/ and never imports the
+# add-on root package (which requires a running Anki).
