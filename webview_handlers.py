@@ -3,7 +3,13 @@ import os
 import shutil
 from urllib.parse import unquote
 from typing import Tuple, Any, List
-from aqt.deckbrowser import DeckBrowser
+# Headless/test seam: importing aqt.deckbrowser outside a running Anki
+# raises (its class body calls tr() through the Rust backend). The
+# placeholder keeps isinstance() checks harmless when no Anki exists.
+try:
+    from aqt.deckbrowser import DeckBrowser
+except Exception:
+    DeckBrowser = type("DeckBrowser", (), {})
 from .decks import tree_updater as deck_tree_updater
 from .decks import drag_drop as deck_drag_drop
 from .decks import move as move_deck

@@ -19,7 +19,13 @@ from aqt import mw, gui_hooks
 from .onigiri_notifications import notify as tooltip
 from .onigiri_notifications import notify_info as showInfo
 from aqt.webview import AnkiWebView
-from aqt.deckbrowser import DeckBrowser
+# Headless/test seam: importing aqt.deckbrowser outside a running Anki
+# raises (its class body calls tr() through the Rust backend). The
+# placeholder keeps isinstance() checks harmless when no Anki exists.
+try:
+    from aqt.deckbrowser import DeckBrowser
+except Exception:
+    DeckBrowser = type("DeckBrowser", (), {})
 from aqt.main import MainWebView
 from aqt.utils import tr as anki_tr
 from aqt.overview import Overview
@@ -7512,7 +7518,10 @@ def _onigiri_render_deck_tree(self, *args, **kwargs):
     return _old_render_deck_tree(self, *args, **kwargs)
 
 # Store original method
-from aqt.deckbrowser import DeckBrowser
+try:
+    from aqt.deckbrowser import DeckBrowser
+except Exception:
+    DeckBrowser = type("DeckBrowser", (), {})
 if not hasattr(DeckBrowser, '_onigiri_patched_render_tree'):
     if hasattr(DeckBrowser, '_render_deck_tree'):
         _old_render_deck_tree = DeckBrowser._render_deck_tree
