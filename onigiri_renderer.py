@@ -8,7 +8,17 @@ from datetime import date, datetime
 from aqt import mw
 from . import patcher
 from . import fsrs_helper_integration
-from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
+# Headless/test seam: importing aqt.deckbrowser outside a running Anki
+# raises (its class body calls tr() through the Rust backend).
+try:
+    from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
+except Exception:
+    DeckBrowser = type("DeckBrowser", (), {})
+    RenderDeckNodeContext = type(
+        "RenderDeckNodeContext",
+        (),
+        {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+    )
 from anki.decks import DeckId
 from . import config, heatmap
 from .api import sidebar as sidebar_api
