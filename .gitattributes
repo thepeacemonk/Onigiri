@@ -1,0 +1,10 @@
+# Dev/test-only paths are excluded from `git archive` so the CI
+# add-on artifact contains just the runtime files Anki loads.
+/.github export-ignore
+/tests export-ignore
+/tools export-ignore
+/.shots export-ignore
+/pyproject.toml export-ignore
+/requirements-dev.txt export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
