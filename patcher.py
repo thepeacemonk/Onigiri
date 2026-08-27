@@ -6461,7 +6461,10 @@ def generate_reviewer_buttons_css(conf):
         }}
 
         body .stattxt:not(.onigiri-count-pill),
-        body .nobold:not(.onigiri-answer-hover-number) {{
+        body .nobold:not(.onigiri-answer-hover-number),
+        body .new-count,
+        body .learn-count,
+        body .review-count {{
             color: {interval_color_light} !important;
             opacity: 0.9 !important;
             font-weight: normal !important;
@@ -6472,7 +6475,13 @@ def generate_reviewer_buttons_css(conf):
         .nightMode body .stattxt:not(.onigiri-count-pill),
         .nightMode body .nobold:not(.onigiri-answer-hover-number),
         .night-mode body .stattxt:not(.onigiri-count-pill),
-        .night-mode body .nobold:not(.onigiri-answer-hover-number) {{
+        .night-mode body .nobold:not(.onigiri-answer-hover-number),
+        .nightMode body .new-count,
+        .nightMode body .learn-count,
+        .nightMode body .review-count,
+        .night-mode body .new-count,
+        .night-mode body .learn-count,
+        .night-mode body .review-count {{
             color: {interval_color_dark} !important;
         }}
 
@@ -6955,7 +6964,10 @@ def generate_reviewer_buttons_css(conf):
 
         button[onclick*="ease"] table, button[onclick*="ease"] tr, button[onclick*="ease"] td,
         button[data-cmd*="ease"] table, button[data-cmd*="ease"] tr, button[data-cmd*="ease"] td,
-        button[data-onigiri-ease] table, button[data-onigiri-ease] tr, button[data-onigiri-ease] td {{
+        button[data-onigiri-ease] table, button[data-onigiri-ease] tr, button[data-onigiri-ease] td,
+        button[onclick*="ease"] *,
+        button[data-cmd*="ease"] *,
+        button[data-onigiri-ease] * {{
             background: transparent !important;
             border: none !important;
             margin: 0 !important;
@@ -7291,14 +7303,41 @@ def generate_reviewer_buttons_css(conf):
                 // Rather than dropping a whole node when it merely contains the
                 // timer text, cut just that substring out before splitting, so real
                 // counts sharing a node with the timer still come through.
-                const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
+                const nodes = Array.from(document.querySelectorAll('.stattxt, .new-count, .learn-count, .review-count'))
                     .filter(node => !node.closest('.onigiri-pre-answer-counts'));
                 nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
+
+                // Anki 24+ Svelte might separate counts into individual spans without '+' in them, or have '.plus' spans.
+                // We also need to hide any '.plus' siblings so they don't linger.
+                document.querySelectorAll('.plus').forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
+                // Also hide standalone text nodes containing just " + " if they are siblings to counts.
+                const countParents = new Set(nodes.map(n => n.parentElement).filter(Boolean));
+                countParents.forEach(parent => {
+                    Array.from(parent.childNodes).forEach(child => {
+                        if (child.nodeType === Node.TEXT_NODE && child.textContent.trim() === '+') {
+                            const wrapper = document.createElement('span');
+                            wrapper.className = 'onigiri-stattxt-source';
+                            wrapper.textContent = child.textContent;
+                            parent.replaceChild(wrapper, child);
+                            forceHideNativeNumberElement(wrapper, 'onigiri-stattxt-source');
+                        }
+                    });
+                });
+
+
                 let combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
                 if (timerNode && timerText) {
                     combined = combined.split(timerText).map(part => cleanText(part)).filter(Boolean).join(' ');
                 }
-                const scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
+
+                // If it's space-separated from individual spans, or '+' separated from a single node
+                let scraped = [];
+                if (combined.includes('+')) {
+                    scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean);
+                } else {
+                    scraped = combined.split(' ').map(part => cleanText(part)).filter(Boolean);
+                }
+                scraped = scraped.slice(0, 3);
                 if (scraped.length > 0) {
                     onigiriLastKnownStats = scraped;
                     return scraped;
