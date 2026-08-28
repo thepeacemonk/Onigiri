@@ -1,0 +1,557 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/*__PREP_FONT_FACE__*/
+:root {
+  --bg: #f3f3f3; --surface: #fff; --surface2: #eee; --border: #e0e0e0;
+  --fg: #212121; --fg2: #757575; --fg3: #92948d; --accent: #0077c8;
+  --danger: #d85a5a; --learning: #6eafe0; --review: #0077c8;
+  --relearning: #004d82; --filtered: #82a0b6;
+}
+* { box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; margin: 0; overflow: hidden;
+  background: var(--bg) !important; color: var(--fg) !important;
+  font: 13px 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+button, input, textarea { font: inherit; }
+button { border: 0; color: inherit; cursor: pointer; }
+button:hover, button:active { transform: none !important; outline: none; }
+button:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: 2px;
+}
+.app { height: 100%; overflow: auto; padding: 28px clamp(22px, 5vw, 62px) 42px; }
+.app::-webkit-scrollbar, .editor::-webkit-scrollbar { width: 8px; }
+.app::-webkit-scrollbar-thumb, .editor::-webkit-scrollbar-thumb {
+  border-radius: 20px; background: color-mix(in srgb, var(--fg3) 35%, transparent);
+}
+.top { max-width: 1180px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: space-between; }
+.eyebrow { color: var(--fg3) !important; font-size: 10px; font-weight: 750; letter-spacing: .13em; }
+html body .title {
+  margin: 3px 0 0; color: var(--fg) !important; font-size: 23px; font-weight: 760;
+  line-height: 1.15; letter-spacing: -.045em;
+}
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 15px; border-radius: 999px; background: var(--surface2) !important;
+  color: var(--fg) !important; font-size: 12px; font-weight: 700;
+  transition: background .16s ease, color .16s ease;
+}
+.button:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)) !important; }
+html body .button.primary { background: var(--accent) !important; color: var(--accent-ink, white) !important; }
+.button.primary:hover { background: color-mix(in srgb, var(--accent) 86%, #000) !important; }
+.button.danger { color: var(--danger) !important; background: color-mix(in srgb, var(--danger) 9%, var(--surface)) !important; }
+.weekly, .detail-chart, .card, .empty, .editor, .metric, .breakdown {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 18px;
+}
+.weekly { max-width: 1180px; margin: 0 auto 22px; padding: 18px 20px 16px; }
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+html body .section-head h2 {
+  margin: 0; color: var(--fg) !important; font-size: 13px; font-weight: 740; letter-spacing: -.015em;
+}
+.muted { color: var(--fg3) !important; font-size: 11px; }
+.chart-summary { display: flex; align-items: baseline; gap: 7px; margin-top: 4px; }
+.chart-summary strong { color: var(--fg) !important; font-size: 21px; letter-spacing: -.04em; }
+.chart-summary span { color: var(--fg3); font-size: 10px; }
+.chart-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px 13px; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--fg2); font-size: 9px; }
+.legend-dot { width: 7px; height: 7px; border-radius: 2px; background: var(--kind-color); }
+.bar-chart {
+  position: relative; height: 174px; display: grid; grid-template-columns: repeat(7, minmax(34px, 1fr));
+  gap: clamp(10px, 3vw, 34px); padding: 13px 13px 22px; isolation: isolate;
+}
+.chart-grid { position: absolute; inset: 13px 12px 22px; z-index: -1; display: flex; flex-direction: column; justify-content: space-between; }
+.chart-grid i { display: block; height: 1px; background: color-mix(in srgb, var(--border) 76%, transparent); }
+.bar-day { min-width: 0; position: relative; display: flex; align-items: center; justify-content: flex-end; flex-direction: column; }
+.bar-stack {
+  width: min(35px, 72%); height: var(--bar-height); min-height: var(--bar-min);
+  display: flex; flex-direction: column-reverse; overflow: hidden;
+  border-radius: 7px 7px 3px 3px; background: color-mix(in srgb, var(--accent) 7%, var(--surface2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 64%, transparent);
+  transition: transform .16s ease, filter .16s ease;
+}
+.bar-day:hover .bar-stack { transform: translateY(-2px); filter: saturate(1.08); }
+.bar-segment { width: 100%; min-height: 1px; height: var(--segment-height); background: var(--kind-color); }
+.bar-label { position: absolute; bottom: -20px; color: var(--fg3) !important; font-size: 9px; font-weight: 650; }
+.bar-day.today .bar-label { color: var(--accent) !important; }
+.bar-day.today .bar-stack { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent); }
+.grid { max-width: 1180px; margin: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 14px; }
+.card { overflow: hidden; min-height: 205px; transition: transform .16s, border-color .16s; cursor: pointer; }
+.card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--card) 55%, var(--border)); }
+.banner {
+  height: 78px; padding: 12px 14px; display: flex; align-items: flex-start; justify-content: space-between;
+  background-color: var(--card); background-image: linear-gradient(100deg, #0004, transparent), var(--photo);
+  background-size: cover; background-position: center; color: var(--on-card) !important;
+}
+.exam-name { display: flex; align-items: center; gap: 9px; max-width: 78%; font-size: 14px; font-weight: 750; letter-spacing: -.02em; }
+.exam-icon {
+  width: 29px; height: 29px; flex: 0 0 29px; display: grid; place-items: center; border-radius: 9px;
+  color: var(--icon-color); background: color-mix(in srgb, var(--icon-color) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--icon-color) 24%, transparent);
+}
+.exam-icon img { width: 22px; height: 22px; object-fit: contain; }
+.icon-mask { width: 20px; height: 20px; display: block; background: var(--icon-color); -webkit-mask: var(--icon-url) center / contain no-repeat; mask: var(--icon-url) center / contain no-repeat; }
+.days { padding: 4px 7px; border-radius: 99px; background: #0004; color: inherit !important; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.card-body { padding: 15px 14px 14px; }
+.pace-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.target-wrap { min-width: 0; }
+.target-label { display: block; margin-bottom: 2px; color: var(--fg3); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.target { color: var(--card) !important; font-size: 21px; font-weight: 780; letter-spacing: -.045em; }
+.target small { color: var(--fg3) !important; font-size: 9px; font-weight: 600; letter-spacing: 0; }
+.pulse { padding: 4px 7px; border-radius: 99px; background: var(--pulse-bg); color: var(--pulse) !important; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.progress-head { display: flex; justify-content: space-between; margin-top: 14px; color: var(--fg3); font-size: 9px; }
+.progress-head b { color: var(--fg2); font-weight: 650; }
+.progress { height: 7px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: var(--surface2); }
+.progress i { display: block; width: var(--progress); height: 100%; border-radius: inherit; background: var(--card); }
+.add { min-height: 205px; display: grid; place-content: center; text-align: center; border-style: dashed; color: var(--fg2); background: transparent !important; }
+.add strong { color: var(--accent); font-size: 25px; font-weight: 400; }
+.add span { margin-top: 4px; font-size: 12px; }
+.tooltip {
+  position: fixed; z-index: 30; display: none; min-width: 154px; padding: 10px 11px;
+  transform: translate(-50%, calc(-100% - 12px)); pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent); border-radius: 12px;
+  background: var(--surface); color: var(--fg); box-shadow: 0 12px 34px #0003;
+}
+.tip-title { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 7px; color: var(--fg2); font-size: 10px; }
+.tip-title b { color: var(--fg) !important; font-size: 11px; }
+.tip-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--fg2); font-size: 9px; }
+.tip-row i { width: 7px; height: 7px; border-radius: 2px; background: var(--kind-color); }
+.tip-row span { flex: 1; }
+.tip-row b { color: var(--fg) !important; }
+.empty { max-width: 520px; margin: 70px auto; padding: 35px; color: var(--fg2); text-align: center; }
+.empty b { display: block; margin-bottom: 5px; color: var(--fg) !important; font-size: 15px; }
+.detail { max-width: 930px; margin: auto; }
+.back { margin-bottom: 20px; padding-left: 0; background: transparent !important; color: var(--fg2) !important; }
+.detail-hero {
+  min-height: 118px; padding: 22px; border-radius: 19px; color: var(--on-card) !important;
+  background-color: var(--card); background-image: linear-gradient(100deg, #0006, transparent), var(--photo);
+  background-size: cover; background-position: center;
+}
+html body .detail-hero h1 { margin: 16px 0 2px; color: inherit !important; font-size: 25px; font-weight: 760; letter-spacing: -.05em; }
+.detail-hero p { margin: 0; color: inherit !important; opacity: .82; font-size: 11px; }
+.hero-top { display: flex; justify-content: space-between; align-items: center; }
+.detail-grid { display: grid; grid-template-columns: 1.55fr .8fr; gap: 14px; margin-top: 14px; }
+.detail-chart { padding: 16px; }
+.metrics { display: grid; gap: 9px; }
+.metric { padding: 14px 15px; }
+.metric b { display: block; color: var(--accent) !important; font-size: 21px; letter-spacing: -.05em; }
+.metric span { color: var(--fg3); font-size: 10px; }
+.breakdown { margin-top: 14px; padding: 16px; }
+html body .breakdown h3 { margin: 0 0 10px; color: var(--fg3) !important; font-size: 10px; letter-spacing: .1em; }
+.deck { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid var(--border); }
+.deck:first-of-type { border-top: 0; }
+.deck-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.deck-count { color: var(--fg3); font-size: 11px; }
+.editor-wrap { position: fixed; z-index: 20; inset: 0; display: flex; justify-content: flex-end; padding: 14px 14px 14px 0; background: #0006; animation: editor-backdrop-in .24s ease forwards; }
+.editor-wrap.is-closing { animation: editor-backdrop-out .2s ease forwards; }
+.editor { width: min(510px, 100%); height: 100%; padding: 24px; overflow: auto; border-radius: 22px; box-shadow: -14px 0 44px #0004; transform: translateX(32px); animation: editor-slide-in .28s cubic-bezier(.22,.8,.28,1) forwards; }
+.editor-wrap.is-closing .editor { animation: editor-slide-out .2s cubic-bezier(.55,0,1,.45) forwards; }
+@keyframes editor-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes editor-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes editor-slide-in { from { transform: translateX(32px); } to { transform: translateX(0); } }
+@keyframes editor-slide-out { from { transform: translateX(0); } to { transform: translateX(32px); } }
+html body .editor h2 { margin: 0 0 20px; color: var(--fg) !important; font-size: 19px; letter-spacing: -.04em; }
+.field { display: block; margin: 15px 0; }
+.field > span, .field-label { display: block; margin-bottom: 6px; color: var(--fg3); font-size: 10px; font-weight: 750; letter-spacing: .09em; }
+.field input, .field textarea { display: block; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--fg); }
+.field input[type='date'] { appearance: none; -webkit-appearance: none; }
+.field input[type='date']::-webkit-calendar-picker-indicator { display: none; opacity: 0; }
+.field textarea { min-height: 75px; resize: none; }
+input[type='checkbox'] { accent-color: var(--accent); }
+.deck-search { margin-bottom: 7px !important; }
+.choices { max-height: 205px; overflow: auto; padding: 5px; border: 1px solid var(--border); border-radius: 16px; }
+.choices label { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 8px; border-radius: 11px; cursor: pointer; }
+.choices label:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.choices label.is-hidden { display: none; }
+.choices input { width: auto; }
+.deck-option-icon { width: 22px; height: 22px; display: grid; place-items: center; flex: 0 0 22px; }
+.deck-option-icon img { width: 20px; height: 20px; object-fit: contain; }
+.deck-option-icon .icon-mask { width: 19px; height: 19px; }
+.deck-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appearance { padding: 12px; border: 1px solid var(--border); border-radius: 18px; }
+.appearance-preview { height: 68px; margin-bottom: 10px; border-radius: 9px; background-color: var(--card); background-image: linear-gradient(100deg, #0004, transparent), var(--photo); background-size: cover; background-position: center; }
+.appearance-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.color-field { min-width: 74px; color: var(--fg3); font-size: 9px; }
+.color-field input { width: 100%; height: 34px; margin-top: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface2); overflow: hidden; }
+.icon-trigger { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg) !important; text-align: left; transition: background-color .16s ease, border-color .16s ease; }
+.icon-trigger:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--bg)) !important; }
+.icon-trigger .exam-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 9px; }
+.icon-trigger-copy { display: grid; gap: 1px; min-width: 0; }
+.icon-trigger-copy b { color: var(--fg); font-size: 11px; font-weight: 700; }
+.icon-trigger-copy span { color: var(--fg3); font-size: 9px; }
+.icon-trigger-arrow { margin-left: auto; color: var(--fg3); font-size: 17px; line-height: 1; }
+.icon-modal-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 16px; background: #0007; animation: icon-backdrop-in .18s ease forwards; }
+.icon-modal-backdrop.is-closing { animation: icon-backdrop-out .16s ease forwards; pointer-events: none; }
+.icon-modal { width: min(510px, 100%); height: min(610px, calc(100vh - 32px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--fg); box-shadow: 0 24px 70px #0006; animation: icon-modal-in .2s cubic-bezier(.22,.8,.28,1) forwards; }
+.icon-modal-backdrop.is-closing .icon-modal { animation: icon-modal-out .16s ease forwards; }
+.icon-modal-head { display: flex; align-items: center; gap: 10px; padding: 17px 19px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+.icon-modal-head b { flex: 1; font-size: 15px; letter-spacing: -.025em; }
+.icon-close { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 10px; color: var(--fg3); background: transparent !important; font-size: 19px; line-height: 1; }
+.icon-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent) !important; }
+.icon-tabs { display: flex; gap: 2px; margin: 14px 19px 0; padding: 3px; border-radius: 12px; background: var(--surface2); }
+.icon-tab { flex: 1 1 0; height: 30px; padding: 0 10px; border-radius: 9px; color: var(--fg2); background: transparent !important; font-size: 11px; font-weight: 650; transition: color .16s ease, background-color .16s ease; }
+.icon-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent) !important; }
+.icon-tab.active { color: var(--fg) !important; background: var(--surface) !important; box-shadow: 0 1px 3px #0002; }
+.icon-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 19px 7px; overflow: hidden; }
+.icon-search { width: 100%; height: 35px; margin: 0 0 10px !important; padding: 0 11px !important; border: 1px solid var(--border) !important; border-radius: 11px !important; background: var(--surface2) !important; color: var(--fg) !important; }
+.icon-results { flex: 1; min-height: 0; overflow: auto; padding: 4px 7px 12px; }
+.icon-results::-webkit-scrollbar { width: 8px; }.icon-results::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: color-mix(in srgb, var(--fg3) 58%, transparent); background-clip: content-box; }
+.icon-section + .icon-section { margin-top: 11px; }
+.icon-section-label { position: sticky; top: -4px; z-index: 1; margin: 0 -7px 7px; padding: 6px 7px 4px; color: var(--fg3); background: var(--surface); font-size: 9px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 7px; }
+.icon-choice { height: 42px; display: grid; place-items: center; padding: 5px; border: 1px solid transparent; border-radius: 10px; color: var(--fg2); background: var(--surface2) !important; }
+.icon-choice:hover { background: color-mix(in srgb, var(--fg) 7%, var(--surface2)) !important; }
+.icon-choice.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent) !important; }
+.icon-choice img { width: 23px; height: 23px; object-fit: contain; }.icon-choice .icon-mask { width: 21px; height: 21px; }
+.icon-empty { padding: 18px 4px; color: var(--fg3); text-align: center; font-size: 11px; }
+.icon-modal-foot { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 19px 17px; }
+.icon-modal-foot label { display: inline-flex; align-items: center; gap: 7px; color: var(--fg3); font-size: 10px; font-weight: 650; }.icon-modal-foot input { width: 46px; height: 28px; padding: 2px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface2); overflow: hidden; }
+.editor-footer { position: sticky; bottom: -24px; display: flex; justify-content: center; gap: 8px; margin: 26px 0 0; padding: 17px 0 20px; background: var(--surface); }
+.deck { border-radius: 12px; }
+.deck-icon { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; }
+.deck-icon img { width: 20px; height: 20px; object-fit: contain; }
+.deck-icon .icon-mask { width: 19px; height: 19px; }
+.notice { min-height: 14px; margin-top: 3px; color: var(--danger); font-size: 11px; }
+@keyframes icon-backdrop-in { from { opacity: 0; } to { opacity: 1; } } @keyframes icon-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes icon-modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } } @keyframes icon-modal-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(8px) scale(.985); } }
+@media (max-width: 680px) {
+  .app { padding: 20px 16px; } .detail-grid { grid-template-columns: 1fr; }
+  .top { margin-bottom: 18px; } .weekly { padding: 15px; }
+  .bar-chart { height: 155px; gap: 8px; padding-inline: 4px; }
+  .chart-legend { justify-content: flex-start; }
+}
+</style>
+</head>
+<body>
+<main class="app" id="app"></main>
+<div class="tooltip" id="tip"></div>
+<script>
+const ctx = /*__PREP_CONTEXT__*/null;
+const $ = id => document.getElementById(id);
+const app = $('app');
+const tip = $('tip');
+let view = { plan: null, editing: null };
+
+function esc(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function t(key, fallback) { return (ctx.strings || {})[key] || fallback; }
+function hexParts(hex) {
+  let value = String(hex || '#0077c8').replace('#', '');
+  if (value.length === 3) value = value.split('').map(char => char + char).join('');
+  return [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16));
+}
+function mix(a, b, amount) {
+  const left = hexParts(a), right = hexParts(b);
+  return '#' + left.map((value, index) => Math.round(value + (right[index] - value) * amount).toString(16).padStart(2, '0')).join('');
+}
+function onColor(hex) {
+  const [r, g, b] = hexParts(hex);
+  return (.299 * r + .587 * g + .114 * b) < 150 ? '#fff' : '#1a1a1a';
+}
+function applyTheme() {
+  const palette = ctx.palette || {};
+  const root = document.documentElement.style;
+  Object.entries(palette).forEach(([key, value]) => root.setProperty('--' + key, value));
+  const accent = palette.accent || ctx.accent || '#0077c8';
+  root.setProperty('--accent', accent);
+  root.setProperty('--accent-ink', onColor(accent));
+  root.setProperty('--learning', mix(accent, palette.surface || (ctx.dark ? '#2c2c2c' : '#fff'), .43));
+  root.setProperty('--review', accent);
+  root.setProperty('--relearning', mix(accent, palette.fg || (ctx.dark ? '#fff' : '#111'), .27));
+  root.setProperty('--filtered', mix(accent, palette.fg2 || '#888', .52));
+}
+applyTheme();
+
+const kinds = [
+  ['learning', 'Learning', 'var(--learning)'],
+  ['review', 'Review', 'var(--review)'],
+  ['relearning', 'Relearning', 'var(--relearning)'],
+  ['filtered', 'Filtered', 'var(--filtered)'],
+];
+function planById(id) { return (ctx.plans || []).find(plan => plan.id === id); }
+function activePlanColor(plan) {
+  if (plan.displayColor) return plan.displayColor;
+  if (plan.color_dynamic) return (ctx.dark ? plan.color_dark : plan.color_light) || ctx.accent;
+  return plan.color_light || plan.color || ctx.accent;
+}
+function icon(value, color) {
+  value = value || 'emoji:📚';
+  const base = ctx.addonBase || '';
+  const tint = color ? ` style="--icon-color:${esc(color)}"` : '';
+  if (value.startsWith('emoji:')) {
+    const emoji = value.slice(6), asset = (ctx.emojiSprites || {})[emoji];
+    return asset ? `<img src="${base}system_files/emojis/${esc(asset)}">` : `<span${tint}>${esc(emoji)}</span>`;
+  }
+  let src = '';
+  if (value.startsWith('system-unavailable:')) src = base + 'system_files/system_icons/unavailable_for_users/' + value.slice(19);
+  else if (value.startsWith('system:')) src = base + 'system_files/system_icons/available_for_users/' + value.slice(7);
+  else if (value.includes('/')) src = base + value;
+  else if ((ctx.systemIcons || []).includes(value)) src = base + 'system_files/system_icons/available_for_users/' + value;
+  else src = (ctx.iconPaths || {})[value] || base + 'user_files/custom_deck_icons/' + value;
+  if (value.toLowerCase().endsWith('.svg')) {
+    return `<span class="icon-mask" style="--icon-url:url(&quot;${esc(src)}&quot;);${color ? `--icon-color:${esc(color)};` : ''}"></span>`;
+  }
+  return `<img${tint} src="${esc(src)}">`;
+}
+function deckLeaf(name) { return String(name || '').split('::').pop(); }
+function deckByName(name) { return (ctx.deckOptions || []).find(deck => deck.name === name) || { name, label: deckLeaf(name), icon: 'system-unavailable:deck.svg', iconColor: ctx.accent }; }
+function iconCatalog() {
+  const emojis = Object.entries(ctx.emojiSprites || {}).map(([value, asset]) => ({ value: 'emoji:' + value, label: value + ' ' + String(asset || '').replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ') + ' emoji' }));
+  const systems = (ctx.systemIcons || []).map(value => ({ value: 'system:' + value, label: value.replace(/\.svg$/i, '').replace(/[-_]/g, ' ') }));
+  const custom = (ctx.customIcons || []).map(value => ({ value, label: value.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ') }));
+  return [['Emoji', emojis], ['Icons', systems], ['Custom', custom]];
+}
+function iconLabel(value) {
+  if (!value) return 'No icon';
+  if (value.startsWith('emoji:')) return value.slice(6) + ' emoji';
+  return value.replace(/^system:/, '').replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+}
+function renderIconPicker(root, query, selected, sectionIndex) {
+  const results = root.querySelector('.icon-results');
+  if (!results) return;
+  const needle = String(query || '').trim().toLowerCase();
+  results.innerHTML = '';
+  const catalog = iconCatalog();
+  const sections = sectionIndex == null ? catalog : [catalog[sectionIndex]].filter(Boolean);
+  let shown = 0;
+  sections.forEach(([label, items]) => {
+    const matches = items.filter(item => !needle || (item.label + ' ' + item.value).toLowerCase().includes(needle)).slice(0, 84);
+    if (!matches.length) return;
+    shown += matches.length;
+    const section = document.createElement('section'); section.className = 'icon-section';
+    const heading = document.createElement('div'); heading.className = 'icon-section-label'; heading.textContent = label;
+    const grid = document.createElement('div'); grid.className = 'icon-grid';
+    matches.forEach(item => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-choice' + (selected === item.value ? ' selected' : '');
+      button.dataset.icon = item.value; button.title = item.label; button.innerHTML = icon(item.value);
+      button.onclick = () => {
+        if (!view.editing) return;
+        view.editing.icon = item.value;
+        const trigger = $('icon-trigger');
+        if (trigger) trigger.innerHTML = iconTrigger(view.editing);
+        renderIconPicker(root, root.querySelector('.icon-search')?.value, item.value, sectionIndex);
+        if (view.refreshAppearance) view.refreshAppearance();
+      };
+      grid.appendChild(button);
+    });
+    section.append(heading, grid); results.appendChild(section);
+  });
+  if (!shown) results.innerHTML = '<div class="icon-empty">' + esc(t('no_matching_icons', 'No matching icons')) + '</div>';
+}
+function iconTrigger(plan) {
+  return `<span class="exam-icon">${icon(plan.icon)}</span><span class="icon-trigger-copy"><b>${esc(iconLabel(plan.icon))}</b><span>${esc(t('prep_choose_icon_or_emoji', 'Choose an icon or emoji'))}</span></span><span class="icon-trigger-arrow">›</span>`;
+}
+function closeIconPicker() {
+  const modal = $('prep-icon-picker');
+  if (!modal) return;
+  modal.classList.add('is-closing');
+  setTimeout(() => modal.remove(), 165);
+}
+function openIconPicker() {
+  if (!view.editing || $('prep-icon-picker')) return;
+  const plan = view.editing;
+  const catalog = iconCatalog();
+  const selectedIcon = String(plan.icon || '');
+  let active = selectedIcon.startsWith('emoji:') ? 0 : selectedIcon.startsWith('system:') ? 1 : 2;
+  if (!catalog[active]?.[1]?.length) active = catalog.findIndex(([, items]) => items.length);
+  if (active < 0) active = 0;
+  document.body.insertAdjacentHTML('beforeend', `<div class="icon-modal-backdrop" id="prep-icon-picker"><section class="icon-modal" role="dialog" aria-modal="true" aria-label="${esc(t('icon_picker', 'Icon picker'))}">
+    <header class="icon-modal-head"><b>${esc(t('choose_icon', 'Choose icon'))}</b><button class="icon-close" type="button" aria-label="${esc(t('close', 'Close'))}">×</button></header>
+    <div class="icon-tabs">${catalog.map(([label], index) => `<button type="button" class="icon-tab ${index === active ? 'active' : ''}" data-tab="${index}">${esc(label)}</button>`).join('')}</div>
+    <div class="icon-modal-body"><input class="icon-search" placeholder="${esc(t('search_icons_placeholder', 'Search icons…'))}"><div class="icon-results"></div></div>
+    <footer class="icon-modal-foot"><label>${esc(t('icon_label', 'Icon Color'))} <input type="color" value="${esc(plan.icon_color || ctx.accent)}"></label></footer>
+  </section></div>`);
+  const modal = $('prep-icon-picker'), search = modal.querySelector('.icon-search'), color = modal.querySelector('input[type=color]');
+  function paint() {
+    modal.querySelectorAll('.icon-tab').forEach(tab => tab.classList.toggle('active', Number(tab.dataset.tab) === active));
+    renderIconPicker(modal, search.value, plan.icon, active);
+  }
+  modal.querySelector('.icon-close').onclick = closeIconPicker;
+  modal.addEventListener('click', event => { if (event.target === modal) closeIconPicker(); });
+  modal.querySelectorAll('.icon-tab').forEach(tab => tab.onclick = () => { active = Number(tab.dataset.tab); search.value = ''; paint(); search.focus(); });
+  search.oninput = paint;
+  color.oninput = event => { plan.icon_color = event.target.value; if (view.refreshAppearance) view.refreshAppearance(); };
+  modal.addEventListener('keydown', event => { if (event.key === 'Escape') closeIconPicker(); });
+  paint(); setTimeout(() => search.focus(), 0);
+}
+function closeEditor() {
+  closeIconPicker();
+  const editor = $('editor');
+  if (!editor) return;
+  editor.classList.add('is-closing');
+  setTimeout(() => editor.remove(), 185);
+}
+function planVars(plan) {
+  const color = activePlanColor(plan);
+  const iconColor = plan.icon_color || ctx.accent;
+  return `--card:${color};--on-card:${onColor(color)};--icon-color:${iconColor};--photo:url('${plan.thumbnailUrl || ''}')`;
+}
+function seriesFor(data) {
+  const source = data.series || {};
+  return Object.fromEntries(kinds.map(([key]) => [key, source[key] || [0, 0, 0, 0, 0, 0, 0]]));
+}
+function barChart(data, id) {
+  const labels = data.labels || [], totals = data.counts || [], series = seriesFor(data);
+  const max = Math.max(...totals, 1), today = Math.max(0, Math.min(6, Number(data.elapsed || 1) - 1));
+  const total = totals.reduce((sum, value) => sum + Number(value || 0), 0);
+  const average = data.elapsed ? Math.round(total / data.elapsed) : 0;
+  const legend = kinds.map(([, label, color]) => `<span class="legend-item"><i class="legend-dot" style="--kind-color:${color}"></i>${label}</span>`).join('');
+  const bars = totals.map((value, day) => {
+    const totalValue = Number(value || 0), height = totalValue ? Math.max(7, totalValue / max * 100) : 0;
+    const segments = kinds.map(([key, , color]) => {
+      const segmentValue = Number(series[key][day] || 0);
+      const segmentHeight = totalValue ? segmentValue / totalValue * 100 : 0;
+      return `<i class="bar-segment" style="--kind-color:${color};--segment-height:${segmentHeight}%"></i>`;
+    }).join('');
+    return `<div class="bar-day ${day === today ? 'today' : ''}" data-bar="${day}" data-chart="${id}">
+      <div class="bar-stack" style="--bar-height:${height}%;--bar-min:${totalValue ? '5px' : '0px'}">${segments}</div>
+      <span class="bar-label">${esc(labels[day] || '')}</span>
+    </div>`;
+  }).join('');
+  return `<div class="section-head"><div><h2>${esc(t('prep_this_week', 'This week'))}</h2><div class="chart-summary"><strong>${total}</strong><span>cards answered · ${average}/day</span></div></div><div class="chart-legend">${legend}</div></div>
+    <div class="bar-chart"><div class="chart-grid"><i></i><i></i><i></i></div>${bars}</div>`;
+}
+function bindBarHover(root, data) {
+  const totals = data.counts || [], labels = data.labels || [], series = seriesFor(data);
+  root.querySelectorAll('[data-bar]').forEach(bar => {
+    bar.addEventListener('pointermove', event => {
+      const day = Number(bar.dataset.bar);
+      tip.innerHTML = `<div class="tip-title"><span>${esc(labels[day] || '')}</span><b>${totals[day] || 0} cards</b></div>` +
+        kinds.map(([key, label, color]) => `<div class="tip-row"><i style="--kind-color:${color}"></i><span>${label}</span><b>${series[key][day] || 0}</b></div>`).join('');
+      tip.style.display = 'block';
+      tip.style.left = event.clientX + 'px';
+      tip.style.top = event.clientY + 'px';
+    });
+    bar.addEventListener('pointerleave', () => tip.style.display = 'none');
+  });
+}
+function pulse(plan) {
+  const labels = {
+    ahead: ['Ahead of pace', '#23855f'], steady: ['In rhythm', '#2774a7'],
+    reset: ['A little behind', '#aa7822'], starting: ['Ready when you are', '#80766d'],
+    caught_up: ['All caught up', '#23855f'], past: ['Exam passed', '#80766d'], not_ready: ['Add decks', '#80766d'],
+  };
+  const value = labels[plan._week?.pulse] || labels.not_ready;
+  return `<span class="pulse" style="--pulse:${value[1]};--pulse-bg:color-mix(in srgb,${value[1]} 12%,transparent)">${value[0]}</span>`;
+}
+function days(plan) {
+  const left = plan._pace?.days_left;
+  if (left === 0) return t('prep_today_badge', 'Today');
+  if (left > 0) return t('prep_days_left_badge', '{0}d left').replace('{0}', left);
+  return t('prep_exam_has_passed', 'Exam has passed');
+}
+function card(plan) {
+  const week = plan._week || {}, pace = plan._pace || {}, decks = plan.decks || [];
+  const target = !decks.length || pace.required_per_day == null ? 0 : Math.ceil(pace.required_per_day);
+  const reviewedToday = Number(week.today_reviewed || 0);
+  const progress = target ? Math.min(100, Math.round(reviewedToday / target * 100)) : 0;
+  return `<article class="card" style="${planVars(plan)}" data-open="${esc(plan.id)}">
+    <div class="banner"><div class="exam-name"><span class="exam-icon">${icon(plan.icon)}</span><span>${esc(plan.name || 'Exam')}</span></div><span class="days">${esc(days(plan))}</span></div>
+    <div class="card-body"><div class="pace-row"><div class="target-wrap"><span class="target-label">${esc(t('prep_target_today', 'Target today'))}</span><span class="target">${target || '—'} <small>cards / day</small></span></div>${pulse(plan)}</div>
+    <div class="progress-head"><b>${esc(t('prep_today_progress', "Today's progress"))}</b><span>${reviewedToday} / ${target || '—'}</span></div><div class="progress"><i style="--progress:${progress}%"></i></div></div>
+  </article>`;
+}
+function home() {
+  const week = Object.assign({ counts: [], labels: [], series: {}, elapsed: new Date().getDay() || 7 }, ctx.week || {});
+  const plans = ctx.plans || [];
+  const add = `<button class="card add" id="add"><strong>＋</strong><span>${esc(t('prep_new_plan', 'New Plan'))}</span></button>`;
+  const cards = plans.length ? `<section class="grid">${plans.map(card).join('')}${add}</section>` :
+    `<section class="empty"><b>${esc(t('prep_empty_title', 'Start with one exam.'))}</b><span>${esc(t('prep_empty_desc', 'Add the decks you want to keep in view; the pace will update from your reviews.'))}</span><p>${add}</p></section>`;
+  app.innerHTML = `<header class="top"><div><div class="eyebrow">${esc(t('prep_study_plans_eyebrow', 'STUDY PLANS'))}</div><h1 class="title">${esc(t('prep_station_title', 'Prep Station'))}</h1></div><button class="button primary" id="new">＋ ${esc(t('prep_new_plan', 'New Plan'))}</button></header>
+    <section class="weekly">${barChart(week, 'week')}</section>${cards}`;
+  bindBarHover(app, week);
+  $('new').onclick = () => edit();
+  if ($('add')) $('add').onclick = () => edit();
+  app.querySelectorAll('[data-open]').forEach(element => element.onclick = () => detail(planById(element.dataset.open)));
+}
+function detail(plan) {
+  if (!plan) return home();
+  view.plan = plan;
+  const pace = plan._pace || {}, week = plan._week || {}, deckCounts = pace.deck_counts || {};
+  app.innerHTML = `<section class="detail" style="${planVars(plan)}"><button class="button back" id="back">← Back to plans</button>
+    <header class="detail-hero"><div class="hero-top"><span class="exam-icon">${icon(plan.icon)}</span><button class="button" id="edit">${esc(t('prep_edit', 'Edit'))}</button></div><h1>${esc(plan.name)}</h1><p>${esc(days(plan))} · ${esc(plan.exam_date || '')}</p></header>
+    <div class="detail-grid"><section class="detail-chart">${barChart(week, 'plan')}</section><aside class="metrics">
+      <div class="metric"><b>${pace.required_per_day == null ? '—' : Math.ceil(pace.required_per_day)}</b><span>${esc(t('prep_daily_target', 'Daily target'))}</span></div>
+      <div class="metric"><b>${pace.total_pending ?? 0}</b><span>${esc(t('prep_cards_remaining', 'Cards remaining'))}</span></div>
+      <div class="metric"><b>${week.reviewed || 0}</b><span>${esc(t('prep_reviewed_this_week', 'Reviewed this week'))}</span></div>
+    </aside></div><section class="breakdown"><h3>${esc(t('prep_deck_breakdown', 'DECK BREAKDOWN'))}</h3>${Object.keys(deckCounts).length ? Object.entries(deckCounts).map(([name, count]) => { const deck = deckByName(name); return `<div class="deck" title="${esc(name)}"><span class="deck-icon">${icon(deck.icon, deck.iconColor)}</span><span class="deck-name">${esc(deckLeaf(name))}</span><span class="deck-count">${count.new || 0} new · ${count.due || 0} due</span></div>`; }).join('') : `<span class="muted">${esc(t('prep_no_decks', 'No decks assigned to this plan yet.'))}</span>`}</section></section>`;
+  bindBarHover(app, week);
+  $('back').onclick = home;
+  $('edit').onclick = () => edit(plan);
+}
+function defaultPlan() {
+  return { id: '', name: '', icon: 'emoji:📚', icon_color: ctx.accent, exam_date: new Date().toISOString().slice(0, 10), decks: [], notes: '', thumbnail: '', thumbnailUrl: '', thumbnail_opacity: 100, thumbnail_blur: 0, color_only: false, color_dynamic: false, color_light: ctx.accent, color_dark: ctx.accent };
+}
+function edit(source) {
+  const plan = Object.assign(defaultPlan(), source || {});
+  if (source?.color && !source?.color_light) plan.color_light = source.color;
+  plan.icon_color = plan.icon_color || ctx.accent;
+  view.editing = plan;
+  const deckOptions = ctx.deckOptions || (ctx.deckNames || []).map(name => ({ name, label: deckLeaf(name), depth: String(name).split('::').length - 1, icon: 'system-unavailable:deck.svg', iconColor: ctx.accent }));
+  const decks = deckOptions.map(deck => `<label class="deck-option" data-deck-search="${esc((deck.name + ' ' + deck.label).toLowerCase())}" title="${esc(deck.name)}" style="padding-left:${8 + Number(deck.depth || 0) * 14}px"><input type="checkbox" value="${esc(deck.name)}" ${plan.decks.includes(deck.name) ? 'checked' : ''}><span class="deck-option-icon">${icon(deck.icon, deck.iconColor)}</span><span class="deck-option-label">${esc(deck.label)}</span></label>`).join('');
+  document.body.insertAdjacentHTML('beforeend', `<div class="editor-wrap" id="editor"><form class="editor" style="${planVars(plan)}">
+    <h2>${plan.id ? esc(t('prep_edit', 'Edit plan')) : esc(t('prep_new_plan', 'New Plan'))}</h2>
+    <label class="field"><span>${esc(t('prep_name_label', 'NAME'))}</span><input id="name" value="${esc(plan.name)}" placeholder="${esc(t('prep_plan_name_placeholder', 'Plan name'))}"><div class="notice" id="error"></div></label>
+    <label class="field"><span>${esc(t('prep_exam_date_label', 'EXAM DATE'))}</span><input id="date" type="date" value="${esc(plan.exam_date)}"></label>
+    <div class="field"><span>${esc(t('prep_icon_label', 'ICON'))}</span><button class="icon-trigger" id="icon-trigger" type="button">${iconTrigger(plan)}</button></div>
+    <label class="field"><span>${esc(t('prep_study_decks_label', 'STUDY DECKS'))}</span><input class="deck-search" id="deck-search" placeholder="${esc(t('prep_search_decks_placeholder', 'Search decks…'))}"><div class="choices">${decks || `<span class="muted">${esc(t('prep_no_decks_available', 'No decks available.'))}</span>`}</div></label>
+    <div class="field"><span>${esc(t('prep_appearance_label', 'APPEARANCE'))}</span><div class="appearance"><div class="appearance-preview" id="preview"></div><div class="appearance-actions">
+      <button class="button" type="button" id="photo">${esc(t('prep_choose_photo', 'Choose Photo…'))}</button><button class="button" type="button" id="remove-photo">${esc(t('prep_remove_photo', 'Remove'))}</button>
+      <label class="color-field">${esc(t('prep_light_card', 'Light card'))}<input id="light" type="color" value="${esc(plan.color_light)}"></label><label class="color-field">${esc(t('prep_dark_card', 'Dark card'))}<input id="dark" type="color" value="${esc(plan.color_dark)}"></label>
+    </div></div></div>
+    <label class="field"><span>${esc(t('prep_notes_label', 'NOTES'))}</span><textarea id="notes" placeholder="${esc(t('prep_notes_placeholder', 'Add any notes…'))}">${esc(plan.notes)}</textarea></label>
+    <div class="editor-footer">${plan.id ? `<button class="button danger" type="button" id="delete">${esc(t('prep_delete', 'Delete'))}</button>` : ''}<button class="button" type="button" id="cancel">${esc(t('cancel', 'Cancel'))}</button><button class="button primary" id="save">${esc(plan.id ? t('prep_save_changes', 'Save Changes') : t('prep_create_plan', 'Create Plan'))}</button></div>
+  </form></div>`);
+  const editor = $('editor'), form = editor.querySelector('form');
+  function refreshAppearance() {
+    const color = ctx.dark && plan.color_dynamic ? plan.color_dark : plan.color_light;
+    form.style.setProperty('--card', color);
+    form.style.setProperty('--icon-color', plan.icon_color);
+    form.style.setProperty('--photo', `url('${plan.thumbnailUrl || ''}')`);
+    $('preview').style.cssText = `background-color:${color};background-image:linear-gradient(100deg,#0004,transparent),url('${plan.thumbnailUrl || ''}')`;
+  }
+  view.refreshAppearance = refreshAppearance;
+  refreshAppearance();
+  $('icon-trigger').onclick = openIconPicker;
+  $('deck-search').oninput = event => {
+    const needle = event.target.value.trim().toLowerCase();
+    editor.querySelectorAll('.deck-option').forEach(row => row.classList.toggle('is-hidden', needle && !row.dataset.deckSearch.includes(needle)));
+  };
+  $('photo').onclick = () => pycmd('prep:choose_photo');
+  $('remove-photo').onclick = () => { plan.thumbnail = ''; plan.thumbnailUrl = ''; refreshAppearance(); };
+  $('light').oninput = event => { plan.color_light = event.target.value; refreshAppearance(); };
+  $('dark').oninput = event => { plan.color_dark = event.target.value; refreshAppearance(); };
+  $('cancel').onclick = closeEditor;
+  editor.addEventListener('click', event => { if (event.target === editor) closeEditor(); });
+  editor.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeEditor(); } });
+  if ($('delete')) $('delete').onclick = () => { if (confirm('Delete this plan?')) pycmd('prep:delete:' + plan.id); };
+  form.onsubmit = event => {
+    event.preventDefault();
+    plan.name = $('name').value.trim(); plan.exam_date = $('date').value;
+    plan.decks = [...form.querySelectorAll('.choices input:checked')].map(input => input.value);
+    plan.notes = $('notes').value;
+    pycmd('prep:save:' + JSON.stringify(plan));
+  };
+}
+window.prepReceivePhoto = data => {
+  if (!view.editing) return;
+  view.editing.thumbnail = data.name; view.editing.thumbnailUrl = data.url;
+  const editor = $('editor');
+  if (editor) {
+    editor.querySelector('form').style.setProperty('--photo', `url('${data.url}')`);
+    $('preview').style.backgroundImage = `linear-gradient(100deg,#0004,transparent),url('${data.url}')`;
+  }
+};
+window.prepSaveError = kind => {
+  const error = $('error');
+  if (error) error.textContent = kind === 'date' ? 'Choose an exam date.' : 'Give this plan a name.';
+};
+home();
+</script>
+</body>
+</html>

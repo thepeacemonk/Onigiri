@@ -1475,7 +1475,7 @@ class HexagonLandManager:
 
     def is_enabled(self) -> bool:
         conf = config.get_config()
-        return bool(conf.get("gamificationMode", True)) and bool(self.config().get("enabled", False))
+        return bool(self.config().get("enabled", False))
 
     def _anki_today_review_count(self) -> Optional[int]:
         try:
@@ -2613,7 +2613,7 @@ def render_widget_html() -> str:
 class HexagonLandDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Hexagon Land")
+        self.setWindowTitle(tr("hexagon_land_window_title"))
         self.resize(1120, 760)
         self.setMinimumSize(760, 560)
         self._dirty = False
@@ -4736,7 +4736,7 @@ function fullCoinText(value) {
 
 function formatCoinRate(value) {
     const rate = Number(value) || 1;
-    return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/0+$/, '').replace(/\\.$/, '');
 }
 
 function compactStatusText(message) {

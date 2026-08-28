@@ -54,6 +54,200 @@ tr = tr_at
 _OVERVIEW_FORMAT_KEYS = ("deck", "table", "shareLink", "desc")
 
 
+def _selected_deck_ids(col):
+    deck_id = int(col.decks.current()["id"])
+    deck_ids = [deck_id]
+    try:
+        deck_ids.extend(int(child_id) for child_id in col.decks.child_ids(deck_id))
+    except Exception:
+        # A parent deck should still get a working notice on Anki versions
+        # where the child-deck helper has changed.
+        pass
+    return list(dict.fromkeys(deck_ids))
+
+
+def _ready_learning_card_ids(col):
+    """Return ready learning cards in the selected deck tree.
+
+    Use Anki's search backend for scheduler semantics, then hand the Browser an
+    explicit cid list so the result represents the moment the button was
+    clicked rather than a broader, reusable search.
+    """
+    current_deck = col.decks.current()
+    deck_name = str(current_deck.get("name", ""))
+    if not deck_name:
+        return []
+    deck_search_value = json.dumps(deck_name, ensure_ascii=False)
+    card_ids = col.find_cards(f"deck:{deck_search_value} is:learn is:due")
+    return [int(card_id) for card_id in card_ids]
+
+
+def _learning_due_later_info(col):
+    """Return today's learning data for the currently selected deck.
+
+    ``congratulations_info()`` reads Anki's *active study queue*, which may
+    still belong to the previously studied deck while the user browses the
+    overview. Query the selected deck and its children directly so every deck
+    shows its own next-learning time and remaining count.
+    """
+    info = {
+        "next_seconds": None,
+        "later_today": 0,
+        "ready_now": 0,
+    }
+
+    # This is the exact source used by the green Learning bubble in new_table().
+    # Keep it independent from the direct SQL query so one compatibility issue
+    # cannot erase the entire notice.
+    try:
+        counts = list(col.sched.counts())
+        if len(counts) > 1:
+            info["ready_now"] = max(0, int(counts[1] or 0))
+    except Exception:
+        pass
+
+    try:
+        now = int(time.time())
+        day_cutoff = int(col.sched.day_cutoff)
+        dids_sql = ",".join(str(deck_id) for deck_id in _selected_deck_ids(col))
+        row = col.db.first(
+            "select min(due), count() from cards "
+            f"where queue = 1 and due > ? and due < ? and did in ({dids_sql})",
+            now,
+            day_cutoff,
+        )
+        next_due, remaining = row or (None, 0)
+        if next_due is not None:
+            info["next_seconds"] = max(60, int(next_due) - now)
+        info["later_today"] = max(0, int(remaining or 0))
+    except Exception:
+        pass
+
+    return info
+
+
+def _learning_notice_enabled(conf, surface):
+    """Read the independent placement setting with a legacy fallback."""
+    key = (
+        "showNextLearningCardNoticeOnCongrats"
+        if surface == "congrats"
+        else "showNextLearningCardNoticeOnOverview"
+    )
+    return bool(conf.get(key, conf.get("showOverviewDueLaterNotice", True)))
+
+
+def _learning_due_later_notice(col, enabled=True):
+    """Build the optional native-style next-learning notice for Onigiri.
+
+    This runs inside Anki's overview renderer. It is strictly decorative, so a
+    scheduler or translation compatibility problem must never prevent a deck
+    from opening.
+    """
+    try:
+        return _build_learning_due_later_notice(col, enabled)
+    except Exception:
+        # This surface is optional, but an enabled notice must never silently
+        # disappear. Keep the fallback entirely scheduler-independent.
+        if not enabled:
+            return ""
+        return (
+            '<div class="onigiri-learning-due-notice">'
+            f"<p>{html.escape(str(tr_at('no_learning_cards_later_today', 'No learning cards later today here.')))}</p>"
+            "</div>"
+        )
+
+
+def _build_learning_due_later_notice(col, enabled=True):
+    """Inner notice renderer; callers should use the fail-safe wrapper above."""
+    if not enabled:
+        return ""
+
+    info = _learning_due_later_info(col)
+    notice_parts = ['<div class="onigiri-learning-due-notice">']
+    seconds = info["next_seconds"]
+    ready_now = info["ready_now"]
+    ready_count_text = ""
+    ready_button_suffix = ""
+    if ready_now == 1:
+        ready_count_text = tr_at(
+            "one_learning_card_count",
+            "One learning card",
+        )
+        ready_state_text = tr_at(
+            "one_learning_card_ready_suffix",
+            "is ready now.",
+        )
+    elif ready_now > 1:
+        ready_count_text = tr_at(
+            "learning_cards_count",
+            "{count} learning cards",
+        ).format(count=ready_now)
+        ready_state_text = tr_at(
+            "learning_cards_ready_suffix",
+            "are ready now.",
+        )
+    else:
+        ready_state_text = ""
+
+    if ready_now:
+        ready_button_suffix = f" {ready_state_text}"
+
+    if seconds is None:
+        if ready_now:
+            no_more_text = tr_at(
+                "no_additional_learning_cards_later_today",
+                "No additional learning cards are due later today.",
+            )
+            ready_button_suffix += f" {no_more_text}"
+        else:
+            notice_parts.append(f"<p>{html.escape(tr_at('no_learning_cards_later_today'))}</p>")
+    else:
+        remaining = info["later_today"]
+        if seconds < 60:
+            amount, unit = seconds, "seconds"
+        elif seconds < 3600:
+            amount, unit = round(seconds / 60), "minutes"
+        else:
+            amount, unit = round(seconds / 3600), "hours"
+
+        try:
+            next_due = col.tr.scheduling_next_learn_due(amount=amount, unit=unit)
+            remaining_due = col.tr.scheduling_learn_remaining(remaining=remaining)
+        except Exception:
+            try:
+                duration = col.format_timespan(seconds)
+            except Exception:
+                duration = f"{amount} {unit}"
+            next_due = f"The next learning card will be ready in {duration}."
+            if remaining == 1:
+                remaining_due = "There is one remaining learning card due later today."
+            else:
+                remaining_due = f"There are {remaining} learning cards due later today."
+        notice_parts.extend(
+            (
+                f"<p>{html.escape(str(next_due))}</p>",
+                f"<p>{html.escape(str(remaining_due))}</p>",
+            )
+        )
+
+    if ready_now:
+        ready_label = html.escape(str(ready_count_text))
+        suffix_label = html.escape(str(ready_button_suffix))
+        action_label = html.escape(
+            str(tr_at("browse_ready_learning_cards", "Browse ready learning cards")),
+            quote=True,
+        )
+        notice_parts.append(
+            '<button type="button" class="onigiri-learning-browse-button" '
+            f'aria-label="{action_label}" title="{action_label}" '
+            'onclick="pycmd(\'onigiri_browse_ready_learning\'); return false;">'
+            f'<span class="onigiri-learning-ready-text">{ready_label}</span>'
+            f"{suffix_label}</button>"
+        )
+    notice_parts.append("</div>")
+    return "".join(notice_parts)
+
+
 def _escape_overview_body_percent_literals(html_text: str) -> str:
     """Escape literal % signs in Overview._body without touching Anki slots."""
     if "%" not in html_text:
@@ -101,13 +295,7 @@ def apply_menu_styling():
     """
     # 1. Determine which colors to use based on the current mode
     # Safely check for night mode; default to False if PM not ready
-    night_mode = False
-    if mw.col:
-        # If collection is loaded, use its schedule/display preferences if applicable, 
-        # but mw.pm.night_mode() is the standard check.
-        night_mode = mw.pm.night_mode()
-    elif mw.pm:
-        night_mode = mw.pm.night_mode()
+    night_mode = config.effective_night_mode()
 
     # 2. Define Colors
     if night_mode:
@@ -246,6 +434,7 @@ _synapsepro_split_hook_cache = {}
 _synapsepro_overview_original_bodies = {}
 _synapsepro_overview_hooks = []
 _synapsepro_theme_hook_wrappers = {}
+_synapsepro_overview_bridge_installed = False
 
 
 class _OnigiriElementExtractor(HTMLParser):
@@ -621,7 +810,7 @@ def _sanitize_synapsepro_overview_widget_html(widget_html: str) -> str:
 
 def _synapsepro_overview_background_priority_css(addon_path: str) -> str:
     """Keep SynapsePro's overview theme from taking over Onigiri's page background."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     overview_mode = conf.get("onigiri_overview_bg_mode", "main")
     main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
     has_image_layer = (
@@ -755,9 +944,10 @@ def inject_synapsepro_overview_widget(web_content, context):
         return
     if not synapsepro_addon_installed():
         return
-    take_control_of_synapsepro_overview_hook()
-    take_control_of_synapsepro_overview_theme_hook()
-    if not is_synapsepro_identified():
+    # Hook ownership is established once during profile setup.  Reordering the
+    # same hook while Qt is dispatching it can leave duplicate callbacks behind
+    # and eventually terminate Anki after repeated deck transitions.
+    if not _synapsepro_overview_hooks:
         _synapsepro_overview_original_bodies.pop(id(context), None)
         return
 
@@ -795,8 +985,6 @@ def capture_onigiri_overview_body(web_content, context):
     if not synapsepro_addon_installed():
         return
     if isinstance(context, Overview):
-        take_control_of_synapsepro_overview_hook()
-        take_control_of_synapsepro_overview_theme_hook()
         _synapsepro_overview_original_bodies[id(context)] = getattr(web_content, "body", "") or ""
 
 
@@ -835,29 +1023,34 @@ def synapsepro_addon_installed() -> bool:
 
 
 def ensure_synapsepro_overview_bridge_hook():
+    global _synapsepro_overview_bridge_installed
     if not synapsepro_addon_installed():
+        return
+    if _synapsepro_overview_bridge_installed:
         return
     try:
         take_control_of_synapsepro_overview_hook()
         take_control_of_synapsepro_overview_theme_hook()
         hooks = gui_hooks.webview_will_set_content
-        hook_list = getattr(hooks, "_hooks", hooks)
-        if capture_onigiri_overview_body in hook_list:
-            hook_list.remove(capture_onigiri_overview_body)
-        if inject_synapsepro_overview_widget in hook_list:
-            hook_list.remove(inject_synapsepro_overview_widget)
-        if hasattr(hook_list, "insert"):
+        hook_list = getattr(hooks, "_hooks", None)
+        if isinstance(hook_list, list):
+            for hook in (capture_onigiri_overview_body, inject_synapsepro_overview_widget):
+                try:
+                    hook_list.remove(hook)
+                except ValueError:
+                    pass
             hook_list.insert(0, capture_onigiri_overview_body)
             hook_list.append(inject_synapsepro_overview_widget)
         else:
             hooks.append(capture_onigiri_overview_body)
             hooks.append(inject_synapsepro_overview_widget)
+        _synapsepro_overview_bridge_installed = True
     except Exception as exc:
         print(f"Onigiri: failed to install SynapsePro overview bridge: {exc}")
 
 
 def apply_synapsepro_sidebar_visibility(conf=None):
-    conf = conf or config.get_config()
+    conf = conf or config.get_config_readonly()
     if not conf.get("hideSynapseProSidebar", False):
         return
     try:
@@ -903,19 +1096,24 @@ def get_sync_status():
 
 def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "profile-pic") -> str:    
     """Generates profile picture HTML (img or default) based on user settings."""
-    try:
-        is_dark = bool(mw.pm.night_mode())
-    except Exception:
-        is_dark = False
+    is_dark = config.effective_night_mode()
     mode = mw.col.conf.get("modern_menu_profile_picture_mode", "image")
     dynamic = bool(mw.col.conf.get("modern_menu_profile_picture_dynamic_mode", True))
     theme_key = "dark" if is_dark else "light"
-    color = mw.col.conf.get(f"modern_menu_profile_picture_color_{theme_key}", "#B8BDC3" if is_dark else "#8CACB4")
+    color = mw.col.conf.get(f"modern_menu_profile_picture_color_{theme_key}", "#B8BDC3" if is_dark else "#8CACB4") if dynamic else mw.col.conf.get("modern_menu_profile_picture_color_light", "#8CACB4")
     if mode == "accent":
         color = "var(--accent-color)"
+    
+    blur = max(0, min(100, int(mw.col.conf.get("modern_menu_profile_picture_blur", 0) or 0)))
+    style_parts = []
+    if blur:
+        style_parts.append(f"filter: blur({blur * 0.2}px)")
+
     if mode in {"accent", "custom"}:
         initial = html.escape((user_name[:1] or "U").upper(), quote=False)
-        return f'<span class="{css_class} profile-pic-generated" style="background-color: {color};">{initial}</span>'
+        style_parts.insert(0, f"background-color: {color}")
+        style_str = "; ".join(style_parts)
+        return f'<span class="{css_class} profile-pic-generated" style="{style_str}">{initial}</span>'
 
     if dynamic:
         profile_pic_filename = mw.col.conf.get(f"modern_menu_profile_picture_{theme_key}", "") or mw.col.conf.get("modern_menu_profile_picture", "")
@@ -928,11 +1126,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
 
-    blur = max(0, min(100, int(mw.col.conf.get("modern_menu_profile_picture_blur", 0) or 0)))
-    opacity_value = mw.col.conf.get("modern_menu_profile_picture_opacity", 100)
-    opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
-    style = f"filter: blur({blur * 0.2}px); opacity: {opacity};" if blur or opacity < 1.0 else ""
-    style_attr = f' style="{style}"' if style else ""
+    style_attr = f' style="{"; ".join(style_parts)}"' if style_parts else ""
     return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
 
 
@@ -1264,162 +1458,30 @@ def _render_body_slideshow_background_css(style_id, image_urls, interval_seconds
 
 # --- Profile Page Generation ---
 
-_nook_level_dialog = None
-
-
-def _load_nook_level_html(enabled: bool, addon_package: str) -> str:
-    addon_path = os.path.dirname(__file__)
-    template_path = os.path.join(addon_path, "system_files", "gamification_images", "nook_folder", "nook_level.html")
-    try:
-        with open(template_path, "r", encoding="utf-8") as template_file:
-            template = template_file.read()
-    except FileNotFoundError:
-        return "<body><div class='missing-template'>Nook Level template missing.</div></body>"
-
-    return template.replace("__ENABLED__", "true" if enabled else "false").replace("__ADDON_PACKAGE__", addon_package)
-
-
-def _load_mr_taiyaki_store_html() -> str:
-    addon_path = os.path.dirname(__file__)
-    template_path = os.path.join(addon_path, "web", "gamification", "mr_taiyaki_store", "mr_taiyaki_store.html")
-    try:
-        with open(template_path, "r", encoding="utf-8") as template_file:
-            return template_file.read()
-    except FileNotFoundError:
-        return "<body><div class='missing-template'>Store template missing.</div></body>"
-
-
-class NookLevelDialog(QDialog):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setWindowTitle("Nook Level")
-        
-        # Calculate adaptive window size based on screen geometry
-        try:
-            # Get the screen geometry where the parent window is located
-            if parent:
-                screen = parent.screen()
-            else:
-                screen = QApplication.primaryScreen()
-            
-            available_geometry = screen.availableGeometry()
-            screen_width = available_geometry.width()
-            screen_height = available_geometry.height()
-            
-            # Use 85% of available screen size, with maximum limits
-            target_width = min(int(screen_width * 0.85), 900)
-            target_height = min(int(screen_height * 0.85), 750)
-            
-            # Ensure we don't go below minimum size
-            target_width = max(target_width, 600)
-            target_height = max(target_height, 500)
-            
-            self.resize(target_width, target_height)
-        except:
-            # Fallback to default size if screen detection fails
-            self.resize(900, 750)
-        
-        # Allow resizing for smaller displays (both horizontal and vertical)
-        self.setMinimumSize(600, 500)
-
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        from .gamification.nook_level_ui import NookLevelWidget
-
-        self.widget = NookLevelWidget(self)
-        layout.addWidget(self.widget)
-        
-        self.setLayout(layout)
-
+# Nook Level and Mr. Taiyaki's Store are now fully rendered in WebViews. Keep
+# these public functions here because the deck browser and existing menu hooks
+# dispatch to patcher, but keep no PyQt game page implementation in this module.
 def open_nook_level_dialog():
-    global _nook_level_dialog
-    if _nook_level_dialog is not None:
-        _nook_level_dialog.close()
-    _nook_level_dialog = NookLevelDialog(mw)
-    _nook_level_dialog.show()
+    from .gamification.nook_web_ui import open_nook_level_dialog as open_page
+
+    open_page()
 
 _onigimon_care_dialog = None
 
 def open_onigimon_care_dialog():
     global _onigimon_care_dialog
-    from .gamification.onigimon_care_ui import OnigimonCareDialog
+    from .gamification.onigimon_web_ui import OnigimonWebDialog
     if _onigimon_care_dialog is not None:
         _onigimon_care_dialog.close()
-    _onigimon_care_dialog = OnigimonCareDialog(mw)
+    _onigimon_care_dialog = OnigimonWebDialog(mw)
     _onigimon_care_dialog.show()
     return _onigimon_care_dialog
 
 
-class MrTaiyakiStoreDialog(QDialog):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setWindowTitle("Mr. Taiyaki Store")
-        self.resize(1000, 800)
-        
-        self.web = AnkiWebView(self)
-        # Bridge for pycmd
-        self.web.set_bridge_command(self._on_bridge_cmd, self)
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.web)
-        self.setLayout(layout)
-        
-        self.render()
-
-    def render(self):
-        conf = config.get_config()
-        addon_package = mw.addonManager.addonFromModule(__name__)
-        
-        nook_level = _nook_level()
-        store_data = nook_level.manager.get_store_data()
-        store_data["image_base_path"] = f"/_addons/{addon_package}/system_files/gamification_images/nook_folder/"
-        store_data["coin_image_path"] = f"/_addons/{addon_package}/system_files/gamification_images/Tayaki_coin.webp"
-        
-        data_script = f"<script>window.ONIGIRI_STORE_DATA = {json.dumps(store_data, ensure_ascii=False)};</script>"
-        head_html = generate_dynamic_css(conf) + data_script
-        
-        css_files = [
-            f"/_addons/{addon_package}/web/gamification/mr_taiyaki_store/mr_taiyaki_store.css",
-        ]
-        js_files = [
-            f"/_addons/{addon_package}/web/gamification/mr_taiyaki_store/mr_taiyaki_store.js",
-        ]
-        
-        body_html = _load_mr_taiyaki_store_html()
-        self.web.stdHtml(body_html, css=css_files, js=js_files, head=head_html, context=self)
-
-    def _on_bridge_cmd(self, cmd: str) -> Any:
-        if cmd.startswith("buy_item:"):
-            item_id = cmd.split(":", 1)[1]
-            nook_level = _nook_level()
-            success, msg = nook_level.manager.buy_item(item_id)
-            new_data = nook_level.manager.get_store_data()
-            return {
-                "success": success,
-                "message": msg,
-                "coins": new_data["coins"],
-                "owned_items": new_data["owned_items"],
-                "restaurants": new_data["restaurants"],
-                "evolutions": new_data["evolutions"]
-            }
-        elif cmd.startswith("equip_item:"):
-            item_id = cmd.split(":", 1)[1]
-            nook_level = _nook_level()
-            success, msg = nook_level.manager.equip_item(item_id)
-            return {"success": success, "message": msg}
-            
-        return None
-
-_store_dialog = None
-
 def open_mr_taiyaki_store_dialog():
-    global _store_dialog
-    if _store_dialog is not None:
-        _store_dialog.close()
-    _store_dialog = MrTaiyakiStoreDialog(mw)
-    _store_dialog.show()
+    from .gamification.nook_web_ui import open_taiyaki_store_dialog as open_page
+
+    open_page()
 
 
 def _profile_level_chip_detail(game, level):
@@ -1444,22 +1506,38 @@ def _profile_level_chip_detail(game, level):
 
 def _get_nook_level_chip_html():
     # Profile Level chip. Which game it reflects is chosen in
-    # gamification_settings.py > General > Profile Level.
+    # Settings > Games > Gamification > Profile Level.
     try:
         from . import onigiri_renderer
         game = onigiri_renderer._selected_profile_level_game()
-        enabled, level, fraction, _color = onigiri_renderer._profile_level_progress()
+        enabled, level, fraction, level_color = onigiri_renderer._profile_level_progress()
         if not enabled:
             return ""
         # Nook keeps its own "show progress on profile bar" visibility gate.
         if game == "nook":
-            conf = config.get_config()
+            conf = config.get_config_readonly()
             restaurant_conf = conf.get("restaurant_level", {}) or conf.get("achievements", {}).get("restaurant_level", {})
             if not restaurant_conf.get("show_profile_bar_progress", True):
                 return ""
 
         from .gamification import nook_level
         chip_style = nook_level.build_chip_style_attr()
+        # The selected game supplies the level/fraction, but the progress bar
+        # color is shared with Profile Level. Nook's chip-style helper still
+        # provides the background/text colors; override only its progress
+        # variables so Hexagon Land and Onigimon cannot replace the user's
+        # Profile progress color with their own/default accent.
+        if level_color:
+            safe_color = html.escape(str(level_color), quote=True)
+            chip_style = "; ".join(
+                part for part in (
+                    chip_style,
+                    f"--profile-level-bar-bg: {safe_color}",
+                    f"--reviewer-level-bar-bg: {safe_color}",
+                    f"--reviewer-level-bar-hover-bg: {safe_color}",
+                )
+                if part
+            )
         style_attr = f' style="{chip_style}"' if chip_style else ""
 
         cmd_map = {"nook": "restaurant_level", "onigimon": "openOnigimonCare", "hexagon": "openHexagonLand"}
@@ -1480,7 +1558,8 @@ def _get_nook_level_chip_html():
 
 
 def _get_reviewer_nook_level_chip_html():
-    conf = config.get_config()
+    # Rebuilt after every answered card - read-only, so skip the deep copy.
+    conf = config.get_config_readonly()
     restaurant_conf = conf.get("restaurant_level", {})
     if not restaurant_conf:
         restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
@@ -1565,7 +1644,7 @@ def _get_backgrounds_html(addon_package):
     
     if main_mode == "color" or main_mode == "image_color":
         # Use the correct color for the current theme in the preview swatch
-        if mw.pm.night_mode():
+        if config.effective_night_mode():
             color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
         else:
             color = mw.col.conf.get("modern_menu_bg_color_light", "#FFFFFF")
@@ -1584,7 +1663,7 @@ def _get_backgrounds_html(addon_package):
         sidebar_type = mw.col.conf.get("modern_menu_sidebar_bg_type", "color")
         if sidebar_type == "image" or sidebar_type == "image_color":
             if mw.col.conf.get("modern_menu_sidebar_bg_image_theme_mode", "separate") == "separate":
-                image_key = "modern_menu_sidebar_bg_image_dark" if mw.pm.night_mode() else "modern_menu_sidebar_bg_image_light"
+                image_key = "modern_menu_sidebar_bg_image_dark" if config.effective_night_mode() else "modern_menu_sidebar_bg_image_light"
                 sidebar_img_file = mw.col.conf.get(image_key, "")
             else:
                 sidebar_img_file = mw.col.conf.get("modern_menu_sidebar_bg_image", "")
@@ -1605,7 +1684,7 @@ def _get_backgrounds_html(addon_package):
                 sidebar_text = "Slideshow selected, but no images chosen."
         
         if sidebar_type == "color" or sidebar_type == "image_color" or sidebar_type == "slideshow":
-            if mw.pm.night_mode():
+            if config.effective_night_mode():
                 color = mw.col.conf.get("modern_menu_sidebar_bg_color_dark", "#3C3C3C")
             else:
                 color = mw.col.conf.get("modern_menu_sidebar_bg_color_light", "#EEEEEE")
@@ -1649,7 +1728,7 @@ def _get_stats_html():
     if time.time() - _profile_stats_cache["timestamp"] < _profile_stats_cache["timeout"] and _profile_stats_cache["html"]:
         return _profile_stats_cache["html"]
 
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     show_heatmap = conf.get("showHeatmapOnProfile", True)
 
     # Calculate today's stats from the database directly
@@ -1804,12 +1883,33 @@ def _get_nook_level_profile_html() -> str:
     """
 
 
+def _profile_bg_image_name():
+    """The bar background for the current theme (see config.themed_asset)."""
+    from . import config as _config
+
+    try:
+        is_dark = bool(_config.effective_night_mode())
+    except Exception:
+        is_dark = False
+    return _config.themed_asset(
+        mw.col.conf.get,
+        "modern_menu_profile_bg_image",
+        is_dark,
+        dynamic_key="modern_menu_profile_bg_dynamic_mode",
+    )
+
+
 def _profile_background_render_parts(addon_package, include_default_image=True):
     container_style = ""
     layer_style = ""
     bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
+    dyn_bg = bool(mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True))
+    is_dark = config.effective_night_mode()
+    theme_key = "dark" if (is_dark and dyn_bg) else "light"
+    bg_color = mw.col.conf.get(f"modern_menu_profile_bg_color_{theme_key}", "#3C3C3C" if is_dark else "#EEEEEE") or ("#3C3C3C" if is_dark else "#EEEEEE")
+
     if bg_mode == "image":
-        bg_image_file = mw.col.conf.get("modern_menu_profile_bg_image", "")
+        bg_image_file = _profile_bg_image_name()
         if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
             bg_url = f"/_addons/{addon_package}/user_files/profile_bg/{bg_image_file}"
         elif include_default_image:
@@ -1817,7 +1917,7 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
             bg_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
         else:
             bg_url = ""
-        container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
+        container_style = f"background-color: {bg_color} !important; --profile-image-overlay-bg: transparent;"
         if bg_url:
             blur = max(0, min(100, int(mw.col.conf.get("modern_menu_profile_bg_blur", 0) or 0)))
             opacity_value = mw.col.conf.get("modern_menu_profile_bg_opacity", 50)
@@ -1829,9 +1929,9 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
                 f"filter: blur({blur_px}px); opacity: {opacity}; transform: scale({scale});"
             )
     elif bg_mode == "custom":
-        container_style = "background-color: var(--profile-bg-custom-color);"
+        container_style = f"background-color: {bg_color} !important;"
     else: # accent
-        container_style = "background-color: var(--accent-color);"
+        container_style = "background-color: var(--accent-color) !important;"
     return container_style, layer_style
 
 
@@ -1872,8 +1972,7 @@ def on_webview_js_message(handled, message, context):
         #    return webview_handlers.handle_webview_cmd((False, None), cmd, context)
         
         if cmd == "openTaiyakiStore":
-            from .gamification.taiyaki_store import open_taiyaki_store
-            open_taiyaki_store()
+            open_mr_taiyaki_store_dialog()
             return (True, None)
         if cmd == "openRestaurantLevel":
             open_nook_level_dialog()
@@ -1932,19 +2031,19 @@ def on_webview_js_message(handled, message, context):
                 mw.deckBrowser.web.eval(f"SyncStatusManager.setSyncStatus('{sync_status}');")
             return (True, None)
         if cmd == "openOnigiriSettings":
-            from . import settings
+            from . import settings_web
 
-            settings.open_settings(0)
+            settings_web.open_settings(0)
             return (True, None)
         if cmd == "openGamificationSettings":
-            from . import gamification_settings
+            from . import settings_web
 
-            gamification_settings.open_gamification_settings()
+            settings_web.open_settings("gamification")
             return (True, None)
         if cmd == "openOnigimonSettings":
-            from . import gamification_settings
+            from . import settings_web
 
-            gamification_settings.open_gamification_settings("Onigimon")
+            settings_web.open_settings("onigimon")
             return (True, None)
         if cmd == "shared":
             QDesktopServices.openUrl(QUrl("https://ankiweb.net/shared/decks"))
@@ -2021,7 +2120,26 @@ def on_webview_js_message(handled, message, context):
 
     elif isinstance(context, Overview):
         cmd = message  # <-- This line must come FIRST
-        
+
+        if cmd == "onigiri_browse_ready_learning":
+            try:
+                from aqt import dialogs
+
+                card_ids = _ready_learning_card_ids(mw.col)
+                search = (
+                    "cid:" + ",".join(str(card_id) for card_id in card_ids)
+                    if card_ids
+                    else "cid:0"
+                )
+                dialogs.open("Browser", mw, search=(search,))
+            except Exception:
+                tooltip(
+                    tr_at(
+                        "could_not_open_ready_learning_cards",
+                        "Could not open the ready learning cards in Browser.",
+                    )
+                )
+            return (True, None)
 
         
         # Now handle the commands normally
@@ -2085,7 +2203,7 @@ def on_webview_js_message(handled, message, context):
 def patch_overview():
 	"""Replaces the HTML generation for the overview screen."""
 	
-	conf = config.get_config()
+	conf = config.get_config_readonly()
 	show_toolbar_replacements = conf.get("hideNativeHeaderAndBottomBar", False)
 	max_hide = conf.get("maxHide", False)
 	flow_mode = conf.get("flowMode", False)
@@ -2097,17 +2215,23 @@ def patch_overview():
 	if overview_style == "mini":
 		mini_css = """
         <style id="onigiri-mini-overview-style">
-            body {
-                align-items: center !important;
-                box-sizing: border-box;
-            }
+            /* Keep Mini below the fixed navigation while Pro stays vertically centered. */
+            body.mini-overview { align-items: flex-start !important; }
             .overview-center-container.mini-overview {
-                padding-top: 0 !important;
-                padding-bottom: 0 !important;
+                align-self: flex-start !important;
+                box-sizing: border-box;
+                padding-top: 58px !important;
+                padding-bottom: 12px !important;
             }
 
             /* --- The rest of the styling for the mini-overview components --- */
-            .mini-overview .overview-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; text-align: center; }
+            .mini-overview .overview-title {
+                font-size: 20px !important;
+                line-height: 1.2;
+                font-weight: 600;
+                margin: 0 0 6px !important;
+                text-align: center;
+            }
             .mini-overview .overview-profile-bar {
                 width: max-content;
                 max-width: min(360px, calc(100%% - 40px));
@@ -2137,11 +2261,18 @@ def patch_overview():
                 width: 42px;
                 height: 4px;
             }
+            .mini-overview .overview-container {
+                width: min(280px, calc(100vw - 32px)) !important;
+                max-width: none !important;
+                box-sizing: border-box;
+                margin: 0 auto 18px !important;
+            }
             .mini-overview .stats-container {
-                width: 280px;
+                width: 100% !important;
+                box-sizing: border-box;
                 margin: 0 auto 14px auto;
                 background: var(--overview-box-bg, var(--canvas-inset));
-                padding: 22px 6px 6px 6px;
+                padding: 16px 12px 8px 12px !important;
                 border: var(--overview-box-stroke, 1px) solid var(--overview-box-border, var(--border));
                 border-radius: var(--overview-box-radius, 12px);
                 backdrop-filter: blur(var(--overview-box-blur, 0px));
@@ -2150,25 +2281,36 @@ def patch_overview():
             .mini-overview .stats-container.no-profile {
                 padding-top: 6px;
             }
-            .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 14px); color: var(--fg); }
+            .mini-overview .stats-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0 !important; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px !important; color: var(--fg); }
             .mini-overview .stats-row span:first-child { color: var(--fg); }
             .mini-overview .new-count-bubble, .mini-overview .learn-count-bubble, .mini-overview .review-count-bubble { font-family: inherit; font-size: inherit; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; }
             .mini-overview .new-count-bubble { color: var(--overview-new-count-fg, var(--fg)) !important; }
             .mini-overview .learn-count-bubble { color: var(--overview-learn-count-fg, var(--fg)) !important; }
             .mini-overview .review-count-bubble { color: var(--overview-review-count-fg, var(--fg)) !important; }
-            .mini-overview #study { width: 280px; margin: 0 auto; padding: 10px; font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: var(--font-size-main, 16px); color: var(--fg) !important; border-radius: 9999px; box-shadow: none !important; }
+            .mini-overview #study {
+                width: 100% !important;
+                box-sizing: border-box !important;
+                margin: 0 auto !important;
+                padding: 8px 12px !important;
+                min-height: 40px;
+                font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                font-size: 14px !important;
+                color: var(--fg) !important;
+                border-radius: 9999px;
+                box-shadow: none !important;
+            }
             .mini-overview .overview-bottom-actions { 
-                width: 280px; 
-                margin: 12px auto 0 auto; 
+                width: 100%; 
+                margin: 10px auto 0 auto; 
                 display: flex; 
                 justify-content: center; 
-                gap: 10px; 
+                gap: 8px; 
                 text-align: center;
             }
             .mini-overview .overview-bottom-actions .overview-button { 
-                background: var(--onigiri-box-effect-bg, var(--canvas-inset, #f5f5f5)) !important; 
-                color: var(--onigiri-box-effect-fg, var(--fg, #333)) !important; 
-                border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, var(--border, #d9d9d9)); 
+                background: var(--overview-action-button-bg, var(--onigiri-box-effect-bg, var(--canvas-inset, #f5f5f5))) !important; 
+                color: var(--overview-action-button-fg, var(--onigiri-box-effect-fg, var(--fg, #333))) !important; 
+                border: var(--onigiri-box-effect-stroke, 1px) solid var(--overview-action-button-border, var(--onigiri-box-effect-border, var(--border, #d9d9d9))); 
                 border-radius: var(--onigiri-box-effect-radius, 8px); 
                 text-decoration: none; 
                 font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -2181,10 +2323,15 @@ def patch_overview():
                 backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
                 -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
             }
+            .mini-overview #onigiri-reveal-btn {
+                margin: 14px auto;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
             .mini-overview .overview-bottom-actions .overview-button:hover { 
-                background-color: var(--onigiri-box-effect-bg, var(--button-hover-bg, #e6e6e6)) !important; 
-                border-color: var(--onigiri-box-effect-border-hover, var(--button-hover-border, #bfbfbf));
-                color: var(--onigiri-box-effect-fg, var(--button-hover-fg, #000)) !important;
+                background-color: var(--overview-action-button-bg, var(--onigiri-box-effect-bg, var(--button-hover-bg, #e6e6e6))) !important; 
+                border-color: var(--overview-action-button-border, var(--onigiri-box-effect-border-hover, var(--button-hover-border, #bfbfbf)));
+                color: var(--overview-action-button-fg, var(--onigiri-box-effect-fg, var(--button-hover-fg, #000))) !important;
                 box-shadow: none !important;
             }
             /* Dark mode overrides */
@@ -2208,7 +2355,7 @@ def patch_overview():
 		restaurant_chip_html = _get_nook_level_chip_html()
 		profile_bg_mode = mw.col.conf.get("modern_menu_profile_bg_mode", "image")
 		bg_class_str = "with-image-bg" if profile_bg_mode == "image" else ""
-		if profile_bg_mode == "image" and not mw.col.conf.get("modern_menu_profile_bg_image", "") and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
+		if profile_bg_mode == "image" and not _profile_bg_image_name() and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
 			bg_class_str += " dynamic-default-bg"
 		bg_style_str, bg_layer_style = _profile_background_render_parts(mw.addonManager.addonFromModule(__name__))
 		bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
@@ -2223,26 +2370,16 @@ def patch_overview():
     
 	def new_table(self) -> str:
 		counts = list(self.mw.col.sched.counts())
+		learning_notice_html = _learning_due_later_notice(
+			self.mw.col, _learning_notice_enabled(conf, "overview")
+		)
 		
-		# Calculate cards due later today
-		now = int(__import__("time").time())
-		try:
-			day_cutoff = self.mw.col.sched.day_cutoff
-			deck_id = self.mw.col.decks.current()['id']
-			child_decks = self.mw.col.decks.child_ids(deck_id)
-			dids = [deck_id] + child_decks
-			dids_str = ",".join(str(d) for d in dids)
-			later_count = self.mw.col.db.scalar(
-				f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({dids_str})", 
-				now, day_cutoff
-			)
-		except Exception:
-			later_count = 0
-		
+		# The add-on language can differ from Anki's own interface language.
+		# Keep these replacement labels consistent with the rest of Onigiri.
 		count_data = [
-			{"label": mw.col.tr.actions_new(), "count": counts[0], "class": "new-count-bubble"},
-			{"label": mw.col.tr.scheduling_learning(), "count": counts[1], "class": "learn-count-bubble"},
-			{"label": mw.col.tr.studying_to_review(), "count": counts[2], "class": "review-count-bubble"},
+			{"label": tr_at("new"), "count": counts[0], "class": "new-count-bubble"},
+			{"label": tr_at("learning"), "count": counts[1], "class": "learn-count-bubble"},
+			{"label": tr_at("to_review"), "count": counts[2], "class": "review-count-bubble"},
 		]
 
 		rows_html = ""
@@ -2253,18 +2390,16 @@ def patch_overview():
 				f"<span class=\"{item['class']}\">{item['count']}</span>"
 				'</div>'
 			)
-			
-		if later_count > 0:
-			later_html = f"<span style='color: var(--fg-subtle); display: flex; align-items: center; gap: 6px;'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> {tr_at('due_later')}</span>"
-			rows_html += (
-				'<div class="stats-row due-later-row">'
-				f"{later_html}"
-				f"<span class=\"later-count-bubble\" style=\"font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 12px; min-width: 30px; text-align: center; background: rgba(128,128,128,0.2); color: var(--fg);\">{later_count}</span>"
-				'</div>'
-			)
-		
-		study_now_text = mw.col.conf.get("modern_menu_studyNowText") or mw.col.tr.studying_study_now()
-		custom_study_text = "Custom" if overview_style == "mini" else tr_at("custom_study")
+
+		configured_study_now_text = mw.col.conf.get("modern_menu_studyNowText")
+		# ``Study Now`` is the legacy stored default. Preserve user-written
+		# overrides, but translate the default in the selected add-on language.
+		study_now_text = (
+			tr_at("study_now")
+			if not configured_study_now_text or configured_study_now_text == "Study Now"
+			else configured_study_now_text
+		)
+		custom_study_text = tr_at("custom") if overview_style == "mini" else tr_at("custom_study")
 
 		bottom_actions_html = ""
 		if show_toolbar_replacements:
@@ -2276,7 +2411,7 @@ def patch_overview():
 				# Filtered deck buttons: Options, Rebuild, Empty
 				bottom_actions_html = (
 					'<div class="overview-bottom-actions">'
-					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button">{tr_at("options")}</a>'
+					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button onigiri-overview-action-options">{tr_at("options")}</a>'
 					f'<a href="#" key=R onclick="pycmd(\'refresh\'); return false;" class="overview-button">{tr_at("rebuild")}</a>'
 					f'<a href="#" key=E onclick="pycmd(\'empty\'); return false;" class="overview-button">{tr_at("empty")}</a>'
 					'</div>'
@@ -2285,9 +2420,9 @@ def patch_overview():
 				# Non-filtered deck buttons: Options, Custom Study, Description
 				bottom_actions_html = (
 					'<div class="overview-bottom-actions">'
-					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button overview-button-normal">{tr_at("options")}</a>'
-					f'<a href="#" key=C onclick="pycmd(\'studymore\'); return false;" class="overview-button overview-button-normal">{custom_study_text}</a>'
-					f'<a href="#" onclick="pycmd(\'description\'); return false;" class="overview-button overview-button-normal">{tr_at("description")}</a>'
+					f'<a href="#" key=O onclick="pycmd(\'opts\'); return false;" class="overview-button overview-button-normal onigiri-overview-action-options">{tr_at("options")}</a>'
+					f'<a href="#" key=C onclick="pycmd(\'studymore\'); return false;" class="overview-button overview-button-normal onigiri-overview-action-custom-study">{custom_study_text}</a>'
+					f'<a href="#" onclick="pycmd(\'description\'); return false;" class="overview-button overview-button-normal onigiri-overview-action-description">{tr_at("description")}</a>'
 					'</div>'
 				)
 
@@ -2296,12 +2431,13 @@ def patch_overview():
 			'<div class="overview-container">'
 				f'<div class="{stats_container_class}">'
 					f'{rows_html}'
+					f'{learning_notice_html}'
 				'</div>'
 				f'<button id="study" class="add-button-dashed" onclick="pycmd(\'study\'); return false;" autofocus>'
 					f'{study_now_text}'
 				'</button>'
 				f'{bottom_actions_html}'
-				f'<button id="onigiri-reveal-btn">{tr_at("click_to_reveal")}</button>'
+				f'<button id="onigiri-reveal-btn" class="onigiri-overview-action-reveal">{tr_at("click_to_reveal")}</button>'
 			'</div>'
 		)
 
@@ -2433,8 +2569,8 @@ def patch_overview():
             display: block;
             margin: 20px auto;
             padding: 10px 20px;
-            background: var(--button-primary-bg);
-            color: white !important;
+            background: var(--overview-reveal-button-bg, var(--button-primary-bg));
+            color: var(--overview-reveal-button-fg, white) !important;
             border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
@@ -2481,7 +2617,7 @@ def patch_congrats_page():
     
     def new_show_finished_screen(self: Overview, _old):
         addon_path = os.path.dirname(__file__)
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         addon_package = mw.addonManager.addonFromModule(__name__)
 
         # Check for hide mode to determine if the header should be shown
@@ -2517,7 +2653,7 @@ def patch_congrats_page():
             bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
             if profile_bg_mode == "image":
                 bg_class_str = "with-image-bg"
-                if not mw.col.conf.get("modern_menu_profile_bg_image", "") and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
+                if not _profile_bg_image_name() and mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True):
                     bg_class_str += " dynamic-default-bg"
 
             profile_bar_html = f"""
@@ -2532,23 +2668,9 @@ def patch_congrats_page():
         # 2. Get Custom Message with fallback to default
         message = conf.get("congratsMessage", DEFAULTS["congratsMessage"])
         
-        now = int(__import__("time").time())
-        try:
-            day_cutoff = self.mw.col.sched.day_cutoff
-            deck_id = self.mw.col.decks.current()['id']
-            child_decks = self.mw.col.decks.child_ids(deck_id)
-            dids = [deck_id] + child_decks
-            dids_str = ",".join(str(d) for d in dids)
-            later_count = self.mw.col.db.scalar(
-                f"select count() from cards where queue in (1, 3) and due > ? and due < ? and did in ({dids_str})", 
-                now, day_cutoff
-            )
-        except Exception:
-            later_count = 0
-            
-        later_html = ""
-        if later_count > 0:
-            later_html = f"<div class='cards-due-later' style='margin-top: 25px; font-size: 14px; color: var(--fg-subtle); display: flex; align-items: center; justify-content: center; gap: 8px;'><svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><polyline points='12 6 12 12 16 14'></polyline></svg> <span>{tr_at('due_later_today').format(count=later_count)}</span></div>"
+        learning_notice_html = _learning_due_later_notice(
+            self.mw.col, _learning_notice_enabled(conf, "congrats")
+        )
 
         # 3. Build Bottom Actions HTML
         bottom_actions_html = ""
@@ -2560,7 +2682,7 @@ def patch_congrats_page():
                 # Filtered deck buttons: Options, Rebuild, Empty
                 bottom_actions_html = f"""
                 <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
+                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button onigiri-overview-action-options">{tr_at("options")}</a>
                     <a href="#" key=R onclick="pycmd('refresh'); return false;" class="overview-button">{tr_at("rebuild")}</a>
                     <a href="#" key=E onclick="pycmd('empty'); return false;" class="overview-button">{tr_at("empty")}</a>
                 </div>
@@ -2569,9 +2691,9 @@ def patch_congrats_page():
                 # Non-filtered deck buttons: Options, Custom Study, Description
                 bottom_actions_html = f"""
                 <div class="congrats-bottom-actions">
-                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button">{tr_at("options")}</a>
-                    <a href="#" key=C onclick="pycmd('studymore'); return false;" class="overview-button">{tr_at("custom_study")}</a>
-                    <a href="#" onclick="pycmd('description'); return false;" class="overview-button">{tr_at("description")}</a>
+                    <a href="#" key=O onclick="pycmd('opts'); return false;" class="overview-button onigiri-overview-action-options">{tr_at("options")}</a>
+                    <a href="#" key=C onclick="pycmd('studymore'); return false;" class="overview-button onigiri-overview-action-custom-study">{tr_at("custom_study")}</a>
+                    <a href="#" onclick="pycmd('description'); return false;" class="overview-button onigiri-overview-action-description">{tr_at("description")}</a>
                 </div>
                 """
 
@@ -2588,7 +2710,7 @@ def patch_congrats_page():
             {profile_bar_html}
             <div class="{congrats_card_class}">
                 <h1>{message}</h1>
-                {later_html}
+                {learning_notice_html}
             </div>
             {bottom_actions_html}
         </div>
@@ -2626,7 +2748,7 @@ def patch_congrats_page():
 
 def generate_deck_browser_backgrounds(addon_path):
     """Generates CSS for the main container background and sidebar."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     
     main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
     main_image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
@@ -2637,7 +2759,7 @@ def generate_deck_browser_backgrounds(addon_path):
 
     # Handle slideshow mode
     if main_mode == "slideshow":
-        slideshow_images = mw.col.conf.get("modern_menu_slideshow_images", [])
+        slideshow_images = config.get_collection_config("modern_menu_slideshow_images", [])
         slideshow_interval = mw.col.conf.get("modern_menu_slideshow_interval", 10)
         
         if slideshow_images:
@@ -3096,9 +3218,16 @@ def generate_deck_browser_backgrounds(addon_path):
 def _resolve_night_mode():
     """Best-effort current night-mode state for the main window."""
     try:
-        return bool(mw.pm.night_mode())
+        from aqt.theme import theme_manager
+
+        return bool(theme_manager.night_mode)
     except Exception:
-        return False
+        # Kept only for compatibility with Anki versions predating
+        # ``theme_manager.night_mode``.
+        try:
+            return config.effective_night_mode()
+        except Exception:
+            return False
 
 
 def _reviewer_base_bg_color(conf):
@@ -3168,7 +3297,7 @@ def set_main_webview_background_color(color):
 
 def generate_reviewer_background_css(addon_path):
     """Generates CSS for the reviewer - exact copy of overview implementation with reviewer config keys."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     reviewer_mode = conf.get("onigiri_reviewer_bg_mode", "main")
     addon_name = os.path.basename(addon_path)
     
@@ -3242,7 +3371,7 @@ def generate_reviewer_background_css(addon_path):
         opacity_val = conf.get("onigiri_reviewer_bg_main_opacity", 100)
         
         if mode == "slideshow":
-            images = mw.col.conf.get("modern_menu_slideshow_images", []) or []
+            images = config.get_collection_config("modern_menu_slideshow_images", []) or []
             image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in images]
             return _render_body_slideshow_background_css(
                 "onigiri-reviewer-background-style",
@@ -3378,7 +3507,7 @@ def generate_reviewer_background_css(addon_path):
 
 def generate_overview_background_css(addon_path):
     """Generates CSS for the overview screen with instant background rendering using CSS pseudo-elements."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     overview_mode = conf.get("onigiri_overview_bg_mode", "main")
     
     # Defaults
@@ -3454,7 +3583,7 @@ def generate_overview_background_css(addon_path):
 
     if overview_mode == "main" and mw.col.conf.get("modern_menu_background_mode", "color") == "slideshow":
         addon_name = os.path.basename(addon_path)
-        images = mw.col.conf.get("modern_menu_slideshow_images", []) or []
+        images = config.get_collection_config("modern_menu_slideshow_images", []) or []
         image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in images]
         return _render_body_slideshow_background_css(
             "onigiri-overview-background-style",
@@ -3628,10 +3757,639 @@ def generate_toolbar_background_css(addon_path):
 
 	return _render_background_css("body", mode, light, dark, image_path, image_path, blur, addon_path, "onigiri-toolbar-bg-style", opacity)
 
+# ── Reviewer header progress bar ──────────────────────────────────────────────
+#
+# A slim "light at the end of the tunnel" gauge that rides in the reviewer
+# header next to the header buttons.
+#
+# `left` is exactly what Anki's bottom bar shows - the scheduler's
+# new/learning/review counts for the deck being studied - so the two surfaces
+# can never disagree. `done` is either the cards answered since the reviewer was
+# entered ("session", the default) or every review logged today across the decks
+# in play ("today"). The total is `done + left` rather than a snapshot taken at
+# the start, because a snapshot lies: answering a new card with Good moves it
+# from the new count into the learning count, leaving `left` unchanged, and a
+# bar built on `left` alone would sit frozen for the first half of a session.
+
+_PROGRESS_STYLES = ("bar", "segments", "ring", "text")
+_PROGRESS_LABELS = ("fraction", "percent", "remaining", "done", "none")
+
+# Answered-card bookkeeping for the "session" scope, plus the revlog baseline
+# the "today" scope starts from. Reset whenever the reviewer is (re-)entered or
+# the studied deck changes; `mw` is single-collection, so a plain module global
+# is the right amount of machinery here.
+_progress_session = {"key": None, "answered": 0, "today_base": 0}
+
+# Settings are read once per reviewer entry and reused for every card. The
+# answer path must not touch the config store (see the 2026-08-19 lag fix).
+_progress_settings_cache = {"key": None, "settings": None}
+
+
+def _reviewer_progress_settings(conf=None, force=False):
+    """The progress bar's settings, resolved and clamped exactly once per
+    reviewer session."""
+    col = getattr(mw, "col", None)
+    cache_key = id(col) if col is not None else None
+    if not force and _progress_settings_cache["key"] == cache_key:
+        cached = _progress_settings_cache["settings"]
+        if cached is not None:
+            return cached
+
+    if conf is None:
+        conf = config.get_config_readonly()
+
+    def _num(key, default, low, high):
+        try:
+            value = float(conf.get(key, default))
+        except (TypeError, ValueError):
+            value = float(default)
+        return int(max(low, min(high, value)))
+
+    def _pick(key, default, allowed):
+        value = str(conf.get(key, default) or default)
+        return value if value in allowed else default
+
+    def _pair(key, light_default, dark_default):
+        return (
+            str(conf.get(f"{key}_light", light_default) or light_default),
+            str(conf.get(f"{key}_dark", dark_default) or dark_default),
+        )
+
+    # The segment colours can follow the very count bubbles the bottom bar
+    # paints, so "23 review cards left" is the same green in both places.
+    overview_colors = (conf.get("overview_style", {}) or {}).get("colors", {}) or {}
+
+    def _count_pair(key, light_default, dark_default):
+        light = (overview_colors.get("light", {}) or {}).get(key) or light_default
+        dark = (overview_colors.get("dark", {}) or {}).get(key) or dark_default
+        return str(light), str(dark)
+
+    seg_source = _pick("onigiri_reviewer_progress_segment_source", "counts", ("counts", "custom"))
+    if seg_source == "counts":
+        seg_new = _count_pair("new_bubble", "#1e8cff", "#0a84ff")
+        seg_learn = _count_pair("learn_bubble", "#ff5757", "#ff453a")
+        seg_review = _count_pair("review_bubble", "#19c96b", "#12b765")
+    else:
+        seg_new = _pair("onigiri_reviewer_progress_seg_new", "#1e8cff", "#0a84ff")
+        seg_learn = _pair("onigiri_reviewer_progress_seg_learn", "#ff5757", "#ff453a")
+        seg_review = _pair("onigiri_reviewer_progress_seg_review", "#19c96b", "#12b765")
+
+    settings = {
+        "enabled": bool(conf.get("onigiri_reviewer_progress_enabled", True)),
+        "style": _pick("onigiri_reviewer_progress_style", "bar", _PROGRESS_STYLES),
+        "label": _pick("onigiri_reviewer_progress_label", "fraction", _PROGRESS_LABELS),
+        "scope": _pick("onigiri_reviewer_progress_scope", "session", ("session", "today")),
+        "position": _pick("onigiri_reviewer_progress_position", "right", ("right", "left")),
+        "width": _num("onigiri_reviewer_progress_width", 96, 40, 320),
+        "thickness": _num("onigiri_reviewer_progress_thickness", 6, 2, 20),
+        "radius": _num("onigiri_reviewer_progress_radius", 999, 0, 999),
+        "ring_size": _num("onigiri_reviewer_progress_ring_size", 16, 12, 40),
+        "chrome": bool(conf.get("onigiri_reviewer_progress_chrome", True)),
+        "animate": bool(conf.get("onigiri_reviewer_progress_animate", True)),
+        "gradient": bool(conf.get("onigiri_reviewer_progress_gradient", True)),
+        "hide_when_done": bool(conf.get("onigiri_reviewer_progress_hide_when_done", False)),
+        "fill": _pair("onigiri_reviewer_progress_fill", "#19c96b", "#12b765"),
+        "fill_end": _pair("onigiri_reviewer_progress_fill_end", "#5ad6f0", "#4bc4de"),
+        "track": _pair("onigiri_reviewer_progress_track", "rgba(0, 0, 0, 0.12)", "rgba(255, 255, 255, 0.16)"),
+        "text": _pair("onigiri_reviewer_progress_text", "#2c2c2c", "#e8e8e8"),
+        "seg_new": seg_new,
+        "seg_learn": seg_learn,
+        "seg_review": seg_review,
+    }
+
+    _progress_settings_cache["key"] = cache_key
+    _progress_settings_cache["settings"] = settings
+    return settings
+
+
+def invalidate_reviewer_progress_settings():
+    """Drop the cached settings so the next reviewer entry re-reads them."""
+    _progress_settings_cache["key"] = None
+    _progress_settings_cache["settings"] = None
+
+
+def _progress_session_key(col):
+    try:
+        return (id(col), int(col.decks.current()["id"]))
+    except Exception:
+        return (id(col), 0)
+
+
+def _reviews_logged_today(col):
+    """How many reviews today's revlog holds for the decks currently in play.
+
+    Run once per reviewer entry (never on the answer path): the subquery walks
+    the card table for the whole deck tree."""
+    try:
+        cutoff_ms = (int(col.sched.day_cutoff) - 86400) * 1000
+        dids = ",".join(str(deck_id) for deck_id in _selected_deck_ids(col))
+        if not dids:
+            return 0
+        count = col.db.scalar(
+            "select count() from revlog where id >= ? and ease > 0 "
+            f"and cid in (select id from cards where did in ({dids}) or odid in ({dids}))",
+            cutoff_ms,
+        )
+        return max(0, int(count or 0))
+    except Exception:
+        return 0
+
+
+def reset_reviewer_progress_session(force=False):
+    """Start (or restart) the progress bar's bookkeeping for a study session."""
+    col = getattr(mw, "col", None)
+    if col is None:
+        return
+    key = _progress_session_key(col)
+    if not force and _progress_session["key"] == key:
+        return
+    settings = _reviewer_progress_settings()
+    _progress_session["key"] = key
+    _progress_session["answered"] = 0
+    _progress_session["today_base"] = (
+        _reviews_logged_today(col) if settings["scope"] == "today" else 0
+    )
+
+
+def _reviewer_progress_counts():
+    """{new, learn, review, left, done, total, pct} for the current queue."""
+    data = {"new": 0, "learn": 0, "review": 0, "left": 0, "done": 0, "total": 0, "pct": 0}
+    col = getattr(mw, "col", None)
+    if col is None:
+        return data
+    try:
+        counts = list(col.sched.counts())
+    except Exception:
+        counts = []
+    counts += [0] * (3 - len(counts))
+    data["new"] = max(0, int(counts[0] or 0))
+    data["learn"] = max(0, int(counts[1] or 0))
+    data["review"] = max(0, int(counts[2] or 0))
+    data["left"] = data["new"] + data["learn"] + data["review"]
+
+    settings = _reviewer_progress_settings()
+    done = _progress_session["answered"]
+    if settings["scope"] == "today":
+        done += _progress_session["today_base"]
+    data["done"] = max(0, int(done))
+    data["total"] = data["done"] + data["left"]
+    data["pct"] = 100 if data["total"] <= 0 else int(round(100.0 * data["done"] / data["total"]))
+    return data
+
+
+def _reviewer_progress_label_text(settings, data):
+    label = settings["label"]
+    if label == "none":
+        return ""
+    if label == "percent":
+        return f"{data['pct']}%"
+    if label == "remaining":
+        return tr("progress_left_short", "{count} left").format(count=data["left"])
+    if label == "done":
+        return tr("progress_done_short", "{count} done").format(count=data["done"])
+    return f"{data['done']}/{data['total']}"
+
+
+def _reviewer_progress_tooltip(data):
+    return tr(
+        "progress_tooltip",
+        "{done} done · {left} left · {pct}%",
+    ).format(done=data["done"], left=data["left"], pct=data["pct"])
+
+
+def _reviewer_progress_inner_html(settings=None, data=None):
+    """The gauge itself. Kept separate from the chip so the per-card update can
+    replace only this and leave the chip element (and its transitions) alone."""
+    if settings is None:
+        settings = _reviewer_progress_settings()
+    if data is None:
+        data = _reviewer_progress_counts()
+
+    label_text = _reviewer_progress_label_text(settings, data)
+    label_html = (
+        f'<span class="orp-text">{html.escape(label_text)}</span>' if label_text else ""
+    )
+    style = settings["style"]
+    pct = max(0, min(100, data["pct"]))
+
+    if style == "text":
+        return label_html or f'<span class="orp-text">{data["done"]}/{data["total"]}</span>'
+
+    if style == "ring":
+        size = settings["ring_size"]
+        stroke = max(1, min(max(2, size // 3), settings["thickness"]))
+        radius = (size - stroke) / 2.0
+        circumference = 2 * math.pi * radius
+        dash = circumference * (pct / 100.0)
+        gauge = (
+            f'<svg class="orp-ring" viewBox="0 0 {size} {size}" width="{size}" height="{size}" aria-hidden="true">'
+            f'<circle class="orp-ring-track" cx="{size / 2}" cy="{size / 2}" r="{radius:.2f}" '
+            f'fill="none" stroke-width="{stroke}"></circle>'
+            f'<circle class="orp-ring-fill" cx="{size / 2}" cy="{size / 2}" r="{radius:.2f}" '
+            f'fill="none" stroke-width="{stroke}" stroke-linecap="round" '
+            f'stroke-dasharray="{dash:.2f} {circumference:.2f}" '
+            f'transform="rotate(-90 {size / 2} {size / 2})"></circle>'
+            "</svg>"
+        )
+        return gauge + label_html
+
+    if style == "segments":
+        total = max(1, data["total"])
+        widths = {
+            "done": 100.0 * data["done"] / total,
+            "new": 100.0 * data["new"] / total,
+            "learn": 100.0 * data["learn"] / total,
+            "review": 100.0 * data["review"] / total,
+        }
+        segments = "".join(
+            f'<span class="orp-seg is-{name}" style="width: {widths[name]:.3f}%;"></span>'
+            for name in ("done", "new", "learn", "review")
+        )
+        gauge = f'<span class="orp-track is-segmented">{segments}</span>'
+        return gauge + label_html
+
+    gauge = (
+        '<span class="orp-track">'
+        f'<span class="orp-fill" style="width: {pct}%;"></span>'
+        "</span>"
+    )
+    return gauge + label_html
+
+
+def _reviewer_progress_classes(settings):
+    classes = ["onigiri-reviewer-progress", f"is-{settings['style']}"]
+    if not settings["chrome"]:
+        classes.append("is-bare")
+    if settings["animate"]:
+        classes.append("is-animated")
+    if settings["label"] == "none":
+        classes.append("is-labelless")
+    return " ".join(classes)
+
+
+def _reviewer_progress_html(settings=None, data=None):
+    """The whole chip, or "" when the bar is off / has nothing to say."""
+    if settings is None:
+        settings = _reviewer_progress_settings()
+    if not settings["enabled"]:
+        return ""
+    if data is None:
+        data = _reviewer_progress_counts()
+    if settings["hide_when_done"] and data["left"] <= 0:
+        return ""
+
+    return (
+        f'<div id="onigiri-reviewer-progress" class="{_reviewer_progress_classes(settings)}" '
+        f'role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{data["pct"]}" '
+        f'title="{html.escape(_reviewer_progress_tooltip(data), quote=True)}">'
+        f"{_reviewer_progress_inner_html(settings, data)}"
+        "</div>"
+    )
+
+
+def _reviewer_progress_css(settings=None):
+    """Colour/size tokens for the chip. Emitted with the same
+    `.night_mode #onigiri-reviewer-header` prefix the rest of this module uses,
+    so __init__.py's shadow-DOM rewrite reaches it too."""
+    if settings is None:
+        settings = _reviewer_progress_settings()
+    if not settings["enabled"]:
+        return ""
+
+    fill_light, fill_dark = settings["fill"]
+    end_light, end_dark = settings["fill_end"]
+    track_light, track_dark = settings["track"]
+    text_light, text_dark = settings["text"]
+    new_light, new_dark = settings["seg_new"]
+    learn_light, learn_dark = settings["seg_learn"]
+    review_light, review_dark = settings["seg_review"]
+
+    fill_image_light = (
+        f"linear-gradient(90deg, {fill_light}, {end_light})" if settings["gradient"] else fill_light
+    )
+    fill_image_dark = (
+        f"linear-gradient(90deg, {fill_dark}, {end_dark})" if settings["gradient"] else fill_dark
+    )
+
+    return f"""
+    <style id="onigiri-reviewer-progress-style">
+        #onigiri-reviewer-header .onigiri-reviewer-progress {{
+            --orp-fill: {fill_light};
+            --orp-fill-image: {fill_image_light};
+            --orp-track: {track_light};
+            --orp-text: {text_light};
+            --orp-new: {new_light};
+            --orp-learn: {learn_light};
+            --orp-review: {review_light};
+            --orp-width: {settings["width"]}px;
+            --orp-thickness: {settings["thickness"]}px;
+            --orp-radius: {settings["radius"]}px;
+
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            flex: 0 0 auto !important;
+            box-sizing: border-box !important;
+            margin: 0 !important;
+            padding: 5px 12px !important;
+            border-radius: var(--onigiri-box-effect-radius, 8px) !important;
+            border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2)) !important;
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(247, 247, 247, 0.92))) !important;
+            backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px)) !important;
+            -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px)) !important;
+            color: var(--orp-text) !important;
+            font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            font-size: var(--font-size-main, 13px) !important;
+            font-weight: 500 !important;
+            line-height: normal !important;
+            white-space: nowrap !important;
+            cursor: default !important;
+            user-select: none !important;
+        }}
+
+        /* The unstyled fallback has to flip with the theme exactly like
+           a.onigiri-reviewer-button's does: without it a collection that has
+           never set the box-effect colours gets a near-white chip in dark mode,
+           and the label - which *does* follow the theme - goes invisible on it. */
+        .night_mode #onigiri-reviewer-header .onigiri-reviewer-progress {{
+            --orp-fill: {fill_dark};
+            --orp-fill-image: {fill_image_dark};
+            --orp-track: {track_dark};
+            --orp-text: {text_dark};
+            --orp-new: {new_dark};
+            --orp-learn: {learn_dark};
+            --orp-review: {review_dark};
+
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(42, 42, 42, 0.92))) !important;
+            border-color: var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2)) !important;
+        }}
+
+        .night_mode #onigiri-reviewer-header .onigiri-reviewer-progress.is-bare {{
+            background: transparent !important;
+            border-color: transparent !important;
+        }}
+
+        /* The chip has to end up exactly as tall as the header buttons beside
+           it, and a 6px bar is far shorter than a line of 13px text. This strut
+           gives the gauge the text's own line box, so both stay in step at any
+           font size or thickness. */
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-track {{
+            display: flex !important;
+            align-items: stretch !important;
+            overflow: hidden !important;
+            width: var(--orp-width) !important;
+            height: var(--orp-thickness) !important;
+            border-radius: var(--orp-radius) !important;
+            background: var(--orp-track) !important;
+            flex: 0 0 auto !important;
+            align-self: center !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-fill {{
+            display: block !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            border-radius: inherit !important;
+            background: var(--orp-fill-image) !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-track.is-segmented {{
+            gap: 2px !important;
+            background: transparent !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg {{
+            display: block !important;
+            height: 100% !important;
+            min-width: 0 !important;
+            border-radius: var(--orp-radius) !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg.is-done {{ background: var(--orp-fill-image) !important; }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg.is-new {{ background: var(--orp-new) !important; }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg.is-learn {{ background: var(--orp-learn) !important; }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg.is-review {{ background: var(--orp-review) !important; }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-ring {{
+            display: block !important;
+            flex: 0 0 auto !important;
+            overflow: visible !important;
+        }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-ring-track {{ stroke: var(--orp-track) !important; }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-ring-fill {{
+            stroke: var(--orp-fill) !important;
+        }}
+
+        /* Only the in-place update animates: update_reviewer_progress moves the
+           existing nodes rather than re-writing the chip, precisely so these
+           transitions have something to run on. */
+        #onigiri-reviewer-header .onigiri-reviewer-progress.is-animated .orp-fill,
+        #onigiri-reviewer-header .onigiri-reviewer-progress.is-animated .orp-seg {{
+            transition: width 0.35s ease !important;
+        }}
+        #onigiri-reviewer-header .onigiri-reviewer-progress.is-animated .orp-ring-fill {{
+            transition: stroke-dasharray 0.35s ease !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress .orp-text {{
+            display: block !important;
+            color: var(--orp-text) !important;
+            font-variant-numeric: tabular-nums !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.01em !important;
+        }}
+
+        #onigiri-reviewer-header .onigiri-reviewer-progress.is-bare {{
+            padding: 5px 2px !important;
+            background: transparent !important;
+            border-color: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }}
+
+        /* No label means no line box to borrow a height from, so the chip needs
+           the strut it was getting from the text for free. */
+        #onigiri-reviewer-header .onigiri-reviewer-progress.is-labelless::before {{
+            content: "\\200b" !important;
+            display: inline !important;
+            width: 0 !important;
+        }}
+    </style>
+    """
+
+
+def _reviewer_progress_payload(settings, data):
+    """What the per-card update sends: the numbers to move the existing nodes
+    to, plus a full re-render to fall back on when the chip's shape has changed
+    under it (a settings save while the reviewer is open)."""
+    total = max(1, data["total"])
+    # "Text only" with the label switched off would leave nothing at all, so the
+    # renderer falls back to the fraction there; the payload has to agree or the
+    # in-place update would wipe the text the renderer just drew.
+    label = _reviewer_progress_label_text(settings, data)
+    if settings["style"] == "text" and not label:
+        label = f"{data['done']}/{data['total']}"
+    payload = {
+        "style": settings["style"],
+        "classes": _reviewer_progress_classes(settings),
+        "inner": _reviewer_progress_inner_html(settings, data),
+        "label": label,
+        "pct": data["pct"],
+        "title": _reviewer_progress_tooltip(data),
+        "hidden": bool(settings["hide_when_done"] and data["left"] <= 0),
+        "segments": [
+            round(100.0 * data[name] / total, 3)
+            for name in ("done", "new", "learn", "review")
+        ],
+    }
+    if settings["style"] == "ring":
+        size = settings["ring_size"]
+        stroke = max(1, min(max(2, size // 3), settings["thickness"]))
+        circumference = 2 * math.pi * ((size - stroke) / 2.0)
+        payload["dash"] = f"{circumference * data['pct'] / 100.0:.2f} {circumference:.2f}"
+    return payload
+
+
+def update_reviewer_progress():
+    """Repaint the header gauge.
+
+    The nodes are moved rather than replaced whenever the chip already has the
+    shape the payload describes: replacing the markup would restart every
+    element and the width/dasharray transitions would never run. The full
+    re-render is the fallback for when the shape really did change."""
+    try:
+        if getattr(mw, "state", None) != "review":
+            return
+        settings = _reviewer_progress_settings()
+        if not settings["enabled"]:
+            return
+        reviewer = getattr(mw, "reviewer", None)
+        reviewer_web = reviewer and getattr(reviewer, "web", None)
+        if not reviewer_web:
+            return
+
+        payload = json.dumps(_reviewer_progress_payload(settings, _reviewer_progress_counts()))
+        reviewer_web.eval(
+            f"""
+        (function() {{
+            const p = {payload};
+            const host = document.getElementById('onigiri-reviewer-ui-host');
+            const root = host && host.shadowRoot;
+            const chip = root && root.getElementById('onigiri-reviewer-progress');
+            if (!chip) return;
+            chip.style.display = p.hidden ? 'none' : '';
+            if (p.hidden) return;
+            chip.setAttribute('aria-valuenow', String(p.pct));
+            chip.setAttribute('title', p.title);
+
+            let moved = chip.classList.contains('is-' + p.style);
+            if (moved) {{
+                if (p.style === 'bar') {{
+                    const fill = chip.querySelector('.orp-fill');
+                    if (fill) fill.style.width = p.pct + '%'; else moved = false;
+                }} else if (p.style === 'segments') {{
+                    const segs = chip.querySelectorAll('.orp-seg');
+                    if (segs.length === p.segments.length) {{
+                        p.segments.forEach(function(width, i) {{ segs[i].style.width = width + '%'; }});
+                    }} else {{ moved = false; }}
+                }} else if (p.style === 'ring') {{
+                    const ring = chip.querySelector('.orp-ring-fill');
+                    if (ring) ring.setAttribute('stroke-dasharray', p.dash); else moved = false;
+                }}
+            }}
+            if (moved) {{
+                const text = chip.querySelector('.orp-text');
+                if (text) text.textContent = p.label;
+                else if (p.label) moved = false;
+            }}
+            if (!moved) {{
+                chip.className = p.classes;
+                chip.innerHTML = p.inner;
+            }}
+        }})();
+        """
+        )
+    except Exception as e:
+        print(f"Onigiri: Error updating reviewer progress bar: {e}")
+
+
+def _reviewer_card_type_info(card):
+    """Return the small status marker payload for the card on screen."""
+    try:
+        queue = int(getattr(card, "queue", -1))
+    except (TypeError, ValueError):
+        queue = -1
+
+    if queue == 0:
+        return {"key": "new", "label": tr("new")}
+    if queue in (1, 3):
+        return {"key": "learn", "label": tr("learning")}
+    if queue == 2:
+        return {"key": "review", "label": tr("to_review")}
+
+    # The queue is the authoritative state, but older Anki versions can expose
+    # a less specific queue while the card type is already known.
+    try:
+        card_type = int(getattr(card, "type", -1))
+    except (TypeError, ValueError):
+        card_type = -1
+    fallback = {
+        0: ("new", tr("new")),
+        1: ("learn", tr("learning")),
+        2: ("review", tr("to_review")),
+    }.get(card_type)
+    return {"key": fallback[0], "label": fallback[1]} if fallback else None
+
+
+def update_reviewer_card_type(card):
+    """Update the count-box marker that identifies the card currently shown."""
+    try:
+        if getattr(mw, "state", None) != "review":
+            return
+        bottom_web = getattr(mw, "bottomWeb", None)
+        if not bottom_web:
+            return
+        payload = json.dumps(_reviewer_card_type_info(card))
+        bottom_web.eval(
+            f"""
+            (function() {{
+                const info = {payload};
+                window.__onigiriPendingReviewerCardType = info;
+                if (typeof window.onigiriSetReviewerCardType === 'function') {{
+                    window.onigiriSetReviewerCardType(info);
+                }}
+            }})();
+            """
+        )
+    except Exception as e:
+        print(f"Onigiri: Error updating reviewer card type: {e}")
+
+
+def _on_reviewer_progress_state_change(new_state, old_state):
+    if new_state == "review":
+        # Deck switches and re-entries both land here; the key check inside
+        # keeps a mid-session state bounce from zeroing the counter.
+        invalidate_reviewer_progress_settings()
+        reset_reviewer_progress_session()
+    elif old_state == "review":
+        _progress_session["key"] = None
+
+
+def _on_reviewer_progress_answered(reviewer, card, ease):
+    _progress_session["answered"] += 1
+
+
+def _on_reviewer_progress_show_question(card):
+    # Fires after the scheduler has re-counted, which is what makes the numbers
+    # here identical to the ones the bottom bar just drew.
+    update_reviewer_progress()
+    update_reviewer_card_type(card)
+
+
 def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     """Generates the HTML and basic structural CSS for the new web-based reviewer top bar."""
 
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     is_base_hide_mode = (
         conf.get("hideNativeHeaderAndBottomBar", False)
         and not conf.get("flowMode", False)
@@ -3667,27 +4425,41 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
 
     hashi_notes_button_html = (
         '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
-        'class="onigiri-reviewer-button onigiri-hashi-notes-button">Hashi Notes</a>'
+        f'class="onigiri-reviewer-button onigiri-hashi-notes-button">{tr_at("hashi_notes_title")}</a>'
         if show_hashi_notes_button else ""
     )
     pomodoro_button_html = (
         '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
-        'class="onigiri-reviewer-button onigiri-pomodoro-button">Pomodoro</a>'
+        f'class="onigiri-reviewer-button onigiri-pomodoro-button">{tr_at("pomodoro_title")}</a>'
         if show_pomodoro_button else ""
     )
 
-    header_buttons = """
+    # The header gauge only makes sense over a live queue, so it is built for
+    # the reviewer webview and left out of the overview's copy of this header.
+    # Anki sets the reviewer's web content before it fires state_did_change, so
+    # the cache still holds the previous session's settings here: re-read.
+    progress_settings = _reviewer_progress_settings(conf, force=not include_overview_class)
+    progress_html = ""
+    progress_css = ""
+    if not include_overview_class and progress_settings["enabled"]:
+        reset_reviewer_progress_session()
+        progress_html = _reviewer_progress_html(progress_settings)
+        progress_css = _reviewer_progress_css(progress_settings)
+
+    header_buttons = f"""
     <div class="onigiri-reviewer-header-buttons">
-        <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">Decks</a>
-        <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">Add</a>
-        <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">Browse</a>
-        <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">Stats</a>
-        <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">Sync</a>
-        {}
-        {}
-        {}
+        {progress_html if progress_settings["position"] == "left" else ""}
+        <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
+        <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
+        <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
+        <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
+        <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
+        {hashi_notes_button_html}
+        {pomodoro_button_html}
+        {restaurant_chip_html if show_restaurant_chip else ""}
+        {progress_html if progress_settings["position"] == "right" else ""}
     </div>
-    """.format(hashi_notes_button_html, pomodoro_button_html, restaurant_chip_html if show_restaurant_chip else "")
+    """
     
     html = f"""
     <div id="onigiri-reviewer-header" class="header">
@@ -3705,6 +4477,15 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             width: max-content;
             max-width: calc(100vw - 24px);
             min-height: 40px;
+            /* vh cap keeps the bar's on-screen footprint fixed regardless of
+               Anki's zoom. Zooming in shrinks the viewport's CSS px, so the bar
+               wraps into extra rows; without a cap its height grows unbounded
+               and the qa-offset JS shoves the card down until the bar covers
+               most of the reviewer. 30vh is zoom-invariant on screen (30% of
+               the reviewer, worst case) and scrolls past that instead. */
+            max-height: 30vh;
+            overflow-y: auto;
+            overflow-x: hidden;
             margin: 5px auto 10px auto;
             border-radius: 12px;
             height: auto;
@@ -3791,26 +4572,27 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             margin-left: 0;
             padding: 4px 10px;
             border-radius: 999px;
-            background: rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            color: inherit;
+            /* Same chrome tokens as a.onigiri-reviewer-button so the chip reads
+               as one of the header buttons; only the pill radius differs. */
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(247, 247, 247, 0.92)));
+            backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
+            -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
+            color: var(--onigiri-box-effect-fg, var(--fg));
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             font-size: var(--font-size-main, 13px);
-            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
             position: relative;
             overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2));
             cursor: pointer;
             flex: 0 0 auto;
         }
-        
+
         .night_mode #onigiri-reviewer-header .restaurant-level-chip,
         .night_mode #onigiri-overview-header .restaurant-level-chip,
         .night_mode .overview-header .restaurant-level-chip {
-            background: rgba(0, 0, 0, 0.3);
-            border-color: rgba(255, 255, 255, 0.05);
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(42, 42, 42, 0.92)));
+            border-color: var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2));
         }
         
         #onigiri-reviewer-header .restaurant-level-chip .rl-chip-level,
@@ -3818,8 +4600,7 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         .overview-header .restaurant-level-chip .rl-chip-level {
             font-weight: 600;
             white-space: nowrap;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+            color: inherit;
         }
         
         #onigiri-reviewer-header .restaurant-level-chip .rl-chip-progress,
@@ -3828,15 +4609,15 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             width: 72px;
             height: 6px;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.25);
+            background: rgba(128, 128, 128, 0.28);
             overflow: hidden;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
         }
         
         .night_mode #onigiri-reviewer-header .restaurant-level-chip .rl-chip-progress,
         .night_mode #onigiri-overview-header .restaurant-level-chip .rl-chip-progress,
         .night_mode .overview-header .restaurant-level-chip .rl-chip-progress {
-            background: rgba(0, 0, 0, 0.35);
+            background: rgba(255, 255, 255, 0.16);
         }
         
         #onigiri-reviewer-header .restaurant-level-chip .rl-chip-progress-fill,
@@ -3852,8 +4633,9 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         #onigiri-reviewer-header .restaurant-level-chip:hover,
         #onigiri-overview-header .restaurant-level-chip:hover,
         .overview-header .restaurant-level-chip:hover {
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(128, 128, 128, 0.25)));
+            border-color: var(--onigiri-box-effect-border-hover, var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.3)));
             transform: translateY(-1px);
-            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
         
         #onigiri-reviewer-header .restaurant-level-chip:hover .rl-chip-progress-fill,
@@ -3901,12 +4683,14 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     </style>
     """
     
+    css += progress_css
+
     return html, css
 
 
 def _reviewer_bottom_bar_height_px(conf=None):
     if conf is None:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
     try:
         height = int(conf.get("onigiri_reviewer_bar_height", 60))
     except (TypeError, ValueError):
@@ -3917,7 +4701,7 @@ def _reviewer_bottom_bar_height_px(conf=None):
 def _reviewer_background_viewport_height_px(bar_height=None):
     """Best-effort shared image canvas height for the reviewer and bottom bar."""
     if bar_height is None:
-        bar_height = _reviewer_bottom_bar_height_px(config.get_config())
+        bar_height = _reviewer_bottom_bar_height_px(config.get_config_readonly())
 
     candidates = []
     try:
@@ -3985,7 +4769,7 @@ def apply_reviewer_bottom_bar_height(conf=None):
     if not bottom_web:
         return
     if conf is None:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
     _store_bottom_web_default_height(bottom_web)
     if conf.get("maxHide", False):
         bottom_web.setFixedHeight(0)
@@ -4006,7 +4790,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
     blur_px = blur_val * 0.2
     blur_bleed_px = math.ceil(blur_px * 3) if blur_px > 0 else 0
     opacity_float = opacity_val / 100.0
-    bar_height = _reviewer_bottom_bar_height_px(config.get_config())
+    bar_height = _reviewer_bottom_bar_height_px(config.get_config_readonly())
     viewport_height = _reviewer_background_viewport_height_px(bar_height)
     has_image_background = mode in ["image", "image_color"]
     document_light_color = "#000000" if has_image_background else light_color
@@ -4148,7 +4932,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
 
 def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
     """Generates CSS for the reviewer's bottom bar background."""
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     # FIX: Read from conf, not mw.col.conf
     bar_mode = conf.get("onigiri_reviewer_bottom_bar_bg_mode", "match_reviewer_bg")
 
@@ -4359,62 +5143,54 @@ def generate_profile_page_background_css():
         return ""
 
 def generate_profile_bar_fix_css():
-    """Generates compatibility CSS for the current profile bar layout."""
+    """Generates compatibility CSS for the current profile bar layout matching preview pill style."""
     return """
 <style id="onigiri-profile-bar-fix">
 .profile-bar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    justify-content: stretch;
-    justify-items: stretch;
-    align-items: center;
-    box-sizing: border-box;
-    min-height: 50px;
+    height: 64px !important;
+    border-radius: 32px !important;
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 12px !important;
+    gap: 14px !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+    width: var(--onigiri-deck-header-width, 100%) !important;
+    max-width: 100% !important;
 }
 
 .profile-bar .profile-content,
 .profile-bar .profile-content-main {
-    width: 100%;
-    min-width: 0;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 14px !important;
 }
 
 .profile-bar .restaurant-level-chip {
-    margin-left: auto;
+    margin-left: auto !important;
 }
 
 .profile-bar .profile-pic,
 .profile-bar .profile-pic-placeholder,
 .profile-bar .profile-pic-generated {
-    position: static;
-    width: 38px;
-    height: 38px;
-    aspect-ratio: 1 / 1;
-    object-fit: cover;
-    border-radius: 50%;
-    flex: 0 0 auto;
-    margin-left: 0;
-    margin-right: 12px;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 50% !important;
+    flex: 0 0 44px !important;
+    margin: 0 !important;
+    object-fit: cover !important;
 }
 
-.profile-bar .profile-pic-placeholder,
-.profile-bar .profile-pic-generated {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: clamp(14px, 4vw, 20px);
-    background-color: rgba(0,0,0,0.1);
-    border: 1px solid rgba(255,255,255,0.1);
-}
-
-.profile-name {
-    font-weight: 500;
-    font-size: 16px;
-    min-width: 0;
-    flex: 0 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.profile-bar .profile-name {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 </style>
 """
@@ -4475,6 +5251,9 @@ def generate_icon_size_css():
 
     return f"<style id='modern-menu-icon-size-styles'>{''.join(css_rules)}</style>"
 
+_ICON_CSS_URI_CACHE = {}
+
+
 def generate_icon_css(addon_package, conf):
     all_icon_selectors = {
         "options": "td.opts a", "folder": "tr.is-folder a.deck::before, .onigiri-drag-preview.is-folder a.deck::before",
@@ -4509,21 +5288,36 @@ def generate_icon_css(addon_package, conf):
         return ""
 
     def get_data_uri(path):
-        if not path or not os.path.exists(path):
+        # generate_icon_css runs on every deck browser/overview render and asks
+        # for the same icon files each time; cache on the file's identity so an
+        # edited icon still refreshes.
+        if not path:
             return ""
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return ""
+        key = (stat.st_mtime_ns, stat.st_size)
+        cached = _ICON_CSS_URI_CACHE.get(path)
+        if cached is not None and cached[0] == key:
+            return cached[1]
         try:
             with open(path, "rb") as f:
                 data = f.read()
                 b64 = base64.b64encode(data).decode("utf-8")
                 # Detect file type for correct MIME type
                 if path.lower().endswith(".png"):
-                    return f"url('data:image/png;base64,{b64}')"
+                    uri = f"url('data:image/png;base64,{b64}')"
                 else:
                     # Default to SVG
-                    return f"url('data:image/svg+xml;base64,{b64}')"
+                    uri = f"url('data:image/svg+xml;base64,{b64}')"
         except Exception as e:
             print(f"Onigiri: Error loading icon {path}: {e}")
             return ""
+        if len(_ICON_CSS_URI_CACHE) > 256:
+            _ICON_CSS_URI_CACHE.clear()
+        _ICON_CSS_URI_CACHE[path] = (key, uri)
+        return uri
 
     hide_defaults = mw.col.conf.get("modern_menu_hide_default_icons", False)
 
@@ -4607,11 +5401,14 @@ def generate_icon_css(addon_package, conf):
             css_rules.append(f"{selector} {{ mask-image: {url}; -webkit-mask-image: {url}; }}")
 
     # --- Custom Deck Icons ---
-    custom_deck_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
+    custom_deck_icons = config.get_collection_config("onigiri_custom_deck_icons", {})
     for did, data in custom_deck_icons.items():
         icon_file = data.get("icon")
         color = data.get("color")
-        
+        # Absent means "linked to the light colour" (entries saved before the
+        # light/dark split only ever wrote "color").
+        color_dark = data.get("colorDark", color)
+
         if icon_file:
                 is_emoji = icon_file.startswith("emoji:") or (len(icon_file) <= 8 and "." not in icon_file)
                 emoji_char = icon_file[len("emoji:"):] if icon_file.startswith("emoji:") else icon_file
@@ -4695,9 +5492,13 @@ def generate_icon_css(addon_package, conf):
                             # --icon-color so the icon tracks the theme like
                             # every other deck icon SVG.
                             icon_color_css = color if color else "var(--icon-color, #888888)"
+                            icon_color_dark_css = color_dark if color_dark else "var(--icon-color, #888888)"
+                            selectors = (
+                                f'tr[data-did="{did}"] a.deck::before,\n'
+                                f'                            .onigiri-drag-preview[data-did="{did}"] a.deck::before'
+                            )
                             css_rules.append(f"""
-                            tr[data-did="{did}"] a.deck::before,
-                            .onigiri-drag-preview[data-did="{did}"] a.deck::before {{
+                            {selectors} {{
                                 mask-image: {url} !important;
                                 -webkit-mask-image: {url} !important;
                                 background-color: {icon_color_css} !important;
@@ -4713,6 +5514,15 @@ def generate_icon_css(addon_package, conf):
                                 margin-right: 5px !important;
                             }}
                             """)
+                            # Only needed when the dark slot was actually set to
+                            # something else — most decks stay linked and never
+                            # emit this second rule.
+                            if icon_color_dark_css != icon_color_css:
+                                css_rules.append(f"""
+                                .night-mode {selectors} {{
+                                    background-color: {icon_color_dark_css} !important;
+                                }}
+                                """)
 
 
     # --- Get URLs for collapse icons ---
@@ -4742,6 +5552,29 @@ def generate_icon_css(addon_package, conf):
     # Create a list of selectors for the background color, EXCLUDING the star and filtered deck (filtered has own color)
     bg_color_selectors = {k: v for k, v in all_icon_selectors.items() if k not in ["retention_star", "filtered_deck"]}
     bg_selectors_str = ", ".join(bg_color_selectors.values())
+
+    # --- Per-icon colours -------------------------------------------------------
+    # Each icon can carry its own tint, set inside its own picker in Settings
+    # (Sidebar -> Decks / Action Buttons). Unset falls through to the palette
+    # rules above (--icon-color, and --icon-color-filtered for filtered decks),
+    # which is why these are emitted last and marked !important: the filtered
+    # and collapse rules they have to beat are !important themselves.
+    per_icon_color_rules = []
+    for key, selector in all_icon_selectors.items():
+        if key == "retention_star":
+            continue
+        color = mw.col.conf.get(f"modern_menu_icon_color_{key}", "")
+        if color:
+            per_icon_color_rules.append(
+                f"{selector} {{ background-color: {color} !important; }}"
+            )
+    for state, key in (("closed", "collapse_closed"), ("open", "collapse_open")):
+        color = mw.col.conf.get(f"modern_menu_icon_color_{key}", "")
+        if color:
+            per_icon_color_rules.append(
+                f"a.collapse.state-{state}::before {{ background-color: {color} !important; }}"
+            )
+    per_icon_color_css = "\n".join(per_icon_color_rules)
 
     return f"""
 <style id="modern-menu-icon-styles">
@@ -4860,6 +5693,9 @@ def generate_icon_css(addon_package, conf):
     /* END FIX */    
     /* Individual mask images for other icons (Unchanged) */
     {''.join(css_rules)}
+
+    /* Per-icon tints, last so they win over the palette defaults above. */
+    {per_icon_color_css}
 </style>
 """
 
@@ -5142,7 +5978,7 @@ def _box_effect_values():
 
 def generate_box_effect_button_vars_css(conf=None, selector=":root", night_selector=None):
 	if conf is None:
-		conf = config.get_config()
+		conf = config.get_config_readonly()
 	if night_selector is None:
 		night_selector = ".night-mode,\n        .nightMode,\n        .night_mode"
 	blur, opacity, radius, stroke = _box_effect_values()
@@ -5429,48 +6265,80 @@ def generate_dynamic_css(conf):
 			return _overview_rgba(color, study_btn_opacity / 100.0)
 		return color
 
+	def _overview_button_text_color(color: str) -> str:
+		"""Return a readable foreground for a user-picked button colour."""
+		value = str(color or "").strip().lstrip("#")
+		if len(value) == 3:
+			value = "".join(char * 2 for char in value)
+		if len(value) != 6:
+			return "var(--fg)"
+		try:
+			red, green, blue = (int(value[index:index + 2], 16) for index in (0, 2, 4))
+		except ValueError:
+			return "var(--fg)"
+		return "#1f2124" if (0.299 * red + 0.587 * green + 0.114 * blue) > 150 else "#ffffff"
+
+	def _overview_action_button_rules(mode: str) -> list:
+		defaults = {
+			"options_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
+			"custom_study_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
+			"description_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
+			"reveal_button": "#0077c8" if mode == "light" else "#0a84ff",
+		}
+		rules = []
+		for key, fallback in defaults.items():
+			color = _overview_color(mode, key, "", fallback)
+			name = key.replace("_button", "").replace("_", "-")
+			rules.extend((
+				f"    --overview-{name}-button-bg: {color} !important;",
+				f"    --overview-{name}-button-fg: {_overview_button_text_color(color)} !important;",
+			))
+		return rules
+
 	overview_light_rules = [
 		f"    --overview-box-bg: {_overview_box_bg('light', '#ffffff')} !important;",
 		f"    --overview-box-border: {_overview_color('light', 'box_border', '--border', '#e0e0e0')} !important;",
 		f"    --overview-study-button-bg: {_study_button_bg('light', '#007aff')} !important;",
 		f"    --overview-study-button-stroke-width: {study_btn_stroke}px !important;",
 		f"    --overview-study-button-stroke-style: {study_btn_stroke_style} !important;",
-		f"    --overview-study-button-stroke-color: {_overview_color('light', 'box_border', '--border', '#e0e0e0')} !important;",
+		f"    --overview-study-button-stroke-color: {_overview_color('light', 'study_button_stroke', 'box_border', '#e0e0e0')} !important;",
 		f"    --overview-study-button-hover-lift: {study_btn_hover_lift} !important;",
 		f"    --overview-study-button-hover-shadow: {study_btn_hover_shadow} !important;",
 		f"    --overview-study-button-blur: {study_btn_blur_px:.2f}px !important;",
 		f"    --overview-study-button-radius: {study_btn_radius}px !important;",
 		f"    --overview-new-bubble-bg: {_overview_color('light', 'new_bubble', '--new-count-bubble-bg', '#1e8cff')} !important;",
 		f"    --overview-new-count-fg: {_overview_color('light', 'new_text', '--new-count-bubble-fg', '#ffffff')} !important;",
-		f"    --overview-learn-bubble-bg: {_overview_color('light', 'learn_bubble', '--learn-count-bubble-bg', '#19c96b')} !important;",
+		f"    --overview-learn-bubble-bg: {_overview_color('light', 'learn_bubble', '--learn-count-bubble-bg', '#ff5757')} !important;",
 		f"    --overview-learn-count-fg: {_overview_color('light', 'learn_text', '--learn-count-bubble-fg', '#ffffff')} !important;",
-		f"    --overview-review-bubble-bg: {_overview_color('light', 'review_bubble', '--review-count-bubble-bg', '#ff5757')} !important;",
+		f"    --overview-review-bubble-bg: {_overview_color('light', 'review_bubble', '--review-count-bubble-bg', '#19c96b')} !important;",
 		f"    --overview-review-count-fg: {_overview_color('light', 'review_text', '--review-count-bubble-fg', '#ffffff')} !important;",
 		f"    --overview-box-blur: {(overview_blur / 100.0) * 20:.2f}px !important;",
 		f"    --overview-box-radius: {overview_radius}px !important;",
 		f"    --overview-box-stroke: {overview_stroke}px !important;",
 	]
+	overview_light_rules.extend(_overview_action_button_rules("light"))
 	overview_dark_rules = [
 		f"    --overview-box-bg: {_overview_box_bg('dark', '#2c2c2c')} !important;",
 		f"    --overview-box-border: {_overview_color('dark', 'box_border', '--border', '#424242')} !important;",
 		f"    --overview-study-button-bg: {_study_button_bg('dark', '#0a84ff')} !important;",
 		f"    --overview-study-button-stroke-width: {study_btn_stroke}px !important;",
 		f"    --overview-study-button-stroke-style: {study_btn_stroke_style} !important;",
-		f"    --overview-study-button-stroke-color: {_overview_color('dark', 'box_border', '--border', '#424242')} !important;",
+		f"    --overview-study-button-stroke-color: {_overview_color('dark', 'study_button_stroke', 'box_border', '#424242')} !important;",
 		f"    --overview-study-button-hover-lift: {study_btn_hover_lift} !important;",
 		f"    --overview-study-button-hover-shadow: {study_btn_hover_shadow} !important;",
 		f"    --overview-study-button-blur: {study_btn_blur_px:.2f}px !important;",
 		f"    --overview-study-button-radius: {study_btn_radius}px !important;",
 		f"    --overview-new-bubble-bg: {_overview_color('dark', 'new_bubble', '--new-count-bubble-bg', '#0a84ff')} !important;",
 		f"    --overview-new-count-fg: {_overview_color('dark', 'new_text', '--new-count-bubble-fg', '#f7fbff')} !important;",
-		f"    --overview-learn-bubble-bg: {_overview_color('dark', 'learn_bubble', '--learn-count-bubble-bg', '#12b765')} !important;",
-		f"    --overview-learn-count-fg: {_overview_color('dark', 'learn_text', '--learn-count-bubble-fg', '#f4fff8')} !important;",
-		f"    --overview-review-bubble-bg: {_overview_color('dark', 'review_bubble', '--review-count-bubble-bg', '#ff453a')} !important;",
-		f"    --overview-review-count-fg: {_overview_color('dark', 'review_text', '--review-count-bubble-fg', '#fff5f5')} !important;",
+		f"    --overview-learn-bubble-bg: {_overview_color('dark', 'learn_bubble', '--learn-count-bubble-bg', '#ff453a')} !important;",
+		f"    --overview-learn-count-fg: {_overview_color('dark', 'learn_text', '--learn-count-bubble-fg', '#fff5f5')} !important;",
+		f"    --overview-review-bubble-bg: {_overview_color('dark', 'review_bubble', '--review-count-bubble-bg', '#12b765')} !important;",
+		f"    --overview-review-count-fg: {_overview_color('dark', 'review_text', '--review-count-bubble-fg', '#f4fff8')} !important;",
 		f"    --overview-box-blur: {(overview_blur / 100.0) * 20:.2f}px !important;",
 		f"    --overview-box-radius: {overview_radius}px !important;",
 		f"    --overview-box-stroke: {overview_stroke}px !important;",
 	]
+	overview_dark_rules.extend(_overview_action_button_rules("dark"))
 
 	# --- Deck Stats widget (learner stats) look & category colors ---
 	deck_stats_style = conf.get("deck_stats_style", {}) if isinstance(conf.get("deck_stats_style", {}), dict) else {}
@@ -5557,7 +6425,7 @@ def generate_dynamic_css(conf):
 	sw_opacity = box_effect_opacity if sw_sync else max(0, min(100, int(stats_widgets_style.get("opacity", 100) or 100)))
 	sw_radius = box_effect_radius if sw_sync else max(0, min(60, _int_style_value(stats_widgets_style.get("radius", 20), 20)))
 	sw_stroke = box_effect_stroke if sw_sync else max(0, min(10, _int_style_value(stats_widgets_style.get("stroke", 1), 1)))
-	sw_value_scale = max(60, min(160, _int_style_value(stats_widgets_style.get("value_scale", 100), 100)))
+	sw_value_scale = max(60, min(100, _int_style_value(stats_widgets_style.get("value_scale", 100), 100)))
 
 	sw_fallback_colors = {
 		"light": {
@@ -5565,12 +6433,14 @@ def generate_dynamic_css(conf):
 			"label": "#757575", "value": "#212121",
 			"studied": "#5eaadf", "time": "#8b7bd8",
 			"pace": "#f5a05a", "retention": "#26a641",
+			"retention_star": "#FFD700", "retention_star_empty": "#e0e0e0",
 		},
 		"dark": {
 			"box_bg": "#2c2c2c", "box_border": "#424242",
 			"label": "#9c9c9c", "value": "#f0f0f0",
 			"studied": "#6bb6ec", "time": "#a294ea",
 			"pace": "#f7ad6b", "retention": "#35b850",
+			"retention_star": "#FFD700", "retention_star_empty": "#4a4a4a",
 		},
 	}
 
@@ -5613,6 +6483,11 @@ def generate_dynamic_css(conf):
 			# here the same way the heatmap ramp is.
 			rules.append(f"    --swidget-{key}-chip: {_onigiri_css_color_with_alpha(accent, 0.16)} !important;")
 			rules.append(f"    --swidget-{key}-wash: {_onigiri_css_color_with_alpha(accent, 0.10)} !important;")
+			if key == "retention":
+				# Retention stars have their own palette so the default filled
+				# stars stay yellow instead of inheriting the metric's green accent.
+				rules.append(f"    --swidget-retention-star: {_sw_color(mode, 'retention_star')} !important;")
+				rules.append(f"    --swidget-retention-empty-star: {_sw_color(mode, 'retention_star_empty')} !important;")
 		return rules
 
 	overview_light_rules.extend(_sw_rules("light"))
@@ -5676,9 +6551,16 @@ def generate_dynamic_css(conf):
 	overview_dark_rules.extend(_hw_rules("dark"))
 
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
+	heatmap_style = conf.get("heatmap_style", {}) if isinstance(conf.get("heatmap_style", {}), dict) else {}
+	heatmap_dynamic = bool(heatmap_style.get("dynamic", True))
+
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
-		heatmap_color = colors_dict.get("--heatmap-color", "#9be9a8")
-		heatmap_color_zero = colors_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
+		# Dynamic Mode off: both themes read the light entry, matching
+		# sw_dynamic/deck_stats_dynamic's "source_mode = mode if dynamic else
+		# light" rule above.
+		source_dict = colors_dict if heatmap_dynamic else light_colors
+		heatmap_color = source_dict.get("--heatmap-color", "#9be9a8")
+		heatmap_color_zero = source_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
 
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
@@ -5782,8 +6664,9 @@ def generate_dynamic_css(conf):
 	light_rules = "\n".join([f"    {key}: {value} !important;" for key, value in light_colors.items()])
 	dark_rules = "\n".join([f"    {key}: {value} !important;" for key, value in dark_colors.items()])
 	
+	dyn_bg = bool(mw.col.conf.get("modern_menu_profile_bg_dynamic_mode", True))
 	profile_light_color = mw.col.conf.get("modern_menu_profile_bg_color_light", "#EEEEEE")
-	profile_dark_color = mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C")
+	profile_dark_color = mw.col.conf.get("modern_menu_profile_bg_color_dark", "#3C3C3C") if dyn_bg else profile_light_color
 	light_rules += f"\n    --profile-bg-custom-color: {profile_light_color} !important;"
 	dark_rules += f"\n    --profile-bg-custom-color: {profile_dark_color} !important;"
 
@@ -5904,11 +6787,23 @@ def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -
 		return super(MainWebView, self).eventFilter(obj, evt)
 
 
+def _set_web_visible(web, visible: bool) -> None:
+    """setVisible() on a webview costs several ms even when nothing changes,
+    and every screen change asked for the same state twice. Skip the call when
+    the widget is already in the requested state - but only once the main
+    window itself is up, because before that isVisible() is False for every
+    child and the explicit show/hide flag still has to be set."""
+    try:
+        if mw.isVisible() and web.isVisible() == visible:
+            return
+    except Exception:
+        pass
+    web.setVisible(visible)
+
+
 def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
     """This function is called by a hook every time the screen changes."""
     conf = config.get_config_readonly()
-    if new_state == "overview":
-        ensure_synapsepro_overview_bridge_hook()
     apply_synapsepro_sidebar_visibility(conf)
     # Re-hiding the SynapsePro dock is only needed when that add-on is around to
     # re-show it. Scheduling these unconditionally leaked two lambdas per screen
@@ -5927,8 +6822,8 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
 
     if not should_hide_setting:
         # If the feature is disabled in settings, ensure toolbars are always visible
-        mw.toolbar.web.setVisible(True)
-        mw.bottomWeb.setVisible(True)
+        _set_web_visible(mw.toolbar.web, True)
+        _set_web_visible(mw.bottomWeb, True)
         return
 
     # Handle reviewer state first with new priority
@@ -5936,28 +6831,28 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
         # Always show bottom bar in reviewer, regardless of hide mode
         if max_hide:
             # Max hide: Hide only top toolbar, keep bottom bar visible
-            mw.toolbar.web.setVisible(False)
-            mw.bottomWeb.setVisible(True)
+            _set_web_visible(mw.toolbar.web, False)
+            _set_web_visible(mw.bottomWeb, True)
         elif pro_hide:
             # Pro hide: Hide only top toolbar
-            mw.toolbar.web.setVisible(False)
-            mw.bottomWeb.setVisible(True)
+            _set_web_visible(mw.toolbar.web, False)
+            _set_web_visible(mw.bottomWeb, True)
         else:
             # Base hide mode: Hide top toolbar but keep bottom bar visible
-            mw.toolbar.web.setVisible(False)
-            mw.bottomWeb.setVisible(True)
+            _set_web_visible(mw.toolbar.web, False)
+            _set_web_visible(mw.bottomWeb, True)
         return
 
     # General hiding logic for other screens
     states_to_hide = ["deckBrowser", "overview"]
     if new_state in states_to_hide:
         # Hide both toolbars on the main menu and deck overview
-        mw.toolbar.web.setVisible(False)
-        mw.bottomWeb.setVisible(False)
+        _set_web_visible(mw.toolbar.web, False)
+        _set_web_visible(mw.bottomWeb, False)
     else:
         # Show toolbars on ALL other screens (this will now exclude the 'review' case when pro_hide is on)
-        mw.toolbar.web.setVisible(True)
-        mw.bottomWeb.setVisible(True)
+        _set_web_visible(mw.toolbar.web, True)
+        _set_web_visible(mw.bottomWeb, True)
 
 def update_reviewer_chip():
     """Update the Restaurant Level chip in Onigiri's reviewer shadow header."""
@@ -6027,23 +6922,33 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
 
     conf = getattr(ctx, "onigiri_conf", None)
     if conf is None:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         setattr(ctx, "onigiri_conf", conf)
 
     # --- ADD THIS BLOCK ---
     # --- Onigiri Favorites ---
-    try:
-        favorites = mw.col.get_config("onigiri_favorite_decks") or []
-    except Exception:
-        favorites = mw.col.conf.get("onigiri_favorite_decks", [])
+    # This runs once per deck row, so both collection reads are cached on the
+    # render context alongside onigiri_conf - a tree with 180 decks was paying
+    # 360 backend round-trips per render for two values that cannot change
+    # mid-render.
+    favorites = getattr(ctx, "onigiri_favorites", None)
+    if favorites is None:
+        try:
+            favorites = mw.col.get_config("onigiri_favorite_decks") or []
+        except Exception:
+            favorites = mw.col.conf.get("onigiri_favorite_decks", [])
+        setattr(ctx, "onigiri_favorites", favorites)
     did_str = str(node.deck_id)
     is_favorite = did_str in favorites
     fav_attr = ' data-is-fav="1"' if is_favorite else ""
 
-    try:
-        deck_marks = mw.col.get_config("onigiri_deck_marks") or {}
-    except Exception:
-        deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
+    deck_marks = getattr(ctx, "onigiri_deck_marks", None)
+    if deck_marks is None:
+        try:
+            deck_marks = mw.col.get_config("onigiri_deck_marks") or {}
+        except Exception:
+            deck_marks = mw.col.conf.get("onigiri_deck_marks", {})
+        setattr(ctx, "onigiri_deck_marks", deck_marks)
     mark_colors = conf.get("markerColors", {}) or {}
     default_mark_colors = {
         "red": "#FF4B4B",
@@ -6055,11 +6960,14 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     mark_colors = default_mark_colors
     mark_key = deck_marks.get(did_str)
     mark_attr = f' data-mark="{mark_key}"' if mark_key in mark_colors else ""
-    try:
-        addon_pkg = mw.addonManager.addonFromModule(__name__)
-    except Exception:
-        addon_pkg = "1011095603"
-        
+    addon_pkg = getattr(ctx, "onigiri_addon_pkg", None)
+    if addon_pkg is None:
+        try:
+            addon_pkg = mw.addonManager.addonFromModule(__name__)
+        except Exception:
+            addon_pkg = "1011095603"
+        setattr(ctx, "onigiri_addon_pkg", addon_pkg)
+
     mark_icons = conf.get("markerIcons", {}) or {}
     mark_dot_html = ""
     if mark_key in mark_colors:
@@ -6245,7 +7153,7 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
     <td class=decktd colspan=7>
         <div class="deck-info">
             {deck_prefix}
-            <a class="deck {extraclass}" href=# onclick="return pycmd('open:{node.deck_id}')">
+            <a class="deck {extraclass}" href=# onclick="return OnigiriEngine.openDeck(event, '{node.deck_id}');">
                 <span class="deck-name">{display_name}</span>{mark_dot_html}
             </a>
         </div>
@@ -6317,6 +7225,13 @@ def apply_patches():
     
     # Add hook for toolbar visibility changes
     gui_hooks.state_did_change.append(_update_toolbar_visibility)
+
+    # Reviewer header progress bar. `did_show_question` is the repaint point:
+    # by then the scheduler has re-counted, so the gauge and Anki's bottom bar
+    # are always reading the same numbers.
+    gui_hooks.state_did_change.append(_on_reviewer_progress_state_change)
+    gui_hooks.reviewer_did_answer_card.append(_on_reviewer_progress_answered)
+    gui_hooks.reviewer_did_show_question.append(_on_reviewer_progress_show_question)
     
     # Mark the hook as registered and update toolbar state
     mw._onigiri_restaurant_hook_registered = True
@@ -6442,9 +7357,9 @@ def generate_reviewer_buttons_css(conf):
         :root {{
             --onigiri-reviewer-new-count-bg: {_overview_count_color("light", "new_bubble", "--new-count-bubble-bg", "#1e8cff")};
             --onigiri-reviewer-new-count-fg: {_overview_count_color("light", "new_text", "--new-count-bubble-fg", "#ffffff")};
-            --onigiri-reviewer-learn-count-bg: {_overview_count_color("light", "learn_bubble", "--learn-count-bubble-bg", "#19c96b")};
+            --onigiri-reviewer-learn-count-bg: {_overview_count_color("light", "learn_bubble", "--learn-count-bubble-bg", "#ff5757")};
             --onigiri-reviewer-learn-count-fg: {_overview_count_color("light", "learn_text", "--learn-count-bubble-fg", "#ffffff")};
-            --onigiri-reviewer-review-count-bg: {_overview_count_color("light", "review_bubble", "--review-count-bubble-bg", "#ff5757")};
+            --onigiri-reviewer-review-count-bg: {_overview_count_color("light", "review_bubble", "--review-count-bubble-bg", "#19c96b")};
             --onigiri-reviewer-review-count-fg: {_overview_count_color("light", "review_text", "--review-count-bubble-fg", "#ffffff")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_light};
         }}
@@ -6453,10 +7368,10 @@ def generate_reviewer_buttons_css(conf):
         .night-mode {{
             --onigiri-reviewer-new-count-bg: {_overview_count_color("dark", "new_bubble", "--new-count-bubble-bg", "#0a84ff")};
             --onigiri-reviewer-new-count-fg: {_overview_count_color("dark", "new_text", "--new-count-bubble-fg", "#f7fbff")};
-            --onigiri-reviewer-learn-count-bg: {_overview_count_color("dark", "learn_bubble", "--learn-count-bubble-bg", "#12b765")};
-            --onigiri-reviewer-learn-count-fg: {_overview_count_color("dark", "learn_text", "--learn-count-bubble-fg", "#f4fff8")};
-            --onigiri-reviewer-review-count-bg: {_overview_count_color("dark", "review_bubble", "--review-count-bubble-bg", "#ff453a")};
-            --onigiri-reviewer-review-count-fg: {_overview_count_color("dark", "review_text", "--review-count-bubble-fg", "#fff5f5")};
+            --onigiri-reviewer-learn-count-bg: {_overview_count_color("dark", "learn_bubble", "--learn-count-bubble-bg", "#ff453a")};
+            --onigiri-reviewer-learn-count-fg: {_overview_count_color("dark", "learn_text", "--learn-count-bubble-fg", "#fff5f5")};
+            --onigiri-reviewer-review-count-bg: {_overview_count_color("dark", "review_bubble", "--review-count-bubble-bg", "#12b765")};
+            --onigiri-reviewer-review-count-fg: {_overview_count_color("dark", "review_text", "--review-count-bubble-fg", "#f4fff8")};
             --onigiri-answer-hover-number-color: {answer_hover_number_color_dark};
         }}
 
@@ -6591,6 +7506,25 @@ def generate_reviewer_buttons_css(conf):
         #outer .onigiri-count-pill-review {{
             background: var(--onigiri-reviewer-review-count-bg) !important;
             color: var(--onigiri-reviewer-review-count-fg) !important;
+        }}
+
+        /* The active card type is shown as a tiny dot inside its matching
+           New/Learning/To Review box. */
+        #outer .onigiri-count-pill.is-current-card {{
+            gap: 5px !important;
+        }}
+
+        #outer .stat2 .onigiri-count-pill.is-current-card::before,
+        #outer .onigiri-count-pill.is-current-card::before {{
+            content: "" !important;
+            display: inline-block !important;
+            flex: 0 0 6px !important;
+            width: 6px !important;
+            height: 6px !important;
+            border-radius: 50% !important;
+            background: currentColor !important;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
+            pointer-events: none !important;
         }}
 
         /* Timer adaptation: neutral pill shown inside the Show Answer button
@@ -7026,6 +7960,7 @@ def generate_reviewer_buttons_css(conf):
         (function() {
             const ANSWER_LABELS = {"1": "Again", "2": "Hard", "3": "Good", "4": "Easy"};
             const ONIGIRI_TIMER_POSITION = "__ONIGIRI_TIMER_POSITION__";
+            const ONIGIRI_SHOW_ANSWER_LABEL = __ONIGIRI_SHOW_ANSWER_LABEL__;
             // Anki's native New/Learn/Review counts node lives inside the Show
             // Answer button and is only scraped successfully once per card (any
             // rebuild of the button wipes it for good). Cache the last real read so
@@ -7107,6 +8042,30 @@ def generate_reviewer_buttons_css(conf):
                 });
             }
 
+            let onigiriCardTypeInfo = window.__onigiriPendingReviewerCardType || null;
+
+            function renderOnigiriCardTypeIndicator() {
+                const outer = document.getElementById('outer');
+                if (!outer) return;
+
+                const info = onigiriCardTypeInfo;
+                const activeIndex = { new: 0, learn: 1, review: 2 }[info && info.key];
+                outer.querySelectorAll('.onigiri-count-pill').forEach((pill, index) => {
+                    const active = Number.isInteger(activeIndex) && index === activeIndex;
+                    pill.classList.toggle('is-current-card', active);
+                    if (active) pill.setAttribute('aria-label', info.label || 'Current card type');
+                    else pill.removeAttribute('aria-label');
+                });
+
+            }
+
+            window.onigiriSetReviewerCardType = function(info) {
+                onigiriCardTypeInfo = info && info.key ? info : null;
+                window.__onigiriPendingReviewerCardType = onigiriCardTypeInfo;
+                renderOnigiriCardTypeIndicator();
+            };
+            if (onigiriCardTypeInfo) renderOnigiriCardTypeIndicator();
+
             function findNativeNumberInsideButton(btn) {
                 return Array.from(btn.querySelectorAll('.nobold')).find(node => !node.classList.contains('onigiri-answer-hover-number'));
             }
@@ -7117,7 +8076,7 @@ def generate_reviewer_buttons_css(conf):
             // look for a leaf element whose own text matches the mm:ss shape, which
             // intervals/counts never do. Scoped to #outer so we never touch card text.
             function isOnigiriTimerText(text) {
-                return /^\d{1,2}:\d{2}$/.test(text);
+                return /^\\d{1,2}:\\d{2}$/.test(text);
             }
 
             function findOnigiriNativeTimerNode() {
@@ -7368,9 +8327,10 @@ def generate_reviewer_buttons_css(conf):
                 // very first tick. The timer text itself is still updated live,
                 // in place, below, without triggering a rebuild.
                 const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0');
-                const label = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
+                const nativeLabel = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
+                const label = nativeLabel === 'Show Answer' ? ONIGIRI_SHOW_ANSWER_LABEL : nativeLabel;
                 showButton.classList.add('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
-                showButton.setAttribute('data-onigiri-show-answer-label', label || 'Show Answer');
+                showButton.setAttribute('data-onigiri-show-answer-label', label || ONIGIRI_SHOW_ANSWER_LABEL);
                 if (showButton.getAttribute('data-onigiri-pre-answer-counts') === structureKey && showButton.querySelector('.onigiri-pre-answer-counts')) {
                     if (hasInsideTimer) {
                         const timerPill = showButton.querySelector('.onigiri-timer-pill');
@@ -7382,7 +8342,7 @@ def generate_reviewer_buttons_css(conf):
                 showButton.textContent = '';
                 const labelSpan = document.createElement('span');
                 labelSpan.className = 'onigiri-show-answer-label';
-                labelSpan.textContent = label || 'Show Answer';
+                labelSpan.textContent = label || ONIGIRI_SHOW_ANSWER_LABEL;
                 showButton.appendChild(labelSpan);
 
                 const panel = document.createElement('span');
@@ -7419,6 +8379,7 @@ def generate_reviewer_buttons_css(conf):
 
             function classifyButtons() {
                 stripBottomBarTooltips(document);
+                renderOnigiriCardTypeIndicator();
                 const buttons = document.querySelectorAll('#outer button, button');
                 const answerButtons = [];
                 buttons.forEach(btn => {
@@ -7436,6 +8397,7 @@ def generate_reviewer_buttons_css(conf):
                 answerButtons.forEach((item, index) => prepareAnswerButton(item.btn, item.ease, nativeNumbers[index] || null));
                 collapseNativeNumberHosts();
                 prepareShowAnswerCounts(buttons);
+                renderOnigiriCardTypeIndicator();
             }
 
             setInterval(classifyButtons, 100);
@@ -7444,7 +8406,11 @@ def generate_reviewer_buttons_css(conf):
         })();
         </script>
         """
-        scripts.append(_pre_answer_counts_script.replace("__ONIGIRI_TIMER_POSITION__", timer_position))
+        scripts.append(
+            _pre_answer_counts_script
+            .replace("__ONIGIRI_TIMER_POSITION__", timer_position)
+            .replace("__ONIGIRI_SHOW_ANSWER_LABEL__", json.dumps(tr_at("show_answer_label")))
+        )
 
     scripts.append("""
     <script>
@@ -7475,7 +8441,7 @@ def _onigiri_render_deck_tree(self, *args, **kwargs):
     """
     try:
         from . import config
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         if conf.get("enhancedDeckStats", False):
             # Pre-fetch stats
             try:

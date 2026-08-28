@@ -9,6 +9,55 @@ from .. import config
 
 MANTRA_HISTORY_LIMIT = 30
 
+# Mochi's history used to live inside the add-on settings, so showing a message
+# rewrote the whole ~18 KB settings file (and dropped the config cache) every
+# few answered cards. It has its own small file now.
+_HISTORY_CACHE: Optional[List[Dict[str, Any]]] = None
+
+
+def _history_path() -> str:
+    import os
+
+    from .. import addon_path
+
+    try:
+        profile = mw.pm.name or "default"
+    except Exception:
+        profile = "default"
+    user_files = os.path.join(addon_path, "user_files")
+    os.makedirs(user_files, exist_ok=True)
+    return os.path.join(user_files, f"mochi_history_{profile}.json")
+
+
+def _load_history() -> List[Dict[str, Any]]:
+    """Newest-first history, migrating the old in-settings copy once."""
+    global _HISTORY_CACHE
+    if _HISTORY_CACHE is not None:
+        return list(_HISTORY_CACHE)
+
+    from .. import safe_storage
+
+    data = safe_storage.read_json(_history_path(), default=None, label="Your Mochi messages")
+    history = data.get("history") if isinstance(data, dict) else None
+
+    if not isinstance(history, list):
+        # First run on the new layout: take whatever the settings file holds.
+        legacy = config.get_config_readonly().get("mochi_messages", {})
+        legacy_history = legacy.get("history") if isinstance(legacy, dict) else None
+        history = legacy_history if isinstance(legacy_history, list) else []
+
+    _HISTORY_CACHE = [item for item in history if isinstance(item, dict)]
+    return list(_HISTORY_CACHE)
+
+
+def _save_history(history: List[Dict[str, Any]]) -> None:
+    global _HISTORY_CACHE
+
+    from .. import safe_storage
+
+    _HISTORY_CACHE = list(history)
+    safe_storage.schedule_write_json(_history_path(), {"history": _HISTORY_CACHE})
+
 
 class MochiMessenger:
     def __init__(self) -> None:
@@ -17,14 +66,18 @@ class MochiMessenger:
 
     @staticmethod
     def _mochi_config() -> dict:
-        conf = config.get_config()
+        # Read-only: consulted on every answered card. _record_history() still
+        # takes a real (mutable) copy through get_config() before saving.
+        conf = config.get_config_readonly()
         mochi_conf = conf.get("mochi_messages", {})
         if not isinstance(mochi_conf, dict):
             mochi_conf = {}
         return mochi_conf
 
     def _is_enabled(self) -> bool:
-        if bool(config.get_config().get("focusedGaming", False)):
+        # Silent mode (Settings > Games > Gamification > Notifications) means
+        # no game speaks up: a Mochi message *is* a notification.
+        if bool(config.get_config_readonly().get("onigiri_reviewer_silent_notifications", False)):
             return False
         return bool(self._mochi_config().get("enabled", False))
 
@@ -177,19 +230,11 @@ class MochiMessenger:
         return message
 
     def _record_history(self, message: str) -> None:
-        conf = config.get_config()
-        mochi_conf = conf.setdefault("mochi_messages", {})
-        if not isinstance(mochi_conf, dict):
-            mochi_conf = {}
-            conf["mochi_messages"] = mochi_conf
-        history = mochi_conf.get("history") or []
-        if not isinstance(history, list):
-            history = []
+        history = _load_history()
         today = date.today().isoformat()
         if not (history and history[0].get("text") == message and history[0].get("date") == today):
             history.insert(0, {"text": message, "date": today})
-        mochi_conf["history"] = history[:MANTRA_HISTORY_LIMIT]
-        config.write_config(conf)
+        _save_history(history[:MANTRA_HISTORY_LIMIT])
 
     def _reset(self) -> None:
         self._reviews_since_last = 0
@@ -217,14 +262,7 @@ class MochiMessenger:
 
 def get_mantra_history() -> List[Dict[str, Any]]:
     """Newest-first list of {"text", "date"} entries for past Mochi Messages."""
-    conf = config.get_config()
-    mochi_conf = conf.get("mochi_messages", {})
-    if not isinstance(mochi_conf, dict):
-        return []
-    history = mochi_conf.get("history") or []
-    if not isinstance(history, list):
-        return []
-    return [item for item in history if isinstance(item, dict) and item.get("text")]
+    return [item for item in _load_history() if isinstance(item, dict) and item.get("text")]
 
 
 messenger = MochiMessenger()

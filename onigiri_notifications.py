@@ -91,14 +91,19 @@ _FALLBACK_JS = r"""
         'font-size:22px',
         'line-height:1'
       ].join(';');
-      if (data.iconImage) {
+      // Same default as web/notifications.js: no icon of the caller's own (or
+      // the bare "On" placeholder) means the Onigiri logo, not two letters.
+      var iconSrc = data.iconImage ||
+        ((!data.icon || data.icon === 'On')
+          ? '/_addons/1011095603/system_files/onigiri_mini_logo.svg' : '');
+      if (iconSrc) {
         var img = document.createElement('img');
-        img.src = data.iconImage;
+        img.src = iconSrc;
         img.alt = '';
         img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
         icon.appendChild(img);
       } else {
-        icon.textContent = data.icon || 'On';
+        icon.textContent = data.icon;
       }
       var content = document.createElement('div');
       content.style.cssText = 'display:grid;gap:2px;min-width:0;';
@@ -135,6 +140,16 @@ _FALLBACK_JS = r"""
   };
 })();
 """
+
+
+def _silent_mode() -> bool:
+    """Silent mode: every game notification is suppressed while it is on."""
+    try:
+        from . import config
+
+        return bool(config.get_config().get("onigiri_reviewer_silent_notifications", False))
+    except Exception:
+        return False
 
 
 def _configured_duration(fallback: int = 4200) -> int:
@@ -407,6 +422,13 @@ def notify(
 ) -> None:
     if not gamification:
         _native_tooltip(message)
+        return
+
+    # Silent mode: the games keep playing, they just say nothing. Checked here
+    # rather than at each call site because this is the single door every game
+    # toast goes through (the reviewer webview enforces the same key on its own
+    # side — see web/notifications.js).
+    if _silent_mode():
         return
 
     script = notification_script(

@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+from datetime import datetime
 from urllib.parse import unquote
 from typing import Tuple, Any, List
 from aqt.deckbrowser import DeckBrowser
@@ -9,10 +10,49 @@ from .decks import drag_drop as deck_drag_drop
 from .decks import move as move_deck
 from .onigiri_notifications import notify as tooltip
 from aqt import mw
-from aqt.qt import QApplication, QFileDialog, QInputDialog
+from aqt.qt import QApplication, QFileDialog, QInputDialog, QWidget, Qt
 from aqt.utils import askUser
 from anki.decks import DeckId
 from . import config
+from .translations import tr
+
+
+# Every user-facing string the injected deck-browser scripts can show. The JS
+# reads them off window.ONIGIRI_STRINGS through OnigiriI18n.t(key, fallback), so
+# the dialogs follow the add-on language instead of being stuck in English.
+_WEBVIEW_STRING_KEYS = (
+    "add", "browse", "stats", "sync", "settings", "onigiri_games", "more",
+    "home", "expand_sidebar", "collapse_sidebar", "drag_to_reorder_or_move",
+    "cancel", "close", "save", "remove", "create_action", "move_action",
+    "create_deck_title", "create_deck_subtitle", "deck_name_label",
+    "deck_name_placeholder", "parent_deck_label", "search_decks",
+    "no_matching_decks", "top_level", "add_subdeck_title", "subdeck_name_label",
+    "subdeck_name_placeholder",
+    "moving_label", "search_destination_decks", "rename_deck_title",
+    "rename_leaf_name", "rename_full_path", "rename_editing_full_path",
+    "deck_name_empty", "edit_icon", "type_your_own", "icon_label",
+    "reset_to_default_tooltip", "search_icons_placeholder",
+    "ctx_rename", "ctx_move_to", "ctx_change_icon", "markers",
+    "ctx_remove_marker", "ctx_deadline", "ctx_deck_options", "ctx_export_deck",
+    "ctx_copy_deck_id", "ctx_delete_deck", "ctx_favorite_selected",
+    "ctx_remove_favorites", "delete_selected", "marker_red", "marker_blue",
+    "marker_green", "marker_yellow", "get_shared", "create_deck", "import_file",
+    "hashi_notes_title", "sort_default_order", "sort_a_to_z", "sort_z_to_a",
+    "sort_most_due", "sort_most_new", "sort_most_reviews",
+    "sort_favorites_first", "sort_custom_order",
+)
+
+
+def webview_strings_script() -> str:
+    """Head script that publishes the translated strings to the page."""
+    strings = {key: tr(key) for key in _WEBVIEW_STRING_KEYS}
+    return (
+        "<script>window.ONIGIRI_STRINGS=%s;"
+        "window.OnigiriI18n={t:function(key,fallback){"
+        "var table=window.ONIGIRI_STRINGS||{};"
+        "return (table[key]||fallback||key);}};</script>"
+        % json.dumps(strings, ensure_ascii=False)
+    )
 
 
 _ICON_PRIORITY = [
@@ -26,6 +66,136 @@ def _refresh_deck_browser(context) -> None:
     if isinstance(context, DeckBrowser):
         context._render_data = None
         deck_tree_updater.refresh_deck_tree_state(context)
+
+
+# Pending deck deletion that can still be reverted from the undo toast.
+# Holds the collection undo step recorded right after the deletion so we can
+# verify nothing else happened before calling col.undo().
+_PENDING_DECK_DELETE: dict = {}
+
+
+def _open_delete_deck_dialog(context, deck_ids: List[int]) -> bool:
+    if not isinstance(context, DeckBrowser) or not deck_ids:
+        return False
+    many = len(deck_ids) > 1
+    deck_name = _deck_name(str(deck_ids[0])) if not many else ""
+    card_count = None
+    try:
+        card_count = mw.col.decks.card_count(
+            [DeckId(did) for did in deck_ids], include_subdecks=True
+        )
+    except Exception:
+        pass
+    strings = {
+        "title": tr("del_deck_title_plural") if many else tr("del_deck_title"),
+        "subtitle": tr("del_deck_selected").format(len(deck_ids)) if many else deck_name,
+        # Template keeps a {} placeholder; JS swaps it for the bolded value.
+        "message": tr("del_deck_message_plural") if many else tr("del_deck_message"),
+        "messageValue": str(len(deck_ids)) if many else f"'{deck_name}'",
+        "cards": tr("del_deck_cards_count").format(card_count) if card_count is not None else "",
+        "subdecksNote": tr("del_deck_subdecks_note"),
+        "cancel": tr("cancel"),
+        "confirm": tr("del_deck_confirm"),
+    }
+    payload = json.dumps(
+        {"deckIds": deck_ids, "deckName": deck_name, "strings": strings},
+        ensure_ascii=False,
+    )
+    context.web.eval(
+        f"if(window.OnigiriDeleteDeckDialog)OnigiriDeleteDeckDialog.open({payload});"
+    )
+    return True
+
+
+def _delete_decks_with_undo(context, deck_ids: List[int]) -> None:
+    many = len(deck_ids) > 1
+    name = _deck_name(str(deck_ids[0])) if not many else ""
+    undoable = True
+    try:
+        mw.col.decks.remove([DeckId(did) for did in deck_ids])
+    except Exception:
+        undoable = False
+        for did in deck_ids:
+            mw.col.decks.rem(did, cardsToo=True)
+    mw.col.setMod()
+    try:
+        mw.update_undo_actions()
+    except Exception:
+        pass
+
+    step = None
+    if undoable:
+        try:
+            step = mw.col.undo_status().last_step
+        except Exception:
+            undoable = False
+    _PENDING_DECK_DELETE.clear()
+    if undoable and step is not None:
+        _PENDING_DECK_DELETE.update(
+            {"step": step, "name": name, "count": len(deck_ids)}
+        )
+
+    _refresh_deck_browser(context)
+    if isinstance(context, DeckBrowser):
+        toast = json.dumps(
+            {
+                "title": tr("del_deck_deleted_title_plural") if many else tr("del_deck_deleted_title"),
+                "message": (
+                    tr("del_deck_deleted_msg_plural").format(len(deck_ids))
+                    if many
+                    else tr("del_deck_deleted_msg").format(name)
+                ),
+                "undoLabel": tr("del_deck_undo"),
+                "iconName": "trash.svg",
+                "canUndo": bool(undoable and step is not None),
+            },
+            ensure_ascii=False,
+        )
+        context.web.eval(
+            f"if(window.OnigiriDeleteDeckDialog)OnigiriDeleteDeckDialog.showUndoToast({toast});"
+        )
+
+
+def _undo_deck_delete(context) -> None:
+    pending = dict(_PENDING_DECK_DELETE)
+    _PENDING_DECK_DELETE.clear()
+    if not pending:
+        tooltip(tr("del_deck_nothing_restore"))
+        return
+    try:
+        if mw.col.undo_status().last_step != pending.get("step"):
+            tooltip(tr("del_deck_cannot_restore"))
+            return
+        mw.col.undo()
+    except Exception as e:
+        print(f"Onigiri: Error undoing deck deletion: {e}")
+        tooltip(tr("del_deck_restore_failed"))
+        return
+    try:
+        mw.update_undo_actions()
+    except Exception:
+        pass
+    _refresh_deck_browser(context)
+    if isinstance(context, DeckBrowser):
+        count = int(pending.get("count", 1))
+        toast = json.dumps(
+            {
+                "title": tr("del_deck_restored_title"),
+                "message": (
+                    tr("del_deck_restored_msg_plural").format(count)
+                    if count > 1
+                    else tr("del_deck_restored_msg").format(pending.get("name", ""))
+                ),
+                "iconName": "undo-2.svg",
+                "canUndo": False,
+            },
+            ensure_ascii=False,
+        )
+        context.web.eval(
+            f"if(window.OnigiriDeleteDeckDialog)OnigiriDeleteDeckDialog.showUndoToast({toast});"
+        )
+
+
 
 
 def _deck_name(deck_id: str) -> str:
@@ -129,13 +299,19 @@ def _icon_payload(deck_id: str) -> dict:
 
     custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
     current = custom_icons.get(str(deck_id), {})
+    # "" means "follow the theme's --icon-color", the default for decks that
+    # have never had an explicit colour picked. Entries saved before the
+    # light/dark split only ever wrote "color" — colorDark falls back to it so
+    # those decks keep reading as one linked colour instead of picking up a
+    # blank dark slot.
+    light_color = current.get("color", "")
+    dark_color = current.get("colorDark", light_color)
     return {
         "deckId": str(deck_id),
         "current": {
             "icon": current.get("icon", ""),
-            # "" means "follow the theme's --icon-color", the default for decks
-            # that have never had an explicit colour picked.
-            "color": current.get("color", ""),
+            "color": light_color,
+            "colorDark": dark_color,
         },
         "emojiBaseUrl": f"/_addons/{addon_package}/system_files/emojis",
         "icons": icons,
@@ -146,6 +322,33 @@ def _icon_payload(deck_id: str) -> dict:
 def _open_icon_modal(context, deck_id: str) -> None:
     payload = json.dumps(_icon_payload(deck_id))
     context.web.eval(f"if(window.OnigiriIconChooser){{OnigiriIconChooser.open({payload});}}")
+
+
+def _run_deck_icon_color_picker(context, current: str):
+    """Onigiri's native colour picker, floated in its own always-on-top
+    translucent top-level window. Mirrors hashi_notes._open_color_dialog: the
+    webview's native surface would otherwise paint over a picker parented to
+    it directly."""
+    from .onigiri_color_picker import OnigiriColorDialog
+
+    host = QWidget(None)
+    host.setWindowFlags(
+        Qt.WindowType.Tool
+        | Qt.WindowType.FramelessWindowHint
+        | Qt.WindowType.WindowStaysOnTopHint
+    )
+    host.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    host.setGeometry(mw.frameGeometry())
+    host.show()
+    host.raise_()
+    host.activateWindow()
+    try:
+        return OnigiriColorDialog.getColor(current, host)
+    finally:
+        host.close()
+        host.deleteLater()
+        mw.raise_()
+        mw.activateWindow()
 
 
 def _open_rename_modal(context, deck_id: str) -> None:
@@ -200,7 +403,7 @@ def _add_icon_files(context, deck_id: str, file_type: str) -> None:
             shutil.copy2(path, dest)
         except Exception as e:
             print(f"Onigiri: Error importing icon {path}: {e}")
-            tooltip(f"Could not import icon: {e}")
+            tooltip(tr("err_import_icon").format(e))
 
     _refresh_icon_modal(context, deck_id)
 
@@ -218,7 +421,7 @@ def _delete_icon_file(context, deck_id: str, filename: str) -> None:
         _refresh_icon_modal(context, deck_id)
     except Exception as e:
         print(f"Onigiri: Error deleting icon {safe_name}: {e}")
-        tooltip(f"Could not delete icon: {e}")
+        tooltip(tr("err_delete_icon").format(e))
 
 
 def _conf_list(key: str) -> List[str]:
@@ -257,8 +460,8 @@ def _build_create_deck_payload() -> dict:
 
     destinations = [{
         "id": "__root__",
-        "name": "Top level",
-        "path": "Top level",
+        "name": tr("top_level"),
+        "path": tr("top_level"),
         "depth": 0,
         "kind": "root",
         "iconUrl": icon_url("folder"),
@@ -283,11 +486,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     """
     Centralized handler for webview commands from the deck browser.
     """
-    # Ignore commands originating from OnigimonCareDialog to avoid double execution/tooltips
-    if type(context).__name__ == "OnigimonCareDialog":
+    # The dedicated Onigimon WebUI owns its commands and pushes its own state.
+    if type(context).__name__ == "OnigimonWebDialog":
         return handled
     parent = getattr(context, "parent", None)
-    if parent and callable(parent) and type(parent()).__name__ == "OnigimonCareDialog":
+    if parent and callable(parent) and type(parent()).__name__ == "OnigimonWebDialog":
         return handled
 
     if cmd == "onigiri_welcome_dismissed":
@@ -301,10 +504,25 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             print(f"Onigiri: Error dismissing welcome: {e}")
             return (True, None)
 
+    if cmd.startswith("onigiri_heatmap_browse:"):
+        try:
+            from aqt import dialogs
+            from . import heatmap
+
+            date_key = cmd[len("onigiri_heatmap_browse:"):]
+            today_start = mw.col.sched.day_cutoff - 86400
+            today_date_key = datetime.fromtimestamp(today_start).strftime("%Y-%m-%d")
+            search = heatmap.browser_search_for_date(date_key, today_date_key)
+            dialogs.open("Browser", mw, search=(search,))
+        except Exception as e:
+            print(f"Onigiri: Error browsing heatmap date: {e}")
+            tooltip(tr("err_open_browser").format(e))
+        return (True, None)
+
     if cmd == "openGamificationSettings":
         try:
-            from . import gamification_settings
-            gamification_settings.open_gamification_settings()
+            from . import settings_web
+            settings_web.open_settings("gamification")
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening gamification settings: {e}")
@@ -312,8 +530,8 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd == "openOnigimonSettings":
         try:
-            from . import gamification_settings
-            gamification_settings.open_gamification_settings("Onigimon")
+            from . import settings_web
+            settings_web.open_settings("onigimon")
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening Onigimon settings: {e}")
@@ -379,7 +597,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             if message:
                 tooltip(message, context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             else:
-                tooltip("No Onigimon item available.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+                tooltip(tr("no_onigimon_item"), context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error feeding Onigimon: {e}")
@@ -425,12 +643,12 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             from .gamification import onigimon
             name = unquote(cmd.split(":", 1)[1]).strip()
             if not name:
-                tooltip("Choose a name first.")
+                tooltip(tr("onigimon_choose_name_first"))
                 return (True, None)
             if onigimon.manager.rename_active_companion(name):
-                tooltip(f"Renamed to {name}.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+                tooltip(tr("onigimon_renamed_to").format(name), context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             else:
-                tooltip("Choose an Onigimon companion first.", context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
+                tooltip(tr("onigimon_choose_companion_first"), context=context, title="", variant="onigimon", hide_icon=True, hide_title=True, centered=True)
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error renaming Onigimon: {e}")
@@ -446,7 +664,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 )
         except Exception as e:
             print(f"Onigiri: Error opening Create Deck dialog: {e}")
-            tooltip(f"Error showing create deck dialog: {e}")
+            tooltip(tr("err_create_deck_dialog").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
         return (True, None)
@@ -537,7 +755,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 context._renderPage()
         except Exception as e:
             print(f"Onigiri: Error toggling favorites filter: {e}")
-            tooltip(f"Filter failed: {e}")
+            tooltip(tr("err_filter_failed").format(e))
         return (True, None)
 
     if cmd == "onigiri_filter_marked":
@@ -550,7 +768,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 context._renderPage()
         except Exception as e:
             print(f"Onigiri: Error toggling marked filter: {e}")
-            tooltip(f"Filter failed: {e}")
+            tooltip(tr("err_filter_failed").format(e))
         return (True, None)
 
     if cmd.startswith("onigiri_deck_search:"):
@@ -586,7 +804,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             except Exception:
                 deck = mw.col.decks.get(deck_id)
             if not deck:
-                tooltip("Cannot favorite: Deck no longer exists.")
+                tooltip(tr("err_favorite_deck_missing"))
                 return (True, None)
             
             favorites = mw.col.conf.get("onigiri_favorite_decks", [])
@@ -595,7 +813,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 favorites.remove(deck_id)
             else:
                 if len(favorites) >= 10:
-                    tooltip("You can only have up to 10 favorite decks.")
+                    tooltip(tr("err_favorites_limit"))
                     return (True, None) # Stop execution, don't refresh
                 favorites.append(deck_id)
             
@@ -628,16 +846,16 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             mw.col.setMod()
             _refresh_deck_browser(context)
             labels = {
-                "default": "Default order",
-                "alphabetical_az": "A to Z",
-                "alphabetical_za": "Z to A",
-                "most_due": "Most due",
-                "most_new": "Most new",
-                "most_reviews": "Most reviews",
-                "favorites_first": "Favorites first",
-                "custom": "Custom order",
+                "default": tr("sort_default_order"),
+                "alphabetical_az": tr("sort_a_to_z"),
+                "alphabetical_za": tr("sort_z_to_a"),
+                "most_due": tr("sort_most_due"),
+                "most_new": tr("sort_most_new"),
+                "most_reviews": tr("sort_most_reviews"),
+                "favorites_first": tr("sort_favorites_first"),
+                "custom": tr("sort_custom_order"),
             }
-            tooltip(f"Deck sort: {labels.get(sort_mode, sort_mode)}")
+            tooltip(tr("deck_sort_toast").format(labels.get(sort_mode, sort_mode)))
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error handling sort command: {e}")
@@ -651,7 +869,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error renaming deck: {e}")
-            tooltip(f"Could not rename deck: {e}")
+            tooltip(tr("err_rename_deck").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_rename_deck:"):
@@ -666,7 +884,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
             new_value = (data.get("name") or "").strip()
             if not deck_id or not new_value:
-                tooltip("Deck name cannot be empty.")
+                tooltip(tr("deck_name_empty"))
                 return (True, None)
             full_name = _deck_name(deck_id)
             parent_prefix = full_name.rsplit("::", 1)[0] if "::" in full_name else ""
@@ -681,7 +899,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error saving renamed deck: {e}")
-            tooltip(f"Could not rename deck: {e}")
+            tooltip(tr("err_rename_deck").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval(
                     "if(window.OnigiriRenameDialog)OnigiriRenameDialog.showError(%s);"
@@ -701,7 +919,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error adding subdeck: {e}")
-            tooltip(f"Could not add subdeck: {e}")
+            tooltip(tr("err_add_subdeck").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_create_subdeck:"):
@@ -721,11 +939,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _refresh_deck_browser(context)
             if isinstance(context, DeckBrowser):
                 context.web.eval("if(window.OnigiriAddSubdeckDialog)OnigiriAddSubdeckDialog.close();")
-            tooltip(f"Created deck: {full_name}")
+            tooltip(tr("deck_created_toast").format(full_name))
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error creating subdeck: {e}")
-            tooltip(f"Could not add subdeck: {e}")
+            tooltip(tr("err_add_subdeck").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval(
                     "if(window.OnigiriAddSubdeckDialog)OnigiriAddSubdeckDialog.showError(%s);"
@@ -753,11 +971,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _refresh_deck_browser(context)
             if isinstance(context, DeckBrowser):
                 context.web.eval("if(window.OnigiriCreateDeckDialog)OnigiriCreateDeckDialog.close();")
-            tooltip(f"Created deck: {full_name}")
+            tooltip(tr("deck_created_toast").format(full_name))
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error creating deck: {e}")
-            tooltip(f"Could not create deck: {e}")
+            tooltip(tr("err_create_deck").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval(
                     "if(window.OnigiriCreateDeckDialog)OnigiriCreateDeckDialog.showError(%s);"
@@ -789,36 +1007,53 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 if hasattr(mw, "onExport"):
                     mw.onExport(did=DeckId(deck_id))
                 else:
-                    tooltip("Deck export is not available in this Anki version.")
+                    tooltip(tr("err_export_unavailable"))
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error exporting deck: {e}")
-            tooltip(f"Could not export deck: {e}")
+            tooltip(tr("err_export_deck").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_ctx_copy_id:"):
         deck_id = cmd.split(":", 1)[1]
         QApplication.clipboard().setText(deck_id)
-        tooltip("Deck ID copied.")
+        tooltip(tr("deck_id_copied"))
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_delete:"):
         try:
             deck_id = int(cmd.split(":", 1)[1])
-            deck_name = _deck_name(str(deck_id))
-            if not askUser(f"Delete '{deck_name}' and all of its cards? This cannot be undone."):
+            if _open_delete_deck_dialog(context, [deck_id]):
                 return (True, None)
-            try:
-                mw.col.decks.remove([DeckId(deck_id)])
-            except Exception:
-                mw.col.decks.rem(deck_id, cardsToo=True)
-            mw.col.setMod()
-            _refresh_deck_browser(context)
+            # Fallback for contexts without the Onigiri dialog (non deck browser).
+            deck_name = _deck_name(str(deck_id))
+            if not askUser(tr("del_deck_message").format(f"'{deck_name}'")):
+                return (True, None)
+            _delete_decks_with_undo(context, [deck_id])
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error deleting deck: {e}")
-            tooltip(f"Could not delete deck: {e}")
+            tooltip(tr("err_delete_deck").format(e))
             return (True, None)
+
+    if cmd.startswith("onigiri_delete_deck_confirmed:"):
+        try:
+            payload = json.loads(unquote(cmd.split(":", 1)[1]))
+            deck_ids = [int(did) for did in payload.get("deckIds", [])]
+            if deck_ids:
+                _delete_decks_with_undo(context, deck_ids)
+        except Exception as e:
+            print(f"Onigiri: Error deleting deck: {e}")
+            tooltip(tr("err_delete_deck").format(e))
+        return (True, None)
+
+    if cmd == "onigiri_undo_delete_deck":
+        try:
+            _undo_deck_delete(context)
+        except Exception as e:
+            print(f"Onigiri: Error restoring deck: {e}")
+            tooltip(tr("err_restore_deck").format(e))
+        return (True, None)
 
     if cmd.startswith("onigiri_ctx_mark:"):
         try:
@@ -835,7 +1070,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error marking deck: {e}")
-            tooltip(f"Could not mark deck: {e}")
+            tooltip(tr("err_mark_deck").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_drag_drop:"):
@@ -849,7 +1084,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             print(f"Onigiri: Error moving deck: {e}")
             import traceback
             traceback.print_exc()
-            tooltip(f"Could not move deck: {e}")
+            tooltip(tr("err_move_deck").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_ctx_move_to:"):
@@ -868,7 +1103,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening Move To dialog: {e}")
-            tooltip(f"Could not open Move To: {e}")
+            tooltip(tr("err_open_move_to").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval("if(window.OnigiriEngine)OnigiriEngine.clearDialogFocus();")
             return (True, None)
@@ -886,7 +1121,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error moving deck: {e}")
-            tooltip(f"Could not move deck: {e}")
+            tooltip(tr("err_move_deck").format(e))
             if isinstance(context, DeckBrowser):
                 context.web.eval(
                     "if(window.OnigiriMoveToDialog)OnigiriMoveToDialog.showError(%s);"
@@ -901,7 +1136,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening icon chooser: {e}")
-            tooltip(f"Could not open icon chooser: {e}")
+            tooltip(tr("err_open_icon_chooser").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_icon_chooser_save:"):
@@ -911,10 +1146,15 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             icon_name = data.get("icon", "")
             custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
             if icon_name:
-                custom_icons[str(deck_id)] = {
-                    "icon": icon_name,
-                    "color": data.get("color", ""),
-                }
+                light_color = data.get("color", "")
+                dark_color = data.get("colorDark", light_color)
+                entry = {"icon": icon_name, "color": light_color}
+                # Only write colorDark when it actually diverges from the
+                # light value — a linked pair should keep reading as one
+                # colour for decks that never touched the dark slot.
+                if dark_color != light_color:
+                    entry["colorDark"] = dark_color
+                custom_icons[str(deck_id)] = entry
             else:
                 custom_icons.pop(str(deck_id), None)
             mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
@@ -926,7 +1166,22 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error saving deck icon: {e}")
-            tooltip(f"Could not save icon: {e}")
+            tooltip(tr("err_save_icon").format(e))
+            return (True, None)
+
+    if cmd.startswith("onigiri_icon_chooser_color:"):
+        try:
+            _, deck_id, role, current = cmd.split(":", 3)
+            chosen, ok = _run_deck_icon_color_picker(context, current or "#00A982")
+            if ok and chosen:
+                context.web.eval(
+                    "if(window.OnigiriIconChooser)OnigiriIconChooser.applyColor(%s, %s);"
+                    % (json.dumps(role), json.dumps(chosen))
+                )
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error picking icon color: {e}")
+            tooltip(tr("err_open_color_picker").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_icon_chooser_reset:"):
@@ -943,7 +1198,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error resetting deck icon: {e}")
-            tooltip(f"Could not reset icon: {e}")
+            tooltip(tr("err_reset_icon").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_icon_chooser_add_icon:"):
@@ -953,7 +1208,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error adding icon: {e}")
-            tooltip(f"Could not add icon: {e}")
+            tooltip(tr("err_add_icon").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_icon_chooser_add_image:"):
@@ -963,7 +1218,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error adding image: {e}")
-            tooltip(f"Could not add image: {e}")
+            tooltip(tr("err_add_image").format(e))
             return (True, None)
 
     if cmd.startswith("onigiri_icon_chooser_delete_icon:"):
@@ -973,7 +1228,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error deleting icon: {e}")
-            tooltip(f"Could not delete icon: {e}")
+            tooltip(tr("err_delete_icon").format(e))
             return (True, None)
         
     if cmd.startswith("onigiri_show_transfer_window:"):
@@ -1005,17 +1260,17 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd.startswith("onigiri_ctx_bulk_delete:"):
         try:
             payload = json.loads(unquote(cmd.split(":", 1)[1]))
-            dids = [str(did) for did in payload.get("dids", [])]
-            if not dids:
+            deck_ids = [int(did) for did in payload.get("dids", [])]
+            if not deck_ids:
                 return (True, None)
-            if not askUser(f"Delete {len(dids)} decks and all of their cards? This cannot be undone."):
+            if _open_delete_deck_dialog(context, deck_ids):
                 return (True, None)
-            mw.col.decks.remove([DeckId(int(did)) for did in dids])
-            mw.col.setMod()
-            _refresh_deck_browser(context)
+            if not askUser(tr("del_deck_message_plural").format(len(deck_ids))):
+                return (True, None)
+            _delete_decks_with_undo(context, deck_ids)
         except Exception as e:
             print(f"Onigiri: Error bulk deleting decks: {e}")
-            tooltip(f"Bulk delete failed: {e}")
+            tooltip(tr("err_bulk_delete").format(e))
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_bulk_favorite:"):
@@ -1031,7 +1286,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _refresh_deck_browser(context)
         except Exception as e:
             print(f"Onigiri: Error bulk favoriting decks: {e}")
-            tooltip(f"Bulk favorite failed: {e}")
+            tooltip(tr("err_bulk_favorite").format(e))
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_bulk_unfavorite:"):
@@ -1045,7 +1300,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _refresh_deck_browser(context)
         except Exception as e:
             print(f"Onigiri: Error bulk unfavoriting decks: {e}")
-            tooltip(f"Bulk unfavorite failed: {e}")
+            tooltip(tr("err_bulk_unfavorite").format(e))
         return (True, None)
 
     if cmd.startswith("onigiri_ctx_bulk_mark:"):
@@ -1065,7 +1320,7 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _refresh_deck_browser(context)
         except Exception as e:
             print(f"Onigiri: Error bulk marking decks: {e}")
-            tooltip(f"Bulk mark failed: {e}")
+            tooltip(tr("err_bulk_mark").format(e))
         return (True, None)
 
     if cmd.startswith("onigiri_learner_stats_select_deck:"):

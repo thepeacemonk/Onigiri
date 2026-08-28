@@ -4,6 +4,7 @@ from aqt.qt import (
 )
 from datetime import datetime
 from .sync import onigiri_sync
+from .translations import tr
 
 from aqt.theme import theme_manager
 from aqt import mw
@@ -15,7 +16,7 @@ class SyncConflictDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Onigiri Sync Conflict")
+        self.setWindowTitle(tr("sync_conflict_title"))
         self.setFixedWidth(500)
         self.result_choice = None # 'local' or 'cloud'
 
@@ -36,11 +37,11 @@ class SyncConflictDialog(QDialog):
         layout.setSpacing(18)
 
         # Header
-        header = QLabel("Sync Conflict Detected")
+        header = QLabel(tr("sync_conflict_heading"))
         header.setStyleSheet("font-size: 22px; font-weight: bold; color: #E74C3C; background: transparent;")
         layout.addWidget(header)
 
-        desc = QLabel("Your local Onigiri progress differs from the data on AnkiWeb. Please choose which version you would like to keep.")
+        desc = QLabel(tr("sync_conflict_desc"))
         desc.setWordWrap(True)
         desc.setStyleSheet(f"font-size: 13px; color: {desc_color}; background: transparent;")
         layout.addWidget(desc)
@@ -53,12 +54,12 @@ class SyncConflictDialog(QDialog):
         cloud_time = onigiri_sync.get_cloud_mtime()
 
         self.local_card = self._create_info_card(
-            "Local Device", 
+            tr("sync_local_device"), 
             local_time, 
             is_newer=(local_time > cloud_time)
         )
         self.cloud_card = self._create_info_card(
-            "AnkiWeb (Cloud)", 
+            tr("sync_ankiweb_cloud"), 
             cloud_time, 
             is_newer=(cloud_time > local_time)
         )
@@ -71,7 +72,7 @@ class SyncConflictDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
 
-        self.keep_local_btn = QPushButton("Keep Local (Upload)")
+        self.keep_local_btn = QPushButton(tr("sync_keep_local"))
         self.keep_local_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.keep_local_btn.clicked.connect(self._on_keep_local)
         self.keep_local_btn.setStyleSheet(f"""
@@ -86,7 +87,7 @@ class SyncConflictDialog(QDialog):
             QPushButton:hover {{ background-color: {btn_local_hover}; }}
         """)
 
-        self.keep_cloud_btn = QPushButton("Keep Cloud (Download)")
+        self.keep_cloud_btn = QPushButton(tr("sync_keep_cloud"))
         self.keep_cloud_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.keep_cloud_btn.clicked.connect(self._on_keep_cloud)
         self.keep_cloud_btn.setStyleSheet("""
@@ -130,14 +131,14 @@ class SyncConflictDialog(QDialog):
         t_lbl.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {text_color}; background: transparent;")
         layout.addWidget(t_lbl)
 
-        time_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M") if timestamp > 0 else "Never"
-        l_lbl = QLabel(f"Last modified:\n{time_str}")
+        time_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M") if timestamp > 0 else tr("sync_never")
+        l_lbl = QLabel(f'{tr("sync_last_modified")}\n{time_str}')
         l_lbl.setStyleSheet(f"font-size: 12px; color: {sub_text_color}; background: transparent;")
         l_lbl.setWordWrap(True)
         layout.addWidget(l_lbl)
 
         if is_newer:
-            newer_badge = QLabel("NEWER")
+            newer_badge = QLabel(tr("sync_newer_badge"))
             newer_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             newer_badge.setStyleSheet("""
                 background-color: #E74C3C;

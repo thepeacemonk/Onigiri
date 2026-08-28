@@ -16,6 +16,13 @@ window.OnigiriRenameDeckModal = (function () {
     // Shared light/dark tokens for Onigiri dialogs. They read the Onigiri palette
     // (which flips on .night-mode) instead of Anki's --canvas*, so a dialog can
     // never end up with light-theme surfaces under dark-theme text.
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function ensureDialogThemeTokens() {
         if (document.getElementById('onigiri-dialog-theme-tokens')) return;
         var tokenStyle = document.createElement('style');
@@ -186,7 +193,7 @@ window.OnigiriRenameDeckModal = (function () {
         if (!input) return;
         const name = input.value.trim();
         if (!name) {
-            if (error) error.textContent = "Deck name cannot be empty.";
+            if (error) error.textContent = T("deck_name_empty", "Deck name cannot be empty.");
             input.focus();
             return;
         }
@@ -212,7 +219,7 @@ window.OnigiriRenameDeckModal = (function () {
         header.className = "onigiri-rename-header";
         const title = document.createElement("div");
         title.className = "onigiri-rename-title";
-        title.textContent = "Rename Deck";
+        title.textContent = T("rename_deck_title", "Rename Deck");
         const closeBtn = document.createElement("span");
         closeBtn.className = "onigiri-rename-close";
         closeBtn.setAttribute('role', 'button');
@@ -228,7 +235,7 @@ window.OnigiriRenameDeckModal = (function () {
         const label = document.createElement("label");
         label.className = "onigiri-rename-label";
         label.setAttribute("for", "onigiri-rename-input");
-        label.textContent = "Deck name";
+        label.textContent = T("deck_name_label", "Deck name");
         const path = document.createElement("div");
         path.className = "onigiri-rename-path" + (state.parentPrefix ? " visible" : "");
         path.textContent = state.parentPrefix ? `${state.parentPrefix} ::` : "";
@@ -260,13 +267,13 @@ window.OnigiriRenameDeckModal = (function () {
         cancel.className = "onigiri-rename-btn secondary";
         cancel.setAttribute('role', 'button');
         cancel.tabIndex = 0;
-        cancel.textContent = "Cancel";
+        cancel.textContent = T("cancel", "Cancel");
         cancel.addEventListener("click", close);
         const save = document.createElement("span");
         save.className = "onigiri-rename-btn primary";
         save.setAttribute('role', 'button');
         save.tabIndex = 0;
-        save.textContent = "Save";
+        save.textContent = T("save", "Save");
         save.addEventListener("click", submit);
         footer.appendChild(cancel);
         footer.appendChild(save);

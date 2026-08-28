@@ -60,13 +60,37 @@ window.OnigiriIconChooser = (function () {
     // --icon-color like every other deck icon SVG. Python stores it as "".
     const THEME_COLOR = "";
 
+    const SUN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+    const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+
     const state = {
         deckId: "",
         selectedIcon: "",
-        selectedColor: THEME_COLOR,
+        selectedColorLight: THEME_COLOR,
+        selectedColorDark: THEME_COLOR,
         emojiBaseUrl: "/_addons/1011095603/system_files/emojis",
         data: {},
     };
+
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
+    function isNightMode() {
+        return document.documentElement.classList.contains("night-mode")
+            || document.documentElement.classList.contains("nightMode")
+            || document.body.classList.contains("night-mode")
+            || document.body.classList.contains("nightMode");
+    }
+
+    // The colour the grid preview and the modal's own tinted mask actually
+    // paint with right now — whichever slot matches the page's live theme.
+    function activeColor() {
+        return isNightMode() ? state.selectedColorDark : state.selectedColorLight;
+    }
 
     function py(command) {
         if (typeof pycmd === "function") pycmd(command);
@@ -103,7 +127,7 @@ window.OnigiriIconChooser = (function () {
         const style = document.createElement("style");
         style.id = "onigiri-icon-modal-styles";
         style.textContent = `
-            /* Picker tokens. These mirror settings/_picker_chrome.py one for one
+            /* Picker tokens. These mirror ui_kit/picker_chrome.py one for one
                so the Qt pickers and this modal read as the same dialog. */
             #onigiri-icon-backdrop {
                 --pk-surface: #ffffff;
@@ -112,6 +136,7 @@ window.OnigiriIconChooser = (function () {
                 --pk-inset: #f2f2f2;
                 --pk-inset-hover: #e9e9e9;
                 --pk-hairline: #dcdde1;
+                --pk-surface-alt: #fbfbfa;
                 --pk-accent: var(--odlg-accent, #0077C8);
                 position: fixed;
                 inset: 0;
@@ -133,6 +158,7 @@ window.OnigiriIconChooser = (function () {
                 --pk-inset: #303030;
                 --pk-inset-hover: #3a3a3a;
                 --pk-hairline: #454545;
+                --pk-surface-alt: #2a2a2a;
                 background: rgba(0, 0, 0, 0.38);
             }
             #onigiri-icon-backdrop button,
@@ -156,36 +182,40 @@ window.OnigiriIconChooser = (function () {
             .onigiri-icon-modal {
                 position: relative;
                 width: min(540px, 94vw);
-                height: min(610px, 88vh);
+                height: min(660px, 90vh);
                 display: flex;
                 flex-direction: column;
                 border: 1px solid var(--pk-hairline);
-                border-radius: 18px;
+                border-radius: 20px;
                 background: var(--pk-surface);
                 color: var(--pk-fg);
                 box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
                 overflow: hidden;
                 contain: layout paint;
             }
-            .onigiri-icon-modal-header,
+            .onigiri-icon-modal-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 18px 20px;
+                flex-shrink: 0;
+                border-bottom: 1px solid var(--pk-hairline);
+                background: var(--pk-inset);
+            }
             .onigiri-icon-modal-footer {
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                padding: 16px 18px;
+                padding: 12px 20px 18px;
                 flex-shrink: 0;
-            }
-            .onigiri-icon-modal-footer {
                 justify-content: center;
             }
             .onigiri-icon-modal-title {
-                font-size: 15px;
+                font-size: 15.5px;
                 font-weight: 600;
+                flex: 1 1 auto;
             }
             .onigiri-icon-modal-close {
-                position: absolute;
-                top: 16px;
-                right: 16px;
                 width: 28px;
                 height: 28px;
                 min-width: 28px !important;
@@ -196,6 +226,7 @@ window.OnigiriIconChooser = (function () {
                 background: transparent !important;
                 color: var(--pk-muted) !important;
                 cursor: pointer;
+                flex: 0 0 auto;
             }
             .onigiri-icon-modal-close:hover {
                 background: var(--pk-inset) !important;
@@ -208,40 +239,46 @@ window.OnigiriIconChooser = (function () {
                 margin: auto;
                 pointer-events: none;
             }
+            /* Segmented switch: one inset track, the active segment lifted onto
+               the modal's own surface. */
             .onigiri-icon-tabs {
                 display: flex;
-                gap: 4px;
-                padding: 0 18px;
+                gap: 2px;
+                margin: 14px 20px 0;
+                padding: 3px;
+                border-radius: 12px;
+                background: var(--pk-inset);
                 flex-shrink: 0;
             }
             .onigiri-icon-tab {
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                height: 28px !important;
-                min-width: 72px !important;
+                flex: 1 1 0 !important;
+                height: 30px !important;
                 padding: 0 14px !important;
                 border: 1px solid transparent !important;
-                border-radius: 10px !important;
+                border-radius: 9px !important;
                 background: transparent !important;
                 color: var(--pk-muted) !important;
                 cursor: pointer;
-                font-size: 13px !important;
-                font-weight: 500 !important;
+                font-size: 12.5px !important;
+                font-weight: 600 !important;
             }
             .onigiri-icon-tab:hover {
-                background: var(--pk-inset) !important;
+                color: var(--pk-fg) !important;
             }
             .onigiri-icon-tab.active {
-                background: var(--pk-inset) !important;
+                background: var(--pk-surface) !important;
                 color: var(--pk-fg) !important;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
             }
             .onigiri-icon-body {
                 flex: 1;
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
-                padding: 12px 18px 8px;
+                padding: 14px 20px 6px;
                 overflow: hidden;
             }
             .onigiri-icon-pane {
@@ -256,7 +293,7 @@ window.OnigiriIconChooser = (function () {
             }
             .onigiri-icon-search-row {
                 flex: 0 0 auto;
-                padding: 0 0 14px;
+                padding: 0 0 12px;
             }
             .onigiri-icon-search {
                 width: 100%;
@@ -272,37 +309,68 @@ window.OnigiriIconChooser = (function () {
             .onigiri-icon-search:focus {
                 border-color: var(--pk-accent);
             }
+            /* No panel behind the grid any more — each tile floats directly
+               on the modal's own surface, so there is nothing here left to
+               round or clip (see the corner-rounding saga this class used
+               to carry in history). */
+            .onigiri-icon-grid-wrap {
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                display: flex;
+            }
             .onigiri-icon-grid {
                 flex: 1;
                 min-height: 0;
+                min-width: 0;
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
                 align-content: start;
                 gap: 8px;
-                overflow: auto;
-                padding: 2px 2px 12px;
+                overflow-x: hidden;
+                overflow-y: auto;
+                padding: 10px;
+                scrollbar-width: thin;
             }
+            .onigiri-icon-grid::-webkit-scrollbar { width: 8px; }
+            .onigiri-icon-grid::-webkit-scrollbar-thumb {
+                background: var(--pk-muted);
+                border-radius: 8px;
+                background-clip: content-box;
+                border: 2px solid transparent;
+            }
+            /* Bleeds a slice of the modal's own surface over the panel behind
+               the label, and sticks so a section's title stays put while its
+               own tiles scroll under it. */
             .onigiri-icon-section-title {
                 grid-column: 1 / -1;
                 color: var(--pk-muted);
-                font-size: 11px;
+                font-size: 10.5px;
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 0.06em;
-                padding: 8px 2px 2px;
+                background: var(--pk-surface);
+                margin: 0 -10px;
+                padding: 8px 10px 4px;
+                position: sticky;
+                top: 0;
+                z-index: 1;
             }
             /* Idle cells carry no outline — only the selected one does. No
                transitions here either: the grid can hold hundreds of cells. */
             .onigiri-icon-cell {
                 position: relative;
-                height: 60px;
-                min-height: 60px;
+                height: 44px;
+                min-height: 44px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 box-sizing: border-box;
                 border: 1px solid transparent;
-                border-radius: 12px;
+                border-radius: 10px;
+                /* Same fill as the search field right above the grid — one
+                   flat colour for every "sunken" control in this modal, not
+                   a separate panel tone just for tiles. */
                 background: var(--pk-inset);
                 cursor: pointer;
             }
@@ -321,8 +389,8 @@ window.OnigiriIconChooser = (function () {
                 background: var(--icon-color, #888888);
             }
             .onigiri-icon-mask {
-                width: 30px;
-                height: 30px;
+                width: 20px;
+                height: 20px;
                 background: var(--onigiri-selected-icon-color, #888888);
                 mask-size: contain;
                 -webkit-mask-size: contain;
@@ -332,19 +400,19 @@ window.OnigiriIconChooser = (function () {
                 -webkit-mask-position: center;
             }
             .onigiri-icon-image {
-                width: 34px;
-                height: 34px;
+                width: 24px;
+                height: 24px;
                 object-fit: contain;
             }
             .onigiri-icon-emoji {
-                font-size: 26px;
+                font-size: 20px;
                 line-height: 1;
             }
             .onigiri-icon-emoji-img {
-                width: 40px;
-                height: 40px;
-                max-width: 40px;
-                max-height: 40px;
+                width: 26px;
+                height: 26px;
+                max-width: 26px;
+                max-height: 26px;
                 aspect-ratio: 1 / 1;
                 object-fit: contain;
                 pointer-events: none;
@@ -388,10 +456,10 @@ window.OnigiriIconChooser = (function () {
             }
             .onigiri-icon-delete {
                 position: absolute;
-                top: 4px;
-                right: 4px;
-                width: 18px;
-                height: 18px;
+                top: 2px;
+                right: 2px;
+                width: 14px;
+                height: 14px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -403,8 +471,8 @@ window.OnigiriIconChooser = (function () {
             }
             .onigiri-icon-delete svg {
                 display: block;
-                width: 11px;
-                height: 11px;
+                width: 8px;
+                height: 8px;
                 pointer-events: none;
             }
             .onigiri-icon-cell:hover .onigiri-icon-delete {
@@ -412,7 +480,9 @@ window.OnigiriIconChooser = (function () {
                 pointer-events: auto;
             }
             .onigiri-icon-color-section {
-                padding: 10px 18px 12px;
+                margin: 12px 20px 0;
+                padding-top: 12px;
+                border-top: 1px solid var(--pk-hairline);
                 flex-shrink: 0;
             }
             .onigiri-icon-color-label {
@@ -423,38 +493,72 @@ window.OnigiriIconChooser = (function () {
                 text-transform: uppercase;
                 letter-spacing: 0.06em;
             }
-            .onigiri-icon-swatches {
+            /* Same "colour slot" shape as the WebUI settings popover's
+               renderColorPair: one pill per light/dark role, swatch + role
+               glyph + hex on the left, a Change affordance on the right.
+               Clicking opens the native colour-palette pop-up (Python side,
+               onigiri_icon_chooser_color) instead of a flat swatch row. */
+            .onigiri-icon-color-slots {
+                display: flex;
+                gap: 8px;
+            }
+            .onigiri-icon-color-slot {
+                flex: 1 1 0;
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-            .onigiri-icon-swatch {
-                width: 24px;
-                height: 24px;
-                border-radius: 50%;
-                cursor: pointer;
-                border: none;
-                box-sizing: border-box;
-            }
-            .onigiri-icon-swatch.theme-default {
-                background: var(--icon-color, #888888);
-                color: var(--icon-color, #888888);
-            }
-            .onigiri-icon-swatch.active {
-                box-shadow: 0 0 0 2px var(--pk-surface), 0 0 0 4px currentColor;
-            }
-            .onigiri-icon-hex {
-                width: 82px;
+                gap: 10px;
+                min-width: 0;
+                height: 48px;
+                padding: 0 12px;
                 border: 1px solid transparent;
-                border-radius: 10px;
+                border-radius: 12px;
                 background: var(--pk-inset);
                 color: var(--pk-fg);
-                padding: 6px 8px;
-                outline: none;
+                cursor: pointer;
+                text-align: left;
             }
-            .onigiri-icon-hex:focus {
-                border-color: var(--pk-accent);
+            .onigiri-icon-color-slot:hover {
+                background: var(--pk-inset-hover);
+            }
+            .onigiri-icon-color-swatch {
+                flex: 0 0 auto;
+                width: 22px;
+                height: 22px;
+                border-radius: 7px;
+                border: 1px solid var(--pk-hairline);
+                box-sizing: border-box;
+            }
+            .onigiri-icon-color-swatch.theme-default {
+                background: var(--icon-color, #888888) !important;
+            }
+            .onigiri-icon-color-meta {
+                flex: 1 1 auto;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .onigiri-icon-color-role {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 10.5px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: var(--pk-muted);
+            }
+            .onigiri-icon-color-role svg {
+                width: 11px;
+                height: 11px;
+            }
+            .onigiri-icon-color-hex {
+                font-size: 12.5px;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
             .onigiri-icon-btn {
                 display: inline-flex !important;
@@ -486,8 +590,8 @@ window.OnigiriIconChooser = (function () {
             .onigiri-icon-upload {
                 box-sizing: border-box !important;
                 width: 100% !important;
-                height: 56px !important;
-                min-height: 56px !important;
+                height: 48px !important;
+                min-height: 48px !important;
                 padding: 0 16px !important;
                 border: none !important;
                 border-radius: 14px !important;
@@ -533,23 +637,25 @@ window.OnigiriIconChooser = (function () {
         return grid;
     }
 
+    // The grid scrolls inside its own inset panel; the panel owns the rounding.
+    function wrapGrid(grid) {
+        const wrap = document.createElement("div");
+        wrap.className = "onigiri-icon-grid-wrap";
+        wrap.appendChild(grid);
+        return wrap;
+    }
+
     function xIconSvg(size = 14) {
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
     }
 
     function renderSvgGrid(grid, items, filter) {
         grid.innerHTML = "";
-        [
-            ["User Icons", items.filter(item => !item.system)],
-            ["System Icons", items.filter(item => item.system)],
-        ].forEach(([title, groupItems]) => {
-            const visibleItems = groupItems.filter(item => !filter || (item.label || item.name).toLowerCase().includes(filter));
-            if (!visibleItems.length) return;
-            const sectionTitle = document.createElement("div");
-            sectionTitle.className = "onigiri-icon-section-title";
-            sectionTitle.textContent = title;
-            grid.appendChild(sectionTitle);
-            visibleItems.forEach(item => {
+        // One flat grid, no section labels. `items` already lists the user's
+        // own icons before the system ones (see webview_handlers._icon_payload).
+        items
+            .filter(item => !filter || (item.label || item.name).toLowerCase().includes(filter))
+            .forEach(item => {
                 const cell = document.createElement("div");
                 cell.className = "onigiri-icon-cell" + (state.selectedIcon === item.name ? " selected" : "");
                 cell.dataset.iconName = item.name;
@@ -575,7 +681,6 @@ window.OnigiriIconChooser = (function () {
                 cell.addEventListener("click", () => selectIcon(item.name));
                 grid.appendChild(cell);
             });
-        });
     }
 
     function buildIconsPane(data) {
@@ -583,8 +688,8 @@ window.OnigiriIconChooser = (function () {
         pane.className = "onigiri-icon-pane";
         pane.dataset.tabPane = "icons";
         const grid = makeGrid();
-        pane.appendChild(makeSearch("Search icons", filter => renderSvgGrid(grid, data.icons || [], filter)));
-        pane.appendChild(grid);
+        pane.appendChild(makeSearch(T("search_icons_placeholder", "Search icons..."), filter => renderSvgGrid(grid, data.icons || [], filter)));
+        pane.appendChild(wrapGrid(grid));
         renderSvgGrid(grid, data.icons || [], "");
         return pane;
     }
@@ -619,7 +724,7 @@ window.OnigiriIconChooser = (function () {
                 });
         };
         pane.appendChild(makeSearch("Search images", render));
-        pane.appendChild(grid);
+        pane.appendChild(wrapGrid(grid));
         render("");
         return pane;
     }
@@ -629,25 +734,28 @@ window.OnigiriIconChooser = (function () {
         pane.className = "onigiri-icon-pane";
         pane.dataset.tabPane = "emoji";
         const grid = makeGrid();
-        EMOJIS.forEach(item => {
-            const name = `emoji:${item.value}`;
-            const cell = document.createElement("div");
-            cell.className = "onigiri-icon-cell" + (state.selectedIcon === name ? " selected" : "");
-            cell.dataset.iconName = name;
-            cell.title = item.label;
-            const img = document.createElement("img");
-            img.className = "onigiri-icon-emoji-img";
-            img.alt = item.label;
-            img.src = `${state.emojiBaseUrl}/${item.asset}`;
-            cell.appendChild(img);
-            cell.addEventListener("click", () => selectIcon(name));
-            grid.appendChild(cell);
-        });
+        const renderEmojis = (filter) => {
+            Array.prototype.slice.call(grid.querySelectorAll(".onigiri-icon-cell")).forEach(cell => cell.remove());
+            EMOJIS.filter(item => !filter || item.label.toLowerCase().includes(filter)).forEach(item => {
+                const name = `emoji:${item.value}`;
+                const cell = document.createElement("div");
+                cell.className = "onigiri-icon-cell" + (state.selectedIcon === name ? " selected" : "");
+                cell.dataset.iconName = name;
+                cell.title = item.label;
+                const img = document.createElement("img");
+                img.className = "onigiri-icon-emoji-img";
+                img.alt = item.label;
+                img.src = `${state.emojiBaseUrl}/${item.asset}`;
+                cell.appendChild(img);
+                cell.addEventListener("click", () => selectIcon(name));
+                grid.insertBefore(cell, grid.querySelector(".onigiri-icon-custom-emoji"));
+            });
+        };
         const custom = document.createElement("div");
         custom.className = "onigiri-icon-custom-emoji";
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = "Type your own:";
+        button.textContent = T("type_your_own", "Type your own:");
         const input = document.createElement("input");
         input.type = "text";
         input.value = state.selectedIcon.indexOf("emoji:") === 0 && !EMOJIS.some(item => `emoji:${item.value}` === state.selectedIcon)
@@ -672,7 +780,9 @@ window.OnigiriIconChooser = (function () {
         custom.appendChild(button);
         custom.appendChild(input);
         grid.appendChild(custom);
-        pane.appendChild(grid);
+        pane.appendChild(makeSearch("Search emoji", renderEmojis));
+        pane.appendChild(wrapGrid(grid));
+        renderEmojis("");
         return pane;
     }
 
@@ -706,52 +816,71 @@ window.OnigiriIconChooser = (function () {
 
     function applyThemeColorMode() {
         const modal = document.querySelector(".onigiri-icon-modal");
-        if (modal) modal.classList.toggle("theme-icon-color", state.selectedColor === THEME_COLOR);
+        if (modal) modal.classList.toggle("theme-icon-color", activeColor() === THEME_COLOR);
+        document.documentElement.style.setProperty("--onigiri-selected-icon-color", activeColor() || "#888888");
     }
 
+    // Two colour slots — Light and Dark — same shape as the WebUI settings
+    // popover's colour-pair rows. Each opens the native colour-palette pop-up
+    // (Python side) instead of a flat swatch row baked into the page.
     function buildColorSection() {
         const section = document.createElement("div");
         section.className = "onigiri-icon-color-section";
         const label = document.createElement("div");
         label.className = "onigiri-icon-color-label";
-        label.textContent = "Icon Color";
+        label.textContent = T("icon_label", "Icon Color");
         section.appendChild(label);
-        const row = document.createElement("div");
-        row.className = "onigiri-icon-swatches";
-        const colors = [THEME_COLOR, "#888888", "#ff4d4f", "#ff9f43", "#ffc629", "#45c878", "#4f95ff", "#845ec2", "#ffffff"];
-        const setColor = (hex) => {
-            state.selectedColor = hex;
-            applyThemeColorMode();
-            document.documentElement.style.setProperty("--onigiri-selected-icon-color", hex || "#888888");
-            row.querySelectorAll(".onigiri-icon-swatch").forEach(swatch => {
-                swatch.classList.toggle("active", swatch.dataset.color.toLowerCase() === hex.toLowerCase());
-            });
-            hexInput.value = hex;
-        };
-        colors.forEach(hex => {
+
+        const slots = document.createElement("div");
+        slots.className = "onigiri-icon-color-slots";
+        section.appendChild(slots);
+
+        function paintSlot(slotEl, hex) {
+            const swatch = slotEl.querySelector(".onigiri-icon-color-swatch");
+            swatch.classList.toggle("theme-default", hex === THEME_COLOR);
+            swatch.style.background = hex || "";
+            slotEl.querySelector(".onigiri-icon-color-hex").textContent =
+                hex ? hex.toUpperCase() : "Default";
+        }
+
+        function makeSlot(role, glyph, roleLabel) {
+            const slot = document.createElement("button");
+            slot.type = "button";
+            slot.className = "onigiri-icon-color-slot";
             const swatch = document.createElement("span");
-            swatch.className = "onigiri-icon-swatch" + (hex === THEME_COLOR ? " theme-default" : "");
-            swatch.dataset.color = hex;
-            if (hex === THEME_COLOR) {
-                swatch.title = "Default (follows the theme)";
-            } else {
-                swatch.style.background = hex;
-                swatch.style.color = hex;
-            }
-            swatch.addEventListener("click", () => setColor(hex));
-            row.appendChild(swatch);
-        });
-        const hexInput = document.createElement("input");
-        hexInput.className = "onigiri-icon-hex";
-        hexInput.maxLength = 7;
-        hexInput.placeholder = "Default";
-        hexInput.addEventListener("input", () => {
-            const value = hexInput.value.trim();
-            if (/^#[0-9a-fA-F]{6}$/.test(value)) setColor(value);
-        });
-        row.appendChild(hexInput);
-        section.appendChild(row);
-        requestAnimationFrame(() => setColor(state.selectedColor));
+            swatch.className = "onigiri-icon-color-swatch";
+            slot.appendChild(swatch);
+            const meta = document.createElement("span");
+            meta.className = "onigiri-icon-color-meta";
+            const roleRow = document.createElement("span");
+            roleRow.className = "onigiri-icon-color-role";
+            roleRow.innerHTML = glyph;
+            roleRow.appendChild(document.createTextNode(roleLabel));
+            meta.appendChild(roleRow);
+            const hexLabel = document.createElement("span");
+            hexLabel.className = "onigiri-icon-color-hex";
+            meta.appendChild(hexLabel);
+            slot.appendChild(meta);
+            slot.addEventListener("click", () => {
+                const current = role === "dark" ? state.selectedColorDark : state.selectedColorLight;
+                py(`onigiri_icon_chooser_color:${state.deckId}:${role}:${current || "#00A982"}`);
+            });
+            slots.appendChild(slot);
+            return slot;
+        }
+
+        const lightSlot = makeSlot("light", SUN_ICON, "Light");
+        const darkSlot = makeSlot("dark", MOON_ICON, "Dark");
+
+        paintSlot(lightSlot, state.selectedColorLight);
+        paintSlot(darkSlot, state.selectedColorDark);
+        applyThemeColorMode();
+
+        section.__paint = () => {
+            paintSlot(lightSlot, state.selectedColorLight);
+            paintSlot(darkSlot, state.selectedColorDark);
+            applyThemeColorMode();
+        };
         return section;
     }
 
@@ -760,29 +889,30 @@ window.OnigiriIconChooser = (function () {
         ensureStyles();
         state.deckId = String(data.deckId || "");
         state.selectedIcon = (data.current && data.current.icon) || "";
-        state.selectedColor = (data.current && data.current.color) || THEME_COLOR;
+        state.selectedColorLight = (data.current && data.current.color) || THEME_COLOR;
+        state.selectedColorDark = (data.current && data.current.colorDark) || state.selectedColorLight;
         state.emojiBaseUrl = data.emojiBaseUrl || state.emojiBaseUrl;
         state.data = data;
-        document.documentElement.style.setProperty("--onigiri-selected-icon-color", state.selectedColor || "#888888");
+        document.documentElement.style.setProperty("--onigiri-selected-icon-color", activeColor() || "#888888");
 
         const backdrop = document.createElement("div");
         backdrop.id = "onigiri-icon-backdrop";
         backdrop.addEventListener("click", close);
 
         const modal = document.createElement("div");
-        modal.className = "onigiri-icon-modal" + (state.selectedColor === THEME_COLOR ? " theme-icon-color" : "");
+        modal.className = "onigiri-icon-modal" + (activeColor() === THEME_COLOR ? " theme-icon-color" : "");
         modal.addEventListener("click", event => event.stopPropagation());
 
         const header = document.createElement("div");
         header.className = "onigiri-icon-modal-header";
         const title = document.createElement("div");
         title.className = "onigiri-icon-modal-title";
-        title.textContent = "Edit Icon";
+        title.textContent = T("edit_icon", "Edit Icon");
         const closeBtn = document.createElement("span");
         closeBtn.className = "onigiri-icon-modal-close";
         closeBtn.innerHTML = xIconSvg(15);
-        closeBtn.setAttribute("aria-label", "Close");
-        closeBtn.title = "Close";
+        closeBtn.setAttribute("aria-label", T("close", "Close"));
+        closeBtn.title = T("close", "Close");
         closeBtn.addEventListener("click", close);
         header.appendChild(title);
         header.appendChild(closeBtn);
@@ -818,20 +948,24 @@ window.OnigiriIconChooser = (function () {
         footer.className = "onigiri-icon-modal-footer";
         const reset = document.createElement("span");
         reset.className = "onigiri-icon-btn";
-        reset.textContent = "Reset to Default";
+        reset.textContent = T("reset_to_default_tooltip", "Reset to Default");
         reset.addEventListener("click", () => {
             py(`onigiri_icon_chooser_reset:${state.deckId}`);
             close();
         });
         const cancel = document.createElement("span");
         cancel.className = "onigiri-icon-btn";
-        cancel.textContent = "Cancel";
+        cancel.textContent = T("cancel", "Cancel");
         cancel.addEventListener("click", close);
         const save = document.createElement("span");
         save.className = "onigiri-icon-btn primary";
-        save.textContent = "Save";
+        save.textContent = T("save", "Save");
         save.addEventListener("click", () => {
-            const payload = JSON.stringify({ icon: state.selectedIcon, color: state.selectedColor });
+            const payload = JSON.stringify({
+                icon: state.selectedIcon,
+                color: state.selectedColorLight,
+                colorDark: state.selectedColorDark,
+            });
             py(`onigiri_icon_chooser_save:${state.deckId}:${payload}`);
             close();
         });
@@ -853,10 +987,23 @@ window.OnigiriIconChooser = (function () {
     return {
         open,
         close,
+        // Called from Python once the native colour-palette pop-up closes
+        // (webview_handlers._cmd via onigiri_icon_chooser_color); the modal
+        // itself never runs a colour dialog, it only relays the result.
+        applyColor(role, hex) {
+            if (role === "dark") state.selectedColorDark = hex;
+            else state.selectedColorLight = hex;
+            document.documentElement.style.setProperty("--onigiri-selected-icon-color", activeColor() || "#888888");
+            const modal = document.querySelector(".onigiri-icon-modal");
+            if (modal) modal.classList.toggle("theme-icon-color", activeColor() === THEME_COLOR);
+            const section = document.querySelector(".onigiri-icon-color-section");
+            if (section && section.__paint) section.__paint();
+        },
         refreshData(data) {
-            const selected = state.selectedIcon;
-            const color = state.selectedColor;
-            open({ ...data, current: { icon: selected, color } });
+            const icon = state.selectedIcon;
+            const color = state.selectedColorLight;
+            const colorDark = state.selectedColorDark;
+            open({ ...data, current: { icon, color, colorDark } });
         },
     };
 })();

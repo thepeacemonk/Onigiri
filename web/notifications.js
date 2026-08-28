@@ -9,6 +9,15 @@
     const CARD_VISIBLE_CLASS = "is-visible";
     const DEFAULT_DURATION = 5200;
     const MOCHI_ICON_IMAGE = "/_addons/1011095603/system_files/gamification_images/mochi_messenger.webp";
+    // The generic Onigiri toast's icon. "On" is what onigiri_notifications.notify()
+    // sends when a caller names no icon of its own, and it was being drawn as
+    // those two letters; the logo is what that placeholder always meant.
+    const ONIGIRI_ICON_IMAGE = "/_addons/1011095603/system_files/onigiri_mini_logo.svg";
+
+    function defaultIconImage(data) {
+        const icon = data && data.icon;
+        return (!icon || icon === "On") ? ONIGIRI_ICON_IMAGE : null;
+    }
     const pendingQueue = [];
     let domReady = document.readyState !== "loading" && !!document.body;
 
@@ -248,6 +257,9 @@
                 } else if (data.icon && (data.icon.includes("/") || data.icon.includes("."))) {
                     iconImageSrc = data.icon;
                 }
+                if (!iconImageSrc) {
+                    iconImageSrc = defaultIconImage(data);
+                }
 
                 if (!data.hideIcon) {
                     const icon = document.createElement("div");
@@ -337,6 +349,9 @@
             iconImageSrc = MOCHI_ICON_IMAGE;
         } else if (data.icon && (data.icon.includes("/") || data.icon.includes("."))) {
             iconImageSrc = data.icon;
+        }
+        if (!iconImageSrc) {
+            iconImageSrc = defaultIconImage(data);
         }
 
         if (iconImageSrc) {

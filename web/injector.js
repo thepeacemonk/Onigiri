@@ -13,6 +13,13 @@
         });
     }
 
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function updateDeckFocusLayout() {
         const sidebar = document.querySelector('.sidebar-left');
         const header = document.getElementById('deck-list-header');
@@ -57,7 +64,7 @@
         const expandedContent = sidebar ? sidebar.querySelector('.sidebar-expanded-content') : null;
         if (!toolbar || !expandedContent) return;
 
-        const profileBar = expandedContent.querySelector('.profile-bar');
+        const profileBar = expandedContent.querySelector('.profile-bar, .onigiri-profile.opro-surface-sidebar');
         toolbar.classList.add('sidebar-actions-inline');
         if (profileBar) {
             profileBar.insertAdjacentElement('afterend', toolbar);
@@ -99,13 +106,13 @@
         };
 
         const actions = [
-            { id: 'add', cmd: 'add', title: 'Add' },
-            { id: 'browse', cmd: 'browse', title: 'Browser' },
-            { id: 'stats', cmd: 'stats', title: 'Stats' },
-            { id: 'sync', cmd: 'sync', title: 'Sync' },
-            { id: 'settings', cmd: 'openOnigiriSettings', title: 'Settings' },
-            { id: 'gamification', cmd: 'openGamificationSettings', title: 'Onigiri Games' },
-            { id: 'more', cmd: null, title: 'More' }
+            { id: 'add', cmd: 'add', title: T('add', 'Add') },
+            { id: 'browse', cmd: 'browse', title: T('browse', 'Browser') },
+            { id: 'stats', cmd: 'stats', title: T('stats', 'Stats') },
+            { id: 'sync', cmd: 'sync', title: T('sync', 'Sync') },
+            { id: 'settings', cmd: 'openOnigiriSettings', title: T('settings', 'Settings') },
+            { id: 'gamification', cmd: 'openGamificationSettings', title: T('onigiri_games', 'Onigiri Games') },
+            { id: 'more', cmd: null, title: T('more', 'More') }
         ];
 
         actions.forEach(action => {
@@ -160,9 +167,9 @@
         toolbar.querySelectorAll('.action-btn.more-item').forEach(el => el.remove());
 
         const items = [
-            { label: 'Get Shared', id: 'get_shared', cmd: 'shared' },
-            { label: 'Create Deck', id: 'create_deck', cmd: 'onigiri_create_deck' },
-            { label: 'Import File', id: 'import_file', cmd: 'import' }
+            { label: T('get_shared', 'Get Shared'), id: 'get_shared', cmd: 'shared' },
+            { label: T('create_deck', 'Create Deck'), id: 'create_deck', cmd: 'onigiri_create_deck' },
+            { label: T('import_file', 'Import File'), id: 'import_file', cmd: 'import' }
         ];
 
         // Insert the 3 inline buttons right after the More button
@@ -240,7 +247,7 @@
         homeButton.tabIndex = 0;
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
-            homeButton.title = 'Home';
+            homeButton.title = T('home', 'Home');
             homeButton.innerHTML = '<i class="home-btn-icon"></i>';
             homeButton.addEventListener('click', (event) => {
                 if (window.OnigiriEngine && typeof window.OnigiriEngine.showHomeMenu === 'function') {
@@ -1031,7 +1038,7 @@
                     lastSidebarOnRight = isSidebarOnRight();
                 }
                 applyCollapsedEdgeTogglePosition();
-                edgeToggleBtn.title = 'Expand sidebar';
+                edgeToggleBtn.title = T('expand_sidebar', 'Expand sidebar');
                 edgeToggleBtn.setAttribute('aria-label', edgeToggleBtn.title);
                 return;
             }
@@ -1051,7 +1058,7 @@
                 edgePill.classList.remove('is-collapsed');
                 edgePill.classList.remove('is-edge-closing');
                 edgeToggleBtn.classList.remove('is-collapsed');
-                edgeToggleBtn.title = 'Collapse sidebar';
+                edgeToggleBtn.title = T('collapse_sidebar', 'Collapse sidebar');
                 edgeToggleBtn.setAttribute('aria-label', edgeToggleBtn.title);
                 if (edgeToggleZone) {
                     const zoneInset = 48;
@@ -1077,7 +1084,7 @@
             edgePill.classList.remove('is-edge-closing');
             edgePill.classList.toggle('is-sidebar-right', lastSidebarOnRight);
             edgeToggleBtn.classList.remove('is-collapsed');
-            edgeToggleBtn.title = 'Collapse sidebar';
+            edgeToggleBtn.title = T('collapse_sidebar', 'Collapse sidebar');
             edgeToggleBtn.setAttribute('aria-label', edgeToggleBtn.title);
 
             if (edgeToggleZone) {

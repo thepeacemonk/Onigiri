@@ -1,7 +1,7 @@
 import time
 import os
 import base64
-from datetime import datetime
+from datetime import date, datetime
 from aqt import mw
 from . import config
 from .config import DEFAULTS
@@ -13,10 +13,94 @@ _HEATMAP_CACHE = None
 _HEATMAP_CACHE_TIME = 0
 _HEATMAP_CACHE_TTL = 5  # seconds
 
+# Per-day review counts for every day BEFORE today. That grouped STRFTIME scan
+# is the single most expensive thing the deck browser does (~39ms on a 100k-row
+# revlog), and answering a card can only ever change *today's* number - so the
+# past is cached for the session and only revalidated against the shape of the
+# revlog, not re-aggregated. Deliberately not cleared by
+# invalidate_heatmap_cache(): that fires after every answered card.
+_PAST_DAYS_CACHE = None
+_PAST_DAYS_KEY = None
+
+
+def browser_search_for_date(date_key: str, today_date_key: str) -> str:
+    """Build an exact-day Browser search for a heatmap date.
+
+    Anki's ``prop:rated`` offsets use zero for today and negative values for
+    earlier days, while ``prop:due`` uses positive values for future days.
+    Working with calendar dates instead of seconds keeps the offset stable
+    across daylight-saving changes.
+    """
+    try:
+        selected_date = date.fromisoformat(date_key)
+        today_date = date.fromisoformat(today_date_key)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid heatmap date") from error
+
+    # fromisoformat() has accepted a few non-canonical variants across Python
+    # versions. The webview bridge deliberately accepts only YYYY-MM-DD.
+    if (
+        selected_date.isoformat() != date_key
+        or today_date.isoformat() != today_date_key
+    ):
+        raise ValueError("Invalid heatmap date")
+
+    day_offset = (selected_date - today_date).days
+    if day_offset > 0:
+        return f"prop:due={day_offset}"
+    return f"prop:rated={day_offset}"
+
+
 def invalidate_heatmap_cache():
     global _HEATMAP_CACHE, _HEATMAP_CACHE_TIME
     _HEATMAP_CACHE = None
     _HEATMAP_CACHE_TIME = 0
+
+def _past_reviews_by_day(offset_seconds, today_start_ms):
+    """(day_key, count) for every day before today, cached for the session.
+
+    Revalidated with two rowid-indexed lookups (~2ms) instead of re-running the
+    grouped STRFTIME scan (~39ms): the row count catches deletions and
+    undo-past-rollover, the max id catches insertions. Both are cheap because
+    revlog.id is the rowid.
+    """
+    global _PAST_DAYS_CACHE, _PAST_DAYS_KEY
+
+    try:
+        row_count = mw.col.db.scalar(
+            "SELECT COUNT() FROM revlog WHERE id < ?", today_start_ms
+        ) or 0
+        last_id = mw.col.db.scalar(
+            "SELECT max(id) FROM revlog WHERE id < ?", today_start_ms
+        ) or 0
+    except Exception:
+        row_count = last_id = None
+
+    # crt identifies the collection, so switching profiles cannot reuse another
+    # profile's aggregate.
+    try:
+        collection_id = mw.col.crt
+    except Exception:
+        collection_id = None
+
+    key = (collection_id, offset_seconds, today_start_ms, row_count, last_id)
+    if _PAST_DAYS_CACHE is not None and key == _PAST_DAYS_KEY and row_count is not None:
+        return _PAST_DAYS_CACHE
+
+    query_past = """
+        SELECT 
+            STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day') as day_key,
+            COUNT()
+        FROM revlog
+        WHERE type IN (0,1,2,3) AND id < ? -- Only actual reviews *before* the start of today
+        GROUP BY day_key
+    """
+    rows = mw.col.db.all(query_past, offset_seconds, today_start_ms)
+    if row_count is not None:
+        _PAST_DAYS_CACHE = rows
+        _PAST_DAYS_KEY = key
+    return rows
+
 
 def get_heatmap_data():
     """
@@ -46,15 +130,7 @@ def get_heatmap_data():
     # Use STRFTIME with 'localtime' and the offset to correctly group reviews
     # by the local day, just like the reference add-on.
     # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
-    query_past = """
-        SELECT 
-            STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day') as day_key,
-            COUNT()
-        FROM revlog
-        WHERE type IN (0,1,2,3) AND id < ? -- Only actual reviews *before* the start of today
-        GROUP BY day_key
-    """
-    reviews_by_day = dict(mw.col.db.all(query_past, offset_seconds, today_start_ms))
+    reviews_by_day = dict(_past_reviews_by_day(offset_seconds, today_start_ms))
 
     # --- 2. Fetch Today's Review Count ---
     # Get a precise count for reviews *since* the start of today
@@ -90,14 +166,12 @@ def get_heatmap_data():
         due_by_day[future_date_key] = count
 
     # --- 4. Calculate Streak ---
-    # We must use the same date logic for all review days
-    # type IN (0,1,2,3) filters out manual operations (type 4 = manual rescheduling/resets)
-    all_review_days_query = """
-        SELECT DISTINCT STRFTIME('%Y-%m-%d', id / 1000 - ?, 'unixepoch', 'localtime', 'start of day')
-        FROM revlog
-        WHERE type IN (0,1,2,3)
-    """
-    review_days_set = set(mw.col.db.list(all_review_days_query, offset_seconds))
+    # reviews_by_day already groups the whole revlog by the same STRFTIME
+    # expression, so the day set is derivable from it. Running a second
+    # DISTINCT STRFTIME query here meant a full extra revlog scan on every
+    # deck browser render. Past groups always have a non-zero count; today is
+    # the only key that can be present with zero reviews.
+    review_days_set = {day for day, count in reviews_by_day.items() if count}
     
     streak = 0
     yesterday_key = datetime.fromtimestamp(today_start_seconds - 86400).strftime('%Y-%m-%d')
@@ -122,8 +196,7 @@ def get_heatmap_data():
         longest_streak = 1
         current_run = 1
         sorted_days = sorted(
-            datetime.strptime(day_key, "%Y-%m-%d").date()
-            for day_key in review_days_set
+            date.fromisoformat(day_key) for day_key in review_days_set
         )
         for previous_day, current_day in zip(sorted_days, sorted_days[1:]):
             if (current_day - previous_day).days == 1:
@@ -134,14 +207,19 @@ def get_heatmap_data():
     longest_streak = max(longest_streak, streak)
 
     # --- 6. Calculate Daily Average ---
-    # Total reviews / Days since first review
-    # We use the count of all reviews in history (no date limit)
-    total_reviews_all_time = mw.col.db.scalar("SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3)") or 0
-    
+    # Total reviews / Days since first review.
+    # The per-day counts already cover the whole history, so summing them
+    # avoids a third full revlog scan for the same number.
+    total_reviews_all_time = sum(reviews_by_day.values())
+
+    # One min(id) lookup, shared by the daily average and the calendar's
+    # first year below.
+    first_review_ts = None
+    if total_reviews_all_time > 0:
+        first_review_ts = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
+
     daily_average = 0
     if total_reviews_all_time > 0:
-        # distinct days
-        first_review_ts = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
         if first_review_ts:
             # Calculate days elapsed
             first_review_date = datetime.fromtimestamp(first_review_ts / 1000).date()
@@ -153,7 +231,6 @@ def get_heatmap_data():
             daily_average = total_reviews_all_time / days_elapsed
 
     first_year = datetime.now().year
-    first_review_ts = mw.col.db.scalar("SELECT min(id) FROM revlog WHERE type IN (0,1,2,3)")
     if first_review_ts:
         first_year = datetime.fromtimestamp(first_review_ts / 1000).year
 
@@ -175,7 +252,7 @@ def get_heatmap_and_config():
     if _HEATMAP_CACHE is not None and (now - _HEATMAP_CACHE_TIME) < _HEATMAP_CACHE_TTL:
         return _HEATMAP_CACHE
 
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     heatmap_data = get_heatmap_data()
 
     addon_path = os.path.dirname(__file__)
@@ -234,7 +311,7 @@ def get_heatmap_and_config():
         streak_icon_filename = DEFAULTS.get("heatmapStreakIcon", "system:fire.svg")
     streak_svg_content = icon_svg_content(streak_icon_filename, "fire.svg")
 
-    from .translations import tr
+    from .translations import current_language, tr
     heatmap_config = {
         "heatmapSvgContent": svg_content,
         "heatmapStreakIconSvgContent": streak_svg_content,
@@ -246,12 +323,15 @@ def get_heatmap_and_config():
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
         "heatmapWeekStart": conf.get("heatmapWeekStart", DEFAULTS.get("heatmapWeekStart", "monday")),
+        # The browser's locale can differ from the language chosen for Onigiri.
+        "locale": current_language(),
         "i18n": {
             "activity": tr("heatmap_activity_label"),
             "year": tr("view_year"),
             "month": tr("view_month"),
             "week": tr("view_week"),
             "day_streak": tr("heatmap_day_streak"),
+            "browse": tr("browse", "Browse"),
         }
     }
     _HEATMAP_CACHE = (heatmap_data, heatmap_config)

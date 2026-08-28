@@ -39,7 +39,7 @@
         border-radius: var(--stats-box-radius, var(--onigiri-box-effect-radius, 15px));
         backdrop-filter: blur(var(--stats-box-blur, 0px));
         -webkit-backdrop-filter: blur(var(--stats-box-blur, 0px));
-        padding: calc(14px * var(--onigiri-widget-pad-scale));
+        padding: var(--onigiri-widget-pad);
         height: 100%;
         width: 100%;
         box-sizing: border-box;
@@ -76,6 +76,12 @@
         padding: 0 !important;
         min-width: 0;
         flex: 0 1 auto !important;
+    }
+    /* The one-column header has only one style button plus the deck picker;
+       keep the two controls visually grouped instead of spending a full
+       desktop-sized gutter between them. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-header-controls {
+        gap: 4px !important;
     }
     .learner-stats-switcher {
         position: relative;
@@ -162,6 +168,51 @@
         margin: 0 !important;
         padding: 0 !important;
         flex: 0 0 auto !important;
+    }
+    /* One-column cards replace the three-button switcher with this one
+       current-style button. The active icon follows data-active-view and a
+       click advances to the next available layout. */
+    .learner-stats-view-cycle {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 26px !important;
+        height: 26px !important;
+        min-width: 26px !important;
+        min-height: 26px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        background: var(--highlight-bg, #eeeeee) !important;
+        color: var(--fg, #222222) !important;
+        cursor: pointer;
+        box-sizing: border-box !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+    }
+    .learner-stats-view-cycle:hover,
+    .learner-stats-view-cycle:focus,
+    .learner-stats-view-cycle:focus-visible {
+        background: var(--collapsed-toolbar-button-hover-bg, var(--button-hover-bg, var(--highlight-bg, #eeeeee))) !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+    .learner-stats-view-cycle-icon {
+        display: none;
+        width: 15px;
+        height: 15px;
+        line-height: 0;
+    }
+    .learner-stats-view-cycle-icon svg {
+        display: block;
+        width: 15px;
+        height: 15px;
+    }
+    .learner-stats-widget[data-active-view="grouped"] .learner-stats-view-cycle-icon[data-view="grouped"],
+    .learner-stats-widget[data-active-view="bars"] .learner-stats-view-cycle-icon[data-view="bars"],
+    .learner-stats-widget[data-active-view="donut"] .learner-stats-view-cycle-icon[data-view="donut"] {
+        display: block;
     }
     .learner-stats-widget[data-active-view="grouped"] .learner-stats-switcher-btn[data-view="grouped"],
     .learner-stats-widget[data-active-view="bars"] .learner-stats-switcher-btn[data-view="bars"],
@@ -406,6 +457,134 @@
         color: var(--fg-subtle, #757575);
         margin-left: 4px;
     }
+
+    /* ---- 1×1 miniature: a glance, not a cramped dashboard ----
+       One row of grid height leaves roughly 60px under the header, and a
+       single column leaves no width for the wide bar+total line the 2×1 card
+       uses. So the 1×1 spends that box on a ring carrying the total and two
+       headline counts beside it, with the header chrome shrunk to match. */
+    .learner-stats-widget[data-grid-span="1x1"] {
+        gap: 6px;
+    }
+    .learner-stats-widget[data-grid-span="1x1"] .learner-stats-header-row {
+        gap: 6px;
+        min-height: 22px;
+    }
+    /* The title is inline-flex everywhere else (it never needs to shrink);
+       here it must be able to ellipsis, which flex containers do not do. */
+    .learner-stats-widget[data-grid-span="1x1"] .learner-stats-header h3 {
+        display: block;
+        flex: 0 1 auto;
+        min-width: 0;
+        min-height: 0;
+        line-height: 22px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .learner-stats-widget[data-grid-span="1x1"] .learner-stats-deck-trigger.learner-stats-deck-trigger {
+        max-width: 118px !important;
+        height: 22px !important;
+        min-height: 22px !important;
+        font-size: 11px !important;
+        padding: 0 9px !important;
+        gap: 4px;
+    }
+    .learner-stats-widget[data-grid-span="1x1"] .learner-stats-deck-trigger-chevron svg {
+        width: 9px;
+        height: 9px;
+    }
+    .learner-stats-mini-body {
+        display: flex;
+        align-items: center;
+        /* Deliberately tight: the narrowest realistic 1x1 column is ~170px,
+           and every pixel spent here comes straight off the legend labels,
+           which are the first thing to ellipsis. */
+        gap: 8px;
+        flex: 1 1 auto;
+        min-height: 0;
+        min-width: 0;
+    }
+    .learner-stats-mini-ring-wrap {
+        position: relative;
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+    }
+    /* Same -90deg origin as the donut view, so arc 1 starts at 12 o'clock. */
+    .learner-stats-mini-ring {
+        display: block;
+        width: 44px;
+        height: 44px;
+        transform: rotate(-90deg);
+    }
+    .learner-stats-mini-ring-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+    }
+    .learner-stats-mini-ring-num {
+        /* _compact_count keeps this to at most four glyphs ("1.2k", "51k"),
+           which is what lets 13px sit inside a 44px ring without clipping. */
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--fg, #222222);
+        font-variant-numeric: tabular-nums;
+    }
+    .learner-stats-mini-ring-cap {
+        margin-top: 1px;
+        font-size: 8px;
+        font-weight: 500;
+        line-height: 1;
+        color: var(--fg-subtle, #757575);
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .learner-stats-mini-legend {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 7px;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .learner-stats-mini-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+    }
+    .learner-stats-mini-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: var(--stat-tone, #9e9e9e);
+    }
+    .learner-stats-mini-row-label {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--fg-subtle, #757575);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .learner-stats-mini-row-value {
+        flex: 0 0 auto;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--fg, #222222);
+        font-variant-numeric: tabular-nums;
+    }
     .learner-stats-group {
         display: flex;
         flex-direction: column;
@@ -451,6 +630,78 @@
     .learner-stats-view-donut .learner-stats-tile-grid { gap: 4px; }
     .learner-stats-tile-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
+    /* A 1×2 tile has the height for a useful breakdown but not the width for
+       four tiny columns. Turn its grouped cards into a vertical dashboard:
+       the three in-progress values get a lead card plus a readable pair, and
+       the four "Others" values become a 2×2 grid. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-view-grouped {
+        gap: 8px;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-grouped-groups {
+        gap: 5px;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-group {
+        gap: 3px;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-tile-grid {
+        gap: 5px;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-tile-grid-3,
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-tile-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-tile-grid-3 > .learner-stat-card:first-child:nth-last-child(3) {
+        grid-column: 1 / -1;
+    }
+    /* Give narrow grouped tiles the same one-line label/value treatment as
+       the ring pills. The previous vertical card layout let the grid rows
+       collapse around the number and clipped the category label. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 8px;
+        gap: 6px;
+        line-height: 1.15;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card .learner-stat-label {
+        width: auto;
+        flex: 1 1 auto;
+        margin-bottom: 0;
+        text-align: left;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card .learner-stat-val {
+        flex: 0 0 auto;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-group-title {
+        flex: 0 0 auto;
+        min-height: 1em;
+        line-height: 1;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-deck-trigger.learner-stats-deck-trigger {
+        line-height: 1.25 !important;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card {
+        overflow: visible;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card .learner-stat-label {
+        line-height: 1.25;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card .learner-stat-val {
+        font-size: 12px;
+        line-height: 1.15;
+    }
+    /* Minimal grouped mode has 2, 1, then 2 tile rows. Equal-height groups
+       starve the two-row sections and clip the category names. Allocate the
+       available space in the same 2:1:2 ratio as their content instead. */
+    .learner-stats-widget[data-grid-span="1x2"][data-chart-type="minimal"] .learner-stats-group:nth-child(1),
+    .learner-stats-widget[data-grid-span="1x2"][data-chart-type="minimal"] .learner-stats-group:nth-child(3) {
+        flex: 2 1 0;
+    }
+    .learner-stats-widget[data-grid-span="1x2"][data-chart-type="minimal"] .learner-stats-group:nth-child(2) {
+        flex: 1 1 0;
+    }
+
     /* ---- Bars view: labeled horizontal bars + footer totals ----
        The list fills all leftover height itself; a fixed-ratio spacer
        sits before the first row and between every row after it (so the
@@ -478,6 +729,11 @@
         min-width: 0;
         flex: 0 0 auto;
     }
+    /* Bars in a one-column card need a real label lane. Give the names enough
+       width to remain whole and let the progress track yield the space. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-bar-row {
+        grid-template-columns: minmax(64px, 0.95fr) minmax(0, 1.6fr) minmax(24px, auto);
+    }
     .learner-stats-bar-label {
         font-size: 11px;
         font-weight: 500;
@@ -490,7 +746,7 @@
     .learner-stats-bar-track {
         display: block;
         height: 7px;
-        border-radius: 4px;
+        border-radius: 999px;
         background: color-mix(in srgb, var(--fg, #222) 10%, transparent);
         overflow: hidden;
         min-width: 0;
@@ -498,7 +754,8 @@
     .learner-stats-bar-fill {
         display: block;
         height: 100%;
-        border-radius: 4px;
+        border-radius: 999px !important;
+        overflow: hidden;
         transition: width 0.3s ease;
     }
     .learner-stats-bar-fill { background: var(--stat-tone, color-mix(in srgb, var(--fg, #222) 35%, transparent)); }
@@ -515,9 +772,20 @@
         gap: 8px;
         margin-top: 0;
         padding-top: 6px;
-        border-top: 1px solid var(--border, #e0e0e0);
+        border-top: none;
         flex: 0 0 auto;
         min-width: 0;
+        position: relative;
+    }
+    .learner-stats-footer-row::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--border, #e0e0e0);
     }
     .learner-stats-footer-item {
         font-size: 11px;
@@ -571,6 +839,17 @@
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 2px;
+    }
+    /* In the narrow ring layout the two legend items wrap to separate lines;
+       a smaller row gap preserves the information without a large blank band
+       between In Progress and Mastered. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-view-donut .learner-stats-donut-legend {
+        flex-direction: column;
+        row-gap: 1.5px;
+        margin-top: 0;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-view-donut .learner-stats-donut-legend-item {
+        line-height: 1;
     }
     .learner-stats-donut-legend-item {
         display: flex;
@@ -627,6 +906,16 @@
         font-size: 11px;
         line-height: 1.25;
         flex: 0 0 auto;
+    }
+    /* The ring view's rows are deliberately compact, but never text-tight:
+       the label and value keep a real inset at 1×2 so even small type has air
+       around it instead of touching the pill edges. */
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stats-view-donut .learner-stats-tile-grid {
+        gap: 4px;
+    }
+    .learner-stats-widget[data-grid-span="1x2"] .learner-stat-card.is-flat {
+        padding: 3px 8px;
+        gap: 6px;
     }
 
     .learner-stats-deck-template {

@@ -589,9 +589,14 @@ def ensure_capture_hook_is_last() -> None:
     """
     try:
         from aqt import gui_hooks
-        if _capture_toolbar_links in gui_hooks.top_toolbar_did_init_links:
-            gui_hooks.top_toolbar_did_init_links.remove(_capture_toolbar_links)
-            gui_hooks.top_toolbar_did_init_links.append(_capture_toolbar_links)
+        hook = gui_hooks.top_toolbar_did_init_links
+        # Modern Anki hook containers intentionally do not implement ``in`` /
+        # iteration, but they retain the list-like remove/append API.
+        try:
+            hook.remove(_capture_toolbar_links)
+        except ValueError:
+            pass
+        hook.append(_capture_toolbar_links)
     except Exception as exc:
         print(f"Onigiri: Failed to reorder toolbar hook: {exc}")
 

@@ -36,10 +36,11 @@ def open_settings(page_index=0):
         print("Onigiri Error: addon_path not set. Cannot open settings.")
         return
         
-    from . import settings
+    from . import settings_web
 
-    dialog = settings.SettingsDialog(mw, _addon_path, initial_page_index=page_index)
-    dialog.exec()
+    # The WebUI is the sole editable settings view. The old `settings/`
+    # package is no longer part of this menu path.
+    settings_web.open_settings(page_index, parent=mw, addon_path=_addon_path)
 
 
 def _open_nook_level_dialog():
@@ -49,9 +50,9 @@ def _open_nook_level_dialog():
 
 
 def _open_taiyaki_store():
-    from .gamification.taiyaki_store import open_taiyaki_store
+    from . import patcher
 
-    open_taiyaki_store()
+    patcher.open_mr_taiyaki_store_dialog()
 
 
 def _open_onigimon_care():
@@ -259,7 +260,7 @@ def setup_onigiri_menu(addon_path):
     guide_action.triggered.connect(_open_onigiri_guide)
     info_menu.addAction(guide_action)
 
-    welcome_action = QAction("Welcome Message", mw)
+    welcome_action = QAction(tr("welcome_message"), mw)
     welcome_action.triggered.connect(_show_welcome_message)
     info_menu.addAction(welcome_action)
 

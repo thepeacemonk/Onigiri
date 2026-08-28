@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 from aqt import gui_hooks, mw
 
 from .. import config
+from .. import safe_storage
 from ..onigiri_notifications import notify as show_onigiri_notification
 from ..translations import tr
 
@@ -60,6 +61,18 @@ ONIGIMON_DIFFICULTY_SETTINGS = {
         "market_gift_bonus_chance": 0.12,
     },
 }
+
+
+# How gently the companion words what it says. Nothing about the game changes
+# with the tone - only the copy, which lives in translations.py under keys of
+# the form `onigimon_tone_<message>_<tone>`. The picker is on the Onigimon
+# settings page (settings_web/games.py).
+#
+#   lillipup    kind      encouragement first, a miss is never the user's fault
+#   herdier     serious   the plain facts (what the add-on has always said)
+#   stoutland   blunt     does not care about the user's feelings
+ONIGIMON_TONES = ("lillipup", "herdier", "stoutland")
+DEFAULT_ONIGIMON_TONE = "herdier"
 
 
 ITEMS = {
@@ -428,11 +441,22 @@ class AnkimonBridge:
         self.addon_path = ""
         self._collection_cache: List[Dict[str, Any]] = []
         self._collection_cache_time = 0.0
+        self._detect_result: Optional[bool] = None
+        self._detect_time = 0.0
 
     def detect(self) -> bool:
+        # Whether Ankimon is installed cannot change without a restart in
+        # practice, and this is asked several times per answered card - each
+        # ask used to stat the add-ons folder.
+        now = time.time()
+        if self._detect_result is not None and now - self._detect_time < 60:
+            return self._detect_result
+
         try:
             addons_folder = mw.addonManager.addonsFolder()
         except Exception:
+            self._detect_result = False
+            self._detect_time = now
             return False
 
         for addon_id in ANKIMON_ADDON_IDS:
@@ -440,9 +464,13 @@ class AnkimonBridge:
             if os.path.isdir(path):
                 self.addon_id = addon_id
                 self.addon_path = path
+                self._detect_result = True
+                self._detect_time = now
                 return True
         self.addon_id = ""
         self.addon_path = ""
+        self._detect_result = False
+        self._detect_time = now
         return False
 
     def status(self) -> str:
@@ -487,6 +515,8 @@ class AnkimonBridge:
     def clear_cache(self) -> None:
         self._collection_cache = []
         self._collection_cache_time = 0.0
+        self._detect_result = None
+        self._detect_time = 0.0
 
     def update_ankimon_stat(self, ankimon_id: str, updates: Dict[str, int]) -> bool:
         if not self.detect():
@@ -1018,7 +1048,10 @@ class OnigimonManager:
         self.last_gift: Optional[Dict[str, Any]] = None
 
     def config(self) -> Dict[str, Any]:
-        conf = config.get_config().get("onigimon", {})
+        # Read-only accessor: every answered card asks for the difficulty,
+        # tone, reward interval and so on, and get_config() deep-copies the
+        # whole settings file each time. Callers must not mutate the result.
+        conf = config.get_config_readonly().get("onigimon", {})
         return conf if isinstance(conf, dict) else {}
 
     def is_enabled(self) -> bool:
@@ -1027,6 +1060,28 @@ class OnigimonManager:
     def difficulty_key(self) -> str:
         key = str(self.config().get("difficulty", "pikachu") or "pikachu").lower()
         return key if key in ONIGIMON_DIFFICULTY_SETTINGS else "pikachu"
+
+    def tone_key(self) -> str:
+        key = str(self.config().get("notification_tone", DEFAULT_ONIGIMON_TONE)
+                  or DEFAULT_ONIGIMON_TONE).lower()
+        return key if key in ONIGIMON_TONES else DEFAULT_ONIGIMON_TONE
+
+    def tone_text(self, base_key: str, **values: Any) -> str:
+        """The current tone's wording for `base_key`, with {placeholders} filled.
+
+        Falls back to the serious tone when a language is missing a variant, and
+        to the unformatted string if a placeholder is ever renamed - a
+        notification with a stray `{name}` in it beats no notification at all."""
+        tone = self.tone_key()
+        text = tr(f"{base_key}_{tone}", "")
+        if not text or text == f"{base_key}_{tone}":
+            text = tr(f"{base_key}_{DEFAULT_ONIGIMON_TONE}", "")
+        if not text or text == f"{base_key}_{DEFAULT_ONIGIMON_TONE}":
+            return ""
+        try:
+            return text.format(**values)
+        except Exception:
+            return text
 
     def effective_reward_interval(self) -> int:
         difficulty = self.difficulty_key()
@@ -1103,20 +1158,29 @@ class OnigimonManager:
             self._state = OnigimonState()
             return self._state
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                self._state = OnigimonState(**json.load(fh))
+            data = safe_storage.read_json(
+                path, default={}, label="Your Onigimon companions"
+            )
+            self._state = OnigimonState(**data) if data else OnigimonState()
         except Exception as exc:
             print(f"Onigimon: Could not load state: {exc}")
             self._state = OnigimonState()
         return self._state
 
-    def save(self) -> None:
+    def save(self, immediate: bool = False) -> None:
+        """Persist companion state.
+
+        Queued by default: every answered card nudges the companion, and one
+        fsync plus two backup copies per review is paid on the reviewer's
+        critical path. safe_storage flushes the queue on profile close, before
+        a sync and on screen changes.
+        """
         state = self.load()
-        try:
-            with open(self._data_path(), "w", encoding="utf-8") as fh:
-                json.dump(asdict(state), fh, indent=2, ensure_ascii=False)
-        except Exception as exc:
-            print(f"Onigimon: Could not save state: {exc}")
+        payload = asdict(state)
+        if immediate:
+            safe_storage.atomic_write_json(self._data_path(), payload)
+        else:
+            safe_storage.schedule_write_json(self._data_path(), payload)
 
     def get_available_companions(self) -> List[Dict[str, Any]]:
         return self.bridge.get_collection()
@@ -1381,15 +1445,21 @@ class OnigimonManager:
                 state.star_pieces += 1
             self.last_action = "study_reward"
             self.last_gift = {"item_key": item_key, "amount": amount, "label": item_label}
-            message = f"{self.companion_display_name(companion)} found {amount} {item_label} while you studied."
+            message = self.tone_text(
+                "onigimon_tone_reward_body",
+                name=self.companion_display_name(companion),
+                amount=amount,
+                item=item_label,
+            )
             if earned_star_piece:
-                message += " Bonus: 1 Star Piece."
+                message += self.tone_text("onigimon_tone_reward_bonus")
             self.last_message = message
             self.save()
             self.notify(
-                "Onigimon reward",
+                self.tone_text("onigimon_tone_reward_title"),
                 message,
                 self.item_icon_url(item_key) or companion.sprite_url,
+                kind="reward",
             )
             self.notify_status_warning(companion)
             return
@@ -1415,13 +1485,16 @@ class OnigimonManager:
         name = self.companion_display_name(companion)
         
         if streak > 0:
-            self.last_message = tr(
-                "onigimon_streak_broken_body",
-                "{streak}-answer streak broken! Answer cards correctly in a row for {name} to find items.",
-            ).format(streak=streak, name=name)
-            self.notify(tr("onigimon_streak_broken_title", "Streak broken"), self.last_message, companion.sprite_url)
+            self.last_message = self.tone_text(
+                "onigimon_tone_streak_body", streak=streak, name=name)
+            self.notify(
+                self.tone_text("onigimon_tone_streak_title"),
+                self.last_message,
+                companion.sprite_url,
+                kind="streak_broken",
+            )
         else:
-            self.last_message = f"{name} missed that one. Reward progress moved back and care stats dropped."
+            self.last_message = self.tone_text("onigimon_tone_miss_body", name=name)
 
         self.notify_status_warning(companion)
 
@@ -1475,23 +1548,21 @@ class OnigimonManager:
         }
 
         if critical:
-            title = tr("onigimon_status_critical_title")
+            base = "onigimon_tone_care_critical"
             affected_values = {**low, **critical}
             affected = ", ".join(f"{labels.get(key, key)} {value}%" for key, value in affected_values.items())
-            template = tr("onigimon_status_critical_body")
         else:
-            title = tr("onigimon_status_low_title")
+            base = "onigimon_tone_care_low"
             affected = ", ".join(f"{labels.get(key, key)} {value}%" for key, value in low.items())
-            template = tr("onigimon_status_low_body")
 
-        try:
-            message = template.format(
-                name=self.companion_display_name(companion),
-                statuses=affected,
-            )
-        except Exception:
+        message = self.tone_text(
+            f"{base}_body",
+            name=self.companion_display_name(companion),
+            statuses=affected,
+        )
+        if not message:
             message = f"{self.companion_display_name(companion)} needs care: {affected}."
-        self.notify(title, message, companion.sprite_url)
+        self.notify(self.tone_text(f"{base}_title"), message, companion.sprite_url, kind="care")
 
     @staticmethod
     def _ankimon_stat_bar_percent(value: int) -> int:
@@ -1698,10 +1769,20 @@ class OnigimonManager:
         state.last_daily_gift_day = today
         self.last_action = "gift"
         self.save()
-        message = f"{self.companion_display_name(companion)}'s daily surprise: {amount} {ITEMS[item_key]['label']}."
+        message = self.tone_text(
+            "onigimon_tone_gift_body",
+            name=self.companion_display_name(companion),
+            amount=amount,
+            item=ITEMS[item_key]["label"],
+        )
         self.last_message = message
         self.last_gift = {"item_key": item_key, "amount": amount, "label": ITEMS[item_key]["label"]}
-        self.notify("Daily Onigimon surprise", message, companion.sprite_url)
+        self.notify(
+            self.tone_text("onigimon_tone_gift_title"),
+            message,
+            companion.sprite_url,
+            kind="daily_gift",
+        )
         return message
 
     def _choose_daily_reward(self, streak: int) -> str:
@@ -1930,8 +2011,15 @@ class OnigimonManager:
         self.notify_status_warning(companion)
         return message
 
-    def notify(self, title: str, description: str, icon_image: str = "") -> None:
-        if title not in ("Onigimon reward", "Daily Onigimon surprise", tr("onigimon_streak_broken_title", "Streak broken")):
+    # The only events that become a toast. Care warnings, bond level-ups and
+    # the care/play/train replies still set `last_message` for the widget, but
+    # would be noise on screen.
+    NOTIFIED_KINDS = ("reward", "daily_gift", "streak_broken")
+
+    def notify(self, title: str, description: str, icon_image: str = "", kind: str = "") -> None:
+        # Titles vary with the notification tone, so the gate is what happened
+        # rather than how it was worded.
+        if kind not in self.NOTIFIED_KINDS:
             return
         try:
             context = None

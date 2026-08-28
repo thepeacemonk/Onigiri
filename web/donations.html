@@ -437,7 +437,7 @@
     <main class="page">
         <header class="masthead">
             <img src="/_addons/%%ADDON_PACKAGE%%/onigiri_logo.png" alt="Onigiri">
-            <p class="tagline" id="opening-phrase">Super happy to know you want to support Onigiri!</p>
+            <p class="tagline" id="opening-phrase">%%T:donations_intro%%</p>
         </header>
 
         <section class="spotlight panel">
@@ -447,9 +447,9 @@
                     <span class="avatar-fallback" hidden>🍙</span>
                 </span>
             </div>
-            <span class="spotlight-eyebrow">Creator</span>
+            <span class="spotlight-eyebrow">%%T:donations_creator%%</span>
             <h1>Peace</h1>
-            <p>Creator of Onigiri, Senchadō, Bento Widgets Collection, lofi.town and focumon add-ons integrations.</p>
+            <p>%%T:donations_creator_desc%%</p>
             <div class="spotlight-actions">
                 <button class="cta cta-gold" onclick="pycmd('open_link:https://buymeacoffee.com/peacemonk');">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -474,7 +474,7 @@
         <section class="team">
             <div class="team-heading">
                 <span class="team-line"></span>
-                <h2>More people to thank</h2>
+                <h2>%%T:donations_more_thanks%%</h2>
                 <span class="team-line"></span>
             </div>
             <div class="team-list">
@@ -482,7 +482,7 @@
                     <div class="team-who">
                         <span class="team-text">
                             <span class="team-name">loui4raw</span>
-                            <span class="team-role">creator of the new sidebar</span>
+                            <span class="team-role">%%T:donations_role_sidebar%%</span>
                         </span>
                     </div>
                     <button class="team-link" onclick="pycmd('open_link:https://ko-fi.com/loui4raw');">
@@ -497,7 +497,7 @@
                     <div class="team-who">
                         <span class="team-text">
                             <span class="team-name">unlucky</span>
-                            <span class="team-role">original creator of Ankimon</span>
+                            <span class="team-role">%%T:donations_role_ankimon%%</span>
                         </span>
                     </div>
                     <button class="team-link" onclick="pycmd('open_link:https://ko-fi.com/unlucky99');">
@@ -512,7 +512,7 @@
                     <div class="team-who">
                         <span class="team-text">
                             <span class="team-name">h0tp</span>
-                            <span class="team-role">core contributor for Onigiri</span>
+                            <span class="team-role">%%T:donations_role_core%%</span>
                         </span>
                     </div>
                     <button class="team-link" onclick="pycmd('open_link:https://github.com/h0tp-ftw');">
@@ -527,7 +527,7 @@
                     <div class="team-who">
                         <span class="team-text">
                             <span class="team-name">Ouranos</span>
-                            <span class="team-role">king of feedbacks of Onigiri</span>
+                            <span class="team-role">%%T:donations_role_feedback%%</span>
                         </span>
                     </div>
                     <button class="team-link" onclick="pycmd('open_link:https://github.com/OuraN2O');">
@@ -541,18 +541,18 @@
             </div>
         </section>
 
-        <p class="footnote">Every coffee and Ko-Fi keeps Onigiri simmering. Thank you 🍙</p>
+        <p class="footnote">%%T:donations_footer%%</p>
     </main>
 
     <script>
         (function () {
             const phrases = [
-                "Super happy to know you want to support Onigiri!",
-                "Your support keeps Onigiri warm and shipping!",
-                "Tiny donation, huge bowl of motivation!",
-                "Thanks for helping Onigiri keep growing!",
-                "You are feeding the next Onigiri update!",
-                "Support received with maximum monk gratitude!"
+                "%%T:donations_intro%%",
+                "%%T:donations_phrase_2%%",
+                "%%T:donations_phrase_3%%",
+                "%%T:donations_phrase_4%%",
+                "%%T:donations_phrase_5%%",
+                "%%T:donations_phrase_6%%"
             ];
             const storageKey = "onigiriDonationPhraseIndex";
             let last = Number(window.localStorage.getItem(storageKey));

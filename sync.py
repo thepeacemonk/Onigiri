@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from aqt import mw
 from . import config
+from . import safe_storage
 
 class SyncManager:
     """
@@ -17,7 +18,19 @@ class SyncManager:
         self._sync_filename = None
         self._media_dir = None
         self._user_files_dir = os.path.join(os.path.dirname(__file__), "user_files")
-        self._state_file = os.path.join(os.path.dirname(__file__), ".onigiri_sync_state.json")
+        # Kept inside user_files: anything at the add-on root is deleted and
+        # re-extracted on every update, which would reset conflict detection.
+        self._state_file = os.path.join(self._user_files_dir, "sync_state.json")
+        self._migrate_legacy_state_file()
+
+    def _migrate_legacy_state_file(self):
+        legacy = os.path.join(os.path.dirname(__file__), ".onigiri_sync_state.json")
+        if os.path.exists(legacy) and not os.path.exists(self._state_file):
+            try:
+                os.makedirs(self._user_files_dir, exist_ok=True)
+                os.replace(legacy, self._state_file)
+            except OSError as exc:
+                print(f"Onigiri Sync: could not migrate sync state: {exc}")
 
     def _ensure_init(self):
         """Initialize paths that depend on the active profile."""
@@ -48,11 +61,7 @@ class SyncManager:
         state["last_zip_mtime"][profile_name] = mtime
         state["last_zip_size"][profile_name] = size
         
-        try:
-            with open(self._state_file, 'w', encoding='utf-8') as f:
-                json.dump(state, f, indent=2)
-        except:
-            pass
+        safe_storage.atomic_write_json(self._state_file, state)
 
     def is_enabled(self):
         return config.get_config().get("ankiweb_sync_enabled", False)
@@ -74,10 +83,13 @@ class SyncManager:
             with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for root, _, files in os.walk(self._user_files_dir):
                     for file in files:
-                        # Skip temporary files or logs if any
-                        if file.endswith(".log"):
+                        # Skip logs and the local crash-safety artefacts - the
+                        # .bak/.corrupt copies are recovery aids for this
+                        # machine and would double the size of the synced zip.
+                        if file.endswith((".log", ".bak", ".corrupt")) or ".tmp" in file:
                             continue
-                            
+
+
                         file_path = os.path.join(root, file)
                         rel_path = os.path.relpath(file_path, self._user_files_dir)
                         zf.write(file_path, rel_path)

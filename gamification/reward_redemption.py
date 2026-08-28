@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import tempfile
 from typing import Any, Dict, Optional
 
@@ -11,10 +12,53 @@ from aqt.qt import *
 
 from ..onigiri_notifications import notify_info as showInfo
 from . import redeem_net
+from ..translations import tr
 
 
 REWARD_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
 BUY_CODES_URL = "https://buymeacoffee.com/peacemonk/extras"
+
+
+def _qt_version() -> tuple[int, int, int]:
+    """Return the running Qt version without assuming a specific PyQt major."""
+    try:
+        # aqt.qt is the compatibility layer used by Anki's supported add-on
+        # API. Keep the fallback for older builds that did not re-export it.
+        from aqt.qt import QT_VERSION_STR
+    except (ImportError, AttributeError):
+        try:
+            from PyQt6.QtCore import QT_VERSION_STR
+        except ImportError:
+            try:
+                from PyQt5.QtCore import QT_VERSION_STR
+            except ImportError:
+                return (0, 0, 0)
+
+    try:
+        parts = [int(part) for part in QT_VERSION_STR.split(".")[:3]]
+        return tuple((parts + [0, 0, 0])[:3])
+    except (AttributeError, TypeError, ValueError):
+        return (0, 0, 0)
+
+
+def _use_deferred_redeem_progress() -> bool:
+    """Avoid Qt's macOS busy-cursor conversion in Qt 6.9 and newer.
+
+    Qt's immediate override-cursor path can crash inside CoreGraphics on
+    macOS. On older Anki/PyQt versions we retain the immediate progress UI.
+    """
+    return platform.system() == "Darwin" and _qt_version() >= (6, 9, 0)
+
+
+def _start_redeem_progress() -> None:
+    progress = getattr(mw, "progress", None)
+    if progress is None:
+        return
+
+    if _use_deferred_redeem_progress():
+        progress.start(label="Redeeming code...")
+    else:
+        progress.start(label="Redeeming code...", immediate=True)
 
 
 def _night_mode() -> bool:
@@ -86,7 +130,7 @@ class RewardCodeDialog(QDialog):
     def __init__(self, parent=None, context: str = "reward") -> None:
         super().__init__(parent)
         self.context = context
-        self.setWindowTitle("Redeem Reward")
+        self.setWindowTitle(tr("redeem_reward_title"))
         self.setFixedWidth(430)
         self.setModal(True)
         self._setup_ui()
@@ -157,7 +201,7 @@ class RewardCodeDialog(QDialog):
         layout.addWidget(hero)
 
         self.code_input = QLineEdit()
-        self.code_input.setPlaceholderText("Paste code here")
+        self.code_input.setPlaceholderText(tr("paste_code_short"))
         self.code_input.setClearButtonEnabled(True)
         self.code_input.setFixedHeight(46)
         self.code_input.returnPressed.connect(self.accept)
@@ -179,9 +223,9 @@ class RewardCodeDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(tr("cancel"))
         cancel_btn.clicked.connect(self.reject)
-        redeem_btn = QPushButton("Redeem")
+        redeem_btn = QPushButton(tr("redeem_action"))
         redeem_btn.clicked.connect(self.accept)
         for btn in (cancel_btn, redeem_btn):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -269,13 +313,13 @@ class RewardCodeDialog(QDialog):
         """)
         top_row.addWidget(coin)
 
-        title = QLabel("Redeem Hex Coins")
+        title = QLabel(tr("redeem_hex_coins"))
         title.setStyleSheet(f"color: {text}; font-size: 16px; font-weight: 600;")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         top_row.addWidget(title, 1)
         hero_layout.addLayout(top_row)
 
-        subtitle = QLabel("Enter a Hexagon Land code to add coins to your wallet.")
+        subtitle = QLabel(tr("redeem_hex_coins_desc"))
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(f"color: {muted}; font-size: 13px; font-weight: 400;")
         hero_layout.addWidget(subtitle)
@@ -346,13 +390,13 @@ class RewardCodeDialog(QDialog):
         """)
         top_row.addWidget(mart)
 
-        title = QLabel("Redeem Onigimon Code")
+        title = QLabel(tr("redeem_onigimon_title"))
         title.setStyleSheet(f"color: {text}; font-size: 16px; font-weight: 600;")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         top_row.addWidget(title, 1)
         hero_layout.addLayout(top_row)
 
-        subtitle = QLabel("Enter a code to add Comet Shards, Star Pieces, or items.")
+        subtitle = QLabel(tr("redeem_onigimon_desc"))
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(f"color: {muted}; font-size: 13px; font-weight: 400;")
         hero_layout.addWidget(subtitle)
@@ -384,7 +428,7 @@ class RewardCodeDialog(QDialog):
         border: str = "rgba(127, 151, 164, 0.35)",
     ) -> None:
         self.code_input = QLineEdit()
-        self.code_input.setPlaceholderText("Paste code here")
+        self.code_input.setPlaceholderText(tr("paste_code_short"))
         self.code_input.setClearButtonEnabled(True)
         self.code_input.setFixedHeight(40)
         self.code_input.returnPressed.connect(self.accept)
@@ -407,9 +451,9 @@ class RewardCodeDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch(1)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(tr("cancel"))
         cancel_btn.clicked.connect(self.reject)
-        redeem_btn = QPushButton("Redeem")
+        redeem_btn = QPushButton(tr("redeem_action"))
         redeem_btn.clicked.connect(self.accept)
         for btn in (cancel_btn, redeem_btn):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -450,14 +494,14 @@ class RewardCodeDialog(QDialog):
         border: str,
         hover_bg: str,
     ) -> None:
-        support_text = QLabel("Support Onigiri to get special coin codes and unlock exclusive themes!")
+        support_text = QLabel(tr("support_onigiri_coins"))
         support_text.setWordWrap(True)
         support_text.setStyleSheet(f"color: {muted}; font-size: 12px; font-weight: 400;")
         layout.addWidget(support_text)
 
         buy_row = QHBoxLayout()
         buy_row.addStretch(1)
-        buy_btn = QPushButton("Buy Coin Codes")
+        buy_btn = QPushButton(tr("buy_coin_codes"))
         buy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         buy_btn.setFixedHeight(32)
         buy_btn.setMinimumWidth(220)
@@ -502,7 +546,7 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
             # replayed by the server instead of burning the code.
             "request_id": redeem_net.request_id_for_code(code),
         }
-        mw.progress.start(label="Redeeming code...", immediate=True)
+        _start_redeem_progress()
         try:
             response = redeem_net.post_redeem(REWARD_API_URL, payload)
         finally:
@@ -510,30 +554,26 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
         data = response.json()
         redeem_net.clear_request_id(code)
     except requests.exceptions.ReadTimeout:
-        showInfo(
-            "The server took too long to answer.\n\n"
-            "Your code was not lost - just enter the same code again and the "
-            "reward will be added."
-        )
+        showInfo(tr("err_reward_timeout"))
         return False
     except requests.exceptions.Timeout:
-        showInfo("Could not reach the reward server. Please check your internet connection.")
+        showInfo(tr("err_reward_unreachable"))
         return False
     except requests.exceptions.ConnectionError:
-        showInfo("Could not connect to the reward server.")
+        showInfo(tr("err_reward_connect"))
         return False
     except Exception as exc:
-        showInfo(f"Could not redeem code: {exc}")
+        showInfo(tr("err_redeem_code").format(exc))
         return False
 
     if data.get("result") != "success":
-        showInfo(f"Redemption failed:\n{data.get('message', 'Invalid Code')}")
+        showInfo(tr("err_redemption_failed").format(data.get("message") or tr("err_invalid_code")))
         return False
 
     try:
         message = apply_reward(data)
     except Exception as exc:
-        showInfo(f"Code was accepted, but the reward could not be applied locally:\n{exc}")
+        showInfo(tr("err_reward_not_applied").format(exc))
         return False
 
     showInfo(message)
@@ -543,7 +583,9 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
 
 def apply_reward(data: Dict[str, Any]) -> str:
     reward_type = str(data.get("reward_type") or "").strip().lower()
-    if not reward_type and "coins" in data:
+    # Older code endpoints sent ``coins`` without a type; newer variants may
+    # send ``amount``.  Both are Taiyaki rewards in the legacy store flow.
+    if not reward_type and ("coins" in data or "amount" in data):
         reward_type = "taiyaki_coins"
 
     if reward_type == "taiyaki_coins":
@@ -572,7 +614,9 @@ def apply_reward(data: Dict[str, Any]) -> str:
         else:
             state.comet_shards = int(state.comet_shards) + amount
             label = "Comet Shards"
-        manager.save()
+        # Redeemed rewards go to disk right away - a queued write is fine for
+        # per-review drift, not for something the user paid a code for.
+        manager.save(immediate=True)
         return f"Redeemed {amount} {label}."
 
     if reward_type == "onigimon_item":
@@ -586,7 +630,7 @@ def apply_reward(data: Dict[str, Any]) -> str:
             raise ValueError(f"Unknown Onigimon item: {item_key}")
         state = manager.load()
         state.inventory[item_key] = int(state.inventory.get(item_key, 0) or 0) + amount
-        manager.save()
+        manager.save(immediate=True)
         label = ITEMS.get(item_key, {}).get("label", item_key)
         return f"Redeemed {amount} {label}."
 
@@ -595,6 +639,14 @@ def apply_reward(data: Dict[str, Any]) -> str:
 
 def _add_taiyaki_coins(amount: int) -> None:
     path = os.path.join(_addon_path(), "user_files", f"gamification_{_profile_name()}.json")
+    # This reads the file directly, so any write still queued by the manager
+    # has to land first or the coins would be added to a stale balance.
+    try:
+        from .. import safe_storage
+
+        safe_storage.flush_pending(path)
+    except Exception:
+        pass
     data: Dict[str, Any] = {}
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as handle:

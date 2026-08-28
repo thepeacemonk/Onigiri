@@ -2,8 +2,15 @@
 
 import html
 import json
+import re
 from aqt import mw
 from aqt.deckbrowser import DeckBrowser
+from . import config
+
+
+def is_deck_stats_widget_id(widget_id: str) -> bool:
+    """Accept the legacy Deck Stats ID and copies made in the Organize page."""
+    return bool(re.fullmatch(r"deck_stats(?:_[1-9]\d*)?", str(widget_id or "")))
 
 def get_translated_labels():
     """Widget labels, resolved through the add-on's own translation table.
@@ -149,6 +156,23 @@ _TONE_COLOR_VARS = {
 }
 
 
+def _compact_count(value: int) -> str:
+    """Shorten a card count so it still fits inside the 1x1 ring (1234 -> 1.2k)."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return "0"
+    if count < 1000:
+        return str(count)
+    if count < 10000:
+        text = f"{count / 1000:.1f}".rstrip("0").rstrip(".")
+        return f"{text}k"
+    if count < 1000000:
+        return f"{count // 1000}k"
+    text = f"{count / 1000000:.1f}".rstrip("0").rstrip(".")
+    return f"{text}M"
+
+
 def _deck_display_name(deck_name: str) -> str:
     leaf_name = str(deck_name or "").split("::")[-1]
     return leaf_name.strip()
@@ -164,23 +188,44 @@ def _selected_deck_label(selected_did, all_decks, labels) -> str:
 import base64
 import os
 
+# A deck tree with 180 rows asks for the same handful of icon files over and
+# over, and every miss was a full read + base64 of the file. Keyed on the
+# file's identity so an edited icon still refreshes.
+_DATA_URI_CACHE = {}
+
+
 def _get_data_uri(path):
-    if not path or not os.path.exists(path):
+    if not path:
         return ""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return ""
+    key = (stat.st_mtime_ns, stat.st_size)
+    cached = _DATA_URI_CACHE.get(path)
+    if cached is not None and cached[0] == key:
+        return cached[1]
     try:
         with open(path, "rb") as f:
             data = f.read()
             b64 = base64.b64encode(data).decode("utf-8")
             if path.lower().endswith(".png"):
-                return f"data:image/png;base64,{b64}"
+                uri = f"data:image/png;base64,{b64}"
             else:
-                return f"data:image/svg+xml;base64,{b64}"
+                uri = f"data:image/svg+xml;base64,{b64}"
     except Exception:
         return ""
+    if len(_DATA_URI_CACHE) > 256:
+        _DATA_URI_CACHE.clear()
+    _DATA_URI_CACHE[path] = (key, uri)
+    return uri
 
-def _get_deck_icon_data(did, name, has_children):
+def _get_deck_icon_data(did, name, has_children, custom_deck_icons=None):
     addon_dir = os.path.dirname(__file__)
-    custom_deck_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
+    # The picker calls this once per deck; the caller reads the icon map once
+    # and passes it in rather than paying a collection read per row.
+    if custom_deck_icons is None:
+        custom_deck_icons = config.get_collection_config("onigiri_custom_deck_icons", {})
     custom_data = custom_deck_icons.get(str(did), {})
     icon_file = custom_data.get("icon")
     
@@ -297,8 +342,11 @@ def _render_deck_picker_html(deck_browser: DeckBrowser, selected_did, labels) ->
         selected_did == "all",
     )]
 
+    custom_deck_icons = config.get_collection_config("onigiri_custom_deck_icons", {})
     for node, depth, full_path in _flatten_picker_nodes(tree_data.children, []):
-        icon_data = _get_deck_icon_data(node.deck_id, full_path, bool(node.children))
+        icon_data = _get_deck_icon_data(
+            node.deck_id, full_path, bool(node.children), custom_deck_icons
+        )
         if icon_data["type"] == "emoji":
             icon_html = f'<span class="learner-stats-picker-icon emoji-icon">{html.escape(icon_data["content"])}</span>'
         else:
@@ -330,14 +378,28 @@ def saved_row_span(widget_id: str) -> int:
     """
     try:
         from . import config
-        conf = config.get_config()
-        if widget_id == "deck_stats":
-            entry = conf.get("onigiriWidgetLayout", {}).get("grid", {}).get("deck_stats", {})
+        conf = config.get_config_readonly()
+        if is_deck_stats_widget_id(widget_id):
+            entry = conf.get("onigiriWidgetLayout", {}).get("grid", {}).get(widget_id, {})
             return max(1, int(entry.get("row", 2)))
         entry = conf.get("externalWidgetLayout", {}).get("grid", {}).get(widget_id, {})
         return max(1, int(entry.get("row_span", 2)))
     except Exception:
         return 2
+
+
+def saved_col_span(widget_id: str) -> int:
+    """Column span for the current widget instance's saved dashboard tile."""
+    try:
+        from . import config
+        conf = config.get_config_readonly()
+        if is_deck_stats_widget_id(widget_id):
+            entry = conf.get("onigiriWidgetLayout", {}).get("grid", {}).get(widget_id, {})
+            return max(1, int(entry.get("col", 1)))
+        entry = conf.get("externalWidgetLayout", {}).get("grid", {}).get(widget_id, {})
+        return max(1, int(entry.get("column_span", 1)))
+    except Exception:
+        return 1
 
 
 def chart_type() -> str:
@@ -355,14 +417,31 @@ def chart_type() -> str:
     return value if value in ("minimal", "full") else "minimal"
 
 
-def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = None) -> str:
+def _render_widget(
+    deck_browser: DeckBrowser, widget_id: str, row_span: int = None, col_span: int = None
+) -> str:
     labels = get_translated_labels()
     if row_span is None:
         row_span = saved_row_span(widget_id)
+    if col_span is None:
+        col_span = saved_col_span(widget_id)
+    try:
+        row_span = max(1, int(row_span))
+    except (TypeError, ValueError):
+        row_span = 2
+    try:
+        col_span = max(1, int(col_span))
+    except (TypeError, ValueError):
+        col_span = 1
     is_compact = row_span <= 1
+    # A 1x1 tile gets its own miniature body instead of the wide one-row bar
+    # the 2x1 / 3x1 cards use: there is no horizontal room for a full-width
+    # progress bar plus a right-anchored total, so the glance becomes a ring
+    # with the total inside it and two headline counts beside it.
+    is_mini = is_compact and col_span <= 1
     
     # Persistent settings mapping widget ID to selected deck ID
-    saved_decks = mw.col.conf.get("onigiri_learner_stats_decks", {})
+    saved_decks = config.get_collection_config("onigiri_learner_stats_decks", {})
     selected_did = saved_decks.get(widget_id, "all")
 
     # Get sorted list of decks
@@ -425,7 +504,7 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = No
     mature_bar_pct = _pct_of(mature_cnt)
     unseen_bar_pct = _pct_of(unseen_cnt)
 
-    saved_views = mw.col.conf.get("onigiri_learner_stats_view", {})
+    saved_views = config.get_collection_config("onigiri_learner_stats_view", {})
     active_view = saved_views.get(widget_id, "grouped") if isinstance(saved_views, dict) else "grouped"
     if active_view not in ("grouped", "bars", "donut"):
         active_view = "grouped"
@@ -611,6 +690,20 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = No
                 if (typeof pycmd === 'function' && widgetId) {
                     pycmd('onigiri_learner_stats_select_view:' + encodeURIComponent(JSON.stringify({ widgetId, view })));
                 }
+            },
+            cycleView(trigger) {
+                const widget = trigger && trigger.closest ? trigger.closest('.learner-stats-widget') : null;
+                if (!widget) return;
+                const views = ['grouped', 'bars', 'donut'];
+                const current = widget.getAttribute('data-active-view');
+                const next = views[(views.indexOf(current) + 1) % views.length];
+                this.setView(trigger, next);
+                const icon = trigger.querySelector('[data-view="' + next + '"]');
+                const label = icon && icon.getAttribute('data-label');
+                if (label) {
+                    trigger.setAttribute('aria-label', label);
+                    trigger.title = label;
+                }
             }
         };
     })();
@@ -680,7 +773,17 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = No
         )
 
     def _bar_row(label: str, value: int, pct: float, tone: str) -> str:
-        fill_style = _tone_style(tone, extra=f"width: {pct}%;")
+        # Keep a non-zero fill at least as wide as the track is tall.  Without
+        # this floor a tiny percentage can collapse to a sub-pixel sliver;
+        # Chromium then has no visible right-hand curve even though the CSS
+        # radius is set.  Zero values stay genuinely empty.
+        fill_extra = f"width: {pct}%; border-radius: 999px !important;"
+        if pct > 0:
+            # The track is 7px tall.  A fill narrower than that cannot form
+            # the same semicircular end as a normal (wider) pill, so reserve
+            # one full track-height for every visible fill.
+            fill_extra += " min-width: 7px !important;"
+        fill_style = _tone_style(tone, extra=fill_extra)
         return f"""
             <div class="learner-stats-bar-row">
                 <span class="learner-stats-bar-label">{html.escape(label)}</span>
@@ -845,13 +948,37 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = No
             {donut_footer_html}
         </div>"""
 
-    switcher_html = "" if is_compact else f"""
+    view_icons = {
+        "grouped": icon_grouped,
+        "bars": icon_bars,
+        "donut": icon_donut,
+    }
+    view_labels = {
+        "grouped": labels["view_grouped"],
+        "bars": labels["view_bars"],
+        "donut": labels["view_donut"],
+    }
+    narrow_switcher_icons = "".join(
+        f'<span class="learner-stats-view-cycle-icon" data-view="{view}" '
+        f'data-label="{html.escape(label, quote=True)}">{view_icons[view]}</span>'
+        for view, label in view_labels.items()
+    )
+    # A one-column, two-row card has room for exactly one style control. Its
+    # button shows the active style and advances through the three choices on
+    # click; the separate pill remains solely for deck selection.
+    narrow_switcher_html = f"""
+                    <button type="button" class="learner-stats-view-cycle" aria-label="{html.escape(view_labels[active_view], quote=True)}" title="{html.escape(view_labels[active_view], quote=True)}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.cycleView(this);">
+                        {narrow_switcher_icons}
+                    </button>"""
+    switcher_html = "" if is_compact else (
+        narrow_switcher_html if col_span == 1 else f"""
                     <div class="learner-stats-switcher" role="tablist" aria-label="{labels["view_switcher"]}">
                         <div class="learner-stats-switcher-indicator"></div>
                         <button type="button" class="learner-stats-switcher-btn" data-view="grouped" aria-label="{labels["view_grouped"]}" title="{labels["view_grouped"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'grouped');">{icon_grouped}</button>
                         <button type="button" class="learner-stats-switcher-btn" data-view="bars" aria-label="{labels["view_bars"]}" title="{labels["view_bars"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'bars');">{icon_bars}</button>
                         <button type="button" class="learner-stats-switcher-btn" data-view="donut" aria-label="{labels["view_donut"]}" title="{labels["view_donut"]}" onclick="window.OnigiriLearnerStats && window.OnigiriLearnerStats.setView(this,'donut');">{icon_donut}</button>
                     </div>"""
+    )
 
     # Below ~1 grid row there's no room for any of the three detailed views
     # (each needs 150px+ of body height); fall back to a single glance line.
@@ -861,13 +988,53 @@ def _render_widget(deck_browser: DeckBrowser, widget_id: str, row_span: int = No
             <div class="learner-stats-compact-total">{total_cnt} <span>{labels["total_short"]}</span></div>
         </div>"""
 
-    body_html = compact_body_html if is_compact else f"""
+    # ---- 1x1 miniature -------------------------------------------------
+    # Two headline rows only: the grouped pair in minimal mode, or the two
+    # largest categories when the user charts every category. The ring reuses
+    # the donut view's arcs verbatim, so it follows the same Deck Stats colors.
+    if is_full_chart:
+        mini_rows = sorted(full_categories, key=lambda item: item[1], reverse=True)[:2]
+    else:
+        mini_rows = [
+            (labels["group_in_progress"], in_progress_cnt, "in_progress"),
+            (labels["group_mastered"], mastered_cnt, "mastered"),
+        ]
+    mini_legend_html = "".join(
+        f'<div class="learner-stats-mini-row">'
+        f'<span class="learner-stats-mini-dot"{_tone_style(tone)}></span>'
+        f'<span class="learner-stats-mini-row-label">{html.escape(label_text)}</span>'
+        f'<span class="learner-stats-mini-row-value">{count}</span>'
+        f'</div>'
+        for label_text, count, tone in mini_rows
+    )
+    mini_title = html.escape(f'{labels["total"]}: {total_cnt}', quote=True)
+    mini_body_html = f"""
+        <div class="learner-stats-mini-body">
+            <div class="learner-stats-mini-ring-wrap" title="{mini_title}">
+                <svg viewBox="0 0 36 36" class="learner-stats-mini-ring">
+                    <circle class="learner-stats-donut-track" cx="18" cy="18" r="15.5" fill="none" stroke-width="4"></circle>
+                    {donut_arcs_html}
+                </svg>
+                <div class="learner-stats-mini-ring-center">
+                    <span class="learner-stats-mini-ring-num">{_compact_count(total_cnt)}</span>
+                    <span class="learner-stats-mini-ring-cap">{html.escape(labels["total_short"])}</span>
+                </div>
+            </div>
+            <div class="learner-stats-mini-legend">{mini_legend_html}</div>
+        </div>"""
+
+    if is_mini:
+        body_html = mini_body_html
+    elif is_compact:
+        body_html = compact_body_html
+    else:
+        body_html = f"""
             {grouped_view_html}
             {bars_view_html}
             {donut_view_html}"""
 
     html_widget = f"""
-    <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}" data-active-view="{active_view}" data-chart-type="{"full" if is_full_chart else "minimal"}">
+    <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}" data-active-view="{active_view}" data-chart-type="{"full" if is_full_chart else "minimal"}" data-grid-span="{col_span}x{row_span}">
         <div class="learner-stats-header">
             <div class="learner-stats-header-row onigiri-widget-head">
                 <h3>{labels["title"]}</h3>

@@ -17,13 +17,19 @@
             rgba(0, 0, 0, 0.4) calc(100% - var(--onigiri-name-overlap)),
             transparent 100%);
 
-    /* Multiplier on the inner padding of every grid widget. Each widget keeps
-       its own base padding and multiplies it by this, so the gutters grow
-       together and stay in proportion to each other instead of flattening to
-       one value. Raising it eats content height -- the widgets are fixed to
-       the grid's row height -- so anything much past 1.4 starts to clip the
-       tallest content (Onigimon's five meters) at the 120px minimum row. */
+    /* Multiplier on the inner padding of every grid widget. Raising it eats
+       content height -- the widgets are fixed to the grid's row height -- so
+       anything much past 1.4 starts to clip the tallest content (Onigimon's
+       five meters) at the 120px minimum row. */
     --onigiri-widget-pad-scale: 1.4;
+
+    /* The one inner gutter every grid widget uses. Widgets used to each carry
+       their own base padding (12/14/15/16/20px) multiplied by the scale, which
+       made their content sit at four different insets side by side on the same
+       grid; they now all resolve to this single value so a note, a heatmap and
+       a stat card line up. Nested cards (Hashi's gallery cards) keep their own
+       smaller padding -- it is the widget shell's gutter that is shared. */
+    --onigiri-widget-pad: calc(14px * var(--onigiri-widget-pad-scale));
 }
 
 body {
@@ -42,6 +48,15 @@ body {
     height: 100vh;
     position: relative;
     animation: none !important;
+    transition: opacity 0.25s ease, filter 0.25s ease !important;
+}
+
+body.is-card-editing .container.modern-main-menu,
+body.is-card-editing #deck-list-container,
+body.is-card-editing .sidebar-left,
+body.is-card-editing .main-content,
+.container.modern-main-menu.is-card-editing {
+    pointer-events: none !important;
 }
 
 .container.modern-main-menu.onigiri-sidebar-right {
@@ -493,26 +508,23 @@ body {
 
 /* Profile Bar Styles */
 .profile-bar {
-    display: grid;
-    grid-template-areas: "content";
-    grid-template-columns: minmax(0, 1fr);
+    height: 64px;
+    border-radius: 32px;
+    position: relative;
+    display: flex;
     align-items: center;
-    justify-content: stretch;
-    justify-items: stretch;
+    padding: 0 12px;
+    gap: 14px;
+    overflow: hidden;
+    box-shadow: none;
     width: var(--onigiri-deck-header-width, 100%);
     max-width: 100%;
     min-width: 0;
-    padding: 6px;
-    border-radius: 50px;
     margin-bottom: 20px;
     background-color: var(--highlight-bg);
-    transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1), min-height 0.42s cubic-bezier(0.22, 1, 0.36, 1), padding 0.42s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.42s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.2s ease, background-color 0.2s;
-    position: relative;
-    overflow: hidden;
     cursor: pointer;
     box-sizing: border-box;
     align-self: flex-start;
-    will-change: width;
 }
 
 .profile-bar>* {
@@ -530,30 +542,30 @@ body {
 }
 
 .profile-content {
-    grid-area: content;
-    justify-self: stretch;
     display: flex;
     align-items: center;
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    gap: 0;
+    gap: 14px;
     color: inherit;
-    transition: opacity 0.24s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .profile-content-main {
+    display: flex;
+    align-items: center;
     width: 100%;
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    gap: 14px;
 }
 
 .profile-bar .profile-bg-layer {
     position: absolute;
     inset: 0;
+    background-size: cover;
+    background-position: center;
     background-repeat: no-repeat;
     pointer-events: none;
-    z-index: 0;
+    z-index: 1;
 }
 
 .profile-bar .restaurant-level-chip {
@@ -633,7 +645,7 @@ body {
 }
 
 .profile-name {
-    font-size: 16px;
+    font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -1693,11 +1705,14 @@ tr.deck.drag-over-nest {
     margin-bottom: 20px;
 }
 
+/* @onigiri:stats-widgets:start — the settings dialog's Stats Widgets preview
+   pulls this whole block verbatim (settings_web/render.py real_widget_css), so
+   the preview is the same CSS the menu draws with, never a copy of it. */
 .stat-card {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
     border-radius: 15px;
-    padding: calc(20px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
     display: flex;
     flex-direction: column;
     text-align: center;
@@ -1849,7 +1864,7 @@ tr.deck.drag-over-nest {
 .stat-card.onigiri-stat-card.is-minimal {
     text-align: left;
     justify-content: flex-start;
-    padding: calc(16px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
 }
 
 .stat-card.onigiri-stat-card.is-minimal .stat-value {
@@ -1887,10 +1902,14 @@ tr.deck.drag-over-nest {
     --stat-wash: var(--swidget-studied-wash, rgba(128, 128, 128, 0.10));
     text-align: left;
     justify-content: space-between;
-    padding: calc(16px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
     /* The tints are pre-mixed rgba values from the settings; color-mix() is
        not reliable in the Qt WebEngine build Anki ships. */
     background-image: linear-gradient(160deg, var(--stat-wash) 0%, transparent 62%);
+}
+
+.stat-card.onigiri-stat-card.is-expressive.no-wash {
+    background-image: none;
 }
 
 .stat-card.onigiri-stat-card.is-expressive[data-stat="time"] {
@@ -1998,7 +2017,7 @@ tr.deck.drag-over-nest {
 .stat-card.onigiri-stat-card.has-trend .stat-body {
     /* Clears the strip, minus the card's own bottom padding which already
        sits inside it. */
-    padding-bottom: calc(var(--stat-trend-h) - 16px * var(--onigiri-widget-pad-scale));
+    padding-bottom: max(0px, calc(var(--stat-trend-h) - var(--onigiri-widget-pad)));
 }
 
 .stat-card.onigiri-stat-card.is-expressive .stat-value {
@@ -2020,15 +2039,26 @@ tr.deck.drag-over-nest {
     vector-effect: non-scaling-stroke;
 }
 
-/* Retention keeps its stars in both designs, just smaller and left aligned
-   so it lines up with the other three cards. */
+/* Retention keeps its stars in both designs. Expressive gets a readable row;
+   Minimal makes the same signal quieter and more discrete. */
 .stat-card.onigiri-stat-card .star-rating {
     gap: 2px;
 }
 
-.stat-card.onigiri-stat-card .star {
+.stat-card.onigiri-stat-card .star,
+.stat-card.retention-card .star {
     width: 12px;
     height: 12px;
+}
+
+.stat-card.onigiri-stat-card.is-minimal .star-rating {
+    gap: 1px;
+    opacity: 0.72;
+}
+
+.stat-card.onigiri-stat-card.is-minimal .star {
+    width: 10px;
+    height: 10px;
 }
 
 /* Overrides for the legacy centred rules further up this file. */
@@ -2042,6 +2072,21 @@ tr.deck.drag-over-nest {
 .stat-card.onigiri-stat-card.retention-card p {
     font-size: inherit;
 }
+/* Retention stars have their own editable colours. `color` is set as well for
+   the emoji star variant, which paints text rather than a mask. */
+.stat-card.onigiri-stat-card .star,
+.stat-card.retention-card .star {
+    background-color: var(--swidget-retention-star, var(--star-color));
+    color: var(--swidget-retention-star, var(--star-color));
+}
+
+.stat-card.onigiri-stat-card .star.empty,
+.stat-card.retention-card .star.empty {
+    background-color: var(--swidget-retention-empty-star, var(--empty-star-color));
+    color: var(--swidget-retention-empty-star, var(--empty-star-color));
+}
+
+/* @onigiri:stats-widgets:end */
 
 /* =========================================================================
    Hashi Notes dashboard widget
@@ -2053,7 +2098,7 @@ tr.deck.drag-over-nest {
     /* The widget grid centres its cells; note text has to read left-aligned. */
     text-align: left;
     gap: 8px;
-    padding: calc(12px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
     cursor: pointer;
     overflow: hidden;
     box-sizing: border-box;
@@ -2139,8 +2184,8 @@ tr.deck.drag-over-nest {
 
 .hashi-widget-card-title {
     font-size: 12px;
-    font-weight: 500;
-    color: var(--hashiw-title-color, var(--fg));
+    font-weight: 600;
+    color: var(--hashiw-note-fg, var(--hashiw-title-color, var(--fg)));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2151,7 +2196,7 @@ tr.deck.drag-over-nest {
     flex: 1;
     font-size: 11px;
     line-height: 1.35;
-    color: var(--hashiw-excerpt-color, var(--fg-subtle));
+    color: var(--hashiw-note-fg2, var(--hashiw-excerpt-color, var(--fg-subtle)));
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -2161,10 +2206,52 @@ tr.deck.drag-over-nest {
 .hashi-widget-card-date {
     font-size: 10px;
     opacity: 0.7;
-    color: var(--hashiw-excerpt-color, var(--fg-subtle));
+    color: var(--hashiw-note-fg3, var(--hashiw-excerpt-color, var(--fg-subtle)));
 }
 
 /* --- Single mode ------------------------------------------------------- */
+/* One note fills the widget, so it is the widget shell -- the note card
+   bleeds to the shell's edges and carries the shared gutter itself instead of
+   sitting inset inside a second one. Stacking both put the note's text at
+   roughly twice every other widget's inset.
+
+   The paper colour covers the whole interior, header included, so the widget
+   reads as the pinned note itself rather than a header pasted above it. That
+   fill is the note's *real* colour (hashi_notes.py::_paper_for_theme mirrors
+   the editor's paperForTheme), which is why the ink cannot come from the
+   dashboard palette: dark-mode --fg on light paper is unreadable. Every text
+   colour below therefore falls back to the old dashboard token only when the
+   note has no colour of its own. The widget's own border and radius are
+   untouched -- only what sits inside them changes. */
+
+.hashi-notes-widget.is-single {
+    padding: 0;
+    gap: 0;
+    background-color: var(--hashiw-note-fill, var(--hashiw-box-bg, var(--canvas-inset)));
+}
+
+.hashi-notes-widget.is-single .onigiri-widget-head {
+    padding: var(--onigiri-widget-pad) var(--onigiri-widget-pad) 8px;
+    /* Hairline in the note's own ink, so the split reads on any paper. */
+    border-bottom: 1px solid var(--hashiw-note-edge, transparent);
+}
+
+.hashi-notes-widget.is-single .onigiri-widget-head h3 {
+    color: var(--hashiw-note-fg2, var(--hashiw-title-color, var(--fg))) !important;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.9;
+}
+
+.hashi-notes-widget.is-single .hashi-widget-date {
+    color: var(--hashiw-note-fg3, var(--hashiw-excerpt-color, var(--fg-subtle)));
+}
+
+.hashi-notes-widget.is-single .hashi-widget-empty {
+    padding: 0 var(--onigiri-widget-pad) var(--onigiri-widget-pad);
+    color: var(--hashiw-note-fg3, var(--hashiw-excerpt-color, var(--fg-subtle)));
+}
 
 .hashi-widget-single {
     flex: 1;
@@ -2172,9 +2259,10 @@ tr.deck.drag-over-nest {
     flex-direction: column;
     gap: 6px;
     min-height: 0;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: var(--hashiw-note-fill, var(--hashiw-card-bg, var(--highlight-bg)));
+    padding: var(--onigiri-widget-pad);
+    /* The shell carries the fill now, so this stays transparent; the shell's
+       own radius clips the bottom corners. */
+    background: transparent;
     overflow: hidden;
 }
 
@@ -2183,9 +2271,10 @@ tr.deck.drag-over-nest {
     align-items: center;
     gap: 6px;
     min-width: 0;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--hashiw-title-color, var(--fg));
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--hashiw-note-fg, var(--hashiw-title-color, var(--fg)));
 }
 
 .hashi-widget-single-title span {
@@ -2199,7 +2288,7 @@ tr.deck.drag-over-nest {
     flex: 1;
     font-size: 12px;
     line-height: 1.45;
-    color: var(--hashiw-excerpt-color, var(--fg-subtle));
+    color: var(--hashiw-note-fg2, var(--hashiw-excerpt-color, var(--fg-subtle)));
     overflow: hidden;
 }
 
@@ -3179,6 +3268,11 @@ tr.deck .learn-count-bubble.zero {
    forces the Small Title family/size/color onto any h3 under
    .onigiri-widget-container, so the values below are only the fallback for
    when that block is missing (a selected font failed to resolve). */
+/* @onigiri:widget-head:start — every widget's own title row (h3 + right-hand
+   controls) shares this one base rule; the settings dialog's Deck Stats
+   preview pulls it in verbatim too (settings_web/render.py real_widget_css),
+   since learner_stats.css assumes it's already on the page rather than
+   redefining it. */
 .onigiri-widget-head {
     display: flex;
     align-items: center;
@@ -3202,6 +3296,7 @@ tr.deck .learn-count-bubble.zero {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* @onigiri:widget-head:end */
 
 /* Holds the right-hand side. Shrinks before the title does. */
 .onigiri-widget-head-aside {
@@ -3219,7 +3314,7 @@ tr.deck .learn-count-bubble.zero {
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
     border-radius: 15px;
-    padding: calc(20px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
     height: 100%;
     box-sizing: border-box;
     display: flex;
@@ -3523,7 +3618,7 @@ tr.deck.is-multi-selected::before {
     font-size: 15px;
 }
 .onigiri-profile .opro-name {
-    font-size: 16px;
+    font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -3535,17 +3630,21 @@ tr.deck.is-multi-selected::before {
 .onigiri-profile.ring-profile {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 }
 .onigiri-profile.ring-profile .opro-avatar-wrap {
     position: relative;
     width: 52px;
     height: 52px;
-    flex: 0 0 auto;
+    flex: 0 0 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 .onigiri-profile.ring-profile .opro-avatar {
-    position: absolute;
-    inset: 6px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
 }
 .onigiri-profile.ring-profile .opro-ring {
     position: absolute;
@@ -3553,15 +3652,16 @@ tr.deck.is-multi-selected::before {
     width: 100%;
     height: 100%;
     transform: rotate(-90deg);
+    pointer-events: none;
 }
 .onigiri-profile.ring-profile .opro-ring-track {
     fill: none;
-    stroke: var(--highlight-bg, rgba(128, 128, 128, 0.25));
-    stroke-width: 3;
+    stroke: rgba(128, 128, 128, 0.3);
+    stroke-width: 3.5;
 }
 .onigiri-profile.ring-profile .opro-ring-fill {
     fill: none;
-    stroke-width: 3;
+    stroke-width: 3.5;
     stroke-linecap: round;
     transition: stroke-dashoffset 0.4s ease;
 }
@@ -3572,49 +3672,40 @@ tr.deck.is-multi-selected::before {
     gap: 2px;
 }
 .onigiri-profile.ring-profile .opro-level {
-    font-size: 12px;
+    font-size: 11px;
     opacity: 0.7;
 }
 
 /* --- Minimal --- */
 .onigiri-profile.minimal-profile {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.onigiri-profile.minimal-profile .opro-top {
-    display: flex;
     align-items: center;
-    gap: 10px;
-    min-width: 0;
+    gap: 12px;
 }
 .onigiri-profile.minimal-profile .opro-avatar {
-    width: 34px;
-    height: 34px;
-    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
 }
-.onigiri-profile.minimal-profile .opro-bar-row {
+.onigiri-profile.minimal-profile .opro-avatar .profile-pic-generated {
+    font-size: 15px;
+}
+.onigiri-profile.minimal-profile .opro-info {
+    flex: 1;
     display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.onigiri-profile.minimal-profile .opro-lv {
-    font-size: 11px;
-    font-weight: 600;
-    opacity: 0.7;
-    white-space: nowrap;
-    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
 }
 .onigiri-profile.minimal-profile .opro-track {
-    flex: 1 1 auto;
     height: 6px;
-    border-radius: 999px;
-    background: var(--highlight-bg, rgba(128, 128, 128, 0.25));
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.3);
     overflow: hidden;
 }
 .onigiri-profile.minimal-profile .opro-bar-fill {
     height: 100%;
-    border-radius: inherit;
+    border-radius: 3px;
     transition: width 0.3s ease;
 }
 

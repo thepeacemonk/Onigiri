@@ -1,4 +1,11 @@
 // Onigiri Performance Engine
+function ONIGIRI_T(key, fallback) {
+    if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+        return OnigiriI18n.t(key, fallback);
+    }
+    return fallback;
+}
+
 const ONIGIRI_EMOJI_SPRITE_ASSETS = {
     "🤍": "heart_white.svg",
     "🧼": "soap.svg",
@@ -76,6 +83,8 @@ function onigiriEmojiSpriteUrl(iconVal) {
 
 window.OnigiriEngine = {
     currentHoveredRow: null,
+    controllerFocusedRow: null,
+    _deckNavigationPending: false,
     _dnd: null,
     _searchDebounceTimer: null,
     _multiSelectedDecks: new Set(),
@@ -97,6 +106,31 @@ window.OnigiriEngine = {
         // Initial processing of already loaded nodes
         this.processNewNodes(document.querySelectorAll('tr.deck, a.collapse'));
         this.restoreScrollPosition();
+    },
+
+    openDeck: function (event, deckId) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
+        }
+
+        // A double-click, controller button bounce, or overlapping click
+        // handlers must never start two DeckBrowser -> Overview transitions.
+        // The page is replaced after a successful command, so this lock does
+        // not need a timer that could fire against a destroyed webview.
+        if (this._deckNavigationPending) return false;
+        this._deckNavigationPending = true;
+        document.documentElement.classList.add('onigiri-deck-navigation-pending');
+        if (typeof window.__onigiriReleasePageGraphics === 'function') {
+            window.__onigiriReleasePageGraphics();
+        }
+        // Give Chromium one task boundary to release GPU resources before the
+        // shared main webview is replaced by the Overview page.
+        setTimeout(() => pycmd(`open:${deckId}`), 0);
+        return false;
     },
 
     systemIconUrl: function (filename) {
@@ -171,6 +205,18 @@ window.OnigiriEngine = {
         document.body.classList.remove('dialog-focus');
     },
 
+    setCardEditingDim: function (dimmed) {
+        if (dimmed) {
+            document.body.classList.add('is-card-editing');
+            const container = document.querySelector('.container.modern-main-menu');
+            if (container) container.classList.add('is-card-editing');
+        } else {
+            document.body.classList.remove('is-card-editing');
+            const container = document.querySelector('.container.modern-main-menu');
+            if (container) container.classList.remove('is-card-editing');
+        }
+    },
+
     closestElement: function (target, selector) {
         return target && target.closest ? target.closest(selector) : null;
     },
@@ -214,7 +260,7 @@ window.OnigiriEngine = {
     },
 
     getSidebarProfileBar: function () {
-        return document.querySelector('.sidebar-expanded-content > .profile-bar, .sidebar-expanded-content .profile-bar');
+        return document.querySelector('.sidebar-expanded-content > .profile-bar, .sidebar-expanded-content .profile-bar, .sidebar-expanded-content > .onigiri-profile, .sidebar-expanded-content .onigiri-profile');
     },
 
     updateSidebarProfileMetrics: function () {
@@ -358,6 +404,74 @@ window.OnigiriEngine = {
     visibleDeckRows: function () {
         if (!this.deckListContainer) return [];
         return Array.from(this.deckListContainer.querySelectorAll('tr.deck[data-did]'));
+    },
+
+    /** Controller navigation for the deck browser. */
+    moveDeck: function (delta) {
+        const rows = this.visibleDeckRows();
+        if (!rows.length) return false;
+
+        let index = this.controllerFocusedRow ? rows.indexOf(this.controllerFocusedRow) : -1;
+        index = Math.max(0, Math.min(rows.length - 1, index + Number(delta || 0)));
+        const row = rows[index];
+
+        if (this.controllerFocusedRow) {
+            this.controllerFocusedRow.classList.remove('onigiri-controller-focused');
+        }
+        if (!document.getElementById('onigiri-controller-focus-style')) {
+            const style = document.createElement('style');
+            style.id = 'onigiri-controller-focus-style';
+            style.textContent = '.onigiri-controller-focused { outline: 2px solid #86E76E !important; outline-offset: -2px !important; }';
+            document.head.appendChild(style);
+        }
+        this.controllerFocusedRow = row;
+        row.classList.add('onigiri-controller-focused');
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return true;
+    },
+
+    selectDeck: function () {
+        const rows = this.visibleDeckRows();
+        const row = this.controllerFocusedRow && rows.includes(this.controllerFocusedRow)
+            ? this.controllerFocusedRow
+            : rows[0];
+        const link = row && row.querySelector('a.deck');
+        if (!link) return false;
+        // The normal anchor click is intercepted by Onigiri's delayed
+        // single/double-click handler.  Controller selection is explicit,
+        // so invoke Anki's deck command directly and open on the first press.
+        if (typeof pycmd === 'function' && row.dataset.did) {
+            pycmd(`open:${row.dataset.did}`);
+        } else {
+            link.click();
+        }
+        return true;
+    },
+
+    toggleProfile: function () {
+        if (window.OnigiriProfileSidebar && typeof window.OnigiriProfileSidebar.toggle === 'function') {
+            window.OnigiriProfileSidebar.toggle();
+            return true;
+        }
+        const profileBar = document.querySelector(
+            '.sidebar-expanded-content > .profile-bar, '
+            + '.sidebar-expanded-content .profile-bar, '
+            + '.sidebar-expanded-content > .onigiri-profile, '
+            + '.sidebar-expanded-content .onigiri-profile'
+        );
+        if (profileBar) {
+            profileBar.click();
+            return true;
+        }
+        return false;
+    },
+
+    closeProfile: function () {
+        if (window.OnigiriProfileSidebar && typeof window.OnigiriProfileSidebar.close === 'function') {
+            window.OnigiriProfileSidebar.close();
+            return true;
+        }
+        return false;
     },
 
     selectAllDecks: function () {
@@ -933,7 +1047,7 @@ window.OnigiriEngine = {
                     if (clickableCell && !el.querySelector('.drag-handle')) {
                         const handle = document.createElement('span');
                         handle.className = 'drag-handle';
-                        handle.title = 'Drag to reorder or move';
+                        handle.title = ONIGIRI_T('drag_to_reorder_or_move', 'Drag to reorder or move');
                         handle.innerHTML = '<svg viewBox="0 0 48 48" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="16" cy="12" r="4"/><circle cx="32" cy="12" r="4"/><circle cx="16" cy="24" r="4"/><circle cx="32" cy="24" r="4"/><circle cx="16" cy="36" r="4"/><circle cx="32" cy="36" r="4"/></svg>';
                         handle.style.touchAction = 'none';
                         handle.addEventListener('pointerdown', (event) => {
@@ -1071,10 +1185,10 @@ window.OnigiriEngine = {
         menu.className = 'onigiri-quick-menu';
 
         [
-            { label: 'Rename', icon: 'rename', command: `onigiri_ctx_rename:${did}` },
-            { label: 'Add Subdeck', icon: 'add-subdeck', command: `onigiri_ctx_subdeck:${did}` },
-            { label: 'Move To', icon: 'move_deck', command: `onigiri_ctx_move_to:${did}` },
-            { label: 'Change Icon', icon: 'edit_icon', command: `onigiri_ctx_change_icon:${did}` },
+            { label: ONIGIRI_T('ctx_rename', 'Rename'), icon: 'rename', command: `onigiri_ctx_rename:${did}` },
+            { label: ONIGIRI_T('add_subdeck_title', 'Add Subdeck'), icon: 'add-subdeck', command: `onigiri_ctx_subdeck:${did}` },
+            { label: ONIGIRI_T('ctx_move_to', 'Move To'), icon: 'move_deck', command: `onigiri_ctx_move_to:${did}` },
+            { label: ONIGIRI_T('ctx_change_icon', 'Change Icon'), icon: 'edit_icon', command: `onigiri_ctx_change_icon:${did}` },
             {
                 label: isFavorite ? 'Remove Favorite' : 'Favorite',
                 icon: isFavorite ? 'star_cancel' : 'star_outline',
@@ -1088,7 +1202,7 @@ window.OnigiriEngine = {
         const markerIcons = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerIcons) || {};
         const markerNames = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerNames) || {};
         const markerDefaults = { red: '#ff4d4f', blue: '#4f95ff', green: '#45c878', yellow: '#ffc629' };
-        const nameDefaults = { red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow' };
+        const nameDefaults = { red: ONIGIRI_T('marker_red', 'Red'), blue: ONIGIRI_T('marker_blue', 'Blue'), green: ONIGIRI_T('marker_green', 'Green'), yellow: ONIGIRI_T('marker_yellow', 'Yellow') };
         
         const makeMarkerCustomNode = (key, color) => {
             const iconVal = markerIcons[key] || 'default';
@@ -1142,7 +1256,7 @@ window.OnigiriEngine = {
         };
 
         this.appendMenuGroup(menu, {
-            label: 'Markers',
+            label: ONIGIRI_T('markers', 'Markers'),
             icon: 'mark_circle',
             items: ['red', 'blue', 'green', 'yellow'].map(key => {
                 const color = markerColors[key] || markerDefaults[key];
@@ -1157,23 +1271,23 @@ window.OnigiriEngine = {
         });
 
         if (currentMark) {
-            this.appendMenuItem(menu, { label: 'Remove Marker', icon: 'remove_mark', command: `onigiri_ctx_mark:${did}:none` });
+            this.appendMenuItem(menu, { label: ONIGIRI_T('ctx_remove_marker', 'Remove Marker'), icon: 'remove_mark', command: `onigiri_ctx_mark:${did}:none` });
         }
 
         menu.appendChild(document.createElement('hr'));
 
         const deckActions = [];
         if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.decklineAvailable) {
-            deckActions.push({ label: 'Deadline', icon: 'bolt', command: `deadlineSettings:${did}` });
+            deckActions.push({ label: ONIGIRI_T('ctx_deadline', 'Deadline'), icon: 'bolt', command: `deadlineSettings:${did}` });
         }
         if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.fsrsHelperAvailable) {
             deckActions.push({ label: 'FSRS4Anki Helper', icon: 'fsrs_helper', command: 'onigiri_open_fsrs_helper_menu' });
         }
         deckActions.push(
-            { label: 'Deck Options', icon: 'options', command: `onigiri_ctx_options:${did}` },
-            { label: 'Export Deck', icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
-            { label: 'Copy Deck ID', icon: 'copy_id', command: `onigiri_ctx_copy_id:${did}` },
-            { label: 'Delete Deck', icon: 'delete', danger: true, command: `onigiri_ctx_delete:${did}` },
+            { label: ONIGIRI_T('ctx_deck_options', 'Deck Options'), icon: 'options', command: `onigiri_ctx_options:${did}` },
+            { label: ONIGIRI_T('ctx_export_deck', 'Export Deck'), icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
+            { label: ONIGIRI_T('ctx_copy_deck_id', 'Copy Deck ID'), icon: 'copy_id', command: `onigiri_ctx_copy_id:${did}` },
+            { label: ONIGIRI_T('ctx_delete_deck', 'Delete Deck'), icon: 'delete', danger: true, command: `onigiri_ctx_delete:${did}` },
         );
         deckActions.forEach(item => this.appendMenuItem(menu, item));
 
@@ -1193,8 +1307,8 @@ window.OnigiriEngine = {
 
         [
             { label: `Move ${dids.length} Decks`, icon: 'move_deck', command: `onigiri_ctx_move_to:${encodedDids}` },
-            { label: 'Favorite Selected', icon: 'star_filled', command: `onigiri_ctx_bulk_favorite:${bulkPayload}` },
-            { label: 'Remove Favorites', icon: 'star_cancel', command: `onigiri_ctx_bulk_unfavorite:${bulkPayload}` },
+            { label: ONIGIRI_T('ctx_favorite_selected', 'Favorite Selected'), icon: 'star_filled', command: `onigiri_ctx_bulk_favorite:${bulkPayload}` },
+            { label: ONIGIRI_T('ctx_remove_favorites', 'Remove Favorites'), icon: 'star_cancel', command: `onigiri_ctx_bulk_unfavorite:${bulkPayload}` },
         ].forEach(item => this.appendMenuItem(menu, item));
 
         menu.appendChild(document.createElement('hr'));
@@ -1202,7 +1316,7 @@ window.OnigiriEngine = {
         const markerIcons = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerIcons) || {};
         const markerNames = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.markerNames) || {};
         const markerDefaults = { red: '#ff4d4f', blue: '#4f95ff', green: '#45c878', yellow: '#ffc629' };
-        const nameDefaults = { red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow' };
+        const nameDefaults = { red: ONIGIRI_T('marker_red', 'Red'), blue: ONIGIRI_T('marker_blue', 'Blue'), green: ONIGIRI_T('marker_green', 'Green'), yellow: ONIGIRI_T('marker_yellow', 'Yellow') };
         
         const makeMarkerCustomNodeBulk = (key, color) => {
             const iconVal = markerIcons[key] || 'default';
@@ -1256,7 +1370,7 @@ window.OnigiriEngine = {
         };
 
         this.appendMenuGroup(menu, {
-            label: 'Markers',
+            label: ONIGIRI_T('markers', 'Markers'),
             icon: 'mark_circle',
             items: ['red', 'blue', 'green', 'yellow'].map(key => {
                 const color = markerColors[key] || markerDefaults[key];
@@ -1268,10 +1382,10 @@ window.OnigiriEngine = {
                 };
             }),
         });
-        this.appendMenuItem(menu, { label: 'Remove Marker', icon: 'remove_mark', command: `onigiri_ctx_bulk_mark:${encodeURIComponent(JSON.stringify({ dids, mark: 'none' }))}` });
+        this.appendMenuItem(menu, { label: ONIGIRI_T('ctx_remove_marker', 'Remove Marker'), icon: 'remove_mark', command: `onigiri_ctx_bulk_mark:${encodeURIComponent(JSON.stringify({ dids, mark: 'none' }))}` });
 
         menu.appendChild(document.createElement('hr'));
-        this.appendMenuItem(menu, { label: 'Delete Selected', icon: 'delete', danger: true, command: `onigiri_ctx_bulk_delete:${bulkPayload}` });
+        this.appendMenuItem(menu, { label: ONIGIRI_T('delete_selected', 'Delete Selected'), icon: 'delete', danger: true, command: `onigiri_ctx_bulk_delete:${bulkPayload}` });
         this.positionMenu(menu, x, y);
     },
 
@@ -1285,16 +1399,16 @@ window.OnigiriEngine = {
         const menu = document.createElement('div');
         menu.className = 'onigiri-quick-menu';
         [
-            { label: 'Add', icon: 'add-card', command: 'add' },
-            { label: 'Browse', icon: 'browse', command: 'browse' },
-            { label: 'Stats', icon: 'stats', command: 'stats' },
-            { label: 'Sync', icon: 'sync', command: 'sync' },
-            { label: 'Settings', icon: 'settings', command: 'openOnigiriSettings' },
-            { label: 'Hashi Notes', icon: 'hashi_notes', command: 'openHashiNotes:planner' },
-            { label: 'Onigiri Games', icon: 'gamepad', command: 'openGamificationSettings' },
-            { label: 'Get Shared', icon: 'get_shared', command: 'shared' },
-            { label: 'Create Deck', icon: 'add-deck', command: 'onigiri_create_deck' },
-            { label: 'Import File', icon: 'import_file', command: 'import' },
+            { label: ONIGIRI_T('add', 'Add'), icon: 'add-card', command: 'add' },
+            { label: ONIGIRI_T('browse', 'Browse'), icon: 'browse', command: 'browse' },
+            { label: ONIGIRI_T('stats', 'Stats'), icon: 'stats', command: 'stats' },
+            { label: ONIGIRI_T('sync', 'Sync'), icon: 'sync', command: 'sync' },
+            { label: ONIGIRI_T('settings', 'Settings'), icon: 'settings', command: 'openOnigiriSettings' },
+            { label: ONIGIRI_T('hashi_notes_title', 'Hashi Notes'), icon: 'hashi_notes', command: 'openHashiNotes:planner' },
+            { label: ONIGIRI_T('onigiri_games', 'Onigiri Games'), icon: 'gamepad', command: 'openGamificationSettings' },
+            { label: ONIGIRI_T('get_shared', 'Get Shared'), icon: 'get_shared', command: 'shared' },
+            { label: ONIGIRI_T('create_deck', 'Create Deck'), icon: 'add-deck', command: 'onigiri_create_deck' },
+            { label: ONIGIRI_T('import_file', 'Import File'), icon: 'import_file', command: 'import' },
         ].forEach(item => this.appendMenuItem(menu, item));
 
         const rect = button.getBoundingClientRect();
@@ -1313,14 +1427,14 @@ window.OnigiriEngine = {
         menu.className = 'onigiri-quick-menu';
 
         [
-            { label: 'Default order', icon: 'sort_default', mode: 'default' },
-            { label: 'A to Z', icon: 'sort_custom', mode: 'alphabetical_az' },
-            { label: 'Z to A', icon: 'sort_custom', mode: 'alphabetical_za' },
-            { label: 'Most due', icon: 'sort_most_reviews', mode: 'most_due' },
-            { label: 'Most new', icon: 'sort_most_new', mode: 'most_new' },
-            { label: 'Most reviews', icon: 'stats', mode: 'most_reviews' },
-            { label: 'Favorites first', icon: 'star_outline', mode: 'favorites_first' },
-            { label: 'Custom order', icon: 'sort_custom', mode: 'custom' },
+            { label: ONIGIRI_T('sort_default_order', 'Default order'), icon: 'sort_default', mode: 'default' },
+            { label: ONIGIRI_T('sort_a_to_z', 'A to Z'), icon: 'sort_custom', mode: 'alphabetical_az' },
+            { label: ONIGIRI_T('sort_z_to_a', 'Z to A'), icon: 'sort_custom', mode: 'alphabetical_za' },
+            { label: ONIGIRI_T('sort_most_due', 'Most due'), icon: 'sort_most_reviews', mode: 'most_due' },
+            { label: ONIGIRI_T('sort_most_new', 'Most new'), icon: 'sort_most_new', mode: 'most_new' },
+            { label: ONIGIRI_T('sort_most_reviews', 'Most reviews'), icon: 'stats', mode: 'most_reviews' },
+            { label: ONIGIRI_T('sort_favorites_first', 'Favorites first'), icon: 'star_outline', mode: 'favorites_first' },
+            { label: ONIGIRI_T('sort_custom_order', 'Custom order'), icon: 'sort_custom', mode: 'custom' },
         ].forEach(item => this.appendMenuItem(menu, {
             label: item.label,
             icon: item.icon,
@@ -1346,6 +1460,15 @@ window.OnigiriEngine = {
         }
         el.textContent = '';
     },
+};
+
+// Small stable bridge used by controller integrations. Keeping this separate
+// from the larger engine object avoids coupling callers to internal methods.
+window.OnigiriController = {
+    moveDeck: (delta) => window.OnigiriEngine.moveDeck(delta),
+    selectDeck: () => window.OnigiriEngine.selectDeck(),
+    toggleProfile: () => window.OnigiriEngine.toggleProfile(),
+    closeProfile: () => window.OnigiriEngine.closeProfile(),
 };
 
 // Initialize the engine once the DOM is ready.

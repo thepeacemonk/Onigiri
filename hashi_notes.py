@@ -30,32 +30,25 @@ from aqt import mw
 from aqt.qt import (
     QColor,
     QDialog,
-    QFrame,
-    QHBoxLayout,
-    QIcon,
-    QLabel,
-    QPainter,
-    QPixmap,
     Qt,
     QTimer,
-    QToolButton,
     QVBoxLayout,
-    QWidget,
 )
 from aqt.webview import AnkiWebView
-from PyQt6.QtCore import QRectF
-from PyQt6.QtSvg import QSvgRenderer
 
 from . import config
+from . import safe_storage
 from .translations import tr
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 CONF_KEY = "onigiri_hashi_notes"
+CONF_GROUPS_KEY = "onigiri_hashi_note_groups"
 USER_FILES_SUBDIR = "hashi_notes"
 RETENTION_CHOICES = (7, 30, 0)  # 0 == Never
-SORT_KEYS = ("age", "tags", "priority", "title")
+
+SORT_KEYS = ("manual", "age", "tags", "priority", "title")
 PRIORITY_ORDER = {"high": 0, "med": 1, "low": 2, "none": 3}
 
 _popup = None
@@ -66,35 +59,6 @@ _gallery = None
 
 def _addon_root():
     return os.path.dirname(__file__)
-
-
-def _system_icon_path(filename):
-    return os.path.join(_addon_root(), "system_files", "system_icons", "unavailable_for_users", filename)
-
-
-def _tinted_icon(path, color, size=16):
-    """Renders a currentColor-based SVG tinted for the active theme, for the
-    native (non-webview) chrome buttons."""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            svg_xml = f.read().replace("currentColor", color)
-        renderer = QSvgRenderer(svg_xml.encode("utf-8"))
-        pixmap = QPixmap(size * 2, size * 2)
-        pixmap.setDevicePixelRatio(2.0)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        # The painter operates in the pixmap's logical coordinate space (it
-        # already accounts for the 2x device pixel ratio set above), so the
-        # render target must be size x size, not the physical size*2 x size*2
-        # - otherwise the icon is drawn at 2x scale and gets cropped by the
-        # pixmap edge. Also fixes icons with no explicit width/height (just a
-        # viewBox), which QSvgRenderer won't auto-scale to fit otherwise.
-        renderer.render(painter, QRectF(0, 0, size, size))
-        painter.end()
-        return QIcon(pixmap)
-    except Exception:
-        return QIcon(path)
 
 
 def _now_iso():
@@ -120,13 +84,13 @@ def _is_dark_mode(conf=None):
     try:
         from .config import effective_night_mode
 
-        return effective_night_mode(conf or config.get_config())
+        return effective_night_mode(conf or config.get_config_readonly())
     except Exception:
         return False
 
 
 def _accent_color(conf=None):
-    conf = conf or config.get_config()
+    conf = conf or config.get_config_readonly()
     mode = "dark" if _is_dark_mode(conf) else "light"
     return conf.get("colors", {}).get(mode, {}).get("--accent-color", "#00A982")
 
@@ -134,7 +98,7 @@ def _accent_color(conf=None):
 # ─── Preferences (local config) ───────────────────────────────────────────────
 
 def get_prefs(conf=None):
-    conf = conf or config.get_config()
+    conf = conf or config.get_config_readonly()
     defaults = config.DEFAULTS.get("hashi_notes", {})
     prefs = conf.get("hashi_notes", {})
     if not isinstance(prefs, dict):
@@ -145,11 +109,12 @@ def get_prefs(conf=None):
 
 
 def default_retention():
+    """0 == Never: notes are kept forever unless the user picks a countdown."""
     try:
-        value = int(get_prefs().get("retention_default", 30))
+        value = int(get_prefs().get("retention_default", 0))
     except Exception:
-        value = 30
-    return value if value in RETENTION_CHOICES else 30
+        value = 0
+    return value if value in RETENTION_CHOICES else 0
 
 
 def trash_grace_days():
@@ -195,8 +160,7 @@ def _mirror_dir():
 def _write_json_mirror(note):
     try:
         path = os.path.join(_mirror_dir(), f"{note['id']}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(note, f, ensure_ascii=False, indent=2)
+        safe_storage.atomic_write_json(path, note)
     except Exception as e:
         print(f"Hashi Notes: mirror write error: {e}")
 
@@ -228,6 +192,10 @@ def _new_note():
         "bg_color": "",
         "linked_cards": [],
         "trashed_at": None,
+        # Gallery layout: which group card the note lives in ("" == top level)
+        # and its manual position inside that context.
+        "group": "",
+        "order": 0,
     }
 
 
@@ -237,14 +205,24 @@ def _normalize(note):
     base.update({k: v for k, v in note.items() if k in base})
     base["id"] = note.get("id") or base["id"]
     if base["retention"] not in RETENTION_CHOICES:
-        base["retention"] = 30
+        base["retention"] = 0
     if base["priority"] not in PRIORITY_ORDER:
         base["priority"] = "none"
     if not isinstance(base["tags"], list):
         base["tags"] = []
     if not isinstance(base["linked_cards"], list):
         base["linked_cards"] = []
+    if not isinstance(base["group"], str):
+        base["group"] = ""
+    base["order"] = _as_int(base["order"])
     return base
+
+
+def _as_int(value, fallback=0):
+    try:
+        return int(value)
+    except Exception:
+        return fallback
 
 
 def load_notes(include_trashed=False):
@@ -302,10 +280,92 @@ def delete_note(note_id):
     _delete_json_mirror(note_id)
 
 
+# ─── Gallery groups + manual layout ───────────────────────────────────────────
+#
+# A group is only a gallery affordance: a folder card that holds notes. Notes
+# keep living in the single flat note list; membership is the note's "group"
+# field, so nothing else in the add-on has to know groups exist.
+
+def load_groups():
+    if not mw or not mw.col:
+        return []
+    try:
+        raw = mw.col.conf.get(CONF_GROUPS_KEY, [])
+    except Exception:
+        return []
+    groups = []
+    for group in raw if isinstance(raw, list) else []:
+        if isinstance(group, dict) and group.get("id"):
+            groups.append({
+                "id": str(group["id"]),
+                "title": str(group.get("title") or ""),
+                "order": _as_int(group.get("order")),
+            })
+    return groups
+
+
+def _write_groups(groups):
+    if not mw or not mw.col:
+        return
+    try:
+        mw.col.conf[CONF_GROUPS_KEY] = groups
+        mw.col.setMod()
+    except Exception as e:
+        print(f"Hashi Notes: group save error: {e}")
+
+
+def apply_layout(payload):
+    """Stores the gallery's drag result: per-note group/order plus the group
+    list. Never touches updated_at — moving a card is not editing a note."""
+    if not isinstance(payload, dict):
+        return
+    patches = payload.get("notes") or {}
+    if not isinstance(patches, dict):
+        patches = {}
+    groups, seen = [], set()
+    for group in payload.get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        gid = str(group.get("id") or "").strip()
+        if not gid or gid in seen:
+            continue
+        seen.add(gid)
+        groups.append({
+            "id": gid,
+            "title": str(group.get("title") or "")[:80],
+            "order": _as_int(group.get("order")),
+        })
+
+    notes, touched = _read_all(), []
+    for note in notes:
+        if not isinstance(note, dict):
+            continue
+        patch = patches.get(note.get("id"))
+        if not isinstance(patch, dict):
+            continue
+        group = str(patch.get("group") or "")
+        if group not in seen:
+            group = ""
+        order = _as_int(patch.get("order"))
+        if note.get("group", "") == group and _as_int(note.get("order")) == order:
+            continue
+        note["group"], note["order"] = group, order
+        touched.append(note)
+
+    # A group with no members left is dead weight; drop it.
+    used = {n.get("group") for n in notes if isinstance(n, dict) and n.get("group")}
+    groups = [g for g in groups if g["id"] in used]
+
+    _write_all(notes)
+    _write_groups(groups)
+    for note in touched:
+        _write_json_mirror(_normalize(note))
+
+
 # ─── Retention / trash sweep ──────────────────────────────────────────────────
 
 def _expiry(note):
-    retention = note.get("retention", 30)
+    retention = note.get("retention", 0)
     if not retention:  # Never
         return None
     created = _parse_iso(note.get("created_at"))
@@ -431,7 +491,12 @@ def _profile_bar_context():
         blur = int(conf.get("modern_menu_profile_bg_blur", 0) or 0)
         image = ""
         if mode == "image":
-            filename = conf.get("modern_menu_profile_bg_image", "")
+            from . import config as _config
+
+            filename = _config.themed_asset(
+                conf.get, "modern_menu_profile_bg_image", dark,
+                dynamic_key="modern_menu_profile_bg_dynamic_mode",
+            )
             path = os.path.join(_addon_root(), "user_files", "profile_bg", filename) if filename else ""
             image = _file_data_uri(path)
         return {"color": color, "image": image, "opacity": opacity, "blur": blur}
@@ -442,7 +507,7 @@ def _profile_bar_context():
 def _profile_name():
     try:
         conf = mw.col.conf if (mw and mw.col) else {}
-        name = conf.get("modern_menu_profile_name", "") or config.get_config().get("userName", "")
+        name = conf.get("modern_menu_profile_name", "") or config.get_config_readonly().get("userName", "")
         return str(name or "").strip() or tr("hashi_profile_you", "You")
     except Exception:
         return tr("hashi_profile_you", "You")
@@ -477,16 +542,88 @@ def _rgb_to_hex(rgb):
     return "#" + "".join(f"{max(0, min(255, round(c))):02x}" for c in rgb)
 
 
-def _fill_tint(base_hex, dark):
-    """Mirrors hashi_notes.html's fillTint()/mixHex() JS so the native shell
-    can be painted with the correct tinted colour on first show, instead of
-    starting plain and jumping to the tint once the page's JS reports it back
-    over the bridge (which visibly flickers)."""
-    target = (22, 22, 22) if dark else (255, 255, 255)
-    base = _hex_to_rgb(base_hex)
-    t = 0.80
-    mixed = tuple(base[i] + (target[i] - base[i]) * t for i in range(3))
-    return _rgb_to_hex(mixed)
+# Direct ports of paperForTheme() / textOnPaper() / mixHex() from
+# hashi_notes.html. The single-note widget is meant to be the pinned note, so it
+# has to resolve the exact same paper colour the editor paints - not a lookalike
+# tint. Any change to the JS side must be mirrored here or the two drift apart.
+_DARK_NOTE_COLORS = {
+    "#ffd2d2": "#704146", "#ffdfbf": "#704d38", "#fff0a8": "#67582d",
+    "#c9efcf": "#345e48", "#c7e8f7": "#315569", "#d4dcff": "#414979",
+    "#e6d0f5": "#59436b", "#f5d0e0": "#6b4156", "#d8dcd9": "#4b504c",
+}
+
+
+def _normalize_hex(value):
+    h = str(value or "").strip().lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    return "#" + h.lower() if re.fullmatch(r"[0-9a-fA-F]{6}", h) else ""
+
+
+def _mix_hex(a, b, amount):
+    x, y = _hex_to_rgb(a), _hex_to_rgb(b)
+    return _rgb_to_hex(tuple(x[i] + (y[i] - x[i]) * amount for i in range(3)))
+
+
+def _paper_for_theme(value, dark):
+    """The note's paper fill: the raw colour in light mode, its hand-picked dark
+    counterpart (or a computed fallback) in dark mode."""
+    source = _normalize_hex(value)
+    if not source or not dark:
+        return source
+    return _DARK_NOTE_COLORS.get(source) or _mix_hex(source, "#23211f", 0.52)
+
+
+_INK_DARK = "#241f1b"
+_INK_LIGHT = "#fffdf7"
+
+
+def _rel_luminance(color):
+    channels = []
+    for n in _hex_to_rgb(color):
+        v = n / 255
+        channels.append(v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(a, b):
+    """WCAG contrast ratio between two hex colours (1 - 21)."""
+    la, lb = _rel_luminance(a), _rel_luminance(b)
+    if la < lb:
+        la, lb = lb, la
+    return (la + 0.05) / (lb + 0.05)
+
+
+def _text_on_paper(color):
+    """Ink colour for a given paper: whichever of the two inks actually reads
+    better on it, not a fixed luminance cut-off.
+
+    The old `luminance > 0.38` split put light ink on mid-tone papers where
+    dark ink is the more legible of the two - a paper at luminance .38 gave
+    white text a 2.4:1 ratio. The real crossover between these two inks sits
+    near .21, and comparing the ratios finds it without hard-coding it. When
+    even the better ink stays under 4.5:1 (mid-tone papers have no comfortable
+    ink), it is pushed to pure black/white, which is the most either side can
+    give."""
+    dark_ratio, light_ratio = _contrast(_INK_DARK, color), _contrast(_INK_LIGHT, color)
+    ink, best = (_INK_DARK, dark_ratio) if dark_ratio >= light_ratio else (_INK_LIGHT, light_ratio)
+    if best >= 4.5:
+        return ink
+    extreme = "#000000" if ink == _INK_DARK else "#ffffff"
+    return extreme if _contrast(extreme, color) > best else ink
+
+
+def _muted_ink(fg, paper, amount, min_ratio):
+    """Ink faded toward the paper for secondary text, but never faded past
+    `min_ratio` - on a mid-tone paper a flat 30/48% mix washes the text out
+    entirely, so the mix backs off until the contrast holds."""
+    step = amount
+    while step > 0:
+        candidate = _mix_hex(fg, paper, step)
+        if _contrast(candidate, paper) >= min_ratio:
+            return candidate
+        step -= 0.06
+    return fg
 
 
 def _read_web_asset(name):
@@ -520,15 +657,37 @@ def _emoji_sprite_map():
         return {}
 
 
+def _web_icon_catalog():
+    """Icon filenames exposed to the in-page picker.
+
+    Hashi Notes no longer opens native Qt picker dialogs.  Only basenames from
+    the two known icon directories are sent to JavaScript, which keeps the
+    picker fast and prevents arbitrary paths from reaching the webview.
+    """
+    catalogs = []
+    for rel_dir, extensions in (
+        (("system_files", "system_icons", "available_for_users"), {".svg"}),
+        (("user_files", "custom_deck_icons"), {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}),
+    ):
+        path = os.path.join(_addon_root(), *rel_dir)
+        try:
+            names = sorted(
+                name for name in os.listdir(path)
+                if os.path.isfile(os.path.join(path, name))
+                and os.path.splitext(name)[1].lower() in extensions
+            )
+        except Exception:
+            names = []
+        catalogs.append(names)
+    return catalogs
+
+
 # Every user-facing string the two webviews (hashi_notes.html / hashi_gallery.html)
 # render. Injected into the context JSON as ctx.strings so the HTML/JS can look
 # them up; English is kept inline in the templates as a fallback.
 _WEBVIEW_STRING_KEYS = (
     "hashi_notes_title", "hashi_notes_short", "hashi_back_to_notes",
-    "hashi_note_colors", "hashi_set_note_icon", "hashi_untitled",
-    "hashi_bold", "hashi_italic", "hashi_heading1", "hashi_heading2",
-    "hashi_hl_yellow", "hashi_hl_green", "hashi_hl_blue", "hashi_hl_pink",
-    "hashi_hl_custom", "hashi_hl_remove", "hashi_insert_emoji",
+    "hashi_note_colors", "hashi_set_note_icon",
     "hashi_editor_placeholder", "hashi_keep", "hashi_priority",
     "hashi_prio_low", "hashi_prio_med", "hashi_prio_high",
     "hashi_tags_placeholder", "hashi_color_label", "hashi_custom_color",
@@ -538,7 +697,13 @@ _WEBVIEW_STRING_KEYS = (
     "hashi_empty_note", "hashi_kept", "hashi_days_left_suffix",
     "hashi_new_note", "hashi_trash_empty", "hashi_restore",
     "hashi_delete_forever", "hashi_move_to_trash", "hashi_profile_you",
-    "hashi_months",
+    "hashi_months", "hashi_today", "hashi_yesterday", "hashi_days_ago",
+    "hashi_quick_note", "hashi_saved", "hashi_note_title_placeholder",
+    "hashi_note_details", "hashi_title_label", "hashi_icon_label",
+    "hashi_no_icon", "hashi_paper_color", "hashi_default_paper",
+    "hashi_hex_color", "hashi_close", "hashi_browse_previous",
+    "search_icons_placeholder", "hashi_sort_manual", "hashi_search_notes",
+    "hashi_new_note_sub", "hashi_sort_age", "hashi_saving", "no_matching_icons",
 )
 
 
@@ -549,6 +714,7 @@ def _webview_strings():
 def _build_context_json(dark):
     pal = _palette(dark)
     prefs = get_prefs()
+    system_icons, custom_icons = _web_icon_catalog()
     return {
         "strings": _webview_strings(),
         "dark": bool(dark),
@@ -561,6 +727,8 @@ def _build_context_json(dark):
         "profileBg": _profile_bar_context(),
         "addonBase": _addon_uri(""),
         "emojiSprites": _emoji_sprite_map(),
+        "systemIcons": system_icons,
+        "customIcons": custom_icons,
         "retentionChoices": list(RETENTION_CHOICES),
         "katexCss": _addon_uri("web/lib/katex/katex.min.css"),
         "katexJs": _addon_uri("web/lib/katex/katex.min.js"),
@@ -597,11 +765,9 @@ def _render_html(template_name, note_data, dark, ctx_override=None):
 # ─── Shared note-editor bridge handling ───────────────────────────────────────
 #
 # Both the floating popup and the Gallery's embedded editor render
-# hashi_notes.html into an AnkiWebView and need to answer the same set of
-# bridge commands (save, icon/colour pickers, @card search). This mixin holds
-# that shared behaviour; each host still owns its own window chrome and
-# whatever "hashi:set_shell:" means for it (a no-op unless the host defines
-# _set_shell_bg).
+# hashi_notes.html into an AnkiWebView and need to answer the same save and
+# card-search commands. Icon, note-colour, and highlight pickers now live
+# entirely inside the page.
 
 class _HashiNoteEditorMixin:
     def _handle_note_bridge(self, cmd):
@@ -622,137 +788,109 @@ class _HashiNoteEditorMixin:
                 % json.dumps(results)
             )
             return True
-        if cmd.startswith("hashi:pick_icon"):
-            mode = "title" if cmd.endswith(":title") else "inline"
-            self._pick_icon(mode)
-            return True
-        if cmd.startswith("hashi:set_shell:"):
-            set_shell = getattr(self, "_set_shell_bg", None)
-            if set_shell:
-                set_shell(cmd.split(":", 2)[2])
-            return True
-        if cmd == "hashi:pick_color":
-            self._pick_color()
-            return True
-        if cmd == "hashi:pick_highlight":
-            self._pick_highlight()
-            return True
         return False
 
-    def _pick_icon(self, mode="inline"):
-        try:
-            from .settings._icon_picker import DeckIconPickerDialog
 
-            current = self.note.get("icon", "") if mode == "title" else ""
-            dlg = DeckIconPickerDialog(current, _addon_root(), self.window(), allow_emoji=True, night_mode=self.dark)
-            dlg.iconSelected.connect(lambda value: self._on_icon_selected(value, mode))
-            dlg.exec()
-            # Frameless always-on-top picker can drop us behind Anki on close.
-            self.raise_()
-            self.activateWindow()
-        except Exception as e:
-            print(f"Hashi Notes: icon picker error: {e}")
+_WINDOW_RESIZE_EDGES = {
+    "top": Qt.Edge.TopEdge,
+    "bottom": Qt.Edge.BottomEdge,
+    "left": Qt.Edge.LeftEdge,
+    "right": Qt.Edge.RightEdge,
+    "topleft": Qt.Edge.TopEdge | Qt.Edge.LeftEdge,
+    "topright": Qt.Edge.TopEdge | Qt.Edge.RightEdge,
+    "bottomleft": Qt.Edge.BottomEdge | Qt.Edge.LeftEdge,
+    "bottomright": Qt.Edge.BottomEdge | Qt.Edge.RightEdge,
+}
 
-    def _open_color_dialog(self, current):
-        """Runs Onigiri's native colour picker (same as Settings), floated in
-        its own always-on-top translucent top-level window. Returns (hex, ok).
 
-        The picker is an in-window overlay, but our editor is an AnkiWebView,
-        whose native surface paints over sibling widgets — so a picker parented
-        to this popup would hide *behind* the webview. Hosting it in a separate
-        top-level window (its own native surface) laid over this popup lets it
-        float above the webview where clicked.
-        """
-        from .onigiri_color_picker import OnigiriColorDialog
+def _start_window_drag(dialog):
+    """Drags a frameless popup by polling the *global* cursor position.
 
-        host = QWidget(None)
-        host.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        host.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        host.setGeometry(self.frameGeometry())
-        host.show()
-        host.raise_()
-        host.activateWindow()
-        try:
-            return OnigiriColorDialog.getColor(current, host)
-        finally:
-            host.close()
-            host.deleteLater()
-            self.raise_()
-            self.activateWindow()
+    The obvious implementations both fail here. windowHandle().startSystemMove()
+    needs the native mouse-press that started the gesture, which is already gone
+    by the time the async pycmd round-trip reaches Python, so the window never
+    moves. Tracking mousemove/pointermove in the page instead stops the moment
+    the cursor leaves the webview, which is exactly when the window "falls
+    behind" - and pointer capture doesn't rescue it either, because Chromium
+    fires pointercancel as soon as the native window starts moving under the
+    captured pointer.
 
-    def _pick_color(self):
-        """Custom note colour; the chosen hex drives both marker and fill."""
-        try:
-            current = self.note.get("color", "") or _accent_color()
-            chosen, ok = self._open_color_dialog(current)
-            if ok and chosen:
-                self.web.eval("window.hashiSetColor && window.hashiSetColor(%s);" % json.dumps(chosen))
-        except Exception as e:
-            print(f"Hashi Notes: color picker error: {e}")
+    QCursor.pos() is screen-global and QApplication.mouseButtons() reports the
+    real button state, so a short-interval timer keeps tracking no matter where
+    the pointer goes, and stops cleanly when the button is released anywhere."""
+    from aqt.qt import QApplication, QCursor
 
-    def _pick_highlight(self):
-        """Custom text-highlight colour; applied to the editor's saved selection."""
-        try:
-            chosen, ok = self._open_color_dialog("#fff3b0")
-            if ok and chosen:
-                self.web.eval("window.hashiApplyHighlight && window.hashiApplyHighlight(%s);" % json.dumps(chosen))
-        except Exception as e:
-            print(f"Hashi Notes: highlight picker error: {e}")
+    existing = getattr(dialog, "_drag_timer", None)
+    if existing is not None:
+        existing.stop()
 
-    def _on_icon_selected(self, value, mode="inline"):
-        if not value:
+    origin_cursor = QCursor.pos()
+    origin_window = dialog.pos()
+    timer = QTimer(dialog)
+    timer.setInterval(8)
+
+    def _tick():
+        if not (QApplication.mouseButtons() & Qt.MouseButton.LeftButton):
+            timer.stop()
+            dialog._drag_timer = None
             return
-        if mode == "title":
-            self.web.eval("window.hashiSetIcon && window.hashiSetIcon(%s);" % json.dumps(value))
-        else:
-            self.web.eval(
-                "window.hashiInsertIcon && window.hashiInsertIcon(%s);"
-                % json.dumps(self._icon_html(value))
-            )
+        try:
+            delta = QCursor.pos() - origin_cursor
+            dialog.move(origin_window + delta)
+        except RuntimeError:  # dialog closed mid-drag
+            timer.stop()
+            dialog._drag_timer = None
 
-    def _icon_html(self, value):
-        """Turns a DeckIconPickerDialog value (emoji:X / system:x.svg / file) into
-        an inline chip the editor can insert."""
-        if value.startswith("emoji:"):
-            em = value.split(":", 1)[1]
-            asset = _emoji_sprite_map().get(em)
-            if asset:
-                uri = _addon_uri(f"system_files/emojis/{asset}")
-                return f'<img class="hashi-inline-icon" src="{uri}">'
-            return em
-        if value.startswith("system:"):
-            uri = _addon_uri(f"system_files/system_icons/available_for_users/{value.split(':', 1)[1]}")
-            # currentColor SVGs are masked so they follow the editor text colour
-            return (
-                f'<span class="hashi-inline-icon hashi-sysmask" '
-                f'style="-webkit-mask-image:url(\'{uri}\');mask-image:url(\'{uri}\')"></span>'
+    timer.timeout.connect(_tick)
+    dialog._drag_timer = timer
+    timer.start()
+
+
+def _handle_web_window_command(dialog, cmd):
+    """Executes the small set of window actions initiated by web chrome."""
+    if cmd == "hashi:window_drag_start":
+        _start_window_drag(dialog)
+        return True
+    if cmd.startswith("hashi:window_resize:"):
+        edge = _WINDOW_RESIZE_EDGES.get(cmd.rsplit(":", 1)[-1])
+        handle = dialog.windowHandle()
+        if edge is not None and handle is not None and not dialog.isMaximized():
+            handle.startSystemResize(edge)
+        return True
+    if cmd == "hashi:window_minimize":
+        dialog.showMinimized()
+        return True
+    if cmd == "hashi:window_toggle_maximize":
+        if dialog.isMaximized():
+            dialog.showNormal()
+        else:
+            dialog.showMaximized()
+        try:
+            dialog.web.eval(
+                "window.hashiSetMaximized && window.hashiSetMaximized(%s);"
+                % ("true" if dialog.isMaximized() else "false")
             )
-        uri = _addon_uri(f"user_files/custom_deck_icons/{value}")
-        return f'<img class="hashi-inline-icon" src="{uri}">'
+        except Exception:
+            pass
+        return True
+    return False
 
 
 # ─── Editor pop-up ────────────────────────────────────────────────────────────
 
 class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
-    """Frameless floating editor with a slim native chrome.
-
-    A slim native top bar handles dragging + close (the AnkiWebView below would
-    otherwise swallow the mouse events); the profile bar + editor live inside
-    the webview HTML.
-    """
+    """Frameless floating editor whose complete visible surface is web UI."""
 
     def __init__(self, note, context="reviewer", parent=None):
         super().__init__(parent or mw)
+        # Set before any resize()/move() below: those can deliver geometry
+        # events synchronously, and the handlers read this state.
+        self._last_geom = None      # see resizeEvent()
+        self._restoring_geom = False
         self.context = context
         self.note = note
-        self._drag_pos = None
         self._skip_close_refocus = False
         self.dark = _is_dark_mode()
-        self.pal = pal = _palette(self.dark)
 
         self.setWindowTitle(tr("hashi_notes_title", "Hashi Notes"))
         self.setWindowFlags(
@@ -766,72 +904,65 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
             | Qt.WindowType.NoDropShadowWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.resize(460, 620)
-        self.setMinimumSize(360, 440)
+        self.resize(510, 660)
+        self.setMinimumSize(390, 500)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(10, 10, 10, 10)
-
-        # Pre-compute the shell's tint (if the note has a colour) so it paints
-        # correctly on the very first frame - waiting for the webview's JS to
-        # report it back over the bridge (hashi:set_shell:) is a visible
-        # flicker from the default shell colour to the tinted one.
-        initial_shell_bg = None
-        bg_color = (note.get("bg_color") or "").strip()
-        if bg_color:
-            try:
-                initial_shell_bg = _fill_tint(bg_color, self.dark)
-            except Exception:
-                initial_shell_bg = None
-
-        self.shell = shell = QFrame()
-        shell.setObjectName("hashiShell")
-        shell.setStyleSheet(self._shell_qss(initial_shell_bg))
-        outer.addWidget(shell)
-
-        shell_layout = QVBoxLayout(shell)
-        shell_layout.setContentsMargins(6, 6, 6, 6)
-        shell_layout.setSpacing(4)
-
-        self.topbar = QFrame()
-        self.topbar.setObjectName("hashiTopbar")
-        self.topbar.setFixedHeight(34)
-        self.topbar.setCursor(Qt.CursorShape.SizeAllCursor)
-        top = QHBoxLayout(self.topbar)
-        top.setContentsMargins(10, 0, 6, 0)
-        title = QLabel(tr("hashi_notes_title", "Hashi Notes"))
-        title.setObjectName("hashiTitle")
-        browse_btn = QToolButton()
-        browse_btn.setIcon(_tinted_icon(_system_icon_path("browse.svg"), pal["fg2"], 15))
-        browse_btn.setFixedSize(26, 26)
-        browse_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        browse_btn.setToolTip(tr("hashi_browse_previous", "Browse previous notes"))
-        browse_btn.clicked.connect(self._open_gallery)
-        close_btn = QToolButton()
-        close_btn.setText("✕")
-        close_btn.setFixedSize(26, 26)
-        close_btn.setCursor(Qt.CursorShape.ArrowCursor)
-        close_btn.setToolTip(tr("hashi_close", "Close"))
-        close_btn.clicked.connect(self.close)
-        top.addWidget(title)
-        top.addStretch()
-        top.addWidget(browse_btn)
-        top.addWidget(close_btn)
-        shell_layout.addWidget(self.topbar)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
         self.web = AnkiWebView(self)
         try:
             self.web.page().setBackgroundColor(QColor(Qt.GlobalColor.transparent))
         except Exception:
             pass
-        shell_layout.addWidget(self.web, 1)
+        outer.addWidget(self.web, 1)
 
         # See present(): the window is shown fully transparent and only revealed
         # once the page reports its first painted frame (hashi:ready).
         self._revealed = False
 
-        self.web.stdHtml(_render_html("hashi_notes.html", self.note, self.dark))
+        web_ctx = _build_context_json(self.dark)
+        web_ctx["hostMode"] = "popup"
+        self.web.stdHtml(_render_html("hashi_notes.html", self.note, self.dark, web_ctx))
         self.web.set_bridge_command(self._on_bridge, self)
+
+    def moveEvent(self, event):
+        # Re-anchor on a *pure* move (our window drag) so the next resize is
+        # measured from where the window actually is now. The size check is what
+        # makes this ordering-proof: a native top-edge drag changes position and
+        # size together and can deliver its move event first, so re-anchoring on
+        # any move at all would hide the very change resizeEvent must reject.
+        super().moveEvent(event)
+        if self._restoring_geom or self._last_geom is None:
+            return
+        if self.size() == self._last_geom.size():
+            self._last_geom = self.geometry()
+
+    def resizeEvent(self, event):
+        """Rejects resizes that would move the window's top edge.
+
+        Deleting the top/top-corner handles from hashi_notes.html is not enough:
+        the window is frameless but still resizable, so macOS gives its NSWindow
+        the resizable style mask and lets the user drag *any* borderless edge
+        natively, with no HTML involved.
+
+        A top-edge drag is the only gesture that changes y and height together
+        (our own window drag changes position only, and the remaining bottom
+        handles change height only), so that pair is a reliable signal: restore
+        the previous geometry and the top edge simply never budges."""
+        super().resizeEvent(event)
+        if self._restoring_geom:
+            return
+        previous = self._last_geom
+        if previous is not None and self.y() != previous.y():
+            self._restoring_geom = True
+            try:
+                self.setGeometry(previous)
+            finally:
+                self._restoring_geom = False
+            return
+        self._last_geom = self.geometry()
 
     def _reveal(self):
         """Makes the (already shown, fully transparent) window visible."""
@@ -873,55 +1004,6 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
         # window permanently invisible.
         QTimer.singleShot(900, self._reveal)
 
-    def _shell_qss(self, bg=None):
-        pal = self.pal
-        shell_bg = bg or pal["shell"]
-        border = bg or pal["border"]
-        return f"""
-            QFrame#hashiShell {{
-                background: {shell_bg};
-                border: 1px solid {border};
-                border-radius: 20px;
-                font-family: 'Poppins';
-            }}
-            QFrame#hashiTopbar {{ background: transparent; }}
-            QLabel#hashiTitle {{ color: {pal['fg']}; font-size: 14px; font-weight: 700; background: transparent; font-family: 'Poppins'; }}
-            QToolButton {{ background: transparent; border: none; border-radius: 12px; padding: 3px;
-                color: {pal['fg2']}; font-size: 16px; }}
-            QToolButton:hover {{ background: {pal['hover']}; }}
-        """
-
-    def _set_shell_bg(self, hex_color):
-        """Tints the native shell to match the note's chosen fill (post-it look)."""
-        try:
-            hex_color = (hex_color or "").strip()
-            self.shell.setStyleSheet(self._shell_qss(hex_color or None))
-        except Exception as e:
-            print(f"Hashi Notes: shell tint error: {e}")
-
-    # --- window dragging via the native top bar ---
-    def _topbar_at(self, event):
-        pos = event.position().toPoint()
-        return self.topbar.geometry().contains(self.topbar.mapFrom(self, pos))
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self._topbar_at(event):
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
-
     def closeEvent(self, event):
         # A close that lands while present() is still waiting for hashi:ready
         # must not be re-revealed by the pending timer.
@@ -957,6 +1039,8 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
     # --- bridge from the editor JS ---
     def _on_bridge(self, cmd):
         try:
+            if _handle_web_window_command(self, cmd):
+                return
             if cmd == "hashi:ready":
                 self._reveal()
                 return
@@ -972,6 +1056,10 @@ class HashiNotePopup(QDialog, _HashiNoteEditorMixin):
             print(f"Hashi Notes: bridge error ({cmd[:40]}): {e}")
 
 
+def _id_list(payload):
+    return [part for part in str(payload or "").split(",") if part]
+
+
 # ─── Gallery dialog ───────────────────────────────────────────────────────────
 
 class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
@@ -981,14 +1069,21 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
         self.note = None
         self.current_view = "active"  # track Notes vs Trash view
         self.setWindowTitle(tr("hashi_notes_title", "Hashi Notes"))
+        # The gallery is a conventional application window/page. Only the
+        # compact quick-note editor uses custom floating web chrome.
+        self.setWindowFlags(Qt.WindowType.Window)
         self.setMinimumSize(720, 560)
-        self.resize(880, 640)
+        self.resize(960, 700)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         self.web = AnkiWebView(self)
+        try:
+            self.web.page().setBackgroundColor(QColor(_palette(self.dark)["bg"]))
+        except Exception:
+            pass
         layout.addWidget(self.web, 1)
 
         self._reload()
@@ -1000,9 +1095,11 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
         data = {
             "notes": load_notes(),
             "trashed": load_notes(include_trashed=True),
+            "groups": load_groups(),
         }
         ctx = _build_context_json(self.dark)
         ctx["initialView"] = self.current_view  # restore the Notes/Trash view
+        ctx["hostMode"] = "gallery"
         self.web.stdHtml(_render_html("hashi_gallery.html", data, self.dark, ctx))
 
     def _show_editor(self, note):
@@ -1010,7 +1107,9 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
         place of the grid. The Reviewer's button is the only entry point that
         still spawns the separate floating HashiNotePopup."""
         self.note = note
-        self.web.stdHtml(_render_html("hashi_notes.html", note, self.dark))
+        ctx = _build_context_json(self.dark)
+        ctx["hostMode"] = "gallery-editor"
+        self.web.stdHtml(_render_html("hashi_notes.html", note, self.dark, ctx))
 
     def _show_grid(self):
         if self.note is None:
@@ -1024,6 +1123,11 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
 
     def _on_bridge(self, cmd):
         try:
+            if _handle_web_window_command(self, cmd):
+                return
+            if cmd == "hashi:close":
+                self.close()
+                return
             if self.note is not None and self._handle_note_bridge(cmd):
                 return
             if cmd == "hashi:back":
@@ -1046,6 +1150,29 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
                 return
             if cmd.startswith("hashi:delete:"):
                 delete_note(cmd.split(":", 2)[2])
+                self._reload()
+                return
+            if cmd.startswith("hashi:layout:"):
+                # Fired by every drag/group/reorder. The page already shows the
+                # new arrangement, so this only persists — no reload.
+                try:
+                    apply_layout(json.loads(cmd[len("hashi:layout:"):]))
+                except Exception as e:
+                    print(f"Hashi Notes: layout parse error: {e}")
+                return
+            if cmd.startswith("hashi:trash_many:"):
+                for note_id in _id_list(cmd[len("hashi:trash_many:"):]):
+                    trash_note(note_id)
+                self._reload()
+                return
+            if cmd.startswith("hashi:restore_many:"):
+                for note_id in _id_list(cmd[len("hashi:restore_many:"):]):
+                    restore_note(note_id)
+                self._reload()
+                return
+            if cmd.startswith("hashi:delete_many:"):
+                for note_id in _id_list(cmd[len("hashi:delete_many:"):]):
+                    delete_note(note_id)
                 self._reload()
                 return
             if cmd.startswith("hashi:set_sort:"):
@@ -1207,16 +1334,35 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
     tint_dark = _is_dark_mode() if bool(style.get("dynamic", True)) else False
 
     def _note_style(note):
-        color = str(note.get("color") or "").strip()
-        if not color:
+        """Paints a note in its real paper colour, for both widget modes.
+
+        Both the single widget and the gallery cards resolve the exact colour
+        the editor paints (_paper_for_theme mirrors its paperForTheme) instead
+        of a lookalike tint. The ink has to be derived from that fill too: the
+        dashboard's own foreground is unreadable on a light paper in dark mode,
+        and vice versa. Notes with no colour emit nothing, so every consumer
+        falls back to the neutral dashboard tokens."""
+        # Mirrors the editor's own precedence (`note.bg_color || note.color`).
+        raw = str(note.get("bg_color") or note.get("color") or "").strip()
+        try:
+            paper = _paper_for_theme(raw, tint_dark)
+        except Exception:
+            paper = ""
+        if not paper:
             return ""
         try:
-            fill = _fill_tint(color, tint_dark)
+            fg = _text_on_paper(paper)
+            fg2 = _muted_ink(fg, paper, 0.30, 4.5)
+            fg3 = _muted_ink(fg, paper, 0.48, 3.0)
+            edge = _mix_hex(paper, fg, 0.12)
         except Exception:
             return ""
         return (
-            f' style="--hashiw-note-accent:{html.escape(color, quote=True)};'
-            f'--hashiw-note-fill:{html.escape(fill, quote=True)}"'
+            f' style="--hashiw-note-fill:{html.escape(paper, quote=True)};'
+            f'--hashiw-note-fg:{html.escape(fg, quote=True)};'
+            f'--hashiw-note-fg2:{html.escape(fg2, quote=True)};'
+            f'--hashiw-note-fg3:{html.escape(fg3, quote=True)};'
+            f'--hashiw-note-edge:{html.escape(edge, quote=True)}"'
         )
 
     if not notes:
@@ -1228,7 +1374,7 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
 
     if mode == "single":
         note = notes[0]
-        note_title = html.escape(note.get("title") or tr("hashi_untitled", "Untitled"), quote=False)
+        note_title = html.escape(note.get("title") or "", quote=False)
         accent_style = _note_style(note)
         icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
         date_html = ""
@@ -1244,6 +1390,11 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
                 if excerpt
                 else f'<p class="hashi-widget-excerpt is-empty">{html.escape(tr("hashi_empty_note", "Empty note"), quote=False)}</p>'
             )
+        head_html = (
+            f'<div class="hashi-widget-single-title">{icon_html}<span>{note_title}</span></div>'
+            if (note_title or icon_html)
+            else ""
+        )
         return f"""
 <div class="hashi-notes-widget is-single"{accent_style} onclick="pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
   <div class="onigiri-widget-head">
@@ -1251,14 +1402,14 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
     {date_html}
   </div>
   <div class="hashi-widget-single">
-    <div class="hashi-widget-single-title">{icon_html}<span>{note_title}</span></div>
+    {head_html}
     {body_html}
   </div>
 </div>"""
 
     cards_html = ""
     for note in notes:
-        note_title = html.escape(note.get("title") or tr("hashi_untitled", "Untitled"), quote=False)
+        note_title = html.escape(note.get("title") or "", quote=False)
         accent_style = _note_style(note)
         icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
         date_html = ""
@@ -1271,9 +1422,15 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
             excerpt = _plain_excerpt(note.get("body_md"), 90)
             if excerpt:
                 excerpt_html = f'<p class="hashi-widget-card-excerpt">{html.escape(excerpt, quote=False)}</p>'
+        head_html = (
+            f'<div class="hashi-widget-card-head">{icon_html}'
+            f'<span class="hashi-widget-card-title">{note_title}</span></div>'
+            if (note_title or icon_html)
+            else ""
+        )
         cards_html += f"""
 <div class="hashi-widget-card"{accent_style} onclick="event.stopPropagation(); pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
-  <div class="hashi-widget-card-head">{icon_html}<span class="hashi-widget-card-title">{note_title}</span></div>
+  {head_html}
   {excerpt_html}
   {date_html}
 </div>"""

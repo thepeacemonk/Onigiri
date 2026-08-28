@@ -3,6 +3,41 @@ import json
 import os
 from aqt import mw
 
+from . import safe_storage
+
+
+def get_collection_config(key, default=None, col=None):
+    """Read add-on collection state without Anki's legacy-conf warnings."""
+    collection = col or getattr(mw, "col", None)
+    if collection is None:
+        return default
+    try:
+        value = collection.get_config(key)
+        return default if value is None else value
+    except (AttributeError, TypeError):
+        # Compatibility only for Anki versions predating Collection.get_config.
+        try:
+            return collection.conf.get(key, default)
+        except Exception:
+            return default
+
+
+def set_collection_config(key, value, col=None):
+    """Write add-on collection state through Anki's supported API."""
+    collection = col or getattr(mw, "col", None)
+    if collection is None:
+        return
+    try:
+        collection.set_config(key, value)
+        return
+    except (AttributeError, TypeError):
+        pass
+    try:
+        collection.conf[key] = value
+        collection.setMod()
+    except Exception:
+        pass
+
 
 def effective_night_mode(conf=None):
     """
@@ -11,9 +46,12 @@ def effective_night_mode(conf=None):
     The add-on can force a theme via ``onigiriThemeMode``; when it is set to
     ``system`` we follow Anki's current night-mode state.
     """
-    mode = "system"
-    if isinstance(conf, dict):
-        mode = str(conf.get("onigiriThemeMode", "system")).lower()
+    if not isinstance(conf, dict):
+        try:
+            conf = get_config_readonly()
+        except Exception:
+            conf = {}
+    mode = str(conf.get("onigiriThemeMode", "system")).lower() if isinstance(conf, dict) else "system"
 
     if mode in {"dark", "night", "night_mode"}:
         return True
@@ -32,6 +70,28 @@ def effective_night_mode(conf=None):
     except Exception:
         return False
 
+
+def themed_asset(get, base_key, is_dark, dynamic_key=None, default=""):
+    """Filename for an image stored as a base key plus an optional _light/_dark pair.
+
+    "Use the same picture for both themes" is not a separate flag: it is simply
+    the light and dark keys being empty, so the base key answers for both. That
+    keeps a setting saved before the split — and a theme that only knows the
+    base key — working untouched, and it means the settings UI can offer a
+    per-asset "same for both" switch without a migration.
+
+    `get` is the caller's own config accessor (``mw.col.conf.get``,
+    ``conf.get``, ``_col_conf_get``) so this works against a live collection, a
+    plain dict, or a deprecation-safe wrapper without caring which.
+    """
+    dynamic = bool(get(dynamic_key, True)) if dynamic_key else True
+    if dynamic:
+        themed = get(f"{base_key}_{'dark' if is_dark else 'light'}", "")
+        if themed:
+            return themed
+    return get(base_key, default) or default
+
+
 # Default settings for the add-on
 DEFAULTS = {
     "userName": "USER",
@@ -44,14 +104,21 @@ DEFAULTS = {
     "proHide": False,
     "maxHide": False,
     "flowMode": False,
-    "gamificationMode": False,
     "ankiweb_sync_enabled": False,
-    "fullHideMode": False, 
+    "fullHideMode": False,
+    "hideMacTitleBar": False,
     "hideSynapseProSidebar": False,
     "sidebarCollapsed": False,
     "sidebarPosition": "left",
     "showCongratsProfileBar": True,
     "showOverviewProfileBar": True,
+    # Match Anki's congratulations notice: the next learning card's ready time
+    # plus the number of learning cards still due before the next day cutoff.
+    "showOverviewDueLaterNotice": True,
+    # Kept separately so a user can choose where the next-learning notice
+    # appears. The older showOverviewDueLaterNotice key is migrated below.
+    "showNextLearningCardNoticeOnCongrats": True,
+    "showNextLearningCardNoticeOnOverview": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
     "onigiriThemeMode": "system",
@@ -156,6 +223,9 @@ DEFAULTS = {
         # Empty = use the widget's own light/dark stats-panel shade.
         "scene_bottom_color": "",
         "allow_ankimon_updates": True,
+        # How gently Onigimon words its notifications: "lillipup" (kind),
+        # "herdier" (serious) or "stoutland" (blunt). See gamification/onigimon.py.
+        "notification_tone": "herdier",
     },
     "hexagon_land": {
         "enabled": False,
@@ -280,6 +350,41 @@ DEFAULTS = {
     "onigiri_reviewer_btn_padding": 5, # px (affects size)
     "onigiri_reviewer_btn_height": 40, # px (button height)
     "onigiri_reviewer_bar_height": 60, # px (default height)
+
+    # --- Reviewer header progress bar ---
+    # The "end of the tunnel" gauge in the reviewer header. `left` mirrors the
+    # bottom bar's new/learning/review counts; `done` is either this session's
+    # answers or today's whole revlog for the deck (see progress_scope).
+    "onigiri_reviewer_progress_enabled": True,
+    "onigiri_reviewer_progress_style": "bar",        # bar | segments | ring | text
+    "onigiri_reviewer_progress_label": "fraction",   # fraction | percent | remaining | done | none
+    "onigiri_reviewer_progress_scope": "session",    # session | today
+    "onigiri_reviewer_progress_position": "right",   # right | left
+    "onigiri_reviewer_progress_width": 96,           # px, bar/segments only
+    "onigiri_reviewer_progress_thickness": 6,        # px
+    "onigiri_reviewer_progress_radius": 999,         # px
+    "onigiri_reviewer_progress_ring_size": 16,       # px, ring only
+    "onigiri_reviewer_progress_chrome": True,        # draw the button-style chip behind it
+    "onigiri_reviewer_progress_animate": True,
+    "onigiri_reviewer_progress_gradient": True,
+    "onigiri_reviewer_progress_hide_when_done": False,
+    "onigiri_reviewer_progress_fill_light": "#19c96b",
+    "onigiri_reviewer_progress_fill_dark": "#12b765",
+    "onigiri_reviewer_progress_fill_end_light": "#5ad6f0",
+    "onigiri_reviewer_progress_fill_end_dark": "#4bc4de",
+    "onigiri_reviewer_progress_track_light": "rgba(0, 0, 0, 0.12)",
+    "onigiri_reviewer_progress_track_dark": "rgba(255, 255, 255, 0.16)",
+    "onigiri_reviewer_progress_text_light": "#2c2c2c",
+    "onigiri_reviewer_progress_text_dark": "#e8e8e8",
+    # "counts" borrows the very colours the count bubbles use, so the segmented
+    # gauge and the bottom bar agree on what blue/red/green mean.
+    "onigiri_reviewer_progress_segment_source": "counts",  # counts | custom
+    "onigiri_reviewer_progress_seg_new_light": "#1e8cff",
+    "onigiri_reviewer_progress_seg_new_dark": "#0a84ff",
+    "onigiri_reviewer_progress_seg_learn_light": "#ff5757",
+    "onigiri_reviewer_progress_seg_learn_dark": "#ff453a",
+    "onigiri_reviewer_progress_seg_review_light": "#19c96b",
+    "onigiri_reviewer_progress_seg_review_dark": "#12b765",
     "onigiri_reviewer_btn_interval_color_light": "#555555",
     "onigiri_reviewer_btn_interval_color_dark": "#dddddd",
     "onigiri_reviewer_btn_border_color_light": "#DBDBDB",
@@ -357,23 +462,33 @@ DEFAULTS = {
                 "box_bg": "#f3f3f3",
                 "box_border": "#e0e0e0",
                 "study_button": "#0077C8",
+                "study_button_stroke": "#e0e0e0",
+                "options_button": "#f5f5f5",
+                "custom_study_button": "#f5f5f5",
+                "description_button": "#f5f5f5",
+                "reveal_button": "#0077C8",
                 "new_bubble": "#1e8cff",
                 "new_text": "#ffffff",
-                "learn_bubble": "#19c96b",
+                "learn_bubble": "#ff5757",
                 "learn_text": "#ffffff",
-                "review_bubble": "#ff5757",
+                "review_bubble": "#19c96b",
                 "review_text": "#ffffff",
             },
             "dark": {
                 "box_bg": "#2c2c2c",
                 "box_border": "#565656",
                 "study_button": "#0077C8",
+                "study_button_stroke": "#565656",
+                "options_button": "#2a2a2a",
+                "custom_study_button": "#2a2a2a",
+                "description_button": "#2a2a2a",
+                "reveal_button": "#0a84ff",
                 "new_bubble": "#0077C8",
                 "new_text": "#f7fbff",
-                "learn_bubble": "#12b765",
-                "learn_text": "#f4fff8",
-                "review_bubble": "#ff453a",
-                "review_text": "#fff5f5",
+                "learn_bubble": "#ff453a",
+                "learn_text": "#fff5f5",
+                "review_bubble": "#12b765",
+                "review_text": "#f4fff8",
             },
         },
     },
@@ -398,6 +513,8 @@ DEFAULTS = {
         "show_icons": True,
         "show_units": True,
         "show_sparkline": True,
+        # Expressive only: the tinted linear-gradient wash behind each card.
+        "show_wash": True,
         # Expressive only: how the 7-day trend line is drawn.
         #   "sharp"  - straight segments between days, angular corners.
         #   "smooth" - a Catmull-Rom curve through the same points.
@@ -421,6 +538,8 @@ DEFAULTS = {
                 "time": "#8b7bd8",
                 "pace": "#f5a05a",
                 "retention": "#26a641",
+                "retention_star": "#FFD700",
+                "retention_star_empty": "#e0e0e0",
             },
             "dark": {
                 "box_bg": "#2c2c2c",
@@ -431,6 +550,8 @@ DEFAULTS = {
                 "time": "#a294ea",
                 "pace": "#f7ad6b",
                 "retention": "#35b850",
+                "retention_star": "#FFD700",
+                "retention_star_empty": "#4a4a4a",
             },
         },
     },
@@ -655,6 +776,46 @@ def normalize_overview_style_defaults(conf):
         if dark_value.lower() != str(dark_default).lower():
             dark_colors[key] = dark_default
 
+    return conf
+
+
+def normalize_learning_review_color_roles(conf):
+    """Swap the former default Learning/Review color roles once.
+
+    Only the exact old default pair is migrated. If either bubble was changed
+    by the user, both values are preserved as an intentional custom palette.
+    """
+    colors = conf.get("overview_style", {}).get("colors", {})
+    if not isinstance(colors, dict):
+        return conf
+
+    legacy = {
+        "light": {
+            "learn_bubble": "#19c96b",
+            "learn_text": "#ffffff",
+            "review_bubble": "#ff5757",
+            "review_text": "#ffffff",
+        },
+        "dark": {
+            "learn_bubble": "#12b765",
+            "learn_text": "#f4fff8",
+            "review_bubble": "#ff453a",
+            "review_text": "#fff5f5",
+        },
+    }
+    defaults = DEFAULTS.get("overview_style", {}).get("colors", {})
+    for mode, old in legacy.items():
+        palette = colors.get(mode)
+        new = defaults.get(mode, {})
+        if not isinstance(palette, dict) or not isinstance(new, dict):
+            continue
+        if (
+            str(palette.get("learn_bubble", "")).lower() == old["learn_bubble"].lower()
+            and str(palette.get("review_bubble", "")).lower() == old["review_bubble"].lower()
+        ):
+            for key in ("learn_bubble", "learn_text", "review_bubble", "review_text"):
+                if key in new:
+                    palette[key] = new[key]
     return conf
 
 
@@ -883,16 +1044,16 @@ def _build_config():
     user_config = {}
     settings_path = _get_settings_path()
     
-    # Try to load from profile specific file
+    # Try to load from profile specific file. read_json walks the .bak, the
+    # dated snapshots and the external mirror before it gives up, so a
+    # truncated settings file no longer reads as "brand new user".
     loaded_from_file = False
-    if settings_path and os.path.exists(settings_path):
-        try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                user_config = json.load(f)
-                loaded_from_file = True
-        except Exception as e:
-            print(f"Error loading settings from {settings_path}: {e}")
-    
+    if settings_path:
+        user_config = safe_storage.read_json(
+            settings_path, default={}, label="Your Onigiri settings"
+        )
+        loaded_from_file = bool(user_config)
+
     # If not found (First run for this profile), try migration from legacy shared config
     if not loaded_from_file and mw.col:
         try:
@@ -901,17 +1062,25 @@ def _build_config():
                 print(f"Migrating legacy settings to {settings_path}")
                 user_config = legacy_config
                 # Save immediately to establish the new file
-                try:
-                    with open(settings_path, 'w', encoding='utf-8') as f:
-                        json.dump(user_config, f, indent=2, ensure_ascii=False)
-                except Exception as e:
-                    print(f"Error saving migrated settings: {e}")
+                safe_storage.atomic_write_json(settings_path, user_config)
         except Exception as e:
             print(f"Error reading legacy config: {e}")
 
     # Merge user settings into defaults.
     if user_config:
         merge_config(clean_config, user_config)
+
+    # Before this split, the one notice toggle only controlled the Congrats
+    # screen. Preserve an existing user's choice when introducing the two
+    # independent placements.
+    legacy_notice_setting = user_config.get("showOverviewDueLaterNotice")
+    if legacy_notice_setting is not None:
+        for key in (
+            "showNextLearningCardNoticeOnCongrats",
+            "showNextLearningCardNoticeOnOverview",
+        ):
+            if key not in user_config:
+                clean_config[key] = bool(legacy_notice_setting)
     # These two are ONE-TIME legacy migrations (move old blue accent/light defaults
     # to the current dark defaults). Running them on every load also reverted a
     # user who *deliberately* sets e.g. dark "new_bubble" to the light color
@@ -922,6 +1091,9 @@ def _build_config():
         normalize_accent_color_defaults(clean_config)
         normalize_overview_style_defaults(clean_config)
         clean_config["_legacy_color_defaults_migrated"] = True
+    if not clean_config.get("_learning_review_color_roles_migrated"):
+        normalize_learning_review_color_roles(clean_config)
+        clean_config["_learning_review_color_roles_migrated"] = True
 
     # Main Background colors are stored in mw.col.conf and should not become the
     # add-on's global theme background. Older builds accidentally copied them
@@ -1024,8 +1196,19 @@ def _build_config():
                 elif isinstance(archive_conf, dict):
                     archive_conf.setdefault(missing_widget_id, {"pos": 12, "row": 2, "col": 2})
                 layout_conf["archive"] = archive_conf
-        if isinstance(grid_conf, dict) and isinstance(grid_conf.get("deck_stats"), dict):
-            deck_stats_conf = grid_conf["deck_stats"]
+        # Deck Stats instances use `deck_stats` for the original widget and
+        # `deck_stats_2`, `deck_stats_3`, ... for copies added in Organize.
+        # Keep their dimensions within the widget's supported range on load,
+        # just as we did for the original singleton.
+        deck_stats_entries = (
+            (widget_id, widget_conf)
+            for widget_id, widget_conf in (grid_conf.items() if isinstance(grid_conf, dict) else ())
+            if widget_id == "deck_stats"
+            or (widget_id.startswith("deck_stats_") and widget_id[11:].isdigit())
+        )
+        for _widget_id, deck_stats_conf in deck_stats_entries:
+            if not isinstance(deck_stats_conf, dict):
+                continue
             try:
                 deck_stats_conf["row"] = max(1, min(2, int(deck_stats_conf.get("row", 2))))
             except (TypeError, ValueError):
@@ -1086,11 +1269,9 @@ def write_config(config):
     """
     settings_path = _get_settings_path()
     if settings_path:
-        try:
-            with open(settings_path, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error writing settings to {settings_path}: {e}")
+        # Atomic: the old file survives intact if the write or the app dies
+        # halfway, and a .bak plus dated snapshots are kept alongside it.
+        safe_storage.atomic_write_json(settings_path, config)
     invalidate_config_cache()
             
     # Optional: We could also write to Anki's config as a backup, 

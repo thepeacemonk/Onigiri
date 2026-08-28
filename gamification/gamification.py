@@ -4,6 +4,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+from .. import safe_storage
+
 @dataclass
 class AchievementData:
     id: str
@@ -95,13 +97,13 @@ class GamificationData:
             except Exception as e:
                 print(f"Error migrating gamification data: {e}")
 
-        if not os.path.exists(data_path):
-            return
-            
         try:
-            with open(data_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                
+            data = safe_storage.read_json(
+                data_path, default={}, label="Your Onigiri progress"
+            )
+            if not data:
+                return
+
             # Load achievements
             self.achievements = {
                 ach['id']: AchievementData(**ach) 
@@ -143,8 +145,15 @@ class GamificationData:
     def reload(self) -> None:
         """Reload data from disk."""
         self._load()
-    def save(self) -> None:
-        """Save data to JSON file."""
+    def save(self, immediate: bool = False) -> None:
+        """Save data to JSON file.
+
+        Every answered card updates XP and Nook Rush progress, so writing
+        straight through meant an fsync plus two file copies per review. The
+        write is queued instead and coalesced by safe_storage; pass
+        ``immediate=True`` when the file has to be on disk right away (profile
+        close, sync, handing the file to another reader).
+        """
         self.last_updated = datetime.now().isoformat()
         
         # Prepare the new data for the keys we manage
@@ -158,24 +167,25 @@ class GamificationData:
         data_path = self._get_data_path()
         final_data = {}
         
-        # Try to read existing data to preserve other keys
-        if os.path.exists(data_path):
-            try:
-                with open(data_path, 'r', encoding='utf-8') as f:
-                    final_data = json.load(f)
-            except Exception as e:
-                print(f"Error reading existing gamification data during save: {e}")
-                # If read fails, we might lose data, but we have to save our current state
-                # final_data remains {}
-        
+        # Try to read existing data to preserve other keys. A queued write is
+        # newer than the file, so start from it when there is one; otherwise
+        # going through read_json means a corrupt file falls back to its backup
+        # instead of silently dropping every key we do not manage here.
+        pending = safe_storage.pending_payload(data_path)
+        if isinstance(pending, dict):
+            final_data = dict(pending)
+        elif os.path.exists(data_path):
+            final_data = safe_storage.read_json(
+                data_path, default={}, label="Your Onigiri progress"
+            ) or {}
+
         # Update with our managed data
         final_data.update(new_data)
-        
-        try:
-            with open(data_path, 'w', encoding='utf-8') as f:
-                json.dump(final_data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error saving gamification data: {e}")
+
+        if immediate:
+            safe_storage.atomic_write_json(data_path, final_data)
+        else:
+            safe_storage.schedule_write_json(data_path, final_data)
 
     def update_achievement(
         self, 
@@ -247,8 +257,12 @@ class GamificationData:
                 
         self.save()
 
-    def update_restaurant_data(self, updates: Dict[str, Any]) -> None:
-        """Update fields in restaurant data."""
+    def update_restaurant_data(self, updates: Dict[str, Any], immediate: bool = False) -> None:
+        """Update fields in restaurant data.
+
+        ``immediate`` forces the write through instead of queueing it - use it
+        for anything the user just paid for or explicitly changed.
+        """
         for key, value in updates.items():
             if hasattr(self.restaurant_data, key):
                 setattr(self.restaurant_data, key, value)
@@ -257,7 +271,7 @@ class GamificationData:
                 # Usage: updates={"daily_special_update": {"current_progress": 10}}
                 self.restaurant_data.daily_special.update(value)
                 
-        self.save()
+        self.save(immediate=immediate)
         
     def get_restaurant_data(self) -> Dict[str, Any]:
         """Return restaurant data as a dictionary."""

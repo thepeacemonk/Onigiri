@@ -8,9 +8,9 @@ __all__ = [
     'nook_level',
     'hexagon_land',
     'focus_dango',
-    'taiyaki_store',
     'reward_redemption',
-    'nook_level_ui',
+    'nook_web_ui',
+    'onigimon_web_ui',
 ]
 
 

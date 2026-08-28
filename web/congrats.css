@@ -96,7 +96,7 @@ body {
 
 .overview-profile-bar .profile-name {
     font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13px;
+    font-size: calc(var(--font-size-main, 14px) * 0.93);
     font-weight: 500;
     color: var(--fg);
     white-space: nowrap;
@@ -209,6 +209,77 @@ body {
     line-height: 1.4;
 }
 
+/* Mirrors Anki's next-learning notice without competing with the headline. */
+.congrats-card .onigiri-learning-due-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 20px;
+    color: var(--fg-subtle, var(--fg));
+    font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: var(--font-size-main, 14px);
+    line-height: 1.55;
+    text-align: center;
+}
+
+.congrats-card .onigiri-learning-due-notice p {
+    width: 100%;
+    margin: 0;
+    text-align: center;
+}
+
+.congrats-card .onigiri-learning-browse-button {
+    display: block;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    min-height: 34px;
+    margin: 0 auto;
+    padding: 10px 16px;
+    border: 1px solid var(--border, rgba(0, 0, 0, 0.14));
+    border-radius: 999px;
+    background: var(--canvas-inset, rgba(127, 127, 127, 0.08));
+    color: var(--fg, inherit);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.95em;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+.congrats-card .onigiri-learning-browse-button:hover,
+.congrats-card .onigiri-learning-browse-button:active {
+    border-color: var(--border, rgba(0, 0, 0, 0.14)) !important;
+    background: var(--canvas-inset, rgba(127, 127, 127, 0.08)) !important;
+    color: var(--fg, inherit) !important;
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+.congrats-card .onigiri-learning-ready-text {
+    display: inline;
+    color: inherit;
+}
+
+.congrats-card .onigiri-learning-browse-button:hover .onigiri-learning-ready-text {
+    color: var(--overview-learn-bubble-bg, var(--learn-count-bubble-bg, #ff5757));
+}
+
 /* --- Bottom Action Buttons --- */
 .congrats-bottom-actions {
     display: flex;
@@ -262,7 +333,7 @@ body {
     font-size: 15px;
 }
 .onigiri-profile .opro-name {
-    font-size: 16px;
+    font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -311,7 +382,7 @@ body {
     gap: 2px;
 }
 .onigiri-profile.ring-profile .opro-level {
-    font-size: 12px;
+    font-size: calc(var(--font-size-main, 14px) * 0.86);
     opacity: 0.7;
 }
 
@@ -338,7 +409,7 @@ body {
     gap: 8px;
 }
 .onigiri-profile.minimal-profile .opro-lv {
-    font-size: 11px;
+    font-size: calc(var(--font-size-main, 14px) * 0.79);
     font-weight: 600;
     opacity: 0.7;
     white-space: nowrap;

@@ -2,762 +2,319 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">
 <style>
   /*__HASHI_FONT_FACE__*/
   :root {
-    --bg: #ffffff; --surface: #f1f1f0; --border: #e5e7eb;
-    --fg: #1f2933; --fg2: #4b5563; --fg3: #8a9099;
-    --accent: #00A982; --chip: #eef0f2; --highlight: #fff3b0;
-    --input-bg: #ffffff; --hover: #f1f3f5;
+    --bg: #f4f4f1; --shell: #fbfbf9; --surface: #fff; --surface-2: #f0f0ec;
+    --border: #deded8; --fg: #20211f; --fg2: #5d605b; --fg3: #92958e;
+    --accent: #00a982; --paper: #fffefb; --paper-fill: var(--paper); --paper-edge: rgba(32,33,31,.09);
+    --paper-fg: #20211f; --paper-fg2: #5d605b; --paper-fg3: #92958e; --paper-soft: rgba(32,33,31,.07);
+    --marker: var(--accent); --chip: #ecece7; --hover: #e9e9e4;
+    --shadow: 0 24px 70px rgba(24,28,25,.18), 0 2px 8px rgba(24,28,25,.08);
   }
   * { box-sizing: border-box; }
-  /* kill native button chrome + Anki's injected base button styles. stdHtml
-     adds a box-shadow to <button>; the extra `html body` specificity is needed
-     so we win regardless of whether Anki's rule is injected before or after. */
-  html body button { appearance: none !important; -webkit-appearance: none !important;
-    box-shadow: none !important; background-image: none !important; }
-  html, body {
-    margin: 0; padding: 0; height: 100%;
-    background: var(--note-fill, transparent);
-    color: var(--fg);
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 14px;
-    -webkit-user-select: none; user-select: none;
-  }
-  #app { display: flex; flex-direction: column; height: 100%; padding: 18px 20px 18px;
-    opacity: 0; transition: opacity .16s ease-out; }
-  #app.hashi-in { opacity: 1; }
-
-  /* title bar */
-  #titlebar { display: flex; align-items: center; gap: 6px; padding-bottom: 16px;
-    margin-bottom: 16px; }
-  #titleinput { margin-left: 6px; }
-  #backbtn { flex: 0 0 auto; margin: 0; height: 40px; border: 1px solid var(--border); background: var(--surface);
-    color: var(--fg2); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0 13px;
-    border-radius: 11px; display: inline-flex; align-items: center; gap: 3px;
-    transition: border-color .12s, color .12s, transform .12s; }
-  #backbtn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
-  #noteicon { flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border);
-    border-radius: 11px; background: var(--surface); cursor: pointer; font-size: 20px;
-    display: inline-flex; align-items: center; justify-content: center; color: var(--fg2);
-    transition: border-color .12s, transform .12s; }
-  #noteicon:hover { border-color: var(--accent); transform: translateY(-1px); }
-  #noteicon img { width: 22px; height: 22px; object-fit: contain; }
+  html body button, html body input { font: inherit; }
+  /* The dark ring around hovered buttons comes from Anki's own webview.css,
+     which stdHtml injects ahead of this file:
+         button:hover { border: 1px solid var(--shadow) }
+     In night mode that variable is near-black. `button:hover` (0,1,1) outranks
+     both `.icon-button` (0,1,0) and `html body button` (0,0,3), so plain
+     `border: 0` loses the cascade - only !important reliably wins here.
+     Borders on ::after (e.g. .swatch.on) and on inputs are unaffected. */
+  html body button { appearance: none !important; -webkit-appearance: none !important; box-shadow: none !important; background-image: none !important; border: 0 !important; }
+  html body button:hover, html body button:focus, html body button:active { border: 0 !important; }
+  html body button:focus, html body button:focus-visible, html body input:focus-visible { outline: none !important; }
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; color: var(--fg); font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; }
+  button { color: inherit; }
+  svg { display: block; }
+  .window-shell { position: absolute; inset: 10px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 26px; background: var(--shell); box-shadow: var(--shadow); opacity: 0; transform: translateY(4px) scale(.992); transition: opacity .16s ease, transform .18s ease; }
+  .window-shell.hashi-in { opacity: 1; transform: none; }
+  .windowbar { height: 54px; flex: 0 0 54px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 17px; border-bottom: 1px solid var(--border); background: var(--shell); -webkit-user-select: none; user-select: none; cursor: default; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand-mark { position: relative; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 9px; background: var(--accent); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 28%, transparent); }
+  .brand-mark::before, .brand-mark::after { content: ""; position: absolute; top: 6px; width: 2px; height: 16px; border-radius: 2px; background: #fff; transform: rotate(25deg); }
+  .brand-mark::before { left: 10px; } .brand-mark::after { left: 16px; }
+  .brand-copy { min-width: 0; }
+  .brand-title { font-weight: 750; font-size: 13px; line-height: 1.15; white-space: nowrap; }
+  .brand-sub { margin-top: 2px; color: var(--fg3); font-size: 10px; line-height: 1; white-space: nowrap; }
+  .save-state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--fg3); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  .save-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .save-state.saving::before { animation: savePulse .8s ease-in-out infinite alternate; }
+  @keyframes savePulse { to { opacity: .25; transform: scale(.75); } }
+  .window-actions { display: flex; align-items: center; gap: 4px; margin-left: 3px; }
+  .icon-button { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--fg2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: color .26s ease, background-color .26s ease, opacity .26s ease; }
+  .icon-button:hover { color: var(--fg2); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .icon-button:active { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+  .icon-button svg { width: 17px; height: 17px; }
+  #closeBtn:hover { color: var(--fg2); background: color-mix(in srgb, #e65353 14%, transparent); }
+  .workspace { min-height: 0; flex: 1 1 auto; padding: 14px; background: var(--bg); }
+  .note-paper { height: 100%; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; border: 0; border-radius: 22px; background: var(--paper-fill); box-shadow: 0 12px 34px rgba(27,30,27,.10); }
+  .paper-accent { display: none; }
+  .note-heading { display: flex; align-items: center; gap: 10px; padding: 18px 18px 10px; }
+  #noteicon { width: 42px; height: 42px; flex: 0 0 42px; padding: 0; border: 0; border-radius: 14px; background: var(--paper-soft); color: var(--paper-fg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; transition: background-color .26s ease; }
+  #noteicon:hover { background: color-mix(in srgb, var(--paper-fg) 7%, transparent); }
+  #noteicon img { width: 23px; height: 23px; object-fit: contain; }
   #noteicon .hashi-sysmask { width: 22px; height: 22px; }
-  #titleinput { flex: 1 1 auto; border: none; background: transparent; outline: none;
-    color: var(--fg); font-size: 21px; font-weight: 700; padding: 4px 2px;
-    -webkit-user-select: text; user-select: text; }
-  #titleinput::placeholder { color: var(--fg3); font-weight: 700; }
-
-  /* system-icon mask: recolours currentColor SVGs to follow the theme */
-  .hashi-sysmask { display: inline-block; background-color: currentColor;
-    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-    -webkit-mask-position: center; mask-position: center;
-    -webkit-mask-size: contain; mask-size: contain; }
-
-  /* note colour button + palette */
-  #colorbtn { flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border);
-    border-radius: 11px; background: var(--surface); cursor: pointer; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    transition: border-color .12s, transform .12s; }
-  #colorbtn:hover { border-color: var(--accent); transform: translateY(-1px); }
-  #colorbtn .dot { width: 17px; height: 17px; border-radius: 50%;
-    background: var(--marker, var(--accent)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-  /* no colour chosen → show an empty outlined circle, not a filled swatch */
-  #colorbtn .dot.empty { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); }
-  #palette { position: fixed; display: none; z-index: 46; background: var(--surface);
-    border: 1px solid var(--border); border-radius: 12px; padding: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-  #palette.open { display: block; }
-  #palette .prow { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
-  #palette .plabel { font-size: 10.5px; color: var(--fg3); width: 46px;
-    text-transform: uppercase; letter-spacing: .04em; }
-  #palette .psw { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; position: relative;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); transition: transform .1s ease; }
-  #palette .psw:hover { transform: scale(1.14); }
-  /* selected ring is drawn with box-shadow so it never adds an outer "container" */
-  #palette .psw.on { box-shadow: inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
-  #palette .psw.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); }
-  #palette .psw.none.on { box-shadow: inset 0 0 0 1.5px var(--fg3), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
-  #palette .psw.none::after { content: ""; position: absolute; left: 50%; top: 3px; bottom: 3px;
-    width: 1.5px; margin-left: -0.75px; border-radius: 1px; background: var(--fg3); transform: rotate(45deg); }
-  #palette .psw.rainbow { box-shadow: none;
-    background:
-      radial-gradient(circle at 50% 50%, var(--surface) 22%, transparent 24%),
-      conic-gradient(from 140deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b06ab3, #ff6b6b); }
-  #palette .psw.rainbow.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--fg2); }
-
-  /* editor */
-  #editor {
-    flex: 1 1 auto; overflow-y: auto; outline: none;
-    -webkit-user-select: text; user-select: text;
-    background: var(--note-card, var(--input-bg)); border: 1px solid var(--border);
-    border-radius: 14px; padding: 18px 20px; line-height: 1.6;
-    font-size: 14px; color: var(--fg);
-  }
-  #editor:empty::before { content: attr(data-placeholder); color: var(--fg3); }
-  #editor > div { min-height: 1.5em; }
-  /* highlight bg is always a light pastel, so force dark text for readability in both themes */
-  .hl { background: var(--highlight); border-radius: 3px; padding: 0 2px; color: #1f2933; }
-  code, .code {
-    background: var(--chip); border-radius: 5px; padding: 1px 5px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-  }
-  .bullet { padding-left: 18px; position: relative; }
-  .bullet::before { content: "•"; position: absolute; left: 4px; color: var(--accent); }
-  .todo { padding-left: 22px; position: relative; }
-  .todo .box {
-    position: absolute; left: 2px; top: 3px; width: 14px; height: 14px;
-    border: 1.5px solid var(--fg3); border-radius: 4px; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
-  }
-  .todo.done .box { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .todo.done .txt { text-decoration: line-through; color: var(--fg3); }
-  .toggle { padding-left: 20px; position: relative; }
-  .toggle > .arrow { position: absolute; left: 2px; cursor: pointer; color: var(--fg2);
-    transition: transform .15s; display: inline-block; }
-  .toggle.closed > .arrow { transform: rotate(-90deg); }
-  .toggle.closed > .body { display: none; }
-  .hd1 { font-size: 20px; font-weight: 700; margin: 4px 0; }
-  .hd2 { font-size: 16px; font-weight: 700; margin: 4px 0; }
-  .card-chip {
-    display: inline-flex; align-items: center; gap: 4px; background: var(--accent);
-    color: #fff; border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600;
-  }
-  .hashi-inline-icon { width: 1.1em; height: 1.1em; vertical-align: -0.15em; }
-
-  /* footer meta */
-  #footer { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-    margin-top: 16px; padding: 12px 14px; border-radius: 14px;
-    background: var(--surface); border: 1px solid var(--border); }
-  .metagroup { display: inline-flex; align-items: center; gap: 8px; }
-  #footer .lbl { font-size: 10.5px; color: var(--fg3); text-transform: uppercase; letter-spacing: .06em;
-    font-weight: 600; }
-  .pillgroup { display: inline-flex; gap: 4px; }
-  .pillgroup button {
-    border: 1px solid var(--border); background: var(--input-bg); color: var(--fg2);
-    border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; line-height: 1;
-    transition: border-color .12s, background .12s, color .12s;
-  }
-  .pillgroup button:hover { border-color: var(--accent); }
-  .pillgroup button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  #tags {
-    background: var(--input-bg); border: 1px solid var(--border); border-radius: 999px;
-    color: var(--fg); font-size: 12px; padding: 7px 12px; outline: none;
-    flex: 1 1 140px; min-width: 100px; transition: border-color .12s;
-  }
-  #tags:focus { border-color: var(--accent); }
-  .spacer { flex: 1 1 auto; }
-  .footer-sep { width: 1px; align-self: stretch; background: var(--border); }
-
-  /* format toolbar (docked below the title) */
-  #toolbar { display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-    margin-bottom: 14px; padding: 5px 8px; border-radius: 12px;
-    background: var(--surface); border: 1px solid var(--border); }
-  #toolbar .tbtn { border: none; background: transparent; color: var(--fg2); cursor: pointer;
-    min-width: 30px; height: 30px; border-radius: 8px; font-size: 14px; padding: 0 7px;
-    display: inline-flex; align-items: center; justify-content: center;
-    transition: background .12s, color .12s; }
-  #toolbar .tbtn:hover { background: var(--hover); color: var(--fg); }
-  #toolbar .tbtn.on { background: var(--accent); color: #fff; }
-  #toolbar .tbtn.hd { font-weight: 700; font-size: 12.5px; letter-spacing: .02em; }
-  #toolbar .tbtn svg { display: block; width: 17px; height: 17px; }
-  #toolbar .tsep { width: 1px; align-self: stretch; margin: 5px 5px; background: var(--fg3); opacity: .25; }
-  #toolbar .hlgroup { display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; }
-  #toolbar .hlsw { width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); transition: transform .1s ease; }
-  #toolbar .hlsw:hover { transform: scale(1.16); }
-  /* custom-highlight swatch: rainbow wheel that opens the colour picker */
-  #toolbar .hlsw.rainbow { box-shadow: none;
-    background:
-      radial-gradient(circle at 50% 50%, var(--surface) 20%, transparent 22%),
-      conic-gradient(from 140deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b06ab3, #ff6b6b); }
-  /* clear-highlight swatch: hollow with a slash */
-  #toolbar .hlsw.clear { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg3); position: relative; }
-  #toolbar .hlsw.clear::after { content: ""; position: absolute; left: 50%; top: 2px; bottom: 2px;
-    width: 1.5px; margin-left: -.75px; border-radius: 1px; background: var(--fg3); transform: rotate(45deg); }
-
-  /* @ card picker */
-  #cardpick {
-    position: fixed; display: none; z-index: 50; max-height: 220px; overflow-y: auto;
-    width: 320px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.22); padding: 4px;
-  }
-  #cardpick .row { padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
-  #cardpick .row:hover, #cardpick .row.sel { background: var(--hover); }
-  #cardpick .row .deck { color: var(--fg3); font-size: 11px; }
+  .hashi-sysmask { display: inline-block; background-color: currentColor; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center; -webkit-mask-size: contain; mask-size: contain; }
+  #titleinput { flex: 1 1 auto; min-width: 0; padding: 5px 2px; border: 0; outline: 0; background: transparent; color: var(--paper-fg); font-size: 22px; font-weight: 760; letter-spacing: -.025em; -webkit-user-select: text; user-select: text; }
+  #titleinput::placeholder { color: var(--paper-fg3); opacity: .72; }
+  .is-hidden { display: none !important; }
+  /* Title and icon are optional. With no title there is no flexible item left
+     in the heading, so the controls are pinned right explicitly (a second
+     margin-left:auto would just split the free space with .note-popup-actions). */
+  .note-heading.is-flush { justify-content: flex-end; }
+  .note-heading.is-flush #noteicon { margin-right: auto; }
+  .note-heading.is-flush .note-controls { margin-left: 0; }
+  /* Every heading control lives in one cluster with its own tight rhythm,
+     so the group reads as a single small menu instead of items spaced at
+     the heading's 10px gap. */
+  .note-controls { display: flex; align-items: center; gap: 1px; margin-left: auto; }
+  .note-controls .icon-button { width: 28px; height: 28px; border-radius: 9px; }
+  .note-controls .icon-button svg { width: 16px; height: 16px; }
+  /* Popup-only, like the buttons beside it: the window header carries its
+     own .save-state. */
+  #paperSaveState { display: none; }
+  .popup-host #paperSaveState { display: inline-flex; margin-right: 4px; }
+  #colorbtn, #detailsBtn { color: var(--paper-fg2); }
+  #colorbtn:hover, #detailsBtn:hover { color: var(--paper-fg2); background: color-mix(in srgb, var(--paper-fg) 6%, transparent); }
+  #colorbtn .color-dot { width: 17px; height: 17px; border-radius: 50%; background: var(--paper-fill); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper-fg) 25%, transparent), 0 0 0 3px var(--paper-soft); }
+  #colorbtn .color-dot.empty { background: var(--paper-fill); box-shadow: inset 0 0 0 1.5px var(--paper-fg3); }
+  #editor { flex: 1 1 auto; min-height: 90px; overflow-y: auto; margin: 5px 0 0; padding: 15px 22px 20px; outline: none; color: var(--paper-fg); background: transparent; font-size: 14px; line-height: 1.68; -webkit-user-select: text; user-select: text; }
+  #editor:empty::before { content: attr(data-placeholder); color: var(--paper-fg3); opacity: .78; }
+  #editor > div { min-height: 1.55em; }
+  #editor::-webkit-scrollbar, .popover::-webkit-scrollbar { width: 7px; }
+  #editor::-webkit-scrollbar-thumb, .popover::-webkit-scrollbar-thumb { border-radius: 10px; background: color-mix(in srgb, var(--fg3) 36%, transparent); }
+  .hl { padding: 0 2px; border-radius: 4px; background: #fff3b0; color: #332f16; }
+  .hl-clear { padding: 0 2px; border-radius: 4px; background: var(--paper-fill) !important; color: var(--paper-fg) !important; }
+  code, .code { padding: 2px 5px; border-radius: 6px; background: var(--chip); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .bullet { position: relative; padding-left: 19px; } .bullet::before { content: "•"; position: absolute; left: 5px; color: var(--marker); }
+  .todo { position: relative; padding-left: 24px; } .todo .box { position: absolute; left: 2px; top: 4px; width: 15px; height: 15px; border: 1.5px solid var(--fg3); border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+  .todo.done .box { color: #fff; border-color: var(--marker); background: var(--marker); } .todo.done .txt { color: var(--fg3); text-decoration: line-through; }
+  .toggle { position: relative; padding-left: 20px; } .toggle > .arrow { position: absolute; left: 2px; color: var(--fg2); cursor: pointer; transition: transform .15s; } .toggle.closed > .arrow { transform: rotate(-90deg); } .toggle.closed > .body { display: none; }
+  .hd1 { margin: 5px 0; font-size: 21px; line-height: 1.35; font-weight: 760; } .hd2 { margin: 4px 0; font-size: 17px; line-height: 1.4; font-weight: 720; }
+  .card-chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; color: #fff; background: var(--marker); font-size: 11.5px; font-weight: 650; }
+  .hashi-inline-icon { width: 1.1em; height: 1.1em; vertical-align: -.15em; }
+  .tags-field { min-width: 0; width: 100%; display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px; border: 0; border-radius: 11px; color: var(--fg3); background: var(--surface-2); transition: box-shadow .12s; }
+  .tags-field:focus-within { color: var(--accent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .tags-field svg { width: 15px; height: 15px; flex: 0 0 auto; }
+  #tags { min-width: 0; width: 100%; padding: 0; border: 0; outline: 0; color: var(--fg2); background: transparent; font-size: 11.5px; }
+  #tags::placeholder { color: var(--fg3); }
+  .popover { position: fixed; z-index: 80; display: none; overflow-x: hidden; overflow-y: auto; max-width: calc(100vw - 24px); padding: 10px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 18px 50px rgba(20,24,21,.2), 0 2px 8px rgba(20,24,21,.08); }
+  .popover.open { display: block; animation: popIn .12s ease-out; } @keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+  .pop-title { margin: 2px 3px 9px; color: var(--fg3); font-size: 9.5px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+  #palette { width: 276px; }
+  .swatch-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+  .swatch { position: relative; width: 30px; height: 30px; margin: auto; border: 0; border-radius: 10px; background: var(--swatch, transparent); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1) !important; transition: transform .26s ease, opacity .26s ease; }
+  .swatch:hover { transform: scale(1.03); opacity: .88; } .swatch.on::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--fg); border-radius: 50%; }
+  /* Two separate Anki rules have to be beaten here, both at (0,1,1) - hence the
+     (0,2,0) selector below.
+     1. stdHtml puts `fancy` on <body>, so `.fancy button` rounds every swatch to
+        a full circle, overriding `.swatch`. The ::after ring is a pseudo-element
+        that rule never reached, which is why a squircle ring sat around circular
+        swatches. Both are pinned circular rather than left to chance.
+     2. `button:hover` sets the `background` *shorthand*, which resets
+        background-color to transparent; the button reset near the top of this
+        file then strips its gradient, so a hovered swatch lost its colour
+        entirely. Restating the colour here fixes that.
+     `.swatch.none`/`.custom` follow below and still win for their own variants. */
+  .popover .swatch { border-radius: 50%; background: var(--swatch, transparent); }
+  .swatch.none { background: var(--surface); } .swatch.none::before { content: ""; position: absolute; left: 7px; right: 7px; top: 14px; height: 1.5px; border-radius: 2px; background: var(--fg3); transform: rotate(-45deg); }
+  .swatch.custom { background: var(--surface-2); color: var(--fg2); } .swatch.custom::before { content: "+"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 500; }
+  #iconPicker { width: min(342px, calc(100vw - 24px)); max-height: min(440px, calc(100vh - 28px)); padding: 12px; }
+  .icon-search { width: 100%; height: 34px; padding: 0 11px; border: 1px solid var(--border); border-radius: 11px; outline: 0; color: var(--fg); background: var(--surface-2); font-size: 11.5px; }
+  .icon-search:focus { border-color: var(--accent); }
+  #iconResults { min-width: 0; max-height: 326px; overflow-x: hidden; overflow-y: auto; padding-right: 2px; }
+  .icon-section { min-width: 0; margin-top: 12px; } .icon-section-label { margin: 0 2px 7px; color: var(--fg3); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+  .icon-grid { min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 5px; }
+  .icon-choice { min-width: 0; width: 100%; height: 36px; padding: 6px; border: 0; border-radius: 10px; color: var(--fg2); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; overflow: hidden; transition: background-color .26s ease; }
+  .icon-choice:hover { color: var(--fg2); background: color-mix(in srgb, var(--fg) 6%, transparent); } .icon-choice img, .icon-choice .hashi-sysmask { width: 21px; height: 21px; object-fit: contain; }
+  .icon-empty { padding: 18px 4px; color: var(--fg3); text-align: center; font-size: 11px; }
+  .clear-icon { width: 100%; height: 32px; margin-top: 9px; border: 0; border-radius: 10px; color: var(--fg2); background: var(--surface-2); cursor: pointer; font-size: 11px; transition: background-color .26s ease; }
+  .clear-icon:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .detail-input { width: 100%; height: 36px; padding: 0 11px; border: 0; border-radius: 11px; outline: 0; color: var(--fg); background: var(--surface-2); font-size: 11px; }
+  .detail-input::placeholder { color: var(--fg3); }
+  .detail-icon-preview { width: 18px; height: 18px; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg2); font-size: 15px; }
+  .detail-icon-preview img, .detail-icon-preview .hashi-sysmask { width: 16px; height: 16px; object-fit: contain; }
+  #detailsPanel { width: 318px; padding: 14px; } .detail-group + .detail-group { margin-top: 14px; }
+  .detail-label { display: block; margin: 0 2px 7px; color: var(--fg3); font-size: 9.5px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+  .pillgroup { display: flex; gap: 5px; padding: 3px; border-radius: 12px; background: var(--surface-2); }
+  .pillgroup button { flex: 1 1 auto; height: 30px; padding: 0 8px; border: 0; border-radius: 9px; color: var(--fg2); background: transparent; cursor: pointer; font-size: 10.5px; transition: background-color .26s ease; }
+  .pillgroup button:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); } .pillgroup button.on { color: #fff; background: var(--accent); font-weight: 650; }
+  .detail-hint { margin: 8px 2px 0; color: var(--fg3); font-size: 9.5px; line-height: 1.45; }
+  .paper-color-row { width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--surface-2); color: var(--fg2); cursor: pointer; display: flex; align-items: center; gap: 9px; font-size: 11px; text-align: left; transition: background-color .26s ease; }
+  .paper-color-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); } .paper-color-preview { width: 18px; height: 18px; flex: 0 0 18px; border-radius: 6px; background: var(--paper-fill); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12) !important; }
+  .color-editor { display: none; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--border); }
+  .color-editor.open { display: block; }
+  .color-sv { position: relative; width: 100%; height: 118px; overflow: hidden; border-radius: 12px; cursor: crosshair; touch-action: none; background-color: hsl(var(--picker-hue, 0), 100%, 50%); background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); }
+  .color-cursor { position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.45) !important; transform: translate(-50%,-50%); pointer-events: none; }
+  .hue-range { width: 100%; height: 16px; margin: 10px 0 8px; padding: 0; border: 0; appearance: none; border-radius: 999px; outline: 0; background: linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+  .hue-range::-webkit-slider-thumb { width: 18px; height: 18px; appearance: none; border: 2px solid #fff; border-radius: 50%; background: hsl(var(--picker-hue, 0),100%,50%); box-shadow: 0 1px 5px rgba(0,0,0,.35) !important; cursor: pointer; }
+  .color-entry { display: flex; align-items: center; gap: 8px; }
+  .color-preview { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px; background: var(--picker-color); box-shadow: inset 0 0 0 1px rgba(0,0,0,.1) !important; }
+  .hex-field { min-width: 0; flex: 1 1 auto; height: 32px; padding: 0 10px; border: 0; border-radius: 10px; outline: 0; color: var(--fg); background: var(--surface-2); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+  .hex-field:focus { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent); }
+  #cardpick { width: 320px; max-height: 230px; padding: 5px; } #cardpick .row { padding: 8px 9px; border-radius: 10px; cursor: pointer; font-size: 11.5px; }
+  #cardpick .row { transition: background-color .26s ease; }
+  #cardpick .row:hover, #cardpick .row.sel { background: color-mix(in srgb, var(--fg) 6%, transparent); } #cardpick .deck { margin-top: 2px; color: var(--fg3); font-size: 9.5px; }
+  .resize-handle { position: fixed; z-index: 100; }
+  /* Resizing is deliberately limited to the bottom edge and the two bottom
+     corners: the top edge is the drag rail, and top handles both stole those
+     grab pixels and let the window's anchored top corner drift. */
+  .resize-handle.bottom { left: 20px; right: 20px; bottom: 4px; height: 7px; cursor: ns-resize; }
+  .resize-handle.corner { width: 14px; height: 14px; } .resize-handle.bottomleft { left: 3px; bottom: 3px; cursor: nesw-resize; } .resize-handle.bottomright { right: 3px; bottom: 3px; cursor: nwse-resize; }
+  body.gallery-host { background: var(--bg); }
+  .gallery-host .window-shell { inset: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .gallery-host .workspace { padding: clamp(18px, 3vw, 34px); }
+  .gallery-host .note-paper { width: min(760px, 100%); margin: 0 auto; }
+  .gallery-host .resize-handle { display: none; }
+  .popup-host .workspace { padding: 0; background: var(--paper-fill); }
+  .popup-host .window-shell { inset: 0; border: 0; border-radius: 26px; background: var(--paper-fill); box-shadow: none; }
+  .popup-host .windowbar { display: none; }
+  .popup-host .note-paper { border-radius: 26px; box-shadow: none; }
+  .popup-host .note-heading { cursor: grab; }
+  .popup-host .note-heading:active { cursor: grabbing; }
+  /* The floating note has no separate paper inset, so keep its first line
+     close to the heading controls. The gallery keeps the roomier editor
+     spacing above. */
+  .popup-host #editor { margin-top: 0; padding-top: 0; }
+  .popup-drag-rail { display: none; }
+  .popup-host .popup-drag-rail { display: flex; flex: 0 0 16px; align-items: center; justify-content: center; cursor: grab; -webkit-user-select: none; user-select: none; touch-action: none; }
+  .popup-host .popup-drag-rail:active { cursor: grabbing; }
+  .popup-drag-rail::before { content: ""; width: 34px; height: 4px; border-radius: 2px; background: var(--paper-fg3); opacity: .35; }
+  .note-popup-actions { display: none; align-items: center; gap: 1px; }
+  .popup-host .note-popup-actions { display: flex; }
+  .note-controls .save-state { margin-left: 0; color: var(--paper-fg2); }
+  /* The status dot is the note's own ink, not the app accent: on a light
+     paper it lands dark, on a dark one light, so it stays visible whatever
+     colour the note is painted. */
+  .note-controls .save-state::before { background: var(--paper-fg2); }
+  .note-controls .icon-button { color: var(--paper-fg2); }
+  .note-controls .icon-button:hover { color: var(--paper-fg); background: var(--paper-soft); }
+  #paperCloseBtn:hover { color: var(--paper-fg2); background: color-mix(in srgb, #e65353 14%, transparent); }
+  @media (max-width: 430px), (max-height: 540px) { .workspace { padding: 10px; } .window-shell { border-radius: 22px; } .note-paper { border-radius: 18px; } .note-heading { padding: 13px 13px 8px; } #editor { padding: 12px 17px 15px; } .brand-sub, .save-state { display: none; } }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="titlebar">
-    <button id="backbtn" data-i18n-title="hashi_back_to_notes" title="Back to Notes">‹ <span data-i18n-text="hashi_notes_short">Notes</span></button>
-    <button id="colorbtn" data-i18n-title="hashi_note_colors" title="Note colours"><span class="dot"></span></button>
-    <div id="noteicon" data-i18n-title="hashi_set_note_icon" title="Set note icon">📝</div>
-    <input id="titleinput" data-i18n-placeholder="hashi_untitled" placeholder="Untitled">
-  </div>
-  <div id="toolbar">
-    <button class="tbtn" data-cmd="bold" data-i18n-title="hashi_bold" title="Bold"><b>B</b></button>
-    <button class="tbtn" data-cmd="italic" data-i18n-title="hashi_italic" title="Italic"><i>I</i></button>
-    <span class="tsep"></span>
-    <button class="tbtn hd" data-cmd="h1" data-i18n-title="hashi_heading1" title="Heading 1">H1</button>
-    <button class="tbtn hd" data-cmd="h2" data-i18n-title="hashi_heading2" title="Heading 2">H2</button>
-    <span class="tsep"></span>
-    <span class="hlgroup">
-      <span class="hlsw" data-hl="#fff3b0" style="background:#fff3b0" data-i18n-title="hashi_hl_yellow" title="Yellow highlight"></span>
-      <span class="hlsw" data-hl="#b9f6ca" style="background:#b9f6ca" data-i18n-title="hashi_hl_green" title="Green highlight"></span>
-      <span class="hlsw" data-hl="#b3e5fc" style="background:#b3e5fc" data-i18n-title="hashi_hl_blue" title="Blue highlight"></span>
-      <span class="hlsw" data-hl="#ffcdd2" style="background:#ffcdd2" data-i18n-title="hashi_hl_pink" title="Pink highlight"></span>
-      <span class="hlsw rainbow" data-hl-custom="1" data-i18n-title="hashi_hl_custom" title="Custom highlight…"></span>
-      <span class="hlsw clear" data-hl="" data-i18n-title="hashi_hl_remove" title="Remove highlight"></span>
-    </span>
-    <span class="tsep"></span>
-    <button class="tbtn" data-cmd="icon" data-i18n-title="hashi_insert_emoji" title="Insert emoji or icon"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12S6.477 2 12 2m0 2a8 8 0 1 0 0 16a8 8 0 0 0 0-16m2.8 9.857a1 1 0 1 1 1.4 1.428A5.98 5.98 0 0 1 12 17a5.98 5.98 0 0 1-4.2-1.715a1 1 0 0 1 1.4-1.428A3.98 3.98 0 0 0 12 15c1.09 0 2.077-.435 2.8-1.143M8.5 8a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3m7 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3"/></svg></button>
-  </div>
-  <div id="editor" contenteditable="true" data-i18n-dplaceholder="hashi_editor_placeholder" data-placeholder="Jot something… use - , [ ] , &gt; , ==highlight==, `code`, $x^2$, @card"></div>
-  <div id="footer">
-    <div class="metagroup">
-      <span class="lbl" data-i18n-text="hashi_keep">Keep</span>
-      <div class="pillgroup" id="retgroup"></div>
+<div class="window-shell" id="shell">
+  <div class="popup-drag-rail" id="dragRail"></div>
+  <header class="windowbar" id="windowbar">
+    <div class="brand"><span class="brand-mark"></span><div class="brand-copy"><div class="brand-title" data-i18n-text="hashi_notes_title">Hashi Notes</div><div class="brand-sub" data-i18n-text="hashi_quick_note">Quick note</div></div></div>
+    <div class="save-state" id="saveState" data-i18n-text="hashi_saved">Saved</div>
+    <div class="window-actions">
+      <button class="icon-button" id="backbtn" data-i18n-title="hashi_back_to_notes" title="Back to Notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <button class="icon-button" id="collectionBtn" data-i18n-title="hashi_browse_previous" title="Browse previous notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h7M7 16h4"/></svg></button>
+      <button class="icon-button" id="closeBtn" data-i18n-title="hashi_close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
     </div>
-    <div class="footer-sep"></div>
-    <div class="metagroup">
-      <span class="lbl" data-i18n-text="hashi_priority">Priority</span>
-      <div class="pillgroup" id="priogroup">
-        <button data-v="none">—</button>
-        <button data-v="low" data-i18n-text="hashi_prio_low">Low</button>
-        <button data-v="med" data-i18n-text="hashi_prio_med">Med</button>
-        <button data-v="high" data-i18n-text="hashi_prio_high">High</button>
-      </div>
-    </div>
-    <div class="footer-sep"></div>
-    <input id="tags" data-i18n-placeholder="hashi_tags_placeholder" placeholder="Tags, comma separated">
-  </div>
+  </header>
+  <main class="workspace">
+    <section class="note-paper" id="notePaper"><div class="paper-accent"></div>
+      <div class="note-heading"><button id="noteicon" data-i18n-title="hashi_set_note_icon" title="Set note icon"></button><input id="titleinput" data-i18n-placeholder="hashi_note_title_placeholder" placeholder="Hashi note" maxlength="120"><div class="note-controls"><div class="save-state" id="paperSaveState" data-i18n-text="hashi_saved">Saved</div><button class="icon-button" id="colorbtn" data-i18n-title="hashi_note_colors" title="Note colours"><span class="color-dot"></span></button><button class="icon-button" id="detailsBtn" data-i18n-title="hashi_note_details" title="Note details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h7M15 17h5"/><circle cx="16" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="13" cy="17" r="2"/></svg></button><div class="note-popup-actions"><button class="icon-button" id="paperCollectionBtn" data-i18n-title="hashi_browse_previous" title="Browse previous notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h7M7 16h4"/></svg></button><button class="icon-button" id="paperCloseBtn" data-i18n-title="hashi_close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div></div></div>
+      <div id="editor" contenteditable="true" spellcheck="true" data-i18n-dplaceholder="hashi_editor_placeholder" data-placeholder="Jot something… use - , [ ] , &gt; , ==highlight==, `code`, $x^2$, @card"></div>
+    </section>
+  </main>
 </div>
-
-<div id="cardpick"></div>
-<div id="palette"></div>
-
+<div class="popover" id="palette"></div>
+<div class="popover" id="iconPicker"><input class="icon-search" id="iconSearch" data-i18n-placeholder="search_icons_placeholder" placeholder="Search icons…"><div id="iconResults"></div><button class="clear-icon" id="clearIcon" data-i18n-text="hashi_no_icon">No icon</button></div>
+<div class="popover" id="detailsPanel"><div class="pop-title" data-i18n-text="hashi_note_details">Note details</div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_title_label">Title</span><input class="detail-input" id="detailsTitle" data-i18n-placeholder="hashi_note_title_placeholder" placeholder="Hashi note" maxlength="120"></div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_icon_label">Icon</span><button class="paper-color-row" id="detailsIconBtn"><span class="detail-icon-preview" id="detailsIconPreview"></span><span id="detailsIconText" data-i18n-text="hashi_no_icon">No icon</span></button></div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_tags_placeholder">Tags</span><label class="tags-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 13 11 22l-9-9V4a2 2 0 0 1 2-2h9l7 7a3 3 0 0 1 0 4Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><input id="tags" data-i18n-placeholder="hashi_tags_placeholder" placeholder="Tags, comma separated"></label></div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_paper_color">Paper color</span><button class="paper-color-row" id="detailsColorBtn"><span class="paper-color-preview"></span><span id="detailsColorText" data-i18n-text="hashi_default_paper">Default paper</span></button></div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_keep">Keep</span><div class="pillgroup" id="retgroup"></div></div><div class="detail-group"><span class="detail-label" data-i18n-text="hashi_priority">Priority</span><div class="pillgroup" id="priogroup"><button data-v="none">—</button><button data-v="low" data-i18n-text="hashi_prio_low">Low</button><button data-v="med" data-i18n-text="hashi_prio_med">Med</button><button data-v="high" data-i18n-text="hashi_prio_high">High</button></div></div></div>
+<div class="popover" id="cardpick"></div>
+<div class="resize-handle bottom" data-edge="bottom"></div><div class="resize-handle corner bottomleft" data-edge="bottomleft"></div><div class="resize-handle corner bottomright" data-edge="bottomright"></div>
 <script>
 const HASHI_CTX = /*__HASHI_CONTEXT__*/null;
 const HASHI_NOTE = /*__HASHI_DATA__*/null;
-
 (function () {
   "use strict";
-  const ctx = HASHI_CTX || {};
-  const pal = ctx.palette || {};
-  const accent = ctx.accent || "#00A982";
-  const note = HASHI_NOTE || {};
-
-  // ---- i18n: strings come from ctx.strings (built via tr() in Python) ----
-  const S = ctx.strings || {};
-  function tS(key, fallback) { const v = S[key]; return (v == null || v === "") ? fallback : v; }
-  function applyI18n(root) {
-    root.querySelectorAll("[data-i18n-text]").forEach((el) => { const v = S[el.getAttribute("data-i18n-text")]; if (v) el.textContent = v; });
-    root.querySelectorAll("[data-i18n-title]").forEach((el) => { const v = S[el.getAttribute("data-i18n-title")]; if (v) el.title = v; });
-    root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { const v = S[el.getAttribute("data-i18n-placeholder")]; if (v) el.setAttribute("placeholder", v); });
-    root.querySelectorAll("[data-i18n-dplaceholder]").forEach((el) => { const v = S[el.getAttribute("data-i18n-dplaceholder")]; if (v) el.setAttribute("data-placeholder", v); });
-  }
+  const ctx = HASHI_CTX || {}, pal = ctx.palette || {}, note = HASHI_NOTE || {}, accent = ctx.accent || "#00a982", S = ctx.strings || {}, isDark = !!ctx.dark;
+  const $ = (id) => document.getElementById(id), editor = $("editor"), rootStyle = document.documentElement.style;
+  function tS(key, fallback) { const value = S[key]; return value == null || value === "" ? fallback : value; }
+  function applyI18n(root) { root.querySelectorAll("[data-i18n-text]").forEach((el) => { const value = S[el.dataset.i18nText]; if (value) el.textContent = value; }); root.querySelectorAll("[data-i18n-title]").forEach((el) => { const value = S[el.dataset.i18nTitle]; if (value) el.title = value; }); root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { const value = S[el.dataset.i18nPlaceholder]; if (value) el.placeholder = value; }); root.querySelectorAll("[data-i18n-dplaceholder]").forEach((el) => { const value = S[el.dataset.i18nDplaceholder]; if (value) el.dataset.placeholder = value; }); root.querySelectorAll("[data-i18n-alabel]").forEach((el) => { const value = S[el.dataset.i18nAlabel]; if (value) el.setAttribute("aria-label", value); }); }
   applyI18n(document);
-
-  // Fade the editor in, then tell the host the first frame is on screen.
-  // The pop-up window is shown fully transparent and only becomes visible on
-  // this signal, so the user never sees the empty shell (see
-  // HashiNotePopup.present in hashi_notes.py).
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const app = document.getElementById("app");
-      if (app) app.classList.add("hashi-in");
-      // 160ms == the #app opacity transition; +1 frame of slack.
-      setTimeout(() => { try { pycmd("hashi:ready"); } catch (e) {} }, 180);
-    });
+  const themeMap = { "--bg": pal.bg, "--shell": pal.shell, "--surface": pal.input_bg || pal.surface, "--surface-2": pal.surface, "--border": pal.border, "--fg": pal.fg, "--fg2": pal.fg2, "--fg3": pal.fg3, "--chip": pal.chip, "--hover": pal.hover, "--paper": pal.input_bg || pal.shell, "--accent": accent };
+  Object.keys(themeMap).forEach((key) => { if (themeMap[key]) rootStyle.setProperty(key, themeMap[key]); });
+  if (ctx.customCss) { const style = document.createElement("style"); style.textContent = ctx.customCss; document.head.appendChild(style); }
+  const hostMode = ctx.hostMode || "gallery-editor";
+  document.body.classList.toggle("gallery-host", hostMode === "gallery-editor");
+  document.body.classList.toggle("popup-host", hostMode === "popup");
+  $("backbtn").style.display = hostMode === "gallery-editor" ? "inline-flex" : "none"; $("collectionBtn").style.display = hostMode === "popup" ? "inline-flex" : "none"; $("closeBtn").style.display = hostMode === "popup" ? "inline-flex" : "none";
+  $("backbtn").addEventListener("click", () => { flush(); pycmd("hashi:back"); }); $("collectionBtn").addEventListener("click", () => { flush(); pycmd("hashi:open_gallery"); }); $("closeBtn").addEventListener("click", () => { flush(); pycmd("hashi:close"); }); $("paperCollectionBtn").addEventListener("click", () => { flush(); pycmd("hashi:open_gallery"); }); $("paperCloseBtn").addEventListener("click", () => { flush(); pycmd("hashi:close"); });
+  // Zoom is disabled. The note lives in a fixed-size frameless window with no
+  // browser chrome, so a stray pinch or Cmd+= scales the layout with nothing to
+  // undo it with. The viewport meta covers pinch; these cover the rest, and the
+  // wheel/gesture listeners must be non-passive to be allowed to preventDefault.
+  document.addEventListener("wheel", (event) => { if (event.ctrlKey || event.metaKey) event.preventDefault(); }, { passive: false });
+  ["gesturestart", "gesturechange", "gestureend"].forEach((name) => document.addEventListener(name, (event) => event.preventDefault(), { passive: false }));
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && ["+", "-", "=", "_", "0"].indexOf(event.key) !== -1) event.preventDefault();
   });
 
-  // ---- theme ----
-  const r = document.documentElement.style;
-  const map = { "--bg": pal.bg, "--surface": pal.surface, "--border": pal.border,
-    "--fg": pal.fg, "--fg2": pal.fg2, "--fg3": pal.fg3, "--chip": pal.chip,
-    "--highlight": pal.highlight, "--input-bg": pal.input_bg, "--hover": pal.hover,
-    "--accent": accent };
-  for (const k in map) { if (map[k]) r.setProperty(k, map[k]); }
-  if (ctx.customCss) {
-    const s = document.createElement("style"); s.textContent = ctx.customCss; document.head.appendChild(s);
+  // The window drag is driven entirely from Python: it polls the global cursor
+  // position, so it keeps tracking even when the pointer leaves the webview
+  // (which is where DOM mouse/pointer events stop being delivered).
+  function beginWindowDrag(event) {
+    if (hostMode !== "popup" || event.button !== 0 || event.target.closest("button,input,[contenteditable],.popover")) return;
+    event.preventDefault();
+    pycmd("hashi:window_drag_start");
   }
-
-  // ---- KaTeX (loaded locally from the addon; degrades gracefully) ----
-  function loadKatex() {
-    if (!ctx.katexCss || !ctx.katexJs) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet"; link.href = ctx.katexCss; document.head.appendChild(link);
-    const s1 = document.createElement("script"); s1.src = ctx.katexJs;
-    s1.onload = function () {
-      const s2 = document.createElement("script"); s2.src = ctx.katexAutoJs;
-      s2.onload = function () { renderMath(editor); };
-      document.body.appendChild(s2);
-    };
-    document.body.appendChild(s1);
-  }
-
-  const editor = document.getElementById("editor");
-  const $ = (id) => document.getElementById(id);
-
-  // ---- back to gallery ----
-  $("backbtn").addEventListener("click", () => pycmd("hashi:back"));
-
-  // ---- title + note icon ----
-  const titleInput = $("titleinput");
-  titleInput.value = note.title || "";
-  titleInput.addEventListener("input", scheduleSave);
-
-  let noteIcon = note.icon || "";
-  const noteIconEl = $("noteicon");
-  function renderNoteIcon() {
-    const base = ctx.addonBase || "";
-    if (!noteIcon) {
-      const asset = (ctx.emojiSprites || {})["📝"];
-      if (asset) { noteIconEl.innerHTML = '<img src="' + base + "system_files/emojis/" + asset + '">'; }
-      else { noteIconEl.textContent = "📝"; }
-      return;
-    }
-    if (noteIcon.indexOf("emoji:") === 0) {
-      const em = noteIcon.slice(6);
-      const asset = (ctx.emojiSprites || {})[em];
-      if (asset) { noteIconEl.innerHTML = '<img src="' + base + "system_files/emojis/" + asset + '">'; }
-      else { noteIconEl.textContent = em; }
-      return;
-    }
-    if (noteIcon.indexOf("system:") === 0) {
-      // currentColor SVG → mask so it adapts to light/dark
-      const src = base + "system_files/system_icons/available_for_users/" + noteIcon.slice(7);
-      noteIconEl.innerHTML = '<span class="hashi-sysmask" style="-webkit-mask-image:url(\'' + src + '\');mask-image:url(\'' + src + '\')"></span>';
-    } else {
-      noteIconEl.innerHTML = '<img src="' + base + "user_files/custom_deck_icons/" + noteIcon + '">';
-    }
-  }
-  renderNoteIcon();
-  noteIconEl.addEventListener("click", () => pycmd("hashi:pick_icon:title"));
-  window.hashiSetIcon = function (value) { noteIcon = value || ""; renderNoteIcon(); scheduleSave(); };
-
-  // ---- note colours: marker (accent band) + fill (post-it background) ----
-  const NOTE_COLORS = [
-    { k: "none", hex: "" }, { k: "red", hex: "#ef4444" }, { k: "orange", hex: "#f97316" },
-    { k: "yellow", hex: "#eab308" }, { k: "green", hex: "#22c55e" }, { k: "blue", hex: "#3b82f6" },
-    { k: "purple", hex: "#a855f7" }, { k: "pink", hex: "#ec4899" }, { k: "gray", hex: "#6b7280" },
-  ];
-  const isDark = !!ctx.dark;
-  const rootEl = document.documentElement;
-  let noteMarker = note.color || "";
-  let noteBg = note.bg_color || "";
-  if (noteMarker !== noteBg) { const c = noteMarker || noteBg; noteMarker = c; noteBg = c; }
-  function hexToRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)]; }
-  function rgbToHex(r, g, b) { return "#" + [r, g, b].map((x) => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join(""); }
-  function mixHex(a, b, t) { const x = hexToRgb(a), y = hexToRgb(b); return rgbToHex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); }
-  function fillTint(base) { return isDark ? mixHex(base, "#161616", 0.80) : mixHex(base, "#ffffff", 0.80); }
-  function cardTint(base) { return isDark ? mixHex(base, "#161616", 0.88) : mixHex(base, "#ffffff", 0.92); }
-  // chrome (buttons, footer, inputs, borders) also tints so nothing stays flat grey
-  function surfTint(base) { return isDark ? mixHex(base, "#161616", 0.66) : mixHex(base, "#ffffff", 0.74); }
-  function inputTint(base) { return isDark ? mixHex(base, "#161616", 0.80) : mixHex(base, "#ffffff", 0.88); }
-  // no visible outlines on tinted chrome — containers read by their fill alone
-  function chromeBorder(base) { return "transparent"; }
-  function setOrClear(prop, val) { if (val) rootEl.style.setProperty(prop, val); else rootEl.style.removeProperty(prop); }
-  function applyColors() {
-    const marker = noteMarker || (ctx.accent || "#00A982");
-    rootEl.style.setProperty("--marker", marker);
-    rootEl.style.setProperty("--accent", marker);
-    if (noteBg) {
-      const fill = fillTint(noteBg);
-      rootEl.style.setProperty("--note-fill", fill);
-      rootEl.style.setProperty("--note-card", cardTint(noteBg));
-      rootEl.style.setProperty("--surface", surfTint(noteBg));
-      rootEl.style.setProperty("--input-bg", inputTint(noteBg));
-      rootEl.style.setProperty("--chip", surfTint(noteBg));
-      rootEl.style.setProperty("--hover", surfTint(noteBg));
-      rootEl.style.setProperty("--border", chromeBorder(noteBg));
-      try { pycmd("hashi:set_shell:" + fill); } catch (e) {}
-    } else {
-      rootEl.style.removeProperty("--note-fill");
-      rootEl.style.removeProperty("--note-card");
-      // restore the theme's own chrome colours (fall back to CSS defaults if absent)
-      setOrClear("--surface", pal.surface);
-      setOrClear("--input-bg", pal.input_bg);
-      setOrClear("--chip", pal.chip);
-      setOrClear("--hover", pal.hover);
-      setOrClear("--border", pal.border);
-      try { pycmd("hashi:set_shell:"); } catch (e) {}
-    }
-    const dot = document.querySelector("#colorbtn .dot");
-    if (dot) {
-      if (noteMarker) { dot.style.background = marker; dot.classList.remove("empty"); }
-      else { dot.style.background = "transparent"; dot.classList.add("empty"); }
-    }
-  }
-  const palette = $("palette");
-  const colorBtn = $("colorbtn");
-  function buildPalette() {
-    // one colour drives BOTH the marker (solid band) and the fill (tinted bg)
-    const r = document.createElement("div"); r.className = "prow";
-    const l = document.createElement("span"); l.className = "plabel"; l.textContent = tS("hashi_color_label", "Colour"); r.appendChild(l);
-    const presetHexes = NOTE_COLORS.map((c) => c.hex);
-    NOTE_COLORS.forEach((c) => {
-      const s = document.createElement("span");
-      s.className = "psw" + (c.hex === "" ? " none" : "") + ((noteMarker || "") === c.hex ? " on" : "");
-      s.setAttribute("data-hex", c.hex);
-      if (c.hex) s.style.background = c.hex;
-      r.appendChild(s);
-    });
-    // rainbow swatch → opens Onigiri's native colour picker for any custom colour
-    const rb = document.createElement("span");
-    const isCustom = noteMarker && presetHexes.indexOf(noteMarker) === -1;
-    rb.className = "psw rainbow" + (isCustom ? " on" : "");
-    rb.setAttribute("data-rainbow", "1");
-    rb.title = tS("hashi_custom_color", "Custom colour…");
-    r.appendChild(rb);
-    palette.innerHTML = "";
-    palette.appendChild(r);
-  }
-  colorBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (palette.classList.contains("open")) { palette.classList.remove("open"); return; }
-    buildPalette();
-    palette.classList.add("open");  // make visible so we can measure its width
-    const rect = colorBtn.getBoundingClientRect();
-    const pw = palette.offsetWidth || 300;
-    palette.style.left = Math.max(6, Math.min(rect.right - pw, window.innerWidth - pw - 6)) + "px";
-    palette.style.top = (rect.bottom + 6) + "px";
-  });
-  palette.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const s = e.target.closest(".psw"); if (!s) return;
-    if (s.getAttribute("data-rainbow")) { palette.classList.remove("open"); pycmd("hashi:pick_color"); return; }
-    const hex = s.getAttribute("data-hex");
-    noteMarker = hex; noteBg = hex;  // marker + fill stay in sync
-    applyColors(); buildPalette(); scheduleSave();
-  });
-  window.hashiSetColor = function (hex) {
-    noteMarker = hex || ""; noteBg = noteMarker;
-    applyColors(); buildPalette(); scheduleSave();
-  };
-
-  // ---- retention + priority pills ----
-  const retChoices = ctx.retentionChoices || [7, 30, 0];
-  const retGroup = $("retgroup");
-  retChoices.forEach((d) => {
-    const b = document.createElement("button");
-    b.setAttribute("data-v", String(d));
-    b.textContent = d === 0 ? tS("hashi_never", "Never") : d + tS("hashi_days_suffix", "d");
-    retGroup.appendChild(b);
-  });
-  const prioGroup = $("priogroup");
-  let retention = note.retention != null ? note.retention : 30;
-  let priority = note.priority || "none";
-  function setActive(group, value) {
-    group.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.getAttribute("data-v") === String(value)));
-  }
-  setActive(retGroup, retention);
-  setActive(prioGroup, priority);
-  retGroup.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
-    retention = parseInt(b.getAttribute("data-v"), 10); setActive(retGroup, retention); scheduleSave(); });
-  prioGroup.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return;
-    priority = b.getAttribute("data-v"); setActive(prioGroup, priority); scheduleSave(); });
-
-  $("tags").value = (note.tags || []).join(", ");
-  $("tags").addEventListener("input", scheduleSave);
-
-  // ---- load existing body ----
-  if (note.body_md) editor.innerHTML = note.body_md;
-  if (!editor.firstChild) editor.appendChild(document.createElement("div"));
-
-  // ---- save (debounced) ----
-  let saveTimer = null;
-  function collect() {
-    return {
-      body_md: editor.innerHTML,
-      title: titleInput.value.trim().slice(0, 120),
-      icon: noteIcon,
-      retention: retention,
-      priority: priority,
-      color: noteMarker,
-      bg_color: noteBg,
-      tags: $("tags").value.split(",").map((t) => t.trim()).filter(Boolean),
-    };
-  }
-  function save() {
-    try { pycmd("hashi:save:" + JSON.stringify(collect())); } catch (e) {}
-  }
-  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 600); }
-  window.hashiFlush = function () { clearTimeout(saveTimer); save(); };
-  window.hashiFadeOut = function () {
-    const app = document.getElementById("app");
-    if (app) app.classList.remove("hashi-in");
-  };
-
-  // ---- caret helpers ----
-  function currentBlock() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return null;
-    let n = sel.getRangeAt(0).startContainer;
-    while (n && n.parentNode !== editor) { if (n === editor) break; n = n.parentNode; }
-    return (n && n.parentNode === editor) ? n : null;
-  }
-  function caretToEnd(el) {
-    const range = document.createRange();
-    range.selectNodeContents(el); range.collapse(false);
-    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-  }
-
-  // ---- inline formatting ----
-  function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-  function inlineFormat(text) {
-    let h = escapeHtml(text);
-    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
-    h = h.replace(/==([^=]+)==/g, '<span class="hl">$1</span>');
-    h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-    h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
-    return h;
-  }
-
-  // ---- block reformatting on space / enter ----
-  function reformatBlock(block) {
-    if (!block || block.querySelector(".card-chip")) return;
-    let raw = block.textContent || "";
-    let cls = "", prefixHtml = "", done = false, tag = "div";
-    if (/^##\s/.test(raw)) { tag = "h2"; cls = "block"; raw = raw.replace(/^##\s/, ""); }
-    else if (/^#\s/.test(raw)) { tag = "h1"; cls = "block"; raw = raw.replace(/^#\s/, ""); }
-    else if (/^-\s/.test(raw)) { cls = "bullet"; raw = raw.replace(/^-\s/, ""); }
-    else if (/^\[( |x|X)\]\s/.test(raw)) {
-      done = /^\[(x|X)\]/.test(raw); cls = "todo" + (done ? " done" : "");
-      prefixHtml = '<span class="box" contenteditable="false">' + (done ? "✓" : "") + '</span>';
-      raw = raw.replace(/^\[( |x|X)\]\s/, "");
-    }
-    else if (/^>\s/.test(raw)) {
-      cls = "toggle";
-      prefixHtml = '<span class="arrow" contenteditable="false">▾</span>';
-      raw = raw.replace(/^>\s/, "");
-    }
-    const inner = inlineFormat(raw);
-    if (tag === "h1") cls = "hd1";
-    else if (tag === "h2") cls = "hd2";
-    block.className = cls;
-    if (cls.startsWith("todo")) block.innerHTML = prefixHtml + '<span class="txt">' + inner + "</span>";
-    else if (cls === "toggle") block.innerHTML = prefixHtml + '<span class="body">' + inner + "</span>";
-    else block.innerHTML = inner || "<br>";
-    caretToEnd(block);
-    renderMath(block);
-  }
-
-  function renderMath(scope) {
-    if (!window.renderMathInElement) return;
-    try {
-      window.renderMathInElement(scope, {
-        delimiters: [
-          { left: "$$", right: "$$", display: true },
-          { left: "$", right: "$", display: false },
-        ],
-        throwOnError: false,
-      });
-    } catch (e) {}
-  }
-
-  editor.addEventListener("keydown", function (e) {
-    if (e.key === "@") { setTimeout(openCardPick, 0); }
-    if (e.key === " ") {
-      const block = currentBlock();
-      if (block) {
-        const raw = block.textContent || "";
-        if (/^(#{1,2}|-|>|\[( |x|X)\])\s?$/.test(raw + " ") || /(`[^`]+`|==[^=]+==|\*\*[^*]+\*\*)$/.test(raw)) {
-          setTimeout(() => reformatBlock(block), 0);
-        }
-      }
-    }
-  });
-  editor.addEventListener("input", function () {
-    if (!editor.firstChild) editor.appendChild(document.createElement("div"));
-    scheduleSave();
-  });
-
-  // ---- todo / toggle clicks ----
-  editor.addEventListener("click", function (e) {
-    const box = e.target.closest(".box");
-    if (box) {
-      const b = box.closest(".todo");
-      if (b) { b.classList.toggle("done"); box.textContent = b.classList.contains("done") ? "✓" : ""; scheduleSave(); }
-      return;
-    }
-    const arrow = e.target.closest(".arrow");
-    if (arrow) { const t = arrow.closest(".toggle"); if (t) { t.classList.toggle("closed"); } }
-  });
-
-  // ---- format toolbar (docked below the title) ----
-  const toolbar = $("toolbar");
-  function selectionInEditor() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return false;
-    let n = sel.getRangeAt(0).commonAncestorContainer;
-    while (n) { if (n === editor) return true; n = n.parentNode; }
-    return false;
-  }
-  function wrapSelection(tag, cls) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
-    const el = document.createElement(tag);
-    if (cls) el.className = cls;
-    try { el.appendChild(range.extractContents()); range.insertNode(el); } catch (e) {}
-    sel.removeAllRanges(); scheduleSave();
-  }
-  function applyHighlight(hex) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
-    const span = document.createElement("span");
-    span.className = "hl"; span.style.background = hex;
-    try { span.appendChild(range.extractContents()); range.insertNode(span); } catch (e) {}
-    sel.removeAllRanges(); scheduleSave();
-  }
-  function clearHighlight() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount || sel.isCollapsed) return;
-    // unwrap any .hl spans that intersect the selection
-    const range = sel.getRangeAt(0);
-    const hls = editor.querySelectorAll("span.hl");
-    hls.forEach((el) => {
-      if (range.intersectsNode(el)) {
-        const parent = el.parentNode;
-        while (el.firstChild) parent.insertBefore(el.firstChild, el);
-        parent.removeChild(el); parent.normalize();
-      }
-    });
-    scheduleSave();
-  }
-  // toggle the caret's block between a heading class and plain text
-  function toggleHeader(cls) {
-    const block = currentBlock();
-    if (!block) return;
-    const already = block.classList.contains(cls);
-    block.classList.remove("hd1", "hd2");
-    if (!already) block.classList.add(cls);
-    caretToEnd(block); syncHeaderButtons(); scheduleSave();
-  }
-  function syncHeaderButtons() {
-    const block = currentBlock();
-    const h1 = block && block.classList.contains("hd1");
-    const h2 = block && block.classList.contains("hd2");
-    toolbar.querySelector('[data-cmd="h1"]').classList.toggle("on", !!h1);
-    toolbar.querySelector('[data-cmd="h2"]').classList.toggle("on", !!h2);
-  }
-  document.addEventListener("selectionchange", function () {
-    if (selectionInEditor()) syncHeaderButtons();
-  });
-  // custom-highlight flow: the colour picker steals focus and clears the
-  // selection, so stash the range on click and restore it when the hex returns.
-  let savedHlRange = null;
-  window.hashiApplyHighlight = function (hex) {
-    if (savedHlRange) {
-      const sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(savedHlRange);
-    }
-    if (hex) applyHighlight(hex);
-    savedHlRange = null;
-  };
-  toolbar.addEventListener("mousedown", function (e) {
-    const sw = e.target.closest(".hlsw");
-    if (sw) {
-      e.preventDefault();
-      if (sw.getAttribute("data-hl-custom")) {
-        const sel = window.getSelection();
-        savedHlRange = (sel.rangeCount && !sel.isCollapsed) ? sel.getRangeAt(0).cloneRange() : null;
-        if (savedHlRange) pycmd("hashi:pick_highlight");
-        return;
-      }
-      const hex = sw.getAttribute("data-hl");
-      if (hex) applyHighlight(hex); else clearHighlight();
-      return;
-    }
-    const btn = e.target.closest(".tbtn");
-    if (!btn) return;
-    e.preventDefault();
-    const cmd = btn.getAttribute("data-cmd");
-    if (cmd === "bold") wrapSelection("b");
-    else if (cmd === "italic") wrapSelection("i");
-    else if (cmd === "h1") toggleHeader("hd1");
-    else if (cmd === "h2") toggleHeader("hd2");
-    else if (cmd === "icon") pycmd("hashi:pick_icon");
-  });
-
-  function insertAtCaret(node) {
-    editor.focus();
-    const sel = window.getSelection();
-    if (!sel.rangeCount) { editor.appendChild(node); return; }
-    const range = sel.getRangeAt(0); range.deleteContents(); range.insertNode(node);
-    range.setStartAfter(node); range.collapse(true); sel.removeAllRanges(); sel.addRange(range);
-  }
-  window.hashiInsertIcon = function (htmlStr) {
-    const tmp = document.createElement("span"); tmp.innerHTML = htmlStr;
-    insertAtCaret(tmp.firstChild || document.createTextNode("")); scheduleSave();
-  };
-
-  // ---- @ card picking ----
-  const cardpick = $("cardpick");
-  let pickQuery = "", pickSel = 0, pickResults = [], pickActive = false;
-  function openCardPick() {
-    pickActive = true; pickQuery = ""; pickSel = 0;
-    const sel = window.getSelection();
-    if (sel.rangeCount) {
-      const rect = sel.getRangeAt(0).getBoundingClientRect();
-      cardpick.style.left = Math.max(6, Math.min(rect.left, window.innerWidth - 330)) + "px";
-      cardpick.style.top = (rect.bottom + 4) + "px";
-    }
-    cardpick.style.display = "block";
-    pycmd("hashi:search_cards:");
-  }
-  function closeCardPick() { pickActive = false; cardpick.style.display = "none"; }
-  window.hashiReceiveCards = function (results) {
-    if (!pickActive) return;
-    pickResults = results || []; pickSel = 0; renderCardPick();
-  };
-  function renderCardPick() {
-    cardpick.innerHTML = "";
-    if (!pickResults.length) { cardpick.innerHTML = '<div class="row">' + tS("hashi_no_cards", "No cards") + '</div>'; return; }
-    pickResults.forEach((c, i) => {
-      const row = document.createElement("div");
-      row.className = "row" + (i === pickSel ? " sel" : "");
-      row.innerHTML = '<div>' + (c.label || "card") + '</div><div class="deck">' + (c.deck || "") + '</div>';
-      row.addEventListener("mousedown", (e) => { e.preventDefault(); chooseCard(c); });
-      cardpick.appendChild(row);
-    });
-  }
-  function chooseCard(c) {
-    // remove the trailing "@query" the user typed
-    const block = currentBlock();
-    const chip = document.createElement("span");
-    chip.className = "card-chip"; chip.setAttribute("contenteditable", "false");
-    chip.setAttribute("data-card", c.id);
-    chip.textContent = "@" + (c.label || "card").slice(0, 24);
-    insertAtCaret(chip);
-    insertAtCaret(document.createTextNode(" "));
-    closeCardPick(); scheduleSave();
-  }
-  editor.addEventListener("keydown", function (e) {
-    if (!pickActive) return;
-    if (e.key === "Escape") { e.preventDefault(); closeCardPick(); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); pickSel = Math.min(pickSel + 1, pickResults.length - 1); renderCardPick(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); pickSel = Math.max(pickSel - 1, 0); renderCardPick(); }
-    else if (e.key === "Enter") { if (pickResults[pickSel]) { e.preventDefault(); chooseCard(pickResults[pickSel]); } }
-    else if (e.key === "Backspace" && !pickQuery) { closeCardPick(); }
-    else if (e.key.length === 1) { setTimeout(() => { pickQuery += e.key; pycmd("hashi:search_cards:" + pickQuery); }, 0); }
-  });
-
-  document.addEventListener("mousedown", function (e) {
-    if (!cardpick.contains(e.target)) closeCardPick();
-    if (!palette.contains(e.target) && e.target !== colorBtn && !colorBtn.contains(e.target)) palette.classList.remove("open");
-  });
-
-  // apply saved colours (marker + fill) and initial math render
-  applyColors();
-  loadKatex();
-  editor.focus();
+  $("windowbar").addEventListener("mousedown", beginWindowDrag);
+  $("notePaper").addEventListener("mousedown", beginWindowDrag);
+  $("dragRail").addEventListener("mousedown", beginWindowDrag);
+  document.querySelectorAll(".resize-handle").forEach((handle) => handle.addEventListener("mousedown", (event) => { if (hostMode === "popup" && event.button === 0) pycmd("hashi:window_resize:" + handle.dataset.edge); }));
+  requestAnimationFrame(() => requestAnimationFrame(() => { $("shell").classList.add("hashi-in"); setTimeout(() => { try { pycmd("hashi:ready"); } catch (e) {} }, 180); }));
+  function loadKatex() { if (!ctx.katexCss || !ctx.katexJs) return; const link = document.createElement("link"); link.rel = "stylesheet"; link.href = ctx.katexCss; document.head.appendChild(link); const first = document.createElement("script"); first.src = ctx.katexJs; first.onload = function () { const second = document.createElement("script"); second.src = ctx.katexAutoJs; second.onload = () => renderMath(editor); document.body.appendChild(second); }; document.body.appendChild(first); }
+  const titleInput = $("titleinput"), detailsTitle = $("detailsTitle");
+  // The heading title only exists once there is one; it is authored either
+  // inline or from the Note details field, and the two stay in step.
+  function syncTitleVisibility() { if (document.activeElement !== titleInput) titleInput.classList.toggle("is-hidden", !titleInput.value.trim()); document.querySelector(".note-heading").classList.toggle("is-flush", titleInput.classList.contains("is-hidden")); }
+  titleInput.value = note.title || ""; detailsTitle.value = titleInput.value; syncTitleVisibility();
+  titleInput.addEventListener("input", () => { detailsTitle.value = titleInput.value; scheduleSave(); });
+  titleInput.addEventListener("blur", syncTitleVisibility);
+  detailsTitle.addEventListener("input", () => { titleInput.value = detailsTitle.value; syncTitleVisibility(); scheduleSave(); });
+  $("detailsIconBtn").addEventListener("click", () => openIconPicker("title", $("detailsIconBtn")));
+  let noteIcon = note.icon || "", iconPickMode = "title", savedInsertRange = null; const noteIconEl = $("noteicon");
+  function iconNode(value, inline) { const base = ctx.addonBase || ""; if (!value) return document.createTextNode(""); if (value.indexOf("emoji:") === 0) { const emoji = value.slice(6), asset = (ctx.emojiSprites || {})[emoji]; if (!asset) return document.createTextNode(emoji); const image = document.createElement("img"); image.src = base + "system_files/emojis/" + asset; if (inline) image.className = "hashi-inline-icon"; return image; } if (value.indexOf("system:") === 0) { const span = document.createElement("span"); span.className = "hashi-sysmask" + (inline ? " hashi-inline-icon" : ""); const src = base + "system_files/system_icons/available_for_users/" + value.slice(7); span.style.webkitMaskImage = "url('" + src + "')"; span.style.maskImage = "url('" + src + "')"; return span; } const image = document.createElement("img"); image.src = base + "user_files/custom_deck_icons/" + value; if (inline) image.className = "hashi-inline-icon"; return image; }
+  function renderNoteIcon() { noteIconEl.replaceChildren(iconNode(noteIcon, false)); noteIconEl.classList.toggle("is-hidden", !noteIcon); const preview = $("detailsIconPreview"); if (preview) { preview.replaceChildren(noteIcon ? iconNode(noteIcon, false) : document.createTextNode("")); $("detailsIconText").textContent = noteIcon ? tS("hashi_set_note_icon", "Note icon") : tS("hashi_no_icon", "No icon"); } } renderNoteIcon();
+  function closePopovers(except) { document.querySelectorAll(".popover.open").forEach((pop) => { if (pop !== except) pop.classList.remove("open"); }); }
+  function positionPopover(pop, anchor, width) { closePopovers(pop); pop.classList.add("open"); const rect = anchor.getBoundingClientRect(), measured = width || pop.offsetWidth || 280; pop.style.left = Math.max(16, Math.min(rect.right - measured, window.innerWidth - measured - 16)) + "px"; let top = rect.bottom + 7; if (top + pop.offsetHeight > window.innerHeight - 16) top = Math.max(16, rect.top - pop.offsetHeight - 7); pop.style.top = top + "px"; }
+  function openIconPicker(mode, anchor) { iconPickMode = mode; if (mode === "inline") { const selection = window.getSelection(); savedInsertRange = selection.rangeCount && selectionInEditor() ? selection.getRangeAt(0).cloneRange() : null; } $("iconSearch").value = ""; renderIconPicker(""); positionPopover($("iconPicker"), anchor, 342); setTimeout(() => $("iconSearch").focus(), 0); }
+  noteIconEl.addEventListener("click", () => openIconPicker("title", noteIconEl)); $("iconSearch").addEventListener("input", () => renderIconPicker($("iconSearch").value.trim().toLowerCase())); $("clearIcon").addEventListener("click", () => chooseIcon(""));
+  function iconChoice(value, label) { const button = document.createElement("button"); button.className = "icon-choice"; button.title = label || value; button.appendChild(iconNode(value, false)); button.addEventListener("click", () => chooseIcon(value)); return button; }
+  function renderIconPicker(query) { const results = $("iconResults"); results.innerHTML = ""; const emojis = Object.keys(ctx.emojiSprites || {}).map((emoji) => ({ value: "emoji:" + emoji, label: emoji + " emoji" })), systems = (ctx.systemIcons || []).map((name) => ({ value: "system:" + name, label: name.replace(/\.svg$/i, "").replace(/[-_]/g, " ") })), custom = (ctx.customIcons || []).map((name) => ({ value: name, label: name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ") })); const sections = []; [["Emoji", emojis], ["Icons", systems], ["Custom", custom]].forEach(([label, items]) => { const filtered = items.filter((item) => !query || (item.label + " " + item.value).toLowerCase().includes(query)).slice(0, 84); if (filtered.length) sections.push([label, filtered]); }); if (!sections.length) { results.innerHTML = '<div class="icon-empty">'+escapeHtml(tS("no_matching_icons","No matching icons"))+'</div>'; return; } sections.forEach(([label, items]) => { const section = document.createElement("section"); section.className = "icon-section"; const heading = document.createElement("div"); heading.className = "icon-section-label"; heading.textContent = label; const grid = document.createElement("div"); grid.className = "icon-grid"; items.forEach((item) => grid.appendChild(iconChoice(item.value, item.label))); section.append(heading, grid); results.appendChild(section); }); }
+  function chooseIcon(value) { $("iconPicker").classList.remove("open"); if (iconPickMode === "title") { noteIcon = value || ""; renderNoteIcon(); scheduleSave(); return; } if (value) insertAtCaret(iconNode(value, true), savedInsertRange); savedInsertRange = null; scheduleSave(); }
+  const NOTE_COLORS = ["", "#ffd2d2", "#ffdfbf", "#fff0a8", "#c9efcf", "#c7e8f7", "#d4dcff", "#e6d0f5", "#f5d0e0", "#d8dcd9"], DARK_NOTE_COLORS = {"#ffd2d2":"#704146","#ffdfbf":"#704d38","#fff0a8":"#67582d","#c9efcf":"#345e48","#c7e8f7":"#315569","#d4dcff":"#414979","#e6d0f5":"#59436b","#f5d0e0":"#6b4156","#d8dcd9":"#4b504c"}; let noteMarker = note.bg_color || note.color || "", noteBg = note.bg_color || note.color || "";
+  function normalizeHex(value) { let h = String(value || "").trim().replace(/^#/, ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); return /^[0-9a-f]{6}$/i.test(h) ? "#" + h.toLowerCase() : ""; }
+  function hexToRgb(hex) { const h = normalizeHex(hex).slice(1); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; } function rgbToHex(rgb) { return "#" + rgb.map((n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2,"0")).join(""); } function mixHex(a,b,amount) { const x=hexToRgb(a),y=hexToRgb(b); return rgbToHex(x.map((n,i)=>n+(y[i]-n)*amount)); }
+  function paperForTheme(value) { const source=normalizeHex(value); return !source || !isDark ? source : (DARK_NOTE_COLORS[source] || mixHex(source,"#23211f",.52)); }
+  const INK_DARK="#241f1b",INK_LIGHT="#fffdf7";function relLuminance(color){const rgb=hexToRgb(color).map((n)=>{const v=n/255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);});return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];}function contrastRatio(a,b){const la=relLuminance(a),lb=relLuminance(b);return (Math.max(la,lb)+.05)/(Math.min(la,lb)+.05);}function textOnPaper(color){const cd=contrastRatio(INK_DARK,color),cl=contrastRatio(INK_LIGHT,color),dark=cd>=cl,ink=dark?INK_DARK:INK_LIGHT,best=dark?cd:cl;if(best>=4.5)return ink;const extreme=dark?"#000000":"#ffffff";return contrastRatio(extreme,color)>best?extreme:ink;}function mutedInk(fg,paper,amount,minRatio){for(let step=amount;step>0;step-=.06){const candidate=mixHex(fg,paper,step);if(contrastRatio(candidate,paper)>=minRatio)return candidate;}return fg;}
+  function rgbToHsv(rgb) { const r=rgb[0]/255,g=rgb[1]/255,b=rgb[2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h=Math.round(h*60);if(h<0)h+=360;}return[h,max?d/max:0,max]; }
+  function hsvToHex(h,s,v) { const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let rgb;if(h<60)rgb=[c,x,0];else if(h<120)rgb=[x,c,0];else if(h<180)rgb=[0,c,x];else if(h<240)rgb=[0,x,c];else if(h<300)rgb=[x,0,c];else rgb=[c,0,x];return rgbToHex(rgb.map((n)=>(n+m)*255)); }
+  function createColorEditor(initial,onChange) { let hsv=rgbToHsv(hexToRgb(normalizeHex(initial)||"#ff6b6b")); const wrap=document.createElement("div");wrap.className="color-editor";wrap.innerHTML='<div class="color-sv"><span class="color-cursor"></span></div><input class="hue-range" type="range" min="0" max="359" value="'+hsv[0]+'"><div class="color-entry"><span class="color-preview"></span><input class="hex-field" maxlength="7" spellcheck="false" aria-label="Hex color"></div>';applyI18n(wrap);wrap.querySelector(".hex-field").setAttribute("aria-label",tS("hashi_hex_color","Hex color"));const sv=wrap.querySelector(".color-sv"),cursor=wrap.querySelector(".color-cursor"),hue=wrap.querySelector(".hue-range"),hex=wrap.querySelector(".hex-field");function paint(emit){const value=hsvToHex(hsv[0],hsv[1],hsv[2]);wrap.style.setProperty("--picker-hue",hsv[0]);wrap.style.setProperty("--picker-color",value);cursor.style.left=(hsv[1]*100)+"%";cursor.style.top=((1-hsv[2])*100)+"%";hue.value=String(hsv[0]);hex.value=value.toUpperCase();if(emit)onChange(value);}function pick(event){const rect=sv.getBoundingClientRect();hsv[1]=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width));hsv[2]=1-Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));paint(true);}sv.addEventListener("pointerdown",(event)=>{sv.setPointerCapture(event.pointerId);pick(event);});sv.addEventListener("pointermove",(event)=>{if(sv.hasPointerCapture(event.pointerId))pick(event);});hue.addEventListener("input",()=>{hsv[0]=Number(hue.value);paint(true);});hex.addEventListener("change",()=>{const value=normalizeHex(hex.value);if(!value){paint(false);return;}hsv=rgbToHsv(hexToRgb(value));paint(true);});paint(false);return wrap; }
+  function applyColors() { const source=normalizeHex(noteBg),paper=paperForTheme(source)||(pal.input_bg||pal.shell||"#fffefb"),marker=source?paper:accent,fg=textOnPaper(paper); rootStyle.setProperty("--marker",marker);rootStyle.setProperty("--paper-fill",paper);rootStyle.setProperty("--paper-fg",fg);rootStyle.setProperty("--paper-fg2",mutedInk(fg,paper,.30,4.5));rootStyle.setProperty("--paper-fg3",mutedInk(fg,paper,.48,3));rootStyle.setProperty("--paper-soft","color-mix(in srgb, "+fg+" 9%, transparent)");rootStyle.setProperty("--paper-edge","color-mix(in srgb, "+fg+" 12%, transparent)");document.querySelector("#colorbtn .color-dot").classList.toggle("empty",!noteBg);const detailText=$("detailsColorText");if(detailText)detailText.textContent=noteBg?noteBg.toUpperCase():tS("hashi_default_paper","Default paper"); }
+  function setNoteColor(hex, rebuild) { noteMarker=normalizeHex(hex);noteBg=noteMarker;applyColors();if(rebuild!==false)buildPalette();scheduleSave(); }
+  function buildPalette() { const palette=$("palette");palette.innerHTML='<div class="pop-title"></div>';palette.firstChild.textContent=tS("hashi_paper_color","Paper color");const grid=document.createElement("div");grid.className="swatch-grid";NOTE_COLORS.forEach((hex)=>{const button=document.createElement("button");button.className="swatch"+(!hex?" none":"")+(noteBg===hex?" on":"");button.setAttribute("aria-label",hex||tS("hashi_default_paper","Default paper"));if(hex)button.style.setProperty("--swatch",paperForTheme(hex));button.addEventListener("click",()=>setNoteColor(hex));grid.appendChild(button);});const custom=document.createElement("button");custom.className="swatch custom"+(noteBg&&!NOTE_COLORS.includes(noteBg)?" on":"");custom.setAttribute("aria-label",tS("hashi_custom_color","Custom colour…"));const editorControl=createColorEditor(noteBg||"#ffd2d2",(value)=>setNoteColor(value,false));custom.addEventListener("click",()=>{editorControl.classList.toggle("open");if(editorControl.classList.contains("open"))requestAnimationFrame(()=>positionPopover(palette,$("colorbtn"),276));});grid.appendChild(custom);palette.append(grid,editorControl); }
+  function openPaperPalette(anchor) { buildPalette();positionPopover($("palette"),anchor,276); }
+  $("colorbtn").addEventListener("click",(event)=>{event.stopPropagation();openPaperPalette($("colorbtn"));});$("detailsColorBtn").addEventListener("click",(event)=>{event.stopPropagation();openPaperPalette($("detailsColorBtn"));});
+  const retChoices = ctx.retentionChoices || [7,30,0]; let retention = note.retention == null ? 30 : note.retention, priority = note.priority || "none";
+  retChoices.forEach((days) => { const button = document.createElement("button"); button.dataset.v = String(days); button.textContent = days === 0 ? tS("hashi_never","Never") : days + tS("hashi_days_suffix","d"); $("retgroup").appendChild(button); });
+  function setActive(group,value) { group.querySelectorAll("button").forEach((button) => button.classList.toggle("on", button.dataset.v === String(value))); }
+  setActive($("retgroup"),retention); setActive($("priogroup"),priority);
+  $("retgroup").addEventListener("click", (event) => { const button=event.target.closest("button"); if(!button)return; retention=parseInt(button.dataset.v,10); setActive($("retgroup"),retention); scheduleSave(); }); $("priogroup").addEventListener("click", (event) => { const button=event.target.closest("button"); if(!button)return; priority=button.dataset.v; setActive($("priogroup"),priority); scheduleSave(); });
+  function openDetails(anchor){positionPopover($("detailsPanel"),anchor,318);} $("detailsBtn").addEventListener("click",()=>openDetails($("detailsBtn")));
+  $("tags").value=(note.tags||[]).join(", "); $("tags").addEventListener("input",scheduleSave); if(note.body_md)editor.innerHTML=note.body_md; if(!editor.firstChild)editor.appendChild(document.createElement("div"));
+  let saveTimer=null; function collect(){return{body_md:editor.innerHTML,title:titleInput.value.trim().slice(0,120),icon:noteIcon,retention,priority,color:noteMarker,bg_color:noteBg,tags:$("tags").value.split(",").map((tag)=>tag.trim()).filter(Boolean)}}
+  function setSaveState(saving){document.querySelectorAll(".save-state").forEach((state)=>{state.classList.toggle("saving",saving);state.textContent=saving?tS("hashi_saving","Saving…"):tS("hashi_saved","Saved");});} function save(){clearTimeout(saveTimer);try{pycmd("hashi:save:"+JSON.stringify(collect()));}catch(e){} setSaveState(false);} function scheduleSave(){clearTimeout(saveTimer);setSaveState(true);saveTimer=setTimeout(save,520);} function flush(){if(saveTimer)save();} window.hashiFlush=flush; window.hashiFadeOut=()=>$("shell").classList.remove("hashi-in");
+  function currentBlock(){const selection=window.getSelection();if(!selection.rangeCount)return null;let node=selection.getRangeAt(0).startContainer;while(node&&node.parentNode!==editor){if(node===editor)break;node=node.parentNode;}return node&&node.parentNode===editor?node:null;} function caretToEnd(element){const range=document.createRange();range.selectNodeContents(element);range.collapse(false);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);} function escapeHtml(text){return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function inlineFormat(text){let html=escapeHtml(text);return html.replace(/`([^`]+)`/g,"<code>$1</code>").replace(/==([^=]+)==/g,'<span class="hl">$1</span>').replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/(^|[^*])\*([^*]+)\*/g,"$1<i>$2</i>");}
+  function reformatBlock(block){if(!block||block.querySelector(".card-chip"))return;let raw=block.textContent||"",cls="",prefix="";if(/^##\s/.test(raw)){cls="hd2";raw=raw.replace(/^##\s/,"");}else if(/^#\s/.test(raw)){cls="hd1";raw=raw.replace(/^#\s/,"");}else if(/^-\s/.test(raw)){cls="bullet";raw=raw.replace(/^-\s/,"");}else if(/^\[( |x|X)\]\s/.test(raw)){const done=/^\[(x|X)\]/.test(raw);cls="todo"+(done?" done":"");prefix='<span class="box" contenteditable="false">'+(done?"✓":"")+'</span><span class="txt">';raw=raw.replace(/^\[( |x|X)\]\s/,"");}else if(/^>\s/.test(raw)){cls="toggle";prefix='<span class="arrow" contenteditable="false">▾</span><span class="body">';raw=raw.replace(/^>\s/,"");}block.className=cls;const suffix=cls.startsWith("todo")||cls==="toggle"?"</span>":"";block.innerHTML=prefix+(inlineFormat(raw)||"<br>")+suffix;caretToEnd(block);renderMath(block);}
+  function renderMath(scope){if(!window.renderMathInElement)return;try{window.renderMathInElement(scope,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});}catch(e){}}
+  editor.addEventListener("keydown",(event)=>{if(event.key==="@")setTimeout(openCardPick,0);if(event.key===" "){const block=currentBlock(),raw=block?block.textContent||"":"";if(/^(#{1,2}|-|>|\[( |x|X)\])\s?$/.test(raw+" ")||/(`[^`]+`|==[^=]+==|\*\*[^*]+\*)$/.test(raw))setTimeout(()=>reformatBlock(block),0);}}); editor.addEventListener("input",()=>{if(!editor.firstChild)editor.appendChild(document.createElement("div"));scheduleSave();}); editor.addEventListener("click",(event)=>{const box=event.target.closest(".box");if(box){const todo=box.closest(".todo");todo.classList.toggle("done");box.textContent=todo.classList.contains("done")?"✓":"";scheduleSave();return;}const arrow=event.target.closest(".arrow");if(arrow)arrow.closest(".toggle").classList.toggle("closed");});
+  function selectionInEditor(){const selection=window.getSelection();if(!selection.rangeCount)return false;let node=selection.getRangeAt(0).commonAncestorContainer;while(node){if(node===editor)return true;node=node.parentNode;}return false;}
+  function insertAtCaret(node,savedRange){editor.focus();const selection=window.getSelection();if(savedRange){selection.removeAllRanges();selection.addRange(savedRange);}if(!selection.rangeCount||!selectionInEditor()){editor.appendChild(node);return;}const range=selection.getRangeAt(0);range.deleteContents();range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);}
+  const cardpick=$("cardpick");let pickQuery="",pickSel=0,pickResults=[],pickActive=false;function openCardPick(){pickActive=true;pickQuery="";pickSel=0;const selection=window.getSelection();if(selection.rangeCount){const rect=selection.getRangeAt(0).getBoundingClientRect();cardpick.style.left=Math.max(16,Math.min(rect.left,window.innerWidth-336))+"px";cardpick.style.top=Math.min(rect.bottom+5,window.innerHeight-245)+"px";}cardpick.classList.add("open");pycmd("hashi:search_cards:");}function closeCardPick(){pickActive=false;cardpick.classList.remove("open");}window.hashiReceiveCards=function(results){if(!pickActive)return;pickResults=results||[];pickSel=0;renderCardPick();};
+  function renderCardPick(){cardpick.innerHTML="";if(!pickResults.length){cardpick.innerHTML='<div class="row">'+tS("hashi_no_cards","No cards")+"</div>";return;}pickResults.forEach((card,index)=>{const row=document.createElement("div");row.className="row"+(index===pickSel?" sel":"");const title=document.createElement("div");title.textContent=card.label||"card";const deck=document.createElement("div");deck.className="deck";deck.textContent=card.deck||"";row.append(title,deck);row.addEventListener("mousedown",(event)=>{event.preventDefault();chooseCard(card);});cardpick.appendChild(row);});}function chooseCard(card){const chip=document.createElement("span");chip.className="card-chip";chip.contentEditable="false";chip.dataset.card=card.id;chip.textContent="@"+(card.label||"card").slice(0,24);insertAtCaret(chip);insertAtCaret(document.createTextNode(" "));closeCardPick();scheduleSave();}
+  editor.addEventListener("keydown",(event)=>{if(!pickActive)return;if(event.key==="Escape"){event.preventDefault();closeCardPick();}else if(event.key==="ArrowDown"){event.preventDefault();pickSel=Math.min(pickSel+1,pickResults.length-1);renderCardPick();}else if(event.key==="ArrowUp"){event.preventDefault();pickSel=Math.max(pickSel-1,0);renderCardPick();}else if(event.key==="Enter"&&pickResults[pickSel]){event.preventDefault();chooseCard(pickResults[pickSel]);}else if(event.key==="Backspace"&&!pickQuery)closeCardPick();else if(event.key.length===1)setTimeout(()=>{pickQuery+=event.key;pycmd("hashi:search_cards:"+pickQuery);},0);});
+  document.addEventListener("mousedown",(event)=>{if(!event.target.closest(".popover,#colorbtn,#noteicon,#detailsBtn,#detailsColorBtn,#detailsIconBtn"))closePopovers();if(!cardpick.contains(event.target))closeCardPick();}); window.addEventListener("beforeunload",flush);
+  applyColors();loadKatex();editor.focus();
 })();
 </script>
 </body>

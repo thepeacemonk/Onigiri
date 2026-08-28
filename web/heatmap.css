@@ -4,29 +4,35 @@
 
 #onigiri-heatmap-container,
 #onigiri-profile-heatmap-container {
-    padding-top: 5px;
-    padding-bottom: 15px;
-    padding-left: 15px;
-    padding-right: 15px;
+    /* Control scale matching Stats widget controls (26px height, 8px outer radius, 6px inner radius) */
+    --hm-ctl-h: 26px;
+    --hm-radius: 8px;
+    --hm-ctl-pad: 2px;
+    --hm-ctl-inner-h: calc(var(--hm-ctl-h) - 2 * var(--hm-ctl-pad));
+    --hm-radius-inner: calc(var(--hm-radius) - var(--hm-ctl-pad));
+    --hm-radius-pill: 8px;
+    --hm-radius-pill-inner: 6px;
+    --hm-header-gap: 10px;
+
+    /* Lets the header drop the streak chip on narrow widgets */
+    container-type: inline-size;
+    container-name: onigiri-heatmap;
+
+    padding: 14px;
     border-radius: 15px;
     background-color: var(--canvas-inset);
     border: 1px solid var(--border);
+    box-sizing: border-box;
 
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
 }
 
-/* Only the deck-browser one is a grid widget, so it alone follows the widget
-   padding scale; the profile heatmap is sized by its sidebar panel. The day
-   cells are 1fr columns, so the wider gutter reflows them instead of cutting
-   the grid off. */
+/* Only the deck-browser one is a grid widget */
 #onigiri-heatmap-container {
-    padding-top: calc(5px * var(--onigiri-widget-pad-scale));
-    padding-bottom: calc(15px * var(--onigiri-widget-pad-scale));
-    padding-left: calc(15px * var(--onigiri-widget-pad-scale));
-    padding-right: calc(15px * var(--onigiri-widget-pad-scale));
+    padding: var(--onigiri-widget-pad);
 }
 
 /* --- Header Styles (Fixed Height & Single Line) --- */
@@ -34,51 +40,141 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin: 0 0 var(--hm-header-gap) 0;
     flex-wrap: nowrap;
-    /* Force single line */
-    gap: 4px;
-    /* Tight gap to fit content */
+    gap: var(--hm-header-gap);
     width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+}
+
+.onigiri-heatmap-header .header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
-
-.onigiri-heatmap-header .header-left,
 .onigiri-heatmap-header .header-right {
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: nowrap;
-    /* Force single line */
     flex-shrink: 0;
-    /* Prevent crushing */
+    min-width: 0;
 }
 
-/* --- Streak Counter (Fixed Height) --- */
-.streak-counter {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fg-subtle);
-    background-color: var(--heatmap-color-zero);
-    border-radius: 6px;
-
-    /* Fixed Height Logic */
-    height: 28px;
-    padding: 0 8px;
-    /* Horizontal padding only */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+.onigiri-heatmap-header .heatmap-title {
+    margin: 0;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: 0.04em;
+    color: var(--fg);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+/* --- Streak Counter (Matching learner-stats-deck-trigger structure & design) --- */
+.streak-counter {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    margin: 0 !important;
+    gap: 6px;
+    background: var(--highlight-bg, #eeeeee) !important;
+    background-image: none !important;
+    color: var(--fg, #222222) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0 12px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: transform 0.08s ease, background-color 0.15s ease, color 0.15s ease;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 1 auto !important;
+    flex-shrink: 1 !important;
+    position: relative !important;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.streak-counter .streak-count {
+    font-weight: 600;
+    color: var(--fg, #222222);
+}
+
+.streak-counter .streak-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+    color: var(--fg-subtle, #757575);
 }
 
 .streak-counter .streak-icon {
     width: 13px;
     height: 13px;
     flex-shrink: 0;
-    opacity: 0.45;
+    opacity: 0.55;
+}
+
+@container onigiri-heatmap (max-width: 560px) {
+    .streak-counter .streak-label {
+        display: none;
+    }
+}
+
+@container onigiri-heatmap (max-width: 460px) {
+    .streak-counter {
+        display: none;
+    }
+}
+
+@container onigiri-heatmap (max-width: 420px) {
+    .onigiri-heatmap-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .onigiri-heatmap-header .header-left {
+        flex: 1 0 100%;
+    }
+
+    .onigiri-heatmap-header .header-right {
+        flex: 1 0 100%;
+        justify-content: space-between;
+    }
+}
+
+@container onigiri-heatmap (max-width: 300px) {
+    .onigiri-heatmap-header .header-right {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .heatmap-nav,
+    .heatmap-filters {
+        flex: 1 1 100%;
+    }
+
+    .heatmap-filters .filter-btn {
+        flex: 1 1 auto;
+    }
 }
 
 .streak-counter .streak-icon.active {
@@ -117,53 +213,70 @@
     visibility: visible;
 }
 
+/* --- Control Tracks (Matching learner-stats-switcher structure) --- */
+.heatmap-nav,
 .heatmap-filters {
     position: relative;
     display: flex;
-    background-color: var(--heatmap-color-zero);
-    border-radius: 6px;
-    box-sizing: border-box;
-    height: 28px;
-    padding: 2px;
     align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    height: 26px;
+    min-height: 26px;
+    box-sizing: border-box;
+    padding: 2px;
+    border-radius: 8px;
+    background-color: var(--highlight-bg, #eeeeee);
 }
 
+.heatmap-nav {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* Indicator Pill matching .learner-stats-switcher-indicator */
 .heatmap-filter-pill {
     position: absolute;
+    left: 0;
     top: 2px;
     bottom: 2px;
-    left: 0;
     width: 0;
     border-radius: 6px;
-    background-color: var(--accent-color);
+    background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 90%, var(--fg, #222222) 10%);
     pointer-events: none;
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 0;
 }
 
-/* --- Filter Buttons (Fixed Height) --- */
-/* Scoped to .heatmap-filters so this outranks Anki's own `.fancy button`
-   (webview.css), which otherwise forces --border-radius-large onto every
-   <button> in the deck browser. */
-.heatmap-filters .filter-btn {
-    position: relative;
-    z-index: 1;
-    border: none;
-    background-color: transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    font: var(--font-main);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fg-subtle);
-    box-shadow: none !important;
+.night-mode .heatmap-filter-pill {
+    background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 85%, var(--fg, #222222) 15%);
+}
 
-    /* Fixed Height Logic */
-    height: 24px;
-    padding: 0 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* --- Filter Buttons (Matching learner-stats-switcher-btn structure) --- */
+.heatmap-filters .filter-btn {
+    position: relative !important;
+    z-index: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    margin: 0 !important;
+    padding: 0 10px !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--fg-subtle, #757575) !important;
+    cursor: pointer !important;
+    transition: color 0.2s ease !important;
+    box-sizing: border-box !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
 .heatmap-grid.is-entering {
@@ -182,122 +295,122 @@
 }
 
 .heatmap-filters .filter-btn:hover {
-    border: none;
-    background-image: none;
-    color: var(--fg);
+    border: none !important;
+    background-image: none !important;
+    background: transparent !important;
+    color: var(--fg, #222222) !important;
     opacity: 1;
 }
 
 .heatmap-filters .filter-btn.active {
-    background-color: transparent;
-    color: #fff;
+    background: transparent !important;
+    color: var(--fg, #222222) !important;
     box-shadow: none !important;
 }
 
-/* --- Navigation (Fixed Height) --- */
-.heatmap-nav {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* Scoped to .heatmap-nav so this outranks Anki's own `.fancy button`
-   (webview.css). At 28px square, its --border-radius-large (15px) clamps to
-   14px and renders the arrows as perfect circles. */
+/* --- Navigation Buttons & Title (Matching learner-stats-switcher-btn & deck trigger font/sizes) --- */
 .heatmap-nav .nav-btn {
-    border: none;
-    border-color: transparent;
-    background-color: var(--heatmap-color-zero);
-    color: var(--fg);
-    border-radius: 6px;
-    width: 28px;
-    height: 28px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    outline: none;
-    box-shadow: none;
+    position: relative !important;
+    z-index: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: middle !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    max-width: 22px !important;
+    max-height: 22px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--fg-subtle, #757575) !important;
+    cursor: pointer !important;
+    transition: color 0.2s ease !important;
+    flex: 0 0 22px !important;
+    box-sizing: border-box !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .heatmap-nav .nav-btn:hover,
 .heatmap-nav .nav-btn:focus,
 .heatmap-nav .nav-btn:active {
-    border: none;
-    outline: none;
-    box-shadow: none;
-    background-color: var(--heatmap-color-zero);
-    /* Anki's `button:hover` sets the `background` shorthand to a linear-gradient.
-       background-color alone can't clear it, so the gradient needs an explicit
-       background-image reset. */
-    background-image: none;
-    color: var(--accent-color);
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    background-image: none !important;
+    color: var(--fg, #222222) !important;
     opacity: 1;
     transform: none;
 }
 
 .nav-btn svg {
-    width: 14px;
-    height: 14px;
-    /* currentColor so the chevron follows the button's hover color */
+    width: 11px;
+    height: 11px;
     fill: currentColor;
     pointer-events: none;
 }
 
-
-.nav-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--fg);
-    background-color: var(--heatmap-color-zero);
+.heatmap-nav .nav-title {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg, #222222);
+    background-color: transparent;
     border-radius: 6px;
-
-    /* Fixed Height Logic */
-    height: 28px;
-    padding: 0 8px;
-    /* Horizontal padding only */
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    height: 22px;
+    line-height: 22px;
+    padding: 0 6px;
+    display: block;
+    text-align: center;
     white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-
-/* --- Year dropdown (year view only) ---
-   The trigger also carries .nav-btn so it inherits that button's background,
-   hover and reset; this block only widens it from the fixed 28px icon size to
-   fit the year label. Colours use the Onigiri palette vars the rest of the
-   heatmap uses — never Anki's --canvas-overlay, which follows Anki's night
-   mode rather than the user's Onigiri theme. */
 .year-select-wrapper {
     position: relative;
 }
 
 .heatmap-nav .nav-btn.year-select-btn {
-    width: auto;
-    min-width: 0;
-    padding: 0 10px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: 22px !important;
+    line-height: 22px !important;
+    padding: 0 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
     white-space: nowrap;
+    color: var(--fg, #222222) !important;
 }
 
 .heatmap-nav .nav-btn.year-select-btn.open,
 .heatmap-nav .nav-btn.year-select-btn.open:hover {
-    color: var(--accent-color);
+    color: var(--fg, #222222) !important;
 }
 
 .year-dropdown-menu {
     display: none;
     position: absolute;
-    top: calc(100% + 4px);
+    /* Clears the track wall below the trigger, then a 4px breathing gap. */
+    top: calc(100% + var(--hm-ctl-pad) + 4px);
     left: 0;
     background-color: var(--canvas-inset, #ffffff);
     border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
-    border-radius: 8px;
-    padding: 4px;
+    /* Same concentric rule as the pills: the menu is a track, its items are
+       nested one wall in. */
+    border-radius: var(--hm-radius);
+    padding: var(--hm-ctl-pad);
     min-width: 70px;
     z-index: 1000;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
@@ -311,7 +424,7 @@
 
 .year-dropdown-item {
     padding: 5px 10px;
-    border-radius: 5px;
+    border-radius: var(--hm-radius-inner);
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
@@ -329,11 +442,24 @@
 }
 
 /* --- Base Grid and Cells --- */
+
+/* `margin: auto` centres the calendar in the space the header leaves over, so
+   the padding above and below it reads the same. In an auto-height container
+   (profile sidebar) the auto margins collapse to 0 and nothing moves. */
+.heatmap-grid {
+    flex: 0 0 auto;
+    margin: auto;
+    min-width: 0;
+    min-height: 0;
+}
+
 .heatmap-day-cell {
     width: 100%;
     aspect-ratio: 1 / 1;
     position: relative;
-    margin: 1px;
+    /* Spacing comes from the grid gap; a margin here made the cells overflow
+       their own track. */
+    margin: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -354,6 +480,28 @@
     mask-repeat: no-repeat;
     -webkit-mask-position: 50% 50%;
     mask-position: 50% 50%;
+}
+
+.heatmap-day-cell.browsable {
+    cursor: pointer;
+}
+
+.heatmap-day-cell.browsable .day-shape {
+    transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.heatmap-day-cell.browsable:hover .day-shape,
+.heatmap-day-cell.browsable:focus-visible .day-shape {
+    transform: scale(1.14);
+}
+
+.heatmap-day-cell.browsable:active .day-shape {
+    transform: scale(0.92);
+}
+
+.heatmap-day-cell.browsable:focus-visible {
+    outline: 2px solid var(--heatmap-color, currentColor);
+    outline-offset: 2px;
 }
 
 /* --- Past Activity Styling --- */
@@ -530,7 +678,8 @@
     transform: translateX(0);
 }
 
-.heatmap-day-cell:hover::after {
+.heatmap-day-cell:hover::after,
+.heatmap-day-cell:focus-visible::after {
     opacity: 1;
     visibility: visible;
 }
@@ -561,8 +710,9 @@
     grid-template-areas:
         "empty months"
         "weekdays cells";
-    grid-template-columns: auto 1fr;
-    gap: 5px 3px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px;
+    width: 100%;
 }
 
 .year-view[data-months-hidden="true"] {
@@ -572,12 +722,12 @@
 .year-view[data-weekdays-hidden="true"] {
     grid-template-areas: "empty months"
         "empty cells";
-    grid-template-columns: 0 1fr;
+    grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .year-view[data-months-hidden="true"][data-weekdays-hidden="true"] {
     grid-template-areas: "cells";
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .year-view .heatmap-months {
@@ -585,8 +735,9 @@
     display: grid;
     grid-template-columns: repeat(53, 1fr);
     font-size: 9px;
+    line-height: 1;
+    letter-spacing: 0.02em;
     color: var(--fg-subtle);
-    padding-left: 2px;
 }
 
 .year-view[data-months-hidden="true"] .heatmap-months {
@@ -595,20 +746,21 @@
 
 
 .year-view .month-label {
-    grid-column: span 4;
     text-align: left;
     white-space: nowrap;
 }
 
+/* One label row per cell row, so M/T/W line up with the days they name
+   instead of being spread by space-around. */
 .year-view .heatmap-weekdays {
     grid-area: weekdays;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    align-items: center;
+    justify-items: end;
     font-size: 9px;
+    line-height: 1;
     color: var(--fg-subtle);
-    padding-right: 4px;
-    text-align: right;
 }
 
 .year-view[data-weekdays-hidden="true"] .heatmap-weekdays {
@@ -621,26 +773,33 @@
     grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    gap: 0.5px;
+    gap: 2px;
 }
 
 
-/* --- Month View Specifics --- */
+/* --- Month View Specifics ---
+   --hm-cell is the base square size; render() writes a smaller value onto the
+   grid when the widget is too short for the base one. */
 .heatmap-grid.month-view {
     display: grid;
     grid-template-rows: auto 1fr;
     gap: 8px;
     width: fit-content;
     max-width: 100%;
-    margin: 0 auto;
+    --hm-cell: 30px;
+    --hm-cell-gap: 4px;
 }
 
+/* Same track definition as the cells below it, so each weekday label sits
+   over its own column. */
 .month-view .month-weekdays-header {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, var(--hm-cell));
+    gap: var(--hm-cell-gap);
     text-align: center;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
+    line-height: 1;
     color: var(--fg-subtle);
 }
 
@@ -650,19 +809,20 @@
 
 .month-view .month-cells-grid {
     display: grid;
-    grid-template-columns: repeat(7, 30px);
-    grid-auto-rows: 30px;
-    gap: 4px;
+    grid-template-columns: repeat(7, var(--hm-cell));
+    grid-auto-rows: var(--hm-cell);
+    gap: var(--hm-cell-gap);
 }
 
 /* --- Week View Specifics --- */
 .heatmap-grid.week-view {
     display: grid;
     grid-template-rows: auto 1fr;
-    gap: 5px;
+    gap: 8px;
     width: fit-content;
     max-width: 100%;
-    margin: 0 auto;
+    --hm-cell: 40px;
+    --hm-cell-gap: 6px;
 }
 
 .week-view[data-header-hidden="true"] .week-days-header {
@@ -671,11 +831,12 @@
 
 .week-view .week-days-header {
     display: grid;
-    grid-template-columns: repeat(7, 40px);
-    gap: 4px;
+    grid-template-columns: repeat(7, var(--hm-cell));
+    gap: var(--hm-cell-gap);
     text-align: center;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
+    line-height: 1.3;
     color: var(--fg-subtle);
 }
 
@@ -684,15 +845,16 @@
 }
 
 .week-view .day-label {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--fg);
 }
 
 .week-view .week-cells-grid {
     display: grid;
-    grid-template-columns: repeat(7, 40px);
-    gap: 4px;
+    grid-template-columns: repeat(7, var(--hm-cell));
+    grid-auto-rows: var(--hm-cell);
+    gap: var(--hm-cell-gap);
 }
 
 /* --- SKELETON LOADER STYLES START --- */
@@ -701,7 +863,7 @@
     grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    gap: 0px;
+    gap: 2px;
     opacity: 0.5;
 }
 
@@ -718,7 +880,6 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-    padding: 0 5px;
     gap: 10px;
     opacity: 0.5;
 }
@@ -727,22 +888,24 @@
 .header-right-skeleton {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 8px;
 }
 
+/* A text-line placeholder, not a pill — its own small radius rather than the
+   control system's. */
 .skeleton-title {
-    width: 60px;
-    height: 20px;
+    width: 70px;
+    height: 18px;
     background-color: var(--highlight-bg);
-    border-radius: 6px;
+    border-radius: 4px;
     animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .skeleton-nav {
-    width: 120px;
+    width: 96px;
     height: 28px;
     background-color: var(--highlight-bg);
-    border-radius: 6px;
+    border-radius: var(--hm-radius-pill);
     animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
@@ -750,15 +913,15 @@
     width: 90px;
     height: 28px;
     background-color: var(--highlight-bg);
-    border-radius: 6px;
+    border-radius: var(--hm-radius-pill);
     animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .skeleton-filters {
-    width: 180px;
+    width: 152px;
     height: 28px;
     background-color: var(--highlight-bg);
-    border-radius: 6px;
+    border-radius: var(--hm-radius-pill);
     animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 

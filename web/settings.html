@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /*__ONIGIRI_FONT_FACE__*/
+  /* The Main Menu's real widget rules, lifted from web/menu.css so previews
+     render with them rather than with a lookalike. Its class names (.stat-card,
+     .star-rating, …) are disjoint from the dialog's own .osw-* namespace. */
+  /*__ONIGIRI_REAL_WIDGET_CSS__*/
+  /*__ONIGIRI_SETTINGS_CSS__*/
+</style>
+</head>
+<body>
+  <div class="osw-shell" id="oswShell">
+    <aside class="osw-panel osw-rail" id="oswRail">
+      <div class="osw-rail-top">
+        <button class="osw-icon-btn osw-rail-toggle" id="oswRailToggle" type="button"></button>
+        <label class="osw-search" id="oswSearchWrap">
+          <span class="osw-search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          </span>
+          <input id="oswSearch" type="search" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <nav class="osw-nav" id="oswNav"></nav>
+      <div class="osw-rail-bottom">
+        <button class="osw-rail-action" id="oswDonate" type="button">
+          <span class="osw-rail-action-icon" aria-hidden="true"></span>
+          <span class="osw-rail-action-label"></span>
+        </button>
+        <button class="osw-rail-action" id="oswBugs" type="button">
+          <span class="osw-rail-action-icon" aria-hidden="true"></span>
+          <span class="osw-rail-action-label"></span>
+        </button>
+        <div class="osw-rail-commit">
+          <div class="osw-autosave" id="oswAutosave" data-state="idle">
+            <span class="osw-autosave-dot" aria-hidden="true"></span>
+            <span class="osw-autosave-label"></span>
+          </div>
+          <button class="osw-btn osw-btn-primary" id="oswDone" type="button">
+            <span class="osw-btn-icon" aria-hidden="true"></span>
+            <span class="osw-btn-label"></span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="osw-panel osw-main">
+      <header class="osw-page-head">
+        <div class="osw-page-head-row">
+          <h1 id="oswPageTitle"></h1>
+          <!-- Sub-menu tabs of a tabbed page sit on the title's line; the strip
+               falls back to icon-only when the labels stop fitting. -->
+          <div class="osw-subtabs" id="oswPageTabs"></div>
+        </div>
+        <p id="oswPageDesc" class="osw-page-desc"></p>
+      </header>
+      <div class="osw-page-scroll" id="oswPageScroll">
+        <div class="osw-page" id="oswPage"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="osw-toast" id="oswToast" role="status" aria-live="polite"></div>
+
+<script>
+  const ONIGIRI_SETTINGS_CONTEXT = /*__ONIGIRI_SETTINGS_CONTEXT__*/null;
+  /*__ONIGIRI_SETTINGS_JS__*/
+</script>
+</body>
+</html>

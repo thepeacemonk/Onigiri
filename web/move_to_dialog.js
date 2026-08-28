@@ -11,6 +11,13 @@
         highlightRaf: 0
     };
 
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function addCleanup(fn) {
         state.cleanupFns.push(fn);
     }
@@ -236,10 +243,10 @@
         footer.className = 'onigiri-move-footer';
         var secondary = document.createElement('span');
         secondary.className = 'onigiri-move-btn onigiri-move-btn-secondary';
-        secondary.textContent = 'Cancel';
+        secondary.textContent = T('cancel', 'Cancel');
         var primary = document.createElement('span');
         primary.className = 'onigiri-move-btn onigiri-move-btn-primary';
-        primary.textContent = 'Move';
+        primary.textContent = T('move_action', 'Move');
         footer.appendChild(secondary);
         footer.appendChild(primary);
         modal.appendChild(search);
@@ -477,7 +484,7 @@
         var subtitle = document.createElement('div');
         subtitle.className = 'onigiri-move-subtitle';
         var subtitleLabel = document.createElement('span');
-        subtitleLabel.textContent = 'Moving';
+        subtitleLabel.textContent = T('moving_label', 'Moving');
         subtitle.appendChild(subtitleLabel);
         var sourceName = document.createElement('span');
         sourceName.className = 'onigiri-move-source';
@@ -495,7 +502,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         closeBtn.className = 'onigiri-move-close';
-        closeBtn.title = 'Close';
+        closeBtn.title = T('close', 'Close');
         closeBtn.appendChild(makeIcon('cancel.svg', 'onigiri-move-close-svg', 14, 'currentColor'));
         closeBtn.addEventListener('click', function () { close(false); });
         header.appendChild(closeBtn);
@@ -508,7 +515,7 @@
         search.id = 'onigiri-move-search';
         search.className = 'onigiri-move-search';
         search.type = 'text';
-        search.placeholder = 'Search destination decks';
+        search.placeholder = T('search_destination_decks', 'Search destination decks');
         search.autocomplete = 'off';
         search.spellcheck = false;
         search.addEventListener('input', applyFilter);
@@ -547,7 +554,7 @@
         var empty = document.createElement('div');
         empty.id = 'onigiri-move-empty';
         empty.className = 'onigiri-move-empty';
-        empty.textContent = 'No matching decks found';
+        empty.textContent = T('no_matching_decks', 'No matching decks found');
         list.appendChild(empty);
         modal.appendChild(list);
 
@@ -567,7 +574,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         cancelBtn.className = 'onigiri-move-btn onigiri-move-btn-secondary';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.textContent = T('cancel', 'Cancel');
         cancelBtn.addEventListener('click', function () { close(false); });
 
         var confirmBtn = document.createElement('span');
@@ -578,7 +585,7 @@
         confirmBtn.id = 'onigiri-move-confirm';
         confirmBtn.className = 'onigiri-move-btn onigiri-move-btn-primary';
         confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Move';
+        confirmBtn.textContent = T('move_action', 'Move');
         confirmBtn.addEventListener('click', function () {
             if (!state.selectedId || state.busy) return;
             state.busy = true;

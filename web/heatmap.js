@@ -107,9 +107,14 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
     }
 
     function orderedWeekdayLabels(config, longLabels) {
-        const labels = longLabels
-            ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-            : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        const formatter = new Intl.DateTimeFormat(config.locale || undefined, {
+            weekday: longLabels ? 'short' : 'narrow'
+        });
+        // 2024-01-07 was a Sunday. Build labels from dates rather than using
+        // hard-coded English initials, then place them in the chosen order.
+        const labels = Array.from({ length: 7 }, (_, day) =>
+            formatter.format(new Date(2024, 0, 7 + day))
+        );
         if ((config.heatmapWeekStart || 'monday') === 'sunday') {
             return labels;
         }
@@ -155,8 +160,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 currentMonth = date.getMonth();
                 const monthLabel = document.createElement('div');
                 monthLabel.className = 'month-label';
-                monthLabel.textContent = date.toLocaleString('default', { month: 'short' });
-                monthLabel.style.gridColumn = Math.floor(i / 7) + 1;
+                monthLabel.textContent = date.toLocaleString(config.locale || undefined, { month: 'short' });
+                // Span the month's own weeks, so a label can't drift over the
+                // next month's columns when the widget is narrow.
+                monthLabel.style.gridColumn = `${Math.floor(i / 7) + 1} / span 4`;
                 monthsContainer.appendChild(monthLabel);
             }
 
@@ -224,7 +231,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
             const header = document.createElement('div');
             header.innerHTML = `
-                <div class="weekday-label">${date.toLocaleString('default', { weekday: 'short' })}</div>
+                <div class="weekday-label">${date.toLocaleString(config.locale || undefined, { weekday: 'short' })}</div>
                 <div class="day-label">${date.getDate()}</div>
             `;
             headerContainer.appendChild(header);
@@ -243,7 +250,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
         const dateKey = getLocalDateKey(date); // FIX: Use local date key
         let tooltipText;
-        const dateText = date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const dateText = date.toLocaleDateString(config.locale || undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
         if (dateKey === todayKey) {
             // --- TODAY ---
@@ -281,18 +288,109 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         cell.appendChild(shapeDiv);
 
         cell.setAttribute('data-tooltip', tooltipText);
+
+        // Match Review Heatmap's behavior: only days backed by cards are
+        // actionable. Past/today cells open review history; future cells open
+        // the due forecast. The Python bridge decides which exact Anki search
+        // to use from this canonical date key.
+        const browsableCount = dateKey > todayKey ? dueCount : reviewCount;
+        if (browsableCount > 0) {
+            const browseLabel = (config.i18n && config.i18n.browse) || 'Browse';
+            cell.classList.add('browsable');
+            cell.dataset.dateKey = dateKey;
+            cell.setAttribute('role', 'button');
+            cell.setAttribute('tabindex', '0');
+            cell.setAttribute('aria-label', `${tooltipText}. ${browseLabel}`);
+        }
         return cell;
     }
 
-    function updateFilterPill(container) {
+    function openCellInBrowser(cell) {
+        if (!cell || !cell.dataset.dateKey || typeof pycmd !== 'function') return;
+        pycmd(`onigiri_heatmap_browse:${cell.dataset.dateKey}`);
+    }
+
+    function bindCellInteractions(gridContainer) {
+        gridContainer.addEventListener('click', (event) => {
+            openCellInBrowser(event.target.closest('.heatmap-day-cell.browsable'));
+        });
+        gridContainer.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const cell = event.target.closest('.heatmap-day-cell.browsable');
+            if (!cell) return;
+            event.preventDefault();
+            openCellInBrowser(cell);
+        });
+    }
+
+    // `animate: false` places the pill without the slide. Every redraw rebuilds
+    // the header, so the fresh pill starts at width 0 — animating that would
+    // flash the active view as unselected for a frame.
+    function updateFilterPill(container, animate) {
         const filters = container.querySelector('.heatmap-filters');
         const pill = filters ? filters.querySelector('.heatmap-filter-pill') : null;
         const active = filters ? filters.querySelector('.filter-btn.active') : null;
         if (!filters || !pill || !active) return;
         const filterRect = filters.getBoundingClientRect();
         const activeRect = active.getBoundingClientRect();
+        // `left: 0` resolves against the track's padding box, whose edge is the
+        // inside of the border — the padding is not an origin offset, so the
+        // button's distance from the border box is the whole translation.
+        if (animate === false) {
+            pill.style.transition = 'none';
+        }
         pill.style.width = `${activeRect.width}px`;
         pill.style.transform = `translateX(${activeRect.left - filterRect.left}px)`;
+        if (animate === false) {
+            // Flush the transition-less placement before restoring the
+            // transition, otherwise the browser coalesces both and animates.
+            void pill.offsetWidth;
+            pill.style.transition = '';
+        }
+    }
+
+    // Keeps the calendar inside the widget box instead of letting it spill past
+    // the bottom edge (the container clips). Shrink-only: a container whose
+    // height is driven by its own content — the profile sidebar — never reports
+    // an overflow, so it keeps the base sizes.
+    function fitGridToContainer(container, gridContainer) {
+        gridContainer.style.removeProperty('--hm-cell');
+        gridContainer.style.removeProperty('max-width');
+
+        const containerStyle = window.getComputedStyle(container);
+        const header = container.querySelector('.onigiri-heatmap-header');
+        let room = container.clientHeight
+            - parseFloat(containerStyle.paddingTop || 0)
+            - parseFloat(containerStyle.paddingBottom || 0);
+        if (header) {
+            room -= header.offsetHeight
+                + parseFloat(window.getComputedStyle(header).marginBottom || 0);
+        }
+        if (!(room > 0)) return;
+
+        const isYear = gridContainer.classList.contains('year-view');
+        // The month/week labels and the year view's month row don't scale with
+        // the cells, so one division under-shoots; a few passes converge.
+        for (let pass = 0; pass < 4; pass++) {
+            const need = gridContainer.offsetHeight;
+            if (need <= room + 0.5) return;
+            const factor = room / need;
+            if (isYear) {
+                // Year cells are 1fr columns, so their height follows the
+                // grid's width — narrowing the grid is what shortens it.
+                const width = gridContainer.getBoundingClientRect().width;
+                const nextWidth = Math.max(120, Math.floor(width * factor));
+                if (nextWidth >= width) return;
+                gridContainer.style.maxWidth = nextWidth + 'px';
+            } else {
+                const cell = parseFloat(
+                    window.getComputedStyle(gridContainer).getPropertyValue('--hm-cell')
+                ) || 30;
+                const nextCell = Math.max(12, Math.floor(cell * factor));
+                if (nextCell >= cell) return;
+                gridContainer.style.setProperty('--hm-cell', nextCell + 'px');
+            }
+        }
     }
 
     // --- MAIN RENDER FUNCTION ---
@@ -364,7 +462,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 : 'No streak yet';
             const streakLabel = i18n.day_streak || 'day streak';
             const streakHTML = config.heatmapShowStreak
-                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(streakTip)}">${fireSvg}<span>${data.streak}</span><span class="streak-label">${streakLabel}</span></div>`
+                ? `<div class="streak-counter onigiri-streak-tip" data-tooltip="${escapeAttr(streakTip)}">${fireSvg}<span class="streak-count">${data.streak}</span><span class="streak-label">${streakLabel}</span></div>`
                 : '';
 
             let navHTML = '';
@@ -377,7 +475,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             } else if (state.view === 'month') {
                 navHTML = `
                     <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
-                    <span class="nav-title">${state.targetDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
+                    <span class="nav-title">${state.targetDate.toLocaleString(config.locale || undefined, { month: 'short', year: 'numeric' })}</span>
                     <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             } else if (state.view === 'week') {
@@ -387,19 +485,26 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 endOfWeek.setDate(startOfWeek.getDate() + 6);
                 navHTML = `
                     <button class="nav-btn" data-nav="-7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
-                    <span class="nav-title">${startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <span class="nav-title">${startOfWeek.toLocaleDateString(config.locale || undefined, { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString(config.locale || undefined, { month: 'short', day: 'numeric' })}</span>
                     <button class="nav-btn" data-nav="7"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             }
 
+            const previousPill = container.querySelector('.heatmap-filter-pill');
+            const carriedPill = previousPill
+                ? { width: previousPill.style.width, transform: previousPill.style.transform }
+                : null;
+
+            // Title alone on the left; the three pills — streak, date stepper,
+            // view switcher — are one group on the right, read left to right.
             container.innerHTML = `
                 <div class="onigiri-heatmap-header">
                     <div class="header-left">
-                        <h3 class="header-left">${(i18n.activity || 'Activity').toUpperCase()}</h3>
-                        <div class="heatmap-nav">${navHTML}</div>
+                        <h3 class="heatmap-title">${(i18n.activity || 'Activity').toUpperCase()}</h3>
                     </div>
                     <div class="header-right">
                         ${streakHTML}
+                        <div class="heatmap-nav">${navHTML}</div>
                         <div class="heatmap-filters">
                             <span class="heatmap-filter-pill"></span>
                             <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">${i18n.year || 'Year'}</button>
@@ -419,9 +524,45 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             } else if (state.view === 'week') {
                 drawWeekView(gridContainer, preparedData, config);
             }
+            bindCellInteractions(gridContainer);
+            // Placed synchronously, before this frame paints — a deferred
+            // placement leaves one frame with no pill under the active view.
+            // When a pill was already on screen its geometry is carried across
+            // the rebuild, so switching views slides from the old position
+            // instead of growing out of nothing.
+            const pill = container.querySelector('.heatmap-filter-pill');
+            updateFilterPill(container, false);
+
+            // Animated *away from* the previous position rather than towards
+            // the new one: the pill already holds its final geometry, so a
+            // frame that never arrives leaves it correct instead of parked
+            // under the wrong view. Stepping the date carries the geometry it
+            // ends on, so only a real view switch moves anything.
+            if (pill && carriedPill && carriedPill.width
+                && typeof pill.animate === 'function'
+                && (carriedPill.width !== pill.style.width
+                    || carriedPill.transform !== pill.style.transform)) {
+                pill.animate(
+                    [
+                        { width: carriedPill.width, transform: carriedPill.transform },
+                        { width: pill.style.width, transform: pill.style.transform }
+                    ],
+                    { duration: 180, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+                );
+            }
+
             gridContainer.classList.add('is-entering');
             window.setTimeout(() => gridContainer.classList.remove('is-entering'), 180);
-            requestAnimationFrame(() => updateFilterPill(container));
+
+            // Re-measures the pill and the calendar against the box they
+            // actually got. Both depend on text metrics, so the first frame
+            // can still be measuring a fallback font.
+            const reflow = () => {
+                updateFilterPill(container);
+                const grid = container.querySelector('.heatmap-grid');
+                if (grid) fitGridToContainer(container, grid);
+            };
+            requestAnimationFrame(reflow);
 
             container.querySelector('.heatmap-filters').addEventListener('click', (e) => {
                 if (e.target.classList.contains('filter-btn')) {
@@ -478,7 +619,17 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             });
             if (!container.dataset.heatmapPillResizeBound) {
                 container.dataset.heatmapPillResizeBound = 'true';
-                window.addEventListener('resize', () => updateFilterPill(container), { passive: true });
+                window.addEventListener('resize', reflow, { passive: true });
+                // The deck browser lays the widget grid out after this script
+                // runs, so the first measurement can be of a box that isn't
+                // the final one. Both hooks below are no-ops once the sizes
+                // already fit — fitGridToContainer only ever shrinks.
+                if (window.ResizeObserver) {
+                    new ResizeObserver(reflow).observe(container);
+                }
+                if (document.fonts && document.fonts.ready) {
+                    document.fonts.ready.then(reflow).catch(() => { });
+                }
                 // The nav-scoped handler above can't see clicks that land
                 // elsewhere on the page, so close the year dropdown from here.
                 document.addEventListener('click', (e) => {

@@ -5,6 +5,7 @@ from aqt.qt import QDialog, QVBoxLayout, QLabel, QPushButton, Qt, QPixmap, QEven
 from PyQt6 import QtCore
 from aqt.reviewer import Reviewer
 from .. import config
+from ..translations import tr
 
 _focus_dango_enabled = False
 _dialog_is_showing = False
@@ -283,21 +284,21 @@ def _normalized_command(command):
 def _exit_button_label(command):
     command = _normalized_command(command)
     labels = {
-        "decks": "Exit to Decks",
-        "onDeckBrowser": "Exit to Decks",
-        "add": "Open Add",
-        "onAddCard": "Open Add",
-        "browse": "Open Browser",
-        "onBrowse": "Open Browser",
-        "stats": "Open Stats",
-        "onStats": "Open Stats",
-        "sync": "Sync Now",
-        "overview": "Open Overview",
-        "onOverview": "Open Overview",
-        "onEditCurrent": "Edit Current Card",
-        "onCardInfo": "Open Card Info",
+        "decks": tr("fd_exit_decks"),
+        "onDeckBrowser": tr("fd_exit_decks"),
+        "add": tr("fd_open_add"),
+        "onAddCard": tr("fd_open_add"),
+        "browse": tr("fd_open_browser"),
+        "onBrowse": tr("fd_open_browser"),
+        "stats": tr("fd_open_stats"),
+        "onStats": tr("fd_open_stats"),
+        "sync": tr("fd_sync_now"),
+        "overview": tr("fd_open_overview"),
+        "onOverview": tr("fd_open_overview"),
+        "onEditCurrent": tr("fd_edit_current_card"),
+        "onCardInfo": tr("fd_open_card_info"),
     }
-    return labels.get(command, "Leave Focus Dango")
+    return labels.get(command, tr("fd_leave"))
 
 
 def _run_exit_command(command):
@@ -391,7 +392,7 @@ def show_dango_dialog(command=None, on_confirm=None):
 
     dialog = QDialog(mw)
     dialog.setObjectName("FocusDangoDialog")
-    dialog.setWindowTitle("Focus Dango")
+    dialog.setWindowTitle(tr("focus_dango_window_title"))
     dialog.setModal(True)
     dialog.setStyleSheet(f"""
         QDialog#FocusDangoDialog {{
@@ -436,9 +437,9 @@ def show_dango_dialog(command=None, on_confirm=None):
 
     attempts_left = max(0, _LIGHT_MODE_ATTEMPTS_TO_UNLOCK - _exit_attempt_count)
     hint = (
-        "Self-Sabotage mode is active. You cannot leave Focus Dango."
+        tr("fd_hint_strict")
         if strict_mode
-        else f"Focus Dango will let you leave after {_LIGHT_MODE_ATTEMPTS_TO_UNLOCK} attempts. Attempts left: {attempts_left}."
+        else tr("fd_hint_attempts").format(_LIGHT_MODE_ATTEMPTS_TO_UNLOCK, attempts_left)
     )
     hint_label = QLabel(hint)
     hint_label.setWordWrap(True)
@@ -451,7 +452,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     button_row = QHBoxLayout()
     button_row.setSpacing(10)
 
-    close_button = QPushButton("Keep studying")
+    close_button = QPushButton(tr("fd_keep_studying"))
     
     def on_button_click():
         global _dialog_is_showing

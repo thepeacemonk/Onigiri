@@ -18,29 +18,33 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from aqt import mw
-from aqt.theme import theme_manager
-from aqt.utils import askUser
 from aqt.qt import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QStackedWidget, Qt, QPixmap,
+    QColor, QDialog, QFileDialog, QVBoxLayout,
 )
+from aqt.webview import AnkiWebView
 from PyQt6.QtCore import QLocale
-from PyQt6.QtGui import QImage
 
 from . import config
-from .settings import FlowLayout
+from . import safe_storage
 from .translations import tr, current_locale
-from .prep_station_ui import (
-    HeaderBar, ExamCard, AddExamCard, PlanCardsContainer, MiniCalendar, UpcomingPlansCard, StatCard, QuoteCard,
-    PlanEditDialog, PlanDetailView,
-    palette, build_qss, circular_pixmap, resolve_plan_color, fit_dialog_to_screen,
-    readable_on,
-)
 
 _dialog: "PrepStationDialog | None" = None
 
 PREP_STATION_CONF_KEY = "onigiri_prep_station_plans"
 PREP_STATION_SUSPENDED_KEY = "onigiri_prep_station_include_suspended"
 PREP_STATION_CHART_NUMBERS_KEY = "onigiri_prep_station_chart_numbers"
+PREP_STATION_WEEK_START_KEY = "onigiri_prep_station_week_start"
+PREP_THUMBNAIL_DIR = "prep_station_thumbnails"
+
+# revlog.type / RevlogEntry.ReviewKind values used for actual card answers.
+# Manual and rescheduled entries (4/5) are deliberately excluded: they change
+# scheduling history, but the learner did not answer a card.
+REVIEW_KINDS = (
+    ("learning", 0),
+    ("review", 1),
+    ("relearning", 2),
+    ("filtered", 3),
+)
 
 MOTIVATIONAL_PHRASES = [
     "Small steps every day add up to big results.",
@@ -94,8 +98,7 @@ def _mirror_dir():
 def _write_json_mirror(plans: list) -> None:
     try:
         path = os.path.join(_mirror_dir(), "plans.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(plans, f, ensure_ascii=False, indent=2)
+        safe_storage.atomic_write_json(path, plans)
     except Exception as e:
         print(f"Prep Station: mirror write error: {e}")
 
@@ -109,6 +112,51 @@ def _get_deck_names() -> list:
         return sorted([d.name for d in mw.col.decks.all_names_and_ids()])
     except Exception:
         return []
+
+
+def _get_deck_options() -> list[dict]:
+    """Return the deck rows used by the WebUI picker.
+
+    Keep the same icon resolution as the real deck browser, including per-deck
+    custom icons and the configured folder/deck/subdeck defaults.  The full
+    path remains available for search/tooltips while the visible label is the
+    leaf name, which keeps deeply nested collections readable.
+    """
+    if not mw or not mw.col:
+        return []
+    try:
+        from .prep_station_ui import deck_icon_value
+
+        decks = sorted(mw.col.decks.all_names_and_ids(), key=lambda item: item.name.casefold())
+        custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {}) or {}
+        names = {deck.name for deck in decks}
+        options = []
+        for deck in decks:
+            name = str(deck.name)
+            has_children = any(other != name and other.startswith(name + "::") for other in names)
+            icon_value = str(deck_icon_value(name, has_children) or "deck.svg")
+            if icon_value in {"deck.svg", "folder.svg", "subdeck.svg", "filtered-deck.svg"}:
+                icon_value = "system-unavailable:" + icon_value
+            custom = custom_icons.get(str(deck.id), {}) if isinstance(custom_icons, dict) else {}
+            # Mirror the deck browser's linked/separate light-dark tint.  A
+            # legacy entry may only have ``color``; in that case it remains the
+            # fallback for both modes.
+            icon_color = str(
+                (custom.get("colorDark") if _is_dark_mode() else custom.get("color"))
+                or custom.get("color")
+                or _accent_color()
+            )
+            options.append({
+                "name": name,
+                "label": name.rsplit("::", 1)[-1],
+                "depth": name.count("::"),
+                "icon": icon_value,
+                "iconColor": icon_color,
+            })
+        return options
+    except Exception as exc:
+        print(f"Prep Station: deck picker error: {exc}")
+        return [{"name": name, "label": name.rsplit("::", 1)[-1], "depth": name.count("::"), "icon": "system-unavailable:deck.svg", "iconColor": _accent_color()} for name in _get_deck_names()]
 
 
 def _get_deck_card_counts(deck_names: list) -> dict:
@@ -148,6 +196,30 @@ def _include_suspended() -> bool:
         return bool(mw.col.conf.get(PREP_STATION_SUSPENDED_KEY, False))
     except Exception:
         return False
+
+
+def _week_starts_on() -> str:
+    """The Prep Station chart always shows the current week, not a rolling
+    seven-day window.  Keep this preference in collection config so it follows
+    the user between profiles/devices just like their plans do."""
+    try:
+        value = mw.col.conf.get(PREP_STATION_WEEK_START_KEY, "monday")
+    except Exception:
+        value = "monday"
+    return value if value in ("monday", "sunday") else "monday"
+
+
+def _week_days():
+    today = date.today()
+    # date.weekday(): Monday = 0 … Sunday = 6.
+    offset = today.weekday() if _week_starts_on() == "monday" else (today.weekday() + 1) % 7
+    first = today - timedelta(days=offset)
+    return [first + timedelta(days=i) for i in range(7)]
+
+
+def _weekday_label(day: date) -> str:
+    # QLocale uses Monday=1 … Sunday=7.
+    return current_locale().dayName(day.isoweekday(), QLocale.FormatType.ShortFormat)
 
 
 PREP_STATION_WIDGET_FONT_KEY = "onigiri_prep_station_widget_font_scale"
@@ -202,12 +274,10 @@ def _enrich_plan(plan: dict) -> dict:
             req = 0.0
         else:
             req = round(total_pending / max(days_left, 1), 1)
-            if req <= 30:
-                status = "ok"
-            elif req <= 80:
-                status = "warn"
-            else:
-                status = "danger"
+            # A pace label should describe the student's current rhythm, not
+            # shame them for having a large deck.  The screen turns this into
+            # a gentle, actionable status after it has the week's review data.
+            status = "active"
 
         p["_pace"] = {
             "status": status,
@@ -226,35 +296,68 @@ def _enrich_plan(plan: dict) -> dict:
     return p
 
 
-def _weekly_review_counts():
-    if not mw or not mw.col:
-        return [0] * 7, [""] * 7
+def _attach_week_progress(plan: dict) -> dict:
+    """Attach presentation-ready current-week pace data to an enriched plan.
+
+    `revlog` records review events (rather than a mutable historical target),
+    so the honest and least judgmental comparison is cards reviewed this week
+    against the plan's own daily target accumulated up to today.
+    """
+    week_data = _weekly_review_data(plan.get("decks", []))
+    counts, labels = week_data["counts"], week_data["labels"]
+    pace = plan.get("_pace") or {}
+    days = _week_days()
     today = date.today()
-    locale = current_locale()
-    counts, labels = [], []
-    for i in range(6, -1, -1):
-        day = today - timedelta(days=i)
-        start_dt = datetime(day.year, day.month, day.day)
-        start_ms = int(start_dt.timestamp() * 1000)
-        end_ms = start_ms + 86400000
-        try:
-            cnt = mw.col.db.scalar(
-                "SELECT count(*) FROM revlog WHERE id >= ? AND id < ?", start_ms, end_ms
-            ) or 0
-        except Exception:
-            cnt = 0
-        counts.append(cnt)
-        labels.append(locale.dayName(day.isoweekday(), QLocale.FormatType.ShortFormat))
-    return counts, labels
+    elapsed = min(7, max(1, (today - days[0]).days + 1)) if days else 1
+    reviewed = sum(counts[:elapsed])
+    target = pace.get("required_per_day")
+    expected = round(float(target or 0) * elapsed)
+    status = pace.get("status", "")
+    ratio = (reviewed / expected) if expected else 1.0
+    if not plan.get("decks"):
+        pulse = "not_ready"
+    elif status == "done":
+        pulse = "caught_up"
+    elif status == "expired":
+        pulse = "past"
+    elif target is None:
+        pulse = "not_ready"
+    elif ratio >= 1.1:
+        pulse = "ahead"
+    elif ratio >= 0.65:
+        pulse = "steady"
+    elif reviewed > 0:
+        pulse = "reset"
+    else:
+        pulse = "starting"
+    plan["_week"] = {
+        "counts": counts,
+        "labels": labels,
+        "series": week_data["series"],
+        "reviewed": reviewed,
+        "today_reviewed": counts[elapsed - 1] if counts else 0,
+        "elapsed": elapsed,
+        "target": expected,
+        "ratio": min(1.0, ratio),
+        "pulse": pulse,
+    }
+    return plan
 
 
-def _weekly_review_counts_for_decks(deck_names: list):
-    """Same as _weekly_review_counts but scoped to a plan's assigned decks
-    (and their subdecks), for the per-plan progress chart in the detail view."""
+def _weekly_review_data(deck_names: list | None = None) -> dict:
+    """Current-week answered cards, split by Anki review kind.
+
+    When ``deck_names`` is provided, selected decks and their descendants are
+    included.  A grouped query per day keeps the page payload small while
+    preserving every segment needed by the stacked chart and its tooltip.
+    """
+    labels = [_weekday_label(day) for day in _week_days()]
+    empty_series = {name: [0] * 7 for name, _ in REVIEW_KINDS}
     if not mw or not mw.col:
-        return [0] * 7, [""] * 7
+        return {"counts": [0] * 7, "labels": labels, "series": empty_series}
+
     dids = []
-    if deck_names:
+    if deck_names is not None:
         try:
             all_decks = mw.col.decks.all_names_and_ids()
             wanted = set(deck_names)
@@ -264,28 +367,47 @@ def _weekly_review_counts_for_decks(deck_names: list):
             ]
         except Exception:
             dids = []
-    today = date.today()
-    locale = current_locale()
-    counts, labels = [], []
-    for i in range(6, -1, -1):
-        day = today - timedelta(days=i)
+
+    series = {name: [] for name, _ in REVIEW_KINDS}
+    values = {kind: name for name, kind in REVIEW_KINDS}
+    for day in _week_days():
         start_dt = datetime(day.year, day.month, day.day)
         start_ms = int(start_dt.timestamp() * 1000)
         end_ms = start_ms + 86400000
-        cnt = 0
-        if dids:
+        day_counts = {name: 0 for name, _ in REVIEW_KINDS}
+        if deck_names is None or dids:
             try:
-                dids_str = ",".join(str(d) for d in dids)
-                cnt = mw.col.db.scalar(
-                    "SELECT count(*) FROM revlog WHERE id >= ? AND id < ? "
-                    f"AND cid IN (SELECT id FROM cards WHERE did IN ({dids_str}))",
+                deck_clause = ""
+                if deck_names is not None:
+                    dids_str = ",".join(str(d) for d in dids)
+                    deck_clause = f" AND cid IN (SELECT id FROM cards WHERE did IN ({dids_str}))"
+                rows = mw.col.db.all(
+                    "SELECT type, count(*) FROM revlog "
+                    "WHERE id >= ? AND id < ? AND type IN (0, 1, 2, 3)"
+                    + deck_clause + " GROUP BY type",
                     start_ms, end_ms,
-                ) or 0
+                )
+                for kind, count in rows:
+                    name = values.get(int(kind))
+                    if name:
+                        day_counts[name] = int(count or 0)
             except Exception:
-                cnt = 0
-        counts.append(cnt)
-        labels.append(locale.dayName(day.isoweekday(), QLocale.FormatType.ShortFormat))
-    return counts, labels
+                pass
+        for name, _ in REVIEW_KINDS:
+            series[name].append(day_counts[name])
+
+    counts = [sum(series[name][i] for name, _ in REVIEW_KINDS) for i in range(7)]
+    return {"counts": counts, "labels": labels, "series": series}
+
+
+def _weekly_review_counts():
+    data = _weekly_review_data()
+    return data["counts"], data["labels"]
+
+
+def _weekly_review_counts_for_decks(deck_names: list):
+    data = _weekly_review_data(deck_names)
+    return data["counts"], data["labels"]
 
 
 def _motivational_phrase() -> str:
@@ -330,25 +452,6 @@ def _is_dark_mode() -> bool:
         return False
 
 
-def _bg_folder() -> str:
-    path = os.path.join(os.path.dirname(__file__), "user_files", "prep_station_bg")
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
-def _fast_blur_pixmap(pixmap: QPixmap, percent: int) -> QPixmap:
-    if percent <= 0 or pixmap.isNull():
-        return pixmap
-    factor = max(2, int(2 + (percent / 100.0) * 18))
-    w = max(1, pixmap.width() // factor)
-    h = max(1, pixmap.height() // factor)
-    small = pixmap.scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-    return small.scaled(
-        pixmap.width(), pixmap.height(),
-        Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation,
-    )
-
-
 def _accent_color() -> str:
     conf = config.get_config()
     mode = "dark" if _is_dark_mode() else "light"
@@ -359,325 +462,269 @@ def _accent_color() -> str:
     return conf.get("colors", {}).get(mode, {}).get("--accent-color", default)
 
 
-def _resolve_header_background(dark: bool):
-    """Returns (color_hex, QPixmap|None, opacity_percent).
-
-    When synced, mirrors the Profile Bar Background exactly (accent/custom/image
-    modes, blur, opacity) using the same modern_menu_profile_* keys the sidebar
-    profile bar reads.
-    """
-    addon_path = os.path.dirname(__file__)
-    if not mw or not mw.col:
-        return _accent_color(), None, 100
-    conf = mw.col.conf
-    suffix = "dark" if dark else "light"
-    sync = bool(conf.get("onigiri_prep_station_bg_sync_profile", True))
-
-    if sync:
-        mode = conf.get("modern_menu_profile_bg_mode", "image")
-        if mode == "accent":
-            color = _accent_color()
-        else:
-            color = conf.get(f"modern_menu_profile_bg_color_{suffix}", "#555555" if dark else "#EEEEEE")
-        opacity = int(conf.get("modern_menu_profile_bg_opacity", 50) or 50)
-        blur = int(conf.get("modern_menu_profile_bg_blur", 0) or 0)
-        pixmap = None
-        if mode == "image":
-            filename = conf.get("modern_menu_profile_bg_image", "")
-            path = os.path.join(addon_path, "user_files", "profile_bg", filename) if filename else ""
-            if not path or not os.path.exists(path):
-                path = os.path.join(addon_path, "system_files", "profile_default", "onigiri-bg.png")
-            if os.path.exists(path):
-                pixmap = QPixmap(path)
-                if blur > 0:
-                    pixmap = _fast_blur_pixmap(pixmap, blur)
-        return color, pixmap, opacity
-
-    mode = conf.get("onigiri_prep_station_bg_mode", "color")
-    color = conf.get(f"onigiri_prep_station_bg_color_{suffix}", _accent_color())
-    opacity = int(conf.get("onigiri_prep_station_bg_opacity", 100) or 100)
-    blur = int(conf.get("onigiri_prep_station_bg_blur", 0) or 0)
-    pixmap = None
-    if mode == "image":
-        filename = conf.get(f"onigiri_prep_station_bg_image_{suffix}", "")
-        if filename:
-            path = os.path.join(_bg_folder(), filename)
-            if os.path.exists(path):
-                pixmap = QPixmap(path)
-                if blur > 0:
-                    pixmap = _fast_blur_pixmap(pixmap, blur)
-    return color, pixmap, opacity
-
-
-def _resolve_chart_colors(dark: bool):
-    """Returns (line_color, fill_intensity, opacity_percent)."""
-    if not mw or not mw.col:
-        return _accent_color(), 50, 100
-    conf = mw.col.conf
-    suffix = "dark" if dark else "light"
-    color = conf.get(f"onigiri_prep_station_chart_color_{suffix}", "") or "#ffffff"
-    fill_intensity = int(conf.get("onigiri_prep_station_chart_blur", 50) or 0)
-    opacity = int(conf.get("onigiri_prep_station_chart_opacity", 100) or 0)
-    return color, fill_intensity, opacity
-
-
-def _resolve_avatar_pixmap(size: int) -> QPixmap:
-    """Circular avatar mirroring the sidebar profile picture resolution."""
-    addon_path = os.path.dirname(__file__)
-    try:
-        conf = mw.col.conf if (mw and mw.col) else {}
-        dark = _is_dark_mode()
-        pic_dynamic = bool(conf.get("modern_menu_profile_picture_dynamic_mode", True))
-        filename = (
-            conf.get(f"modern_menu_profile_picture_{'dark' if dark else 'light'}", "")
-            if pic_dynamic else ""
-        ) or conf.get("modern_menu_profile_picture", "")
-        path = os.path.join(addon_path, "user_files", "profile", filename) if filename else ""
-        if not path or not os.path.exists(path):
-            path = os.path.join(addon_path, "system_files", "profile_default", "onigiri-san.png")
-        if os.path.exists(path):
-            img = QImage(path)
-            if not img.isNull():
-                return circular_pixmap(img, size)
-    except Exception:
-        pass
-    return QPixmap()
-
-
 # ─── Dialog ───────────────────────────────────────────────────────────────────
 
+def _resolve_plan_color(plan: dict) -> str:
+    """Return the active theme colour without importing the old Qt planner."""
+    legacy = str(plan.get("color") or "")
+    if plan.get("color_dynamic"):
+        return str(plan.get("color_dark" if _is_dark_mode() else "color_light") or legacy or "#60A5FA")
+    return str(plan.get("color_light") or legacy or "#60A5FA")
+
+
+def _readable_on(color: str) -> str:
+    value = QColor(color)
+    luminance = 0.299 * value.red() + 0.587 * value.green() + 0.114 * value.blue()
+    return "#ffffff" if luminance < 150 else "#1a1a1a"
+
+
+def _read_web_asset(name: str) -> str:
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "web", name), encoding="utf-8") as handle:
+            return handle.read()
+    except Exception as exc:
+        print(f"Prep Station: could not read {name}: {exc}")
+        return ""
+
+
+def _addon_uri(relative: str) -> str:
+    package = mw.addonManager.addonFromModule(__name__)
+    return f"/_addons/{package}/{relative.lstrip('/')}"
+
+
+def _thumbnail_url(filename: str) -> str:
+    filename = os.path.basename(str(filename or ""))
+    path = os.path.join(os.path.dirname(__file__), "user_files", PREP_THUMBNAIL_DIR, filename)
+    return _addon_uri(f"user_files/{PREP_THUMBNAIL_DIR}/{filename}") if filename and os.path.isfile(path) else ""
+
+
+def _emoji_sprite_map() -> dict:
+    try:
+        from .emoji_sprites import EMOJI_SPRITES
+        return {item["value"]: item["asset"] for item in EMOJI_SPRITES}
+    except Exception:
+        return {}
+
+
+def _web_icon_catalog() -> tuple[list, list, dict]:
+    """Return picker inventories plus exact URLs for user supplied assets.
+
+    The deck browser accepts both its own custom-deck folder and the Settings
+    icon library.  Keeping the source URL with each basename lets Prep Station
+    draw the same icon without guessing which directory a user chose it from.
+    """
+    root = os.path.dirname(__file__)
+    system_icons = []
+    user_icons = []
+    icon_paths = {}
+    for index, (rel, extensions) in enumerate((
+        (("system_files", "system_icons", "available_for_users"), {".svg"}),
+        (("user_files", "custom_deck_icons"), {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}),
+        (("user_files", "icons"), {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}),
+    )):
+        folder = os.path.join(root, *rel)
+        try:
+            names = sorted(
+                name for name in os.listdir(folder)
+                if os.path.splitext(name)[1].lower() in extensions and os.path.isfile(os.path.join(folder, name))
+            )
+        except Exception:
+            names = []
+        if index == 0:
+            system_icons = names
+            continue
+        for name in names:
+            # The deck browser checks custom_deck_icons first, so keep its
+            # image in a same-name collision.
+            if name not in icon_paths:
+                icon_paths[name] = _addon_uri("/".join((*rel, name)))
+                user_icons.append(name)
+    return system_icons, user_icons, icon_paths
+
+
+def _web_strings() -> dict:
+    keys = (
+        "prep_station_title", "prep_new_plan", "prep_edit", "prep_delete", "cancel",
+        "prep_save_changes", "prep_create_plan", "prep_plan_name_placeholder", "prep_exam_date_label",
+        "prep_study_decks_label", "prep_notes_label", "prep_notes_placeholder", "prep_choose_photo",
+        "prep_remove_photo", "prep_daily_target", "prep_cards_remaining", "prep_reviewed_this_week",
+        "prep_this_week", "prep_deck_breakdown", "prep_no_decks", "prep_all_caught_up",
+        "prep_days_left_badge", "prep_today_badge", "prep_exam_has_passed", "prep_search_decks_placeholder",
+        "search_icons_placeholder", "cards", "close", "icon_picker",
+        "choose_icon", "icon_label", "no_matching_icons",
+        "prep_choose_icon_or_emoji", "prep_target_today", "prep_today_progress",
+        "prep_empty_title", "prep_empty_desc", "prep_study_plans_eyebrow",
+        "prep_name_label", "prep_icon_label", "prep_no_decks_available",
+        "prep_appearance_label", "prep_light_card", "prep_dark_card",
+    )
+    return {key: tr(key) for key in keys}
+
+
+def _web_palette() -> dict:
+    """Resolve Prep Station directly from Onigiri's active theme settings."""
+    dark = _is_dark_mode()
+    mode = "dark" if dark else "light"
+    conf = config.get_config_readonly()
+    defaults = config.DEFAULTS.get("colors", {}).get(mode, {})
+    colors = conf.get("colors", {}).get(mode, {})
+
+    def value(key: str, fallback: str) -> str:
+        return str(colors.get(key) or defaults.get(key) or fallback)
+
+    return {
+        "bg": value("--bg", "#161616" if dark else "#f5f5f4"),
+        "surface": value("--canvas-inset", "#242424" if dark else "#ffffff"),
+        "surface2": value("--highlight-bg", "#343434" if dark else "#f1f1f0"),
+        "border": value("--border", "#424242" if dark else "#e0e0e0"),
+        "fg": value("--fg", "#f4f4f5" if dark else "#212121"),
+        "fg2": value("--fg-subtle", "#b6b6b8" if dark else "#64655f"),
+        "fg3": value("--fg-subtle", "#7c7c80" if dark else "#92948d"),
+        "accent": value("--accent-color", "#0077C8"),
+    }
+
+
+def _web_context() -> dict:
+    system_icons, custom_icons, icon_paths = _web_icon_catalog()
+    plans = []
+    for raw in _get_plans():
+        plan = _attach_week_progress(_enrich_plan(raw))
+        plan["displayColor"] = _resolve_plan_color(plan)
+        plan["thumbnailUrl"] = _thumbnail_url(plan.get("thumbnail", ""))
+        plans.append(plan)
+    week_data = _weekly_review_data()
+    palette = _web_palette()
+    week_days = _week_days()
+    elapsed = min(7, max(1, (date.today() - week_days[0]).days + 1)) if week_days else 1
+    return {
+        "dark": _is_dark_mode(),
+        "accent": palette["accent"],
+        "palette": palette,
+        "addonBase": _addon_uri(""),
+        "plans": plans,
+        "deckNames": _get_deck_names(),
+        "deckOptions": _get_deck_options(),
+        "week": {
+            "counts": week_data["counts"],
+            "labels": week_data["labels"],
+            "series": week_data["series"],
+            "elapsed": elapsed,
+            "startsOn": _week_starts_on(),
+        },
+        "strings": _web_strings(),
+        "emojiSprites": _emoji_sprite_map(),
+        "systemIcons": system_icons,
+        "customIcons": custom_icons,
+        "iconPaths": icon_paths,
+        "quote": _motivational_phrase(),
+    }
+
+
+def _safe_json(value) -> str:
+    return json.dumps(value).replace("</", "<\\/")
+
+
+def _render_web() -> str:
+    template = _read_web_asset("prep_station.html")
+    if not template:
+        return "<html><body>Prep Station assets missing.</body></html>"
+    try:
+        from .fonts import poppins_font_face_css
+        font_css = poppins_font_face_css(mw.addonManager.addonFromModule(__name__))
+    except Exception:
+        font_css = ""
+    return template.replace("/*__PREP_FONT_FACE__*/", font_css).replace("/*__PREP_CONTEXT__*/null", _safe_json(_web_context()))
+
+
 class PrepStationDialog(QDialog):
+    """A conventional dialog shell around the fully web-based Prep Station."""
+
     def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(tr("prep_station_title"))
-        fit_dialog_to_screen(self, 1060, 720, 720, 480)
-        self.accent_color = _accent_color()
-        self.addon_path = os.path.dirname(__file__)
+        super().__init__(parent or mw)
+        self.setWindowTitle(tr("prep_station_title", "Prep Station"))
+        self.setMinimumSize(720, 540)
+        self.resize(1060, 720)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.web = AnkiWebView(self)
+        try:
+            self.web.page().setBackgroundColor(QColor(_web_palette()["bg"]))
+        except Exception:
+            pass
+        layout.addWidget(self.web)
+        self.web.set_bridge_command(self._on_bridge, self)
+        self._reload()
 
-        self.pal = palette(_is_dark_mode())
-        self.setStyleSheet(f"QDialog {{ background: {self.pal['bg']}; }}" + build_qss(self.pal))
+    def _reload(self) -> None:
+        self.web.stdHtml(_render_web())
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 18, 18, 18)
-        outer.setSpacing(16)
+    def _copy_thumbnail(self) -> None:
+        source, _ = QFileDialog.getOpenFileName(
+            self, tr("prep_choose_photo", "Choose Photo…"), "", "Images (*.png *.jpg *.jpeg *.webp *.gif *.bmp)"
+        )
+        if not source:
+            return
+        extension = os.path.splitext(source)[1].lower() or ".png"
+        filename = f"{uuid.uuid4().hex}{extension}"
+        folder = os.path.join(os.path.dirname(__file__), "user_files", PREP_THUMBNAIL_DIR)
+        try:
+            os.makedirs(folder, exist_ok=True)
+            import shutil
+            shutil.copyfile(source, os.path.join(folder, filename))
+            self.web.eval("window.prepReceivePhoto && window.prepReceivePhoto(%s);" % _safe_json({"name": filename, "url": _thumbnail_url(filename)}))
+        except Exception as exc:
+            print(f"Prep Station: thumbnail copy error: {exc}")
 
-        self.header = HeaderBar(self)
-        outer.addWidget(self.header)
-
-        self.stack = QStackedWidget()
-        outer.addWidget(self.stack, 1)
-
-        grid_page = QWidget()
-        content_row = QHBoxLayout(grid_page)
-        content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(16)
-
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        left_scroll.viewport().setAutoFillBackground(False)
-        self.cards_container = PlanCardsContainer(self.pal)
-        self.cards_container.setAutoFillBackground(False)
-        self.cards_container.orderCommitted.connect(self._reorder_plan)
-        self.cards_flow = FlowLayout(self.cards_container, margin=2, spacing=14)
-        left_scroll.setWidget(self.cards_container)
-        content_row.addWidget(left_scroll, 2)
-
-        right_scroll = QScrollArea()
-        right_scroll.setWidgetResizable(True)
-        right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        right_scroll.setFixedWidth(286)
-        right_scroll.viewport().setAutoFillBackground(False)
-        right_container = QWidget()
-        right_container.setAutoFillBackground(False)
-        right_layout = QVBoxLayout(right_container)
-        right_layout.setContentsMargins(0, 0, 4, 0)
-        right_layout.setSpacing(14)
-
-        self.calendar = MiniCalendar(self.pal)
-        right_layout.addWidget(self.calendar)
-
-        self.upcoming_card = UpcomingPlansCard(self.pal)
-        right_layout.addWidget(self.upcoming_card)
-
-        self.stat_card = StatCard(self.pal)
-        right_layout.addWidget(self.stat_card)
-
-        self.quote_card = QuoteCard(self.pal)
-        right_layout.addWidget(self.quote_card)
-
-        right_layout.addStretch(1)
-        right_scroll.setWidget(right_container)
-        content_row.addWidget(right_scroll, 0)
-
-        self.stack.addWidget(grid_page)
-
-        self.detail_view = PlanDetailView(self.addon_path, self.pal)
-        self.detail_view.backRequested.connect(self._close_plan_detail)
-        self.detail_view.editRequested.connect(self._edit_from_detail)
-        self.detail_view.deleteRequested.connect(self._delete_from_detail)
-        self.stack.addWidget(self.detail_view)
-
-        self.refresh()
-
-    def refresh(self) -> None:
-        dark = _is_dark_mode()
-        self.pal = palette(dark)
-        self.cards_container.pal = self.pal
-        plans = _get_plans()
-        enriched = [_enrich_plan(p) for p in plans]
-
-        user_name = config.get_config().get("userName", "USER")
-        color, pixmap, opacity = _resolve_header_background(dark)
-        self.header.set_background(color, pixmap, opacity)
-        self.header.set_profile(user_name, _resolve_avatar_pixmap(54))
-        counts, labels = _weekly_review_counts()
-        line_color, fill_intensity, chart_opacity = _resolve_chart_colors(dark)
-        label_color = getattr(self.header, "_chart_label_color", None) or "#9b9895"
-        if not isinstance(label_color, str):
-            label_color = label_color.name()
-        self.header.chart.set_colors(line_color, label_color, fill_intensity)
-        self.header.chart.set_opacity(chart_opacity)
-        self.header.chart.set_tooltip_palette(self.pal)
-        self.header.chart.set_number_mode(_resolve_chart_number_mode())
-        self.header.chart.set_data(counts, labels)
-
-        while self.cards_flow.count():
-            item = self.cards_flow.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        for p in enriched:
-            card = ExamCard(p, p.get("_pace") or {}, self.addon_path, self.pal)
-            card.clicked.connect(self._open_plan_detail)
-            self.cards_flow.addWidget(card)
-        add_card = AddExamCard(self.pal)
-        add_card.clicked.connect(self._open_add_modal)
-        self.cards_flow.addWidget(add_card)
-
-        marks = {}
-        for p in enriched:
+    def _save_from_web(self, payload: dict) -> None:
+        existing = next((p for p in _get_plans() if p.get("id") == payload.get("id")), {})
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            self.web.eval("window.prepSaveError && window.prepSaveError('name');")
+            return
+        try:
+            exam_date = date.fromisoformat(str(payload.get("exam_date") or ""))
+        except ValueError:
+            self.web.eval("window.prepSaveError && window.prepSaveError('date');")
+            return
+        valid_decks = set(_get_deck_names())
+        allowed_colors = ("color_light", "color_dark")
+        plan = {
+            "id": str(payload.get("id") or ""), "name": name,
+            "icon": str(payload.get("icon") or "emoji:📚"),
+            "exam_date": exam_date.isoformat(),
+            "decks": [str(d) for d in payload.get("decks", []) if str(d) in valid_decks],
+            "notes": str(payload.get("notes") or "").strip(),
+            "thumbnail": os.path.basename(str(payload.get("thumbnail") or "")),
+            "thumbnail_opacity": max(0, min(100, int(payload.get("thumbnail_opacity", 100) or 100))),
+            "thumbnail_blur": max(0, min(100, int(payload.get("thumbnail_blur", 0) or 0))),
+            "color_only": bool(payload.get("color_only", False)),
+            "color_dynamic": bool(payload.get("color_dynamic", False)),
+        }
+        icon_color = str(payload.get("icon_color") or existing.get("icon_color") or _accent_color())
+        plan["icon_color"] = icon_color if icon_color.startswith("#") and len(icon_color) in (4, 7) else _accent_color()
+        for key in allowed_colors:
+            color = str(payload.get(key) or existing.get(key) or "")
+            plan[key] = color if color.startswith("#") and len(color) in (4, 7) else ("#1E3A8A" if key == "color_dark" else "#60A5FA")
+        _handle_save_plan(plan)
+        old_thumbnail = str(existing.get("thumbnail") or "")
+        if old_thumbnail and old_thumbnail != plan["thumbnail"]:
+            old_path = os.path.join(os.path.dirname(__file__), "user_files", PREP_THUMBNAIL_DIR, os.path.basename(old_thumbnail))
             try:
-                d = date.fromisoformat(p.get("exam_date", ""))
-                marks.setdefault(d, []).append(resolve_plan_color(p))
-            except Exception:
+                os.remove(old_path)
+            except OSError:
                 pass
-        self.calendar.set_marks(marks)
+        self._reload()
 
-        upcoming = []
-        today = date.today()
-        for p in enriched:
-            try:
-                d = date.fromisoformat(p.get("exam_date", ""))
-            except Exception:
-                continue
-            days_left = (d - today).days
-            if days_left < 0:
-                continue
-            if days_left == 0:
-                date_label = tr("prep_today_badge")
-            else:
-                date_label = tr("prep_days_left_badge").format(days_left)
-            name = p.get("name") or tr("prep_default_plan_name")
-            upcoming.append((days_left, name, date_label, resolve_plan_color(p)))
-        upcoming.sort(key=lambda x: x[0])
-        self.upcoming_card.set_items([(name, date_label, color) for _, name, date_label, color in upcoming])
-
-        total_pace = 0.0
-        active_count = 0
-        for p in enriched:
-            pace = p.get("_pace") or {}
-            req = pace.get("required_per_day")
-            if req is not None and pace.get("status") not in ("expired", "done"):
-                total_pace += req
-                active_count += 1
-        plan_word = tr("prep_plan") if active_count == 1 else tr("prep_plans")
-        self.stat_card.set_value(f"{total_pace:.0f}", tr("prep_across_active_tpl").format(active_count, plan_word))
-
-        self.quote_card.set_quote(_motivational_phrase())
-
-    def _reorder_plan(self, plan_id: str, target_index: int) -> None:
-        plans = _get_plans()
-        src_index = next((i for i, p in enumerate(plans) if p.get("id") == plan_id), None)
-        if src_index is None:
-            return
-        plan = plans.pop(src_index)
-        if target_index > src_index:
-            target_index -= 1
-        target_index = max(0, min(target_index, len(plans)))
-        if target_index == src_index:
-            return
-        plans.insert(target_index, plan)
-        _save_plans(plans)
-        self.refresh()
-
-    def _open_add_modal(self) -> None:
-        dialog = PlanEditDialog(self.addon_path, _get_deck_names(), None, self)
-        result_code = dialog.exec()
-        self.raise_()
-        self.activateWindow()
-        if result_code == QDialog.DialogCode.Accepted:
-            result = dialog.get_result()
-            if result:
-                _handle_save_plan(result)
-                self.refresh()
-
-    def _open_edit_modal(self, plan_id: str) -> None:
-        plans = _get_plans()
-        plan = next((p for p in plans if p.get("id") == plan_id), None)
-        if not plan:
-            return
-        dialog = PlanEditDialog(self.addon_path, _get_deck_names(), plan, self)
-        result_code = dialog.exec()
-        self.raise_()
-        self.activateWindow()
-        if result_code == QDialog.DialogCode.Accepted:
-            if dialog.was_delete_requested():
-                _handle_delete_plan(plan_id)
-                self.refresh()
-                return
-            result = dialog.get_result()
-            if result:
-                _handle_save_plan(result)
-                self.refresh()
-
-    def _open_plan_detail(self, plan_id: str) -> None:
-        self._detail_plan_id = plan_id
-        self._refresh_detail_view()
-        self.stack.setCurrentWidget(self.detail_view)
-
-    def _refresh_detail_view(self) -> None:
-        plan_id = getattr(self, "_detail_plan_id", "")
-        plans = _get_plans()
-        plan = next((p for p in plans if p.get("id") == plan_id), None)
-        if not plan:
-            self._close_plan_detail()
-            return
-        enriched = _enrich_plan(plan)
-        counts, labels = _weekly_review_counts_for_decks(plan.get("decks", []))
-        self.detail_view.set_plan(enriched, enriched.get("_pace") or {}, counts, labels)
-
-    def _close_plan_detail(self) -> None:
-        self.stack.setCurrentIndex(0)
-        self.refresh()
-
-    def _edit_from_detail(self, plan_id: str) -> None:
-        self._open_edit_modal(plan_id)
-        if any(p.get("id") == plan_id for p in _get_plans()):
-            self._refresh_detail_view()
-        else:
-            self._close_plan_detail()
-
-    def _delete_from_detail(self, plan_id: str) -> None:
-        if not askUser(tr("prep_confirm_delete")):
-            return
-        _handle_delete_plan(plan_id)
-        self._close_plan_detail()
-
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key.Key_Escape and self.cards_container.is_reordering():
-            self.cards_container.cancel_reorder()
-            return
-        super().keyPressEvent(event)
+    def _on_bridge(self, cmd: str) -> None:
+        try:
+            if cmd == "prep:choose_photo":
+                self._copy_thumbnail()
+            elif cmd.startswith("prep:save:"):
+                self._save_from_web(json.loads(cmd.split(":", 2)[2]))
+            elif cmd.startswith("prep:delete:"):
+                _handle_delete_plan(cmd.split(":", 2)[2])
+                self._reload()
+        except Exception as exc:
+            print(f"Prep Station: bridge error ({cmd[:40]}): {exc}")
 
     def closeEvent(self, event) -> None:
         try:
@@ -703,13 +750,13 @@ def open_prep_station(parent=None) -> None:
 
 # ─── Main menu widget (deck browser, HTML) ───────────────────────────────────
 
-def _prep_card_icon_html(addon_path: str, addon_package: str, icon_value: str, fg_color: str) -> str:
+def _prep_card_icon_html(addon_path: str, addon_package: str, icon_value: str, icon_color: str) -> str:
     """Renders a plan's icon exactly as the Qt dialog does (render_icon_pixmap
     in prep_station_ui.py): emoji sprite image, tinted system/custom SVG, or
     a plain text glyph as last resort. Keeps the widget's mini card visually
     identical to ExamCard/PlanDetailBanner instead of falling back to blank."""
     from .emoji_sprites import path_for_emoji
-    from .settings._common import system_icon_path
+    from .ui_kit.common import system_icon_path
 
     icon_value = str(icon_value or "")
     if not icon_value:
@@ -738,8 +785,16 @@ def _prep_card_icon_html(addon_path: str, addon_package: str, icon_value: str, f
         if not path:
             path = system_icon_path(icon_value)
     if path and os.path.exists(path):
-        mono_filter = "brightness(0) invert(1)" if fg_color == "#ffffff" else "brightness(0)"
-        return f'<img class="prep-card-icon prep-card-icon-mono" style="filter:{mono_filter}" src="{_rel_url(path)}">'
+        url = _rel_url(path)
+        if path.lower().endswith(".svg"):
+            safe_color = icon_color if str(icon_color).startswith("#") else "#ffffff"
+            return (
+                '<span class="prep-card-icon prep-card-icon-mono" '
+                f'style="display:inline-block;width:13px;height:13px;background:{safe_color};'
+                f'-webkit-mask:url(&quot;{url}&quot;) center/contain no-repeat;'
+                f'mask:url(&quot;{url}&quot;) center/contain no-repeat"></span>'
+            )
+        return f'<img class="prep-card-icon" src="{url}">'
     return "<span></span>"
 
 
@@ -761,6 +816,7 @@ def render_widget_html(slot_count: int = 4) -> str:
                 active_plans.append((days_left, p))
         except Exception:
             pass
+    active_plans.sort(key=lambda item: item[0])
 
     widget_title = html.escape(tr("prep_widget_title"))
     font_style = f' style="--prep-fs: {_widget_font_scale():.3f};"'
@@ -777,13 +833,16 @@ def render_widget_html(slot_count: int = 4) -> str:
     cards_html = ""
     for days_left, p in active_plans[:slot_count]:
         name = html.escape(p.get("name", tr("prep_default_exam_name")))
-        color = resolve_plan_color(p)
-        enriched = _enrich_plan(p)
+        color = _resolve_plan_color(p)
+        enriched = _attach_week_progress(_enrich_plan(p))
         pace = enriched.get("_pace") or {}
+        week = enriched.get("_week") or {}
         req = pace.get("required_per_day")
         status = pace.get("status", "")
 
-        if status == "expired":
+        if not p.get("decks"):
+            big, small = "—", tr("prep_set_date_and_decks")
+        elif status == "expired":
             big, small = "—", tr("prep_exam_has_passed")
         elif req is None:
             big, small = "—", tr("prep_set_date_and_decks")
@@ -799,10 +858,18 @@ def render_widget_html(slot_count: int = 4) -> str:
         else:
             badge_text = tr("prep_past_badge")
 
-        fg_on_band = readable_on(color)
-        icon_html = _prep_card_icon_html(addon_path, addon_package, p.get("icon", "emoji:📚"), fg_on_band)
+        fg_on_band = _readable_on(color)
+        icon_color = str(p.get("icon_color") or fg_on_band)
+        icon_html = _prep_card_icon_html(addon_path, addon_package, p.get("icon", "emoji:📚"), icon_color)
 
-        progress_html = ""
+        reviewed = int(week.get("reviewed") or 0)
+        weekly_target = int(week.get("target") or 0)
+        percentage = min(100, max(0, round(float(week.get("ratio") or 0) * 100)))
+        progress_html = f"""
+    <div class="prep-card-progress" title="{reviewed} reviewed this week">
+      <span class="prep-card-progress-track"><i class="prep-card-progress-fill" style="width:{percentage}%;background:{color}"></i></span>
+      <span class="prep-card-progress-label">{reviewed}/{weekly_target}</span>
+    </div>"""
 
         cards_html += f"""
 <div class="prep-plan-card" onclick="event.stopPropagation(); pycmd('openPrepStation')">

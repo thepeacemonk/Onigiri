@@ -22,6 +22,13 @@ XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
 RECIPE_RUSH_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
+# The Apps Script re-syncs every shop into a sheet on each call and regularly
+# takes seconds. It is never called from the review loop any more - the fetch
+# runs in the background and the ticket that is already saved is used until the
+# answer arrives.
+RECIPE_RUSH_TIMEOUT = 15
+RECIPE_RUSH_CACHE_TTL = 600      # a ticket we got is reused for 10 minutes
+RECIPE_RUSH_FAIL_RETRY = 1800    # after a failure, wait 30 minutes before asking again
 
 
 
@@ -205,7 +212,7 @@ SHOPS = {
         "name": "onigilab_name",
         "price": 1300,
         "theme": "#3FA796",
-        "image": None,
+        "image": "shops/onigi_lab.webp",
         "description": "onigilab_desc"
     },
     "paws_whiskers": {
@@ -272,6 +279,7 @@ class NookLevelManager:
         self._addon_package: str | None = None
         self._daily_target_cache: Dict[str, Any] = {}
         self._recipe_rush_ticket_cache: Dict[str, Any] = {}
+        self._recipe_rush_fetch_inflight: bool = False
         self._last_recipe_rush_error: str = ""
         self._last_daily_sync_time: float = 0
         self._cached_daily_count: int = -1
@@ -330,7 +338,7 @@ class NookLevelManager:
             "level": 0,
             "migrated": True
         }
-        self._update_gamification_data(updates)
+        self._update_gamification_data(updates, immediate=True)
         
         # Force Anki to mark the collection as modified so it saves
         if mw and mw.col:
@@ -342,7 +350,7 @@ class NookLevelManager:
 
     def reset_coins(self) -> None:
         """Reset Taiyaki Coins to 0."""
-        self._update_gamification_data({"taiyaki_coins": 0})
+        self._update_gamification_data({"taiyaki_coins": 0}, immediate=True)
 
 
     def reset_purchases(self) -> None:
@@ -350,29 +358,29 @@ class NookLevelManager:
         self._update_gamification_data({
             "owned_items": ["default"],
             "current_theme_id": "default"
-        })
+        }, immediate=True)
 
 
 
 
     def set_enabled(self, enabled: bool) -> None:
-        self._update_gamification_data({"enabled": bool(enabled)})
+        self._update_gamification_data({"enabled": bool(enabled)}, immediate=True)
 
     def set_notifications_enabled(self, enabled: bool) -> None:
-        self._update_gamification_data({"notifications_enabled": bool(enabled)})
+        self._update_gamification_data({"notifications_enabled": bool(enabled)}, immediate=True)
 
     def set_profile_bar_visibility(self, show: bool) -> None:
-        self._update_gamification_data({"show_profile_bar_progress": bool(show)})
+        self._update_gamification_data({"show_profile_bar_progress": bool(show)}, immediate=True)
 
     def set_profile_page_visibility(self, show: bool) -> None:
-        self._update_gamification_data({"show_profile_page_progress": bool(show)})
+        self._update_gamification_data({"show_profile_page_progress": bool(show)}, immediate=True)
 
     def set_restaurant_name(self, name: str) -> None:
         """Set the custom name for the restaurant."""
-        self._update_gamification_data({"name": str(name)})
+        self._update_gamification_data({"name": str(name)}, immediate=True)
 
     def get_progress(self) -> LevelProgress:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         # Check top level first
         restaurant_conf = conf.get("restaurant_level", {})
         
@@ -440,6 +448,10 @@ class NookLevelManager:
         total_xp = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
         # level = int(game_state.get("level", restaurant_conf.get("level", 0)))
         name = game_state.get("name", restaurant_conf.get("name", "Nook Level"))
+        # The original name is stored in existing profiles as an English
+        # default.  Keep user-renamed Nooks intact, but localize that default.
+        if name == "Nook Level":
+            name = tr("restaurant_level_title", "Nook Level")
 
         # Recalculate level from XP to be safe
         calc_level, xp_into_level, xp_to_next = self._collapse_xp(total_xp)
@@ -476,7 +488,7 @@ class NookLevelManager:
             "xpToNextLevel": xp_to_next,
             "xpRemaining": remaining,
             "progressFraction": percent,
-            "notificationsEnabled": progress.notifications_enabled and not bool(config.get_config().get("focusedGaming", False)),
+            "notificationsEnabled": progress.notifications_enabled and not bool(config.get_config().get("onigiri_reviewer_silent_notifications", False)),
             "showProfileBar": progress.show_profile_bar_progress,
             "showProfilePage": progress.show_profile_page_progress,
             "phrase": self._get_motivational_phrase(progress.level),
@@ -671,17 +683,43 @@ class NookLevelManager:
             "source": str(ticket.get("source") or "apps_script"),
         }
 
-    def _fetch_recipe_rush_ticket(self, today: str, restaurant_id: str) -> Optional[Dict[str, Any]]:
-        cache = self._recipe_rush_ticket_cache
-        if (
-            cache.get("date") == today
-            and cache.get("restaurant_id") == restaurant_id
-            and time.time() - float(cache.get("checked_at", 0) or 0) < 600
-        ):
-            return cache.get("ticket")
+    def _fetch_recipe_rush_ticket(
+        self, today: str, restaurant_id: str, blocking: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """Today's Rush ticket for ``restaurant_id``.
 
-        conf, restaurant_conf = self._config_bundle()
-        payload = {
+        Called from the answer hook, so it must never touch the network: a
+        request to the Apps Script takes seconds and used to freeze the card
+        being answered. Unless ``blocking`` is set (the manual "resync now"
+        button), a stale/missing ticket only schedules a background fetch and
+        whatever is cached is returned straight away.
+        """
+        cache = self._recipe_rush_ticket_cache
+        cache_matches = (
+            cache.get("date") == today and cache.get("restaurant_id") == restaurant_id
+        )
+        if cache_matches:
+            age = time.time() - float(cache.get("checked_at", 0) or 0)
+            # Hold on to a failure longer than a success so an unreachable
+            # server cannot turn into a request per screen change.
+            ttl = RECIPE_RUSH_CACHE_TTL if cache.get("ticket") else RECIPE_RUSH_FAIL_RETRY
+            if age < ttl:
+                return cache.get("ticket")
+
+        if not blocking:
+            self._schedule_recipe_rush_fetch(today, restaurant_id)
+            return cache.get("ticket") if cache_matches else None
+
+        ticket = self._ticket_from_response(
+            self._request_recipe_rush(self._recipe_rush_payload(today, restaurant_id))
+        )
+        self._store_recipe_rush_ticket(today, restaurant_id, ticket)
+        return ticket
+
+    def _recipe_rush_payload(self, today: str, restaurant_id: str) -> Dict[str, Any]:
+        """Build the request body. Runs on the main thread - it reads config."""
+        restaurant_conf = self._restaurant_conf_readonly()
+        return {
             "action": "recipeRushToday",
             "anki_day": today,
             "restaurant_id": restaurant_id,
@@ -689,30 +727,114 @@ class NookLevelManager:
             "restaurants": self._recipe_rush_restaurants_payload(),
         }
 
+    @staticmethod
+    def _request_recipe_rush(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """The network call itself. Safe to run on a worker thread."""
         try:
-            # The script syncs every restaurant/evolution/shop into a sheet on each call,
-            # which can take a few seconds - a short timeout here causes spurious failures.
-            response = requests.post(RECIPE_RUSH_API_URL, json=payload, timeout=15)
+            response = requests.post(
+                RECIPE_RUSH_API_URL, json=payload, timeout=RECIPE_RUSH_TIMEOUT
+            )
             response.raise_for_status()
             data = response.json()
-            if str(data.get("result", "")).lower() != "success":
-                ticket = None
-                self._last_recipe_rush_error = str(data.get("message") or "Apps Script returned an error.")
-            else:
-                ticket = self._normalize_recipe_rush_ticket(data)
-                self._last_recipe_rush_error = ""
+            return data if isinstance(data, dict) else {"__error__": "Malformed response."}
         except Exception as exc:
-            print(f"Onigiri: Nook Rush server unavailable: {exc}")
-            ticket = None
-            self._last_recipe_rush_error = str(exc)
+            return {"__error__": str(exc)}
 
+    def _ticket_from_response(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Turn a raw response into a ticket, recording why it failed."""
+        if not isinstance(data, dict):
+            self._last_recipe_rush_error = "Malformed response."
+            return None
+        error = data.get("__error__")
+        if error:
+            print(f"Onigiri: Nook Rush server unavailable: {error}")
+            self._last_recipe_rush_error = str(error)
+            return None
+        if str(data.get("result", "")).lower() != "success":
+            self._last_recipe_rush_error = str(
+                data.get("message") or "Apps Script returned an error."
+            )
+            return None
+        self._last_recipe_rush_error = ""
+        return self._normalize_recipe_rush_ticket(data)
+
+    def _store_recipe_rush_ticket(
+        self, today: str, restaurant_id: str, ticket: Optional[Dict[str, Any]]
+    ) -> None:
         self._recipe_rush_ticket_cache = {
             "date": today,
             "restaurant_id": restaurant_id,
             "checked_at": time.time(),
             "ticket": ticket,
         }
-        return ticket
+
+    def _schedule_recipe_rush_fetch(self, today: str, restaurant_id: str) -> None:
+        """Ask the Apps Script for a ticket without blocking the UI."""
+        if self._recipe_rush_fetch_inflight:
+            return
+
+        try:
+            payload = self._recipe_rush_payload(today, restaurant_id)
+        except Exception as exc:
+            print(f"Onigiri: could not build Nook Rush request: {exc}")
+            return
+
+        request = self._request_recipe_rush
+
+        def work() -> Dict[str, Any]:
+            return request(payload)
+
+        def done(future: Any) -> None:
+            self._recipe_rush_fetch_inflight = False
+            try:
+                data = future.result()
+            except Exception as exc:
+                data = {"__error__": str(exc)}
+            ticket = self._ticket_from_response(data)
+            self._store_recipe_rush_ticket(today, restaurant_id, ticket)
+            if ticket:
+                self._apply_fetched_recipe_rush_ticket(today, ticket)
+
+        self._recipe_rush_fetch_inflight = True
+        try:
+            mw.taskman.run_in_background(work, done)
+        except Exception as exc:
+            self._recipe_rush_fetch_inflight = False
+            print(f"Onigiri: could not start Nook Rush fetch: {exc}")
+
+    def _apply_fetched_recipe_rush_ticket(self, today: str, ticket: Dict[str, Any]) -> None:
+        """Install a ticket that arrived from the background fetch."""
+        state = self._get_gamification_state()
+        daily_special_state = state.get("daily_special", {})
+        daily_special = dict(daily_special_state) if isinstance(daily_special_state, dict) else {}
+
+        # "enabled" is a setting, not part of the saved Rush state, so it has
+        # to be read from the config the way _add_xp does.
+        conf = config.get_config_readonly()
+        daily_special_conf = conf.get("daily_special", {})
+        if not daily_special_conf and isinstance(conf.get("achievements"), dict):
+            daily_special_conf = conf["achievements"].get("daily_special", {})
+        if not daily_special_conf.get("enabled", False):
+            return
+        daily_special["enabled"] = True
+
+        new_target = int(ticket.get("target", 0) or 0)
+        if not new_target:
+            return
+
+        already_current = (
+            daily_special.get("last_updated") == today
+            and daily_special.get("source") not in (None, "", "fallback")
+            and daily_special.get("recipe_id") == ticket.get("recipe_id")
+        )
+        if already_current:
+            return
+
+        daily_special["last_updated"] = today
+        daily_special["current_progress"] = daily_special.get("current_progress", 0)
+        self._apply_recipe_rush_ticket_data(daily_special, ticket, new_target, today)
+        self._update_gamification_daily_special(daily_special)
+        self.invalidate_daily_cache()
 
     def _recipe_rush_stage(self, daily_special: Dict[str, Any]) -> str:
         if daily_special.get("completed"):
@@ -829,16 +951,25 @@ class NookLevelManager:
             or target == 100
             or daily_special.get("mode") != "recipe_rush"
             or daily_special.get("restaurant_id") != self.get_current_theme_id()
+            or daily_special.get("source") == "fallback"
         ):
+            # Non-blocking: returns the cached ticket and asks the Apps Script
+            # in the background when the cache is stale.
             recipe_data = self._get_daily_special_data()
             new_target = int(recipe_data.get("target", 0) or 0) if recipe_data else 0
             
-            # Fallback if calculation fails (e.g. JS file not found)
             if not new_target:
-                # Apps Script unreachable: keep the daily counter alive with a
-                # generic target/name instead of duplicating its recipe content here.
-                random.seed(today)
-                new_target = random.randint(50, 150)
+                if needs_reset or target == 100 or not daily_special.get("target"):
+                    # Nothing usable yet: keep the daily counter alive with a
+                    # generic target/name instead of duplicating the Apps
+                    # Script's recipe content here. The background fetch
+                    # replaces it as soon as a real ticket arrives.
+                    random.seed(today)
+                    new_target = random.randint(50, 150)
+                else:
+                    # Already running on a fallback ticket for today - leave it
+                    # alone rather than rewriting the same state on every card.
+                    return needs_reset
 
             if new_target:
                 self._apply_recipe_rush_ticket_data(daily_special, recipe_data, new_target, today)
@@ -865,11 +996,15 @@ class NookLevelManager:
         daily_special["delivery_cards"] = (recipe_data or {}).get("delivery_cards", max(1, int(new_target * 0.1)))
         daily_special["preparation"] = (recipe_data or {}).get("preparation", "")
         daily_special["delivery"] = (recipe_data or {}).get("delivery", "")
-        # Only lock in restaurant_id when we got a real ticket. If the Apps
-        # Script call failed/returned no recipe, leave it mismatched so the
-        # next check keeps retrying instead of being stuck on the generic
-        # fallback for the rest of the day.
-        daily_special["restaurant_id"] = recipe_data.get("restaurant_id", self.get_current_theme_id()) if recipe_data else ""
+        # restaurant_id always reflects the equipped Nook/shop. A missing
+        # ticket is marked through "source" below instead of by blanking this,
+        # which used to make every answered card re-enter the fetch path.
+        daily_special["restaurant_id"] = (
+            recipe_data.get("restaurant_id", self.get_current_theme_id())
+            if recipe_data
+            else self.get_current_theme_id()
+        )
+        daily_special["source"] = (recipe_data or {}).get("source") or "fallback"
         daily_special["restaurant_name"] = (recipe_data or {}).get("restaurant_name", "")
         daily_special["rush_name"] = (recipe_data or {}).get("rush_name") or tr("recipe_rush_title", "Nook Rush")
         daily_special["ingredients_label"] = (recipe_data or {}).get("ingredients_label", "")
@@ -894,7 +1029,7 @@ class NookLevelManager:
         daily_special_state = state.get("daily_special", {})
         daily_special = dict(daily_special_state) if isinstance(daily_special_state, dict) else {}
 
-        recipe_data = self._get_daily_special_data()
+        recipe_data = self._get_daily_special_data(blocking=True)
         new_target = int(recipe_data.get("target", 0) or 0) if recipe_data else 0
         if not new_target:
             reason = self._last_recipe_rush_error or "Unknown error."
@@ -1042,14 +1177,39 @@ class NookLevelManager:
         # Ensure default is always owned
         if "default" not in owned:
             owned.append("default")
+
+        # Focus Dango and Motivated Mochi are Settings rewards, never coin
+        # purchases.  Keep their entitlement in the one store payload used by
+        # both WebUI pages.
+        conf = config.get_config()
+        focus_enabled = bool(conf.get("achievements", {}).get("focusDango", {}).get("enabled", False))
+        mochi_enabled = bool(conf.get("mochi_messages", {}).get("enabled", False))
+        for item_id, enabled in (("focus_dango", focus_enabled), ("motivated_mochi", mochi_enabled)):
+            if enabled and item_id not in owned:
+                owned.append(item_id)
+            elif not enabled and item_id in owned:
+                owned.remove(item_id)
+
+        # The old store adjusted prices by the selected Nook difficulty.  Do
+        # that at the manager boundary so the displayed price and charged price
+        # cannot drift apart between clients.
+        difficulty = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
+        multiplier = 4 if difficulty == "Chef" else 2 if difficulty == "Cook" else 1
+        restaurants = get_localized_restaurants()
+        evolutions = get_localized_evolutions()
+        shops = get_localized_shops()
+        for group in (restaurants, evolutions, shops):
+            for item in group.values():
+                if isinstance(item.get("price"), int):
+                    item["price"] *= multiplier
             
         return {
             "coins": coins,
             "owned_items": owned,
             "current_theme_id": current,
-            "restaurants": get_localized_restaurants(),
-            "evolutions": get_localized_evolutions(),
-            "shops": get_localized_shops()
+            "restaurants": restaurants,
+            "evolutions": evolutions,
+            "shops": shops
         }
 
     def refresh_state(self) -> None:
@@ -1083,8 +1243,27 @@ class NookLevelManager:
         item = RESTAURANTS.get(item_id) or EVOLUTIONS.get(item_id) or SHOPS.get(item_id)
         if not item:
             return False, "Item not found."
-            
-        price = item["price"]
+
+        if item_id in {"focus_dango", "motivated_mochi"}:
+            return False, "This Nook is unlocked from its matching setting."
+
+        prerequisites = {
+            "restaurant_evo_ii": "restaurant_evo_i",
+            "restaurant_evo_iii": "restaurant_evo_ii",
+            "restaurant_evo_iv": "restaurant_evo_iii",
+            "restaurant_evo_legendary": "restaurant_evo_iv",
+            "restaurant_evo_garden": "restaurant_evo_legendary",
+            "restaurant_evo_heaven": "restaurant_evo_garden",
+            "restaurant_evo_paradise": "restaurant_evo_heaven",
+        }
+        prerequisite = prerequisites.get(item_id)
+        if prerequisite and prerequisite not in owned:
+            return False, "Buy the previous Sushi Evolution first."
+
+        conf = config.get_config()
+        difficulty = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
+        multiplier = 4 if difficulty == "Chef" else 2 if difficulty == "Cook" else 1
+        price = int(item["price"]) * multiplier
         if coins < price:
             return False, "Not enough Taiyaki Coins."
             
@@ -1094,25 +1273,26 @@ class NookLevelManager:
         # Add to owned
         owned.append(item_id)
             
-        # Update gamification.json directly
+        # Update gamification.json directly (a purchase is written through,
+        # never left sitting in the queued-write buffer)
         self._update_gamification_data({
             "owned_items": owned, 
             "taiyaki_coins": new_coins
-        })
+        }, immediate=True)
         
         return True, "Purchase successful!"
 
     def equip_item(self, item_id: str) -> Tuple[bool, str]:
         """Equip a restaurant theme."""
-        # Read owned items from Source of Truth
-        state = self._get_gamification_state()
-        owned = state.get("owned_items", ["default"])
+        # Include Settings-granted themes (Focus Dango / Motivated Mochi) in
+        # addition to the persisted coin-purchase inventory.
+        owned = self.get_store_data().get("owned_items", ["default"])
         
         if item_id != "default" and item_id not in owned:
             return False, "Item not owned."
             
         # Sync to json
-        self._update_gamification_data({"current_theme_id": item_id})
+        self._update_gamification_data({"current_theme_id": item_id}, immediate=True)
         
         return True, "Theme equipped!"
 
@@ -1167,12 +1347,9 @@ class NookLevelManager:
         self._xp_history.append(xp)
         notifications = self.add_review_xp(xp, count=1)
         self._dispatch_notifications(notifications)
-        try:
-            from .. import patcher
-            if hasattr(patcher, "update_reviewer_chip"):
-                patcher.update_reviewer_chip()
-        except Exception:
-            pass
+        # The reviewer chip is refreshed by patcher.on_reviewer_did_answer_card,
+        # which is registered on the same hook - doing it here as well meant
+        # building the chip and evaluating JS twice per answered card.
 
     def on_state_did_undo(self, changes: Any = None) -> None:
         """Hook handler for undoing a review (state_did_undo)."""
@@ -1212,12 +1389,12 @@ class NookLevelManager:
         if notifications is None:
              notifications = []
         
-        # Suppress popup notifications when Focused Gaming is active
-        # OR when the user has explicitly disabled Nook Level notifications
-        conf = config.get_config()
-        focused_gaming = conf.get("focusedGaming", False)
+        # Suppress popup notifications while Silent mode is on OR when the
+        # user has explicitly disabled Nook Level notifications
+        conf = config.get_config_readonly()
+        silent_mode = conf.get("onigiri_reviewer_silent_notifications", False)
         restaurant_notifications_on = conf.get("restaurant_level", {}).get("notifications_enabled", True)
-        if focused_gaming or not restaurant_notifications_on:
+        if silent_mode or not restaurant_notifications_on:
             notifications = []
         
         # Always fetch latest progress to update UI, even if no notifications are present
@@ -1482,7 +1659,7 @@ class NookLevelManager:
                 'type': 'error'
             }]
 
-    def _get_daily_special_data(self) -> Optional[Dict[str, Any]]:
+    def _get_daily_special_data(self, blocking: bool = False) -> Optional[Dict[str, Any]]:
         """
         Return today's Nook Rush ticket from the Apps Script.
 
@@ -1493,16 +1670,16 @@ class NookLevelManager:
         """
         today = self._get_anki_today_date()
         current_restaurant_id = self.get_current_theme_id()
-        return self._fetch_recipe_rush_ticket(today, current_restaurant_id)
+        return self._fetch_recipe_rush_ticket(today, current_restaurant_id, blocking=blocking)
 
-    def _update_gamification_data(self, updates: Dict[str, Any]) -> None:
+    def _update_gamification_data(self, updates: Dict[str, Any], immediate: bool = False) -> None:
         """Update the gamification data via manager."""
         # Fix: Automatically update security token if coins are changed
         if "taiyaki_coins" in updates:
             # We don't generate security token anymore
             pass
             
-        self._gamification_manager.update_restaurant_data(updates)
+        self._gamification_manager.update_restaurant_data(updates, immediate=immediate)
 
     def _update_gamification_daily_special(self, daily_special: Dict[str, Any]) -> None:
         """Update daily special state via manager."""
@@ -1546,7 +1723,8 @@ class NookLevelManager:
             return []
 
 
-        conf, restaurant_conf = self._config_bundle()
+        conf = config.get_config_readonly()
+        restaurant_conf = self._restaurant_conf_readonly()
         if not restaurant_conf.get("enabled", False):
             print("Onigiri: Nook Level disabled in config, not awarding XP.")
             return []
@@ -1577,9 +1755,8 @@ class NookLevelManager:
                 coins_gained += lvl * 5
             new_coins = current_coins + coins_gained
             
-            # Remove coins from config if present
-            if "taiyaki_coins" in restaurant_conf:
-                del restaurant_conf["taiyaki_coins"]
+            # Coins live in gamification.json only; nothing to strip from the
+            # settings copy here (this config is read-only and never saved).
                 
             notifications.append({
                 "id": "taiyaki_coins_gained",
@@ -1704,8 +1881,7 @@ class NookLevelManager:
         return notifications
     
     def _get_difficulty_multiplier(self) -> int:
-        conf, restaurant_conf = self._config_bundle()
-        diff = restaurant_conf.get("difficulty", "Apprendice")
+        diff = self._restaurant_conf_readonly().get("difficulty", "Apprendice")
         if diff == "Cook": return 2
         if diff == "Chef": return 4
         return 1
@@ -1724,13 +1900,33 @@ class NookLevelManager:
         """
         level = 0
         xp_needed = 0
+        # The multiplier is constant for the whole walk; reading it per level
+        # made this loop cost one config lookup per level the user has.
+        multiplier = self._get_difficulty_multiplier()
         
         while True:
-            xp_for_next = self._xp_for_next(level)
+            xp_for_next = 50 * (2 * level + 1) * multiplier
             if total_xp < xp_needed + xp_for_next:
                 return level, total_xp - xp_needed, xp_for_next
             xp_needed += xp_for_next
             level += 1
+
+    def _restaurant_conf_readonly(self) -> Dict[str, Any]:
+        """Nook Level settings for read-only callers, with defaults filled in.
+
+        get_config() deep-copies the whole settings file on every call, which
+        the answer hook was paying dozens of times per card. This reads the
+        shared cached config instead and never hands out a dict the caller may
+        mutate - the returned mapping is a small merge, not the live config.
+        """
+        conf = config.get_config_readonly()
+        restaurant_conf = conf.get("restaurant_level")
+        if not restaurant_conf and isinstance(conf.get("achievements"), dict):
+            restaurant_conf = conf["achievements"].get("restaurant_level")
+        merged = dict(config.DEFAULTS.get("restaurant_level", {}))
+        if isinstance(restaurant_conf, dict):
+            merged.update(restaurant_conf)
+        return merged
 
     def _config_bundle(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         conf = config.get_config()
@@ -1947,7 +2143,9 @@ def get_chip_style_values(
     is_dark: Optional[bool] = None,
 ) -> Dict[str, str]:
     if conf is None:
-        conf = config.get_config()
+        # Read-only: this runs on the reviewer chip refresh after every
+        # answered card, where a full config deep-copy is pure overhead.
+        conf = config.get_config_readonly()
     if is_dark is None:
         is_dark = config.effective_night_mode(conf)
 

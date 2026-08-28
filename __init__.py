@@ -1,7 +1,20 @@
 import os
 import sys
 import json
+import signal
 sys.dont_write_bytecode = True
+
+# Anki is a GUI host, so add-on diagnostics must never be able to terminate the
+# process when stdout/stderr or another inherited pipe has lost its reader.
+# macOS recorded the deck-navigation exits as signal 13 (SIGPIPE), with no
+# crash report.  Python normally ignores SIGPIPE, but the embedded application
+# can inherit/reset the native disposition before add-ons are imported.
+if hasattr(signal, "SIGPIPE"):
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+    except (OSError, RuntimeError, ValueError):
+        pass
+
 from aqt import mw, gui_hooks
 from aqt.deckbrowser import DeckBrowser
 from . import onigiri_renderer
@@ -11,6 +24,7 @@ from aqt.toolbar import Toolbar, BottomBar
 from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
 from . import patcher
 from . import config
+from . import safe_storage
 from . import menu_buttons
 from . import webview_handlers
 from .decks import tree_updater as deck_tree_updater
@@ -19,6 +33,7 @@ from .api import sidebar as sidebar_api
 from .api import bento as bento_api
 from . import fsrs_helper_integration
 from . import learner_stats_widget
+from . import mac_titlebar
 from .sync import onigiri_sync
 
 addon_path = os.path.dirname(__file__)
@@ -106,7 +121,10 @@ def quiet_state_change_css() -> str:
 def versioned_web_asset(filename: str) -> str:
     """URL for a file in web/, cache-busted by its mtime."""
     try:
-        version = int(os.path.getmtime(os.path.join(addon_path, "web", filename)))
+        # Keep sub-second precision: several quick CSS/JS edits can otherwise
+        # share the same integer-second URL and Chromium will reuse the stale
+        # stylesheet, making a freshly applied visual fix appear ineffective.
+        version = os.stat(os.path.join(addon_path, "web", filename)).st_mtime_ns
         return f"{web_assets_root}/{filename}?v={version}"
     except OSError:
         return f"{web_assets_root}/{filename}"
@@ -125,7 +143,7 @@ def stylesheet_link(filename: str) -> str:
 
 
 def inject_menu_files(web_content, context):
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     should_hide = conf.get("hideNativeHeaderAndBottomBar", False)
     is_deck_browser = isinstance(context, DeckBrowser)
     is_reviewer = isinstance(context, Reviewer)
@@ -133,8 +151,6 @@ def inject_menu_files(web_content, context):
     is_top_toolbar = isinstance(context, Toolbar)
     is_bottom_toolbar = isinstance(context, BottomBar)
     is_reviewer_bottom_bar = type(context).__name__ == "ReviewerBottomBar"
-    if is_overview:
-        patcher.ensure_synapsepro_overview_bridge_hook()
     # Inject global Onigiri CSS only for deck browser and overview.
     # The reviewer card webview owns Anki's question/answer element; Onigiri
     # must not inject CSS, JS, or DOM there so card templates remain untouched.
@@ -209,6 +225,50 @@ def inject_menu_files(web_content, context):
             </script>
             """
     if is_deck_browser:
+        # Some embedded dashboard add-ons create off-DOM WebGL canvases. Qt's
+        # shared main webview can retain those contexts across repeated
+        # DeckBrowser -> Overview page replacements unless they are explicitly
+        # lost, eventually terminating the renderer (and, on macOS, Anki).
+        # Install this before external web assets execute so every context is
+        # tracked without requiring changes to the other add-on.
+        graphics_lifecycle_script = """
+        <script id="onigiri-webgl-context-lifecycle">
+        (function () {
+            if (window.__onigiriWebGLTrackerInstalled) return;
+            window.__onigiriWebGLTrackerInstalled = true;
+
+            const originalGetContext = HTMLCanvasElement.prototype.getContext;
+            const trackedContexts = new Set();
+            HTMLCanvasElement.prototype.getContext = function (kind, ...args) {
+                const context = originalGetContext.call(this, kind, ...args);
+                if (context && /^(webgl|webgl2|experimental-webgl)$/i.test(String(kind))) {
+                    trackedContexts.add(context);
+                }
+                return context;
+            };
+
+            window.__onigiriReleasePageGraphics = function () {
+                trackedContexts.forEach(function (context) {
+                    try {
+                        const extension = context.getExtension('WEBGL_lose_context');
+                        if (extension) extension.loseContext();
+                    } catch (_) {}
+                });
+                trackedContexts.clear();
+
+                document.querySelectorAll('canvas').forEach(function (canvas) {
+                    try { canvas.width = 1; canvas.height = 1; } catch (_) {}
+                });
+            };
+
+            window.addEventListener('pagehide', window.__onigiriReleasePageGraphics, { once: true });
+            window.addEventListener('beforeunload', window.__onigiriReleasePageGraphics, { once: true });
+        })();
+        </script>
+        """
+        # Prepend rather than append: another add-on may already have placed a
+        # WebGL script in the head by the time our hook runs.
+        web_content.head = graphics_lifecycle_script + web_content.head
         web_content.head += stylesheet_link("menu.css")
         web_content.head += stylesheet_link("heatmap.css")
         web_content.head += stylesheet_link("learner_stats.css")
@@ -220,6 +280,8 @@ def inject_menu_files(web_content, context):
         web_content.head += patcher.generate_icon_size_css()
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += notification_duration_script(conf)
+        # Must precede the scripts below: they read window.ONIGIRI_STRINGS.
+        web_content.head += webview_handlers.webview_strings_script()
         web_content.head += f'<script src="{versioned_web_asset("injector.js")}"></script>'
         web_content.head += f'<script src="{versioned_web_asset("engine.js")}"></script>'
         web_content.head += f'<script src="{web_assets_root}/rename_modal.js"></script>'
@@ -228,9 +290,11 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/move_to_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/add_subdeck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/create_deck_dialog.js"></script>'
+        web_content.head += f'<script src="{web_assets_root}/delete_deck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
-        
+        web_content.head += mac_titlebar.inset_css("deck_browser")
+
         # Inject heatmap data for robust rendering
         if "heatmap" in conf.get("onigiriWidgetLayout", {}).get("grid", {}):
             try:
@@ -434,6 +498,7 @@ def inject_menu_files(web_content, context):
         web_content.head += top_bar_css
         web_content.head += stylesheet_link("overview.css")
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
+        web_content.head += mac_titlebar.inset_css("page")
     if is_reviewer_bottom_bar:
         patcher.apply_reviewer_bottom_bar_height(conf)
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
@@ -441,6 +506,10 @@ def inject_menu_files(web_content, context):
     elif (is_top_toolbar or is_bottom_toolbar):
         if not should_hide:
             web_content.head += patcher.generate_toolbar_background_css(addon_path)
+            if is_top_toolbar:
+                # Anki's own toolbar is still on screen; keep it clear of the
+                # traffic lights now that the page starts at the window's edge.
+                web_content.head += mac_titlebar.inset_css("toolbar")
 
 # Delegate to the webview_handlers module
 _on_webview_cmd = webview_handlers.handle_webview_cmd
@@ -459,7 +528,7 @@ def setup_shop_menu():
 def initialize_enabled_gamification_hooks():
     """Load gamification modules with answer/state hooks only when they are enabled."""
     try:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         restaurant_conf = conf.get("restaurant_level", {})
         if not restaurant_conf:
             restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
@@ -502,9 +571,16 @@ def verify_coin_integrity():
             profile_name = "default"
         gamification_file = os.path.join(addon_path, 'user_files', f'gamification_{profile_name}.json')
         if os.path.exists(gamification_file):
-            with open(gamification_file, 'r+', encoding='utf-8') as f:
-                data = json.load(f)
-                restaurant_data = data.get('restaurant_level', {})
+            # Go through safe_storage rather than a raw r+/truncate: this is the
+            # progress file, so it deserves the same atomic swap, .bak and
+            # mirror every other writer uses. A half-written file here read as
+            # "no progress" on the next launch.
+            safe_storage.flush_pending(gamification_file)
+            data = safe_storage.read_json(
+                gamification_file, default={}, label="Your Onigiri progress"
+            ) or {}
+            if data:
+                restaurant_data = data.setdefault('restaurant_level', {})
                 coins = int(restaurant_data.get('taiyaki_coins', 0))
                 security_token = restaurant_data.get('_security_token')
                 
@@ -513,17 +589,13 @@ def verify_coin_integrity():
                     print("[ONIGIRI SECURITY] Generating initial security token")
                     security_token = generate_coin_token(coins)
                     restaurant_data['_security_token'] = security_token
-                    f.seek(0)
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.truncate()
+                    safe_storage.atomic_write_json(gamification_file, data)
                 elif not verify_coin_data(coins, security_token):
                     # Tampering detected!
                     print(f"[ONIGIRI SECURITY] ⚠️ TAMPERING DETECTED! Coins: {coins}, Invalid token")
                     restaurant_data['taiyaki_coins'] = 0
                     restaurant_data['_security_token'] = generate_coin_token(0)
-                    f.seek(0)
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.truncate()
+                    safe_storage.atomic_write_json(gamification_file, data)
                     
                     # Also remove from config.json if present
                     conf = config.get_config()
@@ -564,7 +636,7 @@ def verify_coin_integrity():
 def apply_full_hide_mode():
     """Hide the menu bar on Windows and Linux if Full Hide Mode is enabled"""
     import platform
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     full_hide = conf.get("fullHideMode", False)
     
     # Only hide menu bar on Windows and Linux, not macOS
@@ -621,13 +693,13 @@ def migrate_nook_level_names():
         if profile_name:
             gam_path = os.path.join(addon_path, "user_files", f"gamification_{profile_name}.json")
             if os.path.exists(gam_path):
-                with open(gam_path, "r", encoding="utf-8") as f:
-                    gam_data = json.load(f)
+                gam_data = safe_storage.read_json(
+                    gam_path, default={}, label="Your Onigiri progress"
+                )
                 rl_state = gam_data.get("restaurant_level")
                 if isinstance(rl_state, dict) and rl_state.get("name") == "Restaurant Level":
                     rl_state["name"] = "Nook Level"
-                    with open(gam_path, "w", encoding="utf-8") as f:
-                        json.dump(gam_data, f, indent=2)
+                    safe_storage.atomic_write_json(gam_path, gam_data)
     except Exception as e:
         print(f"[Onigiri] Nook Level name migration skipped: {e}")
 
@@ -658,6 +730,11 @@ def on_profile_did_open():
 
     # Apply Full Hide Mode (hide menu bar on Windows/Linux)
     apply_full_hide_mode()
+
+    # Merge the macOS window title bar into the page (macOS only). Qt only has
+    # the native window handle once the window is on screen, so give it a beat.
+    mac_titlebar.refresh()
+    QTimer.singleShot(300, mac_titlebar.refresh)
 
     # Verify coin integrity after the initial UI has had a chance to render.
     QTimer.singleShot(1500, verify_coin_integrity)
@@ -715,7 +792,7 @@ DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
 DeckBrowser._render_deck_node = patcher._onigiri_render_deck_node
 
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     grid_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
     if "heatmap" in grid_layout:
         # Data is now injected via globals in inject_menu_files for reliability.
@@ -724,6 +801,7 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
     
     # Update sync status indicator
     update_sync_status_indicator()
+    _update_card_editing_dim_state()
 
 def update_sync_status_indicator():
     """Updates the sync status indicator in the Onigiri menu."""
@@ -738,6 +816,12 @@ def update_sync_status_indicator():
 def on_sync_will_start():
     """Called before Anki syncs - pack Onigiri data."""
     update_sync_status_indicator()
+    # Game state writes are queued off the reviewer's hot path; the zip must
+    # not pick up a stale copy of them.
+    try:
+        safe_storage.flush_pending()
+    except Exception as e:
+        print(f"[Onigiri] storage flush failed: {e}")
     if onigiri_sync.is_enabled():
         onigiri_sync.pack_user_files()
 
@@ -768,9 +852,13 @@ def on_sync_did_finish():
 
 def on_state_change(new_state, old_state):
     """Called when Anki's state changes - update sync indicator."""
-    if new_state == "overview":
-        patcher.ensure_synapsepro_overview_bridge_hook()
     update_sync_status_indicator()
+    # Leaving a screen is a natural, cheap moment to land the game-state
+    # writes that were queued while answering cards.
+    try:
+        safe_storage.flush_pending()
+    except Exception as e:
+        print(f"[Onigiri] storage flush failed: {e}")
       
 def on_deck_browser_will_show(deck_browser: DeckBrowser):
     """
@@ -790,8 +878,171 @@ def on_deck_options_shown(menu, deck_id):
     a = menu.addAction("Change Icon")
     a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
 
+def _storage_integrity_check():
+    """
+    Repairs anything that would otherwise look like "the update wiped my
+    setup": an orphaned settings file left by a profile rename, a user_files
+    folder emptied by a manual reinstall, or a half-finished Anki update.
+
+    Registered before every other profile hook so the repairs land before
+    anything reads the config.
+    """
+    try:
+        profile_name = mw.pm.name if mw.pm else None
+        messages = safe_storage.run_startup_check(profile_name)
+        # Anything restored on disk predates the cached config, so drop it.
+        config.invalidate_config_cache()
+        if messages:
+            from aqt.utils import showInfo
+
+            showInfo("\n\n".join(messages), title="Onigiri")
+    except Exception as e:
+        print(f"[Onigiri] storage integrity check failed: {e}")
+
+
+def _storage_mirror_on_close():
+    """
+    Copy the critical user_files to the backup outside addons21. Profile close
+    is the last moment the data is final, and it is the copy that survives a
+    manual reinstall or someone deleting the add-on folder.
+    """
+    try:
+        safe_storage.flush_pending()
+    except Exception as e:
+        print(f"[Onigiri] storage flush failed: {e}")
+    try:
+        safe_storage.mirror_all()
+    except Exception as e:
+        print(f"[Onigiri] storage mirror failed: {e}")
+
+
+# Card Adding / Editing Dim Effect logic
+_active_card_editors = set()
+
+def _is_card_editing_active() -> bool:
+    try:
+        from aqt import dialogs
+        for name in ("AddCards", "EditCurrent"):
+            if name in dialogs._dialogs:
+                inst = dialogs._dialogs[name][1]
+                if inst is not None:
+                    return True
+    except Exception:
+        pass
+
+    global _active_card_editors
+    valid = set()
+    for win in list(_active_card_editors):
+        try:
+            if win:
+                valid.add(win)
+        except Exception:
+            pass
+    _active_card_editors = valid
+    return len(_active_card_editors) > 0
+
+def _apply_card_editing_dim(dimmed: bool):
+    js = f"if (window.OnigiriEngine && typeof window.OnigiriEngine.setCardEditingDim === 'function') {{ window.OnigiriEngine.setCardEditingDim({'true' if dimmed else 'false'}); }} else {{ document.body.classList.toggle('is-card-editing', {'true' if dimmed else 'false'}); }}"
+    for attr in ('web',):
+        if hasattr(mw, attr) and getattr(mw, attr):
+            try:
+                getattr(mw, attr).eval(js)
+            except Exception:
+                pass
+    if hasattr(mw, 'deckBrowser') and hasattr(mw.deckBrowser, 'web') and mw.deckBrowser.web:
+        try:
+            mw.deckBrowser.web.eval(js)
+        except Exception:
+            pass
+    if hasattr(mw, 'overview') and hasattr(mw.overview, 'web') and mw.overview.web:
+        try:
+            mw.overview.web.eval(js)
+        except Exception:
+            pass
+    if hasattr(mw, 'reviewer') and hasattr(mw.reviewer, 'web') and mw.reviewer.web:
+        try:
+            mw.reviewer.web.eval(js)
+        except Exception:
+            pass
+
+def _update_card_editing_dim_state():
+    is_dimmed = _is_card_editing_active()
+    _apply_card_editing_dim(is_dimmed)
+
+def _schedule_dim_update():
+    _update_card_editing_dim_state()
+    try:
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(50, _update_card_editing_dim_state)
+        QTimer.singleShot(200, _update_card_editing_dim_state)
+    except Exception:
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(50, _update_card_editing_dim_state)
+            QTimer.singleShot(200, _update_card_editing_dim_state)
+        except Exception:
+            pass
+
+def _register_card_editor_window(win):
+    if not win or win in _active_card_editors:
+        _schedule_dim_update()
+        return
+    _active_card_editors.add(win)
+    _schedule_dim_update()
+
+    def _on_closed(*args):
+        _active_card_editors.discard(win)
+        _schedule_dim_update()
+
+    try:
+        if hasattr(win, 'destroyed'):
+            win.destroyed.connect(_on_closed)
+    except Exception:
+        pass
+
+    try:
+        if hasattr(win, 'finished'):
+            win.finished.connect(_on_closed)
+    except Exception:
+        pass
+
+    for m_name in ('closeEvent', 'reject', 'accept', 'cleanup'):
+        if hasattr(win, m_name):
+            try:
+                orig_m = getattr(win, m_name)
+                def make_wrapper(orig):
+                    def wrapper(*args, **kwargs):
+                        try:
+                            return orig(*args, **kwargs)
+                        finally:
+                            _on_closed()
+                    return wrapper
+                setattr(win, m_name, make_wrapper(orig_m))
+            except Exception:
+                pass
+
+def _on_add_cards_did_init(add_cards):
+    _register_card_editor_window(add_cards)
+
+def _on_editor_did_init(editor):
+    parent_win = None
+    if hasattr(editor, 'parentWindow') and editor.parentWindow:
+        parent_win = editor.parentWindow
+    elif hasattr(editor, 'widget') and editor.widget:
+        try:
+            parent_win = editor.widget.window()
+        except Exception:
+            pass
+    if parent_win and parent_win != mw:
+        _register_card_editor_window(parent_win)
+
+gui_hooks.add_cards_did_init.append(_on_add_cards_did_init)
+gui_hooks.editor_did_init.append(_on_editor_did_init)
+
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
+gui_hooks.profile_did_open.append(_storage_integrity_check)
+gui_hooks.profile_will_close.append(_storage_mirror_on_close)
 gui_hooks.profile_did_open.append(on_profile_did_open)
 
 def _hashi_notes_purge():

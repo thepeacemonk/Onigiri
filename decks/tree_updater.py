@@ -3,6 +3,7 @@ from aqt import mw
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
 from .. import onigiri_renderer
+from .. import config
 
 ARCHIVED_DECKS_CONF_KEY = "onigiri_archived_decks"
 SHOW_ARCHIVED_CONF_KEY = "onigiri_show_archived"
@@ -16,17 +17,25 @@ def _replace_children(nodes_collection, nodes):
         pass
 
 
-def _sort_tree_nodes(nodes, sort_mode, saved_order=None, is_top_level=True):
-    """Sort deck tree nodes in-place for fast sidebar-only refreshes."""
+def _sort_lookups(saved_order=None):
+    """Favorites and custom order, read once per tree instead of per subtree."""
     saved_order = [str(value) for value in (saved_order or [])]
+    favorites = {str(did) for did in config.get_collection_config("onigiri_favorite_decks", [])}
+    custom_order = {
+        str(did): index
+        for index, did in enumerate(saved_order or config.get_collection_config("onigiri_custom_deck_order", []))
+    }
+    return favorites, custom_order
+
+
+def _sort_tree_nodes(nodes, sort_mode, saved_order=None, is_top_level=True, lookups=None):
+    """Sort deck tree nodes in-place for fast sidebar-only refreshes."""
     if not sort_mode or sort_mode == "default":
         return list(nodes)
 
-    favorites = {str(did) for did in mw.col.conf.get("onigiri_favorite_decks", [])}
-    custom_order = {
-        str(did): index
-        for index, did in enumerate(saved_order or mw.col.conf.get("onigiri_custom_deck_order", []))
-    }
+    # The recursion sorts every subtree; without a shared lookups tuple a deck
+    # tree with 80 folders re-read both collection keys 160 times per render.
+    favorites, custom_order = lookups if lookups is not None else _sort_lookups(saved_order)
 
     def leaf_name(node):
         return node.name.split("::")[-1].lower()
@@ -49,12 +58,16 @@ def _sort_tree_nodes(nodes, sort_mode, saved_order=None, is_top_level=True):
     return sorted_nodes
 
 
-def _apply_sort_recursive(nodes_collection, sort_mode, saved_order=None, is_top_level=True):
-    sorted_nodes = _sort_tree_nodes(nodes_collection, sort_mode, saved_order, is_top_level)
+def _apply_sort_recursive(nodes_collection, sort_mode, saved_order=None, is_top_level=True, lookups=None):
+    if lookups is None and sort_mode and sort_mode != "default":
+        lookups = _sort_lookups(saved_order)
+    sorted_nodes = _sort_tree_nodes(nodes_collection, sort_mode, saved_order, is_top_level, lookups)
     _replace_children(nodes_collection, sorted_nodes)
     for node in nodes_collection:
         if node.children:
-            _apply_sort_recursive(node.children, sort_mode, saved_order, is_top_level=False)
+            _apply_sort_recursive(
+                node.children, sort_mode, saved_order, is_top_level=False, lookups=lookups
+            )
 
 
 def _prune_archived_descendants(nodes_collection, archived_ids):
@@ -104,7 +117,7 @@ def _apply_active_filters(tree_data) -> None:
     if not show_favorites_only and not show_marked_only:
         return
 
-    favorite_ids = {str(did) for did in mw.col.conf.get("onigiri_favorite_decks", [])}
+    favorite_ids = {str(did) for did in config.get_collection_config("onigiri_favorite_decks", [])}
     mark_ids = {
         str(did)
         for did, value in mw.col.conf.get("onigiri_deck_marks", {}).items()
@@ -141,7 +154,7 @@ def _apply_active_filters(tree_data) -> None:
 def _apply_tree_preferences(tree_data) -> None:
     sort_mode = mw.col.conf.get("onigiri_sort_mode", "default")
     if sort_mode != "default":
-        saved_order = [str(value) for value in mw.col.conf.get("onigiri_custom_deck_order", [])]
+        saved_order = [str(value) for value in config.get_collection_config("onigiri_custom_deck_order", [])]
         _apply_sort_recursive(tree_data.children, sort_mode, saved_order, is_top_level=True)
     apply_archive_filter(tree_data)
     _apply_active_filters(tree_data)

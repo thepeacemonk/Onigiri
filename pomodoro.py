@@ -42,6 +42,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
 
 from . import config
+from . import safe_storage
 from .onigiri_notifications import notify as tooltip
 from .prep_station_ui import WeeklyChart, render_icon_pixmap
 from .translations import current_locale, tr
@@ -484,8 +485,7 @@ def _mirror_dir():
 def _write_json_mirror(filename, data):
     try:
         path = os.path.join(_mirror_dir(), filename)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        safe_storage.atomic_write_json(path, data)
     except Exception as e:
         print(f"Pomodoro: mirror write error: {e}")
 
@@ -1025,7 +1025,7 @@ class PomodoroWidget(QDialog):
         self._drag_snapshot = None
         self._drag_snapshot_origin = None
 
-        self.setWindowTitle("Pomodoro")
+        self.setWindowTitle(tr("pomodoro_window_title"))
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -1342,14 +1342,11 @@ class PomodoroStatsDialog(QDialog):
         outer.addWidget(self.history_list, 1)
 
     def _open_settings(self):
-        from .settings import SettingsDialog
+        from . import settings_web
 
-        dialog = SettingsDialog(self.parent() or mw, _addon_root())
-        try:
-            dialog.navigate_to_page("Pomodoro")
-        except Exception:
-            pass
-        dialog.exec()
+        settings_web.open_settings(
+            "Pomodoro", parent=self.parent() or mw, addon_path=_addon_root()
+        )
 
     def _total_focus_text(self, sessions):
         total_minutes = sum(s.get("actual_minutes", 0) for s in sessions)

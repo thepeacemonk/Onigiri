@@ -31,6 +31,8 @@ from aqt.theme import theme_manager
 from PyQt6.QtCore import QByteArray, QEventLoop, QTimer, pyqtSignal
 from PyQt6.QtSvg import QSvgRenderer
 
+from .translations import tr
+
 
 FAVORITES_KEY = "onigiri_palette_favorites"
 MAX_FAVORITES = 10
@@ -316,7 +318,7 @@ class _TransparentSwatchButton(QWidget):
         self.dark = dark
         self.setFixedSize(28, 28)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Make transparent")
+        self.setToolTip(tr("make_transparent"))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -476,12 +478,6 @@ class _OnigiriPalettePopup(QFrame):
             }}
             """
         )
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 95 if self._dark else 45))
-        self.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 10)

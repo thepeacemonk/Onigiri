@@ -3,7 +3,7 @@ from aqt import mw, utils
 from aqt.qt import QDialog, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from .translations import tr
+from .translations import tr, render_html_strings
 
 class CreditsDialog(QDialog):
     """
@@ -35,6 +35,7 @@ class CreditsDialog(QDialog):
 
         # Replace placeholder
         html_content = html_content.replace("%%ADDON_PACKAGE%%", addon_package)
+        html_content = render_html_strings(html_content)
 
         self.web.stdHtml(html_content)
         self.web.set_bridge_command(self._on_bridge_cmd, self)

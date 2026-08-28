@@ -10,6 +10,13 @@
         busy: false
     };
 
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function addCleanup(fn) {
         state.cleanupFns.push(fn);
     }
@@ -419,12 +426,12 @@
         titleWrap.className = 'onigiri-create-deck-title-wrap';
         var title = document.createElement('div');
         title.className = 'onigiri-create-deck-title';
-        title.textContent = 'Create New Deck';
+        title.textContent = T('create_deck_title', 'Create New Deck');
         titleWrap.appendChild(title);
 
         var subtitle = document.createElement('div');
         subtitle.className = 'onigiri-create-deck-subtitle';
-        subtitle.textContent = 'Choose a name and optional parent deck';
+        subtitle.textContent = T('create_deck_subtitle', 'Choose a name and optional parent deck');
         titleWrap.appendChild(subtitle);
         header.appendChild(titleWrap);
 
@@ -434,7 +441,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         closeBtn.className = 'onigiri-create-deck-close';
-        closeBtn.title = 'Close';
+        closeBtn.title = T('close', 'Close');
         closeBtn.appendChild(makeIcon('cancel.svg', 'onigiri-create-deck-close-svg', 14, 'currentColor'));
         closeBtn.addEventListener('click', function () { close(false); });
         header.appendChild(closeBtn);
@@ -444,7 +451,7 @@
         nameWrap.className = 'onigiri-create-deck-name-wrap';
         var nameLabel = document.createElement('div');
         nameLabel.className = 'onigiri-create-deck-label';
-        nameLabel.textContent = 'Deck name';
+        nameLabel.textContent = T('deck_name_label', 'Deck name');
         nameWrap.appendChild(nameLabel);
 
         var inputWrap = document.createElement('div');
@@ -455,7 +462,7 @@
         input.type = 'text';
         input.autocomplete = 'off';
         input.spellcheck = false;
-        input.placeholder = 'e.g. Biology';
+        input.placeholder = T('deck_name_placeholder', 'e.g. Biology');
         input.addEventListener('input', function () {
             clearError();
         });
@@ -471,7 +478,7 @@
 
         var parentLabel = document.createElement('div');
         parentLabel.className = 'onigiri-create-deck-parent-label';
-        parentLabel.textContent = 'Parent deck';
+        parentLabel.textContent = T('parent_deck_label', 'Parent deck');
         modal.appendChild(parentLabel);
 
         var searchWrap = document.createElement('div');
@@ -481,7 +488,7 @@
         search.id = 'onigiri-create-deck-search';
         search.className = 'onigiri-create-deck-search';
         search.type = 'text';
-        search.placeholder = 'Search decks';
+        search.placeholder = T('search_decks', 'Search decks');
         search.autocomplete = 'off';
         search.spellcheck = false;
         search.addEventListener('input', applyFilter);
@@ -496,7 +503,7 @@
         var empty = document.createElement('div');
         empty.id = 'onigiri-create-deck-empty';
         empty.className = 'onigiri-create-deck-empty';
-        empty.textContent = 'No matching decks found';
+        empty.textContent = T('no_matching_decks', 'No matching decks found');
         list.appendChild(empty);
         modal.appendChild(list);
 
@@ -516,7 +523,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         cancelBtn.className = 'onigiri-create-deck-btn onigiri-create-deck-btn-secondary';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.textContent = T('cancel', 'Cancel');
         cancelBtn.addEventListener('click', function () { close(false); });
 
         var createBtn = document.createElement('span');
@@ -527,7 +534,7 @@
         createBtn.id = 'onigiri-create-deck-create';
         createBtn.className = 'onigiri-create-deck-btn onigiri-create-deck-btn-primary';
         createBtn.disabled = true;
-        createBtn.textContent = 'Create';
+        createBtn.textContent = T('create_action', 'Create');
         createBtn.addEventListener('click', submit);
 
         footer.appendChild(spacer);

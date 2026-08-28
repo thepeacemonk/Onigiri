@@ -6,6 +6,8 @@ from aqt.qt import QDialog, QVBoxLayout, Qt, QPoint, QUrl, QPixmap
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
 from aqt.webview import AnkiWebView
 from aqt.theme import theme_manager
+
+from .translations import render_html_strings
 from . import config
 
 def _use_stable_native_dialog() -> bool:
@@ -86,6 +88,7 @@ class BirthdayDialog(QDialog):
                 text_color = "#333333"
 
         # Replace placeholders
+        html_content = render_html_strings(html_content)
         html_content = html_content.replace("%%USER_NAME%%", user_name)
         html_content = html_content.replace("%%USER_AGE%%", str(user_age))
         html_content = html_content.replace("%%ACCENT_COLOR%%", accent_color)

@@ -69,6 +69,12 @@ def _hashi_notes():
     return hashi_notes
 
 
+def _is_deck_stats_widget_id(widget_id: str) -> bool:
+    """Whether an Organize tile is the original or a copied Deck Stats widget."""
+    widget_id = str(widget_id or "")
+    return widget_id == "deck_stats" or bool(re.fullmatch(r"deck_stats_[1-9]\d*", widget_id))
+
+
 def _is_deckline_hook_id(hook_id: str) -> bool:
     normalized = str(hook_id or "").lower()
     return any(marker in normalized for marker in DECKLINE_HOOK_MARKERS)
@@ -97,6 +103,30 @@ def _normalize_external_layout(external_layout: dict) -> tuple[dict, object]:
     return (dict(grid_config) if isinstance(grid_config, dict) else {}, archive_config)
 
 
+def _render_registered_bento_home(hook_id: str) -> str:
+    """Render a Bento widget that registered a home callback.
+
+    Most external widgets arrive through Anki's deck-browser hook. Bento
+    widgets may be registered after that hook list is captured, however, so
+    the callback is a stable fallback for a grid entry that is already known
+    to Onigiri. It is intentionally optional and has no effect on add-ons
+    using the traditional hook path.
+    """
+    try:
+        widgets = getattr(mw, "bento_widgets", {})
+        if not isinstance(widgets, dict):
+            return ""
+        for widget in widgets.values():
+            if not isinstance(widget, dict) or widget.get("hook_id") != hook_id:
+                continue
+            renderer = widget.get("home_render_callback")
+            if callable(renderer):
+                return str(renderer() or "")
+    except Exception as exc:
+        return f"<div style='color: red;'>Error rendering Bento widget: {html.escape(str(exc))}</div>"
+    return ""
+
+
 def process_tr_markers(html_str: str) -> str:
     """
     Finds and replaces {tr("key")} markers in HTML strings with actual translations.
@@ -120,34 +150,12 @@ class RenderData:
 
 def _col_conf_get(key, default=None):
     """Read collection config without triggering Anki 26 deprecation warnings."""
-    col = getattr(mw, "col", None)
-    if not col:
-        return default
-    try:
-        value = col.get_config(key)
-        return default if value is None else value
-    except Exception:
-        try:
-            return col.conf.get(key, default)
-        except Exception:
-            return default
+    return config.get_collection_config(key, default)
 
 
 def _col_conf_set(key, value) -> None:
     """Write collection config using the modern API when available."""
-    col = getattr(mw, "col", None)
-    if not col:
-        return
-    try:
-        col.set_config(key, value)
-        return
-    except Exception:
-        pass
-    try:
-        col.conf[key] = value
-        col.setMod()
-    except Exception:
-        pass
+    config.set_collection_config(key, value)
 
 
 # --- ADDED: Button HTML definitions ---
@@ -337,19 +345,24 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
 # --- Helper functions (copied from patcher.py for self-containment) ---
 
 def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "profile-pic") -> str:
-    try:
-        is_dark = bool(mw.pm.night_mode())
-    except Exception:
-        is_dark = False
+    is_dark = config.effective_night_mode()
     mode = _col_conf_get("modern_menu_profile_picture_mode", "image")
     dynamic = bool(_col_conf_get("modern_menu_profile_picture_dynamic_mode", True))
     theme_key = "dark" if is_dark else "light"
-    color = _col_conf_get(f"modern_menu_profile_picture_color_{theme_key}", "#B8BDC3" if is_dark else "#8CACB4")
+    color = _col_conf_get(f"modern_menu_profile_picture_color_{theme_key}", "#B8BDC3" if is_dark else "#8CACB4") if dynamic else _col_conf_get("modern_menu_profile_picture_color_light", "#8CACB4")
     if mode == "accent":
         color = "var(--accent-color)"
+    
+    blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_picture_blur", 0) or 0)))
+    style_parts = []
+    if blur:
+        style_parts.append(f"filter: blur({blur * 0.2}px)")
+
     if mode in {"accent", "custom"}:
         initial = html.escape((user_name[:1] or "U").upper(), quote=False)
-        return f'<span class="{css_class} profile-pic-generated" style="background-color: {color};">{initial}</span>'
+        style_parts.insert(0, f"background-color: {color}")
+        style_str = "; ".join(style_parts)
+        return f'<span class="{css_class} profile-pic-generated" style="{style_str}">{initial}</span>'
 
     if dynamic:
         profile_pic_filename = _col_conf_get(f"modern_menu_profile_picture_{theme_key}", "") or _col_conf_get("modern_menu_profile_picture", "")
@@ -362,11 +375,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
 
-    blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_picture_blur", 0) or 0)))
-    opacity_value = _col_conf_get("modern_menu_profile_picture_opacity", 100)
-    opacity = max(0, min(100, int(100 if opacity_value is None else opacity_value))) / 100.0
-    style = f"filter: blur({blur * 0.2}px); opacity: {opacity};" if blur or opacity < 1.0 else ""
-    style_attr = f' style="{style}"' if style else ""
+    style_attr = f' style="{"; ".join(style_parts)}"' if style_parts else ""
     return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
 
 
@@ -386,13 +395,13 @@ def _chip_color_to_css(color: str) -> str:
 def _nook_level_progress():
     """Returns (enabled, level, fraction, chip_color) for the ring/minimal
     profile fill. `chip_color` is the Level Chip's own Progress color
-    (gamification_settings.py's Nook Level > Level Chip Appearance), so the
+    (Settings > Games > Gamification > Level Chip Appearance), so the
     ring/minimal fill always matches the chip shown in the reviewer/sidebar.
     `enabled` is True only when the Nook Level minigame is on AND set to show
     profile-bar progress, matching the guards used by _get_nook_level_chip_html
     in patcher.py."""
     try:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         restaurant_conf = conf.get("restaurant_level", {})
         if not restaurant_conf:
             restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
@@ -416,9 +425,9 @@ def _nook_level_progress():
 
 def _selected_profile_level_game():
     """Which game drives the profile Level chip: 'nook' | 'onigimon' | 'hexagon'.
-    Chosen in gamification_settings.py > General > Profile Level."""
+    Chosen in Settings > Games > Gamification > Profile Level."""
     try:
-        return str(config.get_config().get("profile_level_game", "nook") or "nook").lower()
+        return str(config.get_config_readonly().get("profile_level_game", "nook") or "nook").lower()
     except Exception:
         return "nook"
 
@@ -427,7 +436,7 @@ def _shared_chip_progress_color():
     """The user's Level Chip progress color (now a shared General setting).
     Used so every game's profile level fills in the same picked color."""
     try:
-        raw = _nook_level().get_chip_style_values(config.get_config()).get("progress") or ""
+        raw = _nook_level().get_chip_style_values(config.get_config_readonly()).get("progress") or ""
         return _chip_color_to_css(raw)
     except Exception:
         return ""
@@ -461,7 +470,7 @@ def _onigimon_level_progress():
 def _hexagon_level_progress():
     """(enabled, level, fraction, color) for the Hexagon Land island level."""
     try:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         hex_conf = conf.get("hexagon_land", conf.get("hexagon_world", {}))
         if not hex_conf.get("enabled", False):
             return (False, 0, 0.0, "")
@@ -485,10 +494,12 @@ def _profile_level_progress():
     elif game == "hexagon":
         result = _hexagon_level_progress()
     else:
-        return _nook_level_progress()
+        result = _nook_level_progress()
     if not result[0]:
         return (False, 0, 0.0, "")
-    # Prefer the user's shared Level Chip progress color for a consistent look.
+    # Always use the shared Level Chip progress color, including for Nook.
+    # Every selected mini game changes the level/fraction only; none may
+    # replace the user's Profile progress-bar color.
     shared = _shared_chip_progress_color()
     if shared:
         return (result[0], result[1], result[2], shared)
@@ -497,11 +508,9 @@ def _profile_level_progress():
 
 def _profile_fill_color():
     """User-picked fallback fill color (theme-aware) used when Nook Level is off."""
-    try:
-        is_dark = bool(mw.pm.night_mode())
-    except Exception:
-        is_dark = False
-    theme_key = "dark" if is_dark else "light"
+    is_dark = config.effective_night_mode()
+    dynamic = bool(_col_conf_get("modern_menu_profile_fill_dynamic_mode", True))
+    theme_key = "dark" if (is_dark and dynamic) else "light"
     return _col_conf_get(f"modern_menu_profile_fill_color_{theme_key}", "#4f7cff") or "#4f7cff"
 
 
@@ -510,10 +519,7 @@ def _profile_panel_accent_color():
     else the same ring/minimal progress color used by build_profile_type_html."""
     profile_type = _col_conf_get("modern_menu_profile_type", "bar")
     if profile_type == "bar":
-        try:
-            is_dark = bool(mw.pm.night_mode())
-        except Exception:
-            is_dark = False
+        is_dark = config.effective_night_mode()
         theme_key = "dark" if is_dark else "light"
         return _col_conf_get(f"modern_menu_profile_name_color_{theme_key}", "#111827") or "#111827"
     enabled, _level, _fraction, theme_color = _profile_level_progress()
@@ -524,7 +530,7 @@ def _nook_level_page_progress():
     """Like _nook_level_progress but gated on show_profile_page_progress
     (the profile-panel toggle) instead of show_profile_bar_progress."""
     try:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         restaurant_conf = conf.get("restaurant_level", {})
         if not restaurant_conf.get("enabled", False):
             return (False, 0, 0.0, "")
@@ -546,7 +552,7 @@ def _nook_level_page_progress():
 
 def _hexagon_land_count():
     try:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         hex_conf = conf.get("hexagon_land", conf.get("hexagon_world", {}))
         if not hex_conf.get("enabled", False):
             return (False, 0)
@@ -746,9 +752,14 @@ def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
 
     safe_name = html.escape(str(user_name), quote=False)
     enabled, level, fraction, theme_color = _profile_level_progress()
-    fill_color = theme_color if (enabled and theme_color) else _profile_fill_color()
+    # Keep the Profile ring/minimal fill tied to the shared Level Chip
+    # progress color even while a selected mini-game is unavailable during a
+    # live settings refresh. Otherwise Hexagon Land can fall through to the
+    # generic Profile fill (#4f7cff), making the bar appear game-specific.
+    shared_color = _shared_chip_progress_color()
+    fill_color = shared_color or (theme_color if (enabled and theme_color) else _profile_fill_color())
     if not enabled:
-        fraction = 1.0  # static, full fill in the user color
+        fraction = 0.65  # static, default fill matching settings preview
 
     surface_class = f"opro-surface-{surface}"
     onclick_attr = (
@@ -756,23 +767,23 @@ def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
         if surface == "sidebar" else ""
     )
     level_html = (
-        f'<span class="opro-level">{tr("level_prefix")} {level}</span>' if enabled else ""
+        f'<span class="opro-level">{tr("level_prefix", "Lv.")} {level} · Onigiri</span>' if enabled else '<span class="opro-level">Lv. 12 · Onigiri</span>'
     )
 
     if profile_type == "ring":
         import math
-        r = 20
+        r = 21
         circ = 2 * math.pi * r
         offset = circ * (1 - fraction)
         inner = f"""
         <div class="opro-avatar-wrap">
-            <svg class="opro-ring" viewBox="0 0 44 44" aria-hidden="true">
-                <circle class="opro-ring-track" cx="22" cy="22" r="{r}"></circle>
-                <circle class="opro-ring-fill" cx="22" cy="22" r="{r}"
+            <div class="opro-avatar">{profile_pic_html}</div>
+            <svg class="opro-ring" viewBox="0 0 48 48" aria-hidden="true">
+                <circle class="opro-ring-track" cx="24" cy="24" r="{r}"></circle>
+                <circle class="opro-ring-fill" cx="24" cy="24" r="{r}"
                     stroke="{fill_color}" stroke-dasharray="{circ:.2f}"
                     stroke-dashoffset="{offset:.2f}"></circle>
             </svg>
-            <div class="opro-avatar">{profile_pic_html}</div>
         </div>
         <div class="opro-text">
             <span class="opro-name">{safe_name}</span>
@@ -781,23 +792,15 @@ def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
         """
         type_class = "ring-profile"
     else:  # minimal
-        bar_row_html = ""
-        if enabled:
-            pct = fraction * 100
-            bar_row_html = f"""
-            <div class="opro-bar-row">
-                <span class="opro-lv">{tr("level_short", "Lv")} {level}</span>
-                <div class="opro-track">
-                    <div class="opro-bar-fill" style="width: {pct:.1f}%; background: {fill_color};"></div>
-                </div>
-            </div>
-            """
+        pct = fraction * 100
         inner = f"""
-        <div class="opro-top">
-            <div class="opro-avatar">{profile_pic_html}</div>
+        <div class="opro-avatar">{profile_pic_html}</div>
+        <div class="opro-info">
             <span class="opro-name">{safe_name}</span>
+            <div class="opro-track">
+                <div class="opro-bar-fill" style="width: {pct:.1f}%; background: {fill_color};"></div>
+            </div>
         </div>
-        {bar_row_html}
         """
         type_class = "minimal-profile"
 
@@ -809,19 +812,40 @@ def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
     )
 
 
+def _profile_bg_image_name():
+    """The bar background for the current theme (see config.themed_asset)."""
+    from . import config as _config
+
+    try:
+        is_dark = bool(_config.effective_night_mode())
+    except Exception:
+        is_dark = False
+    return _config.themed_asset(
+        _col_conf_get,
+        "modern_menu_profile_bg_image",
+        is_dark,
+        dynamic_key="modern_menu_profile_bg_dynamic_mode",
+    )
+
+
 def _profile_background_render_parts(addon_package, include_default_image=True):
     container_style = ""
     layer_style = ""
     bg_mode = _col_conf_get("modern_menu_profile_bg_mode", "image")
+    dyn_bg = bool(_col_conf_get("modern_menu_profile_bg_dynamic_mode", True))
+    is_dark = config.effective_night_mode()
+    theme_key = "dark" if (is_dark and dyn_bg) else "light"
+    bg_color = _col_conf_get(f"modern_menu_profile_bg_color_{theme_key}", "#3C3C3C" if is_dark else "#EEEEEE") or ("#3C3C3C" if is_dark else "#EEEEEE")
+
     if bg_mode == "image":
-        bg_image_file = _col_conf_get("modern_menu_profile_bg_image", "")
+        bg_image_file = _profile_bg_image_name()
         if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
             bg_url = f"/_addons/{addon_package}/user_files/profile_bg/{bg_image_file}"
         elif include_default_image:
             bg_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
         else:
             bg_url = ""
-        container_style = "background-color: var(--profile-bg-custom-color); --profile-image-overlay-bg: transparent;"
+        container_style = f"background-color: {bg_color} !important; --profile-image-overlay-bg: transparent;"
         if bg_url:
             blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_bg_blur", 0) or 0)))
             opacity_value = _col_conf_get("modern_menu_profile_bg_opacity", 50)
@@ -833,9 +857,9 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
                 f"filter: blur({blur_px}px); opacity: {opacity}; transform: scale({scale});"
             )
     elif bg_mode == "custom":
-        container_style = "background-color: var(--profile-bg-custom-color);"
+        container_style = f"background-color: {bg_color} !important;"
     else:
-        container_style = "background-color: var(--accent-color);"
+        container_style = "background-color: var(--accent-color) !important;"
     return container_style, layer_style
 
 
@@ -1042,15 +1066,13 @@ def _stats_widget_smooth_path(points) -> str:
     return " ".join(parts)
 
 
-def _stats_widget_minimal_stars_shown() -> bool:
+def _stats_widget_stars_shown() -> bool:
     """Whether the Retention card draws its stars.
 
-    Expressive never does — the icon chip already carries that card's identity
-    and the oversized number needs the height — so the setting only applies to
-    the minimal design. The legacy "hideRetentionStars" switch still wins.
+    Both designs can show the row; the style-specific CSS keeps Minimal's
+    version smaller and quieter. The legacy "hideRetentionStars" switch still
+    wins.
     """
-    if _stats_widget_design() != "minimal":
-        return False
     if config.get_config_readonly().get("hideRetentionStars", False):
         return False
     return bool(_stats_widgets_style().get("show_retention_stars", True))
@@ -1075,7 +1097,7 @@ def _stats_widget_icon_url(widget_id: str) -> str:
     if not value or value.startswith("emoji:"):
         return ""
 
-    from .settings._common import system_icon_path
+    from .ui_kit.common import system_icon_path
 
     addon_path = os.path.dirname(__file__)
     if value.startswith("system:"):
@@ -1206,6 +1228,8 @@ def _stats_widget_card_html(
             # A taller card can afford a taller chart; a 1x1 keeps it slim so
             # the oversized number still has room above it.
             size_class = " has-trend" + (" is-tall" if row_span >= 2 else "")
+        if not style.get("show_wash", True):
+            size_class += " no-wash"
 
     head_html = f'<h3>{label}</h3>'
     if icon_html:
@@ -1214,7 +1238,7 @@ def _stats_widget_card_html(
     # Every minimal card reserves the star row's height, even the three that
     # have no stars, so the four numbers sit on one line instead of Retention's
     # value being pushed up by its own stars.
-    if design == "minimal" and _stats_widget_minimal_stars_shown() and not extra_body:
+    if design == "minimal" and _stats_widget_stars_shown() and not extra_body:
         extra_body = '<div class="star-rating is-placeholder" aria-hidden="true"></div>'
 
     body_html = f"""
@@ -1308,7 +1332,7 @@ def _get_onigiri_retention_html(row_span: int = 1, col_span: int = 1) -> str:
     elif total_reviews > 0: stars = 1 # Use total_reviews from scope
     else: stars = 0
     
-    if _stats_widget_minimal_stars_shown():
+    if _stats_widget_stars_shown():
         star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
         star_rating_html = f'<div class="star-rating">{star_html}</div>'
     else:
@@ -1332,7 +1356,7 @@ def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
     return f"""
     <div id='onigiri-heatmap-container'>
-        <div class="heatmap-header-skeleton"><div class="header-left-skeleton"><div class="skeleton-title"></div><div class="skeleton-nav"></div></div><div class="header-right-skeleton"><div class="skeleton-streak"></div><div class="skeleton-filters"></div></div></div>
+        <div class="heatmap-header-skeleton"><div class="header-left-skeleton"><div class="skeleton-title"></div></div><div class="header-right-skeleton"><div class="skeleton-streak"></div><div class="skeleton-nav"></div><div class="skeleton-filters"></div></div></div>
         <div class="heatmap-grid-skeleton">{skeleton_cells}</div>
     </div>"""
 
@@ -1398,7 +1422,7 @@ def _get_onigiri_favorites_html() -> str:
             # Create a clickable link
             links_html.append(
                 f"""<a class="favorite-deck-link" 
-                      href=# onclick="pycmd('open:{did_str}'); return false;"
+                      href=# onclick="return OnigiriEngine.openDeck(event, '{did_str}');"
                       title="{tr('open')} {html.escape(deck_name, quote=True)}">
                     <span class="fav-deck-icon"></span>
                     <span class="fav-deck-name">{html.escape(short_name)}</span>
@@ -1558,6 +1582,10 @@ def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int 
     if ds_enabled:
         percent = min(100, int((ds_progress / ds_target) * 100)) if ds_target > 0 else 0
         rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
+        # Older profiles persist the built-in starter Rush in English.  It is
+        # application copy rather than a user-defined title, so localize it.
+        if rush_name == "Sushi Rush":
+            rush_name = tr("default_sushi_rush", "Sushi Rush")
         ds_html = f"""
         <div class="daily-special-section">
             <div class="ds-header">
@@ -1610,7 +1638,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     """
     # Ensure hooks from other add-ons are captured just-in-time
     patcher.take_control_of_deck_browser_hook()
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     addon_package = mw.addonManager.addonFromModule(__name__)
     
     # --- Part 1: Build Onigiri Widgets Grid ---
@@ -1678,11 +1706,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
-            if widget_id in widget_generators:
+            if widget_id in widget_generators or _is_deck_stats_widget_id(widget_id):
                 pos = widget_config.get("pos", 0)
                 row_span = widget_config.get("row", 1)
                 col_span = widget_config.get("col", 1)
-                if widget_id == "deck_stats":
+                if _is_deck_stats_widget_id(widget_id):
                     try:
                         row_span = max(1, min(2, int(row_span)))
                     except (TypeError, ValueError):
@@ -1749,9 +1777,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                     except (TypeError, ValueError):
                         onigimon_col_span = 1
                     widget_html = _onigimon().render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
-                elif widget_id == "deck_stats":
+                elif _is_deck_stats_widget_id(widget_id):
                     # row_span drives the compact fallback body inside the widget.
-                    widget_html = _learner_stats_widget()._render_widget(self, "deck_stats", row_span=row_span)
+                    widget_html = _learner_stats_widget()._render_widget(
+                        self, widget_id, row_span=row_span, col_span=col_span
+                    )
                 else:
                     widget_html = widget_generators[widget_id]()
                 if not str(widget_html or "").strip():
@@ -1807,6 +1837,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                     hook_html = f"<div style='color: red;'>Error rendering stats: {e}</div>"
             else:
                 hook_html = external_widgets_data.get(hook_id)
+                if hook_html is None:
+                    hook_html = _render_registered_bento_home(hook_id)
 
             if hook_html:
                 try:
@@ -2001,10 +2033,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             gap: 6px;
-            padding: calc(10px * var(--onigiri-widget-pad-scale))
-                     calc(12px * var(--onigiri-widget-pad-scale))
-                     calc(12px * var(--onigiri-widget-pad-scale))
-                     calc(12px * var(--onigiri-widget-pad-scale));
+            padding: var(--onigiri-widget-pad);
             cursor: pointer;
             overflow: hidden;
             font-family: inherit;
@@ -2149,7 +2178,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: grid;
             grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
             gap: 14px;
-            padding: calc(14px * var(--onigiri-widget-pad-scale));
+            padding: var(--onigiri-widget-pad);
             border-radius: 18px;
             border: 1px solid var(--border, #e0e0e0);
             background: var(--canvas-inset, #ffffff);
@@ -2160,7 +2189,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
 
         .hex-land-widget.land-only {{
             display: block;
-            padding: calc(10px * var(--onigiri-widget-pad-scale));
+            padding: var(--onigiri-widget-pad);
         }}
 
         .hex-land-widget.disabled {{
@@ -2347,7 +2376,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             gap: 10px;
-            padding: calc(14px * var(--onigiri-widget-pad-scale));
+            padding: var(--onigiri-widget-pad);
             border-radius: 15px;
             border: 1px solid var(--border, #e0e0e0);
             background: var(--canvas-inset, #ffffff);
@@ -2787,10 +2816,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .rl-widget-head {{
-            padding: calc(12px * var(--onigiri-widget-pad-scale))
-                     calc(14px * var(--onigiri-widget-pad-scale))
-                     0
-                     calc(14px * var(--onigiri-widget-pad-scale));
+            padding: var(--onigiri-widget-pad) var(--onigiri-widget-pad) 0;
         }}
 
         /* The building and the level column sit below the header row; this is
@@ -2924,10 +2950,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             justify-content: center;
+            /* Only the top inset is this block's own -- it spaces the level text
+               off the head/image above it. The other three are the widget's
+               shared edge gutter. */
             padding: calc(8px * var(--onigiri-widget-pad-scale))
-                     calc(20px * var(--onigiri-widget-pad-scale))
-                     calc(15px * var(--onigiri-widget-pad-scale))
-                     calc(20px * var(--onigiri-widget-pad-scale));
+                     var(--onigiri-widget-pad)
+                     var(--onigiri-widget-pad);
             gap: 15px;
             transition: opacity 0.2s ease;
         }}
@@ -2935,9 +2963,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .onigiri-restaurant-level-widget.orientation-vertical .restaurant-info {{
             flex: 0 0 auto;
             padding: calc(6px * var(--onigiri-widget-pad-scale))
-                     calc(16px * var(--onigiri-widget-pad-scale))
-                     calc(14px * var(--onigiri-widget-pad-scale))
-                     calc(16px * var(--onigiri-widget-pad-scale));
+                     var(--onigiri-widget-pad)
+                     var(--onigiri-widget-pad);
             gap: 10px;
         }}
 
@@ -3294,7 +3321,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     bg_layer_html = f'<div class="profile-bg-layer" style="{bg_layer_style}"></div>' if bg_layer_style else ""
     if profile_bg_mode == "image":
         bg_class_str = "with-image-bg"
-        if not _col_conf_get("modern_menu_profile_bg_image", "") and _col_conf_get("modern_menu_profile_bg_dynamic_mode", True):
+        if not _profile_bg_image_name() and _col_conf_get("modern_menu_profile_bg_dynamic_mode", True):
             bg_class_str += " dynamic-default-bg"
     
     profile_pic_html_expanded = _get_profile_pic_html(user_name, addon_package)
@@ -3358,15 +3385,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             .profile-bar .restaurant-level-chip .rl-chip-progress {{
                 background: rgba({int(rl_theme_color[1:3], 16)}, {int(rl_theme_color[3:5], 16)}, {int(rl_theme_color[5:7], 16)}, 0.25) !important;
             }}
-            
+
             .night-mode .profile-bar .restaurant-level-chip .rl-chip-progress {{
                 background: rgba({int(rl_theme_color[1:3], 16)}, {int(rl_theme_color[3:5], 16)}, {int(rl_theme_color[5:7], 16)}, 0.35) !important;
             }}
-            
+
             .profile-bar .restaurant-level-chip .rl-chip-progress-fill {{
                 background: {rl_theme_color} !important;
             }}
-            
+
             .level-progress-bar {{
                 background: {rl_theme_color} !important;
             }}
@@ -3377,18 +3404,20 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     action_icons_css = _generate_action_icons_css(conf, addon_package)
     theme_css += action_icons_css
 
-    # --- ADDED: Custom profile name color (light/dark aware) ---
-    if _col_conf_get("modern_menu_profile_name_color_enabled", False):
-        name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
-        name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
-        name_dark = _col_conf_get("modern_menu_profile_name_color_dark", name_light) if name_dynamic else name_light
-        theme_css += f"""
-        <style id="profile-name-color">
-            .profile-bar .profile-name {{ color: {name_light} !important; text-shadow: none !important; }}
-            .night-mode .profile-bar .profile-name,
-            .nightMode .profile-bar .profile-name {{ color: {name_dark} !important; }}
-        </style>
-        """
+    # --- Custom profile name color (light/dark aware) ---
+    name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
+    name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
+    name_dark = _col_conf_get("modern_menu_profile_name_color_dark", "#f9fafb") if name_dynamic else name_light
+    theme_css += f"""
+    <style id="profile-name-color">
+        .profile-bar .profile-name,
+        .onigiri-profile .opro-name {{ color: {name_light} !important; text-shadow: none !important; }}
+        .night-mode .profile-bar .profile-name,
+        .nightMode .profile-bar .profile-name,
+        .night-mode .onigiri-profile .opro-name,
+        .nightMode .onigiri-profile .opro-name {{ color: {name_dark} !important; }}
+    </style>
+    """
 
     # Hide the profile on the sidebar (Sidebar Customization option). Uses CSS so
     # both the expanded bar and the collapsed-rail avatar drop out of the layout

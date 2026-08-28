@@ -7,6 +7,13 @@
         cleanupFns: []
     };
 
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function addCleanup(fn) {
         state.cleanupFns.push(fn);
     }
@@ -155,10 +162,10 @@
         footer.className = 'onigiri-add-subdeck-footer';
         var secondary = document.createElement('span');
         secondary.className = 'onigiri-add-subdeck-btn onigiri-add-subdeck-btn-secondary';
-        secondary.textContent = 'Cancel';
+        secondary.textContent = T('cancel', 'Cancel');
         var primary = document.createElement('span');
         primary.className = 'onigiri-add-subdeck-btn onigiri-add-subdeck-btn-primary';
-        primary.textContent = 'Create';
+        primary.textContent = T('create_action', 'Create');
         footer.appendChild(secondary);
         footer.appendChild(primary);
         modal.appendChild(input);
@@ -277,7 +284,7 @@
         titleWrap.className = 'onigiri-add-subdeck-title-wrap';
         var title = document.createElement('div');
         title.className = 'onigiri-add-subdeck-title';
-        title.textContent = 'Add Subdeck';
+        title.textContent = T('add_subdeck_title', 'Add Subdeck');
         titleWrap.appendChild(title);
         var subtitle = document.createElement('div');
         subtitle.className = 'onigiri-add-subdeck-subtitle';
@@ -292,7 +299,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         closeBtn.className = 'onigiri-add-subdeck-close';
-        closeBtn.title = 'Close';
+        closeBtn.title = T('close', 'Close');
         closeBtn.appendChild(makeIcon('cancel.svg', 'onigiri-add-subdeck-close-svg', 14));
         closeBtn.addEventListener('click', function () { close(false); });
         header.appendChild(closeBtn);
@@ -302,7 +309,7 @@
         body.className = 'onigiri-add-subdeck-body';
         var label = document.createElement('div');
         label.className = 'onigiri-add-subdeck-label';
-        label.textContent = 'Subdeck name';
+        label.textContent = T('subdeck_name_label', 'Subdeck name');
         body.appendChild(label);
 
         var inputWrap = document.createElement('div');
@@ -313,7 +320,7 @@
         input.type = 'text';
         input.autocomplete = 'off';
         input.spellcheck = false;
-        input.placeholder = 'e.g. Chapter 1';
+        input.placeholder = T('subdeck_name_placeholder', 'e.g. Chapter 1');
         input.addEventListener('input', function () {
             setError('');
             updateConfirmState();
@@ -348,7 +355,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         cancelBtn.className = 'onigiri-add-subdeck-btn onigiri-add-subdeck-btn-secondary';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.textContent = T('cancel', 'Cancel');
         cancelBtn.addEventListener('click', function () { close(false); });
         var createBtn = document.createElement('span');
         createBtn.setAttribute('role', 'button');
@@ -358,7 +365,7 @@
         createBtn.id = 'onigiri-add-subdeck-create';
         createBtn.className = 'onigiri-add-subdeck-btn onigiri-add-subdeck-btn-primary';
         createBtn.disabled = true;
-        createBtn.textContent = 'Create';
+        createBtn.textContent = T('create_action', 'Create');
         createBtn.addEventListener('click', submit);
 
         footer.appendChild(spacer);

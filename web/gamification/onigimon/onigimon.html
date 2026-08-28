@@ -1,0 +1,30 @@
+<main class="onigimon-app">
+  <section class="hero" data-bind="hero">
+    <div class="hero-background" data-bind="background"></div>
+    <div class="companion-stage">
+      <div class="fx-layer" aria-hidden="true"></div>
+      <img class="companion-sprite" data-bind="sprite" alt="">
+      <div class="action-item is-idle" data-bind="action-item"><img alt=""><span data-i18n-text="idle">Yawn...</span></div>
+      <p class="live-status" data-bind="message"></p>
+    </div>
+    <aside class="care-panel">
+      <div class="companion-meta"><strong data-bind="name" data-i18n-text="companion">Companion</strong><span data-bind="level">Level 1</span></div>
+      <div class="status-list" data-bind="statuses"></div>
+    </aside>
+  </section>
+  <section class="content-grid">
+    <article class="market-panel">
+      <header class="market-head"><div><img data-bind="mart" alt=""><h1 data-bind="market-title">Daily Market</h1></div><div class="wallet"><span><img data-bind="comet" alt=""><b data-bind="comets">0</b></span><span><img data-bind="star-piece" alt=""><b data-bind="stars">0</b></span><button class="redeem-btn" data-action="open-redeem">Redeem</button></div></header>
+      <button class="gift-btn" data-action="gift"></button>
+      <div class="market-grid" data-bind="market"></div>
+    </article>
+    <aside class="backpack-panel">
+      <header><img data-bind="backpack" alt=""><h2 data-bind="backpack-title">Backpack</h2></header>
+      <div class="selected-status" data-bind="selected-status"></div>
+      <div class="backpack-grid" data-bind="backpack"></div>
+    </aside>
+  </section>
+  <div class="modal" data-bind="redeem-modal" aria-hidden="true"><form class="modal-card" data-action="redeem-form"><button class="close-btn" type="button" data-action="close-redeem" data-i18n-alabel="close" aria-label="Close">×</button><p class="eyebrow" data-i18n-text="rewardsEyebrow">ONIGIMON REWARDS</p><h2 data-bind="redeem-title">Redeem Onigimon code</h2><p data-bind="redeem-hint"></p><input data-bind="redeem-code" autocomplete="off" placeholder="ONI-XXXX-YYY"><button class="redeem-submit" type="submit">Redeem</button></form></div>
+  <div class="modal" data-bind="gift-modal" aria-hidden="true"><div class="modal-card gift-card"><button class="close-btn" type="button" data-action="close-gift" data-i18n-alabel="close" aria-label="Close">×</button><img data-bind="gift-icon" alt=""><p class="eyebrow" data-i18n-text="dailyGiftEyebrow">DAILY GIFT</p><h2 data-i18n-text="giftReceived">Gift received!</h2><p data-bind="gift-text"></p><button class="redeem-submit" data-action="close-gift" data-i18n-text="okay">Okay</button></div></div>
+  <div class="toast" role="status" aria-live="polite"></div>
+</main>

@@ -28,7 +28,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from . import config
 from .translations import tr, current_locale
 from .onigiri_color_picker import OnigiriColorDialog
-from .settings._widgets import AnimatedToggleButton, MainBackgroundEffectSlider
+from .ui_kit.widgets import AnimatedToggleButton, MainBackgroundEffectSlider
 
 PLAN_COLORS = ["#3B82F6", "#10B981", "#FBBF24", "#a855f7", "#F472B6", "#F97316", "#EF4444"]
 DEFAULT_ICON = "emoji:📚"
@@ -277,7 +277,7 @@ def render_icon_pixmap(addon_path: str, icon_value: str, color: str, size: int) 
     Emoji sprites stay full-color; monochrome system/custom icons get tinted.
     Mirrors settings/_infra.py:_render_icon_value_pixmap.
     """
-    from .settings._common import system_icon_path, svg_contain_rect
+    from .ui_kit.common import system_icon_path, svg_contain_rect
     from .emoji_sprites import path_for_emoji
 
     size = max(1, int(size))
@@ -2480,7 +2480,7 @@ class IconButton(QPushButton):
 
     def _open_picker(self) -> None:
         try:
-            from .settings._icon_picker import DeckIconPickerDialog
+            from .ui_kit.icon_picker import DeckIconPickerDialog
             dlg = DeckIconPickerDialog(self._icon_value, self.addon_path, self.window(), allow_emoji=True)
             dlg.iconSelected.connect(self._on_selected)
             # The picker is frameless with no auto-placement. Center it on the
@@ -2499,7 +2499,7 @@ class IconButton(QPushButton):
         except Exception as e:
             try:
                 from aqt.utils import tooltip
-                tooltip(f"Icon picker error: {e}")
+                tooltip(tr("err_icon_picker").format(e))
             except Exception:
                 pass
             print(f"Prep Station: icon picker error: {e}")

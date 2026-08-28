@@ -1,260 +1,80 @@
-var storeData = {};
-
-// --- 1. INITIALIZATION ---
-function initStore(data) {
-    console.log("Initializing Store with data:", data);
-    storeData = data;
-    updateWallet();
-    renderItems('restaurants', data.restaurants);
-    renderItems('evolutions', data.evolutions);
-}
-
-// --- 2. UI UPDATES ---
-function updateWallet() {
-    const balanceEl = document.getElementById('coin-balance');
-    if (balanceEl) {
-        // Animate the number counting up/down
-        animateValue(balanceEl, parseInt(balanceEl.textContent), storeData.coins, 1000);
+(() => {
+  let data = window.ONIGIRI_NOOK_DATA || {};
+  let group = 'restaurants';
+  let toastTimer;
+  let rewardTimer;
+  const S = () => data.strings || {};
+  const t = (key, fallback) => S()[key] || fallback;
+  const labels = () => ({
+    restaurants: [t('restaurants_header', 'Restaurants'), t('store_desc_restaurants', 'Give your study space a new flavor.')],
+    evolutions: [t('evolutions_header', 'Sushi Evolutions'), t('store_desc_evolutions', 'Grow the original Onigiri Stand into something extraordinary.')],
+    shops: [t('shops_header', 'Shops'), t('store_desc_shops', 'Special destinations for your Nook.')],
+  });
+  function applyI18n(root) {
+    root.querySelectorAll('[data-i18n-text]').forEach(el => { const v = S()[el.dataset.i18nText]; if (v) el.textContent = v; });
+    root.querySelectorAll('[data-i18n-alt]').forEach(el => { const v = S()[el.dataset.i18nAlt]; if (v) el.alt = v; });
+    root.querySelectorAll('[data-i18n-alabel]').forEach(el => { const v = S()[el.dataset.i18nAlabel]; if (v) el.setAttribute('aria-label', v); });
+  }
+  const $ = s => document.querySelector(s), all = s => [...document.querySelectorAll(s)];
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const base = () => data.imageBase || '';
+  const itemFor = id => (data.store && Object.values(data.store).find(groupItems => groupItems && typeof groupItems === 'object' && !Array.isArray(groupItems) && groupItems[id]))?.[id];
+  function syncTheme() {
+    const root = document.documentElement, body = document.body;
+    if (!body) return;
+    const hostDark = [root, body].some(node => node.classList.contains('nightMode') || node.classList.contains('night_mode') || node.classList.contains('night-mode'));
+    const dark = hostDark || window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    body.dataset.theme = dark ? 'dark' : 'light';
+  }
+  function watchTheme() {
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    media?.addEventListener?.('change', syncTheme);
+  }
+  function toast(notice) { if (!notice.message) return; const node = $('.toast'); node.textContent = notice.message; node.className = `toast is-visible ${notice.kind || ''}`; clearTimeout(toastTimer); toastTimer = setTimeout(() => node.className = 'toast', 3600); }
+  function celebrateCoins(amount) {
+    if (!(Number(amount) > 0) || !data.coinImage) return;
+    const wallet = $('.wallet');
+    if (wallet) { wallet.classList.remove('is-rewarded'); void wallet.offsetWidth; wallet.classList.add('is-rewarded'); }
+    const layer = document.createElement('div'); layer.className = 'coin-burst-layer';
+    const origin = wallet ? wallet.getBoundingClientRect() : { left: window.innerWidth / 2, top: window.innerHeight / 2, width: 0, height: 0 };
+    const count = Math.min(18, Math.max(8, Math.ceil(Number(amount) / 20)));
+    for (let index = 0; index < count; index += 1) {
+      const coin = document.createElement('img'); const angle = (Math.PI * 2 * index / count) + (Math.random() - .5) * .5; const distance = 90 + Math.random() * 190;
+      coin.className = 'coin-burst'; coin.src = data.coinImage; coin.alt = ''; coin.style.left = `${origin.left + origin.width / 2}px`; coin.style.top = `${origin.top + origin.height / 2}px`;
+      coin.style.setProperty('--coin-x', `${Math.cos(angle) * distance}px`); coin.style.setProperty('--coin-y', `${Math.sin(angle) * distance - 45}px`); coin.style.setProperty('--coin-r', `${Math.round((Math.random() - .5) * 540)}deg`); coin.style.animationDelay = `${index * 18}ms`; layer.appendChild(coin);
     }
-
-    if (storeData.coin_image_path) {
-        const icon = document.getElementById('wallet-coin-icon');
-        if (icon) icon.src = storeData.coin_image_path;
-    }
-}
-
-// Helper to animate numbers
-function animateValue(obj, start, end, duration) {
-    let startTimestamp = null;
-    const step = (timestamp) => {
-        if (!startTimestamp) startTimestamp = timestamp;
-        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-        obj.innerHTML = Math.floor(progress * (end - start) + start);
-        if (progress < 1) {
-            window.requestAnimationFrame(step);
-        }
-    };
-    window.requestAnimationFrame(step);
-}
-
-function switchTab(tabName) {
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelector(`.nav-btn[onclick="switchTab('${tabName}')"]`).classList.add('active');
-
-    document.querySelectorAll('.items-grid').forEach(grid => grid.classList.remove('active'));
-    document.getElementById(`${tabName}-grid`).classList.add('active');
-}
-
-// --- 3. RENDERING ---
-function renderItems(gridId, items) {
-    const grid = document.getElementById(`${gridId}-grid`);
-    if (!grid) return;
-
-    grid.innerHTML = '';
-    const template = document.getElementById('item-template');
-
-    Object.entries(items).forEach(([id, item]) => {
-        const clone = template.content.cloneNode(true);
-
-        // Fill Data
-        clone.querySelector('.item-name').textContent = item.name;
-        clone.querySelector('.item-price').textContent = item.price;
-
-        // Handle Coin Icon
-        const coinSymbol = clone.querySelector('.coin-symbol');
-        if (storeData.coin_image_path) {
-            const img = document.createElement('img');
-            img.src = storeData.coin_image_path;
-            img.className = 'coin-icon-small';
-            coinSymbol.textContent = '';
-            coinSymbol.appendChild(img);
-        }
-
-        // Handle Images
-        const previewImage = clone.querySelector('.preview-image');
-        const previewColor = clone.querySelector('.preview-color');
-
-        if (item.image && storeData.image_base_path) {
-            previewImage.src = storeData.image_base_path + item.image;
-            previewImage.style.display = 'block';
-            previewImage.onerror = () => { previewImage.style.display = 'none'; };
-        }
-
-        if (item.theme) {
-            previewColor.style.backgroundColor = item.theme;
-        } else {
-            previewColor.style.background = 'linear-gradient(45deg, #f3f4f6, #d1d5db)';
-        }
-
-        // Handle Buttons
-        const btn = clone.querySelector('.action-btn');
-        const isOwned = storeData.owned_items.includes(id);
-        const isEquipped = storeData.current_theme_id === id;
-
-        // Clean up old classes
-        btn.className = 'action-btn';
-
-        if (isEquipped) {
-            btn.textContent = "Unequip";
-            btn.classList.add('unequip');
-            btn.onclick = () => equipItem('default');
-        } else if (isOwned) {
-            btn.textContent = "Equip";
-            btn.classList.add('equip');
-            btn.onclick = () => equipItem(id);
-        } else {
-            btn.textContent = "Buy";
-            btn.classList.add('buy');
-
-            if (storeData.coins < item.price) {
-                btn.disabled = true;
-                btn.title = "Not enough coins";
-                btn.style.opacity = "0.5";
-            } else {
-                btn.onclick = () => buyItem(id);
-            }
-        }
-
-        grid.appendChild(clone);
-    });
-}
-
-// --- 4. ACTIONS (SEND TO ANKI) ---
-
-function buyItem(itemId) {
-    // Anki pycmd cannot take a callback. We send the command, and Python calls a function back.
-    pycmd(`buy_item:${itemId}`);
-}
-
-function equipItem(itemId) {
-    pycmd(`equip_item:${itemId}`);
-}
-
-function buyRealMoneyCoins() {
-    showCustomPrompt("Taiyaki Coin Code", "Enter your Coin Code (e.g. ONI-XXXX-YYY):", (code) => {
-        if (code) {
-            console.log("[ONIGIRI JS] Redeeming code:", code);
-            const btn = document.getElementById('buy-coins-btn');
-            if (btn) {
-                btn.innerHTML = "Verifying...";
-                btn.style.opacity = "0.7";
-                btn.disabled = true;
-            }
-            // Send to Python
-            console.log("[ONIGIRI JS] Sending pycmd:", `redeem_code:${code}`);
-            pycmd(`redeem_code:${code}`);
-        } else {
-            console.log("[ONIGIRI JS] Code redemption cancelled");
-        }
-    });
-}
-
-// --- 5. RESPONSES (CALLED BY PYTHON) ---
-
-// Python calls this after a purchase attempt
-window.onPurchaseResult = function (result) {
-    if (result.success) {
-        storeData.coins = result.new_balance;
-        storeData.owned_items.push(result.item_id);
-        updateWallet();
-        // Refresh UI
-        renderItems('restaurants', storeData.restaurants);
-        renderItems('evolutions', storeData.evolutions);
-        // Optional: Play sound or show success animation
-    } else {
-        alert(result.message || "Purchase failed.");
-    }
-}
-
-// Python calls this after an equip attempt
-window.onEquipResult = function (result) {
-    if (result.success) {
-        storeData.current_theme_id = result.item_id;
-        renderItems('restaurants', storeData.restaurants);
-        renderItems('evolutions', storeData.evolutions);
-    } else {
-        alert(result.message);
-    }
-}
-
-// Python calls this after code redemption
-window.onRedeemResult = function (result) {
-    console.log("[ONIGIRI JS] onRedeemResult called with:", result);
-
-    // Reset button
-    const btn = document.getElementById('buy-coins-btn');
-    if (btn) {
-        btn.innerHTML = `Get More Coins
-            <span class="buy-coins-btn-sparkle buy-coins-btn-sparkle--top"></span>
-            <span class="buy-coins-btn-sparkle buy-coins-btn-sparkle--left"></span>
-            <span class="buy-coins-btn-sparkle buy-coins-btn-sparkle--right"></span>
-        `;
-        btn.style.opacity = "1";
-        btn.disabled = false;
-    }
-
-    if (result.success) {
-        console.log("[ONIGIRI JS] Redemption successful! New balance:", result.new_balance);
-        storeData.coins = result.new_balance;
-        updateWallet();
-        alert(result.message); // "Success! 500 Coins added."
-    } else {
-        console.log("[ONIGIRI JS] Redemption failed:", result.message);
-        alert("Redemption Failed:\n" + result.message);
-    }
-}
-
-// --- 6. UTILS ---
-
-function showCustomPrompt(title, message, callback) {
-    // Existing modal code...
-    const overlay = document.createElement('div');
-    overlay.className = 'custom-prompt-overlay';
-    const modal = document.createElement('div');
-    modal.className = 'custom-prompt-modal';
-    modal.innerHTML = `
-        <div class="custom-prompt-header"><h2>${title}</h2></div>
-        <div class="custom-prompt-body"><p>${message}</p><input type="text" class="custom-prompt-input" placeholder="Code..." /></div>
-        <div class="custom-prompt-footer">
-            <button class="custom-prompt-btn custom-prompt-btn-cancel">Cancel</button>
-            <button class="custom-prompt-btn custom-prompt-btn-ok">OK</button>
-        </div>
-    `;
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    const input = modal.querySelector('.custom-prompt-input');
-    const okBtn = modal.querySelector('.custom-prompt-btn-ok');
-    const cancelBtn = modal.querySelector('.custom-prompt-btn-cancel');
-
-    setTimeout(() => input.focus(), 100);
-
-    const handleOk = () => {
-        const value = input.value.trim();
-        document.body.removeChild(overlay);
-        callback(value);
-    };
-
-    const handleCancel = () => {
-        document.body.removeChild(overlay);
-        callback(null);
-    };
-
-    okBtn.addEventListener('click', handleOk);
-    cancelBtn.addEventListener('click', handleCancel);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) handleCancel(); });
-    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleOk(); });
-    document.addEventListener('keydown', function escapeHandler(e) {
-        if (e.key === 'Escape') {
-            handleCancel();
-            document.removeEventListener('keydown', escapeHandler);
-        }
-    });
-}
-
-// Wait for Python to inject data
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.ONIGIRI_STORE_DATA) {
-        initStore(window.ONIGIRI_STORE_DATA);
-    }
-});
+    document.body.appendChild(layer); setTimeout(() => layer.remove(), 1050);
+  }
+  function renderItems() {
+    const grid = $('[data-bind="items"]'), store = data.store || {}, owned = store.owned_items || [], current = store.current_theme_id;
+    const items = store[group] || {};
+    grid.innerHTML = Object.entries(items).map(([id, item]) => {
+      const isOwned = owned.includes(id), isCurrent = id === current, price = Number(item.price || 0), unavailable = !isOwned && Number(store.coins || 0) < price;
+      const sprite = item.image ? `<img class="preview-image${id.startsWith('restaurant_evo_') ? ' preview-image--evolution' : ''}${id === 'restaurant_evo_iv' ? ' preview-image--restaurant-iv' : ''}" src="${esc(base() + item.image)}" alt="${esc(item.name)}">` : '<span class="missing-sprite">?</span>';
+      let action = `<button class="action-btn buy" data-buy="${esc(id)}" ${unavailable ? 'disabled' : ''}><span>${price}</span> ${esc(t('buy', 'Buy'))}</button>`;
+      if (isCurrent) action = `<button class="action-btn current" data-equip="default">${esc(t('close_restaurant', 'Close Nook'))}</button>`;
+      else if (isOwned) action = `<button class="action-btn equip" data-equip="${esc(id)}">${esc(t('store_equip', 'Equip'))}</button>`;
+      return `<article class="store-item" style="--item-color:${esc(item.theme || '#cfa13d')}"><div class="item-preview">${sprite}<button class="info-btn" data-info="${esc(id)}" aria-label="${esc(t('store_about_item', 'About {}').replace('{}', item.name))}">i</button></div><div class="item-info"><div class="item-title"><h3>${esc(item.name)}</h3>${isCurrent ? `<span class="equipped">${esc(t('store_equipped', 'Equipped'))}</span>` : ''}</div><div class="item-price"><img src="${esc(data.coinImage || '')}" alt="">${price}</div></div>${action}</article>`;
+    }).join('') || `<p class="empty">${esc(t('store_no_items_section', 'No items available in this section.'))}</p>`;
+  }
+  function render() {
+    const store = data.store || {}; $('[data-bind="coins"]').textContent = store.coins || 0; $('[data-bind="coin"]').src = data.coinImage || ''; const mascot = $('[data-bind="mascot"]'); if (mascot) mascot.src = data.coinImage ? data.coinImage.replace('Tayaki_coin.webp', 'mr_taiyaki.webp') : '';
+    applyI18n(document); const groupLabels = labels(); $('[data-bind="groupTitle"]').textContent = groupLabels[group][0]; $('[data-bind="groupDescription"]').textContent = groupLabels[group][1]; all('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.group === group)); renderItems();
+  }
+  function openModal() { const modal = $('[data-bind="modal"]'); modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false'); setTimeout(() => $('[data-bind="code"]').focus(), 50); }
+  function closeModal() { const modal = $('[data-bind="modal"]'); modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+  function openInfo(item) { if (!item) return; const modal = $('[data-bind="info-modal"]'); $('[data-bind="info-name"]').textContent = item.name || ''; $('[data-bind="info-description"]').textContent = item.description || 'A special Nook theme.'; const image = $('[data-bind="info-image"]'); image.src = item.image ? base() + item.image : ''; image.alt = item.name || ''; modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false'); }
+  function closeInfo() { const modal = $('[data-bind="info-modal"]'); modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+  function showReward(amount) { const modal = $('[data-bind="reward-modal"]'); $('[data-bind="reward-amount"]').textContent = Number(amount).toLocaleString(); $('[data-bind="reward-coin"]').src = data.coinImage || ''; modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false'); }
+  function closeReward() { const modal = $('[data-bind="reward-modal"]'); modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+  function playBuySound() { try { const AudioCtx = window.AudioContext || window.webkitAudioContext; const ctx = new AudioCtx(); const now = ctx.currentTime; [660, 880, 1100].forEach((frequency, index) => { const osc = ctx.createOscillator(), gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, now + index * .055); gain.gain.setValueAtTime(.0001, now + index * .055); gain.gain.exponentialRampToValueAtTime(.075, now + index * .055 + .012); gain.gain.exponentialRampToValueAtTime(.0001, now + index * .055 + .13); osc.connect(gain).connect(ctx.destination); osc.start(now + index * .055); osc.stop(now + index * .055 + .14); }); setTimeout(() => ctx.close(), 450); } catch (_) {} }
+  function burstSprites(button, item) { const source = item && item.image ? base() + item.image : data.coinImage; if (!source) return; const rect = button.getBoundingClientRect(); for (let index = 0; index < 7; index += 1) { const particle = document.createElement('img'); particle.className = 'buy-particle'; particle.src = source; particle.alt = ''; particle.style.setProperty('--x', `${(Math.random() - .5) * 155}px`); particle.style.setProperty('--y', `${-45 - Math.random() * 95}px`); particle.style.left = `${rect.left + rect.width / 2}px`; particle.style.top = `${rect.top + rect.height / 2}px`; particle.style.animationDelay = `${index * 22}ms`; document.body.appendChild(particle); particle.addEventListener('animationend', () => particle.remove()); } playBuySound(); }
+  document.addEventListener('click', event => { const tab = event.target.closest('[data-group]'); if (tab) { group = tab.dataset.group; render(); } if (event.target.closest('[data-action="redeem"]')) openModal(); if (event.target.closest('[data-action="close-modal"]')) closeModal(); if (event.target.closest('[data-action="close-info"]')) closeInfo(); if (event.target.closest('[data-action="close-reward"]')) closeReward(); const info = event.target.closest('[data-info]'); if (info) openInfo(itemFor(info.dataset.info)); const buy = event.target.closest('[data-buy]'); if (buy && !buy.disabled) { buy.disabled = true; burstSprites(buy, itemFor(buy.dataset.buy)); setTimeout(() => pycmd(`store:buy:${buy.dataset.buy}`), 190); } const equip = event.target.closest('[data-equip]'); if (equip && !equip.disabled) { const itemId = equip.dataset.equip; equip.disabled = true; equip.textContent = itemId === 'default' ? 'Closing…' : 'Equipping…'; requestAnimationFrame(() => requestAnimationFrame(() => pycmd(`store:equip:${itemId}`))); } if (event.target.closest('[data-action="submit-code"]')) { const input = $('[data-bind="code"]'), code = input.value.trim(); if (code) { closeModal(); pycmd(`store:redeem:${code}`); } } });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeModal(); closeInfo(); closeReward(); } if (event.key === 'Enter' && document.activeElement === $('[data-bind="code"]')) $('[data-action="submit-code"]').click(); });
+  window.onNookData = (payload, notice = {}) => { data = payload || {}; render(); toast(notice); if (notice.kind === 'success' && Number(notice.coinsAdded) > 0) { celebrateCoins(notice.coinsAdded); clearTimeout(rewardTimer); rewardTimer = setTimeout(() => showReward(notice.coinsAdded), 1100); } };
+  document.addEventListener('DOMContentLoaded', () => { watchTheme(); render(); });
+})();

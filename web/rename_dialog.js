@@ -10,6 +10,13 @@
         cleanupFns: []
     };
 
+    function T(key, fallback) {
+        if (window.OnigiriI18n && typeof OnigiriI18n.t === 'function') {
+            return OnigiriI18n.t(key, fallback);
+        }
+        return fallback;
+    }
+
     function addCleanup(fn) {
         state.cleanupFns.push(fn);
     }
@@ -159,10 +166,10 @@
         footer.className = 'onigiri-rename-footer';
         var secondary = document.createElement('span');
         secondary.className = 'onigiri-rename-btn onigiri-rename-btn-secondary';
-        secondary.textContent = 'Cancel';
+        secondary.textContent = T('cancel', 'Cancel');
         var primary = document.createElement('span');
         primary.className = 'onigiri-rename-btn onigiri-rename-btn-primary';
-        primary.textContent = 'Save';
+        primary.textContent = T('save', 'Save');
         footer.appendChild(secondary);
         footer.appendChild(primary);
         modal.appendChild(input);
@@ -244,13 +251,13 @@
 
         if (state.fullPath) {
             input.value = state.fullName || state.leafName || '';
-            toggle.textContent = 'Leaf name';
+            toggle.textContent = T('rename_leaf_name', 'Leaf name');
             toggle.classList.add('is-active');
-            hint.textContent = 'Editing the full deck path';
+            hint.textContent = T('rename_editing_full_path', 'Editing the full deck path');
         } else {
             var current = input.value || state.leafName || '';
             input.value = current.indexOf('::') === -1 ? current : current.split('::').pop();
-            toggle.textContent = 'Full path';
+            toggle.textContent = T('rename_full_path', 'Full path');
             toggle.classList.remove('is-active');
             hint.textContent = state.parentPrefix ? ('Inside ' + state.parentPrefix) : 'Top-level deck';
         }
@@ -316,7 +323,7 @@
         titleWrap.className = 'onigiri-rename-title-wrap';
         var title = document.createElement('div');
         title.className = 'onigiri-rename-title';
-        title.textContent = 'Rename Deck';
+        title.textContent = T('rename_deck_title', 'Rename Deck');
         titleWrap.appendChild(title);
         var subtitle = document.createElement('div');
         subtitle.className = 'onigiri-rename-subtitle';
@@ -331,7 +338,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         closeBtn.className = 'onigiri-rename-close';
-        closeBtn.title = 'Close';
+        closeBtn.title = T('close', 'Close');
         closeBtn.appendChild(makeIcon('cancel.svg', 'onigiri-rename-close-svg', 14));
         closeBtn.addEventListener('click', function () { close(false); });
         header.appendChild(closeBtn);
@@ -341,7 +348,7 @@
         body.className = 'onigiri-rename-body';
         var label = document.createElement('div');
         label.className = 'onigiri-rename-label';
-        label.textContent = 'Deck name';
+        label.textContent = T('deck_name_label', 'Deck name');
         body.appendChild(label);
 
         var inputWrap = document.createElement('div');
@@ -398,7 +405,7 @@
         // Set tabindex for accessibility
         try { arguments[0].tabIndex = 0; } catch(e){};
         cancelBtn.className = 'onigiri-rename-btn onigiri-rename-btn-secondary';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.textContent = T('cancel', 'Cancel');
         cancelBtn.addEventListener('click', function () { close(false); });
         var saveBtn = document.createElement('span');
         saveBtn.setAttribute('role', 'button');
@@ -407,7 +414,7 @@
         try { arguments[0].tabIndex = 0; } catch(e){};
         saveBtn.id = 'onigiri-rename-save';
         saveBtn.className = 'onigiri-rename-btn onigiri-rename-btn-primary';
-        saveBtn.textContent = 'Save';
+        saveBtn.textContent = T('save', 'Save');
         saveBtn.addEventListener('click', submit);
 
         footer.appendChild(pathToggle);
