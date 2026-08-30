@@ -2496,7 +2496,7 @@ def patch_overview():
         const allExternalElements = [];
         if (container) {
             Array.from(container.children).forEach(function(child) {
-                // Skip Onigiri elements and the reveal button
+                // Skip Onigiri elements, reveal button, and Anki's native share/desc divs
                 if (child !== onigiriHeader &&
                     !child.classList.contains('overview-profile-bar') &&
                     child !== onigiriTitle && 
@@ -2506,7 +2506,9 @@ def patch_overview():
                     child.id !== 'onigiri-reveal-btn' &&
                     !child.classList.contains('overview-header') &&
                     !child.classList.contains('overview-title') &&
-                    !child.classList.contains('overview-container')) {
+                    !child.classList.contains('overview-container') &&
+                    !child.classList.contains('overview-share') &&
+                    !child.classList.contains('overview-desc')) {
                     
                     // Check if element has any meaningful content instantly
                     const hasVisibleContent = function(el) {
@@ -2602,8 +2604,8 @@ def patch_overview():
 	<h3 class="overview-title">%(deck)s</h3>
 	{profile_bar_html}
 	%(table)s
-	<div>%(shareLink)s</div>
-	<div>%(desc)s</div>
+	<div class="overview-share">%(shareLink)s</div>
+	<div class="overview-desc">%(desc)s</div>
 </div>
 <script>{js_code}</script>
 {late_background_css}
