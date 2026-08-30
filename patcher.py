@@ -2928,15 +2928,21 @@ def generate_deck_browser_backgrounds(addon_path):
             box_colors = conf.get("colors", {})
             side_light_color = box_colors.get("light", {}).get("--canvas-inset", side_light_color)
             side_dark_color = box_colors.get("dark", {}).get("--canvas-inset", side_dark_color)
+
+            box_blur, box_opacity, _, _ = _box_effect_values()
             try:
-                side_blur = float(mw.col.conf.get("onigiri_canvas_inset_effect_blur", side_blur) or 0)
+                side_blur = float(box_blur)
             except (TypeError, ValueError):
                 pass
             try:
-                side_opacity_percent = max(0.0, min(100.0, float(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", side_opacity_percent) or 100)))
+                side_opacity_percent = float(box_opacity)
             except (TypeError, ValueError):
                 pass
+
             side_opacity_alpha = side_opacity_percent / 100.0
+            if side_blur > 0:
+                side_opacity_alpha = min(side_opacity_alpha, 0.62)
+
             if side_mode not in ("color", "accent"):
                 side_mode = "color"
 
