@@ -13,6 +13,7 @@
 # render.py never import a gamification module directly.
 
 import os
+from dataclasses import asdict
 
 from ..translations import tr
 
@@ -258,19 +259,49 @@ def companions(refresh=False):
 
 
 def active_companion_preview():
-    """Name, level and sprite of the companion the scene preview should draw."""
+    """Companion details and both sprite modes for the live scene preview."""
     try:
         manager = _onigimon().manager
         companion = manager.active_companion()
         if not companion:
-            return {"name": "Onigimon", "level": 1, "sprite": ""}
+            return {
+                "name": "Onigimon",
+                "level": 1,
+                "sprite": "",
+                "staticSprites": [],
+                "animatedSprites": [],
+            }
+        companion_data = asdict(companion)
+        static_sprites = [
+            sprite_url(url)
+            for url in manager.sprite_urls_for_companion(companion_data, motion="static")
+            if url
+        ]
+        animated_sprites = [
+            sprite_url(url)
+            for url in manager.sprite_urls_for_companion(companion_data, motion="gif")
+            if url
+        ]
         return {
             "name": str(manager.companion_display_name(companion) or "Onigimon"),
             "level": int(getattr(companion, "level", 1) or 1),
-            "sprite": sprite_url(getattr(companion, "sprite_url", "")),
+            # `sprite` remains for older settings.js copies still loaded in an
+            # already-open dialog. New previews choose the matching list as
+            # soon as Static/Animated changes, without waiting for auto-save.
+            "sprite": static_sprites[0] if static_sprites else sprite_url(
+                getattr(companion, "sprite_url", "")
+            ),
+            "staticSprites": static_sprites,
+            "animatedSprites": animated_sprites,
         }
     except Exception:
-        return {"name": "Onigimon", "level": 1, "sprite": ""}
+        return {
+            "name": "Onigimon",
+            "level": 1,
+            "sprite": "",
+            "staticSprites": [],
+            "animatedSprites": [],
+        }
 
 
 def hexagon_context():

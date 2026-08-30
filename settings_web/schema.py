@@ -27,8 +27,11 @@
 # plus a button that opens the classic PyQt dialog on the matching page. Removing
 # that key (and adding sections) is what "porting a page" means.
 
+import copy
+
 from aqt import mw
 
+from .. import config
 from ..translations import LANGUAGES, tr
 from . import games
 
@@ -482,7 +485,7 @@ def _designer_preview_section(
     section_id, preview_kind, fields, title="", icon="", dynamic_keys=None,
     sync_toggle_id=None, sync_hidden_fields=None, stage_side=False,
     icon_colors_inline=False, head_to_deck=False, subsections=None,
-    hide_deck_when=None,
+    hide_deck_when=None, preview_dynamic_field="", full_width_color_grid=False,
 ):
     """One of Main menu's self-contained "designer" cards: a live preview stage
     (painted client-side by PREVIEW_PAINTERS[preview_kind] in settings.js) plus
@@ -509,6 +512,10 @@ def _designer_preview_section(
         "icon": icon,
         "layout": "designer_preview",
         "preview_kind": preview_kind,
+        # An optional regular toggle that determines whether the preview has
+        # separate light and dark states. Unlike `dynamic_keys`, it already
+        # persists its own boolean value and remains a normal deck control.
+        "preview_dynamic_field": preview_dynamic_field,
         # Stage beside the controls instead of above them, and one column of
         # controls in schema order. For a preview whose subject is tall and
         # narrow — the sidebar — a full-width stage above a two-column deck
@@ -521,6 +528,9 @@ def _designer_preview_section(
         # Show an icon field's companion colour under its tile, not only inside
         # its popover (settings.js renderIconTileColors).
         "icon_colors_inline": bool(icon_colors_inline),
+        # A compact color palette can span both deck columns below the regular
+        # controls instead of leaving half the card empty.
+        "full_width_color_grid": bool(full_width_color_grid),
         # Some background modes inherit every value from another surface. In
         # that state their local controls are not applicable and the whole
         # settings deck should be removed, not left as an empty panel.
@@ -1029,8 +1039,8 @@ def _col_path(key, *path):
     return {"kind": "col_path", "key": key, "path": list(path)}
 
 
-def _tool_action(field_id, label, button_label, action, desc=""):
-    return {
+def _tool_action(field_id, label, button_label, action, desc="", button_icon=""):
+    field = {
         "id": field_id,
         "type": "action",
         "label": label,
@@ -1038,6 +1048,9 @@ def _tool_action(field_id, label, button_label, action, desc=""):
         "button_label": button_label,
         "action": action,
     }
+    if button_icon:
+        field["button_icon"] = button_icon
+    return field
 
 
 def _prep_station_page():
@@ -1076,16 +1089,19 @@ def _prep_station_page():
                     },
                 ],
             },
-            {
-                "id": "prep_widget", "title": tr("prep_widget_section_title", "Study Plans Widget"),
-                "fields": [{
+            _designer_preview_section(
+                "prep_widget",
+                "prep_widget",
+                title=tr("prep_widget_section_title", "Study Plans Widget"),
+                icon="square.svg",
+                fields=[{
                     "id": "prep_widget_font_scale", "type": "slider",
                     "label": tr("prep_widget_font_label", "Font Size"),
                     "desc": tr("prep_widget_font_desc", "Font size of the Study Plans preview shown on the deck browser widget."),
                     "bind": col("onigiri_prep_station_widget_font_scale", 100), "default": 100,
                     "min": 60, "max": 160, "step": 1, "suffix": "%",
                 }],
-            },
+            ),
         ],
     }
 
@@ -1112,9 +1128,9 @@ def _hashi_notes_page():
             {"id": "hashi_widget_color_" + key + "_dark", "type": "hidden", "label": "", "bind": path("colors", "dark", key), "default": dark},
         ]
     widget_fields = [
-        {"id": "hashi_widget_mode", "type": "choice", "label": tr("hashi_widget_mode", "Layout"), "bind": path("mode"), "default": "gallery", "options": [{"value": "gallery", "label": tr("hashi_widget_mode_gallery", "Gallery")}, {"value": "single", "label": tr("hashi_widget_mode_single", "Single note")}]},
+        {"id": "hashi_widget_mode", "type": "choice", "head": True, "head_label": tr("hashi_widget_mode", "Layout"), "label": tr("hashi_widget_mode", "Layout"), "bind": path("mode"), "default": "gallery", "options": [{"value": "gallery", "label": tr("hashi_widget_mode_gallery", "Gallery")}, {"value": "single", "label": tr("hashi_widget_mode_single", "Single note")}]},
         {"id": "hashi_widget_note_id", "type": "select", "label": tr("hashi_widget_pinned_note", "Pinned note"), "bind": path("note_id"), "default": "", "options": _hashi_note_options(), "show_when": {"field": "hashi_widget_mode", "values": ["single"]}},
-        {"id": "hashi_widget_limit", "type": "slider", "label": tr("hashi_widget_limit", "Notes shown"), "bind": path("limit"), "default": 4, "min": 1, "max": 4, "suffix": ""},
+        {"id": "hashi_widget_limit", "type": "slider", "label": tr("hashi_widget_limit", "Notes shown"), "bind": path("limit"), "default": 4, "min": 1, "max": 4, "suffix": "", "show_when": {"field": "hashi_widget_mode", "values": ["gallery"]}},
         {"id": "hashi_widget_sync", "type": "toggle", "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"), "bind": path("sync_box_effect"), "default": True},
         {"id": "hashi_widget_dynamic", "type": "toggle", "label": tr("dynamic_mode", "Dynamic mode"), "bind": path("dynamic"), "default": True},
         {"id": "hashi_widget_show_icon", "type": "toggle", "label": tr("hashi_widget_show_icon", "Show note icons"), "bind": path("show_icon"), "default": True},
@@ -1136,59 +1152,191 @@ def _hashi_notes_page():
         "description": tr("hashi_settings_intro", "Hashi Notes are quick, temporary study notes."),
         "sections": [
             {"id": "hashi_open", "title": "", "fields": [_tool_action("hashi_open_action", "", tr("hashi_open_button", "Open Hashi Notes"), "open_hashi_notes")]},
-            {"id": "hashi_options", "title": tr("hashi_options", "Options"), "fields": [
-                {"id": "hashi_retention", "type": "choice", "label": tr("hashi_default_retention", "Default retention"), "bind": {"kind": "config", "path": ["hashi_notes", "retention_default"]}, "default": 0, "options": [{"value": 7, "label": tr("hashi_7_days", "7 days")}, {"value": 30, "label": tr("hashi_30_days", "30 days")}, {"value": 0, "label": tr("hashi_never", "Never")}]},
-                {"id": "hashi_sort", "type": "choice", "label": tr("hashi_default_sort", "Default sort"), "bind": {"kind": "config", "path": ["hashi_notes", "default_sort"]}, "default": "age", "options": [{"value": "age", "label": tr("hashi_sort_age", "Age")}, {"value": "tags", "label": tr("hashi_sort_tags", "Tags")}, {"value": "priority", "label": tr("hashi_sort_priority", "Priority")}, {"value": "title", "label": tr("hashi_sort_title", "Title")}]},
-                {"id": "hashi_show_header", "type": "toggle", "label": tr("hashi_show_in_header", "Show in Reviewer header"), "bind": {"kind": "config", "path": ["hashi_notes", "show_in_reviewer_header"]}, "default": True},
-                {"id": "hashi_custom_css", "type": "text", "multiline": True, "label": tr("hashi_custom_css", "Custom CSS"), "desc": tr("hashi_custom_css_desc", "Fine-tune the Hashi Notes gallery and editor. Changes apply the next time the window opens."), "bind": {"kind": "config", "path": ["hashi_notes", "custom_css"]}, "default": "", "placeholder": ":root {\n  --accent: #00A982;\n}"},
-            ]},
-            {"id": "hashi_widget", "title": tr("hashi_widget_section", "Dashboard Widget"), "fields": widget_fields},
+            _designer_preview_section(
+                "hashi_widget",
+                "hashi_widget",
+                title=tr("hashi_widget_section", "Dashboard Widget"),
+                icon="square.svg",
+                preview_dynamic_field="hashi_widget_dynamic",
+                sync_toggle_id="hashi_widget_sync",
+                sync_hidden_fields=[
+                    "hashi_widget_blur", "hashi_widget_opacity",
+                    "hashi_widget_radius", "hashi_widget_stroke",
+                    "hashi_widget_color_box_bg", "hashi_widget_color_box_border",
+                ],
+                full_width_color_grid=True,
+                fields=widget_fields,
+            ),
         ],
     }
 
 
 def _pomodoro_page():
     path = lambda *parts: _col_path("onigiri_pomodoro_settings", *parts)
-    def color(key, label, light, dark):
+
+    def color(key, label, light, dark, *, fallback=None, fallback_fields=None):
+        pair = _color_pair_field(
+            "pomodoro_color_" + key,
+            label,
+            "pomodoro_color_" + key + "_light",
+            "pomodoro_color_" + key + "_dark",
+            "pomodoro_dynamic",
+        )
+        # Empty remains "inherit" in storage. The picker still shows the
+        # effective colour, so an inherited role never looks broken or blank.
+        if fallback:
+            pair["static_fallback"] = {"light": fallback[0], "dark": fallback[1]}
+        if fallback_fields:
+            pair["fallback_light"], pair["fallback_dark"] = fallback_fields
         return [
-            _color_pair_field("pomodoro_color_" + key, label, "pomodoro_color_" + key + "_light", "pomodoro_color_" + key + "_dark", "pomodoro_dynamic"),
+            pair,
             {"id": "pomodoro_color_" + key + "_light", "type": "hidden", "label": "", "bind": path("colors", "light", key), "default": light},
             {"id": "pomodoro_color_" + key + "_dark", "type": "hidden", "label": "", "bind": path("colors", "dark", key), "default": dark},
         ]
     appearance = [
+        {
+            "id": "pomodoro_style",
+            "type": "choice",
+            "head": True,
+            "head_label": tr("style", "Style"),
+            "label": tr("style", "Style"),
+            "bind": path("style"),
+            "default": "minimal",
+            "options": [
+                {"value": "minimal", "label": tr("minimal", "Minimal"), "sub": tr("pomodoro_style_minimal_sub", "Time and controls")},
+                {"value": "dashboard", "label": tr("pomodoro_style_dashboard", "Dashboard"), "sub": tr("pomodoro_style_dashboard_sub", "Progress and session context")},
+            ],
+        },
         {"id": "pomodoro_icon", "type": "icon", "label": tr("pomodoro_icon", "Timer Icon"), "bind": path("icon"), "default": "system:pomodoro.svg"},
         {"id": "pomodoro_font", "type": "font", "label": tr("pomodoro_font", "Timer Font"), "bind": path("font_key"), "default": "system", "options": _font_options()},
-        {"id": "pomodoro_size", "type": "choice", "label": tr("pomodoro_size", "Timer Size"), "bind": path("size"), "default": "small", "options": [{"value": "small", "label": tr("pomodoro_size_small", "Small")}, {"value": "medium", "label": tr("pomodoro_size_medium", "Medium")}, {"value": "big", "label": tr("pomodoro_size_big", "Big")}]},
         {"id": "pomodoro_dynamic", "type": "toggle", "label": tr("pomodoro_dynamic_mode", "Dynamic Mode"), "bind": path("dynamic_mode"), "default": True},
         {"id": "pomodoro_opacity", "type": "slider", "label": tr("pomodoro_opacity", "Opacity"), "bind": path("shell_opacity"), "default": 100, "min": 0, "max": 100, "suffix": "%"},
         {"id": "pomodoro_blur", "type": "slider", "label": tr("pomodoro_blur", "Blur"), "bind": path("shell_blur"), "default": 0, "min": 0, "max": 100, "suffix": "%"},
     ]
-    appearance += color("shell", tr("pomodoro_color_shell", "Background"), "", "")
-    appearance += color("accent", tr("pomodoro_color_accent", "Accent"), "", "")
-    appearance += color("digits", tr("pomodoro_color_digits", "Timer Numbers"), "", "")
-    appearance += color("icon", tr("pomodoro_color_icon", "Icon & Text"), "", "")
+    appearance += color(
+        "shell", tr("pomodoro_color_shell", "Background"), "", "",
+        fallback=("#ffffff", "#1f1f1f"),
+    )
+    appearance += color(
+        "accent", tr("pomodoro_color_accent", "Accent"), "", "",
+        fallback_fields=("gal_accent_light", "gal_accent_dark"),
+    )
+    appearance += color(
+        "digits", tr("pomodoro_color_digits", "Timer Numbers"), "", "",
+        fallback=("#1f2933", "#f4f4f5"),
+    )
+    appearance += color(
+        "icon", tr("pomodoro_color_icon", "Icon & Text"), "", "",
+        fallback=("#4b5563", "#b6b6b8"),
+    )
+
+    choose_sound = _tool_action(
+        "pomodoro_choose_sound_action",
+        tr("pomodoro_custom_sound", "Custom end tone"),
+        tr("pomodoro_choose_sound", "Choose Sound File…"),
+        "pomodoro_choose_sound",
+    )
+    choose_sound["show_when"] = {
+        "field": "pomodoro_end_sound",
+        "values": ["custom"],
+    }
+
     return {
         "id": "pomodoro", "legacy_name": "Pomodoro", "title": tr("pomodoro_title", "Pomodoro"), "icon": "pomodoro.svg", "group": "tools",
         "description": tr("pomodoro_page_intro", "A minimal focus timer. Open the floating island with Shift+P, the Reviewer header button, or the Study Tools menu."),
         "post_save": ["pomodoro"],
         "sections": [
-            {"id": "pomodoro_open", "title": "", "fields": [_tool_action("pomodoro_open_action", "", tr("pomodoro_open_button", "Open Pomodoro"), "open_pomodoro")]},
-            {"id": "pomodoro_durations", "title": tr("pomodoro_durations", "Durations"), "fields": [
-                {"id": "pomodoro_focus", "type": "number", "label": tr("pomodoro_focus", "Focus"), "bind": path("focus_minutes"), "default": 25, "min": 1, "max": 180, "suffix": tr("pomodoro_unit_min", "min")},
-                {"id": "pomodoro_short_break", "type": "number", "label": tr("pomodoro_short_break", "Short Break"), "bind": path("short_break_minutes"), "default": 5, "min": 1, "max": 60, "suffix": tr("pomodoro_unit_min", "min")},
-                {"id": "pomodoro_long_break", "type": "number", "label": tr("pomodoro_long_break", "Long Break"), "bind": path("long_break_minutes"), "default": 15, "min": 1, "max": 90, "suffix": tr("pomodoro_unit_min", "min")},
-                {"id": "pomodoro_cycle", "type": "number", "label": tr("pomodoro_sessions_until_long", "Sessions until Long Break"), "bind": path("sessions_until_long_break"), "default": 4, "min": 1, "max": 12, "suffix": tr("pomodoro_unit_sessions", "sessions")},
+            {"id": "pomodoro_open", "title": "", "fields": [
+                _tool_action(
+                    "pomodoro_open_action",
+                    tr("pomodoro_open_timer", "Open Timer"),
+                    tr("pomodoro_open_button", "Open Pomodoro"),
+                    "open_pomodoro",
+                    "Use Shift+P from anywhere in Anki.",
+                    button_icon="open",
+                ),
             ]},
-            {"id": "pomodoro_options", "title": tr("pomodoro_options", "Options"), "fields": [
-                {"id": "pomodoro_show_header", "type": "toggle", "label": tr("pomodoro_show_in_header", "Show in Reviewer header"), "bind": {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}, "default": True},
-                {"id": "pomodoro_auto_start", "type": "toggle", "label": tr("pomodoro_auto_start", "Auto-start next timer"), "bind": path("auto_start_next_phase"), "default": True},
+            {
+                "id": "pomodoro_setup",
+                "title": tr("pomodoro_quick_setup", "Quick Setup"),
+                "description": tr(
+                    "pomodoro_quick_setup_desc",
+                    "Choose a routine, then fine-tune it with one tap.",
+                ),
+                "layout": "pomodoro_setup",
+                "presets": [
+                    {
+                        "label": tr("pomodoro_preset_classic", "Classic"),
+                        "sub": "25 / 5",
+                        "values": {
+                            "pomodoro_focus": 25,
+                            "pomodoro_short_break": 5,
+                            "pomodoro_long_break": 15,
+                            "pomodoro_cycle": 4,
+                        },
+                    },
+                    {
+                        "label": tr("pomodoro_preset_sprint", "Quick Sprint"),
+                        "sub": "15 / 5",
+                        "values": {
+                            "pomodoro_focus": 15,
+                            "pomodoro_short_break": 5,
+                            "pomodoro_long_break": 10,
+                            "pomodoro_cycle": 4,
+                        },
+                    },
+                    {
+                        "label": tr("pomodoro_preset_deep", "Deep Focus"),
+                        "sub": "50 / 10",
+                        "values": {
+                            "pomodoro_focus": 50,
+                            "pomodoro_short_break": 10,
+                            "pomodoro_long_break": 20,
+                            "pomodoro_cycle": 3,
+                        },
+                    },
+                ],
+                "groups": [
+                    {"field": "pomodoro_focus", "label": tr("pomodoro_focus", "Focus"), "unit": tr("pomodoro_unit_min", "min"), "options": [15, 25, 45, 50, 60]},
+                    {"field": "pomodoro_short_break", "label": tr("pomodoro_short_break", "Short Break"), "unit": tr("pomodoro_unit_min", "min"), "options": [5, 10, 15, 20]},
+                    {"field": "pomodoro_long_break", "label": tr("pomodoro_long_break", "Long Break"), "unit": tr("pomodoro_unit_min", "min"), "options": [10, 15, 20, 30]},
+                    {"field": "pomodoro_cycle", "label": tr("pomodoro_sessions", "Sessions"), "unit": "", "options": [2, 3, 4, 5, 6]},
+                ],
+                "fields": [
+                    {"id": "pomodoro_focus", "type": "number", "label": tr("pomodoro_focus", "Focus"), "bind": path("focus_minutes"), "default": 25, "min": 1, "max": 180, "suffix": tr("pomodoro_unit_min", "min")},
+                    {"id": "pomodoro_short_break", "type": "number", "label": tr("pomodoro_short_break", "Short Break"), "bind": path("short_break_minutes"), "default": 5, "min": 1, "max": 60, "suffix": tr("pomodoro_unit_min", "min")},
+                    {"id": "pomodoro_long_break", "type": "number", "label": tr("pomodoro_long_break", "Long Break"), "bind": path("long_break_minutes"), "default": 15, "min": 1, "max": 90, "suffix": tr("pomodoro_unit_min", "min")},
+                    {"id": "pomodoro_cycle", "type": "number", "label": tr("pomodoro_sessions_until_long", "Sessions until Long Break"), "bind": path("sessions_until_long_break"), "default": 4, "min": 1, "max": 12, "suffix": tr("pomodoro_unit_sessions", "sessions")},
+                ],
+            },
+            {"id": "pomodoro_options", "title": tr("pomodoro_options", "Options"), "description": "Choose how the timer fits into your study flow.", "fields": [
+                {"id": "pomodoro_show_header", "type": "toggle", "label": tr("pomodoro_show_in_header", "Show in Reviewer header"), "desc": "Keep the timer one click away while reviewing cards.", "bind": {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}, "default": True},
+                {"id": "pomodoro_auto_start", "type": "toggle", "label": tr("pomodoro_auto_start", "Auto-start next timer"), "desc": "Move into the next focus or break phase when the current one ends.", "bind": path("auto_start_next_phase"), "default": True},
             ]},
-            {"id": "pomodoro_appearance", "title": tr("pomodoro_appearance", "Appearance"), "fields": appearance},
-            {"id": "pomodoro_sound", "title": tr("pomodoro_sound", "Sound"), "fields": [
+            _designer_preview_section(
+                "pomodoro_appearance",
+                "pomodoro",
+                title=tr("pomodoro_appearance", "Appearance"),
+                icon="pomodoro.svg",
+                preview_dynamic_field="pomodoro_dynamic",
+                fields=appearance,
+            ),
+            {"id": "pomodoro_sound", "title": tr("pomodoro_sound", "Sound"), "description": tr("pomodoro_sound_desc", "Choose the cues that open and close each phase."), "fields": [
                 {"id": "pomodoro_sound_enabled", "type": "toggle", "label": tr("pomodoro_sound_enabled", "Play Sound"), "bind": path("sound_enabled"), "default": True},
-                {"id": "pomodoro_sound_file", "type": "text", "label": tr("pomodoro_choose_sound", "Choose Sound File…"), "bind": path("sound_file"), "default": "", "placeholder": tr("pomodoro_reset_sound", "Default chime")},
-                _tool_action("pomodoro_choose_sound_action", "", tr("pomodoro_choose_sound", "Choose Sound File…"), "pomodoro_choose_sound"),
-                _tool_action("pomodoro_test_sound_action", "", tr("pomodoro_test_sound", "Test Sound"), "pomodoro_test_sound"),
+                {"id": "pomodoro_start_sound", "type": "choice", "label": tr("pomodoro_start_tone", "Start tone"), "bind": path("start_sound"), "default": "soft_start", "options": [
+                    {"value": "soft_start", "label": tr("pomodoro_tone_soft_start", "Soft Start")},
+                    {"value": "none", "label": tr("none", "None")},
+                ]},
+                {"id": "pomodoro_end_sound", "type": "choice", "label": tr("pomodoro_end_tone", "End tone"), "bind": path("end_sound"), "default": "soft_bell", "options": [
+                    {"value": "soft_bell", "label": tr("pomodoro_tone_soft_bell", "Gentle Bell")},
+                    {"value": "classic_chime", "label": tr("pomodoro_tone_classic", "Classic Chime")},
+                    {"value": "custom", "label": tr("custom", "Custom")},
+                    {"value": "none", "label": tr("none", "None")},
+                ]},
+                {"id": "pomodoro_sound_file", "type": "hidden", "label": "", "bind": path("sound_file"), "default": ""},
+                choose_sound,
+                _tool_action("pomodoro_test_start_sound_action", tr("pomodoro_start_tone", "Start tone"), tr("pomodoro_preview_tone", "Preview"), "pomodoro_test_start_sound", button_icon="play"),
+                _tool_action("pomodoro_test_end_sound_action", tr("pomodoro_end_tone", "End tone"), tr("pomodoro_preview_tone", "Preview"), "pomodoro_test_end_sound", button_icon="play"),
             ]},
         ],
     }
@@ -3567,6 +3715,11 @@ def _sidebar_page():
 # only navigates somewhere else to be changed is a detour, not a feature — and
 # the images become one browser over the same folders, wired to the gallery
 # commands the picture popover already uses.
+#
+# Do not maintain a second hand-written list of colours here. The Gallery is
+# derived from the actual editable colour controls, then supplemented by colour
+# defaults that have no dedicated WebUI control. That makes a colour added to a
+# settings page automatically available from the Gallery too.
 
 GALLERY_ASSET_FOLDERS = (
     ("profile", "profile_pictures", "Profile Pictures"),
@@ -3579,120 +3732,129 @@ GALLERY_ASSET_FOLDERS = (
 )
 
 
-def _gallery_palette_section():
-    fields = []
-    for field_id, token, label, light, dark in (
-        ("gal_accent", "--accent-color", tr("accent_color", "Accent"), "#0077C8", "#0077C8"),
-        ("gal_bg", "--bg", tr("bg_label", "Background"), "#f3f3f3", "#2c2c2c"),
-        ("gal_canvas_inset", "--canvas-inset", tr("canvas_inset_label", "Widget surface"), "#ffffff", "#2c2c2c"),
-        ("gal_border", "--border", tr("border_color", "Border Color"), "#e0e0e0", "#424242"),
-        ("gal_fg", "--fg", tr("fg_label", "Text"), "#212121", "#e0e0e0"),
-        ("gal_fg_subtle", "--fg-subtle", tr("fg_subtle_label", "Subtle text"), "#757575", "#9e9e9e"),
-    ):
-        fields.extend(_theme_color_pair(field_id, label, token, light, dark))
-    return {
-        "id": "gallery_palette",
-        "title": tr("category_palette", "Palette"),
-        "icon": "themes.svg",
-        "layout": "",
-        "fields": fields,
+COLOR_FIELD_TYPES = {"color", "color_pair"}
+
+
+def _config_bind_path(field):
+    """Return a hashable config path for a field, if it has one."""
+    bind = field.get("bind") or {}
+    if bind.get("kind") != "config":
+        return None
+    if "path" in bind:
+        return tuple(bind["path"])
+    if "key" in bind:
+        return (bind["key"],)
+    return None
+
+
+def _color_bindings(field, fields_by_id):
+    """Every stored value used by an editable colour control."""
+    bindings = []
+    for candidate in (field, *(fields_by_id.get(field.get(key)) for key in (
+            "light_field", "dark_field", "single_field"))):
+        if candidate:
+            path = _config_bind_path(candidate)
+            if path:
+                bindings.append(path)
+    return tuple(sorted(set(bindings)))
+
+
+def _is_color_value(value):
+    """Whether a config default can be opened in the native colour picker."""
+    value = str(value or "").strip().lower()
+    return value.startswith("#") or value.startswith("rgb(") or value.startswith("rgba(")
+
+
+def _iter_default_colors(value, path=()):
+    """Yield colour-valued leaves from the add-on's config defaults."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from _iter_default_colors(child, path + (key,))
+    elif _is_color_value(value):
+        yield path, value
+
+
+def _gallery_color_sections(source_pages):
+    """Build one editable Gallery inventory from all colour settings.
+
+    Colour controls are copied rather than linked as navigation shortcuts. Their
+    bindings (or hidden light/dark companion bindings) remain the source of
+    truth, so clicking a Gallery swatch opens the same native picker and writes
+    the same setting as clicking it on its owning page.
+    """
+    all_fields = {
+        field["id"]: field
+        for _page, _section, field in iter_fields(source_pages)
     }
+    seen_bindings = set()
+    configured_paths = set()
+    sections = []
 
+    for page in source_pages:
+        page_fields = []
+        for _page, section, field in iter_fields([page]):
+            if field.get("type") not in COLOR_FIELD_TYPES:
+                continue
 
-def _gallery_menu_colors_section():
-    fields = []
-    for field_id, token, label, light, dark in (
-        ("gal_heatmap_color", "--heatmap-color", tr("heatmap_color_label", "Heatmap"), "#0077C8", "#0077C8"),
-        ("gal_heatmap_zero", "--heatmap-color-zero", tr("heatmap_color_zero_label", "Heatmap (empty day)"), "#f0f0f0", "#3a3a3a"),
-        ("gal_star", "--star-color", tr("star_color_label", "Star"), "#FFD700", "#FFD700"),
-        ("gal_star_empty", "--empty-star-color", tr("empty_star_color_label", "Empty star"), "#e0e0e0", "#4a4a4a"),
-    ):
-        fields.extend(_theme_color_pair(field_id, label, token, light, dark))
-    fields.extend([
-        # Own ids, same keys as Main menu's Heatmap card owns: a field id has to
-        # be unique across the whole dialog (it addresses one control and one
-        # store slot), while the *setting* is deliberately reachable from both
-        # places. Editing it here shows up on the Heatmap card next time that
-        # page is mounted.
-        _single_color_slot(
-            "gal_streak_icon_color",
-            tr("heatmap_streak_icon_color", "Streak Icon Color"),
-            {"kind": "config", "key": "heatmapStreakIconColor"},
-            "#ff6b35",
-        ),
-        _single_color_slot(
-            "gal_streak_icon_zero_color",
-            tr("heatmap_streak_icon_zero_color", "Streak Icon Color (0 days)"),
-            {"kind": "config", "key": "heatmapStreakIconZeroColor"},
-            "#8f8f8f",
-        ),
-    ])
-    return {
-        "id": "gallery_menu_colors",
-        "title": tr("category_main_menu", "Main menu"),
-        "icon": "main_menu.svg",
-        "layout": "",
-        "fields": fields,
-    }
+            bindings = _color_bindings(field, all_fields)
+            # Some legacy settings persist in mw.col.conf rather than add-on
+            # config. They have no config-path signature, but each is still a
+            # distinct Gallery colour and must not collapse into one entry.
+            identity = bindings or (("field", field["id"]),)
+            if identity in seen_bindings:
+                continue
+            seen_bindings.add(identity)
+            configured_paths.update(bindings)
 
+            gallery_field = copy.deepcopy(field)
+            gallery_field["id"] = f"gallery_{page['id']}_{field['id']}"
+            # A Gallery is an inventory: a colour must remain available here
+            # even when a mode switch hides it on its original page.
+            gallery_field.pop("show_when", None)
+            gallery_field.pop("head", None)
+            gallery_field.pop("head_label", None)
+            if section.get("title"):
+                source = section["title"]
+                gallery_field["desc"] = (
+                    f"{source} — {field.get('desc', '')}".rstrip(" —")
+                )
+            page_fields.append(gallery_field)
 
-def _gallery_sidebar_colors_section():
-    fields = []
-    for field_id, token, label, light, dark in (
-        ("gal_highlight_bg", "--highlight-bg", tr("highlight_bg_label", "Row highlight"), "#eeeeee", "#3c3c3c"),
-        ("gal_deck_hover", "--deck-hover-bg", tr("deck_hover_bg_label", "Deck hover"), "rgba(128, 128, 128, 0.1)", "rgba(128, 128, 128, 0.1)"),
-        ("gal_deck_dragging", "--deck-dragging-bg", tr("deck_dragging_bg_label", "Deck dragging"), "#cde4f9", "#3a3a3a"),
-        ("gal_deck_edit_mode", "--deck-edit-mode-bg", tr("deck_edit_mode_bg_label", "Deck edit mode"), "rgba(128, 128, 128, 0.05)", "rgba(128, 128, 128, 0.05)"),
-    ):
-        fields.extend(_theme_color_pair(field_id, label, token, light, dark))
-    for key, fallback_color in MARKER_DEFINITIONS:
-        fields.append(_single_color_slot(
-            f"gal_marker_{key}",
-            tr(f"marker_{key}", key.title()),
-            {"kind": "config", "path": ["markerColors", key]},
-            fallback_color,
-        ))
-    return {
-        "id": "gallery_sidebar_colors",
-        "title": tr("category_sidebar", "Sidebar"),
-        "icon": "sidebar.svg",
-        "layout": "",
-        "fields": fields,
-    }
+        if page_fields:
+            sections.append({
+                "id": f"gallery_{page['id']}_colors",
+                "title": page["title"],
+                "icon": page.get("icon", "themes.svg"),
+                "layout": "",
+                "fields": page_fields,
+            })
 
-
-def _gallery_reviewer_colors_section():
-    fields = []
-    for grade, string_key, fallback in (
-        ("again", "again", "Again"),
-        ("hard", "hard", "Hard"),
-        ("good", "good", "Good"),
-        ("easy", "easy", "Easy"),
-    ):
-        grade_label = tr(string_key, fallback)
-        fields.extend(_key_color_pair(
-            f"gal_btn_{grade}_bg",
-            tr(f"{grade}_bg", f"{grade_label} background"),
-            f"onigiri_reviewer_btn_{grade}_bg_light",
-            f"onigiri_reviewer_btn_{grade}_bg_dark",
-            {"again": "#ffb3b3", "hard": "#ffe0b3", "good": "#b3ffb3", "easy": "#b3d9ff"}[grade],
-            {"again": "#ffcccb", "hard": "#ffd699", "good": "#90ee90", "easy": "#add8e6"}[grade],
-        ))
-        fields.extend(_key_color_pair(
-            f"gal_btn_{grade}_text",
-            tr(f"{grade}_text", f"{grade_label} text"),
-            f"onigiri_reviewer_btn_{grade}_text_light",
-            f"onigiri_reviewer_btn_{grade}_text_dark",
-            {"again": "#4d0000", "hard": "#4d2600", "good": "#004d00", "easy": "#00264d"}[grade],
-            {"again": "#4a0000", "hard": "#4d1d00", "good": "#004000", "easy": "#002952"}[grade],
-        ))
-    return {
-        "id": "gallery_reviewer_colors",
-        "title": tr("category_reviewer", "Reviewer"),
-        "icon": "add-card.svg",
-        "layout": "",
-        "fields": fields,
-    }
+    # A few theme tokens have no dedicated control elsewhere. They are still
+    # editable add-on colours, so expose them here instead of silently omitting
+    # them from the claimed complete Gallery.
+    remaining = []
+    for path, default in _iter_default_colors(config.DEFAULTS):
+        if path in configured_paths:
+            continue
+        field_id = "gallery_config_" + "_".join(
+            str(part).replace("-", "_").lstrip("_") for part in path
+        )
+        remaining.append({
+            "id": field_id,
+            "type": "color",
+            "label": " / ".join(str(part).replace("--", "") for part in path),
+            "bind": {"kind": "config", "path": list(path)},
+            "default": default,
+        })
+    if remaining:
+        sections.append({
+            "id": "gallery_additional_colors",
+            "title": tr("other", "Other"),
+            "icon": "themes.svg",
+            "layout": "",
+            "fields": remaining,
+        })
+    return sections
 
 
 def _gallery_images_section():
@@ -3711,7 +3873,7 @@ def _gallery_images_section():
     }
 
 
-def _gallery_page():
+def _gallery_page(source_pages):
     return {
         "id": "gallery",
         "legacy_name": "Gallery",
@@ -3723,13 +3885,7 @@ def _gallery_page():
             "Every colour and picture in use, in one place.",
         ),
         "tabbed": True,
-        "sections": [
-            _gallery_palette_section(),
-            _gallery_menu_colors_section(),
-            _gallery_sidebar_colors_section(),
-            _gallery_reviewer_colors_section(),
-            _gallery_images_section(),
-        ],
+        "sections": _gallery_color_sections(source_pages) + [_gallery_images_section()],
     }
 
 
@@ -3765,14 +3921,13 @@ def _mainmenu_page():
 def build_pages():
     """Every nav entry, in order. Called fresh on each dialog open so
     translations, font lists and platform probes are current."""
-    return [
+    source_pages = [
         _profile_page(),
         _sync_page(),
         _modes_page(),
         _languages_page(),
         _fonts_page(),
         _themes_page(),
-        _gallery_page(),
         _mainmenu_page(),
         _sidebar_page(),
         _overviewer_page(),
@@ -3781,6 +3936,8 @@ def build_pages():
         _hashi_notes_page(),
         _pomodoro_page(),
     ] + games.build_pages()
+    gallery = _gallery_page(source_pages)
+    return source_pages[:6] + [gallery] + source_pages[6:]
 
 
 NAV_GROUPS = [

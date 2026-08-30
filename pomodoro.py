@@ -37,7 +37,7 @@ from aqt.qt import (
     QWidget,
 )
 from PyQt6.QtCore import QLocale, QObject, QPoint, QRect, QRectF, QTimer, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFontDatabase, QPainterPath, QPen
+from PyQt6.QtGui import QBrush, QColor, QFont, QFontDatabase, QPainterPath, QPen
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene
 
@@ -53,9 +53,9 @@ MAX_HISTORY = 500
 SOUNDS_SUBDIR = "pomodoro_sounds"
 DEFAULT_ICON = "system:pomodoro.svg"
 
-# Island size presets. "small" reproduces the original hard-coded island
-# exactly; "medium"/"big" scale the same shell up and switch on extra rows
-# ("progress" bar, "meta" line, "stats" tiles) - see PomodoroIslandView._build.
+# The two user-facing timer styles share the same shell machinery. Legacy
+# size presets stay available for existing profiles, while the style setting
+# picks the intentional layouts exposed in Appearance.
 SIZE_PRESETS = {
     "small": {
         "window": (230, 200),
@@ -104,6 +104,17 @@ SIZE_PRESETS = {
     },
 }
 DEFAULT_SIZE = "small"
+STYLE_PRESETS = {
+    "minimal": "small",
+    "dashboard": "medium",
+}
+DEFAULT_STYLE = "minimal"
+
+BUILTIN_SOUNDS = {
+    "soft_start": "pomodoro_start_soft.mp3",
+    "soft_bell": "pomodoro_end_soft_bell.mp3",
+    "classic_chime": "pomodoro_chime.wav",
+}
 
 DEFAULT_SETTINGS = {
     "focus_minutes": 25,
@@ -116,9 +127,12 @@ DEFAULT_SETTINGS = {
     "auto_start_next_phase": True,
     "icon": DEFAULT_ICON,
     "font_key": "system",
-    # "small" (default) / "medium" / "big" - see SIZE_PRESETS.
+    # `size` is retained for profile compatibility. New UI uses `style`.
     "size": DEFAULT_SIZE,
+    "style": DEFAULT_STYLE,
     "sound_enabled": True,
+    "start_sound": "soft_start",
+    "end_sound": "soft_bell",
     "sound_file": "",
     # When True, the shell/accent/digits/icon roles switch between the
     # "light" and "dark" color sets automatically with Anki's theme. When
@@ -265,10 +279,14 @@ def blur_pixmap(pixmap, radius):
 
 
 def get_preset(settings):
-    """Layout metrics for the island size chosen in Settings -> Pomodoro ->
-    Appearance. Both the real floating island and the Settings preview build
-    themselves from this same dict (see PomodoroIslandView)."""
-    key = (settings or {}).get("size") or DEFAULT_SIZE
+    """Layout metrics for the selected timer style.
+
+    Profiles created before styles existed still fall back to their stored
+    size; once a style is saved, its layout is authoritative.
+    """
+    settings = settings or {}
+    style = settings.get("style")
+    key = STYLE_PRESETS.get(style) or settings.get("size") or DEFAULT_SIZE
     return SIZE_PRESETS.get(key, SIZE_PRESETS[DEFAULT_SIZE])
 
 
@@ -337,13 +355,28 @@ def _default_chime_path():
     return os.path.join(_addon_root(), "system_files", "sounds", "pomodoro_chime.wav")
 
 
-def _resolve_sound_path(settings):
+def _builtin_sound_path(sound_key):
+    filename = BUILTIN_SOUNDS.get(sound_key)
+    if not filename:
+        return None
+    return os.path.join(_addon_root(), "system_files", "sounds", filename)
+
+
+def _resolve_sound_path(settings, event="end"):
+    sound_key = settings.get(f"{event}_sound") or (
+        "soft_start" if event == "start" else "soft_bell"
+    )
+    if sound_key == "none":
+        return None
+    if sound_key != "custom":
+        return _builtin_sound_path(sound_key)
+
     sound_file = (settings.get("sound_file") or "").strip()
     if sound_file:
         candidate = os.path.join(_sounds_dir(), sound_file)
         if os.path.exists(candidate):
             return candidate
-    return _default_chime_path()
+    return _builtin_sound_path("soft_bell") if event == "end" else None
 
 
 def import_sound_file(source_path):
@@ -357,10 +390,10 @@ def import_sound_file(source_path):
     return filename
 
 
-def _play_sound(settings):
+def _play_sound(settings, event="end"):
     if not settings.get("sound_enabled", True):
         return
-    path = _resolve_sound_path(settings)
+    path = _resolve_sound_path(settings, event)
     if not path or not os.path.exists(path):
         return
     try:
@@ -372,14 +405,14 @@ def _play_sound(settings):
         print(f"Pomodoro: sound playback error: {e}")
 
 
-def play_test_sound(sound_file=None):
-    """Plays the given (or currently saved) sound regardless of the
-    sound_enabled toggle - used by the Settings page's "Test Sound" button."""
+def play_test_sound(event="end", sound_file=None):
+    """Preview a start/end tone regardless of the master sound toggle."""
     settings = dict(get_settings())
     settings["sound_enabled"] = True
     if sound_file is not None:
         settings["sound_file"] = sound_file
-    _play_sound(settings)
+        settings["end_sound"] = "custom"
+    _play_sound(settings, event)
 
 
 def _position_centered(dialog, anchor=None):
@@ -420,6 +453,22 @@ def get_settings():
         saved = mw.col.conf.get(SETTINGS_CONF_KEY, {}) or {}
         merged = _default_settings()
         merged.update(saved)
+
+        # Migrate the old size-only model without rewriting the collection on
+        # read. A custom legacy chime remains selected as the end tone.
+        if "style" not in saved:
+            merged["style"] = (
+                "minimal" if saved.get("size", DEFAULT_SIZE) == "small"
+                else "dashboard"
+            )
+        elif merged.get("style") not in STYLE_PRESETS:
+            # The retired pet style opens in Dashboard. Existing profiles
+            # open in Dashboard, the closest equivalent, without preserving an
+            # unreachable value in the running timer.
+            merged["style"] = "dashboard"
+        if "end_sound" not in saved and saved.get("sound_file"):
+            merged["end_sound"] = "custom"
+
         merged_colors = merged["colors"]
         saved_colors = saved.get("colors") or {}
         for mode in ("light", "dark"):
@@ -519,10 +568,13 @@ class PomodoroTimer(QObject):
     def start(self):
         if self.running:
             return
+        beginning_phase = self.remaining_seconds >= self.phase_length_seconds()
         if self.session_type == "focus" and self._phase_started_at is None:
             self._phase_started_at = _now_iso()
         self.running = True
         self._qtimer.start()
+        if beginning_phase:
+            _play_sound(self.settings, "start")
         self.tick.emit()
 
     def pause(self):
@@ -554,9 +606,9 @@ class PomodoroTimer(QObject):
             planned = self.settings["focus_minutes"]
             _log_session(self._phase_started_at or _now_iso(), planned, planned)
             tooltip(tr("pomodoro_focus_done", "Focus session complete! Time for a break."))
-            _play_sound(self.settings)
         else:
             tooltip(tr("pomodoro_break_done", "Break's over. Ready to focus?"))
+        _play_sound(self.settings, "end")
         self._advance(auto_start=self.settings.get("auto_start_next_phase", True))
 
     def _advance(self, auto_start=True):
@@ -718,9 +770,10 @@ class PomodoroIslandView(_PomoShellFrame):
         self.time_label = QLabel()
         self.time_label.setObjectName("pomoTime")
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.time_label)
 
         rows = preset["rows"]
+        self.time_label.setVisible(True)
+        layout.addWidget(self.time_label)
 
         self.progress_bar = None
         if "progress" in rows:

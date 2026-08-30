@@ -253,8 +253,11 @@
         markSelected(node, value);
         if (node.__paintHero) node.__paintHero();
       } else if (type === "choice") {
-        Array.prototype.forEach.call(node.querySelectorAll(".osw-choice"), function (choice) {
-          choice.classList.toggle("is-selected", choice.getAttribute("data-value") === String(value));
+        Array.prototype.forEach.call(node.querySelectorAll(".osw-choice, .osw-segment-btn"), function (choice) {
+          const selected = choice.getAttribute("data-value") === String(value);
+          choice.classList.toggle("is-selected", selected && choice.classList.contains("osw-choice"));
+          choice.classList.toggle("is-active", selected && choice.classList.contains("osw-segment-btn"));
+          choice.setAttribute("aria-selected", selected ? "true" : "false");
         });
       } else if (type === "number" || type === "text") {
         const input = node.querySelector("input, textarea");
@@ -310,6 +313,7 @@
     refreshGamesFields();
     refreshGameCards();
     refreshConditionalBlocks();
+    refreshPomodoroSetups();
     updateProfilePreview();
     updateDesignerPreviews();
     refreshProfileLevelLinks();
@@ -338,6 +342,12 @@
   function refreshFontPreviews() {
     Array.prototype.forEach.call(document.querySelectorAll(".osw-font-role-section"), function (node) {
       if (node.__updateFontPreview) node.__updateFontPreview();
+    });
+  }
+
+  function refreshPomodoroSetups() {
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-pomo-setup"), function (node) {
+      if (node.__syncPomodoroSetup) node.__syncPomodoroSetup();
     });
   }
 
@@ -495,6 +505,34 @@
     });
     box.appendChild(input);
     if (field.suffix) box.appendChild(el("span", "osw-number-suffix", field.suffix));
+
+    // A regular numeric input remains best for exact keyboard entry. Settings
+    // that opt into `stepper` also get explicit +/- targets, making small
+    // adjustments easy without relying on a hidden browser spinner.
+    if (field.stepper) {
+      const stepper = el("div", "osw-number-stepper");
+      function nudge(direction) {
+        const raw = parseFloat(input.value);
+        const current = isNaN(raw) ? (field.min != null ? field.min : 0) : raw;
+        const increment = field.step != null ? field.step : 1;
+        let next = current + (direction * increment);
+        if (field.min != null) next = Math.max(field.min, next);
+        if (field.max != null) next = Math.min(field.max, next);
+        if (next === current) return;
+        input.value = next;
+        bridge("osw:haptic:1");
+        setValue(field.id, next * scale, { keepDom: true });
+      }
+
+      [["−", -1, "Decrease"], ["+", 1, "Increase"]].forEach(function (spec) {
+        const button = el("button", "osw-number-step", spec[0]);
+        button.type = "button";
+        button.setAttribute("aria-label", spec[2] + " " + field.label);
+        button.addEventListener("click", function () { nudge(spec[1]); });
+        stepper.appendChild(button);
+      });
+      box.appendChild(stepper);
+    }
 
     if (field.resetTo != null) {
       const reset = el("button", "osw-reset");
@@ -980,6 +1018,7 @@
     reset: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
     sync: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7M3 12a9 9 0 0 1 15-6.7"/><path d="M21 4v5h-5M3 20v-5h5"/></svg>',
     open: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    play: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7l-10.2-6.4A1 1 0 0 0 8 5.6z"/></svg>',
     coin: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10a2.5 2.5 0 0 1 5 0c0 2.6-5 1.4-5 4a2.5 2.5 0 0 0 5 0"/></svg>'
   };
 
@@ -2552,7 +2591,14 @@
     if (field.staticFallback) {
       const dark = target && target.role === "dark";
       const single = !target || target.role === "single";
-      if (single) return (CTX.dark ? field.staticFallback.dark : field.staticFallback.light) || "";
+      // Dynamic mode off makes the live Pomodoro use its light palette in
+      // either app theme. Its collapsed colour slot must show that same value.
+      if (single) {
+        const useDark = field.dynamicField && values[field.dynamicField] === false
+          ? false
+          : !!CTX.dark;
+        return (useDark ? field.staticFallback.dark : field.staticFallback.light) || "";
+      }
       return (dark ? field.staticFallback.dark : field.staticFallback.light) || "";
     }
     if (!field.fallbackLight && !field.fallbackDark) return "";
@@ -3655,6 +3701,12 @@
 
   const PREVIEW_PAINTERS = {};
 
+  // Preview-only Onigimon grid footprint. The live widget supports 1-4 rows
+  // by 1-2 columns; keeping this local means inspecting a size never moves the
+  // user's actual widget in Main Menu > Organize.
+  let onigimonPreviewColumns = 1;
+  let onigimonPreviewRows = 2;
+
   /* Resolves a light/dark pair the same way pairLinked()/imageTargets() do —
      used by preview painters, which read straight from `values` rather than
      going through a rendered field's own imageTargets() call. */
@@ -4005,7 +4057,11 @@
     // a hidden field wedged between them) into separate one-field blocks
     // that then land in different columns instead of staying together.
     const fields = ((card.__section || {}).fields || [])
-      .filter(function (f) { return !f.head && f.type !== "hidden"; });
+      .filter(function (f) {
+        const isDetachedColor = card.__fullWidthColorGrid &&
+          (f.type === "color_pair" || f.type === "color");
+        return !f.head && f.type !== "hidden" && !isDetachedColor;
+      });
     const visibleIds = [];
     fields.forEach(function (field) {
       const node = host.querySelector('[data-field-host="' + field.id + '"]');
@@ -4070,13 +4126,14 @@
           // ~45%-wide column has — full deck width, outside the controls/
           // slots split (a third row spanning both columns), taking no part
           // in the leftH/rightH balance below.
-          wrap.classList.remove("is-inline");
+          wrap.classList.remove("is-inline", "is-single");
           host.appendChild(wrap);
         } else {
           // Two tiles or fewer (e.g. Heatmap Shape/Streak Icon) fit a single
           // column fine — sits with whichever side is shorter instead of
           // leaving a half-empty full-width row.
           wrap.classList.add("is-inline");
+          wrap.classList.toggle("is-single", visibleCount === 1);
           const target = singleColumn || leftH <= rightH ? controlsCol : slotsCol;
           if (wrap.parentElement !== target) target.appendChild(wrap);
           const blockH = DECK_ICON_TILE_HEIGHT;
@@ -4147,10 +4204,12 @@
     // one column) must not sit in the grid as a blank second track, and one
     // that gained content after starting empty must not stay invisible.
     const iconWrap = card.__iconGridEl;
+    const colorGrid = card.__fullWidthColorGrid;
     if (controlsCol.parentElement === host) host.removeChild(controlsCol);
     if (slotsCol.parentElement === host) host.removeChild(slotsCol);
     if (controlsCol.childNodes.length) host.appendChild(controlsCol);
     if (!singleColumn && slotsCol.childNodes.length) host.appendChild(slotsCol);
+    if (colorGrid && colorGrid.parentElement === host) host.appendChild(colorGrid);
     if (iconWrap && iconWrap.parentElement === host) host.appendChild(iconWrap);
     host.style.gridTemplateColumns = (singleColumn || !slotsCol.childNodes.length) ? "1fr" : "";
   }
@@ -4259,6 +4318,29 @@
         function () { return ovstyleActiveScreen; },
         function (value) {
           ovstyleActiveScreen = value;
+          paintDesignerPreview(card);
+        }
+      ));
+    } else if (section.preview_kind === "onigimon_scene") {
+      headControls.appendChild(renderLocalHeadChoice(
+        str("columns", "Columns"),
+        [1, 2].map(function (count) {
+          return { value: String(count), label: String(count) };
+        }),
+        function () { return String(onigimonPreviewColumns); },
+        function (value) {
+          onigimonPreviewColumns = Math.max(1, Math.min(2, Number(value) || 1));
+          paintDesignerPreview(card);
+        }
+      ));
+      headControls.appendChild(renderLocalHeadChoice(
+        str("rows", "Rows"),
+        [1, 2, 3, 4].map(function (count) {
+          return { value: String(count), label: String(count) };
+        }),
+        function () { return String(onigimonPreviewRows); },
+        function (value) {
+          onigimonPreviewRows = Math.max(1, Math.min(4, Number(value) || 1));
           paintDesignerPreview(card);
         }
       ));
@@ -4377,13 +4459,12 @@
       }
       group.appendChild(node);
     }
-    // Deck Stats can carry up to 13 colour pairs (every category plus the two
-    // group accents) — far too many to sit beside a 4-slider column without
-    // dwarfing it. They get their own full-width grid below both columns
-    // instead, the same "third row, spans everything" treatment the icon
-    // grid already uses.
+    // Deck Stats has a large palette, while Hashi Notes has a compact palette
+    // that otherwise leaves half its designer deck unused. Both use a
+    // full-width grid below their regular controls.
     const isDeckStats = section.id === "mainmenu_deck_stats";
-    const colorGridCol = isDeckStats ? el("div", "osw-deck-color-grid") : null;
+    const useFullWidthColorGrid = isDeckStats || !!section.full_width_color_grid;
+    const colorGridCol = useFullWidthColorGrid ? el("div", "osw-deck-color-grid") : null;
     (section.fields || []).forEach(function (field) {
       if (field.head && !section.head_to_deck) return;
       if (deckSkipField(field.id)) return; // rendered below, next to its pair anchor
@@ -4398,7 +4479,7 @@
           if (companion) placed.appendChild(renderIconTileColors(companion));
         });
       }
-      if (colorGridCol && field.type === "color_pair") {
+      if (colorGridCol && (field.type === "color_pair" || field.type === "color")) {
         appendDeckNode(colorGridCol, field, placed);
         return;
       }
@@ -4425,6 +4506,7 @@
     // still find a column that started out empty and was never appended.
     card.__controlsCol = controlsCol;
     card.__slotsCol = slotsCol;
+    card.__fullWidthColorGrid = section.full_width_color_grid ? colorGridCol : null;
 
     registerDesignerPreview(card);
     paintDesignerPreview(card);
@@ -4696,6 +4778,266 @@
     });
 
     holder.appendChild(card);
+    stage.appendChild(holder);
+  };
+
+  // ── Hashi Notes dashboard widget preview ─────────────────────────────────
+  //
+  // `render.py` injects the marked Hashi block from menu.css verbatim. Keep
+  // this DOM identical to hashi_notes.render_widget_html(): the preview is a
+  // real Main Menu widget given representative note content, not a separate
+  // settings-only implementation that can drift over time.
+  PREVIEW_PAINTERS.hashi_widget = function (stage, vals, isDark) {
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    designerPaintBackdrop(stage, vals, isDark);
+
+    const dynamic = vals["hashi_widget_dynamic"] !== false;
+    const themedDark = dynamic && isDark;
+    const synced = vals["hashi_widget_sync"] !== false;
+    function hashiColor(key, fallbackLight, fallbackDark) {
+      return vals["hashi_widget_color_" + key + (themedDark ? "_dark" : "_light")]
+        || (themedDark ? fallbackDark : fallbackLight);
+    }
+
+    const boxColor = synced
+      ? designerPairValue(vals, "widget_box_color_light", "widget_box_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark)
+      : hashiColor("box_bg", "#ffffff", "#2c2c2c");
+    const borderColor = synced
+      ? designerPairValue(vals, "widget_border_color_light", "widget_border_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark)
+      : hashiColor("box_border", "#e0e0e0", "#424242");
+    const cardColor = hashiColor("card_bg", "#f5f5f5", "#363636");
+    const titleColor = hashiColor("title", "#212121", "#f0f0f0");
+    const excerptColor = hashiColor("excerpt", "#757575", "#9c9c9c");
+    const accentColor = hashiColor("accent", "#0077C8", "#4da3e8");
+    const opacityKey = synced ? "onigiri_canvas_inset_effect_opacity" : "hashi_widget_opacity";
+    const blurKey = synced ? "onigiri_canvas_inset_effect_blur" : "hashi_widget_blur";
+    const radiusKey = synced ? "onigiri_canvas_inset_border_radius" : "hashi_widget_radius";
+    const strokeKey = synced ? "onigiri_canvas_inset_border_width" : "hashi_widget_stroke";
+    const blur = Math.max(0, Math.min(100, Number(vals[blurKey] || 0)));
+    const opacity = Math.max(0, Math.min(100, Number(vals[opacityKey] == null ? 100 : vals[opacityKey])));
+    const radius = Math.max(0, Math.min(60, Number(vals[radiusKey] || 0)));
+    const stroke = Math.max(0, Math.min(10, Number(vals[strokeKey] || 0)));
+    // This is patcher.py's _hw_rules() calculation: a blur caps the backdrop
+    // alpha at .62, then the real menu CSS consumes the resulting variables.
+    const boxAlpha = Math.min(opacity / 100, blur > 0 ? 0.62 : 1);
+    const smallTitle = designerFontRole(vals, "small_title", isDark);
+
+    const holder = el("div", "osw-preview-stage-center");
+    const widget = el("div", "hashi-notes-widget");
+    widget.style.width = "min(500px, 100%)";
+    widget.style.height = "100%";
+    widget.style.minHeight = "0";
+    widget.style.setProperty("--onigiri-widget-pad", "19.6px");
+    widget.style.setProperty("--hashiw-box-bg", rgba(boxColor, boxAlpha));
+    widget.style.setProperty("--hashiw-box-border", borderColor);
+    widget.style.setProperty("--hashiw-box-radius", radius + "px");
+    widget.style.setProperty("--hashiw-box-stroke", stroke + "px");
+    widget.style.setProperty("--hashiw-box-blur", ((blur / 100) * 20).toFixed(2) + "px");
+    widget.style.setProperty("--hashiw-card-bg", cardColor);
+    widget.style.setProperty("--hashiw-title-color", titleColor);
+    widget.style.setProperty("--hashiw-excerpt-color", excerptColor);
+    widget.style.setProperty("--hashiw-accent", accentColor);
+    widget.style.setProperty("--font-small-title", smallTitle.family);
+    widget.style.setProperty("--font-size-small-title", smallTitle.size + "px");
+    widget.style.setProperty("--font-small-title-color", smallTitle.color);
+    widget.style.setProperty("--fg", titleColor);
+    widget.style.setProperty("--fg-subtle", excerptColor);
+    const single = (vals["hashi_widget_mode"] || "gallery") === "single";
+    widget.classList.add(single ? "is-single" : "is-gallery");
+
+    const head = el("div", "onigiri-widget-head");
+    const heading = el("h3", "", str("hashi_notes_title", "Hashi Notes"));
+    head.appendChild(heading);
+
+    // These are regular Hashi paper colours, not settings-only card colours.
+    // They deliberately have no title or icon, so the preview reads as a
+    // collection of note papers and makes the Gallery's colour variety clear.
+    const notes = [
+      { light: "#fff0a8", dark: "#67582d", excerpt: "Link it to yesterday's topic." },
+      { light: "#c9efcf", dark: "#345e48", excerpt: "Try it before checking the answer." },
+      { light: "#c7e8f7", dark: "#315569", excerpt: "Keep this one handy for next time." },
+      { light: "#f5d0e0", dark: "#6b4156", excerpt: "A quick note worth remembering." },
+    ];
+    function applySamplePaper(noteEl, note) {
+      const paper = themedDark ? note.dark : note.light;
+      const ink = themedDark ? "#fffdf7" : "#241f1b";
+      noteEl.style.setProperty("--hashiw-note-fill", paper);
+      noteEl.style.setProperty("--hashiw-note-fg", ink);
+      noteEl.style.setProperty("--hashiw-note-fg2", ink);
+      noteEl.style.setProperty("--hashiw-note-fg3", ink);
+      noteEl.style.setProperty("--hashiw-note-edge", rgba(ink, 0.12));
+    }
+    function makeGalleryCard(note, index) {
+      const noteEl = el("div", "hashi-widget-card");
+      applySamplePaper(noteEl, note);
+      if (vals["hashi_widget_show_excerpt"] !== false) {
+        noteEl.appendChild(el("p", "hashi-widget-card-excerpt", note.excerpt));
+      }
+      if (vals["hashi_widget_show_date"] !== false) {
+        noteEl.appendChild(el("span", "hashi-widget-card-date", index === 0 ? "Today" : "Yesterday"));
+      }
+      return noteEl;
+    }
+
+    if (single) {
+      if (vals["hashi_widget_show_date"] !== false) {
+        head.appendChild(el("span", "hashi-widget-date", "Today"));
+      }
+      widget.appendChild(head);
+      const note = notes[0];
+      const noteBody = el("div", "hashi-widget-single");
+      applySamplePaper(widget, note);
+      if (vals["hashi_widget_show_excerpt"] !== false) {
+        noteBody.appendChild(el("p", "hashi-widget-excerpt", note.excerpt));
+      }
+      widget.appendChild(noteBody);
+    } else {
+      widget.appendChild(head);
+      const cards = el("div", "hashi-widget-cards");
+      const limit = Math.max(1, Math.min(4, Number(vals["hashi_widget_limit"]) || 4));
+      notes.slice(0, limit).forEach(function (note, index) {
+        cards.appendChild(makeGalleryCard(note, index));
+      });
+      widget.appendChild(cards);
+    }
+    holder.appendChild(widget);
+    stage.appendChild(holder);
+  };
+
+  // Prep Station uses the same Main Menu classes and marked menu.css block as
+  // the live widget. Only the plan data is representative, so its Font Size
+  // control can be assessed in the exact dashboard layout.
+  PREVIEW_PAINTERS.prep_widget = function (stage, vals, isDark) {
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    designerPaintBackdrop(stage, vals, isDark);
+    const boxColor = designerPairValue(
+      vals, "widget_box_color_light", "widget_box_color_dark",
+      "onigiri_canvas_inset_color_theme_mode", isDark
+    ) || (isDark ? "#2c2c2c" : "#ffffff");
+    const borderColor = designerPairValue(
+      vals, "widget_border_color_light", "widget_border_color_dark",
+      "onigiri_canvas_inset_color_theme_mode", isDark
+    ) || (isDark ? "#424242" : "#e0e0e0");
+    const blur = Math.max(0, Math.min(100, Number(vals["onigiri_canvas_inset_effect_blur"] || 0)));
+    const opacity = Math.max(0, Math.min(100, Number(vals["onigiri_canvas_inset_effect_opacity"] == null ? 100 : vals["onigiri_canvas_inset_effect_opacity"])));
+    const radius = Math.max(0, Math.min(60, Number(vals["onigiri_canvas_inset_border_radius"] || 20)));
+    const stroke = Math.max(0, Math.min(10, Number(vals["onigiri_canvas_inset_border_width"] || 1)));
+    const alpha = Math.min(opacity / 100, blur > 0 ? 0.62 : 1);
+    const holder = el("div", "osw-preview-stage-center");
+    const widget = el("div", "prep-station-widget");
+    widget.style.width = "min(560px, 100%)";
+    widget.style.height = "100%";
+    widget.style.minHeight = "0";
+    widget.style.setProperty("--onigiri-widget-pad", "19.6px");
+    widget.style.setProperty("--prep-fs", String(Math.max(60, Math.min(160, Number(vals["prep_widget_font_scale"] || 100))) / 100));
+    widget.style.setProperty("--canvas-inset", rgba(boxColor, alpha));
+    widget.style.setProperty("--border", borderColor);
+    widget.style.borderRadius = radius + "px";
+    widget.style.borderWidth = stroke + "px";
+    widget.style.backdropFilter = blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : "";
+    widget.style.WebkitBackdropFilter = widget.style.backdropFilter;
+    const head = el("div", "onigiri-widget-head");
+    head.appendChild(el("h3", "", str("prep_widget_title", "Study Plans")));
+    widget.appendChild(head);
+    const cards = el("div", "prep-plan-cards");
+    const plans = [
+      ["#d97757", "12 days", "Biology", "24", "cards/day", "18/30", "60%"],
+      ["#4b92c6", "20 days", "History", "16", "cards/day", "12/24", "50%"],
+      ["#8768c7", "31 days", "Physics", "12", "cards/day", "21/28", "75%"],
+      ["#49a579", "45 days", "Language", "8", "cards/day", "9/20", "45%"],
+    ];
+    plans.forEach(function (plan) {
+      const card = el("div", "prep-plan-card");
+      const band = el("div", "prep-card-band");
+      band.style.backgroundColor = plan[0];
+      const bandTop = el("div", "prep-card-band-top");
+      bandTop.appendChild(el("span", "prep-card-badge", plan[1]));
+      const name = el("div", "prep-card-name-row");
+      name.appendChild(el("span", "prep-card-name", plan[2]));
+      band.appendChild(bandTop);
+      band.appendChild(name);
+      const body = el("div", "prep-card-body");
+      const pace = el("div", "prep-card-pace");
+      const num = el("span", "prep-card-pace-num", plan[3]);
+      num.style.color = plan[0];
+      pace.appendChild(num);
+      pace.appendChild(el("span", "prep-card-pace-unit", plan[4]));
+      const progress = el("div", "prep-card-progress");
+      const track = el("span", "prep-card-progress-track");
+      const fill = el("i", "prep-card-progress-fill");
+      fill.style.width = plan[6];
+      fill.style.background = plan[0];
+      track.appendChild(fill);
+      progress.appendChild(track);
+      progress.appendChild(el("span", "prep-card-progress-label", plan[5]));
+      body.appendChild(pace);
+      body.appendChild(progress);
+      card.appendChild(band);
+      card.appendChild(body);
+      cards.appendChild(card);
+    });
+    widget.appendChild(cards);
+    holder.appendChild(widget);
+    stage.appendChild(holder);
+  };
+
+  PREVIEW_PAINTERS.pomodoro = function (stage, vals, isDark) {
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    designerPaintBackdrop(stage, vals, isDark);
+    const dynamic = vals["pomodoro_dynamic"] !== false;
+    const mode = dynamic && isDark ? "dark" : "light";
+    const fallback = mode === "dark"
+      ? { shell: "#1f1f1f", accent: CTX.accent || "#00A982", digits: "#f4f4f5", icon: "#b6b6b8", border: "#343434" }
+      : { shell: "#ffffff", accent: CTX.accent || "#00A982", digits: "#1f2933", icon: "#4b5563", border: "#e5e7eb" };
+    function color(role) { return vals["pomodoro_color_" + role + "_" + mode] || fallback[role]; }
+    const style = vals["pomodoro_style"] === "dashboard" ? "dashboard" : "minimal";
+    const preset = {
+      minimal: { width: 230, height: 200, pad: 14, time: 40, phase: 11, play: 38, button: 30 },
+      dashboard: { width: 270, height: 264, pad: 16, time: 48, phase: 11, play: 42, button: 32 },
+    }[style] || { width: 230, height: 200, pad: 14, time: 40, phase: 11, play: 38, button: 30 };
+    const opacity = Math.max(0, Math.min(100, Number(vals["pomodoro_opacity"] == null ? 100 : vals["pomodoro_opacity"])));
+    const blur = Math.max(0, Math.min(100, Number(vals["pomodoro_blur"] || 0)));
+    const fontField = fieldById["pomodoro_font"] || {};
+    const font = (fontField.options || []).filter(function (option) { return option.value === vals["pomodoro_font"]; })[0];
+    const holder = el("div", "osw-preview-stage-center osw-pomo-preview-holder");
+    const island = el("div", "osw-pomo-island is-" + style);
+    island.style.setProperty("--pomo-shell", rgba(color("shell"), opacity / 100));
+    island.style.setProperty("--pomo-accent", color("accent"));
+    island.style.setProperty("--pomo-digits", color("digits"));
+    island.style.setProperty("--pomo-icon", color("icon"));
+    island.style.setProperty("--pomo-border", fallback.border);
+    island.style.setProperty("--pomo-track", rgba(color("icon"), 0.22));
+    island.style.setProperty("--pomo-tile", rgba(color("icon"), 0.10));
+    island.style.setProperty("--pomo-tile-border", rgba(color("icon"), 0.18));
+    island.style.setProperty("--pomo-pad", preset.pad + "px");
+    island.style.setProperty("--pomo-time", preset.time + "px");
+    island.style.setProperty("--pomo-phase", preset.phase + "px");
+    island.style.setProperty("--pomo-play", preset.play + "px");
+    island.style.setProperty("--pomo-button", preset.button + "px");
+    island.style.setProperty("--pomo-font", font && font.family ? font.family : "Poppins, sans-serif");
+    island.style.backdropFilter = blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : "";
+    island.style.WebkitBackdropFilter = island.style.backdropFilter;
+    const top = el("div", "osw-pomo-top");
+    top.appendChild(el("span", "osw-pomo-icon", "◉"));
+    top.appendChild(el("span", "osw-pomo-phase", str("pomodoro_focus", "Focus")));
+    top.appendChild(el("span", "osw-pomo-top-actions", "⋯  ×"));
+    island.appendChild(top);
+    island.appendChild(el("div", "osw-pomo-time", "25:00"));
+    if (style !== "minimal") {
+      const progress = el("div", "osw-pomo-progress");
+      progress.appendChild(el("i", "", ""));
+      island.appendChild(progress);
+      island.appendChild(el("div", "osw-pomo-meta", "Session 1 of 4  ·  Next: Short Break"));
+    }
+    const controls = el("div", "osw-pomo-controls");
+    controls.appendChild(el("button", "", "⟲"));
+    controls.appendChild(el("button", "osw-pomo-play", "▶"));
+    controls.appendChild(el("button", "", "⏭"));
+    island.appendChild(controls);
+    holder.appendChild(island);
     stage.appendChild(holder);
   };
 
@@ -8655,11 +8997,23 @@
       ? vals.g_onigimon_bottom_color
       : (isDark ? "#2e2e2d" : "#efefec");
     const companion = gamesCtx.companionPreview || { name: "Onigimon", level: 1, sprite: "" };
+    const columns = Math.max(1, Math.min(2, Number(onigimonPreviewColumns) || 1));
+    const rows = Math.max(1, Math.min(4, Number(onigimonPreviewRows) || 2));
+    const compact = rows === 1;
+    const wide = columns === 2 && rows === 2;
 
     stage.innerHTML = "";
     stage.classList.add("osw-onistage");
+    stage.setAttribute("data-onigimon-columns", String(columns));
+    stage.setAttribute("data-onigimon-rows", String(rows));
 
     const card = el("div", "osw-onistage-card");
+    card.classList.toggle("is-compact", compact);
+    card.classList.toggle("is-wide", wide);
+    // Use the same grid footprint as the deck browser (230px columns, 120px
+    // rows, 20px gaps), capped by the preview stage on narrow dialogs.
+    card.style.width = (columns * 230 + (columns - 1) * 20) + "px";
+    card.style.height = (rows * 120 + (rows - 1) * 20) + "px";
 
     const top = el("div", "osw-onistage-top");
     // The live widget's radial wash — lighter towards the top-left, darker at
@@ -8678,9 +9032,22 @@
     }
 
     const sprite = el("div", "osw-onistage-sprite");
-    if (companion.sprite) {
+    const wantsAnimation = vals.g_onigimon_sprite_motion === "gif";
+    let spriteUrls = wantsAnimation ? companion.animatedSprites : companion.staticSprites;
+    if (!Array.isArray(spriteUrls)) spriteUrls = [];
+    spriteUrls = spriteUrls.filter(function (url, index) {
+      return url && spriteUrls.indexOf(url) === index;
+    });
+    if (!spriteUrls.length && companion.sprite) spriteUrls.push(companion.sprite);
+    if (spriteUrls.length) {
       const img = document.createElement("img");
-      img.src = companion.sprite;
+      img.src = spriteUrls[0];
+      img.__fallbacks = spriteUrls.slice(1);
+      img.addEventListener("error", function () {
+        const next = img.__fallbacks.shift();
+        if (next) img.src = next;
+        else img.style.display = "none";
+      });
       img.alt = "";
       sprite.appendChild(img);
     } else {
@@ -8700,6 +9067,14 @@
     info.appendChild(level);
     top.appendChild(info);
     card.appendChild(top);
+
+    // The real 1-row widget is its compact scene: 1 column shows only the
+    // companion, while 2 columns has enough room for name and level.
+    if (compact) {
+      info.classList.toggle("is-hidden", columns === 1);
+      stage.appendChild(card);
+      return;
+    }
 
     const panel = el("div", "osw-onistage-bottom");
     panel.style.background = bottom;
@@ -9840,6 +10215,84 @@
     return wrap;
   }
 
+  /* Pomodoro's fast setup deliberately renders several bound number fields as
+     one cohesive surface. The schema still owns every value and preset; this
+     renderer only turns them into tap-friendly chips. */
+  function renderPomodoroSetup(section) {
+    const root = el("div", "osw-pomo-setup");
+    if (section.description) {
+      root.appendChild(el("div", "osw-pomo-setup-desc", section.description));
+    }
+
+    const presetBlock = el("div", "osw-pomo-setup-block");
+    presetBlock.appendChild(el("div", "osw-pomo-setup-label", str("pomodoro_routines", "Routines")));
+    const presetGrid = el("div", "osw-pomo-presets");
+    (section.presets || []).forEach(function (preset) {
+      const button = el("button", "osw-pomo-preset");
+      button.type = "button";
+      button.appendChild(el("span", "osw-pomo-preset-name", preset.label));
+      button.appendChild(el("span", "osw-pomo-preset-sub", preset.sub || ""));
+      button.__presetValues = preset.values || {};
+      button.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        Object.keys(button.__presetValues).forEach(function (fieldId) {
+          setValue(fieldId, button.__presetValues[fieldId]);
+        });
+      });
+      presetGrid.appendChild(button);
+    });
+    presetBlock.appendChild(presetGrid);
+    root.appendChild(presetBlock);
+
+    const valuesGrid = el("div", "osw-pomo-values");
+    (section.groups || []).forEach(function (group) {
+      const groupNode = el("div", "osw-pomo-value-group");
+      groupNode.appendChild(el("div", "osw-pomo-value-label", group.label));
+      const chips = el("div", "osw-pomo-value-chips");
+      const options = (group.options || []).slice();
+      const current = Number(values[group.field]);
+      if (Number.isFinite(current) && options.indexOf(current) === -1) {
+        options.push(current);
+        options.sort(function (a, b) { return Number(a) - Number(b); });
+      }
+      options.forEach(function (option) {
+        const button = el("button", "osw-pomo-value-chip");
+        button.type = "button";
+        button.setAttribute("data-field-id", group.field);
+        button.setAttribute("data-value", String(option));
+        button.appendChild(el("strong", "", String(option)));
+        if (group.unit) button.appendChild(el("span", "", group.unit));
+        button.addEventListener("click", function () {
+          bridge("osw:haptic:1");
+          setValue(group.field, Number(option));
+        });
+        chips.appendChild(button);
+      });
+      groupNode.appendChild(chips);
+      valuesGrid.appendChild(groupNode);
+    });
+    root.appendChild(valuesGrid);
+
+    root.__syncPomodoroSetup = function () {
+      Array.prototype.forEach.call(root.querySelectorAll(".osw-pomo-value-chip"), function (button) {
+        const fieldId = button.getAttribute("data-field-id");
+        const selected = String(values[fieldId]) === button.getAttribute("data-value");
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+      Array.prototype.forEach.call(root.querySelectorAll(".osw-pomo-preset"), function (button) {
+        const patch = button.__presetValues || {};
+        const selected = Object.keys(patch).every(function (fieldId) {
+          return values[fieldId] === patch[fieldId];
+        });
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+    };
+    root.__syncPomodoroSetup();
+    return root;
+  }
+
   const SECTION_RENDERERS = {
     ladder: renderLadder,
     gallery_assets: renderGalleryAssets,
@@ -9852,7 +10305,8 @@
     onigimon_companions: renderOnigimonCompanions,
     hexagon_keys: renderHexagonKeys,
     bento_games: renderBentoGames,
-    games_gallery: renderGamesGallery
+    games_gallery: renderGamesGallery,
+    pomodoro_setup: renderPomodoroSetup
   };
 
   /* Plain (non-designer) sections that contain at least one conditional field.

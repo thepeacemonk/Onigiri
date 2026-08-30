@@ -914,20 +914,43 @@ class AnkimonBridge:
         urls = self.sprite_fallback_urls(pokedex_id, name, shiny)
         return urls[0] if urls else ""
 
-    def sprite_fallback_urls(self, pokedex_id: int, name: str = "", shiny: bool = False, exclude: str = "") -> List[str]:
+    def sprite_fallback_urls(
+        self,
+        pokedex_id: int,
+        name: str = "",
+        shiny: bool = False,
+        exclude: str = "",
+        motion: Optional[str] = None,
+    ) -> List[str]:
         if not pokedex_id:
             return []
         if not self.addon_id:
             self.detect()
-        motion = str(config.get_config().get("onigimon", {}).get("sprite_motion", "static"))
-        animated_first = motion == "gif"
+        selected_motion = str(
+            motion
+            if motion is not None
+            else config.get_config().get("onigimon", {}).get("sprite_motion", "static")
+        )
+        animated_first = selected_motion == "gif"
         candidates: List[tuple[str, str]] = []
         if animated_first:
-            candidates.extend((folder, f"{pokedex_id}.gif") for folder in ("front_shiny_gif", "front_default_gif"))
-            candidates.extend((folder, f"{pokedex_id}.png") for folder in ("front_shiny", "front_default"))
+            candidates.extend(
+                (folder, f"{pokedex_id}.gif")
+                for folder in ("front_shiny_gif", "front_default_gif")
+            )
+            candidates.extend(
+                (folder, f"{pokedex_id}.png")
+                for folder in ("front_shiny", "front_default")
+            )
         else:
-            candidates.extend((folder, f"{pokedex_id}.png") for folder in ("front_shiny", "front_default"))
-            candidates.extend((folder, f"{pokedex_id}.gif") for folder in ("front_shiny_gif", "front_default_gif"))
+            candidates.extend(
+                (folder, f"{pokedex_id}.png")
+                for folder in ("front_shiny", "front_default")
+            )
+            candidates.extend(
+                (folder, f"{pokedex_id}.gif")
+                for folder in ("front_shiny_gif", "front_default_gif")
+            )
 
         urls: List[str] = []
         for folder, filename in candidates:
@@ -941,7 +964,10 @@ class AnkimonBridge:
         if pokesprite:
             urls.append(pokesprite)
         shiny_part = "shiny/" if shiny else ""
-        urls.append(f"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{shiny_part}{pokedex_id}.png")
+        urls.append(
+            "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/"
+            f"pokemon/{shiny_part}{pokedex_id}.png"
+        )
 
         seen = set()
         deduped = []
@@ -1318,7 +1344,11 @@ class OnigimonManager:
         urls = self.sprite_urls_for_companion(companion)
         return urls[0] if urls else ""
 
-    def sprite_urls_for_companion(self, companion: Dict[str, Any]) -> List[str]:
+    def sprite_urls_for_companion(
+        self,
+        companion: Dict[str, Any],
+        motion: Optional[str] = None,
+    ) -> List[str]:
         pokedex_id = AnkimonBridge._safe_int(companion.get("pokedex_id"), 0)
         name = str(companion.get("name") or "")
         shiny = bool(companion.get("shiny", False))
@@ -1328,17 +1358,29 @@ class OnigimonManager:
         if self.bridge.detect():
             try:
                 import importlib
-                sprite_module = importlib.import_module(f"{self.bridge.addon_id}.Ankimon.functions.sprite_functions")
+                sprite_module = importlib.import_module(
+                    f"{self.bridge.addon_id}.Ankimon.functions.sprite_functions"
+                )
                 if hasattr(sprite_module, "get_sprite_path"):
                     try:
                         from .. import config as oni_config
                         oni_conf = oni_config.get_config().get("onigimon", {})
-                        sprite_motion = str(oni_conf.get("sprite_motion", "static"))
+                        sprite_motion = str(
+                            motion
+                            if motion is not None
+                            else oni_conf.get("sprite_motion", "static")
+                        )
                     except Exception:
-                        sprite_motion = "static"
+                        sprite_motion = str(motion or "static")
                     sprite_type = "gif" if sprite_motion == "gif" else "png"
-                    
-                    path = sprite_module.get_sprite_path("front", sprite_type, pokedex_id, shiny, gender)
+
+                    path = sprite_module.get_sprite_path(
+                        "front",
+                        sprite_type,
+                        pokedex_id,
+                        shiny,
+                        gender,
+                    )
                     if path:
                         addons_folder = mw.addonManager.addonsFolder()
                         path_str = str(path).replace("\\", "/")
@@ -1348,7 +1390,14 @@ class OnigimonManager:
             except Exception:
                 pass
 
-        urls.extend(self.bridge.sprite_fallback_urls(pokedex_id, name, shiny))
+        urls.extend(
+            self.bridge.sprite_fallback_urls(
+                pokedex_id,
+                name,
+                shiny,
+                motion=motion,
+            )
+        )
         
         stored = str(companion.get("sprite_url") or "")
         if stored:

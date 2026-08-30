@@ -33,7 +33,7 @@ class FontPickerDialog(QDialog):
     fontSelected = pyqtSignal(str)
 
     def __init__(self, current_key, addon_path, parent=None, ordered_keys=None,
-                 sample_text="12:34", title=None):
+                 sample_text="12:34", title=None, accent_color=None):
         super().__init__(parent)
         self.addon_path = addon_path
         self.current_key = current_key or "system"
@@ -43,6 +43,7 @@ class FontPickerDialog(QDialog):
         self._dark = bool(theme_manager.night_mode)
         self._ordered_keys = ordered_keys
         self._title_text = title or tr("pomodoro_font", "Timer Font")
+        self._accent_override = accent_color
 
         self.setWindowTitle(self._title_text)
         self.setWindowFlags(
@@ -144,7 +145,9 @@ class FontPickerDialog(QDialog):
             self._muted = "#4b5563"
             self._surface = "#f5f5f4"
             self._border = "#e5e7eb"
-        accent = getattr(self.parent(), "accent_color", "#00A982") if self.parent() else "#00A982"
+        accent = self._accent_override
+        if not accent:
+            accent = getattr(self.parent(), "accent_color", "#00A982") if self.parent() else "#00A982"
         if type(accent) is QColor:
             accent = accent.name()
         self._accent = accent if QColor(accent).isValid() else "#00A982"

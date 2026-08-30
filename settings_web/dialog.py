@@ -270,15 +270,25 @@ class SettingsWebDialog(QDialog):
         try:
             filename = pomodoro.import_sound_file(path)
             self._push_value("pomodoro_sound_file", filename)
-            pomodoro.play_test_sound(filename)
+            self._push_value("pomodoro_end_sound", "custom")
+            pomodoro.play_test_sound("end", filename)
         except Exception as exc:  # noqa: BLE001
             print(f"[Onigiri] settings_web: Pomodoro sound import failed: {exc}")
         return "ok"
 
-    def _cmd_pomodoro_test_sound(self, _arg):
+    def _cmd_pomodoro_test_start_sound(self, _arg):
         from .. import pomodoro
 
-        pomodoro.play_test_sound(self.store.read("pomodoro_sound_file") or None)
+        pomodoro.play_test_sound("start")
+        return "ok"
+
+    def _cmd_pomodoro_test_end_sound(self, _arg):
+        from .. import pomodoro
+
+        sound_file = None
+        if self.store.read("pomodoro_end_sound") == "custom":
+            sound_file = self.store.read("pomodoro_sound_file") or None
+        pomodoro.play_test_sound("end", sound_file)
         return "ok"
 
     # ─── Games actions ──────────────────────────────────────────────────────
@@ -348,12 +358,15 @@ class SettingsWebDialog(QDialog):
             return None
         host = self._picker_host()
         try:
+            accent_field = "gal_accent_dark" if render.is_dark() else "gal_accent_light"
+            picker_accent = self.store.read(accent_field) or render.accent_color()
             dlg = FontPickerDialog(
                 current or "system",
                 self.addon_path,
                 host,
                 sample_text="Onigiri",
                 title=tr("fonts", "Fonts"),
+                accent_color=picker_accent,
             )
             dlg.fontSelected.connect(lambda key: self._push_value(field_id, key))
             dlg.exec()

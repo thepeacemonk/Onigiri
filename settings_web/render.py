@@ -361,6 +361,8 @@ def _strings():
     out["onigimon_status_hygiene"] = tr("onigimon_status_hygiene", "Hygiene")
     out["onigimon_status_training"] = tr("onigimon_status_training", "Training")
     out["onigimon_status_hunger"] = tr("onigimon_status_hunger", "Hunger")
+    out["columns"] = tr("widget_menu_columns", "Columns")
+    out["rows"] = tr("widget_menu_rows", "Rows")
     out["hexagon_keys_owned"] = tr("hexagon_keys_owned", "owned")
     out["hexagon_keys_buy"] = tr("hexagon_keys_buy", "Buy Keys of the Island")
     out["hexagon_keys_cost"] = tr("hexagon_keys_cost", "{cost} Hex Coins")
@@ -572,7 +574,13 @@ def games_context(pages):
         "loaded": False,
         "ankimon": {},
         "companions": {"status": "", "message": "", "active": "", "companions": []},
-        "companionPreview": {"name": "Onigimon", "level": 1, "sprite": ""},
+        "companionPreview": {
+            "name": "Onigimon",
+            "level": 1,
+            "sprite": "",
+            "staticSprites": [],
+            "animatedSprites": [],
+        },
         "hexagon": {"owns_keys": False, "coins": 0, "cost": 0, "affordable": False},
         "bento": [],
     }
@@ -952,10 +960,15 @@ def build_context(store, pages):
                     # Companion colours shown under each icon tile as well as
                     # inside the icon's popover.
                     "icon_colors_inline": bool(section.get("icon_colors_inline")),
+                    "full_width_color_grid": bool(section.get("full_width_color_grid")),
                     "subsections": section.get("subsections", []),
                     "dynamic_keys": section.get("dynamic_keys", []),
                     "sync_toggle_id": section.get("sync_toggle_id", ""),
                     "sync_hidden_fields": section.get("sync_hidden_fields", []),
+                    # Pomodoro's compact setup surface: preset patches and the
+                    # value-chip groups rendered by renderPomodoroSetup.
+                    "presets": section.get("presets", []),
+                    "groups": section.get("groups", []),
                     # Gallery's image browser: [{id, title}] of the folders it
                     # lists (settings.js renderGalleryAssets).
                     "folders": section.get("folders", []),
@@ -1056,7 +1069,7 @@ def real_widget_css():
     into the settings chrome."""
     css = read_web_asset("menu.css")
     blocks = []
-    for name in ("widget-head", "stats-widgets"):
+    for name in ("widget-head", "stats-widgets", "hashi-widget", "prep-widget"):
         head = f"@onigiri:{name}:start"
         tail = f"@onigiri:{name}:end"
         if head not in css or tail not in css:

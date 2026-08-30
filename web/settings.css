@@ -1141,6 +1141,38 @@ html body .osw-switch-btn:active {
 }
 .osw-number input::-webkit-inner-spin-button { -webkit-appearance: none; }
 .osw-number-suffix { font-size: 11px; color: var(--osw-fg-faint); }
+.osw-number-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 4px;
+  border-left: 1px solid var(--osw-hairline);
+}
+html body .osw-number-step,
+html body .osw-number-step:hover,
+html body .osw-number-step:focus,
+html body .osw-number-step:active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--osw-fg-muted);
+  box-shadow: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  outline: none;
+}
+html body .osw-number-step:hover,
+html body .osw-number-step:focus-visible {
+  background: var(--osw-accent-a14);
+  color: var(--osw-accent);
+}
 html body .osw-reset,
 html body .osw-reset:hover,
 html body .osw-reset:focus,
@@ -3833,12 +3865,18 @@ html body button.osw-btn.osw-designer-reset:hover {
 .osw-deck-icon-grid.is-inline {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.osw-deck-icon-grid.is-inline.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
 /* Inline placement drops it inside a .osw-deck-col, whose row spacing comes
-   from the [data-field-host] + [data-field-host] sibling rule below — this
-   wrap carries no such attribute, so without its own margin it sits flush
-   against whatever row ends right above it. */
+   from the [data-field-host] + [data-field-host] sibling rule below. This
+   wrapper carries no such attribute, so it needs to provide the gap on either
+   edge where it touches a normal field row. */
 .osw-deck-col > .osw-deck-icon-grid.is-inline:not(:first-child) {
   margin-top: 6px;
+}
+.osw-deck-col > .osw-deck-icon-grid.is-inline:not(:last-child) {
+  margin-bottom: 6px;
 }
 
 .osw-deck-icon-grid .osw-row {
@@ -4308,6 +4346,88 @@ html body .osw-imagelist-add {
 .osw-preview-star-row {
   display: flex;
   gap: 4px;
+}
+
+/* Pomodoro's live island is native Qt; this web counterpart mirrors its two
+   compact style presets. */
+.osw-preview-kind-pomodoro .osw-designer-preview-stage { min-height: 330px; }
+.osw-pomo-preview-holder { padding: 16px; }
+.osw-pomo-island {
+  width: min(100%, 330px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: var(--pomo-pad);
+  border: 1px solid var(--pomo-border);
+  border-radius: 20px;
+  background: var(--pomo-shell);
+  color: var(--pomo-icon);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+  font-family: Poppins, sans-serif;
+}
+.osw-pomo-island.is-minimal { max-width: 230px; }
+.osw-pomo-island.is-dashboard { max-width: 270px; }
+.osw-pomo-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+}
+.osw-pomo-icon { color: var(--pomo-accent); font-size: 16px; }
+.osw-pomo-phase {
+  color: var(--pomo-icon);
+  font-size: var(--pomo-phase);
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.osw-pomo-top-actions { margin-left: auto; color: var(--pomo-icon); opacity: .82; font-size: 14px; }
+.osw-pomo-time {
+  color: var(--pomo-digits);
+  font-family: var(--pomo-font);
+  font-size: var(--pomo-time);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+.osw-pomo-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--pomo-track);
+}
+.osw-pomo-progress i { display: block; width: 48%; height: 100%; border-radius: inherit; background: var(--pomo-accent); }
+.osw-pomo-meta { color: var(--pomo-icon); font-size: 10px; font-weight: 700; letter-spacing: .45px; text-align: center; }
+.osw-pomo-stats { display: flex; gap: 8px; }
+.osw-pomo-stat {
+  flex: 1;
+  padding: 6px;
+  border: 1px solid var(--pomo-tile-border);
+  border-radius: 10px;
+  background: var(--pomo-tile);
+  text-align: center;
+}
+.osw-pomo-stat span { display: block; color: var(--pomo-icon); font-size: 8px; font-weight: 800; letter-spacing: .8px; }
+.osw-pomo-stat strong { color: var(--pomo-digits); font-family: var(--pomo-font); font-size: 14px; }
+.osw-pomo-controls { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.osw-pomo-controls button {
+  width: var(--pomo-button);
+  height: var(--pomo-button);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pomo-icon);
+  font-size: calc(var(--pomo-button) / 2);
+}
+.osw-pomo-controls .osw-pomo-play {
+  width: var(--pomo-play);
+  height: var(--pomo-play);
+  border-radius: 50%;
+  background: var(--pomo-accent);
+  color: #fff;
+  font-size: calc(var(--pomo-play) * .42);
 }
 
 /* ── Stats Widgets preview: four sample cards ─────────────────────────────── */
@@ -6808,6 +6928,182 @@ html body .osw-preview-ovstyle-reveal-button:active {
   color: var(--osw-fg-muted);
 }
 
+/* ── Pomodoro ─────────────────────────────────────────────────────────────
+   Fast setup follows the small device panel in the visual reference: a routine
+   is one click, common values are chips, and the three timer personalities are
+   visible without entering the advanced Appearance designer. */
+.osw-section[data-section="pomodoro_open"] .osw-row {
+  min-height: 62px;
+  padding: 12px 16px;
+  border: 1px solid var(--osw-hairline);
+  background: var(--osw-surface);
+}
+.osw-section[data-section="pomodoro_open"] .osw-row-label {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.osw-section[data-section="pomodoro_open"] .osw-action-btn,
+.osw-section[data-section="pomodoro_open"] .osw-action-btn:hover {
+  height: 34px !important;
+  padding: 0 15px !important;
+  border-color: var(--osw-accent) !important;
+  background: var(--osw-accent) !important;
+  color: #fff !important;
+}
+.osw-section[data-section="pomodoro_open"] .osw-action-btn:hover {
+  filter: brightness(1.07) !important;
+}
+
+.osw-pomo-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: var(--osw-radius-panel);
+  background: var(--osw-surface);
+}
+.osw-pomo-setup-desc {
+  margin-top: -2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--osw-fg-muted);
+}
+.osw-pomo-setup-block { display: flex; flex-direction: column; gap: 9px; }
+.osw-pomo-setup-label,
+.osw-pomo-value-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--osw-fg-muted);
+}
+.osw-pomo-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+html body .osw-pomo-preset {
+  min-width: 0;
+  border: 1px solid var(--osw-hairline);
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+  box-shadow: none;
+  outline: none;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+html body .osw-pomo-preset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+html body .osw-pomo-preset:hover { border-color: var(--osw-accent-line-strong); }
+html body .osw-pomo-preset.is-selected {
+  border-color: var(--osw-accent);
+  background: var(--osw-accent-wash-strong);
+}
+.osw-pomo-preset-name { overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.osw-pomo-preset-sub {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: var(--osw-radius-pill);
+  background: var(--osw-surface);
+  color: var(--osw-fg-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.osw-pomo-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  padding: 15px;
+  border-radius: 14px;
+  background: var(--osw-inset);
+}
+.osw-pomo-value-group { min-width: 0; }
+.osw-pomo-value-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+html body .osw-pomo-value-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 48px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: var(--osw-radius-pill);
+  background: var(--osw-surface);
+  color: var(--osw-fg-muted);
+  box-shadow: none;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 130ms ease, background-color 130ms ease, color 130ms ease;
+}
+html body .osw-pomo-value-chip strong { font-size: 12px; font-weight: 600; line-height: 1; }
+html body .osw-pomo-value-chip span { font-size: 9.5px; line-height: 1; opacity: .72; }
+html body .osw-pomo-value-chip:hover { border-color: var(--osw-accent-line-strong); color: var(--osw-fg); }
+html body .osw-pomo-value-chip.is-selected {
+  border-color: var(--osw-accent);
+  background: var(--osw-accent);
+  color: #fff;
+}
+.osw-section[data-section="pomodoro_options"] .osw-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.osw-section[data-section="pomodoro_options"] .osw-row {
+  min-width: 0;
+  min-height: 78px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  background: var(--osw-surface);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.osw-section[data-section="pomodoro_options"] .osw-row-label { font-weight: 500; }
+.osw-section[data-section="pomodoro_options"] .osw-row-desc { max-width: 30ch; }
+.osw-section[data-section="pomodoro_options"] .osw-row { align-items: flex-start; }
+.osw-section[data-section="pomodoro_options"] .osw-row-control { margin-top: 2px; }
+.osw-section[data-section="pomodoro_options"] .osw-row.is-on {
+  border-color: var(--osw-accent-line);
+  background: var(--osw-accent-wash);
+}
+
+.osw-section[data-section="pomodoro_sound"] .osw-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_sound_enabled"],
+.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_start_sound"],
+.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_end_sound"],
+.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_choose_sound_action"] {
+  grid-column: 1 / -1;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-segmented-wrap {
+  align-items: stretch;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--osw-radius-card);
+  background: var(--osw-surface);
+}
+.osw-section[data-section="pomodoro_sound"] .osw-segmented-title { text-align: left; }
+.osw-section[data-section="pomodoro_sound"] .osw-segmented-control { align-self: flex-start; }
+
+@media (max-width: 700px) {
+  .osw-pomo-presets,
+  .osw-pomo-values,
+  .osw-section[data-section="pomodoro_options"] .osw-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .osw-section[data-section="pomodoro_sound"] .osw-fields { grid-template-columns: minmax(0, 1fr); }
+  .osw-section[data-section="pomodoro_sound"] [data-field-host] { grid-column: 1 !important; }
+  .osw-section[data-section="pomodoro_open"] .osw-row { align-items: flex-start; }
+}
+
 /* ── page hero ─────────────────────────────────────────────────────────── */
 
 .osw-game-hero-mark {
@@ -7522,12 +7818,28 @@ html body .osw-action-btn.is-hold-action::before {
 
 /* ── preview: Onigimon widget ──────────────────────────────────────────── */
 
+/* Unlike full-bleed background previews, a widget needs visible canvas above
+   and below it so its outer edge is easy to judge. The stage grows for taller
+   row footprints instead of cropping them. */
+.osw-preview-kind-onigimon_scene .osw-designer-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 24px 20px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
 .osw-onistage-card {
-  max-width: 380px;
-  margin: 0 auto;
+  flex: 0 0 auto;
+  max-width: 100%;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(120, 120, 120, 0.42);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .osw-onistage-top {
@@ -7569,16 +7881,73 @@ html body .osw-action-btn.is-hold-action::before {
 }
 
 .osw-onistage-info { position: relative; flex: 1; min-width: 0; }
+.osw-onistage-info.is-hidden { display: none; }
 .osw-onistage-name { font-size: 16px; font-weight: 500; }
 .osw-onistage-level { margin-top: 3px; font-size: 12px; }
 
-.osw-onistage-bottom { padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; }
+.osw-onistage-bottom {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 12px 14px;
+}
 
 .osw-onistage-meter { display: flex; align-items: center; gap: 6px; }
 .osw-onistage-meter-name { flex: 0 0 68px; font-size: 12px; }
 .osw-onistage-meter-value { flex: 0 0 34px; text-align: right; font-size: 12px; font-weight: 500; }
 .osw-onistage-meter-track { flex: 1; height: 7px; border-radius: 3px; overflow: hidden; }
 .osw-onistage-meter-fill { display: block; height: 100%; border-radius: 3px; }
+
+/* One row is the real compact widget: no stats, and no label at one column. */
+.osw-onistage-card.is-compact .osw-onistage-top {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+  padding: 10px 16px;
+}
+
+.osw-onistage-card.is-compact .osw-onistage-sprite {
+  flex-basis: 64px;
+  height: 64px;
+}
+
+.osw-onistage-card.is-compact .osw-onistage-sprite img {
+  width: 60px;
+  height: 60px;
+}
+
+.osw-onistage-card.is-compact .osw-onistage-info {
+  flex: 0 1 auto;
+}
+
+/* At 2 columns x 2 rows, the live card puts scene and meters side by side. */
+.osw-onistage-card.is-wide { flex-direction: row; }
+
+.osw-onistage-card.is-wide .osw-onistage-top {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.osw-onistage-card.is-wide .osw-onistage-info {
+  flex: 0 1 auto;
+  text-align: center;
+}
+
+.osw-onistage-card.is-wide .osw-onistage-bottom {
+  flex: 1 1 50%;
+  min-width: 0;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+}
 
 /* ── preview: Mochi notification ───────────────────────────────────────── */
 

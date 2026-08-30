@@ -2092,6 +2092,10 @@ tr.deck.drag-over-nest {
    Hashi Notes dashboard widget
    ========================================================================= */
 
+/* @onigiri:hashi-widget:start — kept verbatim in the Hashi Notes settings
+   preview by settings_web/render.py, so the preview and Main Menu share one
+   source of truth for this widget's appearance. */
+
 .hashi-notes-widget {
     display: flex;
     flex-direction: column;
@@ -2314,6 +2318,148 @@ tr.deck.drag-over-nest {
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
 }
+/* @onigiri:hashi-widget:end */
+
+/* @onigiri:prep-widget:start — the Settings preview consumes this exact
+   Main Menu widget stylesheet through settings_web/render.py. */
+.prep-station-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--onigiri-widget-pad);
+    cursor: pointer;
+    overflow: hidden;
+    font-family: inherit;
+    background-color: var(--canvas-inset, #f2f2f2);
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+    border-radius: 15px;
+}
+.prep-widget-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(11px * var(--prep-fs, 1));
+    opacity: 0.45;
+    font-style: italic;
+}
+.prep-plan-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+}
+.prep-plan-card {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--canvas-inset, #f2f2f2);
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
+}
+.prep-card-band {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    padding: 6px 7px;
+    min-height: 40%;
+    color: #ffffff;
+}
+.prep-card-band-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+.prep-card-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+.prep-card-icon {
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+img.prep-card-icon {
+    width: 13px;
+    height: 13px;
+    object-fit: contain;
+    display: block;
+    flex-shrink: 0;
+}
+.prep-card-badge {
+    font-size: calc(7px * var(--prep-fs, 1));
+    font-weight: 700;
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 2px 5px;
+    border-radius: 8px;
+}
+.prep-card-name {
+    font-size: calc(10px * var(--prep-fs, 1));
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+    text-align: left;
+}
+.prep-card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
+    min-height: 0;
+    padding: 6px 7px 7px;
+    gap: 4px;
+}
+.prep-card-pace {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    min-width: 0;
+}
+.prep-card-pace-num {
+    font-size: calc(17px * var(--prep-fs, 1));
+    font-weight: 700;
+    line-height: 1;
+}
+.prep-card-pace-unit {
+    font-size: calc(8px * var(--prep-fs, 1));
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.prep-card-progress {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.prep-card-progress-track {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border, rgba(128, 128, 128, 0.25));
+    overflow: hidden;
+}
+.prep-card-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+}
+.prep-card-progress-label {
+    font-size: calc(8px * var(--prep-fs, 1));
+    opacity: 0.55;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+/* @onigiri:prep-widget:end */
 
 /* --- Hide Native Anki UI Elements --- */
 .deck-list-header,
