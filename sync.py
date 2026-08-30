@@ -145,6 +145,19 @@ class SyncManager:
             stat = os.stat(sync_path)
             self._save_state(stat.st_mtime, stat.st_size)
             
+            # Force reload of all runtime caches since files changed
+            try:
+                from . import config
+                config.invalidate_config_cache()
+
+                from .gamification.gamification import _reset_gamification_data
+                _reset_gamification_data()
+
+                from .gamification.nook_level import manager
+                manager.refresh_state()
+            except Exception as e:
+                print(f"Onigiri Sync: Failed to reload runtime caches: {e}")
+
             return True
         except Exception as e:
             print(f"Onigiri Sync: Failed to unpack files: {e}")
