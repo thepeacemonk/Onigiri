@@ -508,6 +508,25 @@ class AnkimonBridge:
             except Exception:
                 pass
         
+        # Fallback to direct JSON read
+        try:
+            mypokemon_path = os.path.join(self.addon_path, "user_files", "mypokemon.json")
+            if os.path.isfile(mypokemon_path):
+                with open(mypokemon_path, "r", encoding="utf-8") as f:
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
+                        if isinstance(data, list):
+                            res = []
+                            for p in data:
+                                if isinstance(p, dict):
+                                    res.append(self._normalize_pokemon(p))
+                            self._collection_cache = res
+                            self._collection_cache_time = now
+                            return res
+        except Exception as e:
+            print(f"Onigimon: direct JSON read (collection) failed: {e}")
+
         self._collection_cache = []
         self._collection_cache_time = now
         return self._collection_cache
@@ -1011,25 +1030,39 @@ class AnkimonBridge:
         return ""
 
     def _read_main_pokemon_raw(self) -> Dict[str, Any]:
-        """Reads the raw main Pokémon dict directly from ankimon.db (read-only)."""
+        """Reads the raw main Pokémon dict directly from ankimon DB or JSON (read-only)."""
         path = self._db_path()
-        if not path:
-            return {}
+        if path:
+            try:
+                uri = f"file:{path}?mode=ro"
+                conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                cur = conn.execute(
+                    "SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
+                )
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    data = json.loads(row["data"])
+                    data["is_main"] = 1
+                    return data
+            except Exception as e:
+                print(f"Onigimon: direct DB read (raw) failed: {e}")
+
+        # Fallback to JSON
         try:
-            uri = f"file:{path}?mode=ro"
-            conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                "SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
-            )
-            row = cur.fetchone()
-            conn.close()
-            if row:
-                data = json.loads(row["data"])
-                data["is_main"] = 1
-                return data
+            candidate_json = os.path.join(self.addon_path, "user_files", "mainpokemon.json")
+            if os.path.isfile(candidate_json):
+                with open(candidate_json, "r", encoding="utf-8") as f:
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
+                        if isinstance(data, dict):
+                            data["is_main"] = 1
+                            return data
         except Exception as e:
-            print(f"Onigimon: direct DB read (raw) failed: {e}")
+            print(f"Onigimon: direct JSON read (raw) failed: {e}")
+
         return {}
 
     def _read_main_from_db(self) -> Dict[str, Any]:
@@ -1040,28 +1073,64 @@ class AnkimonBridge:
         return {}
 
     def _write_main_to_db(self, pokemon_data: Dict[str, Any]) -> bool:
-        """Writes updated pokemon_data back to ankimon.db (direct write, last-resort fallback)."""
-        path = self._db_path()
-        if not path:
+        """Writes updated pokemon_data back to ankimon.db or json (direct write, last-resort fallback)."""
+        individual_id = self._pokemon_identity(pokemon_data)
+        if not individual_id:
             return False
-        try:
-            individual_id = self._pokemon_identity(pokemon_data)
-            if not individual_id:
-                return False
-            data_str = json.dumps(pokemon_data, ensure_ascii=False)
-            conn = sqlite3.connect(path, check_same_thread=False)
-            cursor = conn.execute(
-                "UPDATE captured_pokemon SET data = ? WHERE individual_id = ? AND is_main = 1",
-                (data_str, individual_id),
-            )
-            conn.commit()
-            changed = cursor.rowcount > 0
-            conn.close()
-            if not changed:
-                print(f"Onigimon: direct DB write – no row updated for id={individual_id}")
-            return changed
-        except Exception as e:
-            print(f"Onigimon: direct DB write failed: {e}")
+
+        path = self._db_path()
+        if path:
+            try:
+                data_str = json.dumps(pokemon_data, ensure_ascii=False)
+                conn = sqlite3.connect(path, check_same_thread=False)
+                cursor = conn.execute(
+                    "UPDATE captured_pokemon SET data = ? WHERE individual_id = ? AND is_main = 1",
+                    (data_str, individual_id),
+                )
+                conn.commit()
+                changed = cursor.rowcount > 0
+                conn.close()
+                if not changed:
+                    print(f"Onigimon: direct DB write – no row updated for id={individual_id}")
+                if changed:
+                    return changed
+            except Exception as e:
+                print(f"Onigimon: direct DB write failed: {e}")
+
+        # Fallback to JSON
+        candidate_json = os.path.join(self.addon_path, "user_files", "mainpokemon.json")
+        if os.path.isfile(candidate_json):
+            try:
+                # Read current to verify it's the right pokemon
+                with open(candidate_json, "r", encoding="utf-8") as f:
+                    file_content = f.read().strip()
+                    if file_content:
+                        data = json.loads(file_content)
+                        if self._pokemon_identity(data) != individual_id:
+                            return False
+
+                with open(candidate_json, "w", encoding="utf-8") as f:
+                    json.dump(pokemon_data, f, ensure_ascii=False, indent=4)
+
+                # Also try to update it in mypokemon.json if possible
+                mypokemon_path = os.path.join(self.addon_path, "user_files", "mypokemon.json")
+                if os.path.isfile(mypokemon_path):
+                    with open(mypokemon_path, "r", encoding="utf-8") as f:
+                        my_content = f.read().strip()
+                    if my_content:
+                        my_data = json.loads(my_content)
+                        if isinstance(my_data, list):
+                            for i, p in enumerate(my_data):
+                                if self._pokemon_identity(p) == individual_id:
+                                    my_data[i] = pokemon_data
+                                    break
+                            with open(mypokemon_path, "w", encoding="utf-8") as f:
+                                json.dump(my_data, f, ensure_ascii=False, indent=4)
+
+                return True
+            except Exception as e:
+                print(f"Onigimon: direct JSON write failed: {e}")
+
         return False
 
 
