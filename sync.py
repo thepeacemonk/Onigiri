@@ -110,8 +110,9 @@ class SyncManager:
                 os.remove(temp_zip)
             return False
 
+
     def unpack_user_files(self):
-        """Unzips the sync file from the media folder into user_files."""
+        """Unzips the sync file from the media folder into user_files, merging with local files."""
         if not self._ensure_init():
             return False
 
@@ -120,26 +121,10 @@ class SyncManager:
             return False
 
         try:
-            # Create a backup of current user_files just in case
-            backup_dir = self._user_files_dir + "_backup"
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-            
-            # Extract to a temp directory first
-            temp_extract = self._user_files_dir + "_incoming"
-            if os.path.exists(temp_extract):
-                shutil.rmtree(temp_extract)
-            os.makedirs(temp_extract)
-
+            # Extract directly over existing files, overwriting matching files but
+            # leaving local-only files (like un-synced backgrounds) untouched.
             with zipfile.ZipFile(sync_path, 'r') as zf:
-                zf.extractall(temp_extract)
-
-            # Swap directories
-            shutil.move(self._user_files_dir, backup_dir)
-            shutil.move(temp_extract, self._user_files_dir)
-            
-            # Clean up backup
-            shutil.rmtree(backup_dir)
+                zf.extractall(self._user_files_dir)
             
             # Update state to reflect that we are in sync with this zip
             stat = os.stat(sync_path)
