@@ -1321,7 +1321,7 @@ tr.deck.is-subdeck .deck-info,
 tr.deck.is-filtered .deck-info {
     display: flex;
     align-items: center;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
     width: 0;
     max-width: 100%;
@@ -1336,7 +1336,7 @@ tr.deck.is-filtered .deck-counts {
     display: flex;
     align-items: center;
     gap: 4px;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     /* Overrides margin-left/padding-left from the base .deck-counts rule, then
        pulls the bubbles back over the name box. The bubbles keep their position
        (.deck-info just grows by the same amount); only the overlap changes.
@@ -3333,10 +3333,10 @@ td.count {
     align-items: center;
     gap: 4px;
     padding-left: 4px;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     justify-content: flex-end;
     min-width: 0;
-    max-width: 48%;
+    max-width: none;
     overflow: hidden;
 }
 
@@ -3355,11 +3355,10 @@ tr.deck .learn-count-bubble {
     min-width: 1.5em;
     text-align: center;
     line-height: 1;
-    max-width: 5ch;
+    max-width: none;
     flex: 0 0 auto;
-    overflow: hidden;
+    overflow: visible;
     white-space: nowrap;
-    text-overflow: ellipsis;
 }
 
 /* Sidebar count bubbles follow whatever the Overviewer's card count colors
