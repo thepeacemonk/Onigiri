@@ -16,3 +16,15 @@ user_files/icons/*
 meta.json
 system_files/.DS_Store
 README.md
+
+# --- Dev tooling ---
+.env
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+test-results/
+playwright-report/
+.shots/

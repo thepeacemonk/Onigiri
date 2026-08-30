@@ -4961,7 +4961,6 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
 
 
 def register_hooks() -> None:
-    manager = get_manager()
     gui_hooks.reviewer_did_answer_card.append(manager.on_answer)
     gui_hooks.state_did_change.append(manager.on_state_did_change)
     gui_hooks.webview_will_set_content.append(manager.on_webview_will_set_content)
