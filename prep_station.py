@@ -862,6 +862,13 @@ def render_widget_html(slot_count: int = 4) -> str:
         icon_color = str(p.get("icon_color") or fg_on_band)
         icon_html = _prep_card_icon_html(addon_path, addon_package, p.get("icon", "emoji:📚"), icon_color)
 
+        thumbnail = str(p.get("thumbnail") or "")
+        bg_style = f"background-color:{color}"
+        if thumbnail:
+            thumb_url = _thumbnail_url(thumbnail)
+            if thumb_url:
+                bg_style = f"background-color:{color}; background-image: linear-gradient(100deg, #0004, transparent), url('{thumb_url}'); background-size: cover; background-position: center;"
+
         reviewed = int(week.get("reviewed") or 0)
         weekly_target = int(week.get("target") or 0)
         percentage = min(100, max(0, round(float(week.get("ratio") or 0) * 100)))
@@ -873,7 +880,7 @@ def render_widget_html(slot_count: int = 4) -> str:
 
         cards_html += f"""
 <div class="prep-plan-card" onclick="event.stopPropagation(); pycmd('openPrepStation')">
-  <div class="prep-card-band" style="background-color:{color}">
+  <div class="prep-card-band" style="{bg_style}">
     <div class="prep-card-band-top">
       <span class="prep-card-badge">{html.escape(badge_text)}</span>
     </div>
