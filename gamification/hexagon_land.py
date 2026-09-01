@@ -2508,12 +2508,43 @@ def render_widget_html() -> str:
     except Exception:
         pass
 
-    if is_dark:
+    def _hex_to_rgba(color: str, alpha: float) -> str:
+        color = color.strip()
+        if color.startswith("#"):
+            if len(color) == 4:
+                return f"rgba({int(color[1]*2, 16)}, {int(color[2]*2, 16)}, {int(color[3]*2, 16)}, {alpha})"
+            if len(color) == 7:
+                return f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, {alpha})"
+            if len(color) == 9:
+                return f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, {alpha})"
+        if color.startswith("rgb"):
+            parts = color[color.find("(")+1:color.rfind(")")].split(",")
+            if len(parts) >= 3:
+                return f"rgba({parts[0].strip()}, {parts[1].strip()}, {parts[2].strip()}, {alpha})"
+        # If it's a named color or invalid, fallback to color-mix (modern browsers)
+        return f"color-mix(in srgb, {color} {alpha * 100}%, transparent)"
+
+    custom_bg = land_conf.get("widget_bg_color", ["", ""])
+    custom_bg_val = ""
+    if isinstance(custom_bg, list) and len(custom_bg) == 2:
+        custom_bg_val = custom_bg[1] if is_dark else custom_bg[0]
+    elif isinstance(custom_bg, str):
+        custom_bg_val = custom_bg
+
+    if custom_bg_val:
+        top_color = bottom_color = custom_bg_val
+    elif is_dark:
         top_color = '#0c4a6e'
         bottom_color = '#082f49'
     else:
         top_color = '#48c0ee'
         bottom_color = '#1597d1'
+
+    bg_opacity = land_conf.get("widget_bg_opacity", 100)
+    if bg_opacity < 100:
+        alpha = max(0, min(100, int(bg_opacity))) / 100.0
+        top_color = _hex_to_rgba(top_color, alpha)
+        bottom_color = _hex_to_rgba(bottom_color, alpha)
 
     return f"""
     <style>
