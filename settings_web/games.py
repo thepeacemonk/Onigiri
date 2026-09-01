@@ -799,6 +799,20 @@ def _hexagon_page():
                     # The classic page pinned this alongside `enabled`; the only
                     # theme that exists, but the reader still expects the key.
                     _hidden("g_hexagon_theme", ("hexagon_land", "theme"), "island"),
+                    {
+                        "id": "g_hexagon_bg_color",
+                        "type": "color_pair",
+                        "label": tr("background_color", "Background Color"),
+                        "bind": {"kind": "config", "path": ["hexagon_land", "widget_bg_color"]},
+                        "default": ["", ""],
+                    },
+                    {
+                        "id": "g_hexagon_bg_opacity",
+                        "type": "slider",
+                        "label": tr("opacity", "Opacity"),
+                        "bind": {"kind": "config", "path": ["hexagon_land", "widget_bg_opacity"]},
+                        "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
+                    },
                 ],
             },
             {
