@@ -345,6 +345,9 @@ def inject_menu_files(web_content, context):
             window.onigiriNotificationMode = {json.dumps(conf.get("onigiri_reviewer_notification_mode", "classic"))};
 
             document.addEventListener('DOMContentLoaded', function() {{
+                if (window.onigiriReviewerInitialized) return;
+                window.onigiriReviewerInitialized = true;
+
                 const hostId = 'onigiri-reviewer-ui-host';
                 const topBarHtml = {json.dumps(top_bar_html)};
                 const topBarCss = {json.dumps(reviewer_shadow_css)};
@@ -469,17 +472,25 @@ def inject_menu_files(web_content, context):
                     resizeObserver.observe(headerEl);
                 }}
 
+                let themeTimeout;
                 const themeObserver = new MutationObserver(() => {{
-                    updateHostTheme();
-                    updateHeaderOffset();
+                    clearTimeout(themeTimeout);
+                    themeTimeout = setTimeout(() => {{
+                        updateHostTheme();
+                        updateHeaderOffset();
+                    }}, 50);
                 }});
                 themeObserver.observe(document.documentElement, {{ attributes: true, attributeFilter: ['class'] }});
                 if (document.body) {{
                     themeObserver.observe(document.body, {{ attributes: true, attributeFilter: ['class'] }});
                 }}
 
+                let qaTimeout;
                 const qaObserver = new MutationObserver(() => {{
-                    applyQaOffset(window.onigiriReviewerHeaderOffsetPx || 0);
+                    clearTimeout(qaTimeout);
+                    qaTimeout = setTimeout(() => {{
+                        applyQaOffset(window.onigiriReviewerHeaderOffsetPx || 0);
+                    }}, 50);
                 }});
                 if (document.body) {{
                     qaObserver.observe(document.body, {{ childList: true, subtree: true }});
