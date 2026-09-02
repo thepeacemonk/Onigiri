@@ -2037,11 +2037,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             cursor: pointer;
             overflow: hidden;
             font-family: inherit;
-            /* background + border-radius/width fall back here, then get
-               overridden !important by the Widget Color & Effect settings */
-            background-color: var(--canvas-inset, #f2f2f2);
-            border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
-            border-radius: 15px;
+            background-color: var(--prep-box-bg, var(--canvas-inset, #f2f2f2));
+            border: var(--prep-box-stroke, 1px) solid var(--prep-box-border, var(--border, rgba(128, 128, 128, 0.24)));
+            border-radius: var(--prep-box-radius, 15px);
+            backdrop-filter: blur(var(--prep-box-blur, 0px));
+            -webkit-backdrop-filter: blur(var(--prep-box-blur, 0px));
         }}
         .prep-widget-empty {{
             flex: 1;

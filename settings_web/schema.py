@@ -1094,13 +1094,40 @@ def _prep_station_page():
                 "prep_widget",
                 title=tr("prep_widget_section_title", "Study Plans Widget"),
                 icon="square.svg",
-                fields=[{
-                    "id": "prep_widget_font_scale", "type": "slider",
-                    "label": tr("prep_widget_font_label", "Font Size"),
-                    "desc": tr("prep_widget_font_desc", "Font size of the Study Plans preview shown on the deck browser widget."),
-                    "bind": col("onigiri_prep_station_widget_font_scale", 100), "default": 100,
-                    "min": 60, "max": 160, "step": 1, "suffix": "%",
-                }],
+                sync_toggle_id="prep_widget_sync_box_effect",
+                sync_hidden_fields=[
+                    "prep_widget_blur", "prep_widget_opacity", "prep_widget_radius", "prep_widget_stroke",
+                ],
+                fields=[
+                    {
+                        "id": "prep_widget_sync_box_effect", "type": "toggle",
+                        "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"),
+                        "bind": {"kind": "config", "path": ["prep_station_style", "sync_box_effect"]}, "default": True,
+                    },
+                    {
+                        "id": "prep_widget_blur", "type": "slider", "label": tr("blur", "Blur"),
+                        "bind": {"kind": "config", "path": ["prep_station_style", "blur"]}, "default": 0, "min": 0, "max": 100, "suffix": "%",
+                    },
+                    {
+                        "id": "prep_widget_opacity", "type": "slider", "label": tr("opacity", "Opacity"),
+                        "bind": {"kind": "config", "path": ["prep_station_style", "opacity"]}, "default": 100, "min": 0, "max": 100, "suffix": "%",
+                    },
+                    {
+                        "id": "prep_widget_radius", "type": "slider", "label": tr("border_radius", "Border Radius"),
+                        "bind": {"kind": "config", "path": ["prep_station_style", "radius"]}, "default": 20, "min": 0, "max": 60, "suffix": "px",
+                    },
+                    {
+                        "id": "prep_widget_stroke", "type": "slider", "label": tr("border_width", "Border Width"),
+                        "bind": {"kind": "config", "path": ["prep_station_style", "stroke"]}, "default": 1, "min": 0, "max": 10, "suffix": "px",
+                    },
+                    {
+                        "id": "prep_widget_font_scale", "type": "slider",
+                        "label": tr("prep_widget_font_label", "Font Size"),
+                        "desc": tr("prep_widget_font_desc", "Font size of the Study Plans preview shown on the deck browser widget."),
+                        "bind": col("onigiri_prep_station_widget_font_scale", 100), "default": 100,
+                        "min": 60, "max": 160, "step": 1, "suffix": "%",
+                    }
+                ],
             ),
         ],
     }

@@ -6360,10 +6360,10 @@ def generate_dynamic_css(conf):
 
 	def _deck_stats_box_bg(mode: str, fallback_key: str, fallback: str) -> str:
 		if deck_stats_sync:
-			# Already carries the box opacity/blur alpha from _apply_canvas_inset_effect.
 			source = light_colors if mode == "light" else dark_colors
 			return source.get(fallback_key, fallback)
-		color = _deck_stats_color(mode, "box_bg", fallback)
+		# Start from raw color, not mutated
+		color = _deck_stats_color(mode, "box_bg", raw_box_light if mode == "light" else raw_box_dark)
 		alpha = deck_stats_opacity / 100.0
 		if deck_stats_blur > 0:
 			alpha = min(alpha, 0.62)
@@ -6458,7 +6458,10 @@ def generate_dynamic_css(conf):
 			box_bg = theme.get("--canvas-inset", sw_fallback_colors[mode]["box_bg"])
 			box_border = theme.get("--border", sw_fallback_colors[mode]["box_border"])
 		else:
+			# Fallback for custom styling, avoid double-applying global alpha by taking raw color
 			box_bg = _sw_color(mode, "box_bg")
+			if box_bg == sw_fallback_colors[mode]["box_bg"]:
+				box_bg = raw_box_light if mode == "light" else raw_box_dark
 			alpha = sw_opacity / 100.0
 			if sw_blur > 0:
 				alpha = min(alpha, 0.62)
@@ -6549,6 +6552,46 @@ def generate_dynamic_css(conf):
 
 	overview_light_rules.extend(_hw_rules("light"))
 	overview_dark_rules.extend(_hw_rules("dark"))
+
+	# --- Prep Station dashboard widget ---
+	prep_station_style = conf.get("prep_station_style", {}) if isinstance(conf.get("prep_station_style", {}), dict) else {}
+	ps_sync = bool(prep_station_style.get("sync_box_effect", True))
+	ps_blur = box_effect_blur if ps_sync else max(0, min(100, int(prep_station_style.get("blur", 0) or 0)))
+	ps_opacity = box_effect_opacity if ps_sync else max(0, min(100, int(prep_station_style.get("opacity", 100) or 100)))
+	ps_radius = box_effect_radius if ps_sync else max(0, min(60, _int_style_value(prep_station_style.get("radius", 20), 20)))
+	ps_stroke = box_effect_stroke if ps_sync else max(0, min(10, _int_style_value(prep_station_style.get("stroke", 1), 1)))
+
+	def _ps_rules(mode: str) -> list:
+		if ps_sync:
+			theme = light_colors if mode == "light" else dark_colors
+			# `theme` already has the alpha/blur applied from _apply_canvas_inset_effect globally
+			# But we need to use raw_box_light / raw_box_dark so we don't double-apply the alpha in _apply_canvas_inset_effect
+			# wait, _apply_canvas_inset_effect mutates light_colors/dark_colors directly
+			box_bg = theme.get("--canvas-inset", "#ffffff" if mode == "light" else "#2c2c2c")
+			box_border = theme.get("--border", "#e0e0e0" if mode == "light" else "#424242")
+		else:
+			# Fallback for custom styling
+			theme = light_colors if mode == "light" else dark_colors
+			base_bg = raw_box_light if mode == "light" else raw_box_dark
+			base_border = theme.get("--border", "#e0e0e0" if mode == "light" else "#424242")
+
+			alpha = ps_opacity / 100.0
+			if ps_blur > 0:
+				alpha = min(alpha, 0.62)
+
+			box_bg = _onigiri_css_color_with_alpha(base_bg, alpha)
+			box_border = base_border
+
+		return [
+			f"    --prep-box-bg: {box_bg} !important;",
+			f"    --prep-box-border: {box_border} !important;",
+			f"    --prep-box-radius: {ps_radius}px !important;",
+			f"    --prep-box-stroke: {ps_stroke}px !important;",
+			f"    --prep-box-blur: {(ps_blur / 100.0) * 20:.2f}px !important;",
+		]
+
+	overview_light_rules.extend(_ps_rules("light"))
+	overview_dark_rules.extend(_ps_rules("dark"))
 
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	heatmap_style = conf.get("heatmap_style", {}) if isinstance(conf.get("heatmap_style", {}), dict) else {}
@@ -6675,7 +6718,7 @@ def generate_dynamic_css(conf):
 	if box_effect_blur > 0:
 		blur_px = (box_effect_blur / 100.0) * 20
 		# --- FIX: Added heatmap container IDs to the selectors ---
-		glass_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .prep-station-widget"
+		glass_selectors = "#onigiri-heatmap-container, #onigiri-profile-heatmap-container"
 		glass_style_block = f"""
         <style id="onigiri-glass-effect">
         {glass_selectors} {{
@@ -6685,7 +6728,7 @@ def generate_dynamic_css(conf):
         </style>
         """
 
-	box_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget"
+	box_selectors = "#onigiri-heatmap-container, #onigiri-profile-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget"
 	box_shape_style_block = f"""
         <style id="onigiri-box-shape-effect">
         {box_selectors} {{

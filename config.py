@@ -125,6 +125,13 @@ DEFAULTS = {
     "prep_station": {
         "plans": [],
     },
+    "prep_station_style": {
+        "sync_box_effect": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+    },
     "hashi_notes": {
         "retention_default": 30,
         "custom_css": "",
