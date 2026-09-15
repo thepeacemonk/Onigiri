@@ -61,13 +61,10 @@ Onigiri (this add-on) is an independent Anki add‑on that customizes the app’
 
 Second Notice: Onigiri does not have monetary intentions, it was born with a philantropic principle and it will continue to be that way. Any in-add-on purchases are to maintain the continuation of the project, being completely optional through coins and icons on the mini-games. 
 
-### Need help? 
-
-I'm currently producing **[Onigiri Guide](https://onigiri-addon-guide.notion.site/Onigiri-Guide-39a3d4f0321380ff86cee5121b443a60)** to help you guys navigate through this add-on. 
 
 ### Gratitude
 
-Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! A special thanks to @Ouranos for the special help identifying bugs.
+Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! A special thanks to my small, but mighty, dev team on Discord and my dear friends at the Ankimon community.
 
 And thank you, the students and users, for using my add-on!
 
