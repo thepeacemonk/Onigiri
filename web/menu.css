@@ -1240,13 +1240,9 @@ a.deck .deck-name {
     flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
-    text-overflow: clip;
+    text-overflow: ellipsis;
     white-space: nowrap;
     display: block;
-    /* The box always fills the free space, so on short names the fade sits
-       over empty space and is invisible; only overflowing text gets softened. */
-    -webkit-mask-image: var(--onigiri-name-fade);
-    mask-image: var(--onigiri-name-fade);
 }
 
 .deck-mark-dot {
@@ -1307,9 +1303,8 @@ tr.deck.is-filtered td.decktd {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    /* No gap: the deck name runs all the way to the count bubbles (and under
-       the first one, see --onigiri-name-overlap) rather than stopping short. */
-    gap: 0;
+    /* Add a gap for safety */
+    gap: 8px;
     min-width: 0;
 }
 
@@ -1321,7 +1316,7 @@ tr.deck.is-subdeck .deck-info,
 tr.deck.is-filtered .deck-info {
     display: flex;
     align-items: center;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
     width: 0;
     max-width: 100%;
@@ -1336,13 +1331,10 @@ tr.deck.is-filtered .deck-counts {
     display: flex;
     align-items: center;
     gap: 4px;
-    flex: 0 1 auto;
-    /* Overrides margin-left/padding-left from the base .deck-counts rule, then
-       pulls the bubbles back over the name box. The bubbles keep their position
-       (.deck-info just grows by the same amount); only the overlap changes.
-       position/z-index put them above the name text, which is unpositioned and
-       would otherwise paint over their backgrounds. */
-    margin-left: calc(-1 * var(--onigiri-name-overlap));
+    flex: 0 0 auto;
+    max-width: none;
+    /* Keep natural spacing */
+    margin-left: 0;
     padding-left: 0;
     min-width: 0;
     position: relative;
