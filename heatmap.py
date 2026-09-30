@@ -323,6 +323,8 @@ def get_heatmap_and_config():
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
         "heatmapWeekStart": conf.get("heatmapWeekStart", DEFAULTS.get("heatmapWeekStart", "monday")),
+        "heatmapScaleMode": conf.get("heatmapScaleMode", "relative"),
+        "heatmapAbsoluteStep": conf.get("heatmapAbsoluteStep", 20),
         # The browser's locale can differ from the language chosen for Onigiri.
         "locale": current_language(),
         "i18n": {

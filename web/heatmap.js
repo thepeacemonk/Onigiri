@@ -42,11 +42,19 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return { reviewsByDay, duesByDay, todayKey, dailyAverage };
     }
 
-    // Classifies past review count into 8 levels (0-8) based on daily average
+    // Classifies review count into 8 levels (0-8)
     function getIntensityLevel(count, dailyAverage) {
         if (count === 0) return 0;
 
-        // Use a minimum average of 3 to avoid "1 review = max intensity" scenarios for new users
+        const scaleMode = config.heatmapScaleMode || 'relative';
+
+        if (scaleMode === 'absolute') {
+            const absoluteStep = config.heatmapAbsoluteStep || 20;
+            const level = Math.ceil(count / absoluteStep);
+            return Math.min(level, 8);
+        }
+
+        // Relative mode: Use a minimum average of 3 to avoid "1 review = max intensity" scenarios for new users
         const avg = Math.max(dailyAverage, 5);
 
         if (count < 0.4 * avg) return 1;
@@ -61,21 +69,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return 8;
     }
 
-    // Classifies future due count into 8 levels (0-8) based on daily average (same scale)
+    // Classifies future due count into 8 levels (0-8)
     function getDueIntensityLevel(count, dailyAverage) {
-        if (count === 0) return 0;
-
-        const avg = Math.max(dailyAverage, 5);
-
-        if (count < 0.4 * avg) return 1;
-        if (count < 0.7 * avg) return 2;
-        if (count < 1.0 * avg) return 3;
-        if (count < 1.3 * avg) return 4;
-        if (count < 1.6 * avg) return 5;
-        if (count < 2.0 * avg) return 6;
-        if (count < 2.5 * avg) return 7;
-
-        return 8;
+        return getIntensityLevel(count, dailyAverage);
     }
 
     // --- HELPER FUNCTION ---

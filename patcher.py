@@ -6553,6 +6553,7 @@ def generate_dynamic_css(conf):
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	heatmap_style = conf.get("heatmap_style", {}) if isinstance(conf.get("heatmap_style", {}), dict) else {}
 	heatmap_dynamic = bool(heatmap_style.get("dynamic", True))
+	heatmap_reverse_gradient = bool(heatmap_style.get("reverse_gradient", False))
 
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
 		# Dynamic Mode off: both themes read the light entry, matching
@@ -6569,6 +6570,8 @@ def generate_dynamic_css(conf):
 
 		for i in range(1, 9):
 			t = i / 8.0
+			if heatmap_reverse_gradient:
+				t = 1.0 - t + 0.125
 
 			if is_night_mode:
 				level_l = 0.38 + t * 0.46

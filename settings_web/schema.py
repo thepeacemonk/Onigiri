@@ -2833,6 +2833,29 @@ def _mainmenu_heatmap_section():
                 "bind": path("dynamic"), "default": True,
             },
             {
+                "id": "heatmap_reverse_gradient", "type": "toggle",
+                "head": True, "head_label": tr("reverse_gradient", "Reverse gradient"),
+                "label": tr("reverse_gradient", "Reverse gradient direction"),
+                "bind": path("reverse_gradient"), "default": False,
+            },
+            {
+                "id": "heatmapScaleMode", "type": "choice",
+                "head": True, "head_label": tr("scale", "Scale"),
+                "label": tr("scale_mode_label", "Color Scale Mode"),
+                "bind": {"kind": "config", "key": "heatmapScaleMode"}, "default": "relative",
+                "options": [
+                    {"value": "relative", "label": tr("scale_relative", "Relative (Daily Avg)"), "short": tr("scale_relative_short", "Avg")},
+                    {"value": "absolute", "label": tr("scale_absolute", "Absolute (Fixed Steps)"), "short": tr("scale_absolute_short", "Abs")},
+                ],
+            },
+            {
+                "id": "heatmapAbsoluteStep", "type": "slider",
+                "label": tr("absolute_step_label", "Cards per level (Absolute Mode)"),
+                "bind": {"kind": "config", "key": "heatmapAbsoluteStep"},
+                "default": 20, "min": 5, "max": 100, "step": 5, "suffix": " cards",
+                "show_when": {"field": "heatmapScaleMode", "values": ["absolute"]},
+            },
+            {
                 "id": "heatmap_blur", "type": "slider", "label": tr("blur", "Blur"),
                 "bind": path("blur"), "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
             },
