@@ -99,11 +99,6 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 ## Onigiri previews
 
 <p align="center">
-  <img src=".github/Header.svg" alt="Onigiri header" width="100%">
-</p>
-
-
-<p align="center">
   <img src=".github/slide_1.svg" alt="Slide 1" width="100%">
 </p>
 
@@ -116,7 +111,7 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 </p>
 
 <p align="center">
-  <img src=".github/slide_4.svg" alt="Slide 4" width="100%">
+  <img src=".github/slide_4.webp" alt="Slide 4" width="100%">
 </p>
 
 <p align="center">
