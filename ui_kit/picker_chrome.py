@@ -35,8 +35,8 @@ GRID_PANEL_RADIUS = 14
 
 def picker_palette(dark, accent="#00A982"):
     """Native pickers keep neutral Settings chrome with the supplied accent."""
-    from .. import config
-    from ..theme_palette import chrome_palette
+    from ..core import config
+    from ..rendering.theme_palette import chrome_palette
 
     mode = "dark" if dark else "light"
     result = chrome_palette(

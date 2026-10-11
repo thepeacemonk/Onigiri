@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class MenuTitleBackgroundTests(unittest.TestCase):
     def setUp(self):
         self.values = {}
-        tree = ast.parse((ROOT / 'onigiri_renderer.py').read_text())
+        tree = ast.parse((ROOT / 'rendering/onigiri_renderer.py').read_text())
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                         and node.name == '_get_onigiri_stats_title_html')
         env = dict(html=html, os=os, re=re, quote_url_component=quote,
@@ -22,7 +22,7 @@ class MenuTitleBackgroundTests(unittest.TestCase):
                    mw=SimpleNamespace(addonManager=SimpleNamespace(addonFromModule=lambda _: '1011095603')),
                    _col_conf_get=lambda key, default: self.values.get(key, default),
                    __name__='1011095603.onigiri_renderer')
-        exec(compile(ast.Module(body=[function], type_ignores=[]), 'onigiri_renderer.py', 'exec'), env)
+        exec(compile(ast.Module(body=[function], type_ignores=[]), 'rendering/onigiri_renderer.py', 'exec'), env)
         self.render = env[function.name]
 
     def test_fresh_install_keeps_phrase_without_background(self):

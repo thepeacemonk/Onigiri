@@ -4,13 +4,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_SOURCE = (ROOT / "config.py").read_text(encoding="utf-8")
-PATCHER = (ROOT / "patcher.py").read_text(encoding="utf-8")
+CONFIG_SOURCE = (ROOT / "core/config.py").read_text(encoding="utf-8")
+PATCHER = (ROOT / "rendering/patcher.py").read_text(encoding="utf-8")
 SETTINGS = (ROOT / "web" / "settings.js").read_text(encoding="utf-8")
 MENU_CSS = (ROOT / "web" / "menu.css").read_text(encoding="utf-8")
 INJECTOR = (ROOT / "web" / "injector.js").read_text(encoding="utf-8")
 TREE_UPDATER = (ROOT / "decks" / "tree_updater.py").read_text(encoding="utf-8")
-RENDERER = (ROOT / "onigiri_renderer.py").read_text(encoding="utf-8")
+RENDERER = (ROOT / "rendering/onigiri_renderer.py").read_text(encoding="utf-8")
 INIT = (ROOT / "__init__.py").read_text(encoding="utf-8")
 DIALOG = (ROOT / "settings_web" / "dialog.py").read_text(encoding="utf-8")
 
@@ -23,7 +23,7 @@ def _config_asset_functions():
         if isinstance(node, ast.FunctionDef) and node.name in wanted
     ]
     namespace = {}
-    exec(compile(ast.Module(body=body, type_ignores=[]), "config.py", "exec"), namespace)
+    exec(compile(ast.Module(body=body, type_ignores=[]), "core/config.py", "exec"), namespace)
     return namespace["themed_asset"]
 
 

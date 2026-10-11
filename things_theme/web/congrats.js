@@ -14,7 +14,7 @@
 
   function fmtN(n) {
     if (n == null) return "0";
-    return Number(n).toLocaleString();
+    return Number(n).toLocaleString((window.ONIGIRI_LOCALIZATION || {}).locale || "en");
   }
   // Time as a sequence of [digit, unit] pairs so each unit can be a
   // separate flex item aligned with the other labels on a single y-line.
@@ -31,9 +31,9 @@
       var m = Math.floor(s / 60);
       parts.push([m, 'm']);
       var rs = s % 60;
-      if (rs) parts.push([rs, 's']);
+      if (rs) parts.push([rs, window.onigiriText('s')]);
     } else {
-      parts.push([s, 's']);
+      parts.push([s, window.onigiriText('s')]);
     }
     return parts.map(function (p) {
       return '<span class="ba-cg-result-n">' + p[0] + '</span>'
@@ -43,8 +43,8 @@
   function fmtPace(sec) {
     if (!sec) return "";
     var x = sec;
-    if (x < 10) return (Math.round(x * 10) / 10) + "s";
-    return Math.round(x) + "s";
+    if (x < 10) return (Math.round(x * 10) / 10) + window.onigiriText("s");
+    return Math.round(x) + window.onigiriText("s");
   }
   function pct(n, total) {
     if (!total) return 0;
@@ -60,7 +60,7 @@
     return ''
       + '<header class="ba-cg-head">'
       +   '<h1 class="ba-cg-title"' + didAttr + ' tabindex="0"'
-      +     ' title="Deck options"'
+      +     window.onigiriTemplate(' title="Deck options"')
       +     ' onclick="if(window.__adDeckOpts) window.__adDeckOpts(' + (did || 0) + ', event)">'
       +     escapeHTML(deckName)
       +   '</h1>'
@@ -75,16 +75,16 @@
       var other = d.todayTotal || 0;
       return ''
         + '<div class="ba-cg-empty">'
-        +   '<span class="ba-cg-empty-h">No reviews on this deck today.</span>'
+        +   window.onigiriTemplate('<span class="ba-cg-empty-h">No reviews on this deck today.</span>')
         +   (other > 0
-              ? ' You did <b>' + fmtN(other) + '</b> on other decks.'
-              : ' Pick something below to start.')
+              ? ' ' + escapeHTML(window.onigiriText('You did {n} reviews on other decks.').replace('{n}', fmtN(other)))
+              : window.onigiriText(' Pick something below to start.'))
         + '</div>';
     }
     return ''
       + '<div class="ba-cg-result">'
       +   '<span class="ba-cg-result-n">' + fmtN(n) + '</span>'
-      +   '<span class="ba-cg-result-u">cards</span>'
+      +   window.onigiriTemplate('<span class="ba-cg-result-u">cards</span>')
       +   '<span class="ba-cg-result-sep" aria-hidden="true">·</span>'
       +   fmtTimeHTML(t)
       + '</div>';
@@ -113,17 +113,17 @@
     }
     return ''
       + '<div class="ba-cg-acc">'
-      +   '<div class="ba-cg-bar" role="img" aria-label="Session accuracy">'
+      +   window.onigiriTemplate('<div class="ba-cg-bar" role="img" aria-label="Session accuracy">')
       +     seg('again', again)
       +     seg('hard',  hard)
       +     seg('good',  good)
       +     seg('easy',  easy)
       +   '</div>'
       +   '<div class="ba-cg-keys">'
-      +     cell('again', 'Again', again)
-      +     cell('hard',  'Hard',  hard)
-      +     cell('good',  'Good',  good)
-      +     cell('easy',  'Easy',  easy)
+      +     cell('again', window.onigiriText('Again'), again)
+      +     cell('hard',  window.onigiriText('Hard'),  hard)
+      +     cell('good',  window.onigiriText('Good'),  good)
+      +     cell('easy',  window.onigiriText('Easy'),  easy)
       +   '</div>'
       + '</div>';
   }
@@ -136,10 +136,10 @@
     if (n === 0) return '';
     var parts = [];
     if (n > 0 && t > 0) {
-      parts.push(fmtPace(t / n) + ' per card');
+      parts.push(fmtPace(t / n) + window.onigiriText(' per card'));
     }
     if (today > n) {
-      parts.push(fmtN(today) + ' across all decks today');
+      parts.push(fmtN(today) + window.onigiriText(' across all decks today'));
     }
     if (!parts.length) return '';
     return '<div class="ba-cg-aside">' + parts.join(' · ') + '</div>';
@@ -154,20 +154,20 @@
     if (!decks || !decks.length) {
       return ''
         + '<div class="ba-cg-clear">'
-        +   '<b>Everything’s clear.</b> No other decks have cards to study right now. '
-        +   'Come back tomorrow, or '
-        +   '<a href="javascript:void(0)" onclick="bridgeCommand(\'customStudy\')">try custom study</a>.'
+        +   window.onigiriTemplate('<b>Everything’s clear.</b> No other decks have cards to study right now. ')
+        +   window.onigiriText('Come back tomorrow, or ')
+        +   window.onigiriTemplate('<a href="javascript:void(0)" onclick="bridgeCommand(\'customStudy\')">try custom study</a>.')
         + '</div>';
     }
-    return '<div class="ba-cg-decks-h">Keep going</div>'
+    return window.onigiriTemplate('<div class="ba-cg-decks-h">Keep going</div>')
       +    '<div class="ad-list ad-list--congrats"></div>';
   }
 
   function footHTML() {
     return ''
       + '<div class="ba-cg-foot">'
-      +   'Want to study off-schedule? '
-      +   '<a href="javascript:void(0)" onclick="bridgeCommand(\'customStudy\')">Custom study</a>.'
+      +   window.onigiriText('Want to study off-schedule? ')
+      +   window.onigiriTemplate('<a href="javascript:void(0)" onclick="bridgeCommand(\'customStudy\')">Custom study</a>.')
       + '</div>';
   }
 
@@ -179,7 +179,7 @@
 
   function build() {
     var d = window.__baCongratsData || {};
-    var deckName = d.deckName || 'this deck';
+    var deckName = d.deckName || window.onigiriTemplate(window.onigiriText('this deck'));
     var wrap = document.createElement('div');
     wrap.className = 'ba-cg';
     // Custom-study link is offered exactly once. When otherDecks is empty,

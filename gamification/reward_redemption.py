@@ -10,9 +10,9 @@ import requests
 from aqt import mw
 from aqt.qt import *
 
-from ..onigiri_notifications import notify_info as showInfo
+from ..ui_kit.onigiri_notifications import notify_info as showInfo
 from . import redeem_net
-from ..translations import tr
+from ..core.translations import tr
 
 
 REWARD_API_URL = "https://script.google.com/macros/s/AKfycbyQl6b_cPnXJEJeEJryvsuRzZYclfIt_LWN1Mqqf63FjzCbKdPKV_uHIgYtHIXmAbnB/exec"
@@ -607,7 +607,7 @@ def apply_reward(data: Dict[str, Any]) -> str:
     if reward_type == "taiyaki_coins":
         amount = int(data.get("amount", data.get("coins", 0)) or 0)
         _add_taiyaki_coins(amount)
-        return f"Redeemed {amount} Taiyaki Coins."
+        return tr("reward_redeemed").format(amount=amount, item=tr("store_taiyaki_coins"))
 
     if reward_type == "hex_coins":
         amount = int(data.get("amount", data.get("coins", 0)) or 0)
@@ -616,7 +616,7 @@ def apply_reward(data: Dict[str, Any]) -> str:
         state = hexagon_land.manager.load()
         state.hex_coins = int(state.hex_coins) + amount
         hexagon_land.manager.save(state)
-        return f"Redeemed {amount} Hex Coins."
+        return tr("reward_redeemed").format(amount=amount, item=tr("hexland_hex_coins"))
 
     if reward_type == "onigimon_coins":
         amount = int(data.get("amount", data.get("coins", 0)) or 0)
@@ -626,14 +626,14 @@ def apply_reward(data: Dict[str, Any]) -> str:
         state = manager.load()
         if currency in ("star_piece", "star_pieces", "stars"):
             state.star_pieces = int(state.star_pieces) + amount
-            label = "Star Pieces"
+            label = tr("onigimon_item_valuable_star_piece")
         else:
             state.comet_shards = int(state.comet_shards) + amount
-            label = "Comet Shards"
+            label = tr("onigimon_item_valuable_comet_shard")
         # Redeemed rewards go to disk right away - a queued write is fine for
         # per-review drift, not for something the user paid a code for.
         manager.save(immediate=True)
-        return f"Redeemed {amount} {label}."
+        return tr("reward_redeemed").format(amount=amount, item=label)
 
     if reward_type in {"onigimon_item", "onigimon_items"}:
         item_key = str(
@@ -659,8 +659,9 @@ def apply_reward(data: Dict[str, Any]) -> str:
         state = manager.load()
         state.inventory[item_key] = int(state.inventory.get(item_key, 0) or 0) + amount
         manager.save(immediate=True)
-        label = ITEMS.get(item_key, {}).get("label", item_key)
-        return f"Redeemed {amount} {label}."
+        from .onigimon import _onigimon_item_label
+        label = _onigimon_item_label(item_key)
+        return tr("reward_redeemed").format(amount=amount, item=label)
 
     raise ValueError(f"Unknown reward type: {reward_type or 'blank'}")
 
@@ -670,7 +671,7 @@ def _add_taiyaki_coins(amount: int) -> None:
     # This reads the file directly, so any write still queued by the manager
     # has to land first or the coins would be added to a stale balance.
     try:
-        from .. import safe_storage
+        from ..core import safe_storage
 
         safe_storage.flush_pending(path)
     except Exception:

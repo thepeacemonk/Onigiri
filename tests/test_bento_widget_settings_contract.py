@@ -71,7 +71,8 @@ class BentoWidgetSettingsContractTest(unittest.TestCase):
         self.assertIn("--bws-outer", css)
         self.assertIn("--bws-panel", css)
         self.assertIn("--bws-surface", css)
-        self.assertIn("Changes save automatically", html)
+        self.assertIn("%%T:settings_web_autosave_idle%%", html)
+        self.assertIn("render_html_strings(_read_asset", api)
         self.assertIn("function flush()", js)
         self.assertIn("function finish()", js)
         self.assertIn("srcdoc", js)
@@ -245,7 +246,8 @@ class BentoWidgetSettingsContractTest(unittest.TestCase):
 
         for token in ("bws-shell", "settingsNav", "bws-page-head", "pFace"):
             self.assertIn(token, html)
-        self.assertIn("Changes save automatically", html)
+        self.assertIn("%%T:settings_web_autosave_idle%%", html)
+        self.assertIn("render_html_strings(_read_asset", api)
         self.assertIn("var LUCIDE", html)
         self.assertIn("M11.017 2.814a1 1 0 0 1 1.966 0", html)
         self.assertIn('id="brandFace"', html)

@@ -31,7 +31,7 @@ import os
 
 from aqt import mw
 
-from .. import config
+from ..core import config
 
 
 class MissingBinding(Exception):

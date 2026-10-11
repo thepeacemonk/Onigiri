@@ -1,6 +1,6 @@
 import unittest
 
-from prep_station_math import (
+from study_tools.prep_station_math import (
     FsrsSettings,
     ProjectionCard,
     calculate_plan_projection,

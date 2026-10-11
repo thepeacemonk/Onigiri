@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ReadyToGoWidgetDesignTests(unittest.TestCase):
     def setUp(self):
-        source = ast.parse((ROOT / "ready_to_go.py").read_text())
+        source = ast.parse((ROOT / "study_tools/ready_to_go.py").read_text())
         names = {"_buttons_html", "render_sidebar_html", "render_widget_html"}
         nodes = [node for node in source.body if
                  isinstance(node, ast.FunctionDef) and node.name in names or
@@ -19,13 +19,18 @@ class ReadyToGoWidgetDesignTests(unittest.TestCase):
                      for target in node.targets)]
         self.env = {
             "html": html,
+            "localized_default": lambda value, keys: value,
+            "tr": lambda key: {
+                "ready_inbox": "Inbox", "ready_warm_up": "Warm up",
+                "profile_sidebar_today": "Today", "ready_cool_down": "Cool-Down",
+            }[key],
             "config": SimpleNamespace(themed_icon_color=lambda key: ""),
             "_setting": lambda key, default: default,
             "_color_setting": lambda key, default: default,
             "_icon_url": lambda key: "/icons/" + key + ".svg",
             "_appearance_style": lambda: "",
         }
-        exec(compile(ast.Module(body=nodes, type_ignores=[]), "ready_to_go.py", "exec"), self.env)
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "study_tools/ready_to_go.py", "exec"), self.env)
 
     def test_existing_and_unknown_designs_keep_labeled_shortcuts(self):
         render = self.env["render_widget_html"]

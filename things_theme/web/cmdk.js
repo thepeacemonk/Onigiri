@@ -79,14 +79,14 @@
     root.className = "ba-cmdk-back";
     root.setAttribute("data-open", "false");
     root.innerHTML =
-      '<div class="ba-cmdk" role="dialog" aria-label="Command palette">' +
+      window.onigiriTemplate('<div class="ba-cmdk" role="dialog" aria-label="Command palette">') +
       '  <div class="ba-cmdk-input-row">' +
       '    <span class="ba-cmdk-glyph">' + svg("search") + "</span>" +
       '    <input class="ba-cmdk-input" type="text" autocomplete="off" ' +
       '           spellcheck="false" autocapitalize="off" ' +
-      '           placeholder="Search decks, cards, tags, actions…" />' +
+      window.onigiriTemplate('           placeholder="Search decks, cards, tags, actions…" />') +
       '    <span class="ba-cmdk-hint">' +
-      '      <span class="ba-cmdk-kbd">Esc</span> to close' +
+      '      <span class="ba-cmdk-kbd">Esc</span> ' + window.onigiriText('to close') +
       "    </span>" +
       "  </div>" +
       '  <div class="ba-cmdk-list" role="listbox"></div>' +
@@ -94,10 +94,10 @@
       '    <span class="ba-cmdk-foot-l">' +
       '      <span class="ba-cmdk-foot-item">' +
       '        <span class="ba-cmdk-kbd">↑</span>' +
-      '        <span class="ba-cmdk-kbd">↓</span> navigate' +
+      '        <span class="ba-cmdk-kbd">↓</span> ' + window.onigiriText('navigate') +
       "      </span>" +
       '      <span class="ba-cmdk-foot-item">' +
-      '        <span class="ba-cmdk-kbd">↵</span> select' +
+      '        <span class="ba-cmdk-kbd">↵</span> ' + window.onigiriText('select') +
       "      </span>" +
       "    </span>" +
       '    <span class="ba-cmdk-foot-r">Anki Design</span>' +
@@ -292,9 +292,9 @@
 
     if (!currentItems.length) {
       var emptyMsg = q
-        ? '<div class="ba-cmdk-empty">No matches for <strong>'
+        ? window.onigiriTemplate('<div class="ba-cmdk-empty">No matches for <strong>')
             + escapeHtml(q) + "</strong></div>"
-        : '<div class="ba-cmdk-empty">Type to search decks, cards, tags, actions.</div>';
+        : window.onigiriTemplate('<div class="ba-cmdk-empty">Type to search decks, cards, tags, actions.</div>');
       list.innerHTML = emptyMsg;
       activeIdx = 0;
       return;
@@ -334,7 +334,7 @@
     if (initialQuery != null) input.value = initialQuery;
     root.setAttribute("data-open", "true");
     list.innerHTML =
-      '<div class="ba-cmdk-empty">Loading…</div>';
+      window.onigiriTemplate('<div class="ba-cmdk-empty">Loading…</div>');
     // Async focus so the open animation kicks in before the keyboard caret.
     requestAnimationFrame(function () {
       input.focus();

@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 
-from .. import config
+from ..core import config
 
 
 @dataclass(frozen=True)

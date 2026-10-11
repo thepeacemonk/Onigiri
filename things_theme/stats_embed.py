@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.translations import tr, tr_literal
+
 from aqt import mw
 from aqt.qt import (
     QApplication,
@@ -372,10 +374,10 @@ def open_inline(parent_mw: Any = None) -> None:
         title_col = QVBoxLayout()
         title_col.setContentsMargins(0, 0, 0, 0)
         title_col.setSpacing(6)
-        eyebrow = QLabel("STATISTICS", header)
+        eyebrow = QLabel(tr_literal("STATISTICS"), header)
         eyebrow.setObjectName("ba-stats-eyebrow")
         title_col.addWidget(eyebrow)
-        title = QLabel("Your progress", header)
+        title = QLabel(tr_literal("Your progress"), header)
         title.setObjectName("ba-stats-title")
         title_col.addWidget(title)
         hl.addLayout(title_col, 1)
@@ -412,7 +414,7 @@ def open_inline(parent_mw: Any = None) -> None:
                 # The button label escapes ampersands as "&&" for Qt
                 # mnemonics — undo so the title reads naturally.
                 name = name.replace("&&", "&").strip()
-                title.setText(name or "Your progress")
+                title.setText(name or tr_literal("Your progress"))
             except Exception:
                 pass
 

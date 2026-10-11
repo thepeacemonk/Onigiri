@@ -26,6 +26,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import unquote
 
 from aqt import mw
+from ..core.translations import tr_literal, tr
 
 
 # Max items per section in the result payload. Cards and tags are
@@ -245,9 +246,9 @@ def _action_items(q: str, state: str) -> List[Dict[str, Any]]:
         contexts = a.get("contexts")
         if contexts and state not in contexts:
             continue
-        hay = a["title"]
+        hay = a["title"] + " " + tr_literal(a["title"])
         if a.get("sub"):
-            hay += " " + a["sub"]
+            hay += " " + a["sub"] + " " + tr_literal(a["sub"])
         for kw in a.get("keywords", []):
             hay += " " + kw
         s = _score(hay, q)
@@ -259,10 +260,10 @@ def _action_items(q: str, state: str) -> List[Dict[str, Any]]:
             continue
         out.append((s, {
             "do": "action:" + a["key"],
-            "title": a["title"],
-            "sub": a.get("sub", ""),
+            "title": tr_literal(a["title"]),
+            "sub": tr_literal(a.get("sub", "")),
             "icon": a.get("icon", "search"),
-            "chip": "Action",
+            "chip": tr("button"),
         }))
     out.sort(key=lambda x: -x[0])
     return [it for _, it in out[:MAX_ACTIONS]]
@@ -320,13 +321,13 @@ def _deck_items(q: str) -> List[Dict[str, Any]]:
         parent_path = " ▸ ".join(parts[:-1]) if len(parts) > 1 else ""
         rev, new, lrn = counts_by_id.get(did, (0, 0, 0))
         total = rev + new + lrn
-        meta = (str(total) + " due") if total else ""
+        meta = (str(total) + " " + tr("kome_due")) if total else ""
         scored.append((s + base_score, {
             "do": "deck:" + str(did),
             "title": leaf,
             "sub": parent_path,
             "icon": "deck",
-            "chip": "Deck",
+            "chip": tr("deck"),
             "meta": meta,
         }))
     scored.sort(key=lambda x: (-x[0], x[1]["title"].lower()))
@@ -350,7 +351,7 @@ def _tag_items(q: str) -> List[Dict[str, Any]]:
             "title": t,
             "sub": "",
             "icon": "tag",
-            "chip": "Tag",
+            "chip": tr("hashi_sort_tags"),
         }))
     scored.sort(key=lambda x: -x[0])
     return [it for _, it in scored[:MAX_TAGS]]
@@ -442,7 +443,7 @@ def _card_items(q: str) -> List[Dict[str, Any]]:
                     "title": title,
                     "sub": sub,
                     "icon": "card",
-                    "chip": "Card",
+                    "chip": tr("cards"),
                     "meta": " · ".join(meta_bits),
                 })
             except Exception:
@@ -480,24 +481,24 @@ def search(query: str, seq: int) -> Dict[str, Any]:
 
     actions = _action_items(q, state)
     if actions:
-        sections.append({"title": "Actions", "items": actions})
+        sections.append({"title": tr("hexland_actions"), "items": actions})
 
     decks = _deck_items(q)
     if decks:
-        sections.append({"title": "Decks", "items": decks})
+        sections.append({"title": tr("decks"), "items": decks})
 
     cards = _card_items(q)
     if cards:
-        sections.append({"title": "Cards", "items": cards})
+        sections.append({"title": tr("cards"), "items": cards})
 
     tags = _tag_items(q)
     if tags:
-        sections.append({"title": "Tags", "items": tags})
+        sections.append({"title": tr("hashi_sort_tags"), "items": tags})
 
     # Fallback: explicit "Search browser for X" row at the bottom.
     fb = _fallback_search_item(q)
     if fb:
-        sections.append({"title": "Other", "items": [fb]})
+        sections.append({"title": tr("hexland_group_others"), "items": [fb]})
 
     return {"seq": seq, "q": q, "sections": sections}
 

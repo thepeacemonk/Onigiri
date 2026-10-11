@@ -15,27 +15,28 @@ if hasattr(signal, "SIGPIPE"):
     except (OSError, RuntimeError, ValueError):
         pass
 
+from .core.translations import tr
 from aqt import mw, gui_hooks
 from aqt.deckbrowser import DeckBrowser
-from . import onigiri_renderer
-from . import shima_theme
+from .rendering import onigiri_renderer
+from .rendering import shima_theme
 from aqt.reviewer import Reviewer
 from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
 from aqt.qt import QWidget, QHBoxLayout, QPushButton, Qt, QToolBar, QAction, QTimer
-from . import patcher
-from . import config
-from . import safe_storage
-from . import menu_buttons
-from . import webview_handlers
+from .rendering import patcher
+from .core import config
+from .core import safe_storage
+from .ui_kit import menu_buttons
+from .rendering import webview_handlers
 from .decks import tree_updater as deck_tree_updater
-from . import heatmap
+from .rendering import heatmap
 from .api import sidebar as sidebar_api
 from .api import bento as bento_api
-from . import fsrs_helper_integration
-from . import learner_stats_widget
-from . import mac_titlebar
-from .sync import onigiri_sync
+from .integrations import fsrs_helper_integration
+from .rendering import learner_stats_widget
+from .integrations import mac_titlebar
+from .core.sync import onigiri_sync
 
 addon_path = os.path.dirname(__file__)
 addon_package = mw.addonManager.addonFromModule(__name__)
@@ -299,7 +300,7 @@ def inject_menu_files(web_content, context):
                 const overlay = document.createElement("div");
                 overlay.id = "onigiri-welcome-overlay";
                 overlay.innerHTML = `
-                    <img src="/_addons/{addon_package}/onigiri_logo.png" style="width: 290px; height: auto; margin-bottom: 32px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3));" />
+                    <img src="/_addons/{addon_package}/system_files/onigiri_logo.png" style="width: 290px; height: auto; margin-bottom: 32px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3));" />
                     <h1 style="margin: 0 0 20px 0; font-size: 49px; font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,0.5);">Welcome!</h1>
                     <p style="margin: 0; font-size: 26px; font-weight: 500; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">Proceed to Settings to start customizing</p>
                     <button class="btn-continue">Continue</button>
@@ -878,7 +879,7 @@ def on_profile_did_open():
     # Register Poppins (the add-on's default typeface) into Qt so native
     # dialogs that set font-family: 'Poppins' in QSS resolve it.
     try:
-        from .fonts import register_poppins_qt
+        from .ui_kit.fonts import register_poppins_qt
         register_poppins_qt(addon_path)
     except Exception as e:
         print(f"[Onigiri] Could not register Poppins fonts: {e}")
@@ -924,7 +925,7 @@ def on_profile_did_open():
     # Show birthday popup if it's the user's birthday (requires mw.col)
     # Delay to ensure the main window is fully rendered before opening a dialog.
     def maybe_show_birthday_popup():
-        from . import birthday_dialog
+        from .dialogs import birthday_dialog
 
         try:
             birthday_dialog.maybe_show_birthday_popup()
@@ -966,7 +967,7 @@ def _render_selected_deck_browser(deck_browser, *args, **kwargs):
     # Ready-to-go filtered decks are hidden from both deck lists. Restore any
     # unfinished cards before either renderer calculates the visible counts.
     try:
-        from . import ready_to_go
+        from .study_tools import ready_to_go
 
         ready_to_go.restore_internal_cards(deck_browser.mw.col)
     except Exception as exc:
@@ -1059,15 +1060,15 @@ def on_sync_did_finish():
 
     conflict = onigiri_sync.check_conflict()
     if conflict == 'cloud_newer':
-        from .sync_ui import show_sync_conflict_dialog
+        from .dialogs.sync_ui import show_sync_conflict_dialog
 
         # Cloud data is newer, ask user what to do
         choice = show_sync_conflict_dialog(mw)
         if choice == 'cloud':
             onigiri_sync.unpack_user_files()
             # Reload Onigiri modules or notify user to restart? For now, just tool tip
-            from .onigiri_notifications import notify_info as showInfo
-            showInfo("Onigiri data has been updated from AnkiWeb. Some changes may require a restart to take effect.")
+            from .ui_kit.onigiri_notifications import notify_info as showInfo
+            showInfo(tr("sync_data_updated"))
         elif choice == 'local':
             # User wants to keep local, so pack it again to set as definitive
             onigiri_sync.pack_user_files()
@@ -1101,7 +1102,7 @@ def on_show_icon_chooser(deck_id):
 
 def on_deck_options_shown(menu, deck_id):
     """Appends the 'Change Icon' action to the deck options menu."""
-    a = menu.addAction("Change Icon")
+    a = menu.addAction(tr("change_icon"))
     a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
 
 def _storage_integrity_check():
@@ -1279,7 +1280,7 @@ gui_hooks.profile_did_open.append(on_profile_did_open)
 def _hashi_notes_purge():
     """Runs the Hashi Notes retention/trash sweep once per collection load."""
     try:
-        from . import hashi_notes
+        from .study_tools import hashi_notes
         hashi_notes.purge_expired()
     except Exception as e:
         print(f"Hashi Notes: purge hook error: {e}")
@@ -1290,7 +1291,7 @@ gui_hooks.deck_browser_will_render_content.append(
 )
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 def _invalidate_heatmap_cache_on_answer(*args):
-    from . import heatmap
+    from .rendering import heatmap
     heatmap.invalidate_heatmap_cache()
 gui_hooks.reviewer_did_answer_card.append(_invalidate_heatmap_cache_on_answer)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)

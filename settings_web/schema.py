@@ -31,9 +31,9 @@ import copy
 
 from aqt import mw
 
-from .. import config
-from ..pomodoro_tones import TONE_PAIRS
-from ..translations import LANGUAGES, tr
+from ..core import config
+from ..study_tools.pomodoro_tones import TONE_PAIRS
+from ..core.translations import LANGUAGES, tr
 from . import games
 
 # ── constants mirrored from the legacy pages ───────────────────────────────────
@@ -136,7 +136,7 @@ def _current_simple_font_size(role):
 
 def _mac_titlebar_supported():
     try:
-        from .. import mac_titlebar
+        from ..integrations import mac_titlebar
 
         return bool(mac_titlebar.is_supported())
     except Exception:
@@ -145,7 +145,7 @@ def _mac_titlebar_supported():
 
 def _synapsepro_present():
     try:
-        from .. import patcher
+        from ..rendering import patcher
 
         return bool(patcher.is_synapsepro_identified())
     except Exception:
@@ -166,7 +166,7 @@ def _language_parts(lang_name):
 
 def _language_preview(code):
     """English -> target pairs for a handful of familiar UI strings."""
-    from ..translations import TRANSLATIONS
+    from ..core.translations import TRANSLATIONS
 
     english = TRANSLATIONS.get("en", {})
     target = TRANSLATIONS.get(code, {})
@@ -205,7 +205,7 @@ def _language_options():
 def _font_options():
     """Every registered font key, ordered with the default first."""
     try:
-        from ..fonts import get_all_fonts
+        from ..ui_kit.fonts import get_all_fonts
 
         fonts = get_all_fonts(_addon_root())
     except Exception:
@@ -1910,7 +1910,7 @@ def _prep_station_page():
 def _hashi_note_options():
     options = [{"value": "", "label": tr("hashi_widget_newest_note", "Most recent note")}]
     try:
-        from .. import hashi_notes
+        from ..study_tools import hashi_notes
         for note in hashi_notes.load_notes():
             note_id = str(note.get("id") or "")
             if note_id:
@@ -2168,8 +2168,8 @@ def _pomodoro_page():
                 ],
             },
             {"id": "pomodoro_options", "title": tr("pomodoro_options", "Options"), "description": "Choose how the timer fits into your study flow.", "fields": [
-                {"id": "pomodoro_show_header", "type": "toggle", "label": tr("pomodoro_show_in_header", "Show in Reviewer header"), "desc": "Keep the timer one click away while reviewing cards.", "bind": {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}, "default": True},
-                {"id": "pomodoro_auto_start", "type": "toggle", "label": tr("pomodoro_auto_start", "Auto-start next timer"), "desc": "Move into the next focus or break phase when the current one ends.", "bind": path("auto_start_next_phase"), "default": True},
+                {"id": "pomodoro_show_header", "type": "toggle", "label": tr("pomodoro_show_in_header", "Show in Reviewer header"), "desc": tr("pomodoro_header_desc"), "bind": {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}, "default": True},
+                {"id": "pomodoro_auto_start", "type": "toggle", "label": tr("pomodoro_auto_start", "Auto-start next timer"), "desc": tr("pomodoro_auto_start_desc"), "bind": path("auto_start_next_phase"), "default": True},
             ]},
             _designer_preview_section(
                 "pomodoro_appearance",

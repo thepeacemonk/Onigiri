@@ -11,8 +11,21 @@ handful of pieces with real users outside it live here:
   picker_chrome  shared popup chrome for the pickers below
   font_picker    FontPickerDialog
   icon_picker    DeckIconPickerDialog
+  fonts          font registry and Qt/web font helpers
+  emoji_sprites  emoji asset registry
+  onigiri_color_picker, onigiri_date_picker  shared native pickers
+  onigiri_notifications  native notifications
+  menu_buttons   Onigiri menu actions
 """
 
-from .flow_layout import FlowLayout
-
 __all__ = ["FlowLayout"]
+
+
+def __getattr__(name):
+    # Asset registries can be imported without loading the native Qt widgets.
+    if name == "FlowLayout":
+        from .flow_layout import FlowLayout
+
+        globals()[name] = FlowLayout
+        return FlowLayout
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

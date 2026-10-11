@@ -15,6 +15,7 @@
   const CTX = ONIGIRI_SETTINGS_CONTEXT || {};
   const PAGES = CTX.pages || [];
   const STRINGS = CTX.strings || {};
+  document.documentElement.lang = CTX.heatmapLocale || "en";
 
   const pageById = {};
   PAGES.forEach(function (page) { pageById[page.id] = page; });
@@ -75,6 +76,12 @@
     return node;
   }
 
+  function escapeCopy(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[character]);
+  }
+
   function str(key, fallback) {
     const value = STRINGS[key];
     return (value == null || value === "") ? fallback : value;
@@ -90,7 +97,7 @@
   function call(command) {
     return new Promise(function (resolve) {
       if (typeof pycmd !== "function") {
-        resolve({ ok: false, error: "Bridge not ready" });
+        resolve({ ok: false, error: str("settings_bridge_unavailable", "Bridge not ready") });
         return;
       }
       try {
@@ -233,6 +240,7 @@
       }
       // Python resolves Sync with Anki from Anki's current mode. Repaint
       // the open settings window after the preference has been persisted.
+      if (res.localization) applyLocalization(res.localization);
       if (res.appearance && !("onigiri_theme_mode" in pending)) {
         CTX.dark = res.appearance.dark;
         CTX.palette = res.appearance.palette;
@@ -246,6 +254,33 @@
       if (Object.keys(pending).length) scheduleFlush(FLUSH_DELAY);
       else setStatus("saved");
     });
+  }
+
+  function applyLocalization(context) {
+    Object.assign(CTX, context);
+    window.ONIGIRI_LOCALIZATION = context.localization || window.ONIGIRI_LOCALIZATION;
+    Object.keys(STRINGS).forEach(key => delete STRINGS[key]);
+    Object.assign(STRINGS, context.strings || {});
+    PAGES.splice(0, PAGES.length, ...(context.pages || []));
+    Object.keys(pageById).forEach(key => delete pageById[key]);
+    Object.keys(fieldById).forEach(key => delete fieldById[key]);
+    PAGES.forEach(page => {
+      pageById[page.id] = page;
+      (page.sections || []).forEach(section => {
+        (section.fields || []).forEach(field => {
+          field.__page = page.id;
+          fieldById[field.id] = field;
+          if (!(field.id in pending) && (field.type === "message_list" || field.id === "g_mochi_title_name")) {
+            values[field.id] = field.value;
+          }
+        });
+      });
+    });
+    document.documentElement.lang = context.heatmapLocale || "en";
+    rebuildSearchIndex();
+    paintChromeLanguage();
+    buildNav();
+    showPage(currentPage);
   }
 
   function setStatus(state, detail) {
@@ -3004,7 +3039,7 @@
         const tile = el("button", "osw-scenario-tile");
         tile.type = "button";
         tile.setAttribute("data-scenario-path", item.path || "");
-        tile.setAttribute("aria-label", item.label || "Scenario");
+        tile.setAttribute("aria-label", item.label || str("onigimon_scene", "Scenario"));
         const image = document.createElement("img");
         image.src = item.image || "";
         image.alt = "";
@@ -4284,7 +4319,7 @@
     hue.min = "0";
     hue.max = "360";
     hue.className = "osw-colorpick-hue";
-    hue.setAttribute("aria-label", "Hue");
+    hue.setAttribute("aria-label", str("color_hue", "Hue"));
     const valueSlider = document.createElement("input");
     valueSlider.type = "range";
     valueSlider.min = "0";
@@ -4297,7 +4332,7 @@
     hexInput.type = "text";
     hexInput.maxLength = 7;
     hexInput.spellcheck = false;
-    hexInput.setAttribute("aria-label", "Hex color");
+    hexInput.setAttribute("aria-label", str("hashi_hex_color", "Hex color"));
     entry.appendChild(preview);
     entry.appendChild(hexInput);
     host.appendChild(canvas);
@@ -5890,7 +5925,7 @@
     } else if (section.preview_kind === "overview_style") {
       headControls.appendChild(renderLocalHeadChoice(
         "Screen",
-        [{ value: "overviewer", label: "Overview" }, { value: "congrats", label: "Congrats" }],
+        [{ value: "overviewer", label: str("overview", "Overview") }, { value: "congrats", label: str("congratulations_label", "Congrats") }],
         function () { return ovstyleActiveScreen; },
         function (value) {
           ovstyleActiveScreen = value;
@@ -9105,7 +9140,7 @@
       button.appendChild(designerIconGlyph(
         iconValue("modern_menu_icon_ready_" + item.key), tint, iconSize
       ));
-      const label = el("span", "osw-sbprev-ready-label", item.label);
+      const label = el("span", "osw-sbprev-ready-label", str(item.key === "today" ? "profile_sidebar_today" : "ready_" + item.key, item.label));
       label.style.color = textColor;
       label.style.fontFamily = textRole.family;
       label.style.fontSize = textRole.size + "px";
@@ -10473,7 +10508,7 @@
         const minus = el("button", "osw-organize-menu-step-btn");
         minus.type = "button";
         minus.innerHTML = ICON_MINUS;
-        minus.setAttribute("aria-label", "Decrease " + labelText);
+        minus.setAttribute("aria-label", str("decrease", "Decrease") + " " + labelText);
         minus.firstElementChild.setAttribute("aria-hidden", "true");
         minus.firstElementChild.setAttribute("focusable", "false");
         minus.disabled = current <= min;
@@ -10484,7 +10519,7 @@
         const plus = el("button", "osw-organize-menu-step-btn");
         plus.type = "button";
         plus.innerHTML = ICON_PLUS;
-        plus.setAttribute("aria-label", "Increase " + labelText);
+        plus.setAttribute("aria-label", str("increase", "Increase") + " " + labelText);
         plus.firstElementChild.setAttribute("aria-hidden", "true");
         plus.firstElementChild.setAttribute("focusable", "false");
         plus.disabled = current >= max;
@@ -12790,14 +12825,14 @@
     let analytics = asset.analyticsHtml || "";
     if (!analytics) {
       analytics = '<section class="ba-practice"><div class="ba-analytics">' +
-        '<section class="ba-review-chart"><div class="ba-analytics-head"><span>Weekly reviews</span><strong>915<small> total</small></strong></div>' +
+        window.onigiriTemplate('<section class="ba-review-chart"><div class="ba-analytics-head"><span>Weekly reviews</span><strong>915<small> total</small></strong></div>') +
         '<svg class="ba-review-chart-svg" viewBox="0 0 640 150" preserveAspectRatio="none"><path d="M12,116 L90,104 L170,108 L250,80 L330,88 L410,58 L500,66 L628,24 L628,116 L12,116 Z" class="ba-chart-area"></path><path d="M12,116 L90,104 L170,108 L250,80 L330,88 L410,58 L500,66 L628,24" class="ba-chart-line"></path></svg></section>' +
-        '<section class="ba-heatmap-card"><div class="rf-heatmap"><div class="rf-hm-head"><span class="rf-hm-title">Review activity</span><span class="rf-hm-stats"><b>42</b> today · <b>8</b> day streak</span></div></div></section>' +
+        '<section class="ba-heatmap-card"><div class="rf-heatmap"><div class="rf-hm-head"><span class="rf-hm-title">' + escapeCopy(str('kome_review_activity')) + '</span><span class="rf-hm-stats"><b>42</b> ' + escapeCopy(str('today')) + ' · ' + escapeCopy(str('kome_streak_days').replace('{n}', '8')) + '</span></div></div></section>' +
       '</div></section>';
     }
     return '<!doctype html><html data-rf-theme="' + mode + '" data-rf-density="comfortable"' +
       (safeBackgroundUrl ? ' data-rf-background="image"' : '') + '>' +
-      '<head><meta charset="utf-8"><style>' + String(asset.css || "") +
+      '<head><meta charset="utf-8">' + (asset.localizationScript || "") + '<style>' + String(asset.css || "") +
       ':root{' + variables + sidebarVariables + activeVariables + dashboardVariables + surfaceVariables + '}' +
       'html,body{width:' + THINGS_PREVIEW_WIDTH + 'px;min-height:' + THINGS_PREVIEW_HEIGHT + 'px;}' +
       'body{overflow:auto!important}.ba-home{min-height:' + THINGS_PREVIEW_HEIGHT + 'px}' +
@@ -14366,7 +14401,10 @@
 
   const INDEX = {};
   const SEARCH_RECORDS = [];
-  Object.keys(pageById).forEach(function (pageId) {
+  function rebuildSearchIndex() {
+    Object.keys(INDEX).forEach(key => delete INDEX[key]);
+    SEARCH_RECORDS.length = 0;
+    Object.keys(pageById).forEach(function (pageId) {
     const page = pageById[pageId];
     const pageParts = [page.title, page.description || "", page.id];
     (page.sections || []).forEach(function (section) {
@@ -14395,7 +14433,9 @@
       pageParts.push.apply(pageParts, sectionParts);
     });
     INDEX[pageId] = searchableText(pageParts);
-  });
+    });
+  }
+  rebuildSearchIndex();
 
   function openSearchRecord(record) {
     if (!SETTINGS_MODE_PARITY && record.advanced && settingsComplexity !== "advanced") {
@@ -14424,8 +14464,7 @@
       return record.text.indexOf(needle) !== -1;
     }).slice(0, 120);
     document.getElementById("oswPageTitle").textContent = str("search", "Search");
-    document.getElementById("oswPageDesc").textContent = matches.length +
-      (matches.length === 1 ? " setting found" : " settings found");
+    document.getElementById("oswPageDesc").textContent = str(matches.length === 1 ? "settings_search_count_one" : "settings_search_count").replace("{n}", String(matches.length));
     const tabs = document.getElementById("oswPageTabs");
     tabs.innerHTML = "";
     tabs.classList.remove("is-icons");
@@ -14444,7 +14483,7 @@
       button.addEventListener("click", function () { openSearchRecord(record); });
       list.appendChild(button);
     });
-    if (!matches.length) list.appendChild(el("div", "osw-search-results-empty", "No settings match “" + needle + "”."));
+    if (!matches.length) list.appendChild(el("div", "osw-search-results-empty", str("settings_search_empty").replace("{query}", needle)));
     host.appendChild(list);
     const scroller = document.getElementById("oswPageScroll");
     scroller.scrollTop = 0;
@@ -14597,6 +14636,20 @@
     if (slot) slot.innerHTML = svg;
   }
 
+  function paintChromeLanguage() {
+    document.querySelector("#oswDonate .osw-rail-action-label").textContent =
+      str("donate", "Donate");
+    document.querySelector("#oswBugs .osw-rail-action-label").textContent =
+      str("report_bugs", "Report bugs");
+    document.querySelector("#oswDone .osw-btn-label").textContent = str("done", "Done");
+    document.getElementById("oswSearch").placeholder = str("search", "Search");
+    document.querySelectorAll("[data-complexity]").forEach(button => {
+      button.textContent = button.dataset.complexity === "advanced"
+        ? str("advanced", "Advanced") : str("simple", "Simple");
+    });
+    applyRail(false);
+  }
+
   function wireChrome() {
     const icons = CTX.chromeIcons || {};
     // The rail toggle's glyph is set by applyRail(), which knows the direction.
@@ -14604,12 +14657,7 @@
     setIcon("oswBugs", ".osw-rail-action-icon", icons.bugs);
     setIcon("oswDone", ".osw-btn-icon", icons.done);
 
-    document.querySelector("#oswDonate .osw-rail-action-label").textContent =
-      str("donate", "Donate");
-    document.querySelector("#oswBugs .osw-rail-action-label").textContent =
-      str("report_bugs", "Report bugs");
-    document.querySelector("#oswDone .osw-btn-label").textContent = str("done", "Done");
-    document.getElementById("oswSearch").placeholder = str("search", "Search");
+    paintChromeLanguage();
     const complexityButtons = document.querySelectorAll("[data-complexity]");
     Array.prototype.forEach.call(complexityButtons, function (button) {
       const mode = button.getAttribute("data-complexity");

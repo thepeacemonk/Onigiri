@@ -16,8 +16,8 @@ from aqt import gui_hooks, mw
 from aqt.qt import QDesktopServices, QDialog, QTimer, QUrl, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from .. import config, safe_storage
-from ..translations import tr
+from ..core import config, safe_storage
+from ..core.translations import tr, tr_literal
 from .haptics import trigger as trigger_haptic
 
 
@@ -1649,7 +1649,7 @@ class HexagonLandManager:
                                 state.tiles.pop(edge_tile)
                                 removed += 1
                         if removed > 0:
-                            state.last_message = f"You lost {removed} land tile(s) because you didn't study."
+                            state.last_message = tr("hexland_land_lost_message").format(amount=removed)
                     state.last_study_day = (today - timedelta(days=1)).isoformat()
                     state.current_streak = 0
                     # We save without using the cache so it persists immediately
@@ -1667,7 +1667,7 @@ class HexagonLandManager:
         self._state_cache = copy.deepcopy(state)
 
     def reset(self) -> None:
-        self.save(HexagonLandState(last_message="Hexagon Land has been rebuilt from its starter island."))
+        self.save(HexagonLandState(last_message=tr("hexland_reset_message")))
 
     def island_display_name(self, state: Optional[HexagonLandState] = None) -> str:
         state = state or self.load()
@@ -1677,22 +1677,22 @@ class HexagonLandManager:
     def buy_keys_of_the_island(self) -> str:
         state = self.load()
         if state.keys_of_the_island:
-            return "You already own the Keys of the Island."
+            return tr("hexland_keys_owned_message")
         if state.hex_coins < KEYS_OF_THE_ISLAND_COST:
-            return f"Keys of the Island need {KEYS_OF_THE_ISLAND_COST} {tr('hexland_hex_coins', 'Hex Coins')}."
+            return tr("hexland_keys_need_message").format(cost=KEYS_OF_THE_ISLAND_COST, coins=tr("hexland_hex_coins"))
         state.hex_coins -= KEYS_OF_THE_ISLAND_COST
         state.keys_of_the_island = True
-        state.last_message = "The Keys of the Island are yours. You can name your island now."
+        state.last_message = tr("hexland_keys_bought_message")
         self.save(state)
         return state.last_message
 
     def set_island_name(self, name: str) -> str:
         state = self.load()
         if not state.keys_of_the_island:
-            return "Buy the Keys of the Island before naming your island."
+            return tr("hexland_keys_name_message")
         clean_name = re.sub(r"\s+", " ", str(name or "").strip())[:40]
         state.island_name = clean_name or "Hexagon Land"
-        state.last_message = f"Your island is now called {state.island_name}."
+        state.last_message = tr("hexland_island_renamed_message").format(name=state.island_name)
         self.save(state)
         return state.last_message
 
@@ -1707,17 +1707,24 @@ class HexagonLandManager:
 
         coin_gain, fish_coins, gained_materials = self._award_review_rewards(state, ease)
 
-        if gained_materials:
-            materials_text = ", ".join(f"{amount} {key}" for key, amount in gained_materials.items())
-            msg = f"Studying earned {coin_gain} {tr('hexland_hex_coins', 'Hex Coins')} and {materials_text}."
-        else:
-            msg = f"Studying earned {coin_gain} {tr('hexland_hex_coins', 'Hex Coins')}."
-            
+        materials_text = self._material_rewards_text(gained_materials)
+        msg = tr("hexland_study_earned_message").format(
+            amount=coin_gain, coins=tr("hexland_hex_coins"), materials=materials_text)
         if fish_coins > 0:
-            msg += f" Inhabitants went fishing and found {fish_coins} extra coins!"
-            
+            msg += " " + tr("hexland_fishing_message").format(amount=fish_coins)
+
         state.last_message = msg
         self.save(state)
+
+    @staticmethod
+    def _material_label(key: str) -> str:
+        return tr("hexland_wood") if key == "wood" else tr("hexland_material_" + key, key)
+
+    def _material_rewards_text(self, rewards: Dict[str, int]) -> str:
+        if not rewards:
+            return ""
+        return tr("hexland_and_connector") + ", ".join(
+            f"{amount} {self._material_label(key)}" for key, amount in rewards.items())
 
     def _study_material_rewards(self, reviews: int, ease: int = 0) -> Dict[str, int]:
         return {}
@@ -1754,25 +1761,18 @@ class HexagonLandManager:
             return
         self._last_session_notification_signature = signature
 
-        materials_text = ""
-        if pending_mats:
-            materials_text = tr('hexland_and_connector', ' and ') + ", ".join(f"{amount} {key}" for key, amount in pending_mats.items())
-        message = tr(
-            'hexland_earned_session_tooltip',
-            "Hexagon Land: Você ganhou {} Hex Coins{} nesta sessão!"
-        ).format(pending_coins, materials_text)
-        coin_icon_url = f"/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.webp"
-        reward_items = []
-        if pending_coins > 0:
-            reward_items.append({
-                "iconImage": coin_icon_url,
-                "iconAlt": tr('hexland_hex_coins', 'Hex Coins'),
-                "value": str(pending_coins),
-            })
-        for key, amount in (pending_mats or {}).items():
-            reward_items.append({"value": f"{amount} {key}"})
-
         def show_notification() -> None:
+            # Resolve copy when the timer fires; language can change while queued.
+            materials_text = self._material_rewards_text(pending_mats)
+            message = tr('hexland_earned_session_tooltip').format(pending_coins, materials_text)
+            reward_items = []
+            if pending_coins > 0:
+                reward_items.append({
+                    "iconImage": f"/_addons/{_addon_package()}/system_files/gamification_images/hex_coin.webp",
+                    "iconAlt": tr('hexland_hex_coins'), "value": str(pending_coins),
+                })
+            for key, amount in (pending_mats or {}).items():
+                reward_items.append({"value": f"{amount} {self._material_label(key)}"})
             payload = {
                 "id": "hexagon_land_rewards",
                 "name": "Hexagon Land",
@@ -1853,11 +1853,11 @@ class HexagonLandManager:
                 message = self._clear_tile(state, payload)
             elif action == "reset":
                 self.reset()
-                return "Hexagon Land has been reset."
+                return tr('hexland_reset_done')
             else:
                 message = "That Hexagon Land action is not available yet."
         except Exception as exc:
-            message = f"Could not update Hexagon Land: {exc}"
+            message = tr("hexland_update_error").format(error=exc)
         state.last_message = message
         self.save(state)
         return message
@@ -1876,15 +1876,15 @@ class HexagonLandManager:
 
         if category == "terrain":
             if item_key not in terrains:
-                return "Choose a terrain first."
+                return tr('hexland_choose_terrain')
             if item_key not in self.unlocked_terrains(state):
-                return f"{terrains[item_key]['label']} unlocks after more studying."
+                return tr("hexland_unlocked_after").format(name=tr_literal(terrains[item_key]["label"]))
             if tile is None:
                 if not self._can_expand_to(state, q, r):
-                    return "Expand from the edge of your existing island."
+                    return tr('hexland_expand_edge')
                 expand_cost = self._expand_cost(state)
                 if not self._spend(state, expand_cost):
-                    return self._cost_message("Expand land", expand_cost)
+                    return self._cost_message(tr("hexland_expand_land"), expand_cost)
                 # Remember the claim price so deleting the tile refunds exactly
                 # what it cost, no matter how the level-scaled price has moved
                 # since.
@@ -1895,18 +1895,18 @@ class HexagonLandManager:
                     "land_cost": int(expand_cost.get("coins", 0)),
                 }
                 state.tiles[coord] = tile
-                return f"Expanded the island with {terrains[item_key]['label']}."
+                return tr("hexland_expanded_message").format(name=tr_literal(terrains[item_key]["label"]))
             if tile.get("building") or tile.get("parts"):
                 if tile.get("building"):
-                    return "Cannot place on top of a roof."
+                    return tr('hexland_roof_blocked')
                 parts = tile.get("parts", [])
                 if parts and _is_roof_part(parts[-1].split(":")[0], building_parts):
-                    return "Cannot place on top of a roof."
+                    return tr('hexland_roof_blocked')
                 cost = terrains[item_key].get("cost", {})
                 if not self._spend(state, cost):
                     return self._cost_message(terrains[item_key]["label"], cost)
                 parts.append(item_key)
-                return f"Stacked {terrains[item_key]['label']} on building."
+                return tr("hexland_stacked_message").format(name=tr_literal(terrains[item_key]["label"]))
             cost = terrains[item_key].get("cost", {})
             if not self._spend(state, cost):
                 return self._cost_message(terrains[item_key]["label"], cost)
@@ -1919,10 +1919,10 @@ class HexagonLandManager:
             tile["height"] = current_height + 1
             current_layers.append(item_key)
             tile["terrain"] = item_key
-            return f"Stacked {terrains[item_key]['label']} on top."
+            return tr("hexland_stacked_message").format(name=tr_literal(terrains[item_key]["label"]))
 
         if tile is None:
-            return "Pick an existing tile, or select terrain to expand."
+            return tr('hexland_existing_tile')
 
         if category == "raise":
             current_height = max(1, int(tile.get("height", 1) or 1))
@@ -1933,12 +1933,12 @@ class HexagonLandManager:
                 current_layers.insert(0, current_terrain)
             current_layers.append(current_terrain)
             tile["height"] = current_height + 1
-            return "Raised land one level."
+            return tr('hexland_raised_message')
 
         if category == "decor":
             item = decors.get(item_key)
             if not item:
-                return "Choose a tree, flower, or rock first."
+                return tr('hexland_choose_decor')
             label = item.get("label", "")
             if label.startswith("Nature "):
                 try:
@@ -1950,20 +1950,20 @@ class HexagonLandManager:
                             for s_key, entry in spots.items():
                                 if entry.get("category") == "decor" and entry.get("item") == item_key:
                                     if t_coord != coord or s_key != target_spot:
-                                        return f"You can only place one {label} on your land."
+                                        return tr("hexland_only_one").format(name=tr_literal(label))
                 except (ValueError, IndexError):
                     pass
             cost = item.get("cost", {})
             if not self._spend(state, cost):
                 return self._cost_message(item["label"], cost)
             if tile.get("building"):
-                return "Cannot place on top of a roof."
+                return tr('hexland_roof_blocked')
             parts = tile.get("parts", [])
             if parts and _is_roof_part(parts[-1].split(":")[0], building_parts):
-                return "Cannot place on top of a roof."
+                return tr('hexland_roof_blocked')
             spot = _placement_spot_for_item(item, item_key, payload.get("spot"))
             _normalize_tile_spots(tile)[spot] = {"category": "decor", "item": item_key}
-            return f"Placed {item['label']}."
+            return tr("hexland_placed_message").format(name=tr_literal(item["label"]))
 
         if category in ("building", "buildingPart"):
             base_item_key = item_key.split(":")[0] if ":" in item_key else item_key
@@ -1981,39 +1981,39 @@ class HexagonLandManager:
                         for part_key in parts
                     )
                     if not has_wall_base:
-                        return "Place a building wall before adding a roof."
+                        return tr('hexland_wall_first')
                 cost = item.get("cost", {})
                 if not self._spend(state, cost):
                     return self._cost_message(item["label"], cost)
                 tile.pop("spots", None)
                 parts.append(item_key)
-                return f"Stacked {item['label']}."
+                return tr("hexland_stacked_message").format(name=tr_literal(item["label"]))
             if not item:
-                return "Choose a building first."
+                return tr('hexland_choose_building')
             cost = item.get("cost", {})
             if not self._spend(state, cost):
                 return self._cost_message(item["label"], cost)
             tile.pop("spots", None)
             tile["building"] = item_key
-            return f"Built {item['label']}."
+            return tr("hexland_built_message").format(name=tr_literal(item["label"]))
 
         if category == "inhabitant":
             item = inhabitants.get(item_key)
             if not item:
-                return "Choose an inhabitant first."
+                return tr('hexland_choose_inhabitant')
             cost = item.get("cost", {})
             if not self._spend(state, cost):
                 return self._cost_message(item["label"], cost)
             if tile.get("building"):
-                return "Cannot place on top of a roof."
+                return tr('hexland_roof_blocked')
             parts = tile.get("parts", [])
             if parts and _is_roof_part(parts[-1].split(":")[0], building_parts):
-                return "Cannot place on top of a roof."
+                return tr('hexland_roof_blocked')
             spot = _normalize_spot_key(payload.get("spot"))
             _normalize_tile_spots(tile)[spot] = {"category": "inhabitant", "item": item_key}
-            return f"{item['label']} moved in."
+            return tr("hexland_moved_in_message").format(name=tr_literal(item["label"]))
 
-        return "Choose something to build."
+        return tr('hexland_choose_something')
 
     def _tile_refund(self, state: HexagonLandState, tile: Dict[str, Any]) -> int:
         """Coins owed for scrapping a tile: the claim price plus everything
@@ -2060,17 +2060,17 @@ class HexagonLandManager:
         coord = _coord_key(int(payload.get("q", 0)), int(payload.get("r", 0)))
         tile = state.tiles.get(coord)
         if not tile:
-            return "There is no tile there yet."
+            return tr('hexland_no_tile')
         layer = str(payload.get("layer") or "decor")
         if layer == "tile":
             if len(state.tiles) <= 1:
-                return "Keep at least one land tile."
+                return tr('hexland_keep_tile')
             refund = self._tile_refund(state, tile)
             state.tiles.pop(coord, None)
             if refund > 0 and not SANDBOX_MODE:
                 state.hex_coins += refund
-                return f"Deleted land tile. Refunded {refund} {tr('hexland_hex_coins', 'Hex Coins')}."
-            return "Deleted land tile."
+                return tr("hexland_deleted_refund").format(amount=refund, coins=tr("hexland_hex_coins"))
+            return tr('hexland_deleted_message')
         if layer == "construction":
             removed = False
             if tile.get("building"):
@@ -2079,29 +2079,29 @@ class HexagonLandManager:
             if tile.get("parts"):
                 tile["parts"] = []
                 removed = True
-            return "Removed construction." if removed else "No construction to remove."
+            return tr("hexland_removed_construction") if removed else tr("hexland_no_construction")
         if layer == "part":
             parts = tile.get("parts")
             if isinstance(parts, list) and parts:
                 parts.pop()
-                return "Removed top stacked part."
-            return "No stacked part to remove."
+                return tr('hexland_removed_part')
+            return tr('hexland_no_part')
         if layer == "layer":
             current_height = max(1, int(tile.get("height", 1) or 1))
             if current_height <= 1:
-                return "Land is already at the lowest level."
+                return tr('hexland_lowest')
             tile["height"] = current_height - 1
             current_layers = tile.get("layers")
             if isinstance(current_layers, list) and len(current_layers) > 1:
                 current_layers.pop()
                 tile["terrain"] = current_layers[-1]
-            return "Removed top terrain layer."
+            return tr('hexland_removed_layer')
         if layer == "lower":
             current_height = max(1, int(tile.get("height", 1) or 1))
             if current_height > 1:
                 tile["height"] = current_height - 1
-                return "Lowered land one level."
-            return "Land is already at the lowest level."
+                return tr('hexland_lowered')
+            return tr('hexland_lowest')
         if layer in ("spot", "decor", "inhabitant"):
             spots = _normalize_tile_spots(tile)
             requested_spot = payload.get("spot")
@@ -2114,15 +2114,15 @@ class HexagonLandManager:
                     if layer == "spot":
                         tile.pop("building", None)
                         tile["parts"] = []
-                    return f"Cleared the {spot.replace('_', ' ')} spot."
+                    return tr("hexland_cleared_spot_message").format(name=tr("hexland_spot_" + spot, spot.replace("_", " ")))
                 # If spot layer and nothing in spots, try clearing construction
                 if layer == "spot":
                     had_construction = bool(tile.get("building") or tile.get("parts"))
                     tile.pop("building", None)
                     tile["parts"] = []
                     if had_construction:
-                        return "Cleared construction."
-                return "Nothing to remove on that spot."
+                        return tr("hexland_removed_construction")
+                return tr('hexland_nothing_spot')
             removed = 0
             for spot, entry in list(spots.items()):
                 if layer == "spot" or entry.get("category") == layer:
@@ -2136,12 +2136,12 @@ class HexagonLandManager:
                 if had_construction:
                     removed += 1
             if removed:
-                return f"Cleared {removed} spot{'s' if removed != 1 else ''}."
-            return "Nothing to remove on that layer."
+                return tr("hexland_cleared_spots_message").format(amount=removed)
+            return tr('hexland_nothing_layer')
         if layer == "building" and tile.get(layer):
             tile.pop(layer, None)
-            return f"Removed {layer}."
-        return "Nothing to remove on that layer."
+            return tr("hexland_removed_construction")
+        return tr('hexland_nothing_layer')
 
     def _can_expand_to(self, state: HexagonLandState, q: int, r: int) -> bool:
         if not state.tiles:
@@ -2196,7 +2196,7 @@ class HexagonLandManager:
         parts = []
         if cost.get("coins"):
             parts.append(f"{cost['coins']} {tr('hexland_hex_coins', 'Hex Coins')}")
-        return f"{label} needs " + ", ".join(parts) + "."
+        return tr("hexland_cost_message").format(name=tr_literal(label), cost=", ".join(parts))
 
     def payload(self) -> Dict[str, Any]:
         self.sync_today_reviews()
@@ -2224,7 +2224,7 @@ class HexagonLandManager:
             except Exception: pass
 
         import copy
-        from ..translations import tr
+        from ..core.translations import tr
         
         catalog = {
             "terrains": terrains,
@@ -5345,7 +5345,7 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
     )
     
     import re
-    from ..translations import tr
+    from ..core.translations import tr
     def replacer(m): return str(tr(m.group(1), m.group(2)))
     return re.sub(r"\{tr\('([^']+)',\s*'([^']+)'\)\}", replacer, html)
 

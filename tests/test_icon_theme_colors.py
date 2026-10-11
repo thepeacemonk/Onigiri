@@ -31,7 +31,7 @@ class IconThemeColorsTests(unittest.TestCase):
             "get_collection_config": lambda key, default=None: self.saved.get(key, default),
             "effective_night_mode": lambda: True,
         }
-        load_nodes("config.py", {"themed_icon_color"}, self.conf_env)
+        load_nodes("core/config.py", {"themed_icon_color"}, self.conf_env)
         self.config = SimpleNamespace(**self.conf_env)
         self.env["config"] = SimpleNamespace(get_config=lambda: {})
         load_nodes("settings_web/store.py", {"Store", "_col_get", "_col_set", "MissingBinding"}, self.env)
@@ -91,8 +91,8 @@ class IconThemeColorsTests(unittest.TestCase):
                           modern_menu_icon_color_collapse_closed="#223344",
                           modern_menu_icon_color_collapse_closed_dark="#CCDDEE")
         env = {"os": os, "base64": base64, "json": json, "mw": SimpleNamespace(col=self.col),
-               "config": self.config, "__file__": str(ROOT / "patcher.py"), "_ICON_CSS_URI_CACHE": {}}
-        load_nodes("patcher.py", {"generate_icon_css"}, env)
+               "config": self.config, "__file__": str(ROOT / "rendering/patcher.py"), "_ICON_CSS_URI_CACHE": {}}
+        load_nodes("rendering/patcher.py", {"generate_icon_css"}, env)
         css = env["generate_icon_css"]("1011095603", {})
         self.assertIn("background-color: #DDEEFF !important", css)
         self.assertIn("a.collapse.state-closed::before { background-color: #CCDDEE !important; }", css)

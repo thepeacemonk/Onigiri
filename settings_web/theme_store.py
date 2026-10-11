@@ -14,10 +14,10 @@ import zipfile
 
 from aqt import mw
 
-from .. import config, safe_storage
-from ..constants import ALL_THEME_KEYS, DEFAULT_ICON_SIZES, ICON_DEFAULTS, REVIEWER_THEME_KEYS
-from ..themes import THEMES
-from ..theme_palette import complete_palette, heatmap_zero_color, mix, readable_text, rgb, visible_color
+from ..core import config, safe_storage
+from ..core.constants import ALL_THEME_KEYS, DEFAULT_ICON_SIZES, ICON_DEFAULTS, REVIEWER_THEME_KEYS
+from ..rendering.themes import THEMES
+from ..rendering.theme_palette import complete_palette, heatmap_zero_color, mix, readable_text, rgb, visible_color
 from .store import _col_get, _col_set
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

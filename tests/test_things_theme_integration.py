@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
+CONFIG = (ROOT / "core/config.py").read_text(encoding="utf-8")
 INIT = (ROOT / "__init__.py").read_text(encoding="utf-8")
 SCHEMA = (ROOT / "settings_web" / "schema.py").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "web" / "settings.js").read_text(encoding="utf-8")
@@ -11,7 +11,7 @@ SETTINGS_CSS = (ROOT / "web" / "settings.css").read_text(encoding="utf-8")
 SETTINGS_RENDER = (ROOT / "settings_web" / "render.py").read_text(
     encoding="utf-8"
 )
-PATCHER = (ROOT / "patcher.py").read_text(encoding="utf-8")
+PATCHER = (ROOT / "rendering/patcher.py").read_text(encoding="utf-8")
 THINGS_INIT = (ROOT / "things_theme" / "__init__.py").read_text(
     encoding="utf-8"
 )
@@ -36,7 +36,7 @@ THINGS_SIDEBAR_CSS = (
 THINGS_THEME_CSS = (
     ROOT / "things_theme" / "web" / "theme.css"
 ).read_text(encoding="utf-8")
-MAC_TITLEBAR = (ROOT / "mac_titlebar.py").read_text(encoding="utf-8")
+MAC_TITLEBAR = (ROOT / "integrations/mac_titlebar.py").read_text(encoding="utf-8")
 
 
 class ThingsThemeIntegrationTests(unittest.TestCase):
@@ -319,7 +319,7 @@ class ThingsThemeIntegrationTests(unittest.TestCase):
         self.assertIn("def _resolved_deck_icon", THINGS_INIT)
         self.assertIn('icon_modal.js', THINGS_INIT)
         self.assertIn("onigiri_ctx_change_icon:", THINGS_DECKLIST)
-        self.assertIn('label: "Change icon…"', THINGS_DECKOPTS)
+        self.assertIn('label: window.onigiriText("Change icon…")', THINGS_DECKOPTS)
         self.assertIn("onigiri_ctx_change_icon:", THINGS_DECKOPTS)
 
     def test_deck_options_uses_inline_lucide_gear(self):

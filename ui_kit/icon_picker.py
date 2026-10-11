@@ -21,7 +21,8 @@ from .picker_chrome import (
     segment_bar_qss,
     title_qss,
 )
-from ..emoji_sprites import EMOJI_SPRITES
+from .emoji_sprites import EMOJI_SPRITES
+from ..core.translations import tr_literal
 
 
 class LongPressIconCell(QFrame):
@@ -128,6 +129,7 @@ class DeckIconPickerDialog(QDialog):
     def __init__(self, current_icon, addon_path, parent=None, allow_emoji=True, color_options=None, preview_color_key=None, night_mode=None, title=None):
         super().__init__(parent)
         self.addon_path = addon_path
+        self.EMOJIS = [dict(item, label=tr_literal(item["label"])) for item in EMOJI_SPRITES]
         self._title = title or tr("edit_icon")
         # Callers (e.g. Hashi Notes) can force the picker to match their own
         # light/dark state so its colours stay aligned; defaults to Anki's theme.

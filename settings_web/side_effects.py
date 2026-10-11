@@ -8,12 +8,13 @@
 
 from aqt import mw
 
-from ..translations import LANGUAGES
+from ..core.translations import LANGUAGES
 from .store import _col_set
 
 
 def _modes(store):
-    from .. import mac_titlebar, patcher
+    from ..integrations import mac_titlebar
+    from ..rendering import patcher
 
     patcher.apply_synapsepro_sidebar_visibility(store.config)
     mac_titlebar.apply(bool(store.read("hideMacTitleBar")))
@@ -88,7 +89,7 @@ def _stats_widgets(store):
 
 def _pomodoro(_store):
     """Keep Pomodoro's disk mirror, live timer, and open island in sync."""
-    from .. import pomodoro
+    from ..study_tools import pomodoro
 
     settings = pomodoro.get_settings()
     pomodoro.save_settings(settings)
@@ -164,7 +165,7 @@ def _reviewer_progress(_store):
     """The header gauge reads its settings once per reviewer entry and reuses
     them for every card, so a save has to drop that cache — and repaint, since
     the user may well be sitting in the reviewer with the dialog open."""
-    from .. import patcher
+    from ..rendering import patcher
 
     patcher.invalidate_reviewer_progress_settings()
     patcher.update_reviewer_progress()
@@ -214,7 +215,7 @@ def run(names, store):
 def refresh_anki():
     """Everything the legacy dialog did after config.write_config()."""
     try:
-        from .. import heatmap
+        from ..rendering import heatmap
 
         heatmap.invalidate_heatmap_cache()
     except Exception:
@@ -233,7 +234,7 @@ def refresh_anki():
     except Exception:
         pass
     try:
-        from ..refresh import schedule_ui_refresh
+        from ..core.refresh import schedule_ui_refresh
 
         schedule_ui_refresh()
     except Exception:

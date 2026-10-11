@@ -29,7 +29,7 @@ class BackgroundMatchingTests(unittest.TestCase):
                           onigiri_reviewer_bottom_bar_match_main_blur=97,
                           onigiri_reviewer_bottom_bar_match_main_opacity=97)
         asset_env = {}
-        load_functions('config.py', {'_dynamic_theme_enabled', 'themed_asset'}, asset_env)
+        load_functions('core/config.py', {'_dynamic_theme_enabled', 'themed_asset'}, asset_env)
         config = SimpleNamespace(get_config_readonly=lambda: self.local,
                                  get_collection_config=self.main.get,
                                  themed_asset=asset_env['themed_asset'],
@@ -38,7 +38,7 @@ class BackgroundMatchingTests(unittest.TestCase):
                         os=os, math=math, json=json,
                         _reviewer_bottom_bar_height_px=lambda _: 100,
                         _reviewer_background_viewport_height_px=lambda _: 800)
-        load_functions('patcher.py', {'generate_reviewer_background_css', 'generate_overview_background_css',
+        load_functions('rendering/patcher.py', {'generate_reviewer_background_css', 'generate_overview_background_css',
                                      'generate_reviewer_bottom_bar_background_css', '_generate_outer_background_css',
                                      '_render_body_slideshow_background_css'}, self.env)
 
@@ -61,7 +61,7 @@ class BackgroundMatchingTests(unittest.TestCase):
         for palette in self.env['config'].DEFAULTS['colors'].values():
             palette['--profile-page-bg'] = '#aaaaaa'
         self.env['_render_background_css'] = lambda *args: ''
-        load_functions('patcher.py', {'generate_deck_browser_backgrounds', '_hex_to_rgba', '_mix_colors'}, self.env)
+        load_functions('rendering/patcher.py', {'generate_deck_browser_backgrounds', '_hex_to_rgba', '_mix_colors'}, self.env)
         css = self.env['generate_deck_browser_backgrounds'](str(ROOT))
         for fragment in ('rgba(18, 52, 86, 0.42)', 'blur(7.0px)', 'border-radius: 18px', 'border: 2px'):
             self.assertIn(fragment, css)
@@ -157,7 +157,7 @@ class WallpaperThemeIsolationTests(unittest.TestCase):
                         config=SimpleNamespace(get_config_readonly=lambda: {}),
                         _reviewer_bottom_bar_height_px=lambda _: 100,
                         _reviewer_background_viewport_height_px=lambda _: 800)
-        load_functions('patcher.py', {'_render_background_css', '_generate_outer_background_css'}, self.env)
+        load_functions('rendering/patcher.py', {'_render_background_css', '_generate_outer_background_css'}, self.env)
 
     def image_for_theme(self, css, selector, dark):
         """Apply the emitted background-image declarations in cascade order."""
@@ -175,11 +175,11 @@ class WallpaperThemeIsolationTests(unittest.TestCase):
         saved = dict(modern_menu_background_mode='image_color', modern_menu_bg_image_theme_mode='separate',
                      modern_menu_background_image='', modern_menu_background_blur=35,
                      modern_menu_background_opacity=42)
-        load_functions('config.py', {'_dynamic_theme_enabled', 'themed_asset'}, self.env)
+        load_functions('core/config.py', {'_dynamic_theme_enabled', 'themed_asset'}, self.env)
         self.env['config'].themed_asset = self.env['themed_asset']
         self.env['config'].DEFAULTS = {'colors': {'light': {'--bg': '#fff'}, 'dark': {'--bg': '#222'}}}
         self.env['mw'] = SimpleNamespace(col=SimpleNamespace(conf=saved))
-        load_functions('patcher.py', {'generate_deck_browser_backgrounds', '_hex_to_rgba', '_mix_colors'}, self.env)
+        load_functions('rendering/patcher.py', {'generate_deck_browser_backgrounds', '_hex_to_rgba', '_mix_colors'}, self.env)
         for light, dark in (('day.png', ''), ('', 'night.png')):
             with self.subTest(light=light, dark=dark):
                 saved.update(modern_menu_background_image_light=light, modern_menu_background_image_dark=dark)

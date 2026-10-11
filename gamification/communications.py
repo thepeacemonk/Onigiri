@@ -13,11 +13,11 @@ from aqt import mw
 from aqt.qt import QDialog, QTimer, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from .. import safe_storage
-from ..fonts import poppins_font_face_css
+from ..core import safe_storage
+from ..ui_kit.fonts import poppins_font_face_css
 from ..settings_web import render as settings_render
-from ..theme_palette import mix as mix_colors, rgb as parse_rgb
-from ..translations import tr
+from ..rendering.theme_palette import mix as mix_colors, rgb as parse_rgb
+from ..core.translations import current_language, tr
 
 
 COMMUNICATIONS_API_URL = (
@@ -165,6 +165,7 @@ def _communications_payload(state: Dict[str, Any], syncing: bool = False, status
         "colorMode": "dark" if dark else "light",
         "themeTokens": settings_tokens,
         "strings": _strings(),
+        "locale": current_language(),
     }
 
 

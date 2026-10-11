@@ -22,10 +22,13 @@ class ProfilePreviewTests(unittest.TestCase):
     def test_context_uses_live_renderer_and_selected_source(self):
         context = load_context()
         root = types.ModuleType("profile_fixture")
-        renderer = types.ModuleType("profile_fixture.onigiri_renderer")
-        root.onigiri_renderer = renderer
+        renderer = types.ModuleType("profile_fixture.rendering.onigiri_renderer")
+        rendering = types.ModuleType("profile_fixture.rendering")
+        rendering.onigiri_renderer = renderer
+        root.rendering = rendering
         with patch.dict(sys.modules, {"profile_fixture": root,
-                                      "profile_fixture.onigiri_renderer": renderer}):
+                                      "profile_fixture.rendering": rendering,
+                                      "profile_fixture.rendering.onigiri_renderer": renderer}):
             for game, name in (("nook", "Nook"), ("onigimon", "Onigimon XP"),
                                ("hexagon", "Hexagon Land")):
                 with self.subTest(game=game):
@@ -50,7 +53,7 @@ class ProfilePreviewTests(unittest.TestCase):
         method = next(n for n in dialog.body if isinstance(n, ast.FunctionDef) and n.name == "_cmd_patch")
         state = {"game": "nook"}
         refresh_calls = []
-        refresh = types.ModuleType("profile_fixture.refresh")
+        refresh = types.ModuleType("profile_fixture.core.refresh")
         refresh.schedule_ui_refresh = refresh_calls.append
         def save(values):
             state["game"] = values["g_profile_level_game"]
@@ -64,7 +67,7 @@ class ProfilePreviewTests(unittest.TestCase):
         fixture = types.SimpleNamespace(store=types.SimpleNamespace(apply_now=save),
                                         _hooks_for=lambda touched: [], _schedule_refresh=lambda: None)
         with patch.dict(sys.modules, {"profile_fixture": types.ModuleType("profile_fixture"),
-                                      "profile_fixture.refresh": refresh}):
+                                      "profile_fixture.core.refresh": refresh}):
             result = namespace["_cmd_patch"](fixture, json.dumps({"g_profile_level_game": "hexagon"}))
         self.assertTrue(result["ok"])
         self.assertEqual(result["profilePreview"]["profileLevel"]["game"], "hexagon")

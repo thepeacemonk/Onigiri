@@ -12,7 +12,7 @@ import wave
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from pomodoro_tones import BUILTIN_SOUNDS, TONE_PAIRS  # noqa: E402
+from study_tools.pomodoro_tones import BUILTIN_SOUNDS, TONE_PAIRS  # noqa: E402
 
 SAMPLE_RATE = 44100
 OUTPUT_DIR = Path(__file__).resolve().parent

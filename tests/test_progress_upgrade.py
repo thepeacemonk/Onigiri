@@ -48,10 +48,10 @@ class ProgressUpgradeTests(unittest.TestCase):
         self.modules = patch.dict(sys.modules, {'aqt': aqt, 'upgrade_test_addon': package})
         self.modules.start()
         self.addCleanup(self.modules.stop)
-        self.storage = load_module('upgrade_test_addon.safe_storage', ROOT / 'safe_storage.py')
-        self.storage.__file__ = str(self.root / 'safe_storage.py')
-        self.config = load_module('upgrade_test_addon.config', ROOT / 'config.py')
-        self.config.__file__ = str(self.root / 'config.py')
+        self.storage = load_module('upgrade_test_addon.core.safe_storage', ROOT / 'core/safe_storage.py')
+        self.storage.__file__ = str(self.root / 'core/safe_storage.py')
+        self.config = load_module('upgrade_test_addon.core.config', ROOT / 'core/config.py')
+        self.config.__file__ = str(self.root / 'core/config.py')
         self.games = load_module('upgrade_test_addon.games', ROOT / 'gamification/gamification.py')
 
     def write(self, filename, data):
@@ -290,7 +290,7 @@ class ProgressUpgradeTests(unittest.TestCase):
                     reader = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
                     return assignment, reader
                 old_assignment, _ = nodes(ROOT / 'Onigiri (middle)' / filename)
-                assignment, reader = nodes(ROOT / filename)
+                assignment, reader = nodes(ROOT / 'study_tools' / filename)
                 self.assertEqual(ast.literal_eval(old_assignment.value), ast.literal_eval(assignment.value))
                 self.mw.col.conf[ast.literal_eval(old_assignment.value)] = copy.deepcopy(saved)
                 namespace = {'mw': self.mw}

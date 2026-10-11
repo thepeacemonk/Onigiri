@@ -15,10 +15,10 @@ from typing import Any, Dict, List, Optional, Union
 
 from aqt import gui_hooks, mw
 
-from .. import config
-from .. import safe_storage
-from ..onigiri_notifications import notify as show_onigiri_notification
-from ..translations import tr
+from ..core import config
+from ..core import safe_storage
+from ..ui_kit.onigiri_notifications import notify as show_onigiri_notification
+from ..core.translations import tr
 
 
 ANKIMON_ADDON_IDS = ("1908235722", "Ankimon")
@@ -313,7 +313,9 @@ def _onigimon_item_label(item_key: str) -> str:
 
 def _onigimon_item_effect(item_key: str) -> str:
     item = ITEMS.get(item_key, {})
-    fallback = str(item.get("effect") or item.get("label") or item_key)
+    if not item.get("effect"):
+        return _onigimon_item_label(item_key)
+    fallback = str(item["effect"])
     key = re.sub(r"[^a-z0-9]+", "_", fallback.lower()).strip("_")
     return tr(f"onigimon_effect_{key}", fallback)
 
@@ -1333,14 +1335,14 @@ class OnigimonManager:
         companion.display_name = display_name.strip()[:40]
         state.companions[companion.ankimon_id] = asdict(companion)
         self.save()
-        self.notify("Onigimon renamed", f"{self.companion_display_name(companion)} is ready to study with you.", companion.sprite_url)
+        self.notify(tr("onigimon_renamed_title"), tr("onigimon_ready_study").format(name=self.companion_display_name(companion)), companion.sprite_url)
         return True
 
     @staticmethod
     def companion_display_name(companion: Union[OnigimonCompanion, Dict[str, Any]]) -> str:
         if isinstance(companion, dict):
-            return str(companion.get("display_name") or companion.get("name") or "Companion")
-        return companion.display_name or companion.name or "Companion"
+            return str(companion.get("display_name") or companion.get("name") or tr("onigimon_companion_title"))
+        return companion.display_name or companion.name or tr("onigimon_companion_title")
 
     def decay_needs_if_missed_days(self, state: OnigimonState) -> None:
         today = date.today().isoformat()
@@ -1459,7 +1461,7 @@ class OnigimonManager:
                 )
                 if hasattr(sprite_module, "get_sprite_path"):
                     try:
-                        from .. import config as oni_config
+                        from ..core import config as oni_config
                         oni_conf = oni_config.get_config().get("onigimon", {})
                         sprite_motion = str(
                             motion
@@ -1544,7 +1546,8 @@ class OnigimonManager:
             "needs": self.status_values(companion) if companion else {},
             "lastAction": getattr(self, "last_action", None),
             "lastMessage": getattr(self, "last_message", ""),
-            "lastGift": getattr(self, "last_gift", None),
+            "lastGift": (dict(self.last_gift, label=_onigimon_item_label(self.last_gift["item_key"]))
+                         if self.last_gift else None),
         }
         self.last_action = None
         self.last_message = ""
@@ -1583,7 +1586,7 @@ class OnigimonManager:
             state.reviews_since_reward = 0
             item_key = self._choose_reward(ease, state.current_streak)
             amount = self._reward_amount(item_key, state.current_streak)
-            item_label = ITEMS.get(item_key, {}).get("label", item_key)
+            item_label = _onigimon_item_label(item_key)
             state.inventory[item_key] = state.inventory.get(item_key, 0) + amount
             earned_star_piece = random.random() < self.star_piece_chance()
             if earned_star_piece:
@@ -1707,7 +1710,7 @@ class OnigimonManager:
             statuses=affected,
         )
         if not message:
-            message = f"{self.companion_display_name(companion)} needs care: {affected}."
+            message = tr("onigimon_needs_care").format(name=self.companion_display_name(companion), statuses=affected)
         self.notify(self.tone_text(f"{base}_title"), message, companion.sprite_url, kind="care")
 
     @staticmethod
@@ -1718,17 +1721,17 @@ class OnigimonManager:
     def biggest_need(self, companion: Optional[OnigimonCompanion]) -> str:
         values = self.status_values(companion)
         if not values:
-            return "Choose an Ankimon companion to begin."
+            return tr("onigimon_choose_start")
         status = min(values, key=values.get)
         labels = {
-            "health": "medicine",
-            "happiness": "playtime",
-            "hygiene": "a bath",
-            "training": "training",
-            "hunger": "food",
+            "health": tr("onigimon_item_medicine"),
+            "happiness": tr("onigimon_status_happiness"),
+            "hygiene": tr("onigimon_status_hygiene"),
+            "training": tr("onigimon_status_training"),
+            "hunger": tr("onigimon_category_food"),
         }
         name = self.companion_display_name(companion)
-        return f"{name} needs {labels.get(status, status)} the most."
+        return tr("onigimon_biggest_need").format(name=name, need=labels.get(status, status))
 
     def _ensure_market(self, state: Optional[OnigimonState] = None) -> None:
         state = state or self.load()
@@ -1770,18 +1773,18 @@ class OnigimonManager:
         state = self.load()
         self._ensure_market(state)
         if slot in state.market_purchased:
-            self.last_message = "That market item was already purchased today."
+            self.last_message = tr("onigimon_market_already_bought")
             return self.last_message
 
         offer = next((item for item in state.market_items if str(item.get("slot")) == str(slot)), None)
         if not offer:
-            self.last_message = "That market offer is no longer available."
+            self.last_message = tr("onigimon_market_unavailable")
             return self.last_message
 
         currency = str(offer.get("currency") or "comet_shards")
         price = int(offer.get("price") or 0)
         if not self._spend_market_currency(state, currency, price):
-            self.last_message = "You do not have enough coins for that item."
+            self.last_message = tr("onigimon_market_insufficient")
             return self.last_message
 
         key = str(offer.get("item_key"))
@@ -1790,7 +1793,7 @@ class OnigimonManager:
         state.market_purchased.append(str(slot))
         self.last_action = key
         self.last_market_purchase_item = key
-        self.last_message = f"Purchased {amount} {ITEMS.get(key, {}).get('label', key)}."
+        self.last_message = tr("onigimon_purchased").format(amount=amount, item=_onigimon_item_label(key))
         self.save()
         return self.last_message
 
@@ -1807,13 +1810,13 @@ class OnigimonManager:
             if int(state.inventory.get(item_key, 0) or 0) > 0:
                 return self.use_item(item_key)
         labels = {
-            "health": "medicine",
+            "health": tr("onigimon_item_medicine"),
             "happiness": "play items",
             "hygiene": "hygiene items",
             "training": "training items",
-            "hunger": "food",
+            "hunger": tr("onigimon_category_food"),
         }
-        self.last_message = f"No {labels.get(status, 'items')} in the backpack yet."
+        self.last_message = tr(f"onigimon_empty_{status}", tr("onigimon_empty_generic"))
         return self.last_message
 
     def _spend_market_currency(self, state: OnigimonState, currency: str, price: int) -> bool:
@@ -1845,7 +1848,7 @@ class OnigimonManager:
         state = self.load()
         today = date.today().isoformat()
         if state.last_market_gift_day == today:
-            self.last_message = "Today's gift was already opened."
+            self.last_message = tr("onigimon_gift_opened")
             return self.last_message
         rng = random.Random(f"{self._profile_name()}:{today}:onigimon-gift")
         pool = list(FOOD_ITEM_KEYS) + ["medicine", "petal_red", "play_fluffy_tail", "held_macho_brace"]
@@ -1858,8 +1861,8 @@ class OnigimonManager:
             state.star_pieces += 1
         state.last_market_gift_day = today
         self.last_action = key
-        self.last_gift = {"item_key": key, "amount": amount, "label": ITEMS.get(key, {}).get("label", key)}
-        self.last_message = f"The daily gift revealed {amount} {ITEMS.get(key, {}).get('label', key)}."
+        self.last_gift = {"item_key": key, "amount": amount, "label": _onigimon_item_label(key)}
+        self.last_message = tr("onigimon_market_gift").format(amount=amount, item=_onigimon_item_label(key))
         self.save()
         return self.last_message
 
@@ -1872,7 +1875,7 @@ class OnigimonManager:
         if companion.bond_xp >= next_level_xp:
             companion.bond_xp -= next_level_xp
             companion.bond_level += 1
-            self.notify("Bond level up", f"{self.companion_display_name(companion)}'s Onigimon bond grew to level {companion.bond_level}.", companion.sprite_url)
+            self.notify(tr("onigimon_bond_up_title"), tr("onigimon_bond_up").format(name=self.companion_display_name(companion), level=companion.bond_level), companion.sprite_url)
 
     def _choose_reward(self, ease: int, streak: int) -> str:
         pool = [
@@ -1921,10 +1924,10 @@ class OnigimonManager:
             "onigimon_tone_gift_body",
             name=self.companion_display_name(companion),
             amount=amount,
-            item=ITEMS[item_key]["label"],
+            item=_onigimon_item_label(item_key),
         )
         self.last_message = message
-        self.last_gift = {"item_key": item_key, "amount": amount, "label": ITEMS[item_key]["label"]}
+        self.last_gift = {"item_key": item_key, "amount": amount, "label": _onigimon_item_label(item_key)}
         self.notify(
             self.tone_text("onigimon_tone_gift_title"),
             message,
@@ -1986,10 +1989,10 @@ class OnigimonManager:
             return None
         state = self.load()
         if state.inventory.get(item_key, 0) <= 0:
-            self.last_message = "That item is not in your backpack yet."
+            self.last_message = tr("onigimon_item_missing")
             return self.last_message
         if (item_key in BERRY_ITEMS or item_key == "curry_ingredients") and companion.hunger >= 100:
-            self.last_message = f"{self.companion_display_name(companion)} is already full."
+            self.last_message = tr("onigimon_already_full").format(name=self.companion_display_name(companion))
             return self.last_message
         state.inventory[item_key] -= 1
 
@@ -2009,29 +2012,29 @@ class OnigimonManager:
                 stat_updates["hp"] = heal_amount
             self._update_stats(companion, stat_updates)
 
-            message = f"{name} enjoyed a {item['label']} and gained Defense."
+            message = tr("onigimon_used_food").format(name=name, item=_onigimon_item_label(item_key))
             if type_bonus:
-                message = f"{message} It suited {self._type_label(companion.types)} well."
+                message = f"{message} {tr('onigimon_type_bonus')}"
         elif item_key == "curry_ingredients":
             companion.hunger = min(100, companion.hunger + 35)
             companion.happiness = min(100, companion.happiness + 8)
             self._update_stats(companion, {"defense": 1, "exp": 15})
-            message = f"{name} loved the curry and gained Defense."
+            message = tr("onigimon_curry_used").format(name=name)
         elif item_key == "poke_candies":
             companion.hunger = min(100, companion.hunger + 10)
             companion.happiness = min(100, companion.happiness + 15)
             companion.bond_xp += 8
             self._update_stats(companion, {"defense": 1, "exp": 5})
-            message = f"{name} looks happier and gained Defense."
+            message = tr("onigimon_happier").format(name=name)
         elif item_key == "mints":
             self._update_stats(companion, {"hp": 10, "exp": 8})
             companion.cleanliness = min(100, companion.cleanliness + 30)
-            message = f"{name} smells fresh, feels clean, and gained XP."
+            message = tr("onigimon_cleaned").format(name=name)
         elif item_key == "mint_attack_food":
             companion.hunger = min(100, companion.hunger + 18)
             companion.happiness = min(100, companion.happiness + 6)
             self._update_stats(companion, {"defense": 1, "exp": 8})
-            message = f"{name} munched on an Attack Mint and gained Defense."
+            message = tr("onigimon_mint_used").format(name=name)
         elif item_key in {"medicine", "petal_red"}:
             item = ITEMS[item_key]
             heal_amount = int(item.get("hp", 0) or 0)
@@ -2039,7 +2042,7 @@ class OnigimonManager:
             companion.cleanliness = min(100, companion.cleanliness + int(item.get("cleanliness", 0) or 0))
             if heal_amount > 0:
                 self._update_stats(companion, {"hp": heal_amount})
-            message = f"{name} recovered with {item['label']}."
+            message = tr("onigimon_recovered").format(name=name, item=_onigimon_item_label(item_key))
         elif item_key in {"held_macho_brace", "held_power_weight"}:
             item = ITEMS[item_key]
             companion.energy = max(0, companion.energy - 8)
@@ -2052,7 +2055,7 @@ class OnigimonManager:
                     updates[stat] = int(item.get(stat, 0) or 0)
             if updates:
                 self._update_stats(companion, updates)
-            message = f"{name} trained with {item['label']}."
+            message = tr("onigimon_trained_item").format(name=name, item=_onigimon_item_label(item_key))
         elif item_key in {"play_fluffy_tail", "battle_x_attack", "ball_great", "pokeballs"}:
             item = ITEMS[item_key]
             companion.happiness = min(100, companion.happiness + int(item.get("happiness", 12) or 12))
@@ -2064,22 +2067,22 @@ class OnigimonManager:
                     updates[stat] = int(item.get(stat, 0) or 0)
             if updates:
                 self._update_stats(companion, updates)
-            message = f"{name} played with {item['label']}."
+            message = tr("onigimon_played_item").format(name=name, item=_onigimon_item_label(item_key))
         elif item_key == "exp_candy":
             companion.hunger = min(100, companion.hunger + 8)
             companion.training = min(100, int(getattr(companion, "training", 50) or 0) + 10)
             companion.bond_xp += 20
             self._update_stats(companion, {"exp": 50})
-            message = f"{name} gained Onigimon bond XP and Ankimon XP."
+            message = tr("onigimon_xp_gained").format(name=name)
         else:
-            message = f"{name} is saving that for later."
+            message = tr("onigimon_saved_item").format(name=name)
 
         self.last_action = item_key
         companion.last_cared_at = datetime.now().isoformat()
         state.companions[companion.ankimon_id] = asdict(companion)
         self.save()
         self.last_message = message
-        self.notify("Onigimon care", message, companion.sprite_url)
+        self.notify(tr("onigimon_companion_title"), message, companion.sprite_url)
         self.notify_status_warning(companion)
         return message
 
@@ -2089,8 +2092,8 @@ class OnigimonManager:
             return None
         if category_id == "food":
             if companion.hunger >= 100:
-                return f"{self.companion_display_name(companion)} is already full."
-            return "Choose a food item below to feed your Onigimon."
+                return tr("onigimon_already_full").format(name=self.companion_display_name(companion))
+            return tr("onigimon_choose_food")
         return None
 
     def _berry_type_bonus(self, companion: OnigimonCompanion, berry: Dict[str, Any]) -> int:
@@ -2113,10 +2116,10 @@ class OnigimonManager:
             return None
         state = self.load()
         if self.plays_available(state) <= 0:
-            self.last_message = "Answer 10 cards correctly to earn a play."
+            self.last_message = tr("onigimon_play_locked")
             return self.last_message
         if companion.energy <= 0:
-            self.last_message = f"{self.companion_display_name(companion)} needs a little rest."
+            self.last_message = tr("onigimon_rest_message").format(name=self.companion_display_name(companion))
             return self.last_message
         state.plays_used_today += 1
         companion.energy = max(0, companion.energy - 10)
@@ -2127,9 +2130,9 @@ class OnigimonManager:
         state.companions[companion.ankimon_id] = asdict(companion)
         self.last_action = "play"
         self.save()
-        message = f"{self.companion_display_name(companion)} played with you and gained Defense."
+        message = tr("onigimon_played").format(name=self.companion_display_name(companion))
         self.last_message = message
-        self.notify("Onigimon playtime", message, companion.sprite_url)
+        self.notify(tr("onigimon_status_happiness"), message, companion.sprite_url)
         self.notify_status_warning(companion)
         return message
 
@@ -2139,10 +2142,10 @@ class OnigimonManager:
             return None
         state = self.load()
         if self.plays_available(state) <= 0:
-            self.last_message = "Answer 10 cards correctly to earn a play/training session."
+            self.last_message = tr("onigimon_training_locked")
             return self.last_message
         if companion.energy <= 0:
-            self.last_message = f"{self.companion_display_name(companion)} is too tired to train."
+            self.last_message = tr("onigimon_too_tired").format(name=self.companion_display_name(companion))
             return self.last_message
         state.plays_used_today += 1
         companion.energy = max(0, companion.energy - 15)
@@ -2154,9 +2157,9 @@ class OnigimonManager:
         state.companions[companion.ankimon_id] = asdict(companion)
         self.last_action = "train"
         self.save()
-        message = f"{self.companion_display_name(companion)} trained hard and gained Attack."
+        message = tr("onigimon_trained").format(name=self.companion_display_name(companion))
         self.last_message = message
-        self.notify("Onigimon training", message, companion.sprite_url)
+        self.notify(tr("onigimon_status_training"), message, companion.sprite_url)
         self.notify_status_warning(companion)
         return message
 

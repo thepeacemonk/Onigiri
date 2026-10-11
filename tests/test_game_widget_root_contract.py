@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RENDERER = (ROOT / "onigiri_renderer.py").read_text(encoding="utf-8")
+RENDERER = (ROOT / "rendering/onigiri_renderer.py").read_text(encoding="utf-8")
 ONIGIMON = (ROOT / "gamification" / "onigimon.py").read_text(encoding="utf-8")
 HEXAGON = (ROOT / "gamification" / "hexagon_land.py").read_text(encoding="utf-8")
 

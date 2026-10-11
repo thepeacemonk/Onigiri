@@ -14,10 +14,10 @@ import time
 from aqt import mw
 from aqt.theme import theme_manager
 
-from .. import config
-from ..theme_palette import chrome_palette
-from ..fonts import FONTS, get_all_fonts, poppins_font_face_css
-from ..translations import current_language, tr
+from ..core import config
+from ..rendering.theme_palette import chrome_palette
+from ..ui_kit.fonts import FONTS, get_all_fonts, poppins_font_face_css
+from ..core.translations import TRANSLATIONS, current_language, localized_default, tr, web_localization_script, literal_strings
 from . import gallery, schema, theme_store
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -169,8 +169,9 @@ STRING_KEYS = (
 
 
 def _strings():
-    out = {key: tr(key) for key in STRING_KEYS}
-    out.setdefault("cancel", "Cancel")
+    out = dict(TRANSLATIONS[current_language()])
+    out.update({key: tr(key) for key in STRING_KEYS})
+    out["cancel"] = tr("cancel")
     out["collapse_sidebar"] = tr("settings_web_collapse_rail", "Collapse sidebar")
     out["expand_sidebar"] = tr("settings_web_expand_rail", "Pin sidebar open")
     # Auto-save has no Save button, so these strings are the only feedback.
@@ -498,7 +499,7 @@ def profile_assets_context():
 
 def profile_level_context():
     try:
-        from .. import onigiri_renderer
+        from ..rendering import onigiri_renderer
         enabled, level, fraction, color = onigiri_renderer._profile_level_progress()
         game = onigiri_renderer._selected_profile_level_game()
         return {
@@ -530,7 +531,7 @@ def pomodoro_state_context():
     timer instead of falling back to a hard-coded demonstration state.
     """
     try:
-        from .. import pomodoro
+        from ..study_tools import pomodoro
 
         timer = pomodoro.get_timer()
         return {
@@ -580,7 +581,7 @@ def restaurant_chip_colors_context():
     Appearance dialog."""
     try:
         from ..gamification import nook_level
-        from .. import config as _config
+        from ..core import config as _config
 
         conf = _config.get_config()
         result = {}
@@ -605,7 +606,7 @@ def chip_defaults_context():
     )
     try:
         from ..gamification import nook_level
-        from .. import config as _config
+        from ..core import config as _config
 
         conf = copy.deepcopy(_config.get_config())
         restaurant = conf.setdefault("restaurant_level", {})
@@ -784,7 +785,7 @@ def organize_context():
         pass
 
     try:
-        from .. import patcher
+        from ..rendering import patcher
         from ..api import bento as bento_api
 
         bento_widgets = bento_api.get_bento_widgets() or {}
@@ -1005,6 +1006,7 @@ def things_preview_context():
     )
     out = {
         "css": css,
+        "localizationScript": web_localization_script(),
         "decklistJs": read_things_asset("decklist.js"),
         "sidebarJs": read_things_asset("sidebar.js"),
         "decks": [],
@@ -1179,6 +1181,7 @@ def build_context(store, pages, initial_page=None):
         # Onigiri's selected language rather than Chromium's UI locale.  Its
         # settings preview runs that same renderer, so give it the same input.
         "heatmapLocale": current_language(),
+        "localization": {"locale": current_language(), "literals": literal_strings()},
         "chromeIcons": {key: icon_svg(name) for key, name in CHROME_ICONS.items()},
     }
 
@@ -1194,6 +1197,12 @@ def _serialize_field(store, field):
         # display-only notes; binding descriptors themselves stay Python-side.
         "bound": bool(field.get("bind")),
     }
+    if field["id"] in ("g_mochi_messages", "g_fd_messages"):
+        keys = (tuple(f"mochi_default_{index}" for index in range(1, 8))
+                if field["id"] == "g_mochi_messages" else ("fd_default_message", "fd_keep_focused"))
+        out["value"] = [localized_default(str(value), keys) for value in (out["value"] or [])]
+    elif field["id"] == "g_mochi_title_name":
+        out["value"] = localized_default(str(out["value"] or ""), ("mochi_title_placeholder",))
     # Simple mode keeps decisions such as modes, toggles, pictures, fonts and
     # text visible, while detailed paint/effect/ordering controls move behind
     # Advanced.  A schema entry can always override this default explicitly.
@@ -1307,7 +1316,7 @@ def real_widget_css():
 def render(store, pages, initial_page=None):
     template = read_web_asset("settings.html")
     if not template:
-        return "<html><body>Onigiri settings assets missing (web/settings.html).</body></html>"
+        return "<html><body>" + tr("settings_assets_missing") + "</body></html>"
     css = read_web_asset("settings.css")
     js = read_web_asset("settings.js")
     heatmap_js = read_web_asset("Particles.js") + "\n" + read_web_asset("heatmap.js")
@@ -1316,6 +1325,7 @@ def render(store, pages, initial_page=None):
     boot_background = palette(is_dark()).get("outer", "#ffffff")
     return (
         template
+        .replace("</head>", web_localization_script() + "</head>")
         .replace("/*__ONIGIRI_FONT_FACE__*/", font_face_css())
         .replace("/*__ONIGIRI_REAL_WIDGET_CSS__*/", real_widget_css())
         .replace("/*__ONIGIRI_SETTINGS_CSS__*/", css)

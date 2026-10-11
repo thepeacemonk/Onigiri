@@ -14,6 +14,7 @@ document (normally built with :func:`preview_document`).
 from __future__ import annotations
 
 import base64
+import html
 import copy
 import json
 import os
@@ -21,6 +22,7 @@ import urllib.parse
 from typing import Callable, Dict, Iterable, List, Optional
 
 from aqt import mw
+from ..core.translations import tr, web_localization_script, render_html_strings
 from aqt.qt import QColor, QDialog, QTimer, Qt, QVBoxLayout
 from aqt.theme import theme_manager
 from aqt.utils import openLink
@@ -274,7 +276,7 @@ class BentoSettingsDialog(QDialog):
         self.config = deep_merge(self.defaults, config or {})
         self.save_callback = save_callback
         self.preview_callback = preview_callback
-        self.preview_variants = list(preview_variants or [{"value": "default", "label": "Live"}])
+        self.preview_variants = list(preview_variants or [{"value": "default", "label": tr("bento_live")}])
         self.logo = image_data_uri(logo_path)
         self.mini_logo = image_data_uri(mini_logo_path)
         self.donate_url = donate_url
@@ -375,12 +377,12 @@ class BentoSettingsDialog(QDialog):
             print(f"[{self.title}] preview error: {exc}")
             return preview_document(
                 f"<div style='padding:24px;font:14px system-ui;color:#d64545'>"
-                f"Preview unavailable: {str(exc)}</div>",
+                f"{html.escape(tr('bento_preview_error').format(error=exc))}</div>",
                 dark=self.preview_theme == "dark",
             )
 
     def _render(self) -> str:
-        template = _read_asset("bento_settings.html")
+        template = render_html_strings(_read_asset("bento_settings.html"))
         context = {
             "title": self.title,
             "subtitle": self.subtitle,
@@ -401,7 +403,7 @@ class BentoSettingsDialog(QDialog):
             "footprint": self._footprint_context(),
         }
         return (
-            template.replace("/*__BWS_CSS__*/", _read_asset("bento_settings.css"))
+            template.replace("</head>", web_localization_script() + "</head>").replace("/*__BWS_CSS__*/", _read_asset("bento_settings.css"))
             .replace("/*__BWS_CONTEXT__*/null", safe_json(context))
             .replace("/*__BWS_JS__*/", _read_asset("bento_settings.js"))
             .replace("/*__BWS_BOOT_BG__*/", context["palette"]["outer"])
@@ -413,7 +415,7 @@ class BentoSettingsDialog(QDialog):
 
     def handle_action(self, action: str) -> dict:
         """Optional hook for non-value controls such as gallery/favorite actions."""
-        return {"ok": False, "error": f"Unsupported action: {action}"}
+        return {"ok": False, "error": tr("settings_action_unsupported").format(action=action)}
 
     def after_save(self) -> None:
         """Optional hook for cache invalidation/refresh after a successful write."""
@@ -424,7 +426,7 @@ class BentoSettingsDialog(QDialog):
 
     def _apply_patch(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
-            return {"ok": False, "error": "Invalid settings patch"}
+            return {"ok": False, "error": tr("settings_invalid_patch")}
         patch = self.normalize_patch(dict(patch))
         specs = {
             spec["path"]: spec
@@ -484,7 +486,7 @@ class BentoSettingsDialog(QDialog):
             try:
                 patch = json.loads(urllib.parse.unquote(arg))
             except (ValueError, TypeError):
-                return {"ok": False, "error": "Invalid settings data"}
+                return {"ok": False, "error": tr("settings_invalid_patch")}
             return self._apply_patch(patch)
         if action == "preview":
             try:
@@ -530,7 +532,7 @@ class BentoSettingsDialog(QDialog):
                 self._close_requested = True
                 QTimer.singleShot(0, self.accept)
             return {"ok": True}
-        return {"ok": False, "error": "Unknown command"}
+        return {"ok": False, "error": tr("settings_command_unknown")}
 
     def _cleanup(self, *_args) -> None:
         if self._closed:

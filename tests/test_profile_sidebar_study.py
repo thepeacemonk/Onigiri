@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def renderer(states, reviews=42, seconds=3900, streak=3):
-    source = ast.parse((ROOT / 'onigiri_renderer.py').read_text())
+    source = ast.parse((ROOT / 'rendering/onigiri_renderer.py').read_text())
     function = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == '_profile_study_summary_html')
     things = types.ModuleType('profile_fixture.things_theme')
     things._card_state_counts = lambda: states
@@ -20,7 +20,7 @@ def renderer(states, reviews=42, seconds=3900, streak=3):
         query_calls.append((sql, cutoff))
         return reviews, seconds
     colors = dict(new='#55a8ee', learning='#ffd33d', relearning='#eb3f70', young='#6fc66f', mature='#78b8b4')
-    namespace = dict(__package__='profile_fixture', html=html, tr=lambda key, fallback: fallback,
+    namespace = dict(__package__='profile_fixture.rendering', html=html, tr=lambda key, fallback: fallback,
                      config=types.SimpleNamespace(get_config_readonly=lambda: {}, DEFAULTS={'things_theme': {'active_cards_colors': colors}}),
                      mw=types.SimpleNamespace(col=types.SimpleNamespace(sched=types.SimpleNamespace(day_cutoff=100000), db=types.SimpleNamespace(first=query))))
     exec(compile(ast.Module(body=[function], type_ignores=[]), 'profile_sidebar', 'exec'), namespace)

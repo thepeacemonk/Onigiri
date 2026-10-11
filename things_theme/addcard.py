@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+from ..core.translations import tr, tr_literal
+
 from aqt import gui_hooks, mw
 from aqt.addcards import AddCards
 from aqt.qt import (
@@ -399,7 +401,7 @@ def _wire_inline_notetype_picker(
                                 "selected_notetype_id", i)
                 )
             m.addSeparator()
-            edit = m.addAction("Manage note types…")
+            edit = m.addAction(tr("kome_manage_types") + "…")
             edit.triggered.connect(
                 lambda _: addcards.notetype_chooser.onEdit()
             )
@@ -445,7 +447,7 @@ def _wire_inline_deck_picker(addcards: AddCards, btn: QPushButton) -> None:
                                 "selected_deck_id", i)
                 )
             m.addSeparator()
-            new = m.addAction("New deck…")
+            new = m.addAction(tr("kome_new_deck") + "…")
             def _new_deck() -> None:
                 try:
                     from aqt.operations.deck import add_deck_dialog
@@ -469,7 +471,7 @@ def _redress(addcards: AddCards) -> None:
     accent = cfg.get("accent", "#0077c8")
 
     try:
-        addcards.setWindowTitle("Add card")
+        addcards.setWindowTitle(tr("kome_add_card"))
     except Exception:
         pass
 
@@ -539,8 +541,8 @@ def _redress(addcards: AddCards) -> None:
 
     # Build the sentence. Each fragment is a thin QLabel; chooser pushbuttons
     # sit between them.
-    pre = QLabel("New ")
-    mid = QLabel(" card in ")
+    pre = QLabel('' + tr_literal('New') + ' ')
+    mid = QLabel(' ' + tr_literal('card in') + ' ')
     post = QLabel("")
 
     ctx_layout.addWidget(pre)
@@ -579,10 +581,10 @@ def _redress(addcards: AddCards) -> None:
     # hover-key affordance pattern. Recent was removed: its in-session
     # history was always empty in our embed flow (each open creates a
     # fresh AddCards), and the user reported it never appeared to work.
-    add_btn = QPushButton("Add card")
+    add_btn = QPushButton(tr("kome_add_card"))
     add_btn.setObjectName("ba-add")
     add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    add_btn.setToolTip("Add card  (⌘↩)")
+    add_btn.setToolTip(tr_literal("Add card") + "  (⌘↩)")
 
     kbd = QLabel("⌘↩", add_btn)
     kbd.setObjectName("ba-add-kbd")
@@ -653,7 +655,7 @@ def _redress(addcards: AddCards) -> None:
             m = QMenu(addcards)
             history = list(getattr(addcards, "history", []))
             if not history:
-                a = m.addAction("No recently added notes")
+                a = m.addAction(tr("kome_no_recent_notes"))
                 a.setEnabled(False)
             else:
                 for nid in history:

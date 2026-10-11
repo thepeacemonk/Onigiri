@@ -15,7 +15,7 @@
 import os
 from dataclasses import asdict
 
-from ..translations import tr
+from ..core.translations import tr
 
 
 def _nook():
@@ -437,7 +437,7 @@ def _confirm(parent, title, question):
 
 
 def _info(message):
-    from ..onigiri_notifications import notify_info
+    from ..ui_kit.onigiri_notifications import notify_info
 
     notify_info(message)
 

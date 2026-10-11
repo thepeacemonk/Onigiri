@@ -332,7 +332,7 @@
 
         const title = document.createElement("p");
         title.className = "onigiri-notification-title";
-        title.textContent = data.name || "Achievement unlocked";
+        title.textContent = data.name || "Onigiri";
 
         const description = document.createElement("p");
         description.className = "onigiri-notification-description";

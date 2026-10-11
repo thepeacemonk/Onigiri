@@ -44,20 +44,20 @@ from aqt import mw
 from aqt import mw, gui_hooks   
 from aqt.theme import theme_manager
 from typing import Union
-from .. import config
-from ..config import DEFAULTS
-from ..constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
-from ..themes import THEMES 
+from ..core import config
+from ..core.config import DEFAULTS
+from ..core.constants import COLOR_LABELS, ICON_DEFAULTS, DEFAULT_ICON_SIZES, ALL_THEME_KEYS, REVIEWER_THEME_KEYS
+from ..rendering.themes import THEMES 
 from aqt.qt import QRectF
 from PyQt6.QtGui import QImage, QBitmap, QPainter as _QPainter
 from PyQt6.QtWidgets import QApplication, QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene, QListView, QGraphicsColorizeEffect, QGraphicsOpacityEffect
-from ..onigiri_notifications import notify_info as showInfo
-from ..onigiri_color_picker import OnigiriColorDialog, _contrast_icon_color
+from .onigiri_notifications import notify_info as showInfo
+from .onigiri_color_picker import OnigiriColorDialog, _contrast_icon_color
 from PyQt6.QtGui import QFontDatabase, QFont
 from PyQt6.QtCore import QRect, QSize, QPoint
-from ..fonts import FONTS, get_all_fonts
+from .fonts import FONTS, get_all_fonts
 from ..api import sidebar as sidebar_api
-from ..translations import tr, LANGUAGES, TRANSLATIONS
+from ..core.translations import tr, LANGUAGES, TRANSLATIONS
 THUMBNAIL_STYLE = "QLabel { border: 2px solid transparent; border-radius: 10px; } QLabel:hover { border: 2px solid #00A982; }"
 THUMBNAIL_STYLE_SELECTED = "QLabel { border: 2px solid #00A982; border-radius: 10px; }"
 TEARDOWN_EVENT_TYPES = {

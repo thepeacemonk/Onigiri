@@ -3,7 +3,7 @@ from aqt import mw
 from aqt.webview import AnkiWebView
 from anki.decks import DeckId
 from PyQt6.QtWidgets import QApplication
-from ..config import get_config
+from ..core.config import get_config
 
 
 def show_transfer_window(source_dids_json: str) -> None:

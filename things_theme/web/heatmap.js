@@ -22,8 +22,8 @@
   }
 
   function countText(n) {
-    if (n <= 0) return "No reviews";
-    return n === 1 ? "1 review" : n + " reviews";
+    if (n <= 0) return window.onigiriText("No reviews");
+    return n === 1 ? window.onigiriText("1 review") : window.onigiriText("{n} reviews").replace("{n}", n);
   }
 
   function showTip(cell) {
@@ -38,7 +38,7 @@
       (rel ? ' &middot; <span class="rf-hm-tip-rel">' + rel + "</span>" : "") +
       "</div>";
     if (peak && n > 0)
-      html += '<div class="rf-hm-tip-peak">★ Best day so far</div>';
+      html += window.onigiriTemplate('<div class="rf-hm-tip-peak">★ Best day so far</div>');
 
     var t = tipEl();
     t.innerHTML = html;

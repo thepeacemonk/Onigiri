@@ -65,16 +65,16 @@ class FontColorTests(unittest.TestCase):
         self.assertEqual(fields[3]["color_fields"], [{"id": "g_mochi_text_color", "label": "Color"}])
 
     def font_css(self, saved):
-        fonts = types.ModuleType("font_color_test.fonts")
+        fonts = types.ModuleType("font_color_test.ui_kit.fonts")
         fonts.FONTS = {key: {"family": "Poppins", "file": None} for key in ("system", "silkscreen")}
         fonts.get_all_fonts = lambda _: fonts.FONTS
         fonts.poppins_font_face_css = lambda _: ""
         cfg = types.SimpleNamespace(get_collection_config=lambda key, default=None: saved.get(key, default),
                                     get_config_readonly=lambda: {}, DEFAULT_PROFILE_LEVEL_COLOR="#95D5E0")
-        env = {"__package__": "font_color_test", "__file__": str(ROOT / "patcher.py"),
+        env = {"__package__": "font_color_test.rendering", "__file__": str(ROOT / "rendering/patcher.py"),
                "config": cfg, "os": os, "re": re}
-        load_functions("patcher.py", {"generate_font_css"}, env)
-        with patch.dict(sys.modules, {"font_color_test.fonts": fonts}):
+        load_functions("rendering/patcher.py", {"generate_font_css"}, env)
+        with patch.dict(sys.modules, {"font_color_test.ui_kit.fonts": fonts}):
             return env["generate_font_css"]("1011095603")
 
     def test_color_override_works_while_font_family_is_synced(self):

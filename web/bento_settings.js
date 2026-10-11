@@ -133,7 +133,7 @@
   function status(kind, message) {
     var target = $("bwsAutosave");
     target.dataset.state = kind;
-    target.querySelector("span").textContent = message || ({idle: "Changes save automatically", saving: "Saving…", saved: "Saved", error: "Could not save"}[kind]);
+    target.querySelector("span").textContent = message || ({idle: window.onigiriText("Changes save automatically"), saving: window.onigiriText("Saving…"), saved: window.onigiriText("Saved"), error: window.onigiriText("Could not save")}[kind]);
   }
   function renderBridgeStatus() {
     var connected = Boolean(C.onigiriConnected);
@@ -142,8 +142,8 @@
     statusNode.dataset.connected = String(connected);
     iconNode.dataset.icon = connected ? "circle-check" : "circle-alert";
     $("bwsBridgeLabel").textContent = connected
-      ? "Onigiri installed · Bento bridge active" + (C.onigiriVersion ? " · v" + C.onigiriVersion : "")
-      : "Onigiri not detected";
+      ? window.onigiriText("Onigiri installed · Bento bridge active") + (C.onigiriVersion ? " · v" + C.onigiriVersion : "")
+      : window.onigiriText("Onigiri not detected");
     installIcons(statusNode);
 
     var footprint = $("bwsFootprint");
@@ -190,7 +190,7 @@
       inFlight = false;
       if (!response || !response.ok) {
         Object.keys(patch).forEach(function (key) { if (!(key in pending)) pending[key] = patch[key]; });
-        status("error", (response && response.error) || "Could not save");
+        status("error", (response && response.error) || window.onigiriText("Could not save"));
         return;
       }
       status("saved");
@@ -370,7 +370,7 @@
       var change = 0;
       if (event.key === "ArrowLeft" || event.key === "ArrowDown") change = -step;
       if (event.key === "ArrowRight" || event.key === "ArrowUp") change = step;
-      if (event.key === "Home") { event.preventDefault(); paint(min, true, false); }
+      if (event.key === window.onigiriText("Home")) { event.preventDefault(); paint(min, true, false); }
       else if (event.key === "End") { event.preventDefault(); paint(max, true, false); }
       else if (change) { event.preventDefault(); paint(value + change, true, false); }
     };
@@ -458,8 +458,8 @@
     var entry = node("label", "bws-colorpick-entry");
     var preview = node("span", "bws-colorpick-preview");
     var text = node("input");
-    var cancel = node("button", "bws-picker-btn", "Cancel");
-    var save = node("button", "bws-picker-btn is-primary", "Save");
+    var cancel = node("button", "bws-picker-btn", window.onigiriText("Cancel"));
+    var save = node("button", "bws-picker-btn is-primary", window.onigiriText("Save"));
     close.type = cancel.type = save.type = "button";
     close.appendChild(icon("x"));
     head.appendChild(node("div", "bws-picker-title", field.label));
@@ -541,7 +541,7 @@
       input.onclick = function () {
         status("saving");
         send("action", field.path).then(function (response) {
-          if (!response || !response.ok) { status("error", (response && response.error) || "Action failed"); return; }
+          if (!response || !response.ok) { status("error", (response && response.error) || window.onigiriText("Action failed")); return; }
           if (response.pages) { pages = response.pages; readValues(); nav(); render(); }
           if (response.preview != null) setPreview(response.preview);
           status("saved");
@@ -564,7 +564,7 @@
       wrap.appendChild(input);
       return wrap;
     }
-    if (field.type === "select") { wrap.appendChild(selectControl(field)); return wrap; }
+    if (field.type === window.onigiriText("select")) { wrap.appendChild(selectControl(field)); return wrap; }
     if (field.type === "textarea") {
       input = node("textarea", "bws-textarea"); input.rows = field.rows || 4; input.placeholder = field.placeholder || ""; input.value = values[field.path] || "";
       input.oninput = function () { queue(field.path, input.value, true); };
@@ -616,7 +616,7 @@
       previewCard = node("section", "bws-preview-card");
       previewCard.id = "bwsPreviewCard";
       var previewHead = node("div", "bws-preview-head");
-      previewHead.appendChild(node("strong", "", "Real preview"));
+      previewHead.appendChild(node("strong", "", window.onigiriText("Real preview")));
       if ((C.previewVariants || []).length > 1) {
         var variants = node("div", "bws-segments");
         (C.previewVariants || []).forEach(function (option) {
@@ -640,7 +640,7 @@
       });
       previewHead.appendChild(themes);
       var reset = node("button", "bws-reset");
-      reset.type = "button"; reset.appendChild(icon("rotate-ccw")); reset.appendChild(node("span", "", "Reset")); reset.onclick = resetAll;
+      reset.type = "button"; reset.appendChild(icon("rotate-ccw")); reset.appendChild(node("span", "", window.onigiriText("Reset"))); reset.onclick = resetAll;
       previewHead.appendChild(reset);
       previewCard.appendChild(previewHead);
       var stage = node("div", "bws-preview-stage");
@@ -701,10 +701,10 @@
       var mark = node("div", "bws-confirm-mark");
       var copy = node("div", "bws-confirm-copy");
       var actions = node("div", "bws-confirm-actions");
-      var cancel = node("button", "bws-confirm-button", "Cancel");
-      var restore = node("button", "bws-confirm-button is-primary", "Restore defaults");
-      var title = node("h2", "", "Restore " + (C.title || "widget") + " defaults?");
-      var description = node("p", "", "This replaces every setting for this widget with its original value.");
+      var cancel = node("button", "bws-confirm-button", window.onigiriText("Cancel"));
+      var restore = node("button", "bws-confirm-button is-primary", window.onigiriText("Restore defaults"));
+      var title = node("h2", "", window.onigiriText("Restore {name} defaults?").replace("{name}", C.title || "Bento"));
+      var description = node("p", "", window.onigiriText("This replaces every setting for this widget with its original value."));
       cancel.type = restore.type = "button";
       title.id = "bwsConfirmTitle";
       dialog.setAttribute("role", "alertdialog");
@@ -733,7 +733,7 @@
       if (!confirmed) return;
       status("saving");
       send("reset", "").then(function (response) {
-        if (!response || !response.ok) { status("error", (response && response.error) || "Could not reset"); return; }
+        if (!response || !response.ok) { status("error", (response && response.error) || window.onigiriText("Could not reset")); return; }
         pages = response.pages || pages;
         C.footprint = response.footprint || C.footprint;
         readValues(); renderBridgeStatus(); status("saved"); setPreview(response.preview || ""); nav(); render();
@@ -745,7 +745,7 @@
     var checks = 0;
     (function waitForSave() {
       if (inFlight || Object.keys(pending).length) {
-        if (++checks > 150) { status("error", "Save failed; settings left open"); return; }
+        if (++checks > 150) { status("error", window.onigiriText("Save failed; settings left open")); return; }
         setTimeout(waitForSave, 40); return;
       }
       send("done", "");

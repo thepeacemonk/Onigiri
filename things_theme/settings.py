@@ -20,6 +20,7 @@ used to run down the page top to bottom.
 
 import os
 from functools import lru_cache
+from ..core.translations import tr, tr_literal
 from typing import Any, Dict, List, Optional, Tuple
 
 from aqt import mw
@@ -637,7 +638,7 @@ class ColorSwatch(QPushButton):
         )
 
     def _pick(self):
-        c = QColorDialog.getColor(QColor(self._color), self, "Choose accent")
+        c = QColorDialog.getColor(QColor(self._color), self, tr("kome_choose_accent"))
         if c.isValid():
             self._color = c.name()
             self._restyle()
@@ -669,7 +670,7 @@ class PaletteSwatchRow(QWidget):
             btn = QPushButton()
             btn.setFixedSize(QSize(38, 24))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setToolTip(label)
+            btn.setToolTip(tr_literal(label))
             btn.clicked.connect(lambda _, v=value: self._select(v))
             self._buttons[value] = btn
             layout.addWidget(btn)
@@ -739,6 +740,7 @@ class FontPicker(QComboBox):
         self.setMinimumWidth(220)
 
         # Blank → "use default fallback stack".
+        self.DEFAULT_LABEL = tr("default")
         self.addItem(self.DEFAULT_LABEL, userData="")
 
         recommended = _recommended_available(category)
@@ -798,7 +800,7 @@ def _hrule(palette: Dict[str, str]) -> QFrame:
 
 
 def _section_label(text: str) -> QLabel:
-    lbl = QLabel(text)
+    lbl = QLabel(tr_literal(text))
     lbl.setProperty("role", "section")
     return lbl
 
@@ -817,7 +819,7 @@ def _section_block(palette: Dict[str, str], text: str) -> QWidget:
     rule.setStyleSheet(f"QFrame {{ background: {palette['line']}; }}")
     rule.setFixedHeight(1)
     box.addWidget(rule)
-    lbl = QLabel(text)
+    lbl = QLabel(tr_literal(text))
     lbl.setProperty("role", "section")
     box.addWidget(lbl)
     return wrap
@@ -835,12 +837,12 @@ def _field_row(label_text: str, widget: QWidget,
     v.setContentsMargins(0, 6, 0, 8)
     v.setSpacing(4)
     if label_text:
-        lbl = QLabel(label_text)
+        lbl = QLabel(tr_literal(label_text))
         lbl.setProperty("role", "field")
         v.addWidget(lbl)
     v.addWidget(widget)
     if hint:
-        h = QLabel(hint)
+        h = QLabel(tr_literal(hint))
         h.setProperty("role", "hint")
         h.setWordWrap(True)
         v.addWidget(h)
@@ -991,18 +993,18 @@ class AnkiDesignSettingsPage(QWidget):
         sb.setContentsMargins(14, 24, 10, 18)
         sb.setSpacing(2)
 
-        title = QLabel("Settings")
+        title = QLabel(tr_literal("Settings"))
         title.setProperty("role", "sidebar-title")
         sb.addWidget(title)
         sb.addSpacing(22)
 
         for gi, (group_label, items) in enumerate(self.NAV_GROUPS):
-            glabel = QLabel(group_label)
+            glabel = QLabel(tr_literal(group_label))
             glabel.setProperty("role", "navgroup")
             sb.addWidget(glabel)
             sb.addSpacing(4)
             for key, label, _intro in items:
-                btn = QPushButton(label)
+                btn = QPushButton(tr_literal(label))
                 btn.setObjectName("navitem")
                 btn.setCheckable(True)
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1081,11 +1083,11 @@ class AnkiDesignSettingsPage(QWidget):
         v.setContentsMargins(40, 32, 40, 32)
         v.setSpacing(6)
 
-        header = QLabel(title_text)
+        header = QLabel(tr_literal(title_text))
         header.setProperty("role", "page-title")
         v.addWidget(header)
         if intro_text:
-            intro = QLabel(intro_text)
+            intro = QLabel(tr_literal(intro_text))
             intro.setProperty("role", "intro")
             intro.setWordWrap(True)
             v.addWidget(intro)
@@ -1110,7 +1112,7 @@ class AnkiDesignSettingsPage(QWidget):
     # ----- shared row builder ----- #
     def _feature_row(self, key: str, label: str, default: bool,
                       hint: str) -> QWidget:
-        cb = QCheckBox(label)
+        cb = QCheckBox(tr_literal(label))
         cb.setChecked(bool(self._g(key, default)))
         cb.toggled.connect(lambda checked, k=key: self._set(k, bool(checked)))
         wrap = QWidget()
@@ -1118,7 +1120,7 @@ class AnkiDesignSettingsPage(QWidget):
         row.setContentsMargins(0, 2, 0, 4)
         row.setSpacing(2)
         row.addWidget(cb)
-        h = QLabel(hint)
+        h = QLabel(tr_literal(hint))
         h.setProperty("role", "hint")
         h.setWordWrap(True)
         h.setContentsMargins(30, 0, 0, 0)
@@ -1139,7 +1141,7 @@ class AnkiDesignSettingsPage(QWidget):
             ("light", "Light"),
             ("dark", "Dark"),
         ]:
-            rb = QRadioButton(label)
+            rb = QRadioButton(tr_literal(label))
             rb.setChecked(current == value)
             self._theme_group.addButton(rb)
             rb.toggled.connect(
@@ -1333,7 +1335,7 @@ class AnkiDesignSettingsPage(QWidget):
         ))
 
     def _page_heatmap(self, v: QVBoxLayout) -> None:
-        heatmap_cb = QCheckBox("Show review-activity heatmap")
+        heatmap_cb = QCheckBox(tr_literal("Show review-activity heatmap"))
         heatmap_cb.setChecked(bool(self._g("show_heatmap", True)))
         weeks = QSpinBox()
         weeks.setRange(8, 260)
@@ -1365,7 +1367,7 @@ class AnkiDesignSettingsPage(QWidget):
         hrow.setContentsMargins(0, 2, 0, 4)
         hrow.setSpacing(2)
         hrow.addWidget(heatmap_cb)
-        hint = QLabel("A daily-review grid on the deck homepage.")
+        hint = QLabel(tr_literal("A daily-review grid on the deck homepage."))
         hint.setProperty("role", "hint")
         hint.setWordWrap(True)
         hint.setContentsMargins(30, 0, 0, 0)
@@ -1451,12 +1453,12 @@ class AnkiDesignSettingsPage(QWidget):
             box = QVBoxLayout(wrap)
             box.setContentsMargins(0, 4, 0, 6)
             box.setSpacing(2)
-            btn = QPushButton(label + "  ↗")
+            btn = QPushButton(tr_literal(label) + "  ↗")
             btn.setObjectName("jump")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(callback)
             box.addWidget(btn, 0, Qt.AlignmentFlag.AlignLeft)
-            h = QLabel(hint)
+            h = QLabel(tr_literal(hint))
             h.setProperty("role", "hint")
             h.setWordWrap(True)
             box.addWidget(h)
@@ -1497,13 +1499,13 @@ class AnkiDesignSettingsPage(QWidget):
         fi = QHBoxLayout(footer_inner)
         fi.setContentsMargins(40, 16, 40, 16)
         fi.setSpacing(16)
-        restore = QPushButton("Restore Anki Design defaults")
+        restore = QPushButton(tr_literal("Restore Anki Design defaults"))
         restore.setObjectName("quiet")
         restore.setCursor(Qt.CursorShape.PointingHandCursor)
         restore.clicked.connect(self._restore_defaults)
         fi.addWidget(restore, 0, Qt.AlignmentFlag.AlignLeft)
         fi.addStretch(1)
-        done = QPushButton("Done")
+        done = QPushButton(tr_literal("Done"))
         done.setObjectName("primary")
         done.setCursor(Qt.CursorShape.PointingHandCursor)
         done.clicked.connect(self._close_enclosing_dialog)
@@ -1529,7 +1531,7 @@ class AnkiDesignSettingsPage(QWidget):
         h.setSpacing(14)
         current = self._g(key, default)
         for value, opt_label in options:
-            rb = QRadioButton(opt_label)
+            rb = QRadioButton(tr_literal(opt_label))
             rb.setChecked(current == value)
             group.addButton(rb)
             rb.toggled.connect(
@@ -1565,7 +1567,7 @@ class AnkiDesignSettingsPage(QWidget):
                 row.set_ink_faint(self._palette["ink_faint"])
 
         for value, opt_label in presets:
-            rb = QRadioButton(opt_label)
+            rb = QRadioButton(tr_literal(opt_label))
             rb.setChecked(current == value)
             group.addButton(rb)
             rb.toggled.connect(
@@ -1573,7 +1575,7 @@ class AnkiDesignSettingsPage(QWidget):
             )
             h.addWidget(rb)
 
-        custom_rb = QRadioButton("Custom")
+        custom_rb = QRadioButton(tr_literal("Custom"))
         custom_rb.setChecked(is_custom)
         group.addButton(custom_rb)
         h.addWidget(custom_rb)
@@ -1605,7 +1607,7 @@ class AnkiDesignSettingsPage(QWidget):
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(12)
         h.addWidget(picker)
-        tag = QLabel("optional")
+        tag = QLabel(tr_literal("optional"))
         tag.setProperty("role", "tag")
         tag.setVisible(not picker.value())
         picker.currentTextChanged.connect(

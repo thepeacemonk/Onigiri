@@ -9,7 +9,7 @@ HEXAGON = (ROOT / "gamification" / "hexagon_land.py").read_text(
 REDEMPTION = (ROOT / "gamification" / "reward_redemption.py").read_text(
     encoding="utf-8"
 )
-PATCHER = (ROOT / "patcher.py").read_text(encoding="utf-8")
+PATCHER = (ROOT / "rendering/patcher.py").read_text(encoding="utf-8")
 
 
 class HexagonLandWebUiContractTests(unittest.TestCase):

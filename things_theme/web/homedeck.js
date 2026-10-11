@@ -36,10 +36,10 @@
       // sub-decks of the deck above", not a second, unrelated list.
       var wrap = document.createElement('section');
       wrap.className = 'ad-list-wrap ad-list-wrap--sub';
-      wrap.setAttribute('aria-label', 'Sub-decks');
+      wrap.setAttribute('aria-label', window.onigiriText('Sub-decks'));
       var h = document.createElement('div');
       h.className = 'ad-list-h';
-      h.textContent = 'Sub-decks';
+      h.textContent = window.onigiriText('Sub-decks');
       wrap.appendChild(h);
       wrap.appendChild(div);
       var hero = center.querySelector(':scope > .ba-hero');

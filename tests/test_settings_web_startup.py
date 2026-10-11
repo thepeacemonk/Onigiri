@@ -3,15 +3,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
+CONFIG = (ROOT / "core/config.py").read_text(encoding="utf-8")
 DIALOG = (ROOT / "settings_web" / "dialog.py").read_text(encoding="utf-8")
 RENDER = (ROOT / "settings_web" / "render.py").read_text(encoding="utf-8")
 HTML = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
 JS = (ROOT / "web" / "settings.js").read_text(encoding="utf-8")
 CSS = (ROOT / "web" / "settings.css").read_text(encoding="utf-8")
-PALETTE = (ROOT / "theme_palette.py").read_text(encoding="utf-8")
+PALETTE = (ROOT / "rendering/theme_palette.py").read_text(encoding="utf-8")
 SCHEMA = (ROOT / "settings_web" / "schema.py").read_text(encoding="utf-8")
-RENDERER = (ROOT / "onigiri_renderer.py").read_text(encoding="utf-8")
+RENDERER = (ROOT / "rendering/onigiri_renderer.py").read_text(encoding="utf-8")
 INJECTOR = (ROOT / "web" / "injector.js").read_text(encoding="utf-8")
 MENU_CSS = (ROOT / "web" / "menu.css").read_text(encoding="utf-8")
 

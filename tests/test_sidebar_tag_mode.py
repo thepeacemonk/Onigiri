@@ -3,15 +3,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
+CONFIG = (ROOT / "core/config.py").read_text(encoding="utf-8")
 SCHEMA = (ROOT / "settings_web" / "schema.py").read_text(encoding="utf-8")
-RENDERER = (ROOT / "onigiri_renderer.py").read_text(encoding="utf-8")
+RENDERER = (ROOT / "rendering/onigiri_renderer.py").read_text(encoding="utf-8")
 TREE_UPDATER = (ROOT / "decks" / "tree_updater.py").read_text(encoding="utf-8")
-HANDLERS = (ROOT / "webview_handlers.py").read_text(encoding="utf-8")
+HANDLERS = (ROOT / "rendering/webview_handlers.py").read_text(encoding="utf-8")
 ENGINE = (ROOT / "web" / "engine.js").read_text(encoding="utf-8")
-TEMPLATE = (ROOT / "templates.py").read_text(encoding="utf-8")
-TRANSLATIONS = (ROOT / "translations.py").read_text(encoding="utf-8")
-READY_TO_GO = (ROOT / "ready_to_go.py").read_text(encoding="utf-8")
+TEMPLATE = (ROOT / "rendering/templates.py").read_text(encoding="utf-8")
+TRANSLATIONS = (ROOT / "core/translations.py").read_text(encoding="utf-8")
+READY_TO_GO = (ROOT / "study_tools/ready_to_go.py").read_text(encoding="utf-8")
 
 
 class SidebarTagModeContractTests(unittest.TestCase):

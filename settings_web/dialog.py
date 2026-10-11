@@ -21,8 +21,8 @@ from aqt.qt import (
 from aqt.utils import openLink
 from aqt.webview import AnkiWebView
 
-from .. import mac_titlebar
-from ..translations import tr
+from ..integrations import mac_titlebar
+from ..core.translations import tr
 from . import gallery, render, schema, side_effects, theme_store
 from .store import Store
 
@@ -98,7 +98,7 @@ class SettingsWebDialog(QDialog):
         self._startup_failed = False
         self._closed = False
 
-        self.setWindowTitle("Onigiri Settings")
+        self.setWindowTitle(tr("settings_title"))
         self._apply_proportional_size()
 
         # Prevent Qt 6 on macOS from inserting safe-area margins/padding at the top of the dialog
@@ -301,8 +301,7 @@ class SettingsWebDialog(QDialog):
         self.web.hide()
         palette = render.palette(render.is_dark())
         message = QLabel(
-            "Onigiri Settings could not finish loading.\n\n"
-            "Close this window and try opening Settings again.",
+            tr("settings_load_error"),
             self,
         )
         message.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -330,7 +329,7 @@ class SettingsWebDialog(QDialog):
         try:
             values = json.loads(arg or "{}")
         except ValueError:
-            return {"ok": False, "error": "Malformed patch"}
+            return {"ok": False, "error": tr("settings_invalid_patch")}
         if not isinstance(values, dict) or not values:
             return {"ok": True, "applied": []}
 
@@ -348,7 +347,7 @@ class SettingsWebDialog(QDialog):
         )
         if is_profile_patch:
             try:
-                from ..refresh import schedule_ui_refresh
+                from ..core.refresh import schedule_ui_refresh
                 schedule_ui_refresh(0)
             except Exception:
                 self._schedule_refresh()
@@ -361,6 +360,11 @@ class SettingsWebDialog(QDialog):
         result = {"ok": True, "applied": sorted(touched)}
         if is_profile_patch:
             result["profilePreview"] = render.profile_preview_context()
+        if "language" in touched:
+            self.pages = schema.build_pages()
+            self._page_by_id = {page["id"]: page for page in self.pages}
+            self.setWindowTitle(tr("settings_title"))
+            result["localization"] = render.build_context(self.store, self.pages)
         if "onigiri_theme_mode" in touched:
             dark = render.is_dark()
             palette = render.palette(dark)
@@ -448,25 +452,25 @@ class SettingsWebDialog(QDialog):
     # ─── Study Tools actions ────────────────────────────────────────────────
 
     def _cmd_open_prep_station(self, _arg):
-        from .. import prep_station
+        from ..study_tools import prep_station
 
         prep_station.open_prep_station(self)
         return "ok"
 
     def _cmd_open_hashi_notes(self, _arg):
-        from .. import hashi_notes
+        from ..study_tools import hashi_notes
 
         hashi_notes.open_hashi_gallery(self)
         return "ok"
 
     def _cmd_open_pomodoro(self, _arg):
-        from .. import pomodoro
+        from ..study_tools import pomodoro
 
         pomodoro.toggle_widget(self)
         return "ok"
 
     def _cmd_pomodoro_choose_sound(self, _arg):
-        from .. import pomodoro
+        from ..study_tools import pomodoro
 
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -496,7 +500,7 @@ class SettingsWebDialog(QDialog):
         }
 
     def _cmd_pomodoro_test_start_sound(self, arg):
-        from .. import pomodoro
+        from ..study_tools import pomodoro
 
         pomodoro.play_test_sound(
             "start", settings_override=self._pomodoro_preview_settings(arg)
@@ -504,7 +508,7 @@ class SettingsWebDialog(QDialog):
         return "ok"
 
     def _cmd_pomodoro_test_end_sound(self, arg):
-        from .. import pomodoro
+        from ..study_tools import pomodoro
 
         pomodoro.play_test_sound(
             "end", settings_override=self._pomodoro_preview_settings(arg)
@@ -639,7 +643,7 @@ class SettingsWebDialog(QDialog):
 
     def _cmd_donate(self, _arg):
         try:
-            from ..donations_dialog import DonationsDialog
+            from ..dialogs.donations_dialog import DonationsDialog
 
             DonationsDialog(self).exec()
         except Exception as exc:  # noqa: BLE001
@@ -811,7 +815,7 @@ class SettingsWebDialog(QDialog):
         kind, name = payload.get("kind", ""), payload.get("name", "")
         theme_data = theme_store.get_theme(kind, name)
         if theme_data is None:
-            return {"ok": False, "error": f"theme not found: {name!r}"}
+            return {"ok": False, "error": tr("settings_theme_missing").format(name=name)}
         touched = theme_store.apply_theme(self.store, theme_data)
         self._schedule_refresh()
         return {"ok": True, "name": name, "refresh": self._theme_refresh_payload(touched),
@@ -842,7 +846,7 @@ class SettingsWebDialog(QDialog):
         payload = self._theme_arg(arg)
         name = str(payload.get("name", "")).strip()
         if not name:
-            return {"ok": False, "error": "Name your theme first."}
+            return {"ok": False, "error": tr("settings_theme_name_required")}
         path, error = theme_store.export_theme(self.store, name, parent=self)
         if error:
             return {"ok": False, "error": error}
@@ -893,7 +897,7 @@ class SettingsWebDialog(QDialog):
         self.activateWindow()
 
     def _run_color_picker(self, current):
-        from ..onigiri_color_picker import OnigiriColorDialog
+        from ..ui_kit.onigiri_color_picker import OnigiriColorDialog
 
         host = self._picker_host()
         try:

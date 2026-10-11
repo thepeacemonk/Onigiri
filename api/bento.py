@@ -77,7 +77,7 @@ def get_widget_effect(theme: str = "light") -> dict:
     to its own deck-screen widgets, without importing its renderer internals.
     """
     try:
-        from .. import config
+        from ..core import config
 
         conf = config.get_config_readonly()
         colors = conf.get("colors", {}) if isinstance(conf, dict) else {}
@@ -123,7 +123,7 @@ def get_notification_style(theme: str = "light") -> dict:
     dark = str(theme).lower() in ("dark", "death")
     accent = "#4da3e8" if dark else "#0077C8"
     try:
-        from .. import config
+        from ..core import config
 
         conf = config.get_config_readonly()
         colors = conf.get("colors", {}) if isinstance(conf, dict) else {}

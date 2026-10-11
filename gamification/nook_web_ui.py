@@ -17,9 +17,9 @@ from aqt.qt import QDialog, QVBoxLayout
 from aqt.theme import theme_manager
 from aqt.webview import AnkiWebView
 
-from .. import config
-from ..translations import tr
-from ..refresh import schedule_ui_refresh
+from ..core import config
+from ..core.translations import tr
+from ..core.refresh import schedule_ui_refresh
 from . import redeem_net
 from .haptics import trigger as trigger_haptic
 from .nook_level import manager

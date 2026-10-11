@@ -18,8 +18,8 @@
 
 import os
 
-from .. import config
-from ..translations import tr
+from ..core import config
+from ..core.translations import tr
 
 # Per-game accent, mirroring the classic dialog's sidebar tint so a page still
 # reads as "the Nook one" / "the Onigimon one" at a glance.

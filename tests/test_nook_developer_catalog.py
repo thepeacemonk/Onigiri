@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NOOK_LEVEL = ROOT / "gamification" / "nook_level.py"
-TRANSLATIONS = ROOT / "translations.py"
+TRANSLATIONS = ROOT / "core/translations.py"
 ASSET_ROOT = ROOT / "system_files" / "gamification_images" / "nook_folder"
 
 

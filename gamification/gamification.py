@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from .. import safe_storage
+from ..core import safe_storage
 
 @dataclass
 class AchievementData:

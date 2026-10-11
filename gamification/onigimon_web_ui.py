@@ -16,7 +16,7 @@ from aqt import mw
 from aqt.qt import QDesktopServices, QDialog, QUrl, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from ..translations import tr
+from ..core.translations import tr
 from . import redeem_net
 from .haptics import trigger as trigger_haptic
 from .onigimon import (

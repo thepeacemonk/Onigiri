@@ -158,7 +158,7 @@
     return '<button class="ad-list-chev'
       + (collapsed ? ' ad-list-chev--collapsed' : '')
       + '" type="button" data-did="' + did + '"'
-      + ' aria-label="' + (collapsed ? 'Expand' : 'Collapse')
+      + ' aria-label="' + (collapsed ? window.onigiriText('Expand') : window.onigiriText('Collapse'))
       + ' sub-decks" tabindex="-1">'
       + CHEV_SVG + '</button>';
   }
@@ -172,17 +172,17 @@
   var HEADER_HTML =
     '<div class="ad-list-header">' +
     '<span aria-hidden="true"></span>' +
-    '<span class="ad-list-header-cell">Deck</span>' +
-    '<span class="ad-list-header-cell ad-list-header-cell--progress">Progress</span>' +
-    '<span class="ad-list-header-cell ad-list-header-cell--new">New</span>' +
-    '<span class="ad-list-header-cell ad-list-header-cell--learn">Learn</span>' +
-    '<span class="ad-list-header-cell ad-list-header-cell--due">Due</span>' +
+    window.onigiriTemplate('<span class="ad-list-header-cell">Deck</span>') +
+    window.onigiriTemplate('<span class="ad-list-header-cell ad-list-header-cell--progress">Progress</span>') +
+    window.onigiriTemplate('<span class="ad-list-header-cell ad-list-header-cell--new">New</span>') +
+    window.onigiriTemplate('<span class="ad-list-header-cell ad-list-header-cell--learn">Learn</span>') +
+    window.onigiriTemplate('<span class="ad-list-header-cell ad-list-header-cell--due">Due</span>') +
     '<span aria-hidden="true"></span>' +
     '</div>';
 
   function gearHTML(did) {
     return '<button class="ad-list-gear" type="button" data-did="' + did + '"'
-      + ' title="Deck options" aria-label="Deck options">'
+      + window.onigiriTemplate(' title="Deck options" aria-label="Deck options">')
       + GEAR_HTML + '</button>';
   }
 
@@ -191,7 +191,7 @@
   function paintChev(chevEl, collapsed) {
     chevEl.classList.toggle("ad-list-chev--collapsed", collapsed);
     chevEl.setAttribute("aria-label",
-      (collapsed ? "Expand" : "Collapse") + " sub-decks");
+      (collapsed ? window.onigiriText("Expand") : window.onigiriText("Collapse")) + " sub-decks");
     var row = chevEl.closest && chevEl.closest('.ad-list-row');
     if (row) row.setAttribute('data-collapsed', collapsed ? 'true' : 'false');
   }
@@ -284,7 +284,7 @@
       visual = '<span class="ad-list-deck-icon-mask" aria-hidden="true"></span>';
     }
     return '<button class="ad-list-deck-icon" type="button" data-did="'
-      + node.did + '" title="Choose deck icon" aria-label="Choose icon for '
+      + node.did + window.onigiriTemplate('" title="Choose deck icon" aria-label="Choose icon for ')
       + escapeHTML(node.name || 'deck') + '"'
       + (style ? ' style="' + style + '"' : '') + '>'
       + visual + '</button>';
@@ -377,7 +377,7 @@
       if (zone) return zone;
       zone = document.createElement('div');
       zone.className = 'ad-list-dropzone';
-      zone.textContent = 'Drop here to make it a top-level deck';
+      zone.textContent = window.onigiriText('Drop here to make it a top-level deck');
       container.insertBefore(zone, container.firstChild);
       return zone;
     }

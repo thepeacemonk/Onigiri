@@ -4,8 +4,8 @@ from aqt import mw, gui_hooks
 from aqt.qt import QDialog, QVBoxLayout, QLabel, QPushButton, Qt, QPixmap, QEvent, QHBoxLayout, QLineEdit, QWidget
 from PyQt6 import QtCore
 from aqt.reviewer import Reviewer
-from .. import config
-from ..translations import tr
+from ..core import config
+from ..core.translations import localized_default, tr
 from .haptics import trigger as trigger_haptic
 
 _focus_dango_enabled = False
@@ -372,12 +372,12 @@ def show_dango_dialog(command=None, on_confirm=None):
                     messages_list = [old_default_message]
     
     if not messages_list:
-        messages_list = ["Don't give up!", "Stay focused!", "Almost there!"]
+        messages_list = [tr("fd_keep_focused")]
 
     try:
-        message = random.choice(messages_list)
+        message = localized_default(random.choice(messages_list), ("fd_default_message", "fd_keep_focused"))
     except (IndexError, TypeError):
-        message = "Stay focused!"
+        message = tr("fd_keep_focused")
     
     strict_mode = is_self_sabotage_enabled()
     dark_mode = bool(getattr(mw.pm, "night_mode", False))

@@ -13,8 +13,8 @@ from datetime import datetime
 import requests
 from aqt import mw
 
-from .. import config
-from ..translations import tr
+from ..core import config
+from ..core.translations import tr
 
 XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
@@ -1478,7 +1478,7 @@ class NookLevelManager:
         # Directly update the reviewer chip using patcher's function
         try:
             # Import patcher from parent package
-            from .. import patcher
+            from ..rendering import patcher
             if hasattr(patcher, 'update_reviewer_chip'):
                 patcher.update_reviewer_chip()
         except Exception:
@@ -1763,8 +1763,8 @@ class NookLevelManager:
             print(f"Error updating gamification data for daily special: {e}")
             return [{
                 'id': 'daily_special_error',
-                'name': 'Error',
-                'description': f'Error processing daily special: {str(e)}',
+                'name': tr('error_title'),
+                'description': tr('nook_daily_special_error').format(error=e),
                 'type': 'error'
             }]
 

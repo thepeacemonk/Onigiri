@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
-HASHI = (ROOT / "hashi_notes.py").read_text(encoding="utf-8")
+CONFIG = (ROOT / "core/config.py").read_text(encoding="utf-8")
+HASHI = (ROOT / "study_tools/hashi_notes.py").read_text(encoding="utf-8")
 SCHEMA = (ROOT / "settings_web" / "schema.py").read_text(encoding="utf-8")
 EDITOR = (ROOT / "web" / "hashi_notes.html").read_text(encoding="utf-8")
 GALLERY = (ROOT / "web" / "hashi_gallery.html").read_text(encoding="utf-8")
@@ -13,7 +13,7 @@ GALLERY = (ROOT / "web" / "hashi_gallery.html").read_text(encoding="utf-8")
 
 class HashiNotesFontSizeTests(unittest.TestCase):
     def test_dashboard_font_role_does_not_override_hashi_text(self):
-        patcher = ast.parse((ROOT / "patcher.py").read_text(encoding="utf-8"))
+        patcher = ast.parse((ROOT / "rendering/patcher.py").read_text(encoding="utf-8"))
         function = next(node for node in patcher.body
                         if isinstance(node, ast.FunctionDef)
                         and node.name == "generate_font_css")
@@ -36,7 +36,7 @@ class HashiNotesFontSizeTests(unittest.TestCase):
         for size in (12, 14, 15, 24):
             with self.subTest(size=size):
                 namespace = {"get_prefs": lambda: {"font_size": size}}
-                exec(compile(functions, "hashi_notes.py", "exec"), namespace)
+                exec(compile(functions, "study_tools/hashi_notes.py", "exec"), namespace)
                 self.assertEqual(namespace["_widget_font_css"](),
                     f"--hashiw-card-excerpt-size:{size}px;"
                     f"--hashiw-single-text-size:{size}px;")

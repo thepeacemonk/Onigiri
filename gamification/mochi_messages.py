@@ -5,10 +5,12 @@ from typing import Any, Dict, List, Optional
 
 from aqt import gui_hooks, mw
 
-from .. import config
+from ..core import config
+from ..core.translations import localized_default, tr
 from .haptics import trigger as trigger_haptic
 
 MANTRA_HISTORY_LIMIT = 30
+DEFAULT_MESSAGE_KEYS = tuple(f"mochi_default_{index}" for index in range(1, 8))
 
 # Mochi's history used to live inside the add-on settings, so showing a message
 # rewrote the whole ~18 KB settings file (and dropped the config cache) every
@@ -36,7 +38,7 @@ def _load_history() -> List[Dict[str, Any]]:
     if _HISTORY_CACHE is not None:
         return list(_HISTORY_CACHE)
 
-    from .. import safe_storage
+    from ..core import safe_storage
 
     data = safe_storage.read_json(_history_path(), default=None, label="Your Mochi messages")
     history = data.get("history") if isinstance(data, dict) else None
@@ -54,7 +56,7 @@ def _load_history() -> List[Dict[str, Any]]:
 def _save_history(history: List[Dict[str, Any]]) -> None:
     global _HISTORY_CACHE
 
-    from .. import safe_storage
+    from ..core import safe_storage
 
     _HISTORY_CACHE = list(history)
     safe_storage.schedule_write_json(_history_path(), {"history": _HISTORY_CACHE})
@@ -94,9 +96,10 @@ class MochiMessenger:
             messages = [str(messages)]
         messages = [str(item).strip() for item in messages if str(item).strip()]
         if messages:
-            return messages
+            return [localized_default(message, DEFAULT_MESSAGE_KEYS) for message in messages]
         default_messages = config.DEFAULTS.get("mochi_messages", {}).get("messages", [])
-        return [str(item).strip() for item in default_messages if str(item).strip()]
+        return [localized_default(str(item).strip(), DEFAULT_MESSAGE_KEYS)
+                for item in default_messages if str(item).strip()]
 
     def _custom_icon_url(self) -> Optional[str]:
         """Web URL for the user's custom messenger image, if one is set and present."""
@@ -133,7 +136,7 @@ class MochiMessenger:
 
         import os
         from .. import addon_path
-        from ..fonts import get_all_fonts
+        from ..ui_kit.fonts import get_all_fonts
 
         info = get_all_fonts(addon_path).get(font_key)
         if not info:
@@ -162,8 +165,9 @@ class MochiMessenger:
         custom_title = str(mochi_conf.get("title_name", "") or "").strip()
         data = {
             "id": "mochi_message",
-            "name": custom_title or "Mochi says…",
-            "description": message,
+            "name": localized_default(custom_title, ("mochi_title_placeholder",))
+                    if custom_title else tr("mochi_title_placeholder"),
+            "description": localized_default(message, DEFAULT_MESSAGE_KEYS),
             "icon": "🍡",
         }
         if mochi_conf.get("hide_title", False):

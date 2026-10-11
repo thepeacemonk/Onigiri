@@ -5,10 +5,10 @@ from urllib.parse import quote
 from aqt import mw
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
-from .. import onigiri_renderer
-from .. import config
-from ..emoji_sprites import asset_for_emoji
-from ..translations import tr
+from ..rendering import onigiri_renderer
+from ..core import config
+from ..ui_kit.emoji_sprites import asset_for_emoji
+from ..core.translations import tr
 
 ARCHIVED_DECKS_CONF_KEY = "onigiri_archived_decks"
 SHOW_ARCHIVED_CONF_KEY = "onigiri_show_archived"
@@ -87,7 +87,7 @@ def _prune_archived_descendants(nodes_collection, archived_ids):
 
 def _prune_internal_ready_decks(nodes_collection):
     """Hide Ready-to-go working decks from Classic's visible deck tree."""
-    from .. import ready_to_go
+    from ..study_tools import ready_to_go
 
     kept = []
     for node in list(nodes_collection):

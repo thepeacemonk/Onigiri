@@ -95,7 +95,7 @@ def onigiri_layout_config() -> Dict[str, Any]:
     second add-on configuration or keep an independent accent colour.
     """
     try:
-        from .. import config as onigiri_config
+        from ..core import config as onigiri_config
 
         root = onigiri_config.get_config_readonly()
         root = root if isinstance(root, dict) else {}
@@ -130,7 +130,7 @@ def onigiri_palette() -> Tuple[Dict[str, str], bool]:
         },
     }
     try:
-        from .. import config as onigiri_config
+        from ..core import config as onigiri_config
 
         root = onigiri_config.get_config_readonly()
         root = root if isinstance(root, dict) else {}

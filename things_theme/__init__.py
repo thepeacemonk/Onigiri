@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 from aqt import gui_hooks, mw
+from ..core.translations import tr, tr_literal, web_localization_script, current_locale
 from aqt.deckbrowser import DeckBrowser, DeckBrowserContent
 from aqt.editor import Editor, EditorMode
 from aqt.overview import Overview
@@ -57,7 +58,7 @@ try:
 except Exception:
     QTimer = None
 
-from ..theme_palette import visible_color
+from ..rendering.theme_palette import visible_color
 
 ADDON_PACKAGE = __name__.split(".")[0]
 WEB = f"/_addons/{ADDON_PACKAGE}/things_theme/web"
@@ -71,7 +72,7 @@ EMBEDDED_IN_ONIGIRI = True
 
 
 def _config() -> Dict[str, Any]:
-    from .. import config as onigiri_config
+    from ..core import config as onigiri_config
 
     root = onigiri_config.get_config_readonly()
     nested = root.get("things_theme", {}) if isinstance(root, dict) else {}
@@ -226,7 +227,7 @@ def _surface_effect_vars(cfg: Dict[str, Any]) -> tuple[str, bool]:
 def is_enabled() -> bool:
     """Whether Onigiri currently delegates its main menu to Kome."""
     try:
-        from .. import config as onigiri_config
+        from ..core import config as onigiri_config
 
         return onigiri_config.get_config_readonly().get(
             "onigiri_ui_theme", "classic"
@@ -238,7 +239,7 @@ def is_enabled() -> bool:
 def _is_internal_ready_deck(name: Any) -> bool:
     """Keep Ready-to-go working decks out of Kome deck surfaces."""
     try:
-        from .. import ready_to_go
+        from ..study_tools import ready_to_go
 
         return ready_to_go.is_internal_deck_name(name)
     except Exception:
@@ -500,7 +501,7 @@ def on_webview_will_set_content(web_content: WebContent, context: Optional[Any])
         f"{_shared_palette_vars(cfg)}{surface_decl}"
         f"{serif_decl}{sans_decl}{reviewer_decl}"
         f"}}{_background_rules(cfg)}{hm_rules}</style>"
-        + extras + opts_js
+        + extras + opts_js + web_localization_script()
     )
     web_content.css.append(f"{WEB}/tokens.css")
 
@@ -509,7 +510,7 @@ def on_webview_will_set_content(web_content: WebContent, context: Optional[Any])
         # the page. Reserve their height plus the sidebar's normal top padding
         # so Due Today never crowds the window controls.
         try:
-            from .. import mac_titlebar as _mac_titlebar
+            from ..integrations import mac_titlebar as _mac_titlebar
 
             web_content.head += _mac_titlebar.inset_css("things3")
         except Exception:
@@ -540,7 +541,7 @@ def on_webview_will_set_content(web_content: WebContent, context: Optional[Any])
         # Reuse Classic's deck-icon chooser verbatim. Its commands and
         # collection-backed storage already belong to Onigiri's root webview
         # handler; Kome only needs to load the same modal frontend.
-        from .. import webview_handlers as _webview_handlers
+        from ..rendering import webview_handlers as _webview_handlers
 
         web_content.head += _webview_handlers.webview_strings_script()
         web_content.head += f'<script src="{ROOT_WEB}/icon_modal.js"></script>'
@@ -729,6 +730,10 @@ def on_webview_will_set_content(web_content: WebContent, context: Optional[Any])
 
 
 def _standing() -> Dict[str, Any]:
+    from aqt.qt import QLocale
+    locale = current_locale()
+    months = [locale.monthName(month, QLocale.FormatType.ShortFormat) for month in range(1, 13)]
+    weekdays = [locale.dayName(day, QLocale.FormatType.ShortFormat) for day in (7, 1, 2, 3, 4, 5, 6)]
     counts = _counts_by_day()
     shift = _day_shift_seconds()
     today_idx = int((time.time() + shift) // 86400)
@@ -1013,7 +1018,7 @@ def build_heatmap_html(weeks: int = 53) -> str:
     for w in range(columns):
         cd = date_for(grid_start + w * 7)  # the column's Sunday
         if cd.month != prev_month:
-            month_spans.append([_MONTHS[cd.month - 1], 1])
+            month_spans.append([months[cd.month - 1], 1])
             prev_month = cd.month
         else:
             month_spans[-1][1] += 1
@@ -1026,11 +1031,11 @@ def build_heatmap_html(weeks: int = 53) -> str:
                 continue
             n = counts.get(idx, 0)
             d = date_for(idx)
-            human = f"{_WEEKDAYS[dow(idx)]}, {d.day} {_MONTHS[d.month - 1]} {d.year}"
+            human = f"{weekdays[dow(idx)]}, {d.day} {months[d.month - 1]} {d.year}"
             if idx == today_idx:
-                rel = "Today"
+                rel = tr("today")
             elif idx == today_idx - 1:
-                rel = "Yesterday"
+                rel = tr("hashi_yesterday")
             else:
                 rel = ""
             is_peak = "1" if (n == peak and peak >= 8) else "0"
@@ -1048,7 +1053,7 @@ def build_heatmap_html(weeks: int = 53) -> str:
         for label, span in month_spans
     )
     weekdays_html = "".join(
-        f'<span class="rf-hm-wd">{_WEEKDAYS[i] if i in (1, 3, 5) else ""}</span>'
+        f'<span class="rf-hm-wd">{weekdays[i] if i in (1, 3, 5) else ""}</span>'
         for i in range(7)
     )
 
@@ -1063,11 +1068,11 @@ def build_heatmap_html(weeks: int = 53) -> str:
     return f"""
     <div class="rf-heatmap">
       <div class="rf-hm-head">
-        <span class="rf-hm-title">Review activity</span>
+        <span class="rf-hm-title">{html.escape(tr("kome_review_activity"))}</span>
         <span class="rf-hm-stats">
-          <b>{today_n}</b> today &nbsp;·&nbsp;
-          <b>{streak}</b> day streak &nbsp;·&nbsp;
-          <b>{total:,}</b> in {weeks} weeks
+          <b>{today_n}</b> {html.escape(tr("today"))} &nbsp;·&nbsp;
+          {html.escape(tr("kome_streak_days").format(n=streak))} &nbsp;·&nbsp;
+          {html.escape(tr("kome_reviews_weeks").format(total=total, weeks=weeks))}
         </span>
       </div>
       <div class="rf-hm-body">
@@ -1138,7 +1143,8 @@ def build_review_chart_html(days: int = 371) -> str:
     start_date = datetime.date.today() - datetime.timedelta(days=days - 1)
     midpoint = start_date + datetime.timedelta(days=(days - 1) // 2)
     def short_date(value: datetime.date) -> str:
-        return f"{value.strftime('%b')} {value.day}"
+        from aqt.qt import QDate
+        return current_locale().toString(QDate(value.year, value.month, value.day), "MMM d")
 
     labels = (short_date(start_date), short_date(midpoint),
               short_date(datetime.date.today()))
@@ -1146,8 +1152,8 @@ def build_review_chart_html(days: int = 371) -> str:
     <section class="ba-review-chart"
              aria-label="Weekly review counts over the last {days} days">
       <div class="ba-analytics-head">
-        <span>Weekly reviews</span>
-        <strong>{total:,}<small> total</small></strong>
+        <span>{html.escape(tr("kome_weekly_reviews"))}</span>
+        <strong>{total:,}<small> {html.escape(tr('lstats_total_short'))}</small></strong>
       </div>
       <svg class="ba-review-chart-svg" viewBox="0 0 {width:.0f} {height:.0f}"
            preserveAspectRatio="none" aria-hidden="true">
@@ -1552,7 +1558,7 @@ def _on_js_message(handled, message, context):
                 _open_browse_with_query(query)
             return (True, None)
         if cmd.startswith("ready:"):
-            from .. import ready_to_go
+            from ..study_tools import ready_to_go
 
             ready_to_go.handle_command(cmd.split(":", 1)[1])
             return (True, None)
@@ -1937,11 +1943,11 @@ def _single_deck_hero() -> str:
           <div class="ba-hero-stats">
             <div class="ba-hero-stat ba-due">
               <span class="ba-hero-n">{rev_n}</span>
-              <span class="ba-hero-l">Due</span>
+              <span class="ba-hero-l">{html.escape(tr('kome_due'))}</span>
             </div>
             <div class="ba-hero-stat ba-new">
               <span class="ba-hero-n">{new_n}</span>
-              <span class="ba-hero-l">New</span>
+              <span class="ba-hero-l">{html.escape(tr('new'))}</span>
             </div>
             <div class="ba-hero-stat ba-learn">
               <span class="ba-hero-n">{learn_n}</span>
@@ -2016,7 +2022,7 @@ def _pulse_html(show_today: bool = True, show_streak: bool = True) -> str:
     )
     streak_html = (
         f'<div class="ba-streak{zs}" role="group" '
-        f'aria-label="{streak} day streak">'
+        f'aria-label="{html.escape(tr("kome_streak_days").format(n=streak), quote=True)}">'
         f'{fire_svg}'
         f'<span class="ba-streak-n">{streak:,}</span>'
         f'</div>'
@@ -2068,7 +2074,7 @@ def _pulse_html(show_today: bool = True, show_streak: bool = True) -> str:
                 f'<span class="ba-today-bar-tip" aria-hidden="true">'
                 f'<span class="ba-today-bar-tip-h">{hour_label}</span>'
                 f'<span class="ba-today-bar-tip-d">'
-                f'<b>{n:,}</b> cards · <b>{mins_str}</b>'
+                f'<b>{n:,}</b> {html.escape(tr("cards"))} · <b>{mins_str}</b>'
                 f'</span>'
                 f'</span>'
             )
@@ -2088,7 +2094,7 @@ def _pulse_html(show_today: bool = True, show_streak: bool = True) -> str:
     if first_h == last_h:
         labels = (
             f'<div class="ba-today-labels ba-today-labels--solo">'
-            f'<span class="ba-today-now">NOW</span>'
+            f'<span class="ba-today-now">{html.escape(tr("kome_now"))}</span>'
             f'</div>'
         )
     else:
@@ -2096,7 +2102,7 @@ def _pulse_html(show_today: bool = True, show_streak: bool = True) -> str:
         labels = (
             f'<div class="ba-today-labels">'
             f'<span>{first_label}</span>'
-            f'<span class="ba-today-now">NOW</span>'
+            f'<span class="ba-today-now">{html.escape(tr("kome_now"))}</span>'
             f'</div>'
         )
 
@@ -2105,10 +2111,10 @@ def _pulse_html(show_today: bool = True, show_streak: bool = True) -> str:
     head = (
         f'<div class="ba-today-head">'
         f'<span class="ba-today-n">{today_total:,}</span>'
-        f'<span class="ba-today-u">cards</span>'
+        f'<span class="ba-today-u">{html.escape(tr("cards"))}</span>'
         f'<span class="ba-today-sep">·</span>'
         f'<span class="ba-today-n">{mins:,}</span>'
-        f'<span class="ba-today-u">min</span>'
+        f'<span class="ba-today-u">{html.escape(tr("pomodoro_unit_min"))}</span>'
         f'</div>'
     )
 
@@ -2510,7 +2516,7 @@ def _studied_today_by_deck() -> Dict[int, int]:
 def _custom_deck_icons() -> Dict[str, Any]:
     """Return the exact per-deck icon store used by the Classic renderer."""
     try:
-        from .. import config as onigiri_config
+        from ..core import config as onigiri_config
 
         stored = onigiri_config.get_collection_config(
             "onigiri_custom_deck_icons", {}
@@ -2547,7 +2553,7 @@ def _resolved_deck_icon(
             else icon_name
         )
         try:
-            from ..emoji_sprites import asset_for_emoji
+            from ..ui_kit.emoji_sprites import asset_for_emoji
 
             asset = asset_for_emoji(glyph)
         except Exception:
@@ -3124,11 +3130,11 @@ def _reviewer_header_html() -> str:
       <div class="ba-rv-head-right">
         <span class="ba-rv-counts">
           <span class="ba-rv-count ba-rv-c-new"
-                title="New cards still to study"><b id="ba-rv-c-new">{new_n}</b><i>new</i></span>
+                title="New cards still to study"><b id="ba-rv-c-new">{new_n}</b><i>{html.escape(tr('prep_legend_new'))}</i></span>
           <span class="ba-rv-count ba-rv-c-learn"
-                title="Cards in learning"><b id="ba-rv-c-learn">{learn_n}</b><i>learn</i></span>
+                title="Cards in learning"><b id="ba-rv-c-learn">{learn_n}</b><i>{html.escape(tr("learning"))}</i></span>
           <span class="ba-rv-count ba-rv-c-due"
-                title="Review cards due today"><b id="ba-rv-c-due">{rev_n}</b><i>due</i></span>
+                title="Review cards due today"><b id="ba-rv-c-due">{rev_n}</b><i>{html.escape(tr('prep_legend_due'))}</i></span>
         </span>
         <button class="ba-rv-icon-btn" type="button"
                 onclick="pycmd('edit')" title="Edit card (E)"

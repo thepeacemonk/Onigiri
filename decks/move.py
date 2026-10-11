@@ -5,7 +5,7 @@ from anki.decks import DeckId
 from aqt import mw
 
 from . import drag_drop as deck_drag_drop
-from ..constants import ICON_DEFAULTS
+from ..core.constants import ICON_DEFAULTS
 
 
 ROOT_DESTINATION_ID = "__root__"
