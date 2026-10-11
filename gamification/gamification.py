@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -86,13 +87,17 @@ class GamificationData:
 
     def _load(self) -> None:
         """Load data from JSON file if it exists."""
+        safe_storage.backup_before_upgrade()
+        self.achievements = {}
+        self.daily_specials = []
+        self.restaurant_data = RestaurantLevelData(daily_special={})
         data_path = self._get_data_path()
         
         # Migration: Check for legacy file
         legacy_path = os.path.join(os.path.dirname(data_path), 'gamification.json')
         if os.path.exists(legacy_path) and not os.path.exists(data_path):
             try:
-                os.rename(legacy_path, data_path)
+                shutil.copy2(legacy_path, data_path)
                 print(f"Migrated gamification data to {data_path}")
             except Exception as e:
                 print(f"Error migrating gamification data: {e}")
@@ -106,13 +111,13 @@ class GamificationData:
 
             # Load achievements
             self.achievements = {
-                ach['id']: AchievementData(**ach) 
+                ach['id']: safe_storage.dataclass_from_dict(AchievementData, ach)
                 for ach in data.get('achievements', [])
             }
             
             # Load daily specials
             self.daily_specials = [
-                DailySpecialData(**special)
+                safe_storage.dataclass_from_dict(DailySpecialData, special)
                 for special in data.get('daily_specials', [])
             ]
             
@@ -158,8 +163,8 @@ class GamificationData:
         
         # Prepare the new data for the keys we manage
         new_data = {
-            'achievements': [asdict(ach) for ach in self.achievements.values()],
-            'daily_specials': [asdict(special) for special in self.daily_specials],
+            'achievements': [safe_storage.dataclass_payload(ach) for ach in self.achievements.values()],
+            'daily_specials': [safe_storage.dataclass_payload(special) for special in self.daily_specials],
             'restaurant_level': asdict(self.restaurant_data),
             'last_updated': self.last_updated
         }

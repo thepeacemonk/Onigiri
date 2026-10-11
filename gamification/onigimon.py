@@ -1155,6 +1155,7 @@ class OnigimonManager:
     def __init__(self) -> None:
         self.bridge = AnkimonBridge()
         self._state: Optional[OnigimonState] = None
+        self._state_path = None
         self.last_action: Optional[str] = None
         self.last_message: str = ""
         self.last_gift: Optional[Dict[str, Any]] = None
@@ -1271,21 +1272,19 @@ class OnigimonManager:
         return os.path.join(user_files, f"onigimon_{self._profile_name()}.json")
 
     def load(self) -> OnigimonState:
-        if self._state is not None:
-            return self._state
         path = self._data_path()
+        if self._state is not None and getattr(self, "_state_path", None) == path:
+            return self._state
+        safe_storage.backup_before_upgrade()
         try:
             data = safe_storage.read_json(
                 path, default={}, label="Your Onigimon companions"
             )
-            # Discard retired pet-interaction state without resetting the rest
-            # of an existing inventory or companion save.
-            data.pop("last_pet_day", None)
-            data.pop("pets_used_today", None)
-            self._state = OnigimonState(**data) if data else OnigimonState()
+            self._state = safe_storage.dataclass_from_dict(OnigimonState, data)
         except Exception as exc:
             print(f"Onigimon: Could not load state: {exc}")
             self._state = OnigimonState()
+        self._state_path = path
         return self._state
 
     def save(self, immediate: bool = False) -> None:
@@ -1297,7 +1296,7 @@ class OnigimonManager:
         a sync and on screen changes.
         """
         state = self.load()
-        payload = asdict(state)
+        payload = safe_storage.dataclass_payload(state)
         if immediate:
             safe_storage.atomic_write_json(self._data_path(), payload)
         else:

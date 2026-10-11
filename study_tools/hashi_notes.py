@@ -211,7 +211,7 @@ def _new_note():
 def _normalize(note):
     """Fills missing keys so older/partial notes stay valid."""
     base = _new_note()
-    base.update({k: v for k, v in note.items() if k in base})
+    base.update(note)
     base["id"] = note.get("id") or base["id"]
     if base["retention"] not in RETENTION_CHOICES:
         base["retention"] = 0

@@ -4440,6 +4440,7 @@ def _reviewer_progress_css(settings=None):
             --orp-fill: {fill_light};
             --orp-fill-image: {fill_image_light};
             --orp-track: {track_light};
+            --orp-track-tint: rgba(0, 0, 0, 0.12);
             --orp-text: {text_light};
             --orp-new: {new_light};
             --orp-learn: {learn_light};
@@ -4478,6 +4479,7 @@ def _reviewer_progress_css(settings=None):
             --orp-fill: {fill_dark};
             --orp-fill-image: {fill_image_dark};
             --orp-track: {track_dark};
+            --orp-track-tint: rgba(255, 255, 255, 0.16);
             --orp-text: {text_dark};
             --orp-new: {new_dark};
             --orp-learn: {learn_dark};
@@ -4503,7 +4505,8 @@ def _reviewer_progress_css(settings=None):
             width: var(--orp-width) !important;
             height: var(--orp-thickness) !important;
             border-radius: var(--orp-radius) !important;
-            background: var(--orp-track) !important;
+            /* Keep the total visible even when its saved colour matches the chip. */
+            background: linear-gradient(var(--orp-track-tint), var(--orp-track-tint)), var(--orp-track) !important;
             flex: 0 0 auto !important;
             align-self: center !important;
         }}
@@ -4518,7 +4521,6 @@ def _reviewer_progress_css(settings=None):
 
         #onigiri-reviewer-header .onigiri-reviewer-progress .orp-track.is-segmented {{
             gap: 2px !important;
-            background: transparent !important;
         }}
 
         #onigiri-reviewer-header .onigiri-reviewer-progress .orp-seg {{
@@ -5051,6 +5053,30 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     return html, css
 
 
+def _reviewer_controls_font_size(conf):
+    base_size = config.get_collection_config("onigiri_font_size_main", conf.get("onigiri_font_size_main", 14))
+    try:
+        return max(8, min(72, int(config.get_collection_config("onigiri_font_size_reviewer_controls", base_size))))
+    except (TypeError, ValueError):
+        return 14
+
+
+def _reviewer_fixed_button_metrics(conf):
+    """Natural Fixed layout dimensions, mirrored by bbarFixedMetrics()."""
+    def number(key, default, low, high):
+        try:
+            return max(low, min(high, int(conf.get(key, default))))
+        except (TypeError, ValueError):
+            return default
+    size = _reviewer_controls_font_size(conf)
+    padding = max(7, number("onigiri_reviewer_btn_padding", 5, 0, 100))
+    border = number("onigiri_reviewer_btn_border_size", 0, 0, 10)
+    count_height = max(30, int(size * .85 + 10 + .999))
+    height = max(48, number("onigiri_reviewer_btn_height", 40, 0, 200),
+                 max(int(size * 1.25 + .999), count_height) + 2 * (padding + border))
+    return padding, count_height, height
+
+
 def _reviewer_bottom_bar_height_px(conf=None):
     if conf is None:
         conf = config.get_config_readonly()
@@ -5058,7 +5084,16 @@ def _reviewer_bottom_bar_height_px(conf=None):
         height = int(conf.get("onigiri_reviewer_bar_height", 60))
     except (TypeError, ValueError):
         height = 60
-    return max(20, min(300, height))
+    height = max(20, min(300, height))
+    if conf.get("onigiri_reviewer_btn_custom_enabled", True):
+        try:
+            height = max(height, int(conf.get("onigiri_reviewer_btn_height", 40)) + 24)
+        except (TypeError, ValueError):
+            pass
+    if (conf.get("onigiri_reviewer_btn_custom_enabled", True)
+            and conf.get("onigiri_reviewer_stattxt_mode", "hover") == "fixed"):
+        height = max(height, _reviewer_fixed_button_metrics(conf)[2] + 24)
+    return height
 
 
 def _reviewer_background_viewport_height_px(bar_height=None):
@@ -8697,25 +8732,6 @@ def generate_reviewer_buttons_css(conf):
             color: var(--onigiri-reviewer-review-count-fg) !important;
         }}
 
-        /* The active card type is shown as a tiny dot inside its matching
-           New/Learning/To Review box. */
-        #outer .onigiri-count-pill.is-current-card {{
-            gap: 5px !important;
-        }}
-
-        #outer .stat2 .onigiri-count-pill.is-current-card::before,
-        #outer .onigiri-count-pill.is-current-card::before {{
-            content: "" !important;
-            display: inline-block !important;
-            flex: 0 0 6px !important;
-            width: 6px !important;
-            height: 6px !important;
-            border-radius: 50% !important;
-            background: currentColor !important;
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
-            pointer-events: none !important;
-        }}
-
         /* Timer adaptation: neutral pill shown inside the Show Answer button
            (position "right"/"left"), grouped alongside the New/Learn/Review pills. */
         :root {{
@@ -8810,20 +8826,6 @@ def generate_reviewer_buttons_css(conf):
             transition-delay: 0s !important;
         }}
     """)
-
-    if stattxt_mode == "fixed":
-        # Stack "Show Answer" above the New/Learn/Review counts instead of
-        # the hover swap-overlay used by "hover"/"inverted" mode.
-        pre_answer_counts_fixed_height = max(16, int(btn_height * 0.5))
-        css.append(f"""
-        #outer .onigiri-pre-answer-counts {{
-            position: static !important;
-            inset: auto !important;
-            width: 100% !important;
-            height: {pre_answer_counts_fixed_height}px !important;
-            margin: 2px 0 0 0 !important;
-        }}
-        """)
 
     if stattxt_mode in ("fixed", "inverted"):
         # Both modes keep the counts panel visible without hovering, so the
@@ -9189,7 +9191,7 @@ def generate_reviewer_buttons_css(conf):
         _pre_answer_counts_script = """
         <script>
         (function() {
-            const ANSWER_LABELS = {"1": "Again", "2": "Hard", "3": "Good", "4": "Easy"};
+            const ANSWER_LABELS = __ONIGIRI_ANSWER_LABELS__;
             const ONIGIRI_TIMER_POSITION = "__ONIGIRI_TIMER_POSITION__";
             const ONIGIRI_SHOW_ANSWER_LABEL = __ONIGIRI_SHOW_ANSWER_LABEL__;
             // Anki's native New/Learn/Review counts node lives inside the Show
@@ -9406,6 +9408,25 @@ def generate_reviewer_buttons_css(conf):
                 btn.style.setProperty('--onigiri-answer-number-font-size', fitAnswerNumberFontSize(btn, answerNumber).toFixed(1) + 'px');
             }
 
+            // Mirror bbarFitFixedAnswerLabel(): translated labels keep their
+            // selected size unless the equal-width choice would clip them.
+            function fitFixedAnswerLabel(btn, label) {
+                if ('__ONIGIRI_STATS_MODE__' !== 'fixed') return;
+                const style = window.getComputedStyle(btn);
+                const available = Math.max(1, btn.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+                let size = parseFloat(style.fontSize) || 14;
+                const canvas = window.__onigiriAnswerNumberCanvas || document.createElement('canvas');
+                window.__onigiriAnswerNumberCanvas = canvas;
+                const context = canvas.getContext('2d');
+                if (!context) return;
+                while (size > 8) {
+                    context.font = `600 ${size}px ${style.fontFamily}`;
+                    if (context.measureText(label).width <= available) break;
+                    size = Math.max(8, size - .5);
+                }
+                btn.style.setProperty('--onigiri-fixed-answer-label-size', size + 'px');
+            }
+
             function prepareAnswerButton(btn, ease, sourceNode) {
                 stripBottomBarTooltips(btn);
                 lockAnswerButtonWidth(btn);
@@ -9416,6 +9437,7 @@ def generate_reviewer_buttons_css(conf):
                 const currentLabel = buttonTextWithoutOnigiri(btn);
                 const label = cleanText(btn.getAttribute('data-onigiri-answer-label') || currentLabel || ANSWER_LABELS[ease] || '');
                 if (!label) return;
+                fitFixedAnswerLabel(btn, label);
                 if (btn.getAttribute('data-onigiri-answer-hover-ready') === '1' && btn.getAttribute('data-onigiri-answer-number') === answerNumber && btn.getAttribute('data-onigiri-answer-label') === label) {
                     updateAnswerNumberFontSize(btn, answerNumber);
                     return;
@@ -9491,6 +9513,10 @@ def generate_reviewer_buttons_css(conf):
             function prepareShowAnswerCounts(buttons) {
                 stripBottomBarTooltips(document);
                 const showButton = findShowAnswerButton(buttons);
+                const outer = document.getElementById('outer');
+                if (outer) outer.classList.toggle('onigiri-bbar-fixed', '__ONIGIRI_STATS_MODE__' === 'fixed');
+                if (outer) outer.classList.toggle('onigiri-bbar-fixed-question',
+                    !!showButton && '__ONIGIRI_STATS_MODE__' === 'fixed');
                 document.querySelectorAll('#outer button.onigiri-show-answer-btn').forEach(btn => {
                     if (btn !== showButton) {
                         btn.classList.remove('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
@@ -9543,7 +9569,10 @@ def generate_reviewer_buttons_css(conf):
                 // Mark Show Answer independently of whether its optional
                 // counts/timer panel exists, so its dedicated palette also
                 // applies when Stats Numbers and Timer are both off.
-                if (showButton) showButton.classList.add('onigiri-show-answer-btn');
+                if (showButton) {
+                    showButton.classList.add('onigiri-show-answer-btn');
+                    showButton.classList.toggle('is-fixed', '__ONIGIRI_STATS_MODE__' === 'fixed');
+                }
 
                 if (!showButton || (stats.length === 0 && !hasInsideTimer)) {
                     if (showButton) {
@@ -9614,6 +9643,9 @@ def generate_reviewer_buttons_css(conf):
                 showButton.appendChild(panel);
             }
 
+            let lastPrimary = null;
+            let renderDepth = 0;
+
             function classifyButtons() {
                 stripBottomBarTooltips(document);
                 renderOnigiriCardTypeIndicator();
@@ -9623,29 +9655,76 @@ def generate_reviewer_buttons_css(conf):
                     const ease = easeFromButton(btn);
                     if (ease) {
                         btn.setAttribute('data-onigiri-ease', ease);
+                        btn.classList.toggle('is-fixed', '__ONIGIRI_STATS_MODE__' === 'fixed');
                         lockAnswerButtonWidth(btn);
                         answerButtons.push({ btn, ease });
                     } else {
                         btn.classList.add('onigiri-other-btn');
                     }
                 });
+                if ('__ONIGIRI_STATS_MODE__' === 'fixed' && answerButtons.length) {
+                    const row = answerButtons[0].btn.closest('tr');
+                    if (row && row.closest('#middle')) {
+                        row.classList.add('onigiri-fixed-answer-row');
+                        const table = row.closest('table');
+                        if (table) table.classList.add('onigiri-fixed-answer-table');
+                    }
+                }
                 const nativeNumbers = nativeAnswerNumberNodes();
                 nativeNumbers.forEach(markNativeNumberSource);
                 answerButtons.forEach((item, index) => prepareAnswerButton(item.btn, item.ease, nativeNumbers[index] || null));
                 collapseNativeNumberHosts();
                 prepareShowAnswerCounts(buttons);
                 renderOnigiriCardTypeIndicator();
+                const primary = answerButtons.length
+                    ? answerButtons[0].btn.closest('.onigiri-fixed-answer-row')
+                    : document.querySelector('#outer button.onigiri-show-answer-btn');
+                if (primary && primary !== lastPrimary && '__ONIGIRI_STATS_MODE__' === 'fixed') {
+                    primary.classList.add('onigiri-bbar-enter');
+                }
+                lastPrimary = primary;
             }
 
-            setInterval(classifyButtons, 100);
-            const observer = new MutationObserver(classifyButtons);
-            observer.observe(document.body, { childList: true, subtree: true });
+            // Anki injects this script in <head>, before body exists. Observe
+            // the document root so native DOM updates are styled before paint.
+            // Also wrap Anki's render calls: nested showQuestion -> showAnswer
+            // must finish (including the timer reset) before one atomic update.
+            function installRenderHooks() {
+                ['showQuestion', 'showAnswer'].forEach(name => {
+                    const original = window[name];
+                    if (typeof original !== 'function' || original.__onigiriBottomBarRender) return;
+                    const render = function() {
+                        renderDepth++;
+                        try {
+                            return original.apply(this, arguments);
+                        } finally {
+                            renderDepth--;
+                            if (!renderDepth) classifyButtons();
+                        }
+                    };
+                    render.__onigiriBottomBarRender = true;
+                    window[name] = render;
+                });
+            }
+            function refresh() {
+                installRenderHooks();
+                classifyButtons();
+            }
+            const observer = new MutationObserver(() => {
+                if (!renderDepth) classifyButtons();
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            refresh();
+            document.addEventListener('DOMContentLoaded', refresh, { once: true });
+            setInterval(refresh, 100);
         })();
         </script>
         """
         scripts.append(
             _pre_answer_counts_script
             .replace("__ONIGIRI_TIMER_POSITION__", timer_position)
+            .replace("__ONIGIRI_STATS_MODE__", stattxt_mode)
+            .replace("__ONIGIRI_ANSWER_LABELS__", json.dumps({str(index): tr_at(key) for index, key in enumerate(("again_label", "hard_label", "good_label", "easy_label"), 1)}))
             .replace("__ONIGIRI_SHOW_ANSWER_LABEL__", json.dumps(tr_at("show_answer_label")))
         )
 
@@ -9671,6 +9750,46 @@ def generate_reviewer_buttons_css(conf):
     </script>
     """)
 
+    if custom_enabled:
+        fixed_padding, count_height, fixed_height = _reviewer_fixed_button_metrics(conf)
+        border_size = max(0, min(10, _onigiri_int_style_value(conf.get("onigiri_reviewer_btn_border_size", 0), 0)))
+        css.append(f"""
+        #outer {{
+            container-type: inline-size;
+            --onigiri-bbar-font-size: {_reviewer_controls_font_size(conf)}px;
+            --onigiri-bbar-fixed-padding: {fixed_padding}px;
+            --onigiri-bbar-count-height: {count_height}px;
+            --onigiri-bbar-fixed-height: {fixed_height}px;
+        }}
+        #outer > table > tbody > tr {{
+            box-sizing: border-box !important;
+            padding: 6px 0 18px !important;
+        }}
+        #outer > table > tbody > tr > td {{
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }}
+        #outer button {{
+            border: {border_size}px solid var(--onigiri-bbar-border, {conf.get('onigiri_reviewer_btn_border_color_light', '#DBDBDB')}) !important;
+        }}
+        #outer button.onigiri-show-answer-btn:hover {{ transform: none !important; }}
+        """)
+        border_selectors = {
+            "show_answer": "#outer button.onigiri-show-answer-btn",
+            "other": "#outer button.onigiri-other-btn",
+            "timer": "#outer button.onigiri-timer-out-btn",
+            **{key: f'#outer button[data-onigiri-ease="{ease}"]' for ease, key in
+               ((1, "again"), (2, "hard"), (3, "good"), (4, "easy"))},
+        }
+        # Show Answer and timers are also classified as utility buttons, so
+        # utility rules precede their more specific family overrides.
+        for family in ("other", "show_answer", "again", "hard", "good", "easy", "timer"):
+            selector = border_selectors[family]
+            for mode, prefix, fallback in (("light", "", "#DBDBDB"), ("dark", ".nightMode ", "#444444")):
+                color = conf.get(f"onigiri_reviewer_{family}_border_{mode}") or conf.get(f"onigiri_reviewer_btn_border_color_{mode}", fallback)
+                css.append(f"{prefix}{selector} {{ --onigiri-bbar-border: {color}; }}")
+        with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "reviewer_buttons_shared.css"), encoding="utf-8") as handle:
+            css.append(handle.read())
     return "<style>" + "\n".join(css) + "</style>" + "\n".join(scripts)
 def _onigiri_render_deck_tree(self, *args, **kwargs):
     """

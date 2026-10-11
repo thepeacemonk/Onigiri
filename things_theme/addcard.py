@@ -697,7 +697,7 @@ def _redress(addcards: AddCards) -> None:
             m.exec(add_btn.mapToGlobal(QPoint(0, add_btn.height())))
         except Exception as e:
             try:
-                from aqt.utils import showWarning
+                from ..ui_kit.onigiri_notifications import notify_warning as showWarning
                 showWarning(f"Recent menu failed: {e}")
             except Exception:
                 pass

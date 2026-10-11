@@ -401,38 +401,13 @@ def bento_games(asset_url):
 
 def _confirm(parent, title, question):
     from aqt.qt import QMessageBox
-    from aqt.theme import theme_manager
+    from ..ui_kit.onigiri_notifications import brand_message_box
 
-    # Keep the confirmation native (it remains a real Qt modal dialog, so it
-    # correctly owns focus above the WebView) while matching Onigiri's flat,
-    # minimal surfaces instead of the platform's legacy bright button chrome.
-    dark = bool(getattr(theme_manager, "night_mode", False))
-    panel = "#242424" if dark else "#ffffff"
-    inset = "#303030" if dark else "#f2f2f2"
-    border = "#454545" if dark else "#dcdde1"
-    fg = "#f4f4f5" if dark else "#202124"
-    muted = "#a1a1a4" if dark else "#63666c"
-    accent = "#00A982"
     box = QMessageBox(parent)
-    box.setWindowTitle("Onigiri")
-    box.setText(title or "Confirm action")
+    brand_message_box(box, title)
     box.setInformativeText(question or "This action cannot be undone.")
-    box.setStandardButtons(
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-    )
+    box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     box.setDefaultButton(QMessageBox.StandardButton.No)
-    box.setStyleSheet(f"""
-        QMessageBox {{ background: {panel}; color: {fg}; }}
-        QMessageBox QLabel {{ color: {fg}; background: transparent; }}
-        QMessageBox QLabel#qt_msgbox_informativelabel {{ color: {muted}; }}
-        QMessageBox QPushButton {{
-            min-width: 72px; min-height: 32px; padding: 0 14px;
-            border: 1px solid {border}; border-radius: 10px;
-            background: {inset}; color: {fg};
-        }}
-        QMessageBox QPushButton:hover {{ background: {inset}; border-color: {accent}; }}
-        QMessageBox QPushButton:default {{ background: {accent}; color: #ffffff; border-color: {accent}; }}
-    """)
     return box.exec() == QMessageBox.StandardButton.Yes
 
 

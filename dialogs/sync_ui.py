@@ -1,10 +1,11 @@
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    Qt, QFrame, QSizePolicy, QGraphicsDropShadowEffect, QColor
+    Qt, QFrame, QSizePolicy, QGraphicsDropShadowEffect, QColor, QIcon
 )
 from datetime import datetime
 from ..core.sync import onigiri_sync
 from ..core.translations import tr
+from ..ui_kit.onigiri_notifications import _branded_title, _info_dialog_icon_pixmap, _info_dialog_palette
 
 from aqt.theme import theme_manager
 from aqt import mw
@@ -16,7 +17,8 @@ class SyncConflictDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("sync_conflict_title"))
+        self.setWindowTitle(_branded_title(tr("sync_conflict_title")))
+        self.setWindowIcon(QIcon(_info_dialog_icon_pixmap(size=36)))
         self.setFixedWidth(500)
         self.result_choice = None # 'local' or 'cloud'
 
@@ -24,9 +26,10 @@ class SyncConflictDialog(QDialog):
 
     def _setup_ui(self):
         is_dark = theme_manager.night_mode
-        bg_color = "#2c2c2c" if is_dark else "#f5f5f5"
-        text_color = "#e0e0e0" if is_dark else "#333"
-        desc_color = "#aaa" if is_dark else "#555"
+        palette = _info_dialog_palette()
+        bg_color = palette["panel"]
+        text_color = palette["fg"]
+        desc_color = palette["muted"]
         btn_local_bg = "#3c3c3c" if is_dark else "#f0f0f0"
         btn_local_hover = "#4c4c4c" if is_dark else "#e0e0e0"
         
@@ -37,9 +40,16 @@ class SyncConflictDialog(QDialog):
         layout.setSpacing(18)
 
         # Header
-        header = QLabel(tr("sync_conflict_heading"))
-        header.setStyleSheet("font-size: 22px; font-weight: bold; color: #E74C3C; background: transparent;")
-        layout.addWidget(header)
+        header_row = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(_info_dialog_icon_pixmap(size=42))
+        logo.setAccessibleName("Onigiri")
+        header_row.addWidget(logo)
+        header = QLabel(_branded_title(tr("sync_conflict_heading")))
+        header.setWordWrap(True)
+        header.setStyleSheet(f"font-size: 22px; font-weight: bold; color: {text_color}; background: transparent;")
+        header_row.addWidget(header, 1)
+        layout.addLayout(header_row)
 
         desc = QLabel(tr("sync_conflict_desc"))
         desc.setWordWrap(True)

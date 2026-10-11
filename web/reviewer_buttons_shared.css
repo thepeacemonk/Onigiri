@@ -1,0 +1,241 @@
+/* Loaded after the component styles in BOTH the reviewer and Settings.
+   Keep the same classes and geometry so the preview is the actual component. */
+:is(#outer, .osw-preview-bbar-bar) .onigiri-count-pill,
+:is(#outer, .osw-preview-bbar-bar) .onigiri-timer-pill {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  padding: 0 8px !important;
+  border-radius: 999px !important;
+  box-sizing: border-box !important;
+  font-weight: 600 !important;
+  font-size: .9em !important;
+  font-variant-numeric: tabular-nums !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+}
+/* A short underline marks the current queue without shifting its number. */
+:is(#outer, .osw-preview-bbar-bar) .onigiri-count-pill.is-current-card::before,
+:is(#outer, .osw-preview-bbar-bar) .stat2 .onigiri-count-pill.is-current-card::before {
+  content: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts {
+  width: min(360px, 74vw) !important;
+  min-width: 0 !important;
+  max-width: 360px !important;
+}
+:is(#outer, .osw-preview-bbar-bar) .onigiri-count-pill.is-current-card::after {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline-start: calc(50% - 6px) !important;
+  bottom: 3px !important;
+  width: 12px !important;
+  height: 2px !important;
+  border-radius: 1px !important;
+  background: currentColor !important;
+  pointer-events: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed {
+  --onigiri-bbar-primary-width: min(max(540px, calc(var(--onigiri-bbar-font-size, 14px) * 22)), calc(100cqw - 280px));
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 16px !important;
+  font-size: var(--onigiri-bbar-font-size, 14px) !important;
+  width: var(--onigiri-bbar-primary-width) !important;
+  min-width: var(--onigiri-bbar-primary-width) !important;
+  max-width: var(--onigiri-bbar-primary-width) !important;
+  height: var(--onigiri-bbar-fixed-height, 48px) !important;
+  min-height: var(--onigiri-bbar-fixed-height, 48px) !important;
+  padding: var(--onigiri-bbar-fixed-padding, 7px) 10px var(--onigiri-bbar-fixed-padding, 7px) 16px !important;
+  overflow: visible !important;
+  transform: none !important;
+  transition: filter 120ms ease-out !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed:hover {
+  filter: brightness(.97);
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed:active {
+  filter: brightness(.93);
+}
+/* In the Fixed question state the side actions share the CTA's height,
+   including its font, padding and border allowances. */
+/* Anki nests Show Answer in #middle's .stat2 cell. Its native 10px
+   top padding moves the button 5px below the two side actions. */
+#outer.onigiri-bbar-fixed-question #middle table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+}
+#outer.onigiri-bbar-fixed-question #middle td.stat2 {
+  padding-block: 0 !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed-question :is(
+  button.onigiri-other-btn,
+  .osw-preview-bbar-utility,
+  .onigiri-timer-out-btn,
+  .osw-preview-bbar-timer.is-out
+) {
+  height: var(--onigiri-bbar-fixed-height, 48px) !important;
+  min-height: var(--onigiri-bbar-fixed-height, 48px) !important;
+  box-sizing: border-box !important;
+  font-weight: 500 !important;
+  transform: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed-question :is(
+  .osw-preview-bbar-utility,
+  .osw-preview-bbar-timer.is-out
+) {
+  margin: 0 5px !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed-question button:not([data-onigiri-ease]):not([onclick*="ease"]):not([data-cmd*="ease"]):hover {
+  transform: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed .onigiri-show-answer-label {
+  display: block !important;
+  width: auto !important;
+  flex: 1 1 auto !important;
+  line-height: 1.25 !important;
+  font-size: 1em !important;
+  font-weight: 500 !important;
+  white-space: normal !important;
+  text-align: start !important;
+  text-wrap: balance;
+  transition: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed .onigiri-pre-answer-counts {
+  position: static !important;
+  inset: auto !important;
+  display: flex !important;
+  align-items: stretch !important;
+  width: auto !important;
+  height: var(--onigiri-bbar-count-height, 30px) !important;
+  min-height: var(--onigiri-bbar-count-height, 30px) !important;
+  flex: 0 0 auto !important;
+  font-size: inherit !important;
+  gap: 5px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  overflow: visible !important;
+  transition: none !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed .onigiri-count-pill,
+:is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed .onigiri-timer-pill {
+  flex: 0 0 auto !important;
+  min-width: 37px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  font-size: .85em !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button:focus-visible {
+  outline: 2px solid currentColor !important;
+  outline-offset: 3px !important;
+}
+:is(#outer, .osw-preview-bbar-bar) button[data-onigiri-ease].is-fixed .onigiri-answer-hover-number {
+  font-size: .66em !important;
+}
+/* The four choices share Show Answer's outer edges; gaps belong inside
+   that width. Native question/answer tables remain scoped to Fixed mode. */
+#outer.onigiri-bbar-fixed .onigiri-fixed-answer-table {
+  display: block !important;
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  margin: 0 !important;
+}
+#outer.onigiri-bbar-fixed .onigiri-fixed-answer-table > tbody {
+  display: block !important;
+}
+#outer.onigiri-bbar-fixed > table > tbody > tr > td:first-child,
+#outer.onigiri-bbar-fixed > table > tbody > tr > td:last-child {
+  min-width: 0 !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed :is(.onigiri-fixed-answer-row, .osw-preview-bbar-buttons) {
+  display: flex !important;
+  width: var(--onigiri-bbar-primary-width) !important;
+  min-width: var(--onigiri-bbar-primary-width) !important;
+  max-width: var(--onigiri-bbar-primary-width) !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+  box-sizing: border-box !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed :is(.onigiri-fixed-answer-row > td, .osw-preview-bbar-btn-cell) {
+  display: flex !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed button[data-onigiri-ease].is-fixed {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  margin: 0 !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed button[data-onigiri-ease].is-fixed .onigiri-answer-label {
+  font-size: var(--onigiri-fixed-answer-label-size, 1em) !important;
+  font-weight: 600 !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed :is(button.onigiri-other-btn:not(.onigiri-show-answer-btn), .osw-preview-bbar-utility, .osw-preview-bbar-timer.is-out) {
+  padding-inline: 10px !important;
+}
+@container (max-width: 720px) {
+  :is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed {
+    font-size: min(var(--onigiri-bbar-font-size, 14px), max(11px, calc((100cqw - var(--onigiri-bbar-side-space, 280px)) / 27))) !important;
+  }
+  :is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed :is(
+    button.onigiri-other-btn:not(.onigiri-show-answer-btn),
+    .osw-preview-bbar-utility,
+    .osw-preview-bbar-timer.is-out
+  ) {
+    font-size: min(var(--onigiri-bbar-font-size, 14px), 16px) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(#outer, .osw-preview-bbar-bar) button,
+  :is(#outer, .osw-preview-bbar-bar) button * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+/* Only copy enters: the button background and geometry are final on the
+   first frame. Timer ticks never restart this front/back feedback. */
+@keyframes onigiri-reviewer-copy-enter {
+  from { opacity: .78; }
+  to { opacity: 1; }
+}
+:is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed .onigiri-bbar-enter :is(
+  .onigiri-show-answer-label,
+  .onigiri-pre-answer-counts,
+  .onigiri-answer-label,
+  .onigiri-answer-hover-number
+) {
+  animation: onigiri-reviewer-copy-enter 120ms cubic-bezier(.16, 1, .3, 1) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed .onigiri-bbar-enter :is(
+    .onigiri-show-answer-label,
+    .onigiri-pre-answer-counts,
+    .onigiri-answer-label,
+    .onigiri-answer-hover-number
+  ) {
+    animation: none !important;
+  }
+}

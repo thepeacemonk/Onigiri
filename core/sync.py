@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import time
 import zipfile
 
@@ -57,7 +58,8 @@ NESTED_LAYOUT_KEYS = {
 ASSET_DIRS = {
     "custom_deck_icons", "fonts", "icons", "main_bg", "profile", "profile_bg",
     "mochi_messenger", "onigimon_backgrounds", "reviewer_bar_bg", "reviewer_bg",
-    "sidebar_bg", "sprites", "toolbar_bg", "user_themes",
+    "sidebar_bg", "sprites", "toolbar_bg", "user_themes", "prep_station_bg",
+    "prep_station_thumbnails",
 }
 GAME_FILE_PREFIXES = (
     "gamification_", "hexagon_land_", "mochi_history_", "onigimon_",
@@ -176,7 +178,7 @@ class SyncManager:
         if os.path.exists(legacy) and not os.path.exists(self._state_file):
             try:
                 os.makedirs(self._user_files_dir, exist_ok=True)
-                os.replace(legacy, self._state_file)
+                shutil.copy2(legacy, self._state_file)
             except OSError as exc:
                 print(f"Onigiri Sync: could not migrate sync state: {exc}")
 
@@ -191,8 +193,7 @@ class SyncManager:
     def _load_state(self):
         if os.path.exists(self._state_file):
             try:
-                with open(self._state_file, "r", encoding="utf-8") as handle:
-                    state = json.load(handle)
+                state = safe_storage.read_json(self._state_file, default={})
                 if isinstance(state, dict):
                     state.setdefault("last_zip_mtime", {})
                     state.setdefault("last_zip_size", {})
@@ -261,10 +262,7 @@ class SyncManager:
                 addon_groups["layout"][key] = layout
 
         collection_groups = {category: {} for category in SYNC_CATEGORY_FLAGS}
-        try:
-            collection_conf = dict(mw.col.conf)
-        except Exception:
-            collection_conf = {}
+        collection_conf = safe_storage.collection_config_snapshot(mw.col)
         for key, value in collection_conf.items():
             if not _is_onigiri_collection_key(key):
                 continue
@@ -314,16 +312,27 @@ class SyncManager:
                 continue
         return digest.hexdigest()
 
-    def pack_user_files(self):
+    def pack_user_files(self, force=False):
         """Build a media zip containing only this device's enabled categories."""
         if not self._ensure_init():
             return False
+        if not safe_storage.flush_pending():
+            return False
         sync_path = self.get_sync_file_path()
+        # A first launch after an upgrade may have no sync bookkeeping (older
+        # releases kept it outside user_files). Do not overwrite the existing
+        # media archive before the user resolves which saved copy to keep.
+        if not force and self.check_conflict() != "none":
+            return False
         temp_zip = sync_path + ".tmp"
         conf = config.get_config_readonly()
         enabled = self.categories(conf)
-        manifest = self._settings_manifest(conf, enabled)
-        local_signature = self._content_signature(conf, enabled, manifest)
+        try:
+            manifest = self._settings_manifest(conf, enabled)
+            local_signature = self._content_signature(conf, enabled, manifest)
+        except Exception as exc:
+            print(f"Onigiri Sync: Could not read collection settings; existing sync archive retained: {exc}")
+            return False
         state = self._load_state()
         profile_name = mw.pm.name
         if (
@@ -376,8 +385,10 @@ class SyncManager:
         preferred = f"settings_{getattr(mw.pm, 'name', '')}.json"
         settings_name = next(
             (name for name in settings_names if os.path.basename(name) == preferred),
-            settings_names[0],
+            settings_names[0] if len(settings_names) == 1 else None,
         )
+        if settings_name is None:
+            return {"addon_config": {}, "collection_config": {}}
         try:
             legacy_conf = json.loads(archive.read(settings_name).decode("utf-8"))
         except Exception:
@@ -440,16 +451,42 @@ class SyncManager:
             return False
         enabled = self.categories(config.get_config_readonly())
         try:
+            if not safe_storage.flush_pending():
+                return False
+            safe_storage.backup_before_upgrade()
             with zipfile.ZipFile(sync_path, "r") as archive:
                 manifest = self._read_manifest(archive) or self._legacy_manifest(archive)
                 self._apply_manifest(manifest, enabled)
                 self._extract_selected_files(archive, enabled)
+            self._invalidate_loaded_state()
             stat = os.stat(sync_path)
             self._save_state(stat.st_mtime, stat.st_size)
             return True
         except Exception as exc:
             print(f"Onigiri Sync: Failed to unpack files: {exc}")
             return False
+
+    @staticmethod
+    def _invalidate_loaded_state():
+        """Prevent a pre-sync in-memory game from saving over imported data."""
+        config.invalidate_config_cache()
+        addon = __package__.rsplit(".", 1)[0]
+        module = sys.modules.get(addon + ".gamification.gamification")
+        game = getattr(module, "_gamification_data", None)
+        if game is not None:
+            game.reload()
+        for name, attribute in (("onigimon", "_state"), ("hexagon_land", "_state_cache")):
+            module = sys.modules.get(addon + ".gamification." + name)
+            manager = getattr(module, "manager", None)
+            if manager is not None:
+                setattr(manager, attribute, None)
+        module = sys.modules.get(addon + ".gamification.mochi_messages")
+        if module is not None:
+            module._HISTORY_CACHE = None
+        module = sys.modules.get(addon + ".gamification.nook_level")
+        manager = getattr(module, "manager", None)
+        if manager is not None:
+            manager.invalidate_daily_cache()
 
     def get_local_mtime(self):
         """Latest selected source timestamp, excluding local sync bookkeeping."""
@@ -505,12 +542,7 @@ class SyncManager:
             return "cloud_newer"
         if abs(stat.st_mtime - last_mtime) < 1.0 and stat.st_size == last_size:
             return "none"
-        local_time = self.get_local_mtime()
-        if stat.st_mtime > local_time + 5:
-            return "cloud_newer"
-        if local_time > stat.st_mtime + 5:
-            return "local_newer"
-        return "none"
+        return "cloud_newer"
 
 
 onigiri_sync = SyncManager()

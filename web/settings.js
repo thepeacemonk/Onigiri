@@ -3673,6 +3673,9 @@
           sample.style.background = (bgKey && values[bgKey]) || (CTX.dark ? "#3a3a3a" : "#f0f0f0");
           sample.style.color = (textKey && values[textKey]) || (CTX.dark ? "#f0f0f0" : "#2c2c2c");
           sample.style.borderColor = (borderKey && values[borderKey]) || "";
+          if (section.preview_kind === "reviewer_bottom_bar") {
+            bbarButtonBorder(sample, values, role.id.replace("bbar_colors_", ""), suffix, true);
+          }
         };
         option.__paintColorGroupPreview();
       }
@@ -5912,8 +5915,8 @@
 
     if (section.preview_kind === "reviewer_bottom_bar") {
       headControls.appendChild(renderLocalHeadChoice(
-        "Preview",
-        [["answer", "Answer Buttons"], ["pre_answer", "Pre-Answer Buttons"]].map(function (pair) {
+        str("preview", "Preview"),
+        [["answer", str("answer_buttons", "Answer Buttons")], ["pre_answer", str("show_answer", "Show Answer")]].map(function (pair) {
           return { value: pair[0], label: pair[1] };
         }),
         function () { return bbarActiveMode; },
@@ -8388,9 +8391,42 @@
     return btn;
   }
 
+  function bbarFixedMetrics(vals, size) {
+    const padding = Math.max(7, Math.min(100, Number(vals.bbar_btn_padding) || 0));
+    const border = Math.max(0, Math.min(10, Number(vals.bbar_btn_border_size) || 0));
+    const countHeight = Math.max(30, Math.ceil(size * .85 + 10));
+    return { padding: padding, countHeight: countHeight,
+      height: Math.max(48, Number(vals.bbar_btn_height) || 0,
+        Math.max(Math.ceil(size * 1.25), countHeight) + 2 * (padding + border)) };
+  }
+
+  function bbarFitFixedAnswerLabel(btn) {
+    const style = window.getComputedStyle(btn);
+    const available = Math.max(1, btn.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+    let size = parseFloat(style.fontSize) || 14;
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) return;
+    const label = btn.querySelector(".onigiri-answer-label").textContent;
+    while (size > 8) {
+      context.font = `600 ${size}px ${style.fontFamily}`;
+      if (context.measureText(label).width <= available) break;
+      size = Math.max(8, size - .5);
+    }
+    btn.style.setProperty("--onigiri-fixed-answer-label-size", size + "px");
+  }
+
+  function bbarButtonBorder(node, vals, family, suffix, enabled) {
+    const width = enabled ? Math.max(0, Math.min(10, Number(vals.bbar_btn_border_size) || 0)) : 0;
+    node.style.border = width + "px solid " + (vals["bbar_" + family + "_border_" + suffix] ||
+      vals["bbar_border_" + suffix] ||
+      (suffix === "dark" ? "#444444" : "#DBDBDB"));
+  }
+
   function bbarSideColumns(bar, vals, suffix, timerPos, timerPill, customEnabled) {
     const left = el("div", "osw-preview-bbar-side is-left");
     const right = el("div", "osw-preview-bbar-side is-right");
+    left.style.paddingLeft = "10px";
+    right.style.paddingRight = "10px";
     const otherBg = customEnabled
       ? (vals["bbar_other_bg_" + suffix] || (suffix === "dark" ? "#3a3a3a" : "#ffffff"))
       : (suffix === "dark" ? "#454545" : "#f0f0f0");
@@ -8400,21 +8436,27 @@
     const radius = Math.max(0, Number(vals["bbar_btn_radius"] || 0));
     const padding = Math.max(0, Number(vals["bbar_btn_padding"] || 0));
     const height = Math.max(0, Number(vals["bbar_btn_height"] || 0));
-    const edit = bbarUtilityButton("Edit");
+    const edit = bbarUtilityButton(str("bbar_edit", "Edit"));
     edit.style.background = otherBg; edit.style.color = otherFg;
-    edit.style.borderRadius = radius + "px"; edit.style.padding = padding + "px 10px"; edit.style.minHeight = height + "px";
-    const more = bbarUtilityButton("More");
+    edit.style.borderRadius = radius + "px"; edit.style.padding = padding + "px 15px"; edit.style.minHeight = height + "px";
+    const more = bbarUtilityButton(str("more", "More"));
     more.style.background = otherBg; more.style.color = otherFg;
-    more.style.borderRadius = radius + "px"; more.style.padding = padding + "px 10px"; more.style.minHeight = height + "px";
+    more.style.borderRadius = radius + "px"; more.style.padding = padding + "px 15px"; more.style.minHeight = height + "px";
+    [edit, more].forEach(function (button) {
+      bbarButtonBorder(button, vals, "other", suffix, customEnabled);
+      button.style.setProperty("--osw-bbar-utility-hover-bg", vals["bbar_other_hover_bg_" + suffix] || (suffix === "dark" ? "#e0e0e0" : "#2c2c2c"));
+      button.style.setProperty("--osw-bbar-utility-hover-fg", vals["bbar_other_hover_text_" + suffix] || (suffix === "dark" ? "#3a3a3a" : "#f0f0f0"));
+    });
     left.appendChild(edit);
     // "Out" is the reviewer bar's right-side utility placement: keep the
     // timer immediately before More rather than treating it as a left-side
     // companion to Edit. It uses More's exact button geometry in the preview.
-    if (timerPos === "out" && timerPill) {
+    if (timerPill) {
       timerPill.style.borderRadius = radius + "px";
-      timerPill.style.padding = padding + "px 10px";
+      timerPill.style.padding = padding + "px 15px";
       timerPill.style.minHeight = height + "px";
-      right.appendChild(timerPill);
+      bbarButtonBorder(timerPill, vals, "timer", suffix, customEnabled);
+      (timerPos === "left" ? left : right).appendChild(timerPill);
     }
     right.appendChild(more);
     bar.appendChild(left);
@@ -8422,6 +8464,8 @@
   }
 
   PREVIEW_PAINTERS.reviewer_bottom_bar = function (stage, vals, isDark) {
+    const stateChanged = stage.__onigiriBbarMode !== bbarActiveMode;
+    stage.__onigiriBbarMode = bbarActiveMode;
     stage.innerHTML = "";
     stage.style.padding = "0";
     paintResolvedBackdropState(stage, bbarBackgroundState(vals, isDark));
@@ -8430,20 +8474,34 @@
     const radius = Math.max(0, Number(vals["bbar_btn_radius"] || 0));
     const padding = Math.max(0, Number(vals["bbar_btn_padding"] || 0));
     const btnHeight = Math.max(0, Number(vals["bbar_btn_height"] || 0));
-    const barHeight = Math.max(20, Math.min(220, Number(vals["bbar_bar_height"] || 60)));
+    let barHeight = Math.max(20, Math.min(300, Number(vals["bbar_bar_height"] || 60)));
     const timerPos = vals["bbar_timer_position"] || "right";
     const stattxtMode = bbarStatTextMode(vals);
     const customEnabled = vals["bbar_custom_enabled"] !== false;
+    const reviewerFont = designerFontRole(vals, "reviewer_controls", isDark, "main");
+    const fixed = bbarFixedMetrics(vals, reviewerFont.size);
+    if (customEnabled) barHeight = Math.max(barHeight, btnHeight + 24);
+    if (customEnabled && stattxtMode === "fixed") barHeight = Math.max(barHeight, fixed.height + 24);
 
-    const timerPill = el("div", "osw-preview-bbar-timer" + (timerPos === "out" ? " is-out" : ""), "0:07");
+    const standaloneTimer = timerPos === "out" || bbarActiveMode === "answer";
+    const timerPill = el("div", "osw-preview-bbar-timer" + (standaloneTimer ? " is-out" : " onigiri-timer-pill"), "0:07");
     timerPill.style.background = vals["bbar_timer_bg_" + suffix] || (isDark ? "#3a3a3a" : "#e5e5e5");
     timerPill.style.color = vals["bbar_timer_text_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c");
 
     const bar = el("div", "osw-preview-bbar-bar");
+    bar.style.containerType = "inline-size";
+    bar.classList.toggle("onigiri-bbar-fixed", customEnabled && stattxtMode === "fixed");
+    bar.classList.toggle("onigiri-bbar-fixed-question",
+      customEnabled && stattxtMode === "fixed" && bbarActiveMode === "pre_answer");
     bar.style.height = barHeight + "px";
-    bar.style.padding = padding + "px " + (padding + 6) + "px";
+    bar.style.padding = "6px 0 18px";
+    stage.style.minHeight = Math.max(120, barHeight) + "px";
+    bar.style.setProperty("--onigiri-bbar-fixed-padding", fixed.padding + "px");
+    bar.style.setProperty("--onigiri-bbar-count-height", fixed.countHeight + "px");
+    bar.style.setProperty("--onigiri-bbar-fixed-height", fixed.height + "px");
+    bar.style.setProperty("--onigiri-bbar-font-size", reviewerFont.size + "px");
     const rightSide = bbarSideColumns(
-      bar, vals, suffix, timerPos, timerPos === "out" ? timerPill : null, customEnabled
+      bar, vals, suffix, timerPos, timerPos !== "off" && standaloneTimer ? timerPill : null, customEnabled
     );
 
     if (bbarActiveMode === "answer") {
@@ -8455,8 +8513,12 @@
         // The real fixed-mode interval inherits the ease button's own text
         // colour. Using the separate generic interval tint here made every
         // number grey even when its button text was brown, green, or blue.
-        interval.style.color = "inherit";
+        const intervalColor = vals["bbar_interval_text_" + suffix] || (isDark ? "#aaaaaa" : "#666666");
+        interval.style.color = intervalColor.toLowerCase() === (isDark ? "#aaaaaa" : "#666666") ? "inherit" : intervalColor;
         const btn = el("button", "osw-preview-bbar-btn");
+        btn.setAttribute("data-onigiri-ease", String(["again", "hard", "good", "easy"].indexOf(key) + 1));
+        btn.classList.toggle("is-fixed", stattxtMode === "fixed");
+        interval.classList.add("onigiri-answer-hover-number");
         btn.type = "button";
         btn.style.background = customEnabled
           ? (vals["bbar_" + key + "_bg_" + suffix] || "#cccccc")
@@ -8467,7 +8529,8 @@
         btn.style.borderRadius = radius + "px";
         btn.style.padding = padding + "px 15px";
         btn.style.minHeight = btnHeight + "px";
-        btn.appendChild(el("span", "osw-preview-bbar-label", spec[1]));
+        bbarButtonBorder(btn, vals, key, suffix, customEnabled);
+        btn.appendChild(el("span", "osw-preview-bbar-label onigiri-answer-label", str(key, spec[1])));
         if (stattxtMode !== "off") btn.appendChild(interval);
         cell.appendChild(btn);
         buttons.appendChild(cell);
@@ -8475,7 +8538,8 @@
       bar.appendChild(buttons);
       bar.appendChild(rightSide);
     } else {
-      const otherBtn = el("button", "osw-preview-bbar-btn osw-preview-bbar-btn-other osw-preview-bbar-show is-" + stattxtMode);
+      const otherBtn = el("button", "osw-preview-bbar-btn osw-preview-bbar-btn-other osw-preview-bbar-show" +
+        (customEnabled ? " onigiri-show-answer-btn onigiri-has-pre-answer-counts is-" + stattxtMode : " is-off"));
       otherBtn.type = "button";
       otherBtn.style.background = customEnabled
         ? (vals["bbar_show_answer_bg_" + suffix] || (isDark ? "#3a3a3a" : "#ffffff"))
@@ -8486,16 +8550,18 @@
       otherBtn.style.borderRadius = radius + "px";
       otherBtn.style.padding = padding + "px 15px";
       otherBtn.style.minHeight = btnHeight + "px";
+      bbarButtonBorder(otherBtn, vals, "show_answer", suffix, customEnabled);
       otherBtn.style.setProperty("--osw-bbar-stats-bg", bbarStatsBarBg(vals, isDark, suffix));
       otherBtn.style.setProperty(
         "--osw-bbar-stats-fg",
         vals["bbar_show_answer_hover_text_" + suffix] || (isDark ? "#3a3a3a" : "#f0f0f0")
       );
 
-      const counts = el("div", "osw-preview-bbar-counts");
+      const counts = el("div", "osw-preview-bbar-counts onigiri-pre-answer-counts");
       [["new_bubble", "new_text", "12"], ["learn_bubble", "learn_text", "4"], ["review_bubble", "review_text", "23"]]
         .forEach(function (spec) {
-          const pill = el("span", "osw-preview-bbar-count-pill", spec[2]);
+          const pill = el("span", "osw-preview-bbar-count-pill onigiri-count-pill" +
+            (spec[0] === "learn_bubble" ? " is-current-card" : ""), spec[2]);
           pill.style.background = vals["ovstyle_color_" + spec[0] + "_" + suffix] || "#888888";
           pill.style.color = vals["ovstyle_color_" + spec[1] + "_" + suffix] || "#ffffff";
           counts.appendChild(pill);
@@ -8503,7 +8569,7 @@
 
       if (customEnabled && timerPos === "left") counts.insertBefore(timerPill, counts.firstChild);
       if (customEnabled && timerPos === "right") counts.appendChild(timerPill);
-      otherBtn.appendChild(el("span", "osw-preview-bbar-label", "Show Answer"));
+      otherBtn.appendChild(el("span", "osw-preview-bbar-label onigiri-show-answer-label", str("show_answer", "Show Answer")));
       if (customEnabled && stattxtMode !== "off") otherBtn.appendChild(counts);
       if (customEnabled && (stattxtMode === "fixed" || stattxtMode === "inverted")) {
         otherBtn.style.background = bbarStatsBarBg(vals, isDark, suffix);
@@ -8516,8 +8582,8 @@
     // Reviewer Fonts is edited from this card, so the preview must use the
     // same component role as the live bottom webview. Apply it to every piece
     // of text inside the buttons, including intervals, counts, and the timer.
-    const reviewerFont = designerFontRole(vals, "reviewer_controls", isDark, "main");
     bar.style.fontFamily = reviewerFont.family;
+    bar.style.fontSize = reviewerFont.size + "px";
     bar.querySelectorAll([
       ".osw-preview-bbar-btn",
       ".osw-preview-bbar-btn *",
@@ -8529,11 +8595,18 @@
       if (reviewerFont.customColor) node.style.color = reviewerFont.customColor;
     });
     stage.appendChild(bar);
+    if (customEnabled && stattxtMode === "fixed" && bbarActiveMode === "answer") {
+      bar.querySelectorAll("button[data-onigiri-ease]").forEach(bbarFitFixedAnswerLabel);
+    }
+    if (customEnabled && stattxtMode === "fixed" && stateChanged) {
+      const primary = bar.querySelector(".onigiri-show-answer-btn,.osw-preview-bbar-buttons");
+      if (primary) primary.classList.add("onigiri-bbar-enter");
+    }
 
-    if (!vals["bbar_custom_enabled"]) {
+    if (!customEnabled) {
       stage.appendChild(el(
         "div", "osw-preview-bbar-disabled-note",
-        "Custom buttons disabled — Anki's native buttons will be used."
+        str("bbar_native_buttons_note", "Custom buttons disabled — Anki's native buttons will be used.")
       ));
     }
   };
@@ -8653,7 +8726,9 @@
         trackEl.style.width = width + "px";
         trackEl.style.height = thickness + "px";
         trackEl.style.borderRadius = radius + "px";
-        trackEl.style.background = style === "segments" ? "transparent" : track;
+        // Match the reviewer's always-visible total, including surface-coloured tracks.
+        const trackTint = isDark ? "rgba(255, 255, 255, 0.16)" : "rgba(0, 0, 0, 0.12)";
+        trackEl.style.background = "linear-gradient(" + trackTint + ", " + trackTint + "), " + track;
         if (style === "segments") {
           trackEl.classList.add("is-segmented");
           const total = Math.max(1, data.total);

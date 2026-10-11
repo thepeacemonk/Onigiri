@@ -15,8 +15,39 @@ if hasattr(signal, "SIGPIPE"):
     except (OSError, RuntimeError, ValueError):
         pass
 
-from .core.translations import tr
 from aqt import mw, gui_hooks
+
+def _storage_integrity_check():
+    """
+    Repairs anything that would otherwise look like "the update wiped my
+    setup": an orphaned settings file left by a profile rename, a user_files
+    folder emptied by a manual reinstall, or a half-finished Anki update.
+
+    Registered before every other profile hook so the repairs land before
+    anything reads the config.
+    """
+    try:
+        profile_name = mw.pm.name if mw.pm else None
+        try:
+            shared_config = mw.addonManager.getConfig(addon_package)
+        except Exception:
+            shared_config = None
+        safe_storage.backup_before_upgrade(shared_config)
+        messages = safe_storage.run_startup_check(profile_name)
+        # Anything restored on disk predates the cached config, so drop it.
+        config.invalidate_config_cache()
+        if messages:
+            from .ui_kit.onigiri_notifications import notify_warning
+
+            notify_warning("\n\n".join(messages), title=tr("onigiri_storage_notice"))
+    except Exception as e:
+        print(f"[Onigiri] storage integrity check failed: {e}")
+
+
+# Register before importing any module that may register a profile loader.
+gui_hooks.profile_did_open.append(_storage_integrity_check)
+
+from .core.translations import tr
 from aqt.deckbrowser import DeckBrowser
 from .rendering import onigiri_renderer
 from .rendering import shima_theme
@@ -716,20 +747,13 @@ def verify_coin_integrity():
                     restaurant_data['_security_token'] = security_token
                     safe_storage.atomic_write_json(gamification_file, data)
                 elif not verify_coin_data(coins, security_token):
-                    # Tampering detected!
-                    print(f"[ONIGIRI SECURITY] ⚠️ TAMPERING DETECTED! Coins: {coins}, Invalid token")
-                    restaurant_data['taiyaki_coins'] = 0
-                    restaurant_data['_security_token'] = generate_coin_token(0)
+                    # Older independent writers could leave a stale token.
+                    # A local checksum cannot prove tampering, and resetting
+                    # a legitimate upgraded balance would destroy progress.
+                    safe_storage.backup_before_upgrade()
+                    restaurant_data['_security_token'] = generate_coin_token(coins)
                     safe_storage.atomic_write_json(gamification_file, data)
-                    
-                    # Also remove from config.json if present
-                    conf = config.get_config()
-                    if 'achievements' in conf and 'restaurant_level' in conf['achievements']:
-                        if 'taiyaki_coins' in conf['achievements']['restaurant_level']:
-                            del conf['achievements']['restaurant_level']['taiyaki_coins']
-                            config.write_config(conf)
-                    
-                    print("[ONIGIRI SECURITY] Coins reset to 0 due to tampering")
+                    print("[Onigiri] Refreshed the legacy coin checksum; balance preserved")
                 else:
                     # Token is valid - ensure config.json does NOT have coins
                     # Check RAW config to see if it exists on disk
@@ -848,11 +872,10 @@ def migrate_sidebar_slideshow_mode():
 
 
 def migrate_profile_level_color_default():
-    """Replace the legacy Profile Level bar default once per collection.
+    """Fill an absent Profile Level bar color once per collection.
 
-    Older releases stored the untouched custom bar default as ``#4C85AF`` in
-    collection config. Keep genuinely chosen colors intact while moving that
-    legacy default to the shared Profile Level color.
+    Older releases stored ``#4C85AF`` explicitly. Preserve it, since it can
+    also be a deliberate user choice, and seed only collections without a color.
     """
     try:
         marker = "_onigiri_profile_level_color_default_migrated"
@@ -861,7 +884,7 @@ def migrate_profile_level_color_default():
         current = config.get_collection_config(
             "onigiri_profile_level_bar_custom_color", ""
         )
-        if isinstance(current, str) and current.strip().lower() == "#4c85af":
+        if not current:
             config.set_collection_config(
                 "onigiri_profile_level_bar_custom_color",
                 config.DEFAULT_PROFILE_LEVEL_COLOR,
@@ -1071,7 +1094,7 @@ def on_sync_did_finish():
             showInfo(tr("sync_data_updated"))
         elif choice == 'local':
             # User wants to keep local, so pack it again to set as definitive
-            onigiri_sync.pack_user_files()
+            onigiri_sync.pack_user_files(force=True)
     elif conflict == 'local_newer':
         # This shouldn't happen immediately after sync unless something is weird
         # but we can pack just in case
@@ -1105,31 +1128,6 @@ def on_deck_options_shown(menu, deck_id):
     a = menu.addAction(tr("change_icon"))
     a.triggered.connect(lambda _, did=deck_id: on_show_icon_chooser(did))
 
-def _storage_integrity_check():
-    """
-    Repairs anything that would otherwise look like "the update wiped my
-    setup": an orphaned settings file left by a profile rename, a user_files
-    folder emptied by a manual reinstall, or a half-finished Anki update.
-
-    Registered before every other profile hook so the repairs land before
-    anything reads the config.
-    """
-    try:
-        profile_name = mw.pm.name if mw.pm else None
-        try:
-            shared_config = mw.addonManager.getConfig(addon_package)
-        except Exception:
-            shared_config = None
-        safe_storage.backup_before_upgrade(shared_config)
-        messages = safe_storage.run_startup_check(profile_name)
-        # Anything restored on disk predates the cached config, so drop it.
-        config.invalidate_config_cache()
-        if messages:
-            from aqt.utils import showInfo
-
-            showInfo("\n\n".join(messages), title="Onigiri")
-    except Exception as e:
-        print(f"[Onigiri] storage integrity check failed: {e}")
 
 
 def _storage_mirror_on_close():
@@ -1273,7 +1271,6 @@ gui_hooks.editor_did_init.append(_on_editor_did_init)
 
 # Hook Registration
 gui_hooks.main_window_did_init.append(setup_global_hooks)
-gui_hooks.profile_did_open.append(_storage_integrity_check)
 gui_hooks.profile_will_close.append(_storage_mirror_on_close)
 gui_hooks.profile_did_open.append(on_profile_did_open)
 

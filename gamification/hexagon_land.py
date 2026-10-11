@@ -1614,7 +1614,6 @@ class HexagonLandManager:
         user_files = os.path.join(addon_path, "user_files")
         os.makedirs(user_files, exist_ok=True)
         path = os.path.join(user_files, f"hexagon_land_{_profile_name()}.json")
-        self._data_path_cache = path
         return path
 
     def load(self) -> HexagonLandState:
@@ -1622,8 +1621,9 @@ class HexagonLandManager:
         if self._state_cache is not None and self._data_path_cache == path:
             return copy.deepcopy(self._state_cache)
         try:
+            safe_storage.backup_before_upgrade()
             raw = safe_storage.read_json(path, default={}, label="Your Hexagon Land island")
-            state = HexagonLandState(**raw)
+            state = safe_storage.dataclass_from_dict(HexagonLandState, raw)
             if not raw:
                 self.save(state)
             today = _anki_today()
@@ -1658,13 +1658,15 @@ class HexagonLandManager:
             print(f"Onigiri: Error loading Hexagon Land data: {exc}")
             state = HexagonLandState()
         self._state_cache = state
+        self._data_path_cache = path
         return copy.deepcopy(state)
 
     def save(self, state: HexagonLandState) -> None:
         state.updated_at = datetime.now().isoformat()
         path = self.data_path()
-        safe_storage.atomic_write_json(path, asdict(state))
+        safe_storage.atomic_write_json(path, safe_storage.dataclass_payload(state))
         self._state_cache = copy.deepcopy(state)
+        self._data_path_cache = path
 
     def reset(self) -> None:
         self.save(HexagonLandState(last_message=tr("hexland_reset_message")))

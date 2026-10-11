@@ -18,11 +18,14 @@ chain of fallbacks before they ever admit defeat, and a mirror of the critical
 files lives *outside* ``addons21`` where a manual reinstall cannot reach it.
 """
 
+import copy
+import hashlib
 import json
 import os
 import shutil
 import time
 import zipfile
+from dataclasses import asdict, fields
 
 # Files whose loss would visibly undo the user's setup. Everything else in
 # user_files (caches, generated icons) can be rebuilt, so it stays out of the
@@ -36,6 +39,39 @@ CRITICAL_PREFIXES = (
     "communications_",
 )
 CRITICAL_SUBDIRS = ("hashi_notes", "user_themes", "prep_station", "pomodoro")
+_UPGRADE_BACKUPS = set()
+
+
+def dataclass_from_dict(cls, data):
+    """Load known fields without throwing away older or extension fields."""
+    names = {item.name for item in fields(cls)}
+    state = cls(**{key: value for key, value in data.items() if key in names})
+    state._onigiri_extra_fields = copy.deepcopy(
+        {key: value for key, value in data.items() if key not in names}
+    )
+    return state
+
+
+def dataclass_payload(state):
+    payload = copy.deepcopy(getattr(state, "_onigiri_extra_fields", {}))
+    payload.update(asdict(state))
+    return payload
+
+
+def collection_config_snapshot(collection):
+    """Read all keys without iterating Anki's non-iterable ConfigManager.
+
+    Modern Anki exposes a JSON dictionary through Collection.all_config().
+    Only old collections with a real dict may use the legacy interface.
+    Fail explicitly instead of backing up or syncing an empty substitute.
+    """
+    if collection is None:
+        return {}
+    export = getattr(collection, "all_config", None)
+    data = export() if callable(export) else collection.conf
+    if not isinstance(data, dict):
+        raise TypeError("Anki did not provide a collection configuration dictionary")
+    return copy.deepcopy(data)
 
 
 def backup_before_upgrade(shared_config=None):
@@ -44,8 +80,38 @@ def backup_before_upgrade(shared_config=None):
     The archive is never refreshed by later launches or saves. It therefore
     remains useful even after a migration has written new-format data.
     """
-    target = os.path.join(external_backup_dir(), "before_progress_upgrade_v1.zip")
+    target = os.path.join(external_backup_dir(), "before_progress_upgrade_v2.zip")
+    try:
+        from aqt import mw
+        profile = str(getattr(getattr(mw, "pm", None), "name", "") or "")
+        collection = getattr(mw, "col", None)
+    except Exception:
+        profile, collection = "", None
+    if shared_config is None:
+        try:
+            shared_config = mw.addonManager.getConfig(mw.addonManager.addonFromModule(__name__))
+        except Exception:
+            pass
+    identity = (target, profile, collection is not None)
+    if identity in _UPGRADE_BACKUPS:
+        return target
+    # Collection settings are profile-specific, unlike the shared asset tree.
+    # Capture each profile before any startup migration changes its config.
+    if collection is not None and profile:
+        suffix = hashlib.sha256(profile.encode("utf-8")).hexdigest()[:16]
+        collection_path = os.path.join(external_backup_dir(),
+                                       f"before_progress_upgrade_v2_{suffix}.json")
+        if not os.path.exists(collection_path):
+            try:
+                data = {"profile": profile, "collection_config": collection_config_snapshot(collection)}
+                if not atomic_write_json(collection_path, data, mirror=False):
+                    return None
+            except Exception as exc:
+                _note(f"Onigiri could not back up your collection settings. Your saved settings were not changed. Details: {exc}",
+                      key="storage_collection_backup_error", error=str(exc))
+                return None
     if os.path.exists(target):
+        _UPGRADE_BACKUPS.add(identity)
         return target
     tmp = target + ".tmp"
     try:
@@ -60,7 +126,12 @@ def backup_before_upgrade(shared_config=None):
                     archive.write(source, "user_files/" + os.path.relpath(source, root))
             if isinstance(shared_config, dict):
                 archive.writestr("legacy_addon_config.json", json.dumps(shared_config))
+            for name in (".onigiri_sync_state.json", "onigiri_layout.json"):
+                source = os.path.join(addon_root(), name)
+                if os.path.isfile(source):
+                    archive.write(source, name)
         os.replace(tmp, target)
+        _UPGRADE_BACKUPS.add(identity)
         return target
     except Exception as exc:
         _cleanup(tmp)
@@ -169,7 +240,7 @@ def _rotate_backup(path):
         # The file on disk is already corrupt; keeping the older .bak is the
         # whole point, so leave it alone.
         return
-    if not _looks_usable(current):
+    if current is None:
         return
     try:
         shutil.copy2(path, path + ".bak")
@@ -222,6 +293,8 @@ def atomic_write_json(path, data, mirror=True):
     if mirror and _is_critical(path):
         _snapshot(path)
         mirror_file(path)
+    # A queued older save must never overwrite an explicit, immediate save.
+    _PENDING_WRITES.pop(path, None)
     return True
 
 
@@ -242,7 +315,7 @@ def schedule_write_json(path, data, delay_ms=_DEFAULT_WRITE_DELAY_MS):
     lost. Callers that must see the file on disk immediately (or that are about
     to hand the file to another process) should call atomic_write_json().
     """
-    _PENDING_WRITES[path] = data
+    _PENDING_WRITES[path] = copy.deepcopy(data)
 
     if path in _SCHEDULED_PATHS:
         return True
@@ -259,7 +332,7 @@ def schedule_write_json(path, data, delay_ms=_DEFAULT_WRITE_DELAY_MS):
     except Exception:
         # No Qt loop (tests, headless tools): fall back to writing right away.
         _SCHEDULED_PATHS.discard(path)
-        flush_pending(path)
+        return flush_pending(path)
     return True
 
 
@@ -271,11 +344,14 @@ def pending_payload(path):
 def flush_pending(path=None):
     """Write queued payloads. Without ``path``, flushes every pending file."""
     paths = [path] if path is not None else list(_PENDING_WRITES.keys())
+    success = True
     for target in paths:
-        data = _PENDING_WRITES.pop(target, None)
+        data = _PENDING_WRITES.get(target)
         if data is None:
             continue
-        atomic_write_json(target, data)
+        if not atomic_write_json(target, data):
+            success = False
+    return success
 
 
 def _cleanup(path):
@@ -299,7 +375,7 @@ def _try_load(path):
         return None, False
 
 
-def read_json(path, default=None, label=None):
+def read_json(path, default=None, label=None, validator=None):
     """
     Load ``path``, falling back through ``.bak``, dated snapshots and the
     external mirror before giving up.
@@ -308,39 +384,50 @@ def read_json(path, default=None, label=None):
     says so out loud rather than letting a corrupt file read as a fresh start.
     """
     label = label or os.path.basename(path)
+    if validator is None and isinstance(default, (dict, list)):
+        validator = lambda value: isinstance(value, type(default))
+
+    def valid(value):
+        try:
+            return validator(value) if validator else True
+        except Exception:
+            return False
 
     # A write queued by schedule_write_json() is newer than anything on disk.
     queued = _PENDING_WRITES.get(path)
-    if queued is not None:
+    if queued is not None and valid(queued):
         try:
             return json.loads(json.dumps(queued))
         except Exception:
             flush_pending(path)
 
-    candidates = [(path, None), (path + ".bak", "backup file")]
-    candidates.extend((snap, "dated snapshot") for snap in _snapshots_for(path))
+    recoveries = [(path + ".bak", "backup file")]
+    recoveries.extend((snap, "dated snapshot") for snap in _snapshots_for(path))
     mirrored = _mirror_path_for(path)
     if mirrored:
-        candidates.append((mirrored, "external backup"))
+        recoveries.append((mirrored, "external backup"))
+    # The external mirror can hold the latest successful save while .bak is
+    # one edit older. Recover the freshest valid copy, including valid clears.
+    def modified(candidate):
+        try:
+            return os.stat(candidate[0]).st_mtime_ns
+        except OSError:
+            return -1
+    candidates = [(path, None)] + sorted(recoveries, key=modified, reverse=True)
 
-    fallback = None  # a candidate that parses but is empty
     for candidate, source in candidates:
         data, ok = _try_load(candidate)
-        if not ok:
+        if not ok or not valid(data):
             continue
-        if _looks_usable(data):
-            if source:
-                _note(
-                    f"{label} was unreadable, so it was restored from the {source}.",
-                    key="storage_restored", label=label, source=source,
-                )
-                _repair(path, candidate)
-            return data
-        if fallback is None:
-            fallback = data
-
-    if fallback is not None:
-        return fallback
+        # Valid empty containers are intentional clears/resets. Resurrecting a
+        # nonempty .bak here undoes the user's deletion on the next launch.
+        if source:
+            _note(
+                f"{label} was unreadable, so it was restored from the {source}.",
+                key="storage_restored", label=label, source=source,
+            )
+            _repair(path, candidate)
+        return data
 
     if os.path.exists(path):
         # The file is there but nothing in the chain parsed - do not overwrite
@@ -351,7 +438,7 @@ def read_json(path, default=None, label=None):
             "Onigiri fell back to defaults; the damaged file was kept as .corrupt.",
             key="storage_damaged", label=label,
         )
-    return default if default is not None else {}
+    return copy.deepcopy(default) if default is not None else {}
 
 
 def _repair(path, source):
@@ -377,6 +464,12 @@ def _quarantine(path):
 
 
 def _is_critical(path):
+    # Imported artwork, fonts, sounds, databases and pending redemptions are
+    # user data too. Only generated caches are safe to leave out of recovery.
+    relative = os.path.relpath(path, user_files_dir())
+    if relative != os.pardir and not relative.startswith(os.pardir + os.sep):
+        return not any(part in {"__pycache__", "_qss_icon_cache", "_icon_cache"}
+                       for part in relative.split(os.sep))
     name = os.path.basename(path)
     if any(name.startswith(prefix) for prefix in CRITICAL_PREFIXES):
         return True
@@ -396,7 +489,7 @@ def _snapshot_dir():
 def _snapshots_for(path):
     """Dated snapshots for ``path``, newest first."""
     name = os.path.basename(path)
-    directory = _snapshot_dir()
+    directory = _file_snapshot_dir(path)
     try:
         entries = [
             os.path.join(directory, entry)
@@ -406,6 +499,19 @@ def _snapshots_for(path):
     except OSError:
         return []
     return sorted(entries, key=os.path.getmtime, reverse=True)
+
+
+def _file_snapshot_dir(path):
+    relative = os.path.relpath(path, user_files_dir())
+    parent = os.path.dirname(relative)
+    if parent and parent != os.pardir and not parent.startswith(os.pardir + os.sep):
+        directory = os.path.join(_snapshot_dir(), parent)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError:
+            pass
+        return directory
+    return _snapshot_dir()
 
 
 def _snapshot(path):
@@ -419,9 +525,10 @@ def _snapshot(path):
             pass
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    target = os.path.join(_snapshot_dir(), f"{os.path.basename(path)}.{stamp}.json")
+    target = os.path.join(_file_snapshot_dir(path), f"{os.path.basename(path)}.{stamp}.json")
     try:
         shutil.copy2(path, target)
+        os.utime(target, None)
     except OSError as exc:
         print(f"Onigiri storage: could not snapshot {path}: {exc}")
         return
@@ -437,7 +544,7 @@ def _mirror_path_for(path):
         relative = os.path.relpath(path, root)
     except ValueError:
         return None
-    if relative.startswith(os.pardir):
+    if relative == os.pardir or relative.startswith(os.pardir + os.sep):
         return None
     return os.path.join(external_backup_dir(), "user_files", relative)
 
@@ -448,7 +555,9 @@ def mirror_file(path):
         return
     try:
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copy2(path, target)
+        temporary = target + ".tmp"
+        shutil.copy2(path, temporary)
+        os.replace(temporary, target)
     except OSError as exc:
         print(f"Onigiri storage: could not mirror {path}: {exc}")
 
@@ -460,17 +569,25 @@ def mirror_all():
     copied = 0
     for current, _dirs, files in os.walk(root):
         for name in files:
-            if name.endswith((".tmp", ".bak", ".corrupt", ".log")):
+            if name.endswith((".tmp", ".bak", ".corrupt", ".log")) or ".tmp" in name:
                 continue
             source = os.path.join(current, name)
             if not _is_critical(source):
+                continue
+            if name.endswith(".json") and not _try_load(source)[1]:
                 continue
             target = _mirror_path_for(source)
             if not target:
                 continue
             try:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.copy2(source, target)
+                if os.path.isfile(target):
+                    old, new = os.stat(target), os.stat(source)
+                    if old.st_size == new.st_size and old.st_mtime_ns == new.st_mtime_ns:
+                        continue
+                temporary = target + ".tmp"
+                shutil.copy2(source, temporary)
+                os.replace(temporary, target)
                 copied += 1
             except OSError:
                 continue
@@ -554,40 +671,36 @@ def adopt_orphaned_profile_files(current_profile):
 
     root = user_files_dir()
     known = _known_profiles()
-    if not known:
-        # Without the profile list we cannot tell a rename from a second
-        # profile, and guessing wrong would leak one profile's setup into
-        # another. Do nothing.
+    if known != {current_profile}:
+        # With multiple profiles, an orphan could belong to a deleted profile
+        # rather than this renamed one. Never mix two learners' data by guess.
         return []
 
+    try:
+        entries = os.listdir(root)
+    except OSError:
+        return []
+    owners = [entry[len("settings_"):-len(".json")]
+              for entry in entries if entry.startswith("settings_") and entry.endswith(".json")
+              and entry[len("settings_"):-len(".json")] not in known | {"default"}]
+    if len(owners) != 1 or os.path.exists(os.path.join(root, f"settings_{current_profile}.json")):
+        return []
+    owner = owners[0]
     adopted = []
     for prefix in CRITICAL_PREFIXES:
         target = os.path.join(root, f"{prefix}{current_profile}.json")
         if os.path.exists(target):
             continue
 
-        orphans = []
-        try:
-            entries = os.listdir(root)
-        except OSError:
-            continue
-        for entry in entries:
-            if not entry.startswith(prefix) or not entry.endswith(".json"):
-                continue
-            owner = entry[len(prefix) : -len(".json")]
-            if owner and owner not in known:
-                orphans.append(entry)
-
-        if len(orphans) != 1:
-            # Zero means nothing to carry over; more than one means we cannot
-            # tell which profile was renamed into this one.
+        orphan = f"{prefix}{owner}.json"
+        if not os.path.isfile(os.path.join(root, orphan)):
             continue
 
         try:
-            shutil.copy2(os.path.join(root, orphans[0]), target)
-            adopted.append(orphans[0])
+            shutil.copy2(os.path.join(root, orphan), target)
+            adopted.append(orphan)
         except OSError as exc:
-            print(f"Onigiri storage: could not adopt {orphans[0]}: {exc}")
+            print(f"Onigiri storage: could not adopt {orphan}: {exc}")
 
     return adopted
 

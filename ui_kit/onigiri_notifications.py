@@ -7,12 +7,16 @@ from aqt.qt import (
     QDialog,
     QFrame,
     QHBoxLayout,
+    QIcon,
     QLabel,
+    QMessageBox,
     QPainter,
     QPixmap,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     Qt,
+    QWidget,
 )
 from aqt.theme import theme_manager
 
@@ -213,7 +217,7 @@ def _info_dialog_palette() -> dict[str, str]:
         from ..core import config
 
         mode_key = "dark" if is_dark else "light"
-        colors = config.get_config().get("colors", {}).get(mode_key, {})
+        colors = config.get_config_readonly().get("colors", {}).get(mode_key, {})
         if isinstance(colors, dict):
             defaults["panel"] = colors.get("--canvas-inset", defaults["panel"])
             defaults["panel_alt"] = colors.get("--highlight-bg", defaults["panel_alt"])
@@ -226,16 +230,17 @@ def _info_dialog_palette() -> dict[str, str]:
     return defaults
 
 
-def _info_dialog_icon_pixmap(color: str, size: int = 24) -> QPixmap:
+def _info_dialog_icon_pixmap(color: str = "", size: int = 36) -> QPixmap:
     icon_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "system_files",
-        "system_icons",
-        "unavailable_for_users",
-        "info-circle.svg",
+        "onigiri_mini_logo.svg",
     )
     if QSvgRenderer is None or not os.path.exists(icon_path):
-        return QPixmap()
+        return QPixmap(os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                    "system_files", "onigiri_logo.png")).scaled(
+                                        size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
 
     try:
         with open(icon_path, "r", encoding="utf-8") as icon_file:
@@ -252,10 +257,44 @@ def _info_dialog_icon_pixmap(color: str, size: int = 24) -> QPixmap:
         return QPixmap()
 
 
+def _branded_title(title: str = "") -> str:
+    title = str(title or "").strip()
+    return title if title.startswith("Onigiri") else (f"Onigiri · {title}" if title else "Onigiri")
+
+
+def brand_message_box(box, title: str = "Onigiri") -> None:
+    """Also brand native fallback and confirmation dialogs."""
+    palette = _info_dialog_palette()
+    box.setWindowTitle(_branded_title(title))
+    # macOS intentionally omits QMessageBox window titles. Keep the app name
+    # in the visible heading as well as the window metadata.
+    box.setText(_branded_title(title))
+    pixmap = _info_dialog_icon_pixmap(size=42)
+    if not pixmap.isNull():
+        box.setIconPixmap(pixmap)
+        box.setWindowIcon(QIcon(pixmap))
+    box.setStyleSheet(f"""
+        QMessageBox {{ background: {palette['panel']}; color: {palette['fg']}; }}
+        QMessageBox QLabel {{ background: transparent; color: {palette['fg']}; }}
+        QMessageBox QPushButton {{
+            background: {palette['panel_alt']}; color: {palette['fg']};
+            border: 1px solid {palette['border']}; border-radius: 10px;
+            min-width: 72px; min-height: 32px; padding: 0 14px;
+        }}
+        QMessageBox QPushButton:hover, QMessageBox QPushButton:focus {{
+            border-color: {palette['accent']};
+        }}
+    """)
+
+
 class OnigiriInfoDialog(QDialog):
     def __init__(self, message: str, title: str = "Onigiri", parent: Any = None):
         super().__init__(parent)
-        self.setWindowTitle(title or "Onigiri")
+        title = _branded_title(title)
+        self.setWindowTitle(title)
+        logo = _info_dialog_icon_pixmap(size=36)
+        if not logo.isNull():
+            self.setWindowIcon(QIcon(logo))
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setModal(True)
@@ -278,8 +317,8 @@ class OnigiriInfoDialog(QDialog):
             }}
             QLabel#onigiriInfoTitle {{
                 font-size: 13px;
-                font-weight: 400;
-                color: {palette["muted"]};
+                font-weight: 600;
+                color: {palette["fg"]};
             }}
             QLabel#onigiriInfoMessage {{
                 font-size: 18px;
@@ -290,7 +329,7 @@ class OnigiriInfoDialog(QDialog):
                 background-color: {palette["accent_soft"]};
                 color: {palette["accent"]};
                 border: 1px solid {palette["accent"]};
-                border-radius: 20px;
+                border-radius: 12px;
                 font-size: 22px;
                 font-weight: 400;
             }}
@@ -305,7 +344,7 @@ class OnigiriInfoDialog(QDialog):
                 font-size: 13px;
                 font-weight: 400;
             }}
-            QPushButton#onigiriInfoOk:hover {{
+            QPushButton#onigiriInfoOk:hover, QPushButton#onigiriInfoOk:focus {{
                 background-color: {palette["button_hover"]};
                 border-color: {palette["accent"]};
             }}
@@ -331,9 +370,10 @@ class OnigiriInfoDialog(QDialog):
         icon.setObjectName("onigiriInfoIcon")
         icon.setFixedSize(42, 42)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_pixmap = _info_dialog_icon_pixmap(palette["accent"], 24)
+        icon.setAccessibleName("Onigiri")
+        icon_pixmap = logo
         if icon_pixmap.isNull():
-            icon.setText("i")
+            icon.setText("Onigiri")
         else:
             icon.setPixmap(icon_pixmap)
         content.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
@@ -352,7 +392,20 @@ class OnigiriInfoDialog(QDialog):
         message_label.setWordWrap(True)
         text_stack.addWidget(message_label)
 
-        content.addLayout(text_stack, 1)
+        text_widget = QWidget()
+        text_widget.setLayout(text_stack)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(text_widget)
+        scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        content.addWidget(scroll, 1)
+        self.resize(500, 220)
+        text_stack.activate()
+        height = message_label.heightForWidth(380) + title_label.heightForWidth(380) + 32
+        screen = self.screen()
+        limit = int(screen.availableGeometry().height() * .7) if screen else 560
+        scroll.setMinimumHeight(min(max(90, height), max(90, limit - 110)))
         layout.addLayout(content)
 
         buttons = QHBoxLayout()
@@ -367,17 +420,23 @@ class OnigiriInfoDialog(QDialog):
         layout.addLayout(buttons)
 
 
-def _native_show_info(message: str, title: str = "Onigiri") -> None:
+def _native_show_info(message: str, title: str = "Onigiri", parent: Any = None) -> None:
+    title = _branded_title(title)
     try:
-        parent = mw if mw is not None else None
+        parent = parent if parent is not None else mw
         dialog = OnigiriInfoDialog(str(message or ""), title=title, parent=parent)
         dialog.exec()
     except Exception:
         try:
-            from aqt.utils import showInfo
-            showInfo(str(message or ""), title=title)
+            box = QMessageBox(parent)
+            box.setInformativeText(str(message or ""))
+            box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            brand_message_box(box, title)
+            box.exec()
         except Exception:
-            _native_tooltip(message)
+            # Last-resort host dialog still identifies the add-on explicitly.
+            from aqt.utils import showInfo
+            showInfo(f"{title}\n\n{message or ''}", title=title)
 
 
 def notification_script(
@@ -463,4 +522,13 @@ def notify_info(message: str, *args: Any, context: Optional[Any] = None, title: 
     if kwargs.get("gamification"):
         notify(message, title=title, context=context, **kwargs)
         return
-    _native_show_info(message, title=title)
+    _native_show_info(message, title=title, parent=context)
+
+
+def notify_warning(message: str, *args: Any, context: Optional[Any] = None,
+                   title: Optional[str] = None, **kwargs: Any) -> None:
+    """Persistent Onigiri warnings always remain visible, including silent mode."""
+    if title is None:
+        from ..core.translations import tr
+        title = tr("onigiri_warning")
+    _native_show_info(message, title=title, parent=context)

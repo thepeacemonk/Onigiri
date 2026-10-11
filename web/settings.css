@@ -8231,7 +8231,6 @@ html body .osw-designer-preview-toggle-btn { width: 34px; padding: 0; }
 .osw-preview-bbar-btn {
   width: 100%;
   box-sizing: border-box;
-  border: none;
   padding: 5px 15px;
   font-size: 12px;
   font-weight: 600;
@@ -8291,7 +8290,7 @@ html body .osw-preview-bbar-btn-other {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   padding: 0;
   opacity: 0;
   visibility: hidden;
@@ -8330,28 +8329,13 @@ html body .osw-preview-bbar-btn-other {
 .osw-preview-bbar-show.is-inverted:hover .osw-preview-bbar-counts { opacity: 0; visibility: hidden; transform: scale(.97); }
 .osw-preview-bbar-show.is-inverted:hover .osw-preview-bbar-label { opacity: 1; }
 .osw-preview-bbar-show.is-fixed {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  /* Fixed geometry lives in reviewer_buttons_shared.css, also used by Anki. */
+  cursor: pointer;
 }
-.osw-preview-bbar-show.is-fixed .osw-preview-bbar-counts {
-  position: static;
-  width: 100%;
-  height: min(24px, 50%);
-  min-height: 16px;
-  flex: 0 0 auto;
-  overflow: hidden;
-}
-.osw-preview-bbar-show.is-fixed .osw-preview-bbar-label { line-height: 1; }
-.osw-preview-bbar-show.is-fixed .osw-preview-bbar-count-pill {
-  min-width: 0;
-  padding-inline: 5px;
-  font-size: 10px;
-}
-.osw-preview-bbar-show.is-fixed .osw-preview-bbar-timer {
-  min-width: 0;
-  padding-inline: 5px;
-  font-size: 10px;
+
+.osw-preview-bbar-utility:hover {
+  background: var(--osw-bbar-utility-hover-bg) !important;
+  color: var(--osw-bbar-utility-hover-fg) !important;
 }
 
 .osw-preview-bbar-answer.is-hover:hover .osw-preview-bbar-interval { opacity: 1; visibility: visible; }

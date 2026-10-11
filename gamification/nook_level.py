@@ -298,7 +298,17 @@ DEVS = {
     },
 }
 
-ITEM_GROUPS = (RESTAURANTS, EVOLUTIONS, SHOPS, DEVS)
+# Original sold these IDs before the current Sushi Evolution catalog existed.
+# Keep their identity and entitlement; show them only to existing owners.
+LEGACY_EVOLUTIONS = {
+    "onigiri_ii": {"name": "Onigiri II Restaurant", "price": 200, "theme": None, "description": "The upgrade is here!", "image": "../restaurant_folder/restaurant_level.png"},
+    "onigiri_iii": {"name": "Onigiri III Restaurant", "price": 300, "theme": None, "description": "Even better!", "image": "../restaurant_folder/restaurant_level.png"},
+    "onigiri_iv": {"name": "Onigiri IV Restaurant", "price": 400, "theme": None, "description": "Superb!", "image": "../restaurant_folder/restaurant_level.png"},
+    "onigiri_v": {"name": "Onigiri V Restaurant", "price": 500, "theme": None, "description": "Masterpiece!", "image": "../restaurant_folder/restaurant_level.png"},
+    "prev_onigiri_heaven": {"name": "Onigiri Heaven Restaurant", "price": 750, "theme": "#445b76", "description": "Heavenly!", "image": "../restaurant_folder/restaurant_level.png"},
+}
+
+ITEM_GROUPS = (RESTAURANTS, EVOLUTIONS, SHOPS, DEVS, LEGACY_EVOLUTIONS)
 
 
 def _find_catalog_item(item_id: str) -> Optional[Dict[str, Any]]:
@@ -1294,8 +1304,6 @@ class NookLevelManager:
         for item_id, enabled in (("focus_dango", focus_enabled), ("motivated_mochi", mochi_enabled)):
             if enabled and item_id not in owned:
                 owned.append(item_id)
-            elif not enabled and item_id in owned:
-                owned.remove(item_id)
 
         # The old store adjusted prices by the selected Nook difficulty.  Do
         # that at the manager boundary so the displayed price and charged price
@@ -1304,6 +1312,9 @@ class NookLevelManager:
         multiplier = _difficulty_multiplier(difficulty)
         restaurants = get_localized_restaurants()
         evolutions = get_localized_evolutions()
+        for item_id in set(owned + [current]):
+            if item_id in LEGACY_EVOLUTIONS:
+                evolutions[item_id] = copy.deepcopy(LEGACY_EVOLUTIONS[item_id])
         shops = get_localized_shops()
         devs = get_localized_devs()
         for group in (restaurants, evolutions, shops, devs):

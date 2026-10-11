@@ -26,6 +26,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import requests
 from aqt import mw
+from ..core import safe_storage
 
 # (connect, read). The read side is generous on purpose: an Apps Script
 # cold start can sit silent for a minute before answering.
@@ -48,20 +49,12 @@ def _normalize(code: str) -> str:
 
 
 def _load_pending() -> Dict[str, str]:
-    try:
-        with open(_pending_path(), "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    return safe_storage.read_json(_pending_path(), default={}, label="Pending reward requests")
 
 
 def _save_pending(data: Dict[str, str]) -> None:
-    try:
-        with open(_pending_path(), "w", encoding="utf-8") as handle:
-            json.dump(data, handle)
-    except Exception:
-        pass
+    if not safe_storage.atomic_write_json(_pending_path(), data):
+        raise OSError("Could not save the reward request ID; redemption was not sent")
 
 
 def request_id_for_code(code: str) -> str:

@@ -2088,7 +2088,7 @@ def _get_onigiri_stats_title_html() -> str:
     """Keep a selected backdrop visible even when the phrase is cleared."""
     stats_title = _col_conf_get("modern_menu_statsTitle", None)
     if stats_title is None:
-        stats_title = config.DEFAULTS["statsTitle"]
+        stats_title = config.get_config_readonly().get("statsTitle", config.DEFAULTS["statsTitle"])
     has_text = bool(str(stats_title).strip())
     enabled = bool(_col_conf_get("modern_menu_title_background_enabled", False))
     if not has_text and not enabled:

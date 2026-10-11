@@ -2925,6 +2925,11 @@ def _reviewer_bottom_bar_section():
             "default": 12, "min": 0, "max": 100, "step": 1, "suffix": "px",
         },
         {
+            "id": "bbar_btn_border_size", "type": "slider", "label": tr("button_border", "Button border"),
+            "bind": {"kind": "config", "key": "onigiri_reviewer_btn_border_size"},
+            "default": 0, "min": 0, "max": 10, "step": 1, "suffix": "px",
+        },
+        {
             "id": "bbar_btn_padding", "type": "slider", "label": tr("button_padding_label", "Button Padding"),
             "bind": {"kind": "config", "key": "onigiri_reviewer_btn_padding"},
             "default": 5, "min": 0, "max": 100, "step": 1, "suffix": "px",
@@ -2940,6 +2945,7 @@ def _reviewer_bottom_bar_section():
             "default": 60, "min": 20, "max": 300, "step": 1, "suffix": "px",
         },
     ]
+    fields += color("border", "onigiri_reviewer_btn_border_color", tr("border_color", "Border Color"), "#DBDBDB", "#444444")
     fields += color("timer_bg", "onigiri_reviewer_timer_bg", tr("bbar_timer_bg", "Timer Background"), "#e5e5e5", "#3a3a3a")
     fields += color("timer_text", "onigiri_reviewer_timer_text", tr("bbar_timer_text", "Timer Text"), "#2c2c2c", "#e0e0e0")
     fields += color("interval_text", "onigiri_reviewer_stattxt_color", tr("bbar_interval_text", "Interval Text"), "#666666", "#aaaaaa")
@@ -2990,7 +2996,7 @@ def _reviewer_bottom_bar_section():
         title=tr("bottom_bar_background_and_buttons", "Bottom Bar Background and Buttons"),
         icon="lucide-file-pen-line.svg",
         dynamic_keys=[
-            "bbar_bg_color_theme_mode", "bbar_timer_bg_theme_mode", "bbar_timer_text_theme_mode",
+            "bbar_bg_color_theme_mode", "bbar_border_theme_mode", "bbar_timer_bg_theme_mode", "bbar_timer_text_theme_mode",
             "bbar_interval_text_theme_mode",
             "bbar_show_answer_bg_theme_mode", "bbar_show_answer_text_theme_mode",
             "bbar_show_answer_hover_bg_theme_mode", "bbar_show_answer_hover_text_theme_mode",
@@ -3005,6 +3011,14 @@ def _reviewer_bottom_bar_section():
         head_to_deck=True,
         fields=fields,
     )
+    # Each button family owns its border colour; a transparent colour can
+    # omit one family's border while retaining the shared width elsewhere.
+    for family in ("show_answer", "again", "hard", "good", "easy", "other", "timer"):
+        section["fields"] += color(
+            family + "_border", "onigiri_reviewer_" + family + "_border",
+            tr("border_color", "Border Color"), "", "",
+        )
+        section["dynamic_keys"].append("bbar_" + family + "_border_theme_mode")
     section = _attach_compact_font_roles(
         section,
         ("reviewer_controls",),
@@ -3022,7 +3036,7 @@ def _reviewer_bottom_bar_section():
             "preview_label": tr("bottom_bar", "Bottom Bar"),
             "preview_bg": "bbar_bg_color",
             "field_ids": [
-                "bbar_bg_color", "bbar_interval_text",
+                "bbar_bg_color", "bbar_interval_text", "bbar_border",
             ],
         },
         {
@@ -3097,6 +3111,11 @@ def _reviewer_bottom_bar_section():
             ],
         },
     ]
+    for group in section["color_groups"]:
+        family = group["id"].replace("bbar_colors_", "")
+        if family != "bar":
+            group["field_ids"].append("bbar_" + family + "_border")
+            group["preview_border"] = "bbar_" + family + "_border"
     return section
 
 

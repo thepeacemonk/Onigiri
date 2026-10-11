@@ -14,11 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 class MenuTitleBackgroundTests(unittest.TestCase):
     def setUp(self):
         self.values = {}
+        self.addon_conf = {}
         tree = ast.parse((ROOT / 'rendering/onigiri_renderer.py').read_text())
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                         and node.name == '_get_onigiri_stats_title_html')
         env = dict(html=html, os=os, re=re, quote_url_component=quote,
-                   config=SimpleNamespace(DEFAULTS={'statsTitle': 'Welcome to Onigiri'}),
+                   config=SimpleNamespace(DEFAULTS={'statsTitle': 'Welcome to Onigiri'},
+                                          get_config_readonly=lambda: self.addon_conf),
                    mw=SimpleNamespace(addonManager=SimpleNamespace(addonFromModule=lambda _: '1011095603')),
                    _col_conf_get=lambda key, default: self.values.get(key, default),
                    __name__='1011095603.onigiri_renderer')
@@ -117,6 +119,12 @@ class MenuTitleBackgroundTests(unittest.TestCase):
         markup = self.render()
         self.assertIn('&lt;img', markup)
         self.assertNotIn('<img', markup)
+
+    def test_legacy_settings_title_is_preserved_until_collection_overrides_it(self):
+        self.addon_conf['statsTitle'] = 'My original stats title'
+        self.assertIn('My original stats title', self.render())
+        self.values['modern_menu_statsTitle'] = 'My current stats title'
+        self.assertIn('My current stats title', self.render())
 
 
 if __name__ == '__main__':

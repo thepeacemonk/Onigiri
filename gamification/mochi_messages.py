@@ -16,6 +16,7 @@ DEFAULT_MESSAGE_KEYS = tuple(f"mochi_default_{index}" for index in range(1, 8))
 # rewrote the whole ~18 KB settings file (and dropped the config cache) every
 # few answered cards. It has its own small file now.
 _HISTORY_CACHE: Optional[List[Dict[str, Any]]] = None
+_HISTORY_CACHE_PATH = None
 
 
 def _history_path() -> str:
@@ -34,13 +35,14 @@ def _history_path() -> str:
 
 def _load_history() -> List[Dict[str, Any]]:
     """Newest-first history, migrating the old in-settings copy once."""
-    global _HISTORY_CACHE
-    if _HISTORY_CACHE is not None:
+    global _HISTORY_CACHE, _HISTORY_CACHE_PATH
+    path = _history_path()
+    if _HISTORY_CACHE is not None and _HISTORY_CACHE_PATH == path:
         return list(_HISTORY_CACHE)
 
     from ..core import safe_storage
 
-    data = safe_storage.read_json(_history_path(), default=None, label="Your Mochi messages")
+    data = safe_storage.read_json(path, default=None, label="Your Mochi messages")
     history = data.get("history") if isinstance(data, dict) else None
 
     if not isinstance(history, list):
@@ -50,16 +52,18 @@ def _load_history() -> List[Dict[str, Any]]:
         history = legacy_history if isinstance(legacy_history, list) else []
 
     _HISTORY_CACHE = [item for item in history if isinstance(item, dict)]
+    _HISTORY_CACHE_PATH = path
     return list(_HISTORY_CACHE)
 
 
 def _save_history(history: List[Dict[str, Any]]) -> None:
-    global _HISTORY_CACHE
+    global _HISTORY_CACHE, _HISTORY_CACHE_PATH
 
     from ..core import safe_storage
 
     _HISTORY_CACHE = list(history)
-    safe_storage.schedule_write_json(_history_path(), {"history": _HISTORY_CACHE})
+    _HISTORY_CACHE_PATH = _history_path()
+    safe_storage.schedule_write_json(_HISTORY_CACHE_PATH, {"history": _HISTORY_CACHE})
 
 
 class MochiMessenger:

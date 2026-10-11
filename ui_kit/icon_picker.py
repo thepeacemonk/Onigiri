@@ -1,5 +1,6 @@
 # Icon picker dialogs (split out of the historical _legacy.py).
 from .common import *
+from .onigiri_notifications import notify_warning
 from .common import _contrast_icon_color
 from .widgets import *
 from .picker_chrome import (
@@ -986,7 +987,7 @@ class DeckIconPickerDialog(QDialog):
             try:
                 shutil.copy2(path, dest)
             except Exception as e:
-                QMessageBox.warning(self, "Error", f"Could not copy icon: {e}")
+                notify_warning(f"Could not copy icon: {e}", context=self)
         self._build_tabs()
 
 

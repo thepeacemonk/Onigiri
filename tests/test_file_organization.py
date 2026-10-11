@@ -25,7 +25,7 @@ class FileOrganizationTests(unittest.TestCase):
     def test_relative_imports_resolve_after_moves(self):
         for source in ROOT.rglob("*.py"):
             relative = source.relative_to(ROOT)
-            if relative.parts[0] == "tests":
+            if relative.parts[0] == "tests" or relative.parts[0].startswith("Onigiri("):
                 continue
             package = list(relative.parent.parts)
             for node in ast.walk(ast.parse(source.read_text())):

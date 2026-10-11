@@ -55,6 +55,8 @@ class LocalizationTests(unittest.TestCase):
         catalogue = self.translations.TRANSLATIONS["en"]
         missing = []
         for path in ROOT.rglob("*.py"):
+            if path.relative_to(ROOT).parts[0].startswith("Onigiri("):
+                continue
             if any(part in path.parts for part in ("tests", "user_files", "__pycache__")):
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):

@@ -1396,7 +1396,7 @@ def _open_settings() -> None:
         open_settings("themes", parent=mw)
     except Exception as e:
         try:
-            from aqt.utils import showWarning
+            from ..ui_kit.onigiri_notifications import notify_warning as showWarning
             showWarning(f"Onigiri Kome settings: {e}")
         except Exception:
             pass
@@ -3595,8 +3595,8 @@ def _add_tools_menu_action() -> None:
         sc2.activated.connect(_open_settings)
     except Exception as e:
         try:
-            from aqt.utils import showWarning
-            showWarning(f"Anki Design: failed to register settings shortcut: {e}")
+            from ..ui_kit.onigiri_notifications import notify_warning as showWarning
+            showWarning(f"Onigiri: failed to register settings shortcut: {e}")
         except Exception:
             pass
 

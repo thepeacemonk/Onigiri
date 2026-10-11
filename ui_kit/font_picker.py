@@ -4,6 +4,7 @@
 # rounded, theme-aware container with a light/dark preview toggle, a scrollable
 # gallery, and a Save / Cancel / Reset footer.
 from .common import *
+from .onigiri_notifications import notify_warning, brand_message_box
 from .common import _font_popup_svg_icon, _font_popup_svg_pixmap
 
 
@@ -397,7 +398,7 @@ class FontPickerDialog(QDialog):
         try:
             shutil.copy(filepath, dest_path)
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not copy font file: {e}")
+            notify_warning(f"Could not copy font file: {e}", context=self)
             return
         self._family_cache.pop(filename, None)
         # Select the newly added font so its preview is front and centre.
@@ -407,12 +408,12 @@ class FontPickerDialog(QDialog):
     def _delete_user_font(self, key):
         info = get_all_fonts(self.addon_path).get(key, {})
         display = info.get("name", key)
-        reply = QMessageBox.question(
-            self, tr("delete", "Delete"),
-            tr("delete_font_confirm", "Delete the font '{name}'? This cannot be undone.").format(name=display),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
+        box = QMessageBox(self)
+        brand_message_box(box, tr("delete", "Delete"))
+        box.setInformativeText(tr("delete_font_confirm", "Delete the font '{name}'? This cannot be undone.").format(name=display))
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        reply = box.exec()
         if reply != QMessageBox.StandardButton.Yes:
             return
         font_path = os.path.join(self.addon_path, "user_files", "fonts", key)
@@ -420,7 +421,7 @@ class FontPickerDialog(QDialog):
             if os.path.exists(font_path):
                 os.remove(font_path)
         except OSError as e:
-            QMessageBox.warning(self, "Error", f"Could not delete font file: {e}")
+            notify_warning(f"Could not delete font file: {e}", context=self)
             return
         self._family_cache.pop(key, None)
         if self.current_key == key:

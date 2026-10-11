@@ -551,6 +551,21 @@ DEFAULTS = {
     "onigiri_reviewer_btn_interval_color_dark": "#dddddd",
     "onigiri_reviewer_btn_border_color_light": "#DBDBDB",
     "onigiri_reviewer_btn_border_color_dark": "#444444",
+    # Empty family colours inherit the existing shared reviewer border colour.
+    "onigiri_reviewer_show_answer_border_light": "",
+    "onigiri_reviewer_show_answer_border_dark": "",
+    "onigiri_reviewer_again_border_light": "",
+    "onigiri_reviewer_again_border_dark": "",
+    "onigiri_reviewer_hard_border_light": "",
+    "onigiri_reviewer_hard_border_dark": "",
+    "onigiri_reviewer_good_border_light": "",
+    "onigiri_reviewer_good_border_dark": "",
+    "onigiri_reviewer_easy_border_light": "",
+    "onigiri_reviewer_easy_border_dark": "",
+    "onigiri_reviewer_other_border_light": "",
+    "onigiri_reviewer_other_border_dark": "",
+    "onigiri_reviewer_timer_border_light": "",
+    "onigiri_reviewer_timer_border_dark": "",
     "onigiri_reviewer_btn_again_bg_light": "#ffb3b3",
     "onigiri_reviewer_btn_again_text_light": "#4d0000",
     "onigiri_reviewer_btn_again_bg_dark": "#ffcccb",
@@ -1306,6 +1321,15 @@ def get_config():
 
 
 def _build_config():
+    # Even callers that run before profile_did_open may migrate or repair a
+    # save. Preserve the actual old files before the first such read.
+    shared_config = None
+    if getattr(mw, "col", None):
+        try:
+            shared_config = mw.addonManager.getConfig(get_config_id())
+        except Exception:
+            pass
+        safe_storage.backup_before_upgrade(shared_config)
     # Start with a clean copy of the defaults
     clean_config = copy.deepcopy(DEFAULTS)
 
@@ -1330,13 +1354,14 @@ def _build_config():
         user_config = safe_storage.read_json(
             settings_path, default={}, label="Your Onigiri settings"
         )
-        loaded_from_file = bool(user_config)
+        raw, valid = safe_storage._try_load(settings_path)
+        loaded_from_file = bool(user_config) or (valid and isinstance(raw, dict))
 
     # If not found (First run for this profile), try migration from legacy shared config
     if not loaded_from_file and mw.col:
         try:
-            legacy_config = mw.addonManager.getConfig(get_config_id())
-            if legacy_config:
+            legacy_config = shared_config
+            if isinstance(legacy_config, dict) and legacy_config:
                 print(f"Migrating legacy settings to {settings_path}")
                 user_config = legacy_config
                 # Save immediately to establish the new file
@@ -1347,12 +1372,44 @@ def _build_config():
     # Merge user settings into defaults.
     if user_config:
         merge_config(clean_config, user_config)
+    # Middle synced the whole data folder. Preserve that opt-in scope when
+    # introducing category controls, including its saved widget placement.
+    if user_config.get("ankiweb_sync_enabled"):
+        for category in ("theme", "profile", "games", "study_tools", "assets", "layout"):
+            key = "ankiweb_sync_" + category
+            if key not in user_config:
+                clean_config[key] = True
+    # Layout maps are complete user selections, not dictionaries of default
+    # overrides. Deep-merging them reintroduces widgets the user removed.
+    saved_layout = user_config.get("onigiriWidgetLayout", {})
+    if isinstance(saved_layout, dict) and isinstance(saved_layout.get("grid"), dict):
+        clean_config["onigiriWidgetLayout"]["grid"] = copy.deepcopy(saved_layout["grid"])
+        if "archive" not in saved_layout:
+            clean_config["onigiriWidgetLayout"]["archive"] = []
+        # Original rendered the stats title outside the widget grid. Carry
+        # that visible title into its new tile without reintroducing other
+        # default widgets, and respect an explicitly archived title.
+        if not user_config.get("_widget_title_migrated_v2"):
+            archive = saved_layout.get("archive", [])
+            if not isinstance(archive, (dict, list)):
+                archive = []
+            if "stats_title" not in saved_layout["grid"] and "stats_title" not in archive:
+                clean_config["onigiriWidgetLayout"]["grid"]["stats_title"] = copy.deepcopy(
+                    DEFAULTS["onigiriWidgetLayout"]["grid"]["stats_title"]
+                )
+    clean_config["_widget_title_migrated_v2"] = True
 
     # Overviewer slideshows were retired in favour of one image background.
     # Normalizing old profiles here keeps the mode picker valid on first open
     # and preserves the existing colour, blur, and opacity values.
     if clean_config.get("onigiri_overview_bg_mode") == "slideshow":
         clean_config["onigiri_overview_bg_mode"] = "image_color"
+        images = user_config.get("onigiri_overview_slideshow_images", [])
+        first_image = next((name for name in images if isinstance(name, str) and name), "") if isinstance(images, list) else ""
+        for suffix in ("light", "dark"):
+            key = "onigiri_overview_bg_image_" + suffix
+            if first_image and not clean_config.get(key):
+                clean_config[key] = first_image
 
     # Onigimon scenes used to have only one image field. Preserve a previous
     # custom upload when moving to bundled presets; profiles with no uploaded
@@ -1456,6 +1513,12 @@ def _build_config():
     if not clean_config.get("_learning_review_color_roles_migrated"):
         normalize_learning_review_color_roles(clean_config)
         clean_config["_learning_review_color_roles_migrated"] = True
+    # A stored color may deliberately equal an old default. Equality cannot
+    # distinguish that choice from an untouched profile. New defaults fill
+    # missing keys; all explicitly saved palette values remain authoritative.
+    for palette_key in ("colors", "overview_style"):
+        if isinstance(user_config.get(palette_key), dict):
+            merge_config(clean_config[palette_key], user_config[palette_key])
 
     # Shima's quiet layout keeps Action Buttons hidden and exposes their menu
     # through the small Home control in the deck header. Correct profiles that
@@ -1479,10 +1542,12 @@ def _build_config():
             clean_config["achievements"].setdefault("custom_goals", custom_goals_conf)
 
     if "gamification" in user_config and "achievements" not in user_config:
-        clean_config["achievements"] = copy.deepcopy(user_config["gamification"])
+        if isinstance(user_config["gamification"], dict):
+            merge_config(clean_config["achievements"], user_config["gamification"])
 
     if "hexagon_world" in user_config and "hexagon_land" not in user_config:
-        clean_config["hexagon_land"] = copy.deepcopy(user_config.get("hexagon_world", {}))
+        if isinstance(user_config["hexagon_world"], dict):
+            merge_config(clean_config["hexagon_land"], user_config["hexagon_world"])
 
     # Compatibility: Check for old profile page visibility settings and migrate them
     # This ensures users updating the addon don't lose their settings
@@ -1536,7 +1601,8 @@ def _build_config():
                 # Match the game loader's legacy-file adoption before seeding
                 # anything, so we never mask the older shared progress file.
                 try:
-                    os.rename(shared_game_path, game_path)
+                    import shutil
+                    shutil.copy2(shared_game_path, game_path)
                 except OSError as exc:
                     print(f"Could not adopt legacy Onigiri progress: {exc}")
                     return clean_config
@@ -1687,8 +1753,9 @@ def _build_config():
     sidebar_conf = clean_config.setdefault("sidebarButtonLayout", {"visible": [], "archived": []})
     visible_btns = sidebar_conf.get("visible", [])
     archived_btns = sidebar_conf.get("archived", [])
+    more_btns = sidebar_conf.get("more", [])
     
-    if "gamification" not in visible_btns and "gamification" not in archived_btns:
+    if "gamification" not in visible_btns and "gamification" not in archived_btns and "gamification" not in more_btns:
         # Insert before "more" if more exists, else append
         if "more" in visible_btns:
             idx = visible_btns.index("more")

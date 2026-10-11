@@ -25,15 +25,15 @@
         "fire"
       ],
       "hunger": 0,
-      "happiness": 92,
+      "happiness": 91,
       "cleanliness": 0,
-      "bond_xp": 61,
+      "bond_xp": 79,
       "bond_level": 3,
       "energy": 0,
       "training": 0,
-      "last_cared_at": "2026-10-08T15:39:13.901389",
+      "last_cared_at": "2026-10-11T12:32:11.497390",
       "is_favorite": false,
-      "is_main": false,
+      "is_main": true,
       "shiny": false
     },
     "6dd8beed-b99a-43cf-ac9f-df49c1b14bd1": {
@@ -60,13 +60,13 @@
         "steel",
         "psychic"
       ],
-      "hunger": 70,
-      "happiness": 50,
-      "cleanliness": 60,
+      "hunger": 55,
+      "happiness": 35,
+      "cleanliness": 45,
       "bond_xp": 0,
       "bond_level": 1,
       "energy": 70,
-      "training": 50,
+      "training": 35,
       "last_cared_at": "",
       "is_favorite": false,
       "is_main": false,
@@ -87,7 +87,7 @@
     "berry_chesto": 2,
     "berry_pecha": 1,
     "berry_rawst": 1,
-    "berry_aspear": 0,
+    "berry_aspear": 1,
     "berry_leppa": 0,
     "berry_oran": 0,
     "berry_sitrus": 1,
@@ -103,36 +103,36 @@
     "valuable_star_piece": 0,
     "valuable_comet_shard": 0
   },
-  "last_study_day": "2026-10-09",
-  "current_streak": 2,
+  "last_study_day": "2026-10-11",
+  "current_streak": 1,
   "last_daily_gift_day": "",
   "reviews_since_reward": 3,
-  "today_review_count": 19,
+  "today_review_count": 11,
   "plays_used_today": 0,
-  "comet_shards": 68,
+  "comet_shards": 69,
   "star_pieces": 3,
-  "market_day": "2026-10-10",
+  "market_day": "2026-10-11",
   "market_items": [
     {
       "slot": "cheap_0",
-      "item_key": "berry_lum",
-      "amount": 2,
+      "item_key": "berry_cheri",
+      "amount": 1,
       "currency": "comet_shards",
       "price": 50
     },
     {
       "slot": "cheap_1",
-      "item_key": "berry_chesto",
+      "item_key": "play_fluffy_tail",
       "amount": 1,
       "currency": "comet_shards",
-      "price": 50
+      "price": 65
     },
     {
       "slot": "cheap_2",
-      "item_key": "ball_great",
+      "item_key": "mint_attack_food",
       "amount": 1,
       "currency": "comet_shards",
-      "price": 35
+      "price": 50
     },
     {
       "slot": "cheap_3",
@@ -143,28 +143,28 @@
     },
     {
       "slot": "premium_0",
-      "item_key": "exp_candy",
-      "amount": 1,
-      "currency": "star_pieces",
-      "price": 4
-    },
-    {
-      "slot": "premium_1",
-      "item_key": "medicine",
+      "item_key": "held_power_weight",
       "amount": 1,
       "currency": "star_pieces",
       "price": 1
     },
     {
-      "slot": "premium_2",
-      "item_key": "battle_x_attack",
+      "slot": "premium_1",
+      "item_key": "held_macho_brace",
       "amount": 1,
       "currency": "star_pieces",
-      "price": 3
+      "price": 4
+    },
+    {
+      "slot": "premium_2",
+      "item_key": "medicine",
+      "amount": 1,
+      "currency": "star_pieces",
+      "price": 4
     },
     {
       "slot": "premium_3",
-      "item_key": "held_macho_brace",
+      "item_key": "battle_x_attack",
       "amount": 1,
       "currency": "star_pieces",
       "price": 4
@@ -172,5 +172,5 @@
   ],
   "market_purchased": [],
   "last_market_gift_day": "2026-09-18",
-  "last_decay_processed_day": "2026-10-10"
+  "last_decay_processed_day": "2026-10-11"
 }

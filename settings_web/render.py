@@ -1317,7 +1317,7 @@ def render(store, pages, initial_page=None):
     template = read_web_asset("settings.html")
     if not template:
         return "<html><body>" + tr("settings_assets_missing") + "</body></html>"
-    css = read_web_asset("settings.css")
+    css = read_web_asset("settings.css") + "\n" + read_web_asset("reviewer_buttons_shared.css")
     js = read_web_asset("settings.js")
     heatmap_js = read_web_asset("Particles.js") + "\n" + read_web_asset("heatmap.js")
     notifications_js = read_web_asset("notifications.js")
