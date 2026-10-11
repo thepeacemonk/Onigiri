@@ -11,9 +11,6 @@ GAME_ADDONS = {
     "516325516": "Focumon",
     "1799253175": "lofi.town",
     "585575504": "Senchado",
-    # Folder-named rather than numeric: Byte ships outside AnkiWeb, and Bento
-    # keys everything on the add-on folder, which is what its bridge reports.
-    "Byte": "Byte",
 }
 
 
@@ -92,7 +89,14 @@ def get_widget_effect(theme: str = "light") -> dict:
         background = palette.get("--canvas-inset", "#2c2c2c" if mode == "dark" else "#ffffff")
         border_color = palette.get("--border", "#424242" if mode == "dark" else "#e0e0e0")
         blur = max(0, min(100, int(mw.col.conf.get("onigiri_canvas_inset_effect_blur", 0) or 0)))
-        opacity = max(0, min(100, int(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100) or 100)))
+        opacity_value = mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100)
+        opacity = max(
+            0,
+            min(
+                100,
+                int(100 if opacity_value is None else opacity_value),
+            ),
+        )
         radius = max(0, min(60, int(mw.col.conf.get("onigiri_canvas_inset_border_radius", 20) or 20)))
         stroke = max(0, min(10, int(mw.col.conf.get("onigiri_canvas_inset_border_width", 1) or 1)))
         alpha = opacity / 100.0
@@ -158,7 +162,21 @@ def _has_marker(menu: QMenu, marker: str) -> bool:
     return any(action.property("bento_marker") == marker for action in menu.actions())
 
 
-def ensure_bento_shortcut() -> QAction:
+def ensure_bento_shortcut() -> Optional[QAction]:
+    # An empty Bento menu is a dead toolbar affordance.  Do not create it until
+    # at least one Bento widget has registered, and clean up our old shortcut
+    # if the last widget was removed between Anki sessions.
+    if not get_bento_widgets():
+        existing = _find_bento_menu()
+        if existing:
+            for existing_action in list(existing.actions()):
+                if existing_action.property("bento_marker") == "onigiri-settings":
+                    existing.removeAction(existing_action)
+            while existing.actions() and existing.actions()[-1].isSeparator():
+                existing.removeAction(existing.actions()[-1])
+            if not [action for action in existing.actions() if not action.isSeparator()]:
+                mw.form.menubar.removeAction(existing.menuAction())
+        return None
     menu = get_bento_menu()
     marker = "onigiri-settings"
     if _has_marker(menu, marker):
@@ -214,7 +232,12 @@ def get_bento_widgets() -> Dict[str, dict]:
     widgets = getattr(mw, "bento_widgets", {})
     if not isinstance(widgets, dict):
         widgets = {}
-    return widgets
+    # Byte still publishes its bridge; Onigiri no longer discovers it.
+    return {
+        addon_id: widget
+        for addon_id, widget in widgets.items()
+        if str(addon_id).split(".")[0] != "Byte"
+    }
 
 
 def get_game_widgets() -> Dict[str, dict]:

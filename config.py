@@ -5,6 +5,9 @@ from aqt import mw
 
 from . import safe_storage
 
+DEFAULT_ACCENT_COLOR = "#33AEBF"
+DEFAULT_PROFILE_LEVEL_COLOR = "#95D5E0"
+
 
 def get_collection_config(key, default=None, col=None):
     """Read add-on collection state without Anki's legacy-conf warnings."""
@@ -20,6 +23,18 @@ def get_collection_config(key, default=None, col=None):
             return collection.conf.get(key, default)
         except Exception:
             return default
+
+
+def themed_icon_color(key, dark=None):
+    """Read an icon tint, preserving the shared tint of older profiles.
+
+    An explicitly empty dark tint inherits the theme palette; only a missing
+    dark key falls back to the legacy (now light) tint.
+    """
+    light = get_collection_config(key, "")
+    if dark is None:
+        dark = effective_night_mode()
+    return get_collection_config(key + "_dark", light) if dark else light
 
 
 def set_collection_config(key, value, col=None):
@@ -71,25 +86,66 @@ def effective_night_mode(conf=None):
         return False
 
 
+def _dynamic_theme_enabled(get, dynamic_key, default=True):
+    """Return whether a light/dark asset pair is enabled.
+
+    Settings store theme modes as ``"single"``/``"separate"`` while older
+    screens used booleans.  Treating the strings with ``bool()`` makes both
+    values true, so keep the compatibility conversion in one place.  A tuple
+    of keys lets a renamed setting fall back to its legacy mirror.
+    """
+    keys = dynamic_key if isinstance(dynamic_key, (tuple, list)) else (dynamic_key,)
+    missing = object()
+    value = missing
+    for key in keys:
+        if not key:
+            continue
+        value = get(key, missing)
+        if value is not missing:
+            break
+    if value is missing:
+        return bool(default)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"single", "shared", "linked", "false", "off", "0"}:
+            return False
+        if normalized in {"separate", "dynamic", "true", "on", "1"}:
+            return True
+    return bool(value)
+
+
 def themed_asset(get, base_key, is_dark, dynamic_key=None, default=""):
     """Filename for an image stored as a base key plus an optional _light/_dark pair.
 
-    "Use the same picture for both themes" is not a separate flag: it is simply
-    the light and dark keys being empty, so the base key answers for both. That
-    keeps a setting saved before the split — and a theme that only knows the
-    base key — working untouched, and it means the settings UI can offer a
-    per-asset "same for both" switch without a migration.
+    The optional mode accepts both the current ``"single"``/``"separate"``
+    values and legacy booleans. The base key answers in single mode and remains
+    the fallback for an unfilled themed slot, keeping pre-split settings valid.
 
     `get` is the caller's own config accessor (``mw.col.conf.get``,
     ``conf.get``, ``_col_conf_get``) so this works against a live collection, a
     plain dict, or a deprecation-safe wrapper without caring which.
     """
-    dynamic = bool(get(dynamic_key, True)) if dynamic_key else True
+    dynamic = _dynamic_theme_enabled(get, dynamic_key) if dynamic_key else True
     if dynamic:
         themed = get(f"{base_key}_{'dark' if is_dark else 'light'}", "")
         if themed:
             return themed
-    return get(base_key, default) or default
+        return get(base_key, default) or default
+
+    # Old Dynamic-mode toggles changed only the mode flag.  That left the base
+    # slot empty even though one or both themed slots still held the imported
+    # file, making the image appear to have been lost.  Prefer the shared slot,
+    # then recover from the current theme and finally its counterpart.
+    shared = get(base_key, "")
+    if shared:
+        return shared
+    current_suffix = "dark" if is_dark else "light"
+    other_suffix = "light" if is_dark else "dark"
+    return (
+        get(f"{base_key}_{current_suffix}", "")
+        or get(f"{base_key}_{other_suffix}", "")
+        or default
+    )
 
 
 # Default settings for the add-on
@@ -105,11 +161,26 @@ DEFAULTS = {
     "maxHide": False,
     "flowMode": False,
     "ankiweb_sync_enabled": False,
+    # The sync policy itself is always local.  The sync archive contains only
+    # the categories enabled here, so a laptop can keep compact layout values
+    # while a desktop uses a wider dashboard.
+    "ankiweb_sync_preset": "custom",
+    "ankiweb_sync_theme": True,
+    "ankiweb_sync_profile": True,
+    "ankiweb_sync_games": True,
+    "ankiweb_sync_study_tools": True,
+    "ankiweb_sync_assets": True,
+    "ankiweb_sync_layout": False,
+    # Settings-window chrome is device-local and is never exported by sync.
+    "settings_complexity": "advanced",
     "fullHideMode": False,
     "hideMacTitleBar": False,
     "hideSynapseProSidebar": False,
     "sidebarCollapsed": False,
     "sidebarPosition": "left",
+    # The Classic sidebar keeps the familiar deck tree by default, while
+    # allowing users to swap that section for Anki's hierarchical tag tree.
+    "sidebarContentMode": "decks",
     "showCongratsProfileBar": True,
     "showOverviewProfileBar": True,
     # Match Anki's congratulations notice: the next learning card's ready time
@@ -121,7 +192,71 @@ DEFAULTS = {
     "showNextLearningCardNoticeOnOverview": True,
     "congratsMessage": "Congratulations! You have finished this deck for now.",
     "showWelcomePopup": True,
+    # Top-level visual system. Classic preserves Onigiri's existing renderer;
+    # Kome delegates the deck browser to the bundled editorial redesign, while
+    # Shima renders only a centered deck island over the shared main background.
+    "onigiri_ui_theme": "classic",
     "onigiriThemeMode": "system",
+    "things_theme": {
+        # Kome keeps one calm, fixed spacing system. Its small settings
+        # surface only exposes visibility and the Active Cards palette.
+        "density": "comfortable",
+        "sidebar_nav": True,
+        "sidebar_hero": True,
+        "sidebar_hero_stat": "due",
+        "sidebar_donut": True,
+        "sidebar_tasks": True,
+        "sidebar_progress": True,
+        "show_review_chart": True,
+        "show_today": True,
+        "show_streak": True,
+        "show_heatmap": True,
+        # Optional, richer analytics surface rendered directly below the
+        # Kome deck list. Kept off by default so existing profiles retain
+        # the theme's compact dashboard until they explicitly opt in.
+        "advanced_stats": False,
+        # Empty values inherit the shared Onigiri palette. Kome can
+        # optionally override its own page background without recolouring the
+        # Classic layout.
+        "background_light": "",
+        "background_dark": "",
+        "background_theme_mode": "separate",
+        # Empty sidebar colours inherit the active Kome main background.
+        "sidebar_background_light": "",
+        "sidebar_background_dark": "",
+        "sidebar_background_theme_mode": "separate",
+        "background_image": "",
+        "surface_effects": {
+            "sidebar": {"opacity": 100, "blur": 0},
+            "decks": {"opacity": 100, "blur": 0},
+            "widgets": {"opacity": 100, "blur": 0},
+        },
+        "heatmap_color": DEFAULT_ACCENT_COLOR,
+        "weekly_reviews_color": DEFAULT_ACCENT_COLOR,
+        "progress_color": DEFAULT_ACCENT_COLOR,
+        "active_cards_colors": {
+            "new": "#55a8ee",
+            "learning": "#ffd33d",
+            "relearning": "#eb3f70",
+            "young": "#6fc66f",
+            "mature": "#78b8b4",
+        },
+        "heatmap_weeks": 53,
+        "heatmap_palette": "accent",
+        "hide_bottom_on_decks": True,
+        "hide_bottom_on_overview": False,
+        "deck_tree_startup": "remember",
+        "deck_drag_move": True,
+        "single_deck_hero": False,
+        "skip_overview": False,
+        "cmdk": False,
+        "embed_add": False,
+        "embed_browse": False,
+        "embed_stats": False,
+        "embed_settings": False,
+        "silent_sync": False,
+        "restyle_addcard": False,
+    },
     "prep_station": {
         "plans": [],
     },
@@ -131,6 +266,7 @@ DEFAULTS = {
         "default_sort": "age",
         "trash_grace_days": 7,
         "show_in_reviewer_header": True,
+        "font_size": 14,
     },
     "onigiri_pomodoro_show_in_reviewer_header": True,
     "userBirthday": "",  # Format: YYYY-MM-DD, empty = not set
@@ -139,9 +275,19 @@ DEFAULTS = {
     "showHeatmapOnProfile": True,
     "onigiriProfile": {
         "bio": "",
-        "status": "",
         "musicLink": "",
         "spotifyLink": ""
+    },
+    # Every optional row in the expanded Profile Sidebar is controlled from
+    # one place. Keeping these flags together prevents a game-specific setting
+    # from getting out of sync with the Profile Sidebar settings page.
+    "onigiriProfilePanel": {
+        "show_active_cards": True,
+        "show_today_stats": True,
+        "show_weekly_chart": True,
+        "show_nook_level": True,
+        "show_hexagon_land": True,
+        "show_onigimon_hp": True,
     },
     "achievements": {
         "enabled": False,
@@ -211,12 +357,21 @@ DEFAULTS = {
     },
     "onigimon": {
         "enabled": False,
+        # Empty means the active Ankimon companion is shown in the optional
+        # Main Menu team widget. The Onigimon settings page lets people pin a
+        # deliberate set of Pokémon here.
+        "menu_pokemon_ids": [],
         "difficulty": "pikachu",
         "reward_interval": 4,
         "reward_generosity": "normal",
         "sprite_source": "ankimon_then_pokesprite",
         "sprite_motion": "static",
         "scene_background_color": "#6ea96a",
+        # A bundled landscape keeps a new companion from appearing against a
+        # flat block of colour.  "custom" and "color" remain available via
+        # Onigimon Settings.
+        "scene_background_mode": "preset",
+        "scene_background_preset": "system_files/gamification_images/onigimon/scenarios/nature/default.png",
         "scene_background_image": "",
         "scene_background_blur": 9,
         "scene_background_opacity": 90,
@@ -226,6 +381,9 @@ DEFAULTS = {
         # How gently Onigimon words its notifications: "lillipup" (kind),
         # "herdier" (serious) or "stoutland" (blunt). See gamification/onigimon.py.
         "notification_tone": "herdier",
+        # Keep Onigimon's rewards and streak notices out of the Reviewer
+        # without muting notifications from the other games.
+        "reviewer_notifications_enabled": True,
     },
     "hexagon_land": {
         "enabled": False,
@@ -240,6 +398,7 @@ DEFAULTS = {
     "heatmapShowMonths": True,
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
+    "heatmapParticlesAnimation": False,
     "heatmapDefaultView": "year",
     "heatmapWeekStart": "monday",
     "markerColors": {
@@ -257,10 +416,10 @@ DEFAULTS = {
         "retention": {"pos": 7, "row": 1, "col": 1},
         "heatmap": {"pos": 8, "row": 2, "col": 4}
         },
-    "archive": ["favorites", "onigimon", "hexagon_land", "deck_stats", "prep_station", "hashi_notes"],
-    "grid_width": 230,
+    "archive": ["favorites", "onigimon", "ankimon_team", "hexagon_land", "deck_stats", "prep_station", "hashi_notes", "ready_to_go"],
+    "grid_width": 250,
     "grid_alignment": "center",
-    "widget_height": 120,
+    "widget_height": 150,
     },
     "externalWidgetLayout": {}, 
     "onigiriDecklineAutoEmbed": True,
@@ -284,6 +443,9 @@ DEFAULTS = {
             "gamification",
             "more"
         ],
+        # These actions start inside More. The Action Buttons organizer can
+        # move any of them into ``visible`` to show it directly on the sidebar.
+        "more": ["get_shared", "create_deck", "import_file"],
         "archived": []
     },
 
@@ -300,8 +462,8 @@ DEFAULTS = {
     # -------------
     "onigiri_reviewer_bg_main_blur": 0, # Blur when using main background
     "onigiri_reviewer_bg_main_opacity": 100, # Opacity when using main background
-    "onigiri_reviewer_bg_light_color": "#f2f2f2",
-    "onigiri_reviewer_bg_dark_color": "#2C2C2C",
+    "onigiri_reviewer_bg_light_color": "#ececeb",
+    "onigiri_reviewer_bg_dark_color": "#202124",
     "onigiri_reviewer_bg_image": "",
     "onigiri_reviewer_bg_image_light": "",
     "onigiri_reviewer_bg_image_dark": "",
@@ -319,8 +481,8 @@ DEFAULTS = {
     "onigiri_notification_duration_ms": 5200,
     # --- Reviewer Bottom Bar Settings ---
     "onigiri_reviewer_bottom_bar_bg_mode": "match_reviewer_bg", # "main", "color", "image", "image_color", "match_overview_bg", "match_reviewer_bg"
-    "onigiri_reviewer_bottom_bar_bg_light_color": "#f2f2f2",
-    "onigiri_reviewer_bottom_bar_bg_dark_color": "#2C2C2C",
+    "onigiri_reviewer_bottom_bar_bg_light_color": "#ececeb",
+    "onigiri_reviewer_bottom_bar_bg_dark_color": "#202124",
     "onigiri_reviewer_bottom_bar_bg_image": "",
     "onigiri_reviewer_bottom_bar_bg_blur": 0,
     "onigiri_reviewer_bottom_bar_bg_opacity": 100,
@@ -337,7 +499,7 @@ DEFAULTS = {
     "onigiri_overview_bg_mode": "main", # "main", "color", "image_color"
     "onigiri_overview_bg_main_blur": 0,
     "onigiri_overview_bg_main_opacity": 100,
-    "onigiri_overview_bg_light_color": "#f2f2f2",
+    "onigiri_overview_bg_light_color": "#ececeb",
     # The following lines appear to be UI setup code and cannot be directly inserted into a dictionary.
     # Assuming the intent was to add a default for 'onigiri_reviewer_btn_custom_enabled' if not already present.
     # The other lines are likely from a different context (e.g., a settings dialog setup).
@@ -406,7 +568,17 @@ DEFAULTS = {
     "onigiri_reviewer_btn_easy_bg_dark": "#add8e6",
     "onigiri_reviewer_btn_easy_text_dark": "#002952",
     
-    # --- Other Bottom Bar Buttons (Show Answer, Edit, More, etc.) ---
+    # --- Show Answer button ---
+    "onigiri_reviewer_show_answer_btn_bg_light": "#ffffff",
+    "onigiri_reviewer_show_answer_btn_text_light": "#2c2c2c",
+    "onigiri_reviewer_show_answer_btn_bg_dark": "#3a3a3a",
+    "onigiri_reviewer_show_answer_btn_text_dark": "#e0e0e0",
+    "onigiri_reviewer_show_answer_btn_hover_bg_light": "#2c2c2c",
+    "onigiri_reviewer_show_answer_btn_hover_text_light": "#f0f0f0",
+    "onigiri_reviewer_show_answer_btn_hover_bg_dark": "#e0e0e0",
+    "onigiri_reviewer_show_answer_btn_hover_text_dark": "#3a3a3a",
+
+    # --- Other Bottom Bar Buttons (Edit, More, etc.) ---
     "onigiri_reviewer_other_btn_bg_light": "#ffffff",
     "onigiri_reviewer_other_btn_text_light": "#2c2c2c",
     "onigiri_reviewer_other_btn_bg_dark": "#3a3a3a",
@@ -418,7 +590,7 @@ DEFAULTS = {
 
     # --- Stats Bar Background (timer + New/Learn/Review pills panel behind the
     # Show Answer button). Independent color, unless synced with the "Other"
-    # hover background above. ---
+    # active Show Answer background above. ---
     "onigiri_reviewer_show_answer_bar_bg_sync": True,
     "onigiri_reviewer_show_answer_bar_bg_light": "#2c2c2c",
     "onigiri_reviewer_show_answer_bar_bg_dark": "#e0e0e0",
@@ -435,7 +607,7 @@ DEFAULTS = {
     "onigiri_reviewer_timer_bg_dark": "#3a3a3a",
     "onigiri_reviewer_timer_text_dark": "#e0e0e0",
 
-    "onigiri_overview_bg_dark_color": "#2C2C2C",
+    "onigiri_overview_bg_dark_color": "#202124",
     "onigiri_overview_bg_image_light": "",
     "onigiri_overview_bg_image_dark": "",
     "onigiri_overview_bg_image": "",
@@ -444,8 +616,6 @@ DEFAULTS = {
     "onigiri_overview_bg_opacity": 100,
     "onigiri_overview_bg_color_theme_mode": "separate",
     "onigiri_overview_bg_image_theme_mode": "separate",
-    "onigiri_overview_slideshow_images": [],
-    "onigiri_overview_slideshow_interval": 10,
     "overview_style": {
         "sync_box_effect": False,
         "dynamic": True,
@@ -459,14 +629,14 @@ DEFAULTS = {
         "study_button_animated": True,
         "colors": {
             "light": {
-                "box_bg": "#f3f3f3",
-                "box_border": "#e0e0e0",
-                "study_button": "#0077C8",
-                "study_button_stroke": "#e0e0e0",
-                "options_button": "#f5f5f5",
-                "custom_study_button": "#f5f5f5",
-                "description_button": "#f5f5f5",
-                "reveal_button": "#0077C8",
+                "box_bg": "#ffffff",
+                "box_border": "#e3e4e7",
+                "study_button": DEFAULT_ACCENT_COLOR,
+                "study_button_stroke": "#e3e4e7",
+                "options_button": "#f7f7f6",
+                "custom_study_button": "#f7f7f6",
+                "description_button": "#f7f7f6",
+                "reveal_button": DEFAULT_ACCENT_COLOR,
                 "new_bubble": "#1e8cff",
                 "new_text": "#ffffff",
                 "learn_bubble": "#ff5757",
@@ -475,15 +645,15 @@ DEFAULTS = {
                 "review_text": "#ffffff",
             },
             "dark": {
-                "box_bg": "#2c2c2c",
-                "box_border": "#565656",
-                "study_button": "#0077C8",
-                "study_button_stroke": "#565656",
-                "options_button": "#2a2a2a",
-                "custom_study_button": "#2a2a2a",
-                "description_button": "#2a2a2a",
+                "box_bg": "#202020",
+                "box_border": "#45464b",
+                "study_button": DEFAULT_ACCENT_COLOR,
+                "study_button_stroke": "#45464b",
+                "options_button": "#1d1d1d",
+                "custom_study_button": "#1d1d1d",
+                "description_button": "#1d1d1d",
                 "reveal_button": "#0a84ff",
-                "new_bubble": "#0077C8",
+                "new_bubble": DEFAULT_ACCENT_COLOR,
                 "new_text": "#f7fbff",
                 "learn_bubble": "#ff453a",
                 "learn_text": "#fff5f5",
@@ -507,9 +677,19 @@ DEFAULTS = {
         "opacity": 100,
         "radius": 20,
         "stroke": 1,
-        # Font key from fonts.py, or "sync" to keep inheriting the Small Titles
-        # / Titles fonts like every other widget.
+        # `font` is retained as a legacy fallback for configs written before
+        # labels and numbers gained independent typography controls.
         "font": "sync",
+        "label_font": "sync",
+        "value_font": "sync",
+        "number_font": "sync",
+        # Each Stats Fonts role may retain its own pixel size or inherit the
+        # matching Widget Fonts role. The old percentage scales are migrated
+        # below for existing profiles.
+        "label_size_sync": True,
+        "label_size": 15,
+        "number_size_sync": True,
+        "number_size": 30,
         "show_icons": True,
         "show_units": True,
         "show_sparkline": True,
@@ -520,38 +700,61 @@ DEFAULTS = {
         #   "smooth" - a Catmull-Rom curve through the same points.
         "chart_shape": "sharp",
         "show_retention_stars": True,
-        # Value type scale, in percent of the design's base size.
-        "value_scale": 100,
+        "value_size_sync": True,
+        "value_size": 30,
         "icons": {
-            "studied": "system:check.svg",
-            "time": "system:pomodoro.svg",
-            "pace": "system:bolt.svg",
-            "retention": "system:star.svg",
+            "studied": "system:stats-widget-studied.svg",
+            "time": "system:stats-widget-time.svg",
+            "pace": "system:stats-widget-pace.svg",
+            "retention": "system:stats-widget-retention.svg",
+            # The rating row owns a separate glyph from the Retention card
+            # heading, so the two picker choices never affect one another.
+            "retention_star": "system:star.svg",
         },
         "colors": {
             "light": {
                 "box_bg": "#ffffff",
-                "box_border": "#e0e0e0",
-                "label": "#757575",
-                "value": "#212121",
+                "box_border": "#e3e4e7",
+                "label": "#63666c",
+                "value": "#202124",
                 "studied": "#5eaadf",
                 "time": "#8b7bd8",
                 "pace": "#f5a05a",
                 "retention": "#26a641",
                 "retention_star": "#FFD700",
-                "retention_star_empty": "#e0e0e0",
+                "retention_star_empty": "#8f9299",
             },
             "dark": {
-                "box_bg": "#2c2c2c",
-                "box_border": "#424242",
-                "label": "#9c9c9c",
-                "value": "#f0f0f0",
+                "box_bg": "#202020",
+                "box_border": "#45464b",
+                "label": "#b0b3ba",
+                "value": "#f1f2f4",
                 "studied": "#6bb6ec",
                 "time": "#a294ea",
                 "pace": "#f7ad6b",
                 "retention": "#35b850",
                 "retention_star": "#FFD700",
-                "retention_star_empty": "#4a4a4a",
+                "retention_star_empty": "#8f9299",
+            },
+        },
+    },
+    # Prep Station's Study Plans dashboard widget. It follows the shared widget
+    # surface by default, but can be styled independently from its own page.
+    "prep_widget_style": {
+        "sync_box_effect": True,
+        "dynamic": True,
+        "blur": 0,
+        "opacity": 100,
+        "radius": 20,
+        "stroke": 1,
+        "colors": {
+            "light": {
+                "box_bg": "#ffffff",
+                "box_border": "#e3e4e7",
+            },
+            "dark": {
+                "box_bg": "#202020",
+                "box_border": "#45464b",
             },
         },
     },
@@ -564,6 +767,11 @@ DEFAULTS = {
         "show_excerpt": True,
         "show_icon": True,
         "show_date": True,
+        # Lets a pinned single note be edited without leaving the main menu.
+        # Disabled by default so existing widgets keep their click-to-open flow.
+        "direct_edit": False,
+        # Keeps a pinned note's text while using the dashboard widget surface.
+        "single_use_widget_surface": False,
         "sync_box_effect": True,
         "dynamic": True,
         "blur": 0,
@@ -573,18 +781,18 @@ DEFAULTS = {
         "colors": {
             "light": {
                 "box_bg": "#ffffff",
-                "box_border": "#e0e0e0",
-                "card_bg": "#f5f5f5",
-                "title": "#212121",
-                "excerpt": "#757575",
-                "accent": "#0077C8",
+                "box_border": "#e3e4e7",
+                "card_bg": "#f7f7f6",
+                "title": "#202124",
+                "excerpt": "#63666c",
+                "accent": DEFAULT_ACCENT_COLOR,
             },
             "dark": {
-                "box_bg": "#2c2c2c",
-                "box_border": "#424242",
-                "card_bg": "#363636",
-                "title": "#f0f0f0",
-                "excerpt": "#9c9c9c",
+                "box_bg": "#202020",
+                "box_border": "#45464b",
+                "card_bg": "#1d1d1d",
+                "title": "#f1f2f4",
+                "excerpt": "#b0b3ba",
                 "accent": "#4da3e8",
             },
         },
@@ -605,7 +813,7 @@ DEFAULTS = {
         "colors": {
             "light": {
                 "box_bg": "#ffffff",
-                "box_border": "#e0e0e0",
+                "box_border": "#e3e4e7",
                 "in_progress": "#5eaadf",
                 "mastered": "#26a641",
                 "new": "#5eaadf",
@@ -616,11 +824,11 @@ DEFAULTS = {
                 "unseen": "#b0b4b9",
                 "suspended": "#ffdc41",
                 "buried": "#9e9e9e",
-                "total": "#6f7177",
+                "total": "#202124",
             },
             "dark": {
-                "box_bg": "#2c2c2c",
-                "box_border": "#424242",
+                "box_bg": "#202020",
+                "box_border": "#45464b",
                 "in_progress": "#6bb6ec",
                 "mastered": "#35b850",
                 "new": "#6bb6ec",
@@ -631,25 +839,27 @@ DEFAULTS = {
                 "unseen": "#7a7f85",
                 "suspended": "#ffe066",
                 "buried": "#a8a8a8",
-                "total": "#c4c4c4",
+                "total": "#f1f2f4",
             },
         },
     },
     # -----------------------------------------
     # --- REMOVED: Top-level focusDango was here ---
+    # Default theme uses the Onigiri Guide's surface palette. Accent, status
+    # colors, and shadows retain their existing defaults.
     "colors": {
         "light": {
-            "--accent-color": "#0077C8",
-            "--bg": "#f3f3f3",
-            "--fg": "#212121",
-            "--icon-color": "#333333",
-            "--icon-color-filtered": "#0077C8",
-            "--fg-subtle": "#757575",
-            "--font-small-title-color": "#212121",
-            "--border": "#e0e0e0",
-            "--highlight-bg": "#eeeeee",
+            "--accent-color": DEFAULT_ACCENT_COLOR,
+            "--bg": "#ffffff",
+            "--fg": "#202124",
+            "--icon-color": "#63666c",
+            "--icon-color-filtered": DEFAULT_ACCENT_COLOR,
+            "--fg-subtle": "#63666c",
+            "--font-small-title-color": "#202124",
+            "--border": "#e3e4e7",
+            "--highlight-bg": "#f7f7f6",
             "--canvas-inset": "#ffffff",
-            "--button-primary-bg": "#0077C8",
+            "--button-primary-bg": DEFAULT_ACCENT_COLOR,
             "--button-primary-gradient-start": "#00C49A",
             "--button-primary-gradient-end": "#008E72",
             "--new-count-bubble-bg": "#a3c5e8",
@@ -658,11 +868,11 @@ DEFAULTS = {
             "--learn-count-bubble-fg": "#731717",
             "--review-count-bubble-bg": "#a3e8b8",
             "--review-count-bubble-fg": "#1b7a38",
-            "--heatmap-color": "#0077C8",
-            "--heatmap-color-zero": "#f0f0f0",
+            "--heatmap-color": DEFAULT_ACCENT_COLOR,
+            "--heatmap-color-zero": "#E6E6E6",
             "--star-color": "#FFD700",
-            "--empty-star-color": "#e0e0e0",
-            "--stats-fg": "#212121",
+            "--empty-star-color": "#8f9299",
+            "--stats-fg": "#202124",
             # Shadow and overlay colors
             "--shadow-sm": "rgba(0, 0, 0, 0.1)",
             "--shadow-md": "rgba(0, 0, 0, 0.1)",
@@ -670,34 +880,34 @@ DEFAULTS = {
             "--overlay-dark": "rgba(0, 0, 0, 0.4)",
             "--overlay-light": "rgba(0, 0, 0, 0.4)",
             # Profile page specific colors
-            "--profile-page-bg": "#d9d9d9",
-            "--profile-card-bg": "#FFFFFF",
-            "--profile-pill-placeholder-bg": "rgba(0, 0, 0, 0.2)",
-            "--profile-export-btn-bg": "rgba(255, 255, 255, 1)",
-            "--profile-export-btn-fg": "#374151",
-            "--profile-export-btn-border": "rgba(0, 0, 0, 0.1)",
-            "--overlay-close-btn-bg": "#e0e0e0",
-            "--overlay-close-btn-fg": "#333333",
+            "--profile-page-bg": "#ffffff",
+            "--profile-card-bg": "#ffffff",
+            "--profile-pill-placeholder-bg": "#f7f7f6",
+            "--profile-export-btn-bg": "#ffffff",
+            "--profile-export-btn-fg": "#202124",
+            "--profile-export-btn-border": "#ededec",
+            "--overlay-close-btn-bg": "#f7f7f6",
+            "--overlay-close-btn-fg": "#202124",
             # Deck list specific colors
-            "--deck-hover-bg": "rgba(128, 128, 128, 0.1)",
-            "--deck-dragging-bg": "#cde4f9",
-            "--deck-edit-mode-bg": "rgba(128, 128, 128, 0.05)",
+            "--deck-hover-bg": "#f7f7f6",
+            "--deck-dragging-bg": "#ffffff",
+            "--deck-edit-mode-bg": "#f7f7f6",
             # Text shadow colors
             "--text-shadow-light": "rgba(0, 0, 0, 0.5)",
-            "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
+            "--profile-pic-border": "#ededec",
         },
         "dark": {
-            "--accent-color": "#0077C8",
-            "--bg": "#2c2c2c",
-            "--fg": "#e0e0e0",
-            "--icon-color": "#E0E0E0",
-            "--icon-color-filtered": "#0077C8",
-            "--fg-subtle": "#9e9e9e",
-            "--font-small-title-color": "#e0e0e0",
-            "--border": "#424242",
-            "--highlight-bg": "#3c3c3c",
-            "--canvas-inset": "#2c2c2c",
-            "--button-primary-bg": "#0077C8",
+            "--accent-color": DEFAULT_ACCENT_COLOR,
+            "--bg": "#171717",
+            "--fg": "#f1f2f4",
+            "--icon-color": "#b0b3ba",
+            "--icon-color-filtered": DEFAULT_ACCENT_COLOR,
+            "--fg-subtle": "#b0b3ba",
+            "--font-small-title-color": "#f1f2f4",
+            "--border": "#45464b",
+            "--highlight-bg": "#1d1d1d",
+            "--canvas-inset": "#202020",
+            "--button-primary-bg": DEFAULT_ACCENT_COLOR,
             "--button-primary-gradient-start": "#00C49A",
             "--button-primary-gradient-end": "#008E72",
             "--new-count-bubble-bg": "#68a0d9",
@@ -706,11 +916,11 @@ DEFAULTS = {
             "--learn-count-bubble-fg": "#731717",
             "--review-count-bubble-bg": "#68d98a",
             "--review-count-bubble-fg": "#1b7a38",
-            "--heatmap-color": "#0077C8",
-            "--heatmap-color-zero": "#3a3a3a",
+            "--heatmap-color": DEFAULT_ACCENT_COLOR,
+            "--heatmap-color-zero": "#2A2A2A",
             "--star-color": "#FFD700",
-            "--empty-star-color": "#4a4a4a",
-            "--stats-fg": "#e0e0e0",
+            "--empty-star-color": "#8f9299",
+            "--stats-fg": "#f1f2f4",
             # Shadow and overlay colors
             "--shadow-sm": "rgba(0, 0, 0, 0.1)",
             "--shadow-md": "rgba(0, 0, 0, 0.15)",
@@ -718,21 +928,21 @@ DEFAULTS = {
             "--overlay-dark": "rgba(0, 0, 0, 0.7)",
             "--overlay-light": "rgba(0, 0, 0, 0.4)",
             # Profile page specific colors
-            "--profile-page-bg": "#1f1f1f",
-            "--profile-card-bg": "#1e1e1e",
-            "--profile-pill-placeholder-bg": "rgba(0, 0, 0, 0.2)",
-            "--profile-export-btn-bg": "rgba(255, 255, 255, 1)",
-            "--profile-export-btn-fg": "#374151",
-            "--profile-export-btn-border": "rgba(0, 0, 0, 0.1)",
-            "--overlay-close-btn-bg": "#e0e0e0",
-            "--overlay-close-btn-fg": "#333333",
+            "--profile-page-bg": "#171717",
+            "--profile-card-bg": "#202020",
+            "--profile-pill-placeholder-bg": "#1d1d1d",
+            "--profile-export-btn-bg": "#202020",
+            "--profile-export-btn-fg": "#f1f2f4",
+            "--profile-export-btn-border": "#35363a",
+            "--overlay-close-btn-bg": "#1d1d1d",
+            "--overlay-close-btn-fg": "#f1f2f4",
             # Deck list specific colors
-            "--deck-hover-bg": "rgba(128, 128, 128, 0.1)",
-            "--deck-dragging-bg": "#3a3a3a",
-            "--deck-edit-mode-bg": "rgba(128, 128, 128, 0.05)",
+            "--deck-hover-bg": "#1d1d1d",
+            "--deck-dragging-bg": "#202020",
+            "--deck-edit-mode-bg": "#1d1d1d",
             # Text shadow colors
             "--text-shadow-light": "rgba(0, 0, 0, 0.5)",
-            "--profile-pic-border": "rgba(255, 255, 255, 0.8)",
+            "--profile-pic-border": "#35363a",
         }
     }
 }
@@ -948,6 +1158,74 @@ def _place_stats_title_widget(layout_conf):
             return
 
 
+def _place_external_widgets(layout_conf, external_grid_conf):
+    """Keep external widgets out of occupied Onigiri grid cells.
+
+    External add-ons commonly add their first widget at position zero. That
+    was safe when Anki rendered their ``content.stats`` below the deck list,
+    but it overlaps Onigiri's title card in the unified CSS grid. Preserve a
+    valid user placement and move only conflicting external entries to the
+    first available run of cells. This also handles two add-ons choosing the
+    same default position during startup.
+    """
+    if not isinstance(layout_conf, dict) or not isinstance(external_grid_conf, dict):
+        return
+
+    grid_conf = layout_conf.get("grid", {})
+    if not isinstance(grid_conf, dict):
+        return
+
+    try:
+        col_count = int(layout_conf.get("column_count", 4))
+    except (TypeError, ValueError):
+        col_count = 4
+    if col_count < 1:
+        return
+
+    occupied = _widget_layout_occupied_cells(grid_conf, col_count)
+
+    def fits(position, row_span, col_span):
+        row, col = divmod(position, col_count)
+        if col + col_span > col_count:
+            return False
+        return all(
+            (candidate_row, candidate_col) not in occupied
+            for candidate_row in range(row, row + row_span)
+            for candidate_col in range(col, col + col_span)
+        )
+
+    for widget_conf in external_grid_conf.values():
+        if not isinstance(widget_conf, dict):
+            continue
+        try:
+            row_span = max(2, int(widget_conf.get("row_span", 2)))
+        except (TypeError, ValueError):
+            row_span = 2
+        try:
+            col_span = int(widget_conf.get("column_span", 1))
+        except (TypeError, ValueError):
+            col_span = 1
+        col_span = max(1, min(col_count, col_span))
+        try:
+            position = max(0, int(widget_conf.get("grid_position", 0)))
+        except (TypeError, ValueError):
+            position = 0
+
+        if not fits(position, row_span, col_span):
+            for candidate in range(col_count * 200):
+                if fits(candidate, row_span, col_span):
+                    position = candidate
+                    break
+
+        widget_conf["grid_position"] = position
+        widget_conf["row_span"] = row_span
+        widget_conf["column_span"] = col_span
+        row, col = divmod(position, col_count)
+        for occupied_row in range(row, row + row_span):
+            for occupied_col in range(col, col + col_span):
+                occupied.add((occupied_row, occupied_col))
+
+
 # A unique ID for our add-on's configuration
 config_id = None
 def get_config_id():
@@ -1070,6 +1348,90 @@ def _build_config():
     if user_config:
         merge_config(clean_config, user_config)
 
+    # Overviewer slideshows were retired in favour of one image background.
+    # Normalizing old profiles here keeps the mode picker valid on first open
+    # and preserves the existing colour, blur, and opacity values.
+    if clean_config.get("onigiri_overview_bg_mode") == "slideshow":
+        clean_config["onigiri_overview_bg_mode"] = "image_color"
+
+    # Onigimon scenes used to have only one image field. Preserve a previous
+    # custom upload when moving to bundled presets; profiles with no uploaded
+    # image receive the new Nature default through DEFAULTS.
+    legacy_onigimon = user_config.get("onigimon", {})
+    if (
+        isinstance(legacy_onigimon, dict)
+        and "scene_background_mode" not in legacy_onigimon
+        and str(legacy_onigimon.get("scene_background_image", "") or "").strip()
+    ):
+        clean_config.setdefault("onigimon", {})["scene_background_mode"] = "custom"
+
+    # Show Answer formerly shared the More/Edit palette. Seed the new,
+    # independent controls from each profile's existing utility-button colors
+    # so the split does not visually change an established setup.
+    for new_key, legacy_key in (
+        ("onigiri_reviewer_show_answer_btn_bg_light", "onigiri_reviewer_other_btn_bg_light"),
+        ("onigiri_reviewer_show_answer_btn_text_light", "onigiri_reviewer_other_btn_text_light"),
+        ("onigiri_reviewer_show_answer_btn_bg_dark", "onigiri_reviewer_other_btn_bg_dark"),
+        ("onigiri_reviewer_show_answer_btn_text_dark", "onigiri_reviewer_other_btn_text_dark"),
+        ("onigiri_reviewer_show_answer_btn_hover_bg_light", "onigiri_reviewer_other_btn_hover_bg_light"),
+        ("onigiri_reviewer_show_answer_btn_hover_text_light", "onigiri_reviewer_other_btn_hover_text_light"),
+        ("onigiri_reviewer_show_answer_btn_hover_bg_dark", "onigiri_reviewer_other_btn_hover_bg_dark"),
+        ("onigiri_reviewer_show_answer_btn_hover_text_dark", "onigiri_reviewer_other_btn_hover_text_dark"),
+    ):
+        if new_key not in user_config and legacy_key in user_config:
+            clean_config[new_key] = user_config[legacy_key]
+
+    # Stats Widgets used one shared font before labels and numbers received
+    # separate controls. Only copy it when the corresponding new key is truly
+    # absent from the user's file; an explicit new "sync" choice must win.
+    user_stats_style = user_config.get("stats_widgets_style", {})
+    clean_stats_style = clean_config.get("stats_widgets_style", {})
+    if isinstance(user_stats_style, dict) and isinstance(clean_stats_style, dict):
+        # Retention's rating glyph used to live in the menu-wide icon setting.
+        # Carry an existing choice into the new, Stats Widgets-local picker;
+        # untouched profiles receive the independent default above.
+        user_stats_icons = user_stats_style.get("icons", {})
+        clean_stats_icons = clean_stats_style.setdefault("icons", {})
+        legacy_retention_star = str(user_config.get("modern_menu_icon_retention_star", "") or "")
+        if (
+            isinstance(user_stats_icons, dict)
+            and isinstance(clean_stats_icons, dict)
+            and "retention_star" not in user_stats_icons
+            and legacy_retention_star
+        ):
+            clean_stats_icons["retention_star"] = legacy_retention_star
+        legacy_stats_font = user_stats_style.get("font")
+        if legacy_stats_font:
+            for role_key in ("label_font", "value_font", "number_font"):
+                if role_key not in user_stats_style:
+                    clean_stats_style[role_key] = legacy_stats_font
+        # Stats Fonts formerly stored type size as a percentage. Preserve an
+        # existing custom value as pixels when moving to the direct px control;
+        # untouched profiles use the new calm defaults above.
+        for old_key, new_key, base_size, sync_key in (
+            ("label_scale", "label_size", 15, "label_size_sync"),
+            ("value_scale", "value_size", 30, "value_size_sync"),
+        ):
+            if old_key not in user_stats_style or new_key in user_stats_style:
+                continue
+            try:
+                clean_stats_style[new_key] = max(
+                    8, min(72, round(base_size * float(user_stats_style[old_key]) / 100))
+                )
+                clean_stats_style[sync_key] = False
+            except (TypeError, ValueError):
+                pass
+        # Split the former combined value role into supporting labels/units
+        # and the numeric figure. Existing custom value styling carries to the
+        # new number role so the split does not alter an established layout.
+        for suffix in ("font", "size_sync", "size"):
+            number_key = f"number_{suffix}"
+            value_key = f"value_{suffix}"
+            if number_key not in user_stats_style:
+                clean_stats_style[number_key] = clean_stats_style.get(
+                    value_key, clean_stats_style.get(number_key)
+                )
+
     # Before this split, the one notice toggle only controlled the Congrats
     # screen. Preserve an existing user's choice when introducing the two
     # independent placements.
@@ -1095,32 +1457,20 @@ def _build_config():
         normalize_learning_review_color_roles(clean_config)
         clean_config["_learning_review_color_roles_migrated"] = True
 
-    # Main Background colors are stored in mw.col.conf and should not become the
-    # add-on's global theme background. Older builds accidentally copied them
-    # into colors[*]["--bg"], which made Anki flash/show the selected background
-    # color as soon as the profile opened.
-    try:
-        if mw.col:
-            bg_conf_by_mode = {
-                "light": mw.col.conf.get("modern_menu_bg_color_light"),
-                "dark": mw.col.conf.get("modern_menu_bg_color_dark"),
-            }
-            colors_conf = clean_config.get("colors", {})
-            for mode, main_bg_color in bg_conf_by_mode.items():
-                mode_colors = colors_conf.get(mode, {})
-                current_bg = mode_colors.get("--bg")
-                default_bg = DEFAULTS.get("colors", {}).get(mode, {}).get("--bg")
-                if (
-                    isinstance(current_bg, str)
-                    and isinstance(main_bg_color, str)
-                    and isinstance(default_bg, str)
-                    and current_bg.lower() == main_bg_color.lower()
-                    and current_bg.lower() != default_bg.lower()
-                ):
-                    mode_colors["--bg"] = default_bg
-    except Exception as e:
-        print(f"Error cleaning main background color from theme config: {e}")
-    
+    # Shima's quiet layout keeps Action Buttons hidden and exposes their menu
+    # through the small Home control in the deck header. Correct profiles that
+    # briefly received the intermediate collapsed-toolbar default.
+    if not clean_config.get("_shima_actions_hidden_migrated"):
+        if (
+            clean_config.get("onigiri_ui_theme") == "shima"
+            and clean_config.get("sidebarActionsMode") == "collapsed"
+        ):
+            clean_config["sidebarActionsMode"] = "archived"
+        clean_config["_shima_actions_hidden_migrated"] = True
+
+    # A theme's --bg is authoritative. It may intentionally match the main
+    # background; never replace it with gray while loading a saved palette.
+
     # Compatibility migrations (logic preserved from original)
     custom_goals_conf = clean_config.get("achievements", {}).get("custom_goals", {})
     if "last_modified_at" not in custom_goals_conf:
@@ -1146,13 +1496,57 @@ def _build_config():
         
         # Migrate restaurant_level
         if "restaurant_level" in achievements_conf:
-            clean_config["restaurant_level"] = achievements_conf["restaurant_level"]
+            legacy_level = copy.deepcopy(achievements_conf["restaurant_level"])
+            merge_config(legacy_level, user_config.get("restaurant_level", {}))
+            merge_config(clean_config["restaurant_level"], legacy_level)
             del achievements_conf["restaurant_level"]
             
         # Migrate daily_special
         if "daily_special" in achievements_conf:
-            clean_config["daily_special"] = achievements_conf["daily_special"]
+            legacy_special = copy.deepcopy(achievements_conf["daily_special"])
+            merge_config(legacy_special, user_config.get("daily_special", {}))
+            merge_config(clean_config["daily_special"], legacy_special)
             del achievements_conf["daily_special"]
+
+    # Nook Level used to keep this particular Profile Sidebar visibility flag
+    # inside its game settings, while the other rows lived in
+    # ``onigiriProfilePanel``. Preserve that existing preference as we move
+    # all Profile Sidebar controls under the same config object.
+    saved_panel = user_config.get("onigiriProfilePanel", {})
+    if not isinstance(saved_panel, dict) or "show_nook_level" not in saved_panel:
+        restaurant_conf = clean_config.get("restaurant_level", {})
+        legacy_show_nook = (
+            restaurant_conf.get("show_profile_page_progress", True)
+            if isinstance(restaurant_conf, dict)
+            else True
+        )
+        clean_config.setdefault("onigiriProfilePanel", {})["show_nook_level"] = bool(
+            legacy_show_nook
+        )
+
+    # Transfer legacy coins before removing their settings copy. An existing
+    # balance (including zero after a purchase/reset) is always authoritative.
+    legacy_restaurant = clean_config.get("restaurant_level", {})
+    if settings_path and isinstance(legacy_restaurant, dict) and "taiyaki_coins" in legacy_restaurant:
+        game_path = os.path.join(os.path.dirname(settings_path),
+                                 os.path.basename(settings_path).replace("settings_", "gamification_", 1))
+        if not os.path.exists(game_path):
+            shared_game_path = os.path.join(os.path.dirname(settings_path), "gamification.json")
+            if os.path.exists(shared_game_path):
+                # Match the game loader's legacy-file adoption before seeding
+                # anything, so we never mask the older shared progress file.
+                try:
+                    os.rename(shared_game_path, game_path)
+                except OSError as exc:
+                    print(f"Could not adopt legacy Onigiri progress: {exc}")
+                    return clean_config
+        game_data = safe_storage.read_json(game_path, default={}, label="Your Onigiri progress")
+        game_restaurant = game_data.setdefault("restaurant_level", {})
+        if "taiyaki_coins" not in game_restaurant:
+            game_restaurant["taiyaki_coins"] = legacy_restaurant["taiyaki_coins"]
+            if not safe_storage.atomic_write_json(game_path, game_data):
+                # Retain the source if the transfer could not be persisted.
+                return clean_config
 
     # FORCE CLEANUP: Remove taiyaki_coins from config if present
     # It is now stored exclusively in gamification.json
@@ -1189,7 +1583,7 @@ def _build_config():
             archived_ids = set(archive_conf)
         else:
             archived_ids = set()
-        for missing_widget_id in ("deck_stats",):
+        for missing_widget_id in ("deck_stats", "ankimon_team", "ready_to_go"):
             if isinstance(grid_conf, dict) and missing_widget_id not in grid_conf and missing_widget_id not in archived_ids:
                 if isinstance(archive_conf, list):
                     archive_conf.append(missing_widget_id)
@@ -1221,10 +1615,57 @@ def _build_config():
         _place_stats_title_widget(layout_conf)
 
         try:
-            widget_height = int(layout_conf.get("widget_height", 120))
+            widget_height = int(layout_conf.get("widget_height", 150))
         except (TypeError, ValueError):
-            widget_height = 120
+            widget_height = 150
         layout_conf["widget_height"] = max(120, widget_height)
+
+        # Ankimon's old overview_team hook renders a self-contained flex grid
+        # with fixed sprite sizes and its own palette. Its dimensions conflict
+        # with Onigiri's grid, so migrate any saved placement to our native
+        # team widget once. The old hook remains registered for Ankimon's
+        # standalone UI, but Onigiri will no longer render its markup.
+        external_layout = clean_config.get("externalWidgetLayout", {})
+        if isinstance(external_layout, dict):
+            external_grid = external_layout.get("grid", external_layout)
+            external_archive = external_layout.get("archive", [])
+            if isinstance(external_grid, dict):
+                ankimon_hook_ids = [
+                    hook_id for hook_id in external_grid
+                    if "overview_team" in str(hook_id).lower()
+                ]
+                for hook_id in ankimon_hook_ids:
+                    old_position = external_grid.pop(hook_id, {})
+                    if "ankimon_team" not in grid_conf:
+                        try:
+                            pos = int(old_position.get("grid_position", 0))
+                        except (AttributeError, TypeError, ValueError):
+                            pos = 0
+                        try:
+                            row = max(1, int(old_position.get("row_span", 2)))
+                        except (AttributeError, TypeError, ValueError):
+                            row = 2
+                        try:
+                            col = max(1, int(old_position.get("column_span", 1)))
+                        except (AttributeError, TypeError, ValueError):
+                            col = 1
+                        grid_conf["ankimon_team"] = {"pos": pos, "row": row, "col": col}
+                    if isinstance(archive_conf, dict):
+                        archive_conf.pop("ankimon_team", None)
+                    elif isinstance(archive_conf, list):
+                        archive_conf[:] = [
+                            item for item in archive_conf if item != "ankimon_team"
+                        ]
+                    layout_conf["archive"] = archive_conf
+                    if isinstance(external_archive, dict):
+                        external_archive.pop(hook_id, None)
+                    elif isinstance(external_archive, list):
+                        external_archive[:] = [item for item in external_archive if item != hook_id]
+            if "grid" in external_layout:
+                external_layout["grid"] = external_grid
+                external_layout["archive"] = external_archive
+            else:
+                clean_config["externalWidgetLayout"] = external_grid
     # --------------------------------------------
 
     external_layout_conf = clean_config.get("externalWidgetLayout", {})
@@ -1239,6 +1680,7 @@ def _build_config():
                 except (TypeError, ValueError):
                     row_span = 2
                 widget_conf["row_span"] = max(2, row_span)
+            _place_external_widgets(layout_conf, external_grid_conf)
 
     # --- NEW: Sidebar Gamification Button Migration ---
     # Ensure "gamification" is in the visible list if not present anywhere

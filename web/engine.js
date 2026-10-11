@@ -368,7 +368,11 @@ window.OnigiriEngine = {
         const nextQuery = (query || '').trim();
         window.clearTimeout(this._searchDebounceTimer);
         this._searchDebounceTimer = window.setTimeout(() => {
-            pycmd('onigiri_deck_search:' + nextQuery);
+            const mode = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarContentMode;
+            const command = mode === 'tags'
+                ? 'onigiri_tag_search:'
+                : 'onigiri_deck_search:';
+            pycmd(command + nextQuery);
         }, 150);
     },
 
@@ -1077,7 +1081,12 @@ window.OnigiriEngine = {
     makeMenuIcon: function (name) {
         const icon = document.createElement('span');
         icon.className = 'quick-menu-icon';
-        const url = this.iconUrl(name);
+        const available = String(name || '').startsWith('available:');
+        const iconName = available ? String(name).slice('available:'.length) : name;
+        const pkg = (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.addonPackage) || '';
+        const url = available && pkg
+            ? `/_addons/${pkg}/system_files/system_icons/available_for_users/${iconName}.svg`
+            : this.iconUrl(iconName);
         if (url) {
             icon.style.maskImage = `url("${url}")`;
             icon.style.webkitMaskImage = `url("${url}")`;
@@ -1179,6 +1188,7 @@ window.OnigiriEngine = {
         if (row) row.classList.add('ctx-row-active');
         document.body.classList.add('ctx-menu-open');
         const isFavorite = !!(row && row.dataset.isFav === '1');
+        const isFiltered = !!(row && row.classList.contains('is-filtered'));
         const currentMark = row ? row.dataset.mark : '';
 
         const menu = document.createElement('div');
@@ -1283,6 +1293,13 @@ window.OnigiriEngine = {
         if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.fsrsHelperAvailable) {
             deckActions.push({ label: 'FSRS4Anki Helper', icon: 'fsrs_helper', command: 'onigiri_open_fsrs_helper_menu' });
         }
+        if (isFiltered) {
+            deckActions.push({
+                label: ONIGIRI_T('rebuild', 'Rebuild'),
+                icon: 'sync',
+                command: `onigiri_ctx_rebuild:${did}`,
+            });
+        }
         deckActions.push(
             { label: ONIGIRI_T('ctx_deck_options', 'Deck Options'), icon: 'options', command: `onigiri_ctx_options:${did}` },
             { label: ONIGIRI_T('ctx_export_deck', 'Export Deck'), icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
@@ -1292,6 +1309,44 @@ window.OnigiriEngine = {
         deckActions.forEach(item => this.appendMenuItem(menu, item));
 
         this.positionMenu(menu, x, y);
+    },
+
+    showTagContextMenu: function (event, encodedTag) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        this.closeQuickMenus();
+        document.body.classList.add('ctx-menu-open');
+
+        const menu = document.createElement('div');
+        menu.className = 'onigiri-quick-menu';
+        this.appendMenuItem(menu, {
+            label: ONIGIRI_T('ctx_change_icon', 'Change Icon'),
+            icon: 'edit_icon',
+            command: `onigiri_tag_change_icon:${encodedTag}`,
+        });
+        const x = event ? event.clientX : 0;
+        const y = event ? event.clientY : 0;
+        this.positionMenu(menu, x, y);
+        return false;
+    },
+
+    showFavoriteDeckContextMenu: function (event, did) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeQuickMenus();
+        document.body.classList.add('ctx-menu-open');
+
+        const menu = document.createElement('div');
+        menu.className = 'onigiri-quick-menu';
+        this.appendMenuItem(menu, {
+            label: ONIGIRI_T('ctx_remove_favorite', 'Remove Favorite'),
+            icon: 'star_cancel',
+            command: `onigiri_toggle_favorite:${did}`,
+        });
+        this.positionMenu(menu, event.clientX, event.clientY);
+        return false;
     },
 
     showBulkDeckContextMenu: function (x, y) {
@@ -1409,6 +1464,26 @@ window.OnigiriEngine = {
             { label: ONIGIRI_T('get_shared', 'Get Shared'), icon: 'get_shared', command: 'shared' },
             { label: ONIGIRI_T('create_deck', 'Create Deck'), icon: 'add-deck', command: 'onigiri_create_deck' },
             { label: ONIGIRI_T('import_file', 'Import File'), icon: 'import_file', command: 'import' },
+        ].forEach(item => this.appendMenuItem(menu, item));
+
+        const rect = button.getBoundingClientRect();
+        this.positionMenu(menu, rect.left, rect.bottom + 6);
+    },
+
+    showReadyMenu: function (button, event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        this.closeQuickMenus();
+
+        const menu = document.createElement('div');
+        menu.className = 'onigiri-quick-menu onigiri-ready-quick-menu';
+        [
+            { label: ONIGIRI_T('ready_inbox', 'Inbox'), icon: 'available:lucide-inbox', command: 'onigiri_ready:inbox' },
+            { label: ONIGIRI_T('ready_warm_up', 'Warm up'), icon: 'available:lucide-flame', command: 'onigiri_ready:warm_up' },
+            { label: ONIGIRI_T('ready_today', 'Today'), icon: 'available:lucide-calendar-check', command: 'onigiri_ready:today' },
+            { label: ONIGIRI_T('ready_cool_down', 'Cool-Down'), icon: 'available:lucide-droplet', command: 'onigiri_ready:cool_down' },
         ].forEach(item => this.appendMenuItem(menu, item));
 
         const rect = button.getBoundingClientRect();

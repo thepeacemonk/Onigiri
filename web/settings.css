@@ -8,12 +8,12 @@
    icons — driven by .is-collapsed on .osw-shell. */
 
 :root {
-  --osw-outer: #ececeb;
-  --osw-panel: #f8f8f7;
-  --osw-surface: #ffffff;
-  --osw-surface-alt: #fbfbfa;
-  --osw-inset: #f0f0ef;
-  --osw-inset-hover: #e7e7e6;
+  --osw-outer: #f7f7f6;
+  --osw-panel: #ffffff;
+  --osw-surface: #f7f7f6;
+  --osw-surface-alt: #f1f1f0;
+  --osw-inset: #efefee;
+  --osw-inset-hover: #e5e5e4;
   --osw-hairline: #e3e4e7;
   --osw-hairline-soft: #ededec;
   --osw-fg: #202124;
@@ -31,7 +31,7 @@
   --osw-shadow: rgba(15, 23, 42, 0.12);
   --osw-danger: #d64545;
 
-  --osw-radius-panel: 26px;
+  --osw-radius-panel: 30px;
   --osw-radius-card: 20px;
   --osw-radius-control: 14px;
   --osw-radius-pill: 999px;
@@ -39,6 +39,464 @@
   --osw-rail-width-collapsed: 68px;
   --osw-shell-pad: 12px;
   --osw-gutter: 24px;
+}
+
+/* ── Theme family selector + Kome compact customizer ──────────────────── */
+.osw-theme-style-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.osw-theme-style-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 82px;
+  padding: 18px 54px 18px 20px;
+  overflow: hidden;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 18px;
+  background: var(--osw-surface);
+  color: var(--osw-fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.osw-theme-style-decoration {
+  position: absolute;
+  right: 12px;
+  top: calc(55% - 1.5px);
+  z-index: 0;
+  width: 104px;
+  height: 104px;
+  color: var(--osw-fg);
+  font: 700 104px/.9 "Noto Sans JP", sans-serif;
+  line-height: 104px;
+  opacity: 0.2;
+  pointer-events: none;
+  transform: translateY(-50%) rotate(-8deg);
+}
+
+.osw-theme-style-decoration.is-onigiri {
+  background-color: currentColor;
+  -webkit-mask: var(--osw-theme-style-decoration-image) center / contain no-repeat;
+  mask: var(--osw-theme-style-decoration-image) center / contain no-repeat;
+}
+
+.osw-theme-style-decoration.is-shima svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.osw-theme-style-card.is-selected .osw-theme-style-decoration {
+  color: var(--osw-accent);
+}
+
+.osw-theme-style-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.osw-theme-style-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.osw-theme-style-credit {
+  padding: 3px 7px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: var(--osw-radius-pill);
+  background: var(--osw-inset);
+  color: var(--osw-fg-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.osw-theme-style-card:hover {
+  border-color: var(--osw-accent-line);
+}
+
+.osw-theme-style-card.is-selected {
+  border-color: var(--osw-accent);
+  box-shadow: 0 0 0 3px var(--osw-accent-a14);
+}
+
+.osw-theme-style-preview {
+  display: grid;
+  grid-template-columns: 31% 1fr;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f3f3f3;
+  color: #31343a;
+}
+
+.osw-theme-style-preview.is-things3 {
+  background: var(--theme-preview-bg, #f6f3ec);
+  color: var(--theme-preview-fg, #1f1d18);
+  font-family: Georgia, serif;
+}
+
+.osw-theme-style-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.osw-theme-style-preview.is-classic .osw-theme-style-rail {
+  border-radius: 0 14px 14px 0;
+  background: #ffffff;
+}
+
+.osw-theme-style-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--osw-accent);
+  color: #fff;
+  font: 700 11px/1 system-ui, sans-serif;
+}
+
+.is-things3 .osw-theme-style-mark {
+  border-radius: 50%;
+  background: #1f1d18;
+}
+
+.osw-theme-style-navline {
+  width: 72%;
+  height: 5px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.18;
+}
+
+.osw-theme-style-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 19px 16px;
+}
+
+.osw-theme-style-heading {
+  width: 58%;
+  height: 12px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.78;
+}
+
+.osw-theme-style-widget {
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.is-things3 .osw-theme-style-widget {
+  border-radius: 2px;
+  border-width: 0 0 1px;
+  background: transparent;
+}
+
+.osw-theme-style-widget.is-short { width: 72%; }
+.osw-theme-style-row {
+  width: 100%;
+  height: 6px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.12;
+}
+
+/* The family cards are recognizable miniature screens rather than generic
+   placeholder bars. They deliberately stay schematic here; the Main Menu
+   page below owns the full production-rendered Kome preview. */
+.osw-theme-mini-side,
+.osw-theme-mini-main,
+.osw-theme-mini-classic-side,
+.osw-theme-mini-classic-main,
+.osw-theme-mini-classic-grid,
+.osw-theme-mini-analytics {
+  display: flex;
+  min-width: 0;
+}
+.osw-theme-mini-side,
+.osw-theme-mini-classic-side {
+  flex-direction: column;
+  padding: 13px 10px;
+  border-right: 1px solid rgba(127, 127, 127, 0.13);
+  background: var(--theme-preview-inset, rgba(0, 0, 0, .035));
+}
+.osw-theme-mini-eyebrow {
+  margin-top: 2px;
+  font: 700 5.5px/1 system-ui, sans-serif;
+  letter-spacing: .13em;
+  opacity: .48;
+}
+.osw-theme-mini-due {
+  margin: 5px 0 12px;
+  font: 700 22px/1 system-ui, sans-serif;
+  letter-spacing: -.04em;
+}
+.osw-theme-mini-due small {
+  font: 600 6px/1 system-ui, sans-serif;
+  opacity: .48;
+}
+.osw-theme-mini-nav {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  font: 600 6.5px/1 system-ui, sans-serif;
+  opacity: .58;
+}
+.osw-theme-mini-nav.is-active {
+  color: var(--theme-preview-accent, #2386d8);
+  background: var(--theme-preview-accent-wash, rgba(35, 134, 216, .1));
+  opacity: 1;
+}
+.osw-theme-mini-nav i {
+  width: 9px;
+  font-style: normal;
+  text-align: center;
+}
+.osw-theme-mini-rule {
+  height: 1px;
+  margin: 8px 2px;
+  background: currentColor;
+  opacity: .1;
+}
+.osw-theme-mini-donut {
+  width: 28px;
+  height: 28px;
+  margin: 2px auto 0;
+  border: 5px solid #6fc66f;
+  border-right-color: #55a8ee;
+  border-bottom-color: rgba(127, 127, 127, .18);
+  border-radius: 50%;
+}
+.osw-theme-mini-main {
+  flex-direction: column;
+  padding: 22px 14px 12px;
+  font-family: system-ui, sans-serif;
+}
+.osw-theme-mini-table-head,
+.osw-theme-mini-deck {
+  display: grid;
+  grid-template-columns: 1fr 28px 28px;
+  align-items: center;
+  gap: 5px;
+}
+.osw-theme-mini-table-head {
+  padding: 0 7px 5px;
+  border-bottom: 1px solid rgba(127, 127, 127, .16);
+  font: 700 5px/1 system-ui, sans-serif;
+  letter-spacing: .12em;
+  opacity: .46;
+}
+.osw-theme-mini-table-head i { font-style: normal; }
+.osw-theme-mini-table-head i:not(:first-child) { text-align: right; }
+.osw-theme-mini-deck {
+  min-height: 25px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font: 600 7px/1 system-ui, sans-serif;
+}
+.osw-theme-mini-deck.is-current {
+  background: var(--theme-preview-accent-wash, rgba(35, 134, 216, .09));
+}
+.osw-theme-mini-deck b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.osw-theme-mini-deck i,
+.osw-theme-mini-deck em { font-style: normal; text-align: right; }
+.osw-theme-mini-deck em { color: var(--theme-preview-accent, #2386d8); }
+.osw-theme-mini-analytics { gap: 6px; margin-top: auto; }
+.osw-theme-mini-chart,
+.osw-theme-mini-map {
+  flex: 1;
+  height: 34px;
+  border: 1px solid rgba(127, 127, 127, .16);
+  border-radius: 6px;
+}
+.osw-theme-mini-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px;
+}
+.osw-theme-mini-chart i {
+  flex: 1;
+  height: 20%;
+  border-top: 1.5px solid var(--theme-preview-accent, #2386d8);
+  background: var(--theme-preview-accent-wash, rgba(35, 134, 216, .1));
+}
+.osw-theme-mini-chart i:nth-child(2) { height: 35%; }
+.osw-theme-mini-chart i:nth-child(3) { height: 50%; }
+.osw-theme-mini-chart i:nth-child(4) { height: 48%; }
+.osw-theme-mini-chart i:nth-child(5) { height: 78%; }
+.osw-theme-mini-map {
+  background:
+    radial-gradient(circle, var(--theme-preview-accent, #2386d8) 0 2px, transparent 2.5px) 3px 3px / 8px 8px,
+    rgba(127, 127, 127, .04);
+}
+
+.osw-theme-style-preview.is-classic {
+  background: var(--theme-preview-bg, #f2f5f4);
+  color: var(--theme-preview-fg, #303634);
+}
+.osw-theme-mini-classic-side {
+  align-items: center;
+  background: var(--theme-preview-inset, rgba(255, 255, 255, .72));
+}
+.osw-theme-mini-avatar {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  margin: 1px 0 4px;
+  border-radius: 9px;
+  background: var(--theme-preview-accent, var(--osw-accent));
+  color: #fff;
+  font: 700 9px/1 system-ui, sans-serif;
+}
+.osw-theme-mini-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 9px;
+  font: 600 6.5px/1.25 system-ui, sans-serif;
+}
+.osw-theme-mini-profile i { font-style: normal; opacity: .5; }
+.osw-theme-mini-classic-action {
+  width: 100%;
+  margin-bottom: 3px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  font: 500 6px/1 system-ui, sans-serif;
+  background: rgba(255, 255, 255, .52);
+}
+.osw-theme-mini-classic-action b { margin-left: 5px; }
+.osw-theme-mini-classic-main { flex-direction: column; padding: 19px 13px 12px; }
+.osw-theme-mini-greeting {
+  margin-bottom: 8px;
+  font: 700 10px/1.1 system-ui, sans-serif;
+}
+.osw-theme-mini-classic-grid {
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.osw-theme-mini-stat,
+.osw-theme-mini-wide {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(127, 127, 127, .13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .72);
+}
+.osw-theme-mini-stat { flex: 1; padding: 8px; }
+.osw-theme-mini-stat b { font: 700 14px/1 system-ui, sans-serif; }
+.osw-theme-mini-stat i { margin-top: 3px; font: 500 5.5px/1 system-ui, sans-serif; opacity: .5; }
+.osw-theme-mini-wide {
+  width: 100%;
+  height: 45px;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 9px;
+}
+.osw-theme-mini-wide i {
+  flex: 1;
+  height: 30%;
+  border-radius: 2px 2px 0 0;
+  background: var(--theme-preview-accent, var(--osw-accent));
+  opacity: .45;
+}
+.osw-theme-mini-wide i:nth-child(2) { height: 52%; }
+.osw-theme-mini-wide i:nth-child(3) { height: 38%; }
+.osw-theme-mini-wide i:nth-child(4) { height: 72%; }
+.osw-theme-mini-wide i:nth-child(5) { height: 58%; }
+.osw-theme-mini-wide i:nth-child(6) { height: 86%; }
+
+.osw-theme-style-copy { display: flex; flex-direction: column; gap: 4px; }
+.osw-theme-style-name { font-size: 14px; font-weight: 650; }
+.osw-theme-style-desc { font-size: 11.5px; color: var(--osw-fg-muted); }
+.osw-things3-config { display: flex; flex-direction: column; gap: 18px; }
+.osw-things3-note {
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: var(--osw-inset);
+  color: var(--osw-fg-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.osw-things3-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.osw-things3-controls .osw-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.osw-things3-controls > [data-field-host] {
+  min-width: 0;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 12px;
+  background: var(--osw-surface);
+}
+.osw-things3-controls > .osw-row,
+.osw-things3-controls > .osw-slider-card,
+.osw-things3-controls > .osw-imagefield {
+  padding: 10px 12px;
+}
+.osw-things3-controls .osw-row-label,
+.osw-things3-controls .osw-slider-title {
+  font-size: 12px;
+}
+.osw-things3-controls .osw-slider-track { height: 34px; }
+.osw-things3-controls .osw-imgslot { padding: 6px 8px; }
+.osw-things3-live-card { width: 100%; }
+.osw-things3-live-stage {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  overflow: hidden;
+  background: #f3f3f3;
+}
+.osw-things3-live-frame {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  width: 1440px;
+  height: 900px;
+  border: 0;
+  background: transparent;
+  transform-origin: 0 0;
+}
+
+@media (max-width: 760px) {
+  .osw-theme-style-grid { grid-template-columns: 1fr; }
+  .osw-things3-controls { grid-template-columns: 1fr; }
 }
 
 /* Anki's webview.css sets `* { box-sizing: content-box }`. Equal specificity,
@@ -154,6 +612,7 @@ body.fancy .osw-gal-target { border-radius: 14px; }
 body.fancy .osw-theme-tile { border-radius: 16px; }
 body.fancy .osw-linkchip { border-radius: var(--osw-radius-pill); }
 body.fancy .osw-gal-import { border-radius: var(--osw-radius-pill); }
+body.fancy .osw-assets-import { border-radius: var(--osw-radius-control); }
 body.fancy .osw-gal-close { border-radius: 50%; }
 
 input, select { font: inherit; color: inherit; }
@@ -179,7 +638,9 @@ input, select { font: inherit; color: inherit; }
 
 .osw-panel {
   background: var(--osw-panel);
+  border: 1px solid rgba(18, 48, 52, 0.035);
   border-radius: var(--osw-radius-panel);
+  box-shadow: 0 12px 30px rgba(18, 48, 52, 0.055);
   min-height: 0;
 }
 
@@ -249,6 +710,180 @@ input, select { font: inherit; color: inherit; }
    goes away entirely (clicking the magnifier expands the rail and focuses it). */
 .osw-shell.is-collapsed .osw-rail-top { justify-content: center; padding: 14px 0 10px; }
 .osw-shell.is-collapsed .osw-search { display: none; }
+
+.osw-complexity {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 0 14px 10px;
+  padding: 3px;
+  border-radius: var(--osw-radius-pill);
+  background: var(--osw-inset);
+}
+.osw-complexity button {
+  height: 27px;
+  padding: 0 8px;
+  border-radius: var(--osw-radius-pill);
+  color: var(--osw-fg-faint);
+  font-size: 11.5px;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.osw-complexity button.is-active {
+  color: var(--osw-fg);
+  /* The selected mode is the raised control inside the soft track. */
+  background: var(--osw-panel);
+  box-shadow: none;
+}
+.osw-shell.is-collapsed .osw-complexity { display: none; }
+
+body[data-settings-complexity="simple"] [data-advanced-setting="true"],
+body[data-settings-complexity="advanced"] [data-simple-setting="true"] {
+  display: none !important;
+}
+body[data-settings-complexity="advanced"] [data-simple-page="true"] {
+  display: none !important;
+}
+
+/* Simple Sync always uses the Everything policy. Keep only the master sync
+   switch and explanatory notes; Advanced exposes policy/category editing. */
+body[data-settings-complexity="simple"] [data-field-host="ankiweb_sync_preset"],
+body[data-settings-complexity="simple"] [data-section="sync_categories"] {
+  display: none !important;
+}
+
+/* Organize Widgets keeps structural sizing and border geometry in Advanced.
+   Simple reflows each surviving row so the removed controls leave no holes. */
+body[data-settings-complexity="simple"] [data-simple-organize-advanced] {
+  display: none !important;
+}
+body[data-settings-complexity="simple"] .osw-widget-effect-compact-effects {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+body[data-settings-complexity="simple"] .osw-organize-actions {
+  display: contents;
+}
+body[data-settings-complexity="simple"] .osw-organize-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+body[data-settings-complexity="simple"] .osw-organize-group,
+body[data-settings-complexity="simple"] .osw-organize-row {
+  display: contents;
+}
+body[data-settings-complexity="simple"] .osw-organize-controls .osw-organize-ctl,
+body[data-settings-complexity="simple"] .osw-organize-controls .osw-profile-reset-btn,
+body[data-settings-complexity="simple"] .osw-organize-controls .osw-organize-add-btn {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+body[data-settings-complexity="simple"] .osw-organize-controls .osw-organize-ctl {
+  height: 32px;
+}
+body[data-settings-complexity="simple"] .osw-organize-actions > * {
+  width: 100%;
+  justify-content: center;
+}
+/* Background settings are often only one row deep (for example, the colour
+   pair in Color only mode). Let that row use the whole deck instead of
+   pinning image, slideshow, or colour controls to a narrow right column. */
+body[data-settings-complexity="simple"] .osw-preview-kind-background + .osw-designer-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+/* Overview Style keeps its color palette as a full-width strip. In Simple
+   mode, the detailed notification and copy groups are hidden, so let the
+   remaining layout and button controls use the full deck width. */
+body[data-settings-complexity="simple"] .osw-preview-kind-overview_style + .osw-designer-deck {
+  grid-template-columns: minmax(0, 1fr);
+}
+body[data-settings-complexity="simple"] .osw-preview-kind-overview_style + .osw-designer-deck
+  .osw-deck-subsection[data-subsection="notifications"],
+body[data-settings-complexity="simple"] .osw-preview-kind-overview_style + .osw-designer-deck
+  .osw-deck-subsection[data-subsection="text"] {
+  display: none;
+}
+@media (max-width: 900px) {
+  body[data-settings-complexity="simple"] .osw-organize-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 540px) {
+  body[data-settings-complexity="simple"] .osw-organize-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.osw-section.is-hidden { display: none !important; }
+.osw-section.is-complexity-empty { display: none !important; }
+
+.osw-font-roles-stack {
+  display: grid;
+  gap: 28px;
+}
+.osw-font-role-group > .osw-section-title {
+  margin-bottom: 10px;
+}
+
+.osw-search-results {
+  display: grid;
+  gap: 8px;
+}
+.osw-search-result {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 14px;
+  background: var(--osw-surface);
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+.osw-search-result:hover {
+  border-color: var(--osw-accent-line-strong);
+  background: var(--osw-accent-wash);
+  transform: translateY(-1px);
+}
+.osw-search-result-trail {
+  margin-bottom: 5px;
+  color: var(--osw-fg-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+.osw-search-result-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--osw-fg);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.osw-search-result-desc {
+  margin-top: 4px;
+  color: var(--osw-fg-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.osw-search-result-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--osw-accent-a14);
+  color: var(--osw-accent);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.osw-search-results-empty {
+  padding: 36px 16px;
+  color: var(--osw-fg-faint);
+  text-align: center;
+}
+.osw-search-hit {
+  animation: osw-search-pulse 1.8s ease-out;
+}
+@keyframes osw-search-pulse {
+  0%, 35% { box-shadow: 0 0 0 3px var(--osw-accent-a16); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 
 /* Same edge fade as the page body: the nav list used to slice whichever item sat
    at the scroll boundary. */
@@ -336,6 +971,20 @@ input, select { font: inherit; color: inherit; }
   color: var(--osw-fg-faint);
 }
 .osw-nav-icon svg { width: 17px; height: 17px; }
+/* A compact pop makes every selected page feel responsive without competing
+   with the active row's colour treatment.  JS applies the class on click so
+   keyboard activation and reselecting the current page get the same feedback. */
+.osw-nav-icon.is-activating {
+  animation: osw-nav-icon-activate 260ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes osw-nav-icon-activate {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .osw-nav-icon.is-activating { animation: none; }
+}
 .osw-nav-label {
   flex: 1;
   min-width: 0;
@@ -473,6 +1122,42 @@ input, select { font: inherit; color: inherit; }
 .osw-btn-icon { display: none; }
 .osw-btn-icon svg { width: 16px; height: 16px; }
 
+/* Done keeps the rail's pill silhouette, while its icon well expands over the
+   label on hover.  The well uses dialog tokens rather than Uiverse's palette
+   so it belongs to both the light and dark settings themes. */
+#oswDone {
+  position: relative;
+  justify-content: flex-start;
+  padding: 0 46px 0 15px;
+  overflow: hidden;
+}
+#oswDone .osw-btn-action-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  border-radius: var(--osw-radius-pill);
+  background: var(--osw-surface);
+  color: var(--osw-accent);
+  box-shadow: 0 2px 6px var(--osw-shadow);
+  transition: width 300ms ease, transform 150ms ease;
+}
+#oswDone .osw-btn-icon { display: flex; }
+#oswDone .osw-btn-icon svg { transition: transform 300ms ease; }
+.osw-shell:not(.is-collapsed) #oswDone:hover .osw-btn-action-icon,
+.osw-shell:not(.is-collapsed) #oswDone:focus-visible .osw-btn-action-icon {
+  width: calc(100% - 8px);
+}
+.osw-shell:not(.is-collapsed) #oswDone:hover .osw-btn-icon svg,
+.osw-shell:not(.is-collapsed) #oswDone:focus-visible .osw-btn-icon svg {
+  transform: translateX(2px);
+}
+#oswDone:active .osw-btn-action-icon { transform: scale(0.95); }
+
 /* Collapsed: the commit pair becomes two round icon buttons. */
 .osw-shell.is-collapsed .osw-btn {
   flex: 0 0 auto;
@@ -482,6 +1167,12 @@ input, select { font: inherit; color: inherit; }
 }
 .osw-shell.is-collapsed .osw-btn-label { display: none; }
 .osw-shell.is-collapsed .osw-btn-icon { display: flex; }
+.osw-shell.is-collapsed #oswDone { padding: 0; justify-content: center; }
+.osw-shell.is-collapsed #oswDone .osw-btn-action-icon {
+  position: static;
+  width: 36px;
+  height: 36px;
+}
 
 /* ── main ──────────────────────────────────────────────────────────────────── */
 
@@ -593,6 +1284,16 @@ input, select { font: inherit; color: inherit; }
   background: var(--osw-inset);
 }
 
+.osw-page-mode-strip {
+  flex: 0 0 auto;
+  min-width: 230px;
+}
+
+.osw-page-mode-strip .osw-subtab {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
 html body .osw-segment-btn.osw-subtab {
   padding: 6px 14px !important;
   font-size: 12.5px !important;
@@ -603,8 +1304,35 @@ html body .osw-segment-btn.osw-subtab {
 
 .osw-subtabs.is-icons .osw-subtab-icon { display: flex; }
 .osw-subtabs.is-icons .osw-subtab-label { display: none; }
+.osw-subtabs.is-icons .osw-subtab.is-active .osw-subtab-label { display: inline; }
 html body .osw-subtabs.is-icons .osw-segment-btn.osw-subtab {
   padding: 7px 11px !important;
+}
+
+/* The compact tab rail changes both its raised surface and its expanded label
+   when the active destination changes. Animate those two changes together so
+   the selection settles into place rather than cutting from one item to the
+   next. The reset control has no `.osw-subtab-label`, so it remains unchanged. */
+.osw-subtabs-strip .osw-subtab {
+  transition: background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 180ms ease-out, box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+html body .osw-subtabs.is-icons .osw-segment-btn.osw-subtab { gap: 0 !important; }
+.osw-subtabs.is-icons .osw-subtab-label,
+.osw-subtabs.is-icons .osw-subtab.is-active .osw-subtab-label {
+  display: inline-block;
+  max-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  vertical-align: bottom;
+  transition: max-width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-left 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease-out;
+}
+.osw-subtabs.is-icons .osw-subtab.is-active .osw-subtab-label {
+  max-width: 240px;
+  margin-left: 6px;
+  opacity: 1;
 }
 
 .osw-subtab-body { display: flex; flex-direction: column; gap: 22px; }
@@ -723,9 +1451,10 @@ html body .osw-switch-btn:active {
 .osw-switch {
   position: relative;
   flex: 0 0 auto;
-  width: 44px;
-  height: 26px;
-  border-radius: var(--osw-radius-pill);
+  box-sizing: border-box;
+  width: 38px;
+  height: 22px;
+  border-radius: 7px;
   background: var(--osw-inset-hover);
   transition: background-color 160ms ease;
 }
@@ -734,15 +1463,15 @@ html body .osw-switch-btn:active {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   background: #fff;
   box-shadow: 0 1px 3px var(--osw-shadow);
   transition: transform 170ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .osw-switch.is-on { background: var(--osw-accent); }
-.osw-switch.is-on::after { transform: translateX(18px); }
+.osw-switch.is-on::after { transform: translateX(16px); }
 
 /* ── choice cards ──────────────────────────────────────────────────────────── */
 
@@ -897,7 +1626,8 @@ html body .osw-switch-btn:active {
   border-radius: var(--osw-radius-panel);
   background: var(--osw-surface);
   border: 1px solid transparent;
-  transition: border-color 160ms ease;
+  box-shadow: inset 0 1px 0 var(--osw-hairline-soft);
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 /* While a card is being hovered the hero is showing something the user has not
    chosen yet — a dashed edge keeps that honest. */
@@ -959,39 +1689,7 @@ html body .osw-switch-btn:active {
 }
 .osw-lang-badge.is-active { background: var(--osw-accent-a16); color: var(--osw-accent); }
 
-.osw-lang-meter { margin-top: 22px; }
-.osw-lang-meter-track {
-  height: 7px;
-  border-radius: var(--osw-radius-pill);
-  background: var(--osw-inset);
-  overflow: hidden;
-}
-.osw-lang-meter-fill {
-  height: 100%;
-  border-radius: var(--osw-radius-pill);
-  background: var(--osw-accent);
-  opacity: 0.75;
-  transition: width 260ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-.osw-lang-meter-fill.is-complete { opacity: 1; }
-.osw-lang-meter-legend {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 9px;
-}
-.osw-lang-meter-pct { font-size: 12.5px; line-height: 16px; white-space: nowrap; }
-.osw-lang-meter-count {
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--osw-fg-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.osw-lang-preview { margin-top: 22px; }
+.osw-lang-preview { margin-top: 24px; }
 .osw-lang-preview-title {
   font-size: 10.5px;
   font-weight: 500;
@@ -1023,27 +1721,6 @@ html body .osw-switch-btn:active {
 /* Untranslated strings echo the English back; say so instead of pretending. */
 .osw-lang-pair.is-missing .osw-lang-pair-to { color: var(--osw-fg-faint); font-style: italic; }
 
-.osw-lang-hero-foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--osw-hairline-soft);
-  font-size: 11px;
-  line-height: 16px;
-  height: 16px;
-  color: var(--osw-fg-faint);
-}
-.osw-lang-foot-text {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.osw-lang-help { color: var(--osw-accent); text-decoration: none; white-space: nowrap; flex: 0 0 auto; }
-
 .osw-lang-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
@@ -1051,8 +1728,10 @@ html body .osw-switch-btn:active {
 }
 
 .osw-lang-card {
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-height: 142px;
   padding: 16px;
   border-radius: var(--osw-radius-card);
   background: var(--osw-surface);
@@ -1064,6 +1743,23 @@ html body .osw-switch-btn:active {
 .osw-lang-card.is-selected {
   border-color: var(--osw-accent-line-strong);
   background: var(--osw-accent-wash-strong);
+}
+.osw-lang-card.is-selected::after {
+  content: "✓";
+  position: absolute;
+  right: 13px;
+  bottom: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--osw-accent);
+  color: var(--osw-surface);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .osw-lang-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1088,34 +1784,12 @@ html body .osw-switch-btn:active {
   letter-spacing: -0.01em;
 }
 .osw-lang-card-name {
-  margin-top: 2px;
+  margin-top: 5px;
   font-size: 11.5px;
   color: var(--osw-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.osw-lang-card-bar {
-  height: 4px;
-  margin-top: 14px;
-  border-radius: var(--osw-radius-pill);
-  background: var(--osw-inset);
-  overflow: hidden;
-}
-.osw-lang-card-bar-fill {
-  height: 100%;
-  border-radius: var(--osw-radius-pill);
-  background: var(--osw-fg-faint);
-  opacity: 0.5;
-}
-.osw-lang-card-bar-fill.is-complete { background: var(--osw-accent); opacity: 1; }
-.osw-lang-card.is-selected .osw-lang-card-bar-fill { background: var(--osw-accent); opacity: 1; }
-.osw-lang-card-pct {
-  margin-top: 6px;
-  font-size: 10px;
-  color: var(--osw-fg-faint);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── controls ──────────────────────────────────────────────────────────────── */
@@ -1128,9 +1802,12 @@ html body .osw-switch-btn:active {
   padding: 0 6px 0 14px;
   border-radius: var(--osw-radius-pill);
   background: var(--osw-inset);
-  border: 1px solid transparent;
+  border: 1px solid var(--osw-hairline);
 }
-.osw-number:focus-within { border-color: var(--osw-accent); }
+.osw-number:focus-within {
+  border-color: var(--osw-accent);
+  box-shadow: 0 0 0 3px var(--osw-accent-a14);
+}
 .osw-number input {
   width: 44px;
   border: none;
@@ -1206,10 +1883,17 @@ html body .osw-reset:active {
   padding: 0 14px;
   border-radius: var(--osw-radius-pill);
   background: var(--osw-inset);
-  border: 1px solid transparent;
+  color: var(--osw-fg);
+  border: 1px solid var(--osw-hairline);
   outline: none;
+  transition: border-color 130ms ease, box-shadow 130ms ease,
+    background-color 130ms ease;
 }
-.osw-text-input:focus { border-color: var(--osw-accent); }
+.osw-text-input:hover { border-color: var(--osw-accent-line); }
+.osw-text-input:focus {
+  border-color: var(--osw-accent);
+  box-shadow: 0 0 0 3px var(--osw-accent-a14);
+}
 
 .osw-textarea-input {
   min-height: 72px;
@@ -1218,13 +1902,19 @@ html body .osw-reset:active {
   border-radius: var(--osw-radius-card);
   background: var(--osw-inset);
   color: var(--osw-fg);
-  border: 1px solid transparent;
+  border: 1px solid var(--osw-hairline);
   outline: none;
   font-family: inherit;
   font-size: 12.5px;
   resize: vertical;
+  transition: border-color 130ms ease, box-shadow 130ms ease,
+    background-color 130ms ease;
 }
-.osw-textarea-input:focus { border-color: var(--osw-accent); }
+.osw-textarea-input:hover { border-color: var(--osw-accent-line); }
+.osw-textarea-input:focus {
+  border-color: var(--osw-accent);
+  box-shadow: 0 0 0 3px var(--osw-accent-a14);
+}
 
 .osw-select-input {
   height: 34px;
@@ -1267,11 +1957,58 @@ html body .osw-reset:active {
   border-radius: 11px; background: var(--osw-surface); box-shadow: 0 12px 28px color-mix(in srgb, #000 20%, transparent);
 }
 .osw-select-menu.is-open .osw-select-menu-list { display: grid; gap: 1px; }
+/* Tone menus escape the page's scrolling/fading boundary. JavaScript chooses
+   above or below the trigger and limits height to the actual window space. */
+.osw-select-menu-list.is-floating {
+  position: fixed;
+  z-index: 1000;
+  right: auto;
+  display: grid;
+  gap: 1px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+}
+.osw-select-menu-list.is-floating .osw-select-menu-option {
+  overflow-wrap: anywhere;
+}
 .osw-select-menu-option { width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--osw-fg); font: inherit; font-size: 12px; text-align: left; }
 .osw-select-menu-option:hover, .osw-select-menu-option.is-active { background: var(--osw-accent-wash-strong); color: var(--osw-accent); }
 .osw-select-menu-option.is-active::after { content: "✓"; float: right; font-weight: 700; }
 body.fancy .osw-select-menu-trigger { border-radius: 10px; box-shadow: 0 1px 2px color-mix(in srgb, #000 8%, transparent); }
 body.fancy .osw-select-menu-option { border-radius: 7px; box-shadow: none; }
+
+/* The Bottom Bar's Style picker lives in one half of the designer deck. Its
+   width therefore depends on that grid cell, not on the WebView viewport.
+   Let the label keep its natural width and make the picker consume only the
+   space that actually remains in the row. */
+.osw-designer-deck [data-field-host="bbar_bg_mode"].osw-row .osw-row-text {
+  flex: 0 0 auto;
+}
+
+.osw-designer-deck [data-field-host="bbar_bg_mode"].osw-row .osw-row-control {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.osw-designer-deck [data-field-host="bbar_bg_mode"] .osw-select-menu {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.osw-designer-deck [data-field-host="bbar_bg_mode"] .osw-select-menu-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.osw-designer-deck [data-field-host="bbar_bg_mode"] .osw-select-menu-chevron {
+  flex: 0 0 auto;
+}
 
 .osw-chip {
   display: flex;
@@ -1293,30 +2030,6 @@ body.fancy .osw-select-menu-option { border-radius: 7px; box-shadow: none; }
   flex: 0 0 auto;
 }
 .osw-chip-hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; letter-spacing: 0.04em; }
-
-/* Colour chip, coolors.co style: the chip itself IS the swatch — the hex
-   code sits directly on the colour (text colour picked for contrast in JS)
-   instead of a separate grey hex pill next to a small colour dot. */
-.osw-chip-color {
-  justify-content: center;
-  padding: 0;
-  gap: 0;
-  height: 40px;
-  width: 168px;
-  border: 1px solid var(--osw-hairline);
-  border-radius: 10px;
-  box-sizing: border-box;
-  transition: box-shadow 120ms ease, transform 120ms ease;
-}
-.osw-chip-color:hover {
-  box-shadow: 0 0 0 3px var(--osw-accent-a14);
-}
-.osw-chip-color:active { transform: scale(0.97); }
-.osw-chip-color .osw-chip-hex {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
 
 /* ── notes ─────────────────────────────────────────────────────────────────── */
 
@@ -1349,6 +2062,23 @@ body.fancy .osw-select-menu-option { border-radius: 7px; box-shadow: none; }
   transition: opacity 180ms ease, transform 180ms ease;
 }
 .osw-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.osw-toast.is-simple-notice {
+  z-index: 100;
+  top: 24px;
+  bottom: auto;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 11px 15px;
+  border-radius: 14px;
+  line-height: 1.4;
+  transform: translate(-50%, -14px);
+}
+.osw-toast.is-simple-notice.is-visible { transform: translate(-50%, 0); }
+.osw-toast-logo { width: 30px; height: 30px; flex: none; }
 
 @media (max-width: 1080px) {
   :root { --osw-rail-width: 210px; --osw-gutter: 18px; }
@@ -1682,6 +2412,12 @@ html body .osw-font-preview-card[data-preview-mode="dark"] .osw-font-preview-mod
   pointer-events: none;
 }
 
+/* Simple Profile fixes its layout and avatar source, so their complete mode
+   selectors stay out of the way. Advanced restores the retained controls. */
+.osw-simple-profile-hidden {
+  display: none !important;
+}
+
 .osw-preview-ctl-label {
   font-size: 11px;
   font-weight: 500;
@@ -1689,6 +2425,30 @@ html body .osw-font-preview-card[data-preview-mode="dark"] .osw-font-preview-mod
   text-transform: uppercase;
   color: var(--osw-fg-faint);
   white-space: nowrap;
+}
+
+/* The Study Plans font size uses the same labelled control and inset value
+   box as Widget Height and Grid Width in Organize Widgets. */
+.osw-preview-number-ctl {
+  gap: 8px;
+}
+/* Let the number row use the open toolbar space, with Sync and the preview
+   utilities grouped at its trailing edge. */
+.osw-preview-kind-prep_widget .osw-designer-preview-title {
+  margin-right: 0;
+}
+.osw-preview-kind-prep_widget .osw-preview-head-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0;
+  gap: 12px;
+}
+.osw-preview-kind-prep_widget .osw-preview-number-ctl {
+  flex: 1 1 0;
+  max-width: none;
+}
+.osw-preview-kind-prep_widget .osw-preview-number {
+  flex: 1 1 auto;
 }
 
 /* Square switch. A real <button>, so Anki's button:hover border/padding is
@@ -1854,6 +2614,7 @@ html body .osw-profile-preview-toggle-btn:active {
 .osw-preview-bar-pill {
   height: 64px;
   border-radius: 32px;
+  clip-path: inset(0 round 32px);
   position: relative;
   display: flex;
   align-items: center;
@@ -1895,6 +2656,24 @@ html body .osw-profile-preview-toggle-btn:active {
   height: 36px;
   flex: 0 0 36px;
   font-size: 15px;
+}
+
+.osw-preview-avatar.is-avatar-emoji {
+  font-size: 20px;
+}
+
+.osw-profile-avatar-icon,
+.profile-pic-generated-icon {
+  display: block;
+  width: 58%;
+  height: 58%;
+  background: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .osw-preview-name {
@@ -1964,12 +2743,18 @@ html body .osw-profile-preview-toggle-btn:active {
 }
 
 .osw-preview-ring-wrap {
-  position: relative;
-  width: 52px;
+    position: relative;
+    width: 52px;
   height: 52px;
   display: flex;
   align-items: center;
-  justify-content: center;
+    justify-content: center;
+}
+
+.osw-preview-ring-wrap .osw-preview-avatar {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
 }
 
 .osw-preview-ring-svg {
@@ -2022,8 +2807,8 @@ html body .osw-profile-preview-toggle-btn:active {
   padding: 0;
 }
 
-/* Compact tab bar just for the Profile page's embedded tabs — scoped so it
-   doesn't affect the shared .osw-segmented-control used elsewhere. */
+/* Legacy compact Profile tab bar rules are retained for any embedded fallback.
+   The normal Profile page now mounts its menu in the shared header tab slot. */
 .osw-profile-segmented-tabs {
   border-radius: 12px !important;
   padding: 3px;
@@ -2051,7 +2836,8 @@ html body .osw-profile-preview-toggle-btn:active {
     padding-right 240ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-.osw-profile-segmented-tabs .osw-segment-btn.is-hidden {
+.osw-profile-segmented-tabs .osw-segment-btn.is-hidden,
+.osw-profile-tabs-wrap .osw-segment-btn.is-hidden {
   opacity: 0 !important;
   max-width: 0 !important;
   padding-left: 0 !important;
@@ -2090,18 +2876,30 @@ html body .osw-profile-preview-toggle-btn:active {
 .osw-profile-tab-contents {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
+}
+
+/* A Profile tab can contain two independent appearance panels (for example,
+   name typography and Ring Color). Keep a deliberate gutter between them. */
+.osw-profile-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .osw-profile-sec-block {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+  padding: 10px;
+  background: var(--osw-surface);
+  border: 1px solid var(--osw-hairline);
+  border-radius: 16px;
 }
 
 .osw-profile-sec-block .osw-section-title {
-  margin: 0 0 4px;
-  padding-left: 0;
+  margin: 0 0 2px;
+  padding: 0 2px;
 }
 
 /* A one-line caption, not a boxed note — the hint doesn't need a card of
@@ -2144,17 +2942,20 @@ html body .osw-profile-preview-toggle-btn:active {
   }
 }
 
-/* No boxed containers for individual fields — a flat, divided list. */
+/* Profile controls use the same nested-card rhythm as the settings designer:
+   a bordered section panel containing compact, inset controls. */
 .osw-profile-tab-content .osw-row {
-  padding: 12px 2px;
-  border-radius: 0;
-  background: transparent;
+  min-height: 40px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: var(--osw-inset);
   border: none;
+  box-sizing: border-box;
 }
 
 .osw-profile-tab-content .osw-fields > .osw-row,
 .osw-profile-sec-block > .osw-row {
-  border-bottom: 1px solid var(--osw-hairline);
+  border-bottom: none;
 }
 
 .osw-profile-tab-content .osw-fields > .osw-row:last-child,
@@ -2193,6 +2994,46 @@ html body .osw-profile-preview-toggle-btn:active {
   min-width: 0;
 }
 
+/* Letter/Emoji stays a compact one-line control: description left, an empty
+   but clearly outlined writing area right. */
+.osw-profile-tab-content [data-field-host="modern_menu_profile_picture_letter"] .osw-row-control {
+  flex: 0 0 48px;
+  margin-left: auto;
+}
+
+.osw-profile-tab-content [data-field-host="modern_menu_profile_picture_letter"] .osw-text-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 10px;
+  background: var(--osw-surface);
+  color: var(--osw-fg);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* The content selector holds only one grapheme, so it can be compact. This
+   leaves the neighbouring copy enough width to stay within the shared row. */
+.osw-profile-avatar-options [data-field-host="modern_menu_profile_picture_letter"] .osw-row-label {
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.osw-profile-avatar-options [data-field-host="modern_menu_profile_picture_letter"] .osw-row-desc {
+  margin-top: 1px;
+  font-size: 10px;
+  line-height: 12px;
+  white-space: nowrap;
+}
+
+.osw-profile-tab-content [data-field-host="modern_menu_profile_picture_letter"] .osw-text-input:focus {
+  border-color: var(--osw-accent);
+}
+
 .osw-profile-tab-content .osw-text-input,
 .osw-profile-tab-content .osw-select-input {
   height: 32px;
@@ -2212,26 +3053,310 @@ html body .osw-profile-preview-toggle-btn:active {
   padding: 0 12px;
 }
 
-/* Profile Information: rounded rectangles instead of pill inputs, tighter
-   vertical rhythm, no drag handle on Bio (its box does not grow anyway). */
+html body .osw-profile-avatar-options .osw-profile-font-menu-btn {
+  width: 100%;
+  height: 46px;
+  min-height: 46px;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+}
+
+/* The avatar-content row and its companion font button use one fixed control
+   height, so switching between Icon and Letter/Emoji cannot shift the row. */
+.osw-profile-avatar-options > .osw-row {
+  height: 46px;
+  min-height: 46px;
+}
+
+/* Below this width, a pair would squeeze the full Letter/Emoji guidance;
+   stack it so the copy remains visible rather than overflowing. */
+@media (max-width: 720px) {
+  .osw-profile-avatar-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+html body .osw-profile-font-menu-btn:hover {
+  background: var(--osw-inset-hover);
+}
+
+/* A Profile choice is a full-width inset row: label at left, options spread
+   across the track at right, matching the reference's Layout Items control. */
+.osw-profile-tab-content .osw-segmented-wrap {
+  display: grid;
+  grid-template-columns: minmax(100px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  margin: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  box-sizing: border-box;
+}
+
+.osw-profile-tab-content .osw-segmented-title {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--osw-fg-muted);
+}
+
+.osw-profile-tab-content .osw-segmented-control {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.osw-profile-tab-content .osw-segment-btn {
+  flex: 1 1 0;
+}
+
+/* Gallery and colour pairs stay easy to scan but now live inside the same
+   inset cards as the rest of the Profile options. */
+.osw-profile-tab-content .osw-imagefield {
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--osw-inset);
+}
+
+.osw-profile-tab-content .osw-imagefield-head .osw-row-label {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--osw-fg-muted);
+}
+
+.osw-profile-tab-content .osw-imagefield-slots {
+  gap: 6px;
+}
+
+.osw-profile-tab-content .osw-imgslot {
+  background: var(--osw-surface);
+  border-radius: 11px;
+}
+
+/* Profile colour controls share the Main Menu's control dimensions and
+   spacing. The Profile shell stays compact; only the pickers use this rhythm. */
+.osw-profile-tab-content .osw-chip.osw-chip-color {
+  height: 34px;
+  padding: 0 15px;
+  font-size: 12.5px;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] {
+  gap: 8px;
+  padding: 12px 2px;
+  border-radius: 0;
+  background: transparent;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imagefield-slots {
+  width: min(100%, 288px);
+  gap: 8px;
+}
+/* The Profile Page Background has room for both color groups in one row.
+   Let each group use its column width, and let a single color fill the row. */
+.osw-profile-page-bg-colors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.osw-profile-page-bg-colors > [data-field-host] {
+  min-width: 0;
+}
+.osw-profile-page-bg-colors:has(
+  [data-field-host="onigiri_profile_page_bg_color2"].is-hidden
+) [data-field-host="onigiri_profile_page_bg_color1"] {
+  grid-column: 1 / -1;
+}
+.osw-profile-tab-content .osw-profile-page-bg-colors [data-field-type="color_pair"] .osw-imagefield-slots {
+  width: 100%;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imgslot {
+  height: 34px;
+  min-height: 0;
+  padding: 0 8px;
+  gap: 8px;
+  background: var(--osw-inset);
+  border-radius: 11px;
+  box-sizing: border-box;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imgslot-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imgslot-meta {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imgslot-name {
+  font-size: 11.5px;
+}
+.osw-profile-tab-content [data-field-type="color_pair"] .osw-imgslot-role {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .osw-profile-page-bg-colors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .osw-profile-page-bg-colors > [data-field-host],
+  .osw-profile-page-bg-colors:has(
+    [data-field-host="onigiri_profile_page_bg_color2"].is-hidden
+  ) [data-field-host="onigiri_profile_page_bg_color1"] {
+    grid-column: 1;
+  }
+}
+
+/* The profile picture's colours belong with Profile Fonts: the font action
+   names the group, while the two compact theme values use its unused space. */
+.osw-profile-fonts-and-colors {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 46px;
+}
+html body .osw-profile-avatar-options .osw-profile-fonts-and-colors .osw-profile-font-menu-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+  padding: 0 14px;
+}
+.osw-profile-fonts-and-colors [data-field-type="color_pair"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+}
+.osw-profile-fonts-and-colors [data-field-type="color_pair"] .osw-imagefield-head {
+  display: none;
+}
+.osw-profile-fonts-and-colors [data-field-type="color_pair"] .osw-imagefield-slots {
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+.osw-profile-fonts-and-colors [data-field-type="color_pair"] .osw-imgslot {
+  height: 46px;
+  min-height: 46px;
+}
+
+@media (max-width: 720px) {
+  .osw-profile-fonts-and-colors {
+    height: auto;
+    flex-wrap: wrap;
+  }
+  .osw-profile-fonts-and-colors [data-field-type="color_pair"] {
+    flex-basis: 100%;
+  }
+}
+
+/* Profile Background effects use compact slider cards: label, live value and
+   track share one row, so paired effects align like the supplied design. */
+.osw-profile-tab-content .osw-slider-card {
+  display: grid;
+  grid-template-columns: minmax(64px, max-content) 40px minmax(64px, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  box-sizing: border-box;
+}
+
+.osw-profile-tab-content .osw-slider-header {
+  display: contents;
+}
+
+.osw-profile-tab-content .osw-slider-title {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--osw-fg);
+}
+
+.osw-profile-tab-content .osw-slider-value {
+  justify-self: end;
+  font-size: 11.5px;
+  color: var(--osw-fg-muted);
+}
+
+.osw-profile-tab-content .osw-slider-track {
+  height: 24px;
+  margin: 0;
+  border-radius: 9px;
+}
+
+.osw-profile-tab-content .osw-slider-fill {
+  border-radius: 0 8px 8px 0;
+}
+
+.osw-profile-tab-content .osw-slider-thumb {
+  height: 16px;
+}
+
+@media (max-width: 600px) {
+  .osw-profile-tab-content .osw-segmented-wrap {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Profile Information follows the compact Letter/Emoji pattern: context on
+   the left and an obvious writing area on the right, never a tall card with
+   the input stranded underneath its label. */
 .osw-profile-sec-block[data-section-id="profile_info"] .osw-row {
-  padding: 8px 2px;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px;
+}
+.osw-profile-sec-block[data-section-id="profile_info"] .osw-row-text {
+  flex: 0 1 34%;
+  min-width: 130px;
+}
+.osw-profile-sec-block[data-section-id="profile_info"] .osw-row-control {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 0;
 }
 .osw-profile-sec-block[data-section-id="profile_info"] .osw-text-input,
 .osw-profile-sec-block[data-section-id="profile_info"] .osw-textarea-input,
 .osw-profile-sec-block[data-section-id="profile_info"] .osw-select-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   border-radius: var(--osw-radius-control);
+  border-color: var(--osw-hairline);
+  background: var(--osw-surface);
+  color: var(--osw-fg);
 }
 .osw-profile-sec-block[data-section-id="profile_info"] .osw-textarea-input {
+  min-height: 54px;
   resize: none;
 }
+@media (max-width: 600px) {
+  .osw-profile-sec-block[data-section-id="profile_info"] .osw-row {
+    align-items: stretch;
+  }
+  .osw-profile-sec-block[data-section-id="profile_info"] .osw-row-text {
+    flex-basis: 34%;
+    min-width: 96px;
+  }
+}
 
-/* Show in Profile Panel: denser toggle rows, less dead space between them. */
+/* Show in Profile Sidebar: denser toggle rows, less dead space between them. */
 .osw-profile-sec-block[data-section-id="profile_panel_toggles"] .osw-row {
-  padding: 5px 2px;
+  padding: 7px 10px;
 }
 .osw-profile-sec-block[data-section-id="profile_panel_toggles"] .osw-profile-modules-grid {
-  gap: 2px 12px;
+  gap: 6px;
 }
 
 /* Name Font sits beside the Color light/dark pair, whose slots are 40px tall
@@ -2240,19 +3365,6 @@ html body .osw-profile-preview-toggle-btn:active {
   height: 40px;
   border-radius: 14px;
   box-sizing: border-box;
-}
-
-/* The colour chip's own background carries the colour — skip the padding
-   above so the hex code stays centered on it. */
-.osw-profile-tab-content .osw-chip-color {
-  height: 32px;
-  padding: 0;
-}
-.osw-profile-tab-content .osw-row.is-field-vertical .osw-chip-color {
-  width: 100%;
-}
-.osw-profile-tab-content .osw-chip-color .osw-chip-hex {
-  font-size: 12px;
 }
 
 /* Choice cards inside Profile tabs */
@@ -2289,7 +3401,7 @@ html body .osw-profile-preview-toggle-btn:active {
   justify-content: space-between;
   padding: 6px 8px;
   border-radius: 10px;
-  background: transparent;
+  background: var(--osw-inset);
   border: 1px solid transparent;
   transition: background-color 130ms ease;
 }
@@ -2424,11 +3536,22 @@ html body .osw-action-btn:hover {
 }
 .osw-segmented-control::-webkit-scrollbar { display: none; }
 
+/* Themes color mode sits beneath its section heading, at the page's left edge.
+   Override the shared track's auto margins as well as the wrapper alignment. */
+.osw-section[data-section="theme_color_mode"] .osw-segmented-wrap {
+  align-items: flex-start;
+}
+.osw-section[data-section="theme_color_mode"] .osw-segmented-control {
+  margin: 0;
+}
+
 .osw-profile-tabs-wrap {
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  /* This is now a shared header strip, so it uses the same inter-tab rhythm
+     as Main Menu and Sidebar rather than the old embedded Profile controls. */
+  gap: 3px;
 }
 
 .osw-profile-tabs-wrap .osw-profile-segmented-tabs {
@@ -2438,6 +3561,9 @@ html body .osw-action-btn:hover {
 .osw-profile-reset-wrap {
   margin: 0;
 }
+
+/* Page-wide reset is a separate control, not another tab in the same strip. */
+.osw-page-reset-wrap { margin-right: 10px; }
 
 .osw-profile-level-link-wrap {
   display: flex;
@@ -2467,6 +3593,7 @@ html body .osw-profile-level-link-wrap .osw-profile-level-link-btn {
   opacity: 0.15;
   transition: width 0.2s ease-out;
   z-index: 0;
+  pointer-events: none;
 }
 
 .osw-profile-reset-btn.is-holding::before {
@@ -2479,6 +3606,11 @@ html body .osw-profile-level-link-wrap .osw-profile-level-link-btn {
   background: var(--osw-accent, #007aff);
   opacity: 0.3;
   transition: background 0.2s;
+}
+
+.osw-profile-reset-btn > * {
+  position: relative;
+  z-index: 1;
 }
 
 .osw-profile-reset-btn-text {
@@ -2525,7 +3657,8 @@ html body .osw-profile-level-link-wrap .osw-profile-level-link-btn {
 
 .osw-segment-btn.is-active,
 html body .osw-segment-btn.is-active:hover {
-  background: var(--osw-surface, #ffffff);
+  /* Surface is now the field-card layer; active segments remain raised. */
+  background: var(--osw-panel, #ffffff);
   color: var(--osw-fg, #111827);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
 }
@@ -2551,7 +3684,7 @@ html body .osw-segment-btn.is-active:hover {
 .osw-dark .osw-segment-btn.is-active,
 html body .osw-dark .osw-segment-btn.is-active:hover,
 [data-theme="dark"] .osw-segment-btn.is-active {
-  background: var(--osw-surface, #38393d);
+  background: var(--osw-panel, #38393d);
   color: #ffffff;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
 }
@@ -2579,6 +3712,126 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
 }
 .osw-imagefield-head-text { min-width: 0; }
 .osw-imagefield-head .osw-row-desc { margin-top: 2px; }
+
+/* ── Onigimon scenarios ─────────────────────────────────────────────────────
+   Presets are bundled assets, not uploads, so they stay in a compact catalogue
+   on the scene card while the normal gallery below remains for personal art. */
+.osw-scenarios {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 2px;
+}
+.osw-scenario-tabs {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.osw-scenario-tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.osw-scenario-categories { min-width: 0; }
+.osw-scenario-category { min-width: 0; }
+.osw-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+}
+.osw-scenario-tile {
+  position: relative;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  text-align: left;
+  transition: background-color 130ms ease, box-shadow 130ms ease, transform 130ms ease;
+}
+.osw-scenario-tile:hover { background: var(--osw-inset-hover); transform: translateY(-1px); }
+.osw-scenario-tile.is-selected { box-shadow: inset 0 0 0 2px var(--osw-accent); }
+.osw-scenario-tile:focus-visible { box-shadow: inset 0 0 0 2px var(--osw-accent); }
+.osw-scenario-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  /* With a 4px tile inset, 8px is the concentric inner radius for the
+     card's 12px outer curve. */
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* Onigimon's mode is the first, centered decision in the controls area. The
+   scenario browser then spans both columns and opts out of the ordinary row
+   height cap, which otherwise clips its second line of thumbnails. */
+.osw-designer-deck > .osw-onigimon-mode-row {
+  display: flex;
+  justify-content: center;
+}
+.osw-designer-deck .osw-onigimon-mode-row > [data-field-host] {
+  width: 100%;
+}
+.osw-designer-deck .osw-onigimon-mode-row .osw-segmented-wrap {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.osw-designer-deck .osw-onigimon-mode-row .osw-segmented-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--osw-fg-muted);
+  text-align: left;
+}
+.osw-designer-deck .osw-onigimon-mode-row .osw-segmented-control {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.osw-designer-deck .osw-onigimon-mode-row .osw-segment-btn {
+  flex: 1 1 0;
+}
+.osw-designer-deck .osw-onigimon-scenario-row > [data-field-host] {
+  max-height: none;
+  overflow: visible;
+}
+.osw-onigimon-scenario-row .osw-scenarios {
+  padding: 10px 0 2px;
+}
+.osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tabs-row {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tabs-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--osw-fg-muted);
+  text-align: left;
+}
+.osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tabs {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tab {
+  flex: 1 1 0;
+}
+@media (max-width: 720px) {
+  .osw-designer-deck .osw-onigimon-mode-row .osw-segmented-wrap {
+    grid-template-columns: 1fr;
+  }
+  .osw-designer-deck .osw-onigimon-mode-row .osw-segmented-title {
+    text-align: center;
+  }
+  .osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tabs-row {
+    grid-template-columns: 1fr;
+  }
+  .osw-designer-deck .osw-onigimon-scenario-row .osw-scenario-tabs-title {
+    text-align: center;
+  }
+}
 
 /* The per-asset light/dark link switch. It states the *current* arrangement
    ("Same for both" / "Per theme") rather than the action, because that is what
@@ -2613,12 +3866,6 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
      the inset behind it. */
   border: 1px solid rgba(128, 128, 128, 0.3);
 }
-.osw-colorslot-hex {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
-}
-
 .osw-imagefield-slots { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .osw-imagefield-slots.is-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 620px) {
@@ -2704,13 +3951,6 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
 .osw-imgslot:hover .osw-imgslot-action,
 .osw-imgslot:focus-visible .osw-imgslot-action { opacity: 1; }
 
-.osw-colorslot { gap: 8px; padding: 6px 8px; }
-.osw-colorslot .osw-imgslot-thumb { width: 28px; height: 28px; border-radius: 6px; }
-.osw-colorslot .osw-imgslot-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.osw-colorslot .osw-imgslot-meta { flex-direction: row; align-items: center; flex-wrap: nowrap; gap: 4px 6px; }
-.osw-colorslot .osw-imgslot-kbd { background: transparent; border: none; padding: 0; min-width: 0; color: var(--osw-fg-muted); }
-.osw-imagefield-slots.is-split .osw-colorslot .osw-imgslot-role-label { display: none; }
-
 /* ── popover ── */
 
 .osw-gal {
@@ -2738,11 +3978,15 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
 .osw-gal-card {
   display: flex;
   flex-direction: column;
-  width: min(760px, 100%);
-  max-height: 100%;
+  /* Match the Font and Icon pickers: picture selection is a focused choice,
+     not a wide, page-like overlay.  Keeping the same 560 × 660 footprint
+     also leaves a stable scrollable gallery as files are added or removed. */
+  width: min(560px, 100%);
+  height: min(660px, 100%);
   min-height: 0;
-  border-radius: var(--osw-radius-panel);
-  background: var(--osw-panel);
+  border: 1px solid var(--osw-hairline);
+  border-radius: 20px;
+  background: var(--osw-surface);
   box-shadow: 0 24px 70px var(--osw-shadow), 0 2px 8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   animation: oswGalCardIn 190ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2756,11 +4000,16 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 18px 14px 24px;
+  flex: 0 0 auto;
+  min-height: 68px;
+  padding: 16px 16px 16px 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--osw-hairline);
+  background: var(--osw-inset);
 }
 .osw-gal-titles { flex: 1 1 auto; min-width: 0; }
 .osw-gal-title {
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2781,6 +4030,12 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   font-size: 12.5px;
   transition: filter 130ms ease, opacity 130ms ease;
 }
+/* Keep the accent fill above Anki's bare button state backgrounds. */
+html body button.osw-gal-import,
+html body button.osw-gal-import:hover,
+html body button.osw-gal-import:focus,
+html body button.osw-gal-import:focus-visible,
+html body button.osw-gal-import:active { background: var(--osw-accent); }
 .osw-gal-import:hover { filter: brightness(1.06); }
 .osw-gal-import.is-busy { opacity: 0.55; pointer-events: none; }
 .osw-gal-import-icon { display: flex; }
@@ -2793,7 +4048,7 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 10px;
   color: var(--osw-fg-muted);
   transition: background-color 130ms ease, color 130ms ease;
 }
@@ -2805,7 +4060,7 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 0 24px 14px;
+  padding: 14px 20px 2px;
 }
 .osw-gal-target {
   display: flex;
@@ -2871,11 +4126,15 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
   gap: 10px;
-  padding: 2px 24px 4px;
+  padding: 12px 20px;
   overflow-y: auto;
   min-height: 0;
   flex: 1 1 auto;
   align-content: start;
+}
+.osw-gal-grid.is-empty {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
 }
 
 .osw-gal-tile {
@@ -3024,17 +4283,26 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   display: flex;
   flex-direction: column;
   align-items: center;
+  align-self: stretch;
+  justify-content: center;
   gap: 6px;
-  padding: 46px 20px 52px;
+  padding: 32px 20px;
   text-align: center;
 }
 .osw-gal-empty-icon { color: var(--osw-fg-faint); }
 .osw-gal-empty-icon svg { width: 30px; height: 30px; }
 .osw-gal-empty-title { font-size: 13px; font-weight: 600; }
-.osw-gal-empty-desc { font-size: 11.5px; color: var(--osw-fg-muted); margin-bottom: 10px; }
+.osw-gal-empty-desc { font-size: 11.5px; color: var(--osw-fg-muted); }
 
 .osw-gal-foot {
-  padding: 12px 24px 18px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 58px;
+  padding: 14px 20px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--osw-hairline);
+  background: var(--osw-surface);
   font-size: 11px;
   color: var(--osw-fg-faint);
 }
@@ -3061,6 +4329,7 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   gap: 8px;
 }
 .onigiri-icon-color-slot {
+  container-type: inline-size;
   flex: 1 1 0;
   display: flex;
   align-items: center;
@@ -3081,7 +4350,6 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  /* See .osw-imgslot-thumb.is-swatch — same reason. */
   border: 1px solid rgba(128, 128, 128, 0.3);
   box-sizing: border-box;
 }
@@ -3110,6 +4378,10 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@container (max-width: 152px) {
+  .onigiri-icon-color-slot .onigiri-icon-color-hex { display: none; }
 }
 
 /* Icon popover — same visual language as the deck browser's own "Edit Icon"
@@ -3307,6 +4579,354 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
 }
 .onigiri-icon-upload:hover { background: var(--osw-inset-hover); }
 .onigiri-icon-upload.is-busy { opacity: 0.55; pointer-events: none; }
+
+/* Font and colour selection intentionally reuse the Icon Picker's modal
+   chrome. Only the body changes: a searchable font catalogue or an HSV colour
+   editor replaces the icon grid, so all three choices feel like one family. */
+.osw-settings-picker {
+  height: auto;
+  min-height: 0;
+  max-height: min(660px, 90vh);
+}
+.osw-settings-picker-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 14px 20px 16px;
+}
+.osw-fontpick-modal { width: min(540px, 94vw); height: min(660px, 90vh); }
+.osw-fontpick-color-stack { position: relative; margin-top: 0; }
+.osw-fontpick-color-popover {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  max-height: calc(90vh - 180px);
+  overflow-y: auto;
+  border-radius: 14px;
+  background: var(--osw-surface);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+}
+.osw-fontpick-color-head { display: flex; align-items: center; gap: 10px; }
+.osw-fontpick-color-sample {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 20px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.osw-fontpick-color-editor { display: flex; flex-direction: column; gap: 12px; }
+.osw-fontpick-color-editor .osw-colorpick-sv { flex-shrink: 0; height: 130px; }
+.osw-fontpick-modal button:focus-visible {
+  outline: 2px solid var(--osw-accent);
+  outline-offset: 2px;
+}
+.osw-fontpick-grid {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+.osw-fontpick-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 78px;
+  padding: 12px 38px 12px 13px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+  cursor: pointer;
+  text-align: left;
+}
+.osw-fontpick-cell:hover { background: var(--osw-inset-hover); }
+.osw-fontpick-cell.selected { border-color: var(--osw-accent); background: var(--osw-accent-a14); }
+.osw-fontpick-name { color: var(--osw-fg-faint); font-size: 10.5px; font-weight: 600; }
+.osw-fontpick-sample { margin-top: 5px; font-size: 21px; line-height: 1; }
+.osw-fontpick-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--osw-accent);
+  color: #fff;
+}
+.osw-fontpick-check svg { width: 12px; height: 12px; }
+.osw-colorpick-modal { width: min(440px, 94vw); }
+.osw-colorpick-sv {
+  position: relative;
+  width: 100%;
+  height: 190px;
+  overflow: hidden;
+  border-radius: 12px;
+  background-color: hsl(var(--osw-picker-hue, 0), 100%, 50%);
+  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+  cursor: crosshair;
+  touch-action: none;
+}
+.osw-colorpick-cursor {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .44);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.osw-colorpick-hue,
+.osw-colorpick-value {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: pointer;
+}
+.osw-colorpick-value { background: linear-gradient(90deg, #000, #fff); }
+.osw-colorpick-hue::-webkit-slider-thumb,
+.osw-colorpick-value::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  appearance: none;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+}
+.osw-colorpick-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--osw-inset);
+}
+.osw-colorpick-preview {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 1px solid rgba(128, 128, 128, .35);
+  border-radius: 7px;
+}
+.osw-colorpick-entry input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--osw-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.osw-settings-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--osw-hairline);
+}
+.osw-settings-picker-btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.osw-settings-picker-btn:hover { background: var(--osw-inset-hover); }
+.osw-settings-picker-btn.is-primary { background: var(--osw-accent); color: #fff; }
+.osw-settings-picker-btn.is-primary:hover { filter: brightness(1.06); }
+.osw-colorpick-restore {
+  margin-right: auto;
+  color: var(--osw-fg-muted);
+}
+.osw-colorpick-restore:hover { color: var(--osw-fg); }
+@media (max-width: 460px) {
+  .osw-fontpick-grid { grid-template-columns: 1fr; }
+  .osw-settings-picker-footer { flex-wrap: wrap; }
+}
+
+/* ── colour gallery ──────────────────────────────────────────────────────────
+   A visual catalogue rather than the normal settings-row layout. Its rhythm
+   deliberately follows Themes: colour artwork first, identifying text below,
+   and a small lift on hover. Each half of a light/dark card is independently
+   clickable and always reports an opaque #RRGGBB label. */
+
+.osw-color-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
+  gap: 20px;
+}
+
+.osw-color-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--osw-hairline-soft);
+  border-radius: 20px;
+  background: var(--osw-surface);
+}
+
+.osw-color-card-art {
+  display: flex;
+  width: 100%;
+  height: 116px;
+  overflow: hidden;
+  border: 1px solid var(--osw-hairline-soft);
+  border-radius: 13px;
+  background: var(--osw-inset);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.osw-color-card:hover .osw-color-card-art:not(.is-split) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px var(--osw-shadow);
+}
+
+.osw-color-card-swatch {
+  /* In a split card each preview may be much narrower than the gallery card.
+     Let the swatch itself decide whether its value label has room. */
+  container-type: inline-size;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 140ms ease, transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 200ms ease;
+}
+
+.osw-color-card-swatch:hover { filter: brightness(1.06); }
+.osw-color-card-swatch:focus-visible {
+  z-index: 2;
+  box-shadow: inset 0 0 0 2px var(--osw-accent);
+}
+.osw-color-card-art.is-split {
+  /* A light/dark pair is two peer cards, never two halves inside one frame.
+     The exposed inset is intentionally only the gallery background between
+     them — no shared "membrane" or enclosing preview panel. */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  overflow: visible;
+  border: none;
+  background: transparent;
+}
+.osw-color-card-art.is-split .osw-color-card-swatch {
+  overflow: hidden;
+  border: 1px solid var(--osw-hairline-soft);
+  border-radius: 13px;
+}
+.osw-color-card-art.is-split .osw-color-card-swatch:hover {
+  z-index: 1;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px var(--osw-shadow);
+}
+/* Pressing dismisses the lift before the native colour picker is opened. */
+.osw-color-card-art.is-split .osw-color-card-swatch:active {
+  transform: translateY(0);
+  box-shadow: none;
+  transition-duration: 80ms;
+}
+
+.osw-color-card-role,
+.osw-color-card-hex {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: none;
+}
+
+.osw-color-card-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.osw-color-card-role svg { width: 15px; height: 15px; display: block; }
+
+.osw-color-card-hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+}
+
+@container (max-width: 116px) {
+  .osw-color-card-swatch .osw-color-card-hex { display: none; }
+}
+
+.osw-color-card-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 2px;
+}
+.osw-color-card-name {
+  color: var(--osw-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.osw-color-card-sub {
+  color: var(--osw-fg-faint);
+  font-size: 10.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .osw-color-gallery-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+  .osw-color-card-art { height: 104px; }
+  .osw-color-card-art.is-split .osw-color-card-swatch { padding: 8px; }
+}
 
 /* ── themes ────────────────────────────────────────────────────────────────── */
 
@@ -3682,6 +5302,25 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
   padding: 0;
 }
 
+/* Decks & Tags is a stage-side card with one control column. A grid here keeps
+   empty tracks when Advanced-only rows disappear in Simple mode; stack the
+   menu, controls and icon catalogue instead, with one consistent row gap. */
+.osw-preview-section-sidebar_decks.osw-designer-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.osw-preview-section-sidebar_decks .osw-deck-controls {
+  gap: 6px;
+}
+.osw-preview-section-sidebar_decks .osw-deck-controls > [data-field-host] + [data-field-host] {
+  margin-top: 0;
+}
+.osw-preview-section-sidebar_decks.osw-designer-deck > .osw-deck-icon-grid {
+  margin-top: 0;
+}
+
 /* Overviewer and Reviewer keep their image/colour controls on the left and
    sliders on the right, even when only a small subset of fields is visible.
    Their fixed split is intentional: the side communicates the kind of
@@ -3734,6 +5373,102 @@ html body button.osw-btn.osw-designer-reset:hover {
   color: var(--osw-fg);
 }
 
+/* Reviewer/Overviewer Background and Bottom Bar are the most control-dense
+   preview headers. At the settings dialog's minimum width, collapse supporting
+   labels into compact forms before the final actions can run beyond the card
+   edge. The controls remain fully available: the D badge identifies the switch
+   and Reset keeps its accessible label and tooltip. */
+@media (max-width: 1700px) {
+  .osw-preview-kind-reviewer_background .osw-designer-preview-head,
+  .osw-preview-kind-overview_background .osw-designer-preview-head,
+  .osw-preview-kind-reviewer_bottom_bar .osw-designer-preview-head {
+    gap: 12px;
+    padding-inline: 12px;
+    overflow-x: hidden;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-preview-head-controls,
+  .osw-preview-kind-overview_background .osw-preview-head-controls,
+  .osw-preview-kind-reviewer_bottom_bar .osw-preview-head-controls {
+    gap: 16px;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-preview-ctl,
+  .osw-preview-kind-overview_background .osw-preview-ctl,
+  .osw-preview-kind-reviewer_bottom_bar .osw-preview-ctl {
+    gap: 0;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-preview-ctl-label,
+  .osw-preview-kind-overview_background .osw-preview-ctl-label,
+  .osw-preview-kind-reviewer_bottom_bar .osw-preview-ctl-label,
+  .osw-preview-kind-reviewer_background .osw-designer-reset-label,
+  .osw-preview-kind-overview_background .osw-designer-reset-label,
+  .osw-preview-kind-reviewer_bottom_bar .osw-designer-reset-label {
+    display: none;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-sq-switch::after,
+  .osw-preview-kind-overview_background .osw-sq-switch::after,
+  .osw-preview-kind-reviewer_bottom_bar .osw-sq-switch::after {
+    content: "";
+  }
+
+  .osw-preview-kind-reviewer_background .osw-sq-switch::before,
+  .osw-preview-kind-overview_background .osw-sq-switch::before,
+  .osw-preview-kind-reviewer_bottom_bar .osw-sq-switch::before {
+    content: "D";
+    position: absolute;
+    z-index: 1;
+    top: 5px;
+    left: 5px;
+    display: grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    /* Dynamic mode is off: use a fixed light-grey badge and darker glyph in
+       either settings theme. The enabled rule below keeps the accent state. */
+    background: #d0d0d4;
+    color: #44444a;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    transition: transform 170ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 160ms ease;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-sq-switch.is-on::before,
+  .osw-preview-kind-overview_background .osw-sq-switch.is-on::before,
+  .osw-preview-kind-reviewer_bottom_bar .osw-sq-switch.is-on::before {
+    background: var(--osw-accent-a16);
+    color: var(--osw-accent);
+    transform: translateX(16px);
+  }
+
+  html body .osw-preview-kind-reviewer_background button.osw-btn.osw-designer-reset,
+  html body .osw-preview-kind-overview_background button.osw-btn.osw-designer-reset,
+  html body .osw-preview-kind-reviewer_bottom_bar button.osw-btn.osw-designer-reset {
+    width: 30px;
+    padding: 0;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-designer-reset-icon,
+  .osw-preview-kind-overview_background .osw-designer-reset-icon,
+  .osw-preview-kind-reviewer_bottom_bar .osw-designer-reset-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .osw-preview-kind-reviewer_background .osw-designer-reset-icon svg,
+  .osw-preview-kind-overview_background .osw-designer-reset-icon svg,
+  .osw-preview-kind-reviewer_bottom_bar .osw-designer-reset-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
 /* ── designer deck (controls under the stage) ───────────────────────────────
    Sliders/switches on the left, picture and colour slots on the right. Falls
    back to one column when the dialog is narrow. */
@@ -3755,6 +5490,42 @@ html body button.osw-btn.osw-designer-reset:hover {
   --osw-deck-pad: 10px;
 }
 
+/* Stats Widgets gives each control column exactly half the available deck. */
+.osw-preview-kind-stats_widgets .osw-designer-deck {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Hidden Action Buttons has no right-hand control column. Let the controls and
+   each icon category use the whole card width so the empty second track cannot
+   create a blank band beside or above the icon tiles. */
+.osw-preview-section-sidebar_actions .osw-deck-controls {
+  grid-column: 1 / -1;
+}
+.osw-preview-section-sidebar_actions.osw-designer-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Match Sidebar Fonts: compact panel padding, a small row rhythm, and
+     the font button's slightly larger separation from its first control. */
+  gap: 6px;
+  padding: 8px 10px;
+}
+.osw-preview-section-sidebar_actions .osw-deck-controls {
+  gap: 0;
+}
+.osw-preview-section-sidebar_actions .osw-designer-font-menu-row {
+  margin-bottom: 12px;
+}
+.osw-preview-section-sidebar_actions .osw-deck-col > [data-field-host] + [data-field-host] {
+  margin-top: 6px;
+}
+.osw-preview-section-sidebar_actions .osw-deck-col > [data-field-host].is-hidden {
+  display: none !important;
+}
+.osw-preview-section-sidebar_actions .osw-deck-slots:empty {
+  display: none;
+}
+
 /* Rows collapse instead of blinking out: max-height + opacity animate, and the
    spacing lives on the rows themselves (not on a flex `gap`) so a collapsed row
    takes its gap with it — a gap would survive display:none and leave holes. */
@@ -3762,6 +5533,51 @@ html body button.osw-btn.osw-designer-reset:hover {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.osw-designer-font-menu-row {
+  display: flex;
+  min-width: 0;
+  min-height: 40px;
+  margin-bottom: 12px;
+}
+
+.osw-designer-compact-menus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.osw-designer-compact-menus .osw-designer-font-menu-row {
+  margin-bottom: 0;
+}
+
+html body .osw-designer-font-menu-row .osw-organize-fonts-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+}
+
+html body .osw-designer-font-menu-row .osw-organize-fonts-btn:hover {
+  background: var(--osw-inset-hover);
+}
+
+/* The live menu receives dedicated font rules from patcher.py. The preview
+   uses variables instead so its compact typography popup updates instantly. */
+.osw-preview-swidget-row .stat-card.onigiri-stat-card h3 {
+  font-family: var(--swidget-label-font, inherit) !important;
+}
+
+.osw-preview-swidget-row .stat-card.onigiri-stat-card .stat-value {
+  font-family: var(--swidget-number-font, inherit) !important;
+}
+
+.osw-preview-swidget-row .stat-card.onigiri-stat-card .stat-unit,
+.osw-preview-swidget-row .stat-card.onigiri-stat-card .stat-sub {
+  font-family: var(--swidget-value-font, inherit) !important;
 }
 
 /* Overview Style groups related controls inside each of its two fixed
@@ -3782,6 +5598,26 @@ html body button.osw-btn.osw-designer-reset:hover {
 }
 .osw-deck-subsection.is-empty { display: none; }
 .osw-deck-subsection > [data-field-host] + [data-field-host] { margin-top: 6px; }
+
+/* Sidebar Border is followed by the standalone Margin row. Space the group
+   itself so the gap survives when its conditional sliders are hidden, and
+   when Margin is marked as the column's first visible standalone field. */
+.osw-deck-subsection[data-subsection="sidebar_border"] {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+/* A subsection is a wrapper rather than a field row, so the normal adjacent
+   `[data-field-host]` rule cannot add spacing before the next standalone row.
+   Keep Margin on its own card with the same separation as every other row. */
+.osw-deck-subsection + [data-field-host] {
+  margin-top: 6px;
+}
+
+/* Keep the layout heading separate from the preceding Margin control. */
+.osw-deck-subsection[data-subsection="sidebar_item_layout"] {
+  margin-top: 12px;
+}
 
 /* Descendant, not just direct child: the icon fields' grid wrapper nests them
    one level deeper, and this collapse/hide behaviour still has to reach them
@@ -3840,6 +5676,12 @@ html body button.osw-btn.osw-designer-reset:hover {
 .osw-designer-deck .osw-btnorder[data-field-host] {
   max-height: 1400px;
 }
+/* Hidden Action Buttons has no layout editor. Remove its large drag-and-drop
+   surface from the grid immediately so the icon catalogue follows the last
+   remaining control without a blank track. */
+.osw-designer-deck .osw-btnorder[data-field-host].is-hidden {
+  display: none;
+}
 
 /* Icon fields as one full-width strip below the deck's two columns, not
    confined to whichever column they'd otherwise land in — four tiles need
@@ -3855,9 +5697,54 @@ html body button.osw-btn.osw-designer-reset:hover {
 }
 .osw-deck-icon-grid {
   display: grid;
-  /* One row, left to right in schema order (Studied/Time/Pace/Retention). */
+  /* One row, left to right in schema order. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+}
+.osw-deck-icon-grid.is-header-group {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.osw-deck-icon-grid.is-header-group::before {
+  content: "Deck-list header icons";
+}
+.osw-deck-icon-grid.is-ready-header-group::before {
+  content: "Ready To Go header icon";
+}
+.osw-deck-icon-grid.is-action-group::before {
+  content: "Action Button icons";
+}
+.osw-deck-icon-group-title {
+  display: none;
+  grid-column: 1 / -1;
+  margin: 0 4px 1px;
+  color: #b9bdc7 !important;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.osw-deck-icon-grid.is-empty { display: none; }
+/* Ready to go uses its own icon labels inside each tile; generated group
+   headings add duplicate copy and consume a tile slot in the four-button row. */
+.osw-preview-section-sidebar_ready .osw-deck-icon-grid::before {
+  content: none !important;
+}
+.osw-preview-section-sidebar_actions .osw-deck-icon-grid.is-header-group::before {
+  content: none !important;
+}
+.osw-designer-deck > .osw-sidebar-action-icons + .osw-sidebar-action-icons {
+  margin-top: 0;
+}
+.osw-preview-section-sidebar_actions > .osw-sidebar-action-icons {
+  margin-top: 0;
+}
+/* Keep all five Stats Widgets icon selectors in one unbroken row. */
+.osw-deck-icon-grid.osw-stats-widget-icon-line {
+  display: flex;
+  flex-flow: row nowrap;
+}
+.osw-deck-icon-grid.osw-stats-widget-icon-line > [data-field-host] {
+  flex: 1 1 0;
+  min-width: 0;
 }
 /* A block of 2 icons or fewer (Heatmap Shape/Streak Icon) doesn't need the
    full-bleed row a 4-icon set does — it sits inside whichever deck column
@@ -3969,6 +5856,29 @@ html body button.osw-btn.osw-designer-reset:hover {
   min-height: 40px;
 }
 .osw-designer-deck .osw-row-label { font-size: 12.5px; }
+/* Typeable controls must remain visibly inset even though designer rows use
+   --osw-inset themselves. A raised surface and persistent outline distinguish
+   editable values from labels before hover or focus. */
+.osw-designer-deck .osw-text-input,
+.osw-designer-deck .osw-textarea-input,
+.osw-designer-deck .osw-number {
+  background: var(--osw-surface);
+  border-color: var(--osw-hairline);
+}
+/* Ready To Go's editable title and radius belong to the same family as the
+   boxed values elsewhere in Settings. Keep a shared field silhouette instead
+   of a long pill for text and a compact capsule for the numeric value. */
+.osw-designer-deck [data-field-host="modern_menu_ready_title"] .osw-text-input,
+.osw-designer-deck [data-field-host="modern_menu_ready_radius"] .osw-number {
+  border-radius: 10px;
+}
+.osw-designer-deck [data-field-host="modern_menu_ready_radius"] .osw-number {
+  min-width: 110px;
+}
+.osw-designer-deck [data-field-host="modern_menu_ready_radius"] .osw-number input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 /* A chip inside a deck row (Font's "System"/"Poppins" picker) was the exact
    same colour as the row itself — var(--osw-inset) on var(--osw-inset) — so
    it read as bare text with no button under it. Same raised-pill look as
@@ -3981,6 +5891,25 @@ html body button.osw-btn.osw-designer-reset:hover {
      + 2 classes, which outranks a plain 2-class selector regardless of which
      one is later in the file. */
   border-radius: 8px !important;
+}
+.osw-designer-deck .osw-ready-color-slot {
+  width: 180px;
+  max-width: min(42vw, 100%);
+  height: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: var(--osw-surface);
+  color: var(--osw-fg-muted);
+}
+.osw-designer-deck .osw-ready-color-slot .osw-imgslot-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.osw-designer-deck .osw-ready-color-slot .osw-imgslot-name {
+  font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
 }
 .osw-dark .osw-designer-deck .osw-row .osw-chip,
 [data-theme="dark"] .osw-designer-deck .osw-row .osw-chip {
@@ -4096,6 +6025,41 @@ html body .osw-designer-deck .osw-segmented-control .osw-segment-btn.is-active {
 .osw-designer-deck .osw-row .osw-row-text { min-width: 0; flex: 1 1 auto; }
 .osw-designer-deck .osw-row .osw-row-control { margin-left: auto; flex: 0 0 auto; }
 
+/* The pinned-note picker shares a narrow designer column with its label.
+   Size it from the row, not the viewport, and let it move below the label
+   when there is not enough room for both. Long note titles stay inside it. */
+.osw-designer-deck [data-field-host="hashi_widget_note_id"].osw-row {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"].osw-row .osw-row-text {
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"].osw-row .osw-row-control {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: 0;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"] .osw-select-menu {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"] .osw-select-menu-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"] .osw-select-menu-chevron {
+  flex: 0 0 auto;
+}
+.osw-designer-deck [data-field-host="hashi_widget_note_id"] .osw-select-menu-option {
+  overflow-wrap: anywhere;
+}
+
 /* Right-hand column: the two slots of a pair keep one height whether they
    carry a picture or a colour, and a role label never wraps to a second line
    (which is what pushed "LIGHT MODE" out of alignment with "DARK MODE"). */
@@ -4168,7 +6132,13 @@ html body .osw-designer-deck .osw-segmented-control .osw-segment-btn.is-active {
   text-transform: none;
   color: var(--osw-fg);
 }
-.osw-designer-deck .osw-colorslot .osw-imgslot-role-label { display: none; }
+.osw-designer-deck .osw-colorslot .osw-imgslot-role-label {
+  display: inline;
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--osw-fg);
+}
 .osw-designer-deck .osw-imgslot-kbd {
   background: none;
   border: none;
@@ -4183,7 +6153,6 @@ html body .osw-designer-deck .osw-segmented-control .osw-segment-btn.is-active {
 .osw-designer-deck .osw-imgslot-action-icon { display: flex; color: var(--osw-fg-muted); }
 .osw-designer-deck .osw-imgslot-action-icon svg { width: 14px; height: 14px; }
 .osw-designer-deck .osw-colorslot { height: 34px; min-height: 0; padding: 0 8px; border-radius: 11px; }
-
 /* Duration row: a plain typed amount plus a real dropdown for its unit,
    sitting in the row like Font's chip control — no slider, since a value
    like "5 minutes" isn't a position on a 0-100 range. */
@@ -4212,6 +6181,9 @@ html body .osw-designer-deck .osw-segmented-control .osw-segment-btn.is-active {
 
 @media (max-width: 900px) {
   .osw-designer-deck { grid-template-columns: minmax(0, 1fr); }
+  .osw-preview-kind-stats_widgets .osw-designer-deck {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Keep this side assignment at narrow widths too. */
@@ -4333,6 +6305,21 @@ html body .osw-imagelist-add {
 
 .osw-preview-glass-line { line-height: 1.25; }
 
+/* Production widget CSS is embedded in Settings too. Bound each preview's
+   own filtered surface to the same radius without changing the live widget. */
+.osw-designer-preview-stage .stat-card.onigiri-stat-card {
+  clip-path: inset(0 round var(--swidget-box-radius, 15px));
+}
+.osw-designer-preview-stage .learner-stats-widget {
+  clip-path: inset(0 round var(--stats-box-radius, 15px));
+}
+.osw-designer-preview-stage .hashi-notes-widget {
+  clip-path: inset(0 round var(--hashiw-box-radius, 15px));
+}
+.osw-designer-preview-stage .prep-station-widget {
+  clip-path: inset(0 round var(--prepw-box-radius, 15px));
+}
+
 .osw-preview-glass-title {
   font-size: 15px;
   font-weight: 600;
@@ -4348,57 +6335,118 @@ html body .osw-imagelist-add {
   gap: 4px;
 }
 
-/* Pomodoro's live island is native Qt; this web counterpart mirrors its two
-   compact style presets. */
+/* Pomodoro's live island is native Qt. These are its actual QDialog outer
+   margin and PomodoroIslandView metrics, so the preview occupies the same
+   230x200 / 270x264 logical-pixel window as the floating timer. */
 .osw-preview-kind-pomodoro .osw-designer-preview-stage { min-height: 330px; }
 .osw-pomo-preview-holder { padding: 16px; }
+.osw-pomo-window {
+  width: var(--pomo-window-width);
+  height: var(--pomo-window-height);
+  flex: 0 0 auto;
+  padding: 8px;
+  box-sizing: border-box;
+}
 .osw-pomo-island {
-  width: min(100%, 330px);
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding: var(--pomo-pad);
-  border: 1px solid var(--pomo-border);
-  border-radius: 20px;
+  gap: var(--pomo-spacing);
+  padding: var(--pomo-pad-top) var(--pomo-pad-right) var(--pomo-pad-bottom) var(--pomo-pad-left);
+  /* _PomoShellFrame paints its one-pixel stroke over the layout instead of
+     reserving box-model space for it. An inset stroke does the same here. */
+  border: 0;
+  border-radius: var(--pomo-radius);
+  clip-path: inset(0 round var(--pomo-radius));
   background: var(--pomo-shell);
   color: var(--pomo-icon);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+  box-shadow: inset 0 0 0 1px var(--pomo-border);
   font-family: Poppins, sans-serif;
 }
-.osw-pomo-island.is-minimal { max-width: 230px; }
-.osw-pomo-island.is-dashboard { max-width: 270px; }
 .osw-pomo-top {
+  height: var(--pomo-topbar);
+  flex: 0 0 var(--pomo-topbar);
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 18px;
+  gap: 6px;
 }
-.osw-pomo-icon { color: var(--pomo-accent); font-size: 16px; }
+.osw-pomo-icon { width: var(--pomo-icon-size); height: var(--pomo-icon-size); }
 .osw-pomo-phase {
   color: var(--pomo-icon);
   font-size: var(--pomo-phase);
   font-weight: 800;
+  line-height: 1;
   letter-spacing: 1px;
   text-transform: uppercase;
 }
-.osw-pomo-top-actions { margin-left: auto; color: var(--pomo-icon); opacity: .82; font-size: 14px; }
+.osw-pomo-top-actions {
+  height: var(--pomo-chip);
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+html body .osw-pomo-top-button,
+html body .osw-pomo-top-button:hover,
+html body .osw-pomo-top-button:active {
+  width: var(--pomo-chip);
+  height: var(--pomo-chip);
+  flex: 0 0 var(--pomo-chip);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pomo-icon);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--pomo-button) / 2);
+  line-height: 1;
+  pointer-events: none;
+}
 .osw-pomo-time {
+  min-height: 0;
+  flex: 1 1 auto;
   color: var(--pomo-digits);
   font-family: var(--pomo-font);
   font-size: var(--pomo-time);
   font-weight: 800;
   line-height: 1;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .osw-pomo-progress {
   height: 6px;
+  flex: 0 0 6px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--pomo-track);
 }
-.osw-pomo-progress i { display: block; width: 48%; height: 100%; border-radius: inherit; background: var(--pomo-accent); }
-.osw-pomo-meta { color: var(--pomo-icon); font-size: 10px; font-weight: 700; letter-spacing: .45px; text-align: center; }
+.osw-pomo-progress i { display: block; height: 100%; border-radius: inherit; background: var(--pomo-accent); }
+.osw-pomo-dots {
+  height: var(--pomo-dot);
+  flex: 0 0 var(--pomo-dot);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.osw-pomo-meta {
+  height: 17px;
+  flex: 0 0 17px;
+  overflow: hidden;
+  color: var(--pomo-icon);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  letter-spacing: .5px;
+  text-align: center;
+  white-space: nowrap;
+}
 .osw-pomo-stats { display: flex; gap: 8px; }
 .osw-pomo-stat {
   flex: 1;
@@ -4410,20 +6458,39 @@ html body .osw-imagelist-add {
 }
 .osw-pomo-stat span { display: block; color: var(--pomo-icon); font-size: 8px; font-weight: 800; letter-spacing: .8px; }
 .osw-pomo-stat strong { color: var(--pomo-digits); font-family: var(--pomo-font); font-size: 14px; }
-.osw-pomo-controls { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.osw-pomo-controls button {
+.osw-pomo-controls {
+  height: var(--pomo-play);
+  flex: 0 0 var(--pomo-play);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+html body .osw-pomo-controls button,
+html body .osw-pomo-controls button:hover,
+html body .osw-pomo-controls button:active {
   width: var(--pomo-button);
   height: var(--pomo-button);
+  flex: 0 0 var(--pomo-button);
   padding: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--pomo-icon);
   font-size: calc(var(--pomo-button) / 2);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  pointer-events: none;
 }
-.osw-pomo-controls .osw-pomo-play {
+html body .osw-pomo-controls .osw-pomo-play,
+html body .osw-pomo-controls .osw-pomo-play:hover,
+html body .osw-pomo-controls .osw-pomo-play:active {
   width: var(--pomo-play);
   height: var(--pomo-play);
+  flex-basis: var(--pomo-play);
   border-radius: 50%;
   background: var(--pomo-accent);
   color: #fff;
@@ -4435,9 +6502,16 @@ html body .osw-imagelist-add {
 /* Four sample cards in one row over the backdrop, like the real Today's Stats
    strip on the Main Menu. */
 .osw-preview-swidget-row {
+  width: 100%;
+  justify-content: stretch;
   gap: 10px;
   align-items: stretch;
   transition: opacity 200ms ease;
+}
+.osw-preview-swidget-row .stat-card.onigiri-stat-card {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
 }
 .osw-preview-swidget-row.is-fading-in { opacity: 0; }
 
@@ -4575,29 +6649,22 @@ html body .osw-imagelist-add {
    Deck Stats/Stats Widgets. */
 .osw-preview-heatmap-wrap {
   width: 100%;
-  --onigiri-widget-pad: 14px;
-}
-/* Preview-only: the real widget's 15px title reads oversized next to this
-   card's smaller overall footprint here — not a real-widget CSS change,
-   just this stage's own proportions. */
-.osw-preview-heatmap-wrap .heatmap-title {
-  font-size: 12px;
+  /* These are the exact shared menu.css values. The wrapper's inline size is
+     also derived from onigiriWidgetLayout by sizeHeatmapPreview(). */
+  --onigiri-widget-pad-scale: 1.4;
+  --onigiri-widget-pad: calc(14px * var(--onigiri-widget-pad-scale));
 }
 .osw-preview-heatmap-wrap #onigiri-heatmap-container {
   width: 100%;
+  height: 100%;
   box-sizing: border-box;
 }
-
-.osw-preview-heatmap-month-row,
-.osw-preview-heatmap-weekday-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  opacity: 0.6;
+.osw-preview-heatmap-loading {
+  color: var(--osw-fg-muted);
+  font-size: 13px;
 }
-
-.osw-preview-heatmap-weekday-row {
-  max-width: 220px;
+.osw-preview-heatmap-loading.is-error {
+  color: var(--osw-danger);
 }
 
 /* ── Organize: widget grid editor ──────────────────────────────────────────── */
@@ -4620,6 +6687,137 @@ html body .osw-imagelist-add {
   background: var(--osw-surface);
   border: 1px solid var(--osw-hairline);
   border-radius: 16px;
+}
+
+/* Organize Widgets' appearance panel uses the toolbar's compact language. The
+   four sliders always form a 2x2 grid above the light/dark colour pairs. */
+.osw-widget-effect-compact.osw-designer-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 10px;
+  --osw-deck-pad: 10px;
+}
+
+.osw-widget-effect-compact-effects,
+.osw-widget-effect-compact-colors {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.osw-widget-effect-compact-effects {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.osw-widget-effect-compact-colors {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.osw-widget-effect-compact .osw-slider-card {
+  grid-template-columns: minmax(72px, max-content) 38px minmax(44px, 1fr);
+  min-height: 40px;
+}
+
+.osw-widget-effect-compact .osw-slider-track {
+  height: 24px;
+}
+
+.osw-widget-effect-compact .osw-imagefield {
+  grid-template-columns: minmax(72px, 110px) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.osw-widget-effect-compact .osw-imagefield + .osw-imagefield {
+  margin-top: 0;
+}
+
+/* Placement has its own compact panel directly under Organize Widgets' grid
+   toolbar. Presets stay immediately visible; the precise four-edge controls
+   only take space when Custom is selected. */
+.osw-widget-layout-compact.osw-designer-deck {
+  display: flex;
+  flex-direction: column;
+  /* `.osw-designer-deck` normally aligns controls at their intrinsic width.
+     Placement is a page-wide control, though: let every row fill the panel
+     instead of leaving a large, unusable area to its right. */
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+}
+
+.osw-widget-layout-compact .osw-segmented-wrap {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.osw-widget-layout-compact .osw-segmented-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--osw-fg-muted);
+}
+
+.osw-widget-layout-compact .osw-segmented-control {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+
+/* Spread the three placement presets across the available track. This keeps
+   the choice easy to scan on wide settings windows while retaining equal hit
+   targets rather than clustering all choices at the left edge. */
+.osw-widget-layout-compact .osw-segment-btn {
+  flex: 1 1 0;
+}
+
+.osw-widget-layout-custom {
+  display: grid;
+  /* Each edge is an independent value. A wide panel can show all four in one
+     balanced row; narrower windows progressively fall back below. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.osw-widget-layout-custom[hidden],
+.osw-widget-layout-custom.is-hidden {
+  display: none;
+}
+
+.osw-widget-layout-custom .osw-row {
+  min-width: 0;
+}
+
+.osw-widget-layout-custom .osw-row-label {
+  font-size: 12px;
+}
+
+.osw-widget-layout-gap.osw-slider-card {
+  grid-template-columns: minmax(86px, max-content) 44px minmax(80px, 1fr);
+  min-height: 40px;
+}
+
+.osw-widget-layout-gap .osw-slider-track {
+  height: 24px;
+}
+
+@media (max-width: 720px) {
+  .osw-widget-effect-compact-colors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .osw-widget-layout-compact .osw-segmented-wrap,
+  .osw-widget-layout-custom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 721px) and (max-width: 900px) {
+  .osw-widget-layout-custom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .osw-organize-group,
@@ -4747,6 +6945,24 @@ html body .osw-organize-reset-btn:hover {
   color: var(--osw-fg);
 }
 
+html body .osw-organize-fonts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.osw-organize-fonts-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.osw-organize-fonts-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Same rendered height as the reset button next to it: the accent button
    carries a 1px border, and Anki's own webview.css sets box-sizing to
    content-box, which would otherwise make it 2px taller. */
@@ -4768,14 +6984,64 @@ html body .osw-action-btn.osw-organize-add-btn {
   min-height: 120px;
 }
 
+/* The grid is both editor and preview. Its backdrop uses the exact two-layer
+   composition of Main Background (colour below image), while the custom
+   properties are written by renderWidgetGrid from the same widget controls
+   that the live menu consumes. */
+.osw-organize-preview-card {
+  overflow: hidden;
+  border: 1px solid var(--osw-hairline);
+  border-radius: var(--osw-radius-card);
+  background: var(--osw-surface);
+}
+
+.osw-organize-preview-head {
+  min-height: 52px;
+  padding: 0 14px 0 16px;
+  border-bottom: 1px solid var(--osw-hairline);
+}
+
+.osw-organize-preview-head .osw-preview-head-controls {
+  gap: 12px;
+}
+
+.osw-organize-live-preview {
+  min-height: 190px;
+  overflow: hidden;
+  isolation: isolate;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.osw-organize-preview-backdrop,
+.osw-organize-preview-color,
+.osw-organize-preview-image {
+  position: absolute;
+  inset: 0;
+}
+
+.osw-organize-preview-backdrop {
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.osw-organize-preview-image {
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
 .osw-organize-slot {
   position: relative;
   box-sizing: border-box;
-  background: var(--osw-inset);
-  border: 1.5px dashed var(--osw-hairline);
-  border-radius: 12px;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.36);
+  border-radius: var(--osw-organize-preview-card-radius, 12px);
   pointer-events: none;
-  opacity: 0.65;
+  opacity: 0.72;
 }
 
 /* A drop target is only an affordance.  It deliberately never takes part in
@@ -4783,7 +7049,7 @@ html body .osw-action-btn.osw-organize-add-btn {
    passes over it made a simple drag look like the grid was re-sorting itself. */
 .osw-organize-drop-preview {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   box-sizing: border-box;
   border: 2px solid var(--osw-accent, #0077c8);
   border-radius: 12px;
@@ -4801,9 +7067,12 @@ html body .osw-action-btn.osw-organize-add-btn {
 .osw-organize-tile {
   position: relative;
   box-sizing: border-box;
-  background: var(--osw-surface);
-  border: 1px solid var(--osw-hairline);
-  border-radius: 12px;
+  background: var(--osw-organize-preview-card-bg, var(--osw-surface));
+  border: var(--osw-organize-preview-card-border, 1px solid var(--osw-hairline));
+  border-radius: var(--osw-organize-preview-card-radius, 12px);
+  clip-path: inset(0 round var(--osw-organize-preview-card-radius, 12px));
+  -webkit-backdrop-filter: var(--osw-organize-preview-card-blur, none);
+  backdrop-filter: var(--osw-organize-preview-card-blur, none);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4828,6 +7097,97 @@ html body .osw-action-btn.osw-organize-add-btn {
   will-change: transform;
 }
 
+.osw-organize-tile.is-resizing {
+  cursor: nwse-resize;
+  z-index: 101 !important;
+  box-shadow: 0 10px 28px var(--osw-shadow), 0 0 0 2px var(--osw-accent);
+  transition: none !important;
+}
+
+.osw-organize-resize-handle {
+  --osw-organize-resize-stroke: 2px;
+  position: absolute;
+  z-index: 5;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 100ms ease, background-color 100ms ease;
+}
+.osw-organize-tile:hover .osw-organize-resize-handle,
+.osw-organize-tile.is-resizing .osw-organize-resize-handle { opacity: 1; }
+.osw-organize-resize-handle.is-east {
+  top: 50%;
+  right: 0;
+  width: 12px;
+  height: 32px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.osw-organize-resize-handle.is-south {
+  bottom: 0;
+  left: 50%;
+  width: 32px;
+  height: 12px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.osw-organize-resize-handle.is-east::after,
+.osw-organize-resize-handle.is-south::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+  background: var(--osw-accent);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 100ms ease;
+  pointer-events: none;
+}
+.osw-organize-resize-handle.is-east::after {
+  width: var(--osw-organize-resize-stroke);
+  height: 20px;
+}
+.osw-organize-resize-handle.is-south::after {
+  width: 20px;
+  height: var(--osw-organize-resize-stroke);
+}
+.osw-organize-resize-handle.is-east:hover::after,
+.osw-organize-resize-handle.is-south:hover::after,
+.osw-organize-tile.is-resizing .osw-organize-resize-handle.is-east::after,
+.osw-organize-tile.is-resizing .osw-organize-resize-handle.is-south::after {
+  opacity: 1;
+}
+.osw-organize-resize-handle.is-corner {
+  right: 2px;
+  bottom: 2px;
+  width: 24px;
+  height: 24px;
+  cursor: nwse-resize;
+  transition: none;
+}
+.osw-organize-tile:hover .osw-organize-resize-handle.is-corner {
+  opacity: 0;
+}
+.osw-organize-tile:hover .osw-organize-resize-handle.is-corner:hover,
+.osw-organize-tile.is-resizing .osw-organize-resize-handle.is-corner {
+  opacity: 1;
+}
+.osw-organize-resize-handle.is-corner::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--osw-accent);
+  pointer-events: none;
+}
+
 /* Ctrl/Cmd+Click membership — a ring rather than a fill, so the tile's own
    colour and name stay legible while several are marked at once. */
 .osw-organize-tile.is-selected {
@@ -4848,6 +7208,8 @@ html body .osw-action-btn.osw-organize-add-btn {
 .osw-organize-hint.has-selection {
   color: var(--osw-fg-muted);
 }
+
+.osw-organize-hint[hidden] { display: none; }
 
 .osw-organize-hint-text {
   overflow: hidden;
@@ -4870,26 +7232,87 @@ html body .osw-organize-hint-clear:hover {
 }
 
 .osw-organize-tile-name {
+  font-family: var(--osw-organize-preview-text-font, inherit);
   font-size: 12px;
   font-weight: 500;
-  color: var(--osw-fg);
+  color: var(--osw-organize-preview-text, var(--osw-fg));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
 }
 
+/* Grid help shares the existing Lucide info button and gallery dialog chrome.
+   A compact card keeps the two editing gestures easy to read. */
+.osw-organize-help-card.osw-gal-card {
+  width: min(430px, calc(100vw - 40px));
+  height: auto;
+  max-height: calc(100vh - 40px);
+}
+
+.osw-organize-help-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  color: var(--osw-fg-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.osw-organize-help-body p { margin: 0; }
+.osw-organize-help-body p + p { margin-top: 12px; }
+.osw-organize-help-card .osw-gal-title { flex: 1; min-width: 0; }
+
+.osw-organize-preview-head .osw-designer-preview-toggle-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+/* The grid help action lives in the preview utility group, so use the same
+   34 × 30px frame as the theme button and the same height as Reset. */
+html body .osw-preview-utility-ctl .osw-organize-grid-info,
+html body .osw-preview-utility-ctl .osw-organize-grid-info:hover,
+html body .osw-preview-utility-ctl .osw-organize-grid-info:focus,
+html body .osw-preview-utility-ctl .osw-organize-grid-info:focus-visible {
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--osw-inset);
+  color: var(--osw-fg-muted);
+  box-shadow: none;
+}
+
+html body .osw-preview-utility-ctl .osw-organize-grid-info:hover,
+html body .osw-preview-utility-ctl .osw-organize-grid-info:focus-visible {
+  background: var(--osw-inset-hover);
+  color: var(--osw-fg);
+}
+
+.osw-preview-utility-ctl .osw-organize-grid-info svg {
+  width: 17px;
+  height: 17px;
+}
+
 html body .osw-organize-tile-remove,
 html body .osw-organize-tile-remove:hover {
+  /* Use the rendered inner radius, which can be much smaller than the
+     selected radius on a short tile. Only add the diagonal clearance needed
+     by the curved corner, keeping the control close to the top-right edge. */
+  --osw-remove-radius: var(--osw-organize-tile-inner-radius, var(--osw-organize-preview-card-radius, 12px));
+  --osw-remove-inset: max(4px, calc(4px + (var(--osw-remove-radius) - 20px) * 0.2928932188));
+  --osw-remove-corner: clamp(0px, calc(var(--osw-remove-radius) - 4px), 16px);
+  --osw-remove-inner-corner: min(6px, var(--osw-remove-corner), calc(18px - var(--osw-remove-corner)));
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: var(--osw-remove-inset);
+  right: var(--osw-remove-inset);
   width: 18px;
   height: 18px;
   padding: 0;
   margin: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--osw-remove-inner-corner) var(--osw-remove-corner)
+    var(--osw-remove-inner-corner) min(6px, var(--osw-remove-corner));
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
   display: flex;
@@ -4901,20 +7324,466 @@ html body .osw-organize-tile-remove:hover {
 }
 
 .osw-organize-tile:hover .osw-organize-tile-remove { opacity: 1; }
-.osw-organize-tile-remove svg { width: 10px; height: 10px; }
+.osw-organize-tile-remove svg {
+  width: 10px;
+  height: 10px;
+  /* Follow the centre of the visible button area as its corners change. */
+  transform: translate(calc(-1 * var(--osw-remove-icon-offset, 0px)),
+    var(--osw-remove-icon-offset, 0px));
+}
 
 .osw-organize-menu {
+  /* Text Alignment is the shared shape for every widget popup control. */
+  --osw-widget-popup-radius: 11px;
+  --osw-widget-popup-inner-radius: 8px;
   position: fixed;
   z-index: 9999;
   min-width: 220px;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--osw-surface);
   border: 1px solid var(--osw-hairline);
-  border-radius: 14px;
+  border-radius: var(--osw-widget-popup-radius);
   box-shadow: 0 12px 36px var(--osw-shadow);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.osw-organize-menu.is-menu-title {
+  width: min(340px, calc(100vw - 24px));
+}
+
+.osw-organize-menu.is-widget-fonts {
+  width: min(320px, calc(100vw - 24px));
+}
+
+/* Reviewer Colors uses the same compact role picker as the font editor, but
+   each selected element exposes a light/dark pair. A slightly wider card lets
+   both theme slots remain side by side without turning the page back into a
+   long palette list. */
+.osw-organize-menu.is-widget-colors {
+  width: min(420px, calc(100vw - 24px));
+}
+
+/* Reviewer Colors is selected from a gallery instead of a dropdown. Every
+   element stays visible at a glance, and each tile previews its current
+   background/text pairing in the active settings theme. */
+.osw-organize-menu.is-widget-colors .osw-organize-font-role-picker.is-color-gallery {
+  position: static;
+}
+
+.osw-organize-menu.is-widget-colors .osw-reviewer-color-gallery {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html body .osw-organize-menu.is-widget-colors .osw-reviewer-color-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+  min-height: 70px;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--osw-fg-muted);
+  text-align: center;
+}
+
+html body .osw-organize-menu.is-widget-colors .osw-reviewer-color-card:hover {
+  border-color: var(--osw-hairline);
+  background: var(--osw-inset);
+}
+
+html body .osw-organize-menu.is-widget-colors .osw-reviewer-color-card.is-selected {
+  border-color: var(--osw-accent);
+  background: color-mix(in srgb, var(--osw-accent) 10%, transparent);
+  color: var(--osw-fg);
+}
+
+.osw-reviewer-color-sample {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 31px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 4%, transparent);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.osw-reviewer-color-caption {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 370px) {
+  .osw-organize-menu.is-widget-colors .osw-reviewer-color-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.osw-organize-font-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.osw-organize-font-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.osw-organize-font-sync-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.osw-organize-font-sync-label {
+  color: var(--osw-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+html body .osw-organize-font-sync-switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  padding: 3px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--osw-inset-hover);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+html body .osw-organize-font-sync-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--osw-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
+  transition: transform 140ms ease;
+}
+
+html body .osw-organize-font-sync-switch.is-on {
+  background: var(--osw-accent);
+}
+
+html body .osw-organize-font-sync-switch.is-on::after {
+  transform: translateX(18px);
+}
+
+.osw-organize-font-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--osw-fg);
+}
+
+html body .osw-organize-font-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--osw-fg-muted);
+  cursor: pointer;
+}
+
+html body .osw-organize-font-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--osw-fg-muted);
+  cursor: pointer;
+}
+
+html body .osw-organize-font-info:hover,
+html body .osw-organize-font-info[aria-expanded="true"] {
+  background: var(--osw-inset-hover);
+  color: var(--osw-fg);
+}
+
+.osw-organize-font-info svg { width: 14px; height: 14px; }
+
+.osw-organize-font-info-text {
+  margin: -2px 0 2px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--osw-inset);
+  color: var(--osw-fg-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+html body .osw-organize-font-close:hover {
+  background: var(--osw-inset-hover);
+  color: var(--osw-fg);
+}
+
+.osw-organize-font-close svg {
+  width: 13px;
+  height: 13px;
+}
+
+.osw-organize-font-role-picker {
+  position: relative;
+  z-index: 2;
+}
+
+html body .osw-organize-font-role {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 34px;
+  padding: 0 11px 0 12px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 10px;
+  background: var(--osw-inset);
+  color: var(--osw-fg);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+html body .osw-organize-font-role:hover,
+html body .osw-organize-font-role[aria-expanded="true"] {
+  background: var(--osw-inset-hover);
+}
+
+html body .osw-organize-font-role:focus-visible,
+html body .osw-organize-font-role[aria-expanded="true"] {
+  border-color: var(--osw-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--osw-accent) 16%, transparent);
+}
+
+.osw-organize-font-role-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.osw-organize-font-role-chevron {
+  display: grid;
+  flex: 0 0 18px;
+  place-items: center;
+  color: var(--osw-fg-muted);
+  transition: transform 160ms ease;
+}
+
+.osw-organize-font-role-chevron svg { width: 16px; height: 16px; }
+.osw-organize-font-role[aria-expanded="true"] .osw-organize-font-role-chevron { transform: rotate(180deg); }
+
+.osw-organize-font-role-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 10px;
+  background: var(--osw-surface);
+  box-shadow: 0 10px 24px var(--osw-shadow);
+}
+
+/* A role list is temporarily moved to document.body by settings.js while it
+   is open. This lets it escape the menu's own scroll/clipping container and
+   keeps every option visible near the top or bottom of the viewport. */
+.osw-organize-font-role-list.is-floating {
+  position: fixed;
+  z-index: 10001;
+  right: auto;
+  left: auto;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+
+html body .osw-organize-font-role-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--osw-fg);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+html body .osw-organize-font-role-option:hover,
+html body .osw-organize-font-role-option.is-selected {
+  background: color-mix(in srgb, var(--osw-accent) 14%, var(--osw-surface));
+}
+
+html body .osw-organize-font-role-option.is-selected {
+  color: var(--osw-accent);
+  font-weight: 600;
+}
+
+.osw-organize-font-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Menu Title reuses the real field controls, compacted to the context popup.
+   Native font-picker replies still find these via their data-field binding. */
+.osw-organize-menu-field.osw-row {
+  min-height: 34px;
+  gap: 12px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.osw-organize-menu-field .osw-row-text {
+  flex: 0 0 88px;
+  min-width: 0;
+}
+
+.osw-organize-menu-field .osw-row-label {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.osw-organize-menu-field .osw-row-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: stretch;
+}
+
+.osw-organize-menu-field .osw-text-input,
+.osw-organize-menu-field .osw-chip,
+.osw-organize-menu-field .osw-number {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.osw-organize-menu-field .osw-chip {
+  justify-content: center;
+}
+
+.osw-organize-menu.is-widget-colors .osw-organize-font-fields {
+  gap: 0;
+}
+
+.osw-organize-menu.is-widget-colors .osw-organize-menu-field.osw-imagefield {
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--osw-hairline);
+}
+
+.osw-organize-menu.is-widget-colors .osw-organize-menu-field.osw-imagefield:first-child {
+  padding-top: 0;
+}
+
+.osw-organize-menu.is-widget-colors .osw-organize-menu-field.osw-imagefield:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.osw-organize-menu.is-widget-colors .osw-imagefield-head {
+  align-items: center;
+}
+
+.osw-organize-menu.is-widget-colors .osw-row-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.osw-organize-menu.is-widget-colors .osw-linkchip {
+  height: 24px;
+  padding-inline: 8px;
+  font-size: 10.5px;
+}
+
+.osw-organize-menu.is-widget-colors .osw-imagefield-slots {
+  gap: 6px;
+}
+
+.osw-organize-menu.is-widget-colors .osw-colorslot {
+  min-height: 34px;
+  padding: 4px 7px;
+  border-radius: 10px;
+}
+
+.osw-organize-menu.is-widget-colors .osw-colorslot .osw-imgslot-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+.osw-organize-menu.is-widget-fonts .osw-number {
+  justify-content: center;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.osw-organize-menu.is-widget-fonts .osw-number input {
+  flex: 0 0 38px;
+  width: 38px;
 }
 
 .osw-organize-menu-row {
@@ -4958,6 +7827,14 @@ html body .osw-organize-tile-remove:hover {
   transition: all 120ms ease;
   padding: 0;
   margin: 0;
+}
+
+.osw-organize-menu-step-btn svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .osw-organize-menu-step-btn:hover:not(:disabled) {
@@ -5522,6 +8399,15 @@ html body .osw-preview-bbar-btn-other {
 .osw-preview-kind-reviewer_bottom_bar .osw-designer-preview-head::-webkit-scrollbar,
 .osw-preview-kind-overview_style .osw-designer-preview-head::-webkit-scrollbar { height: 0; }
 
+/* This header uses a scrollbar-free wide form above the compact breakpoint.
+   Once its labels collapse, keep the whole control row inside the card rather
+   than retaining that horizontal overflow behaviour. */
+@media (max-width: 1700px) {
+  .osw-preview-kind-reviewer_bottom_bar .osw-designer-preview-head {
+    overflow-x: hidden;
+  }
+}
+
 
 /* ── Reviewer Header Progress Bar preview ──────────────────────────────────
    A stand-in for the real reviewer header (patcher.py's
@@ -5728,6 +8614,7 @@ html body .osw-preview-bbar-btn-other {
   background: var(--ovstyle-box-bg);
   border: var(--ovstyle-box-stroke) solid var(--ovstyle-box-border);
   border-radius: var(--ovstyle-box-radius);
+  clip-path: inset(0 round var(--ovstyle-box-radius));
   backdrop-filter: blur(var(--ovstyle-box-blur));
   -webkit-backdrop-filter: blur(var(--ovstyle-box-blur));
 }
@@ -5844,6 +8731,14 @@ html body .osw-preview-ovstyle-learning-notice button {
   width: 100%;
   margin-top: 10px;
 }
+.osw-preview-ovstyle-actions-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
 html body .osw-preview-ovstyle-action-button,
 html body .osw-preview-ovstyle-action-button:hover,
 html body .osw-preview-ovstyle-action-button:focus,
@@ -5872,28 +8767,17 @@ html body .osw-preview-ovstyle-action-button.is-description {
   background: var(--ovstyle-description-btn-bg) !important;
   color: var(--ovstyle-description-btn-fg) !important;
 }
-html body .osw-preview-ovstyle-reveal-button,
-html body .osw-preview-ovstyle-reveal-button:hover,
-html body .osw-preview-ovstyle-reveal-button:focus,
-html body .osw-preview-ovstyle-reveal-button:active {
-  min-height: 0;
-  margin: 14px auto 0;
-  padding: 10px 20px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--ovstyle-reveal-btn-bg) !important;
-  color: var(--ovstyle-reveal-btn-fg) !important;
-  font-family: var(--ovstyle-font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
-  font-size: var(--ovstyle-main-size, 14px);
-  font-weight: 500;
-  line-height: normal;
-  cursor: default;
-  box-shadow: none;
-  filter: none;
+.osw-preview-ovstyle-reveal-action {
+  width: 100%;
+  box-sizing: border-box;
+}
+.osw-preview-ovstyle-reveal-action .osw-preview-ovstyle-action-button {
+  width: 100%;
+  box-sizing: border-box;
 }
 .osw-preview-ovstyle-wrap.is-mini .osw-preview-ovstyle-actions { gap: 8px; margin-top: 8px; }
+.osw-preview-ovstyle-wrap.is-mini .osw-preview-ovstyle-actions-stack { width: 100%; }
 .osw-preview-ovstyle-wrap.is-mini .osw-preview-ovstyle-action-button { padding: 5px 9px; font-size: 12px; }
-.osw-preview-ovstyle-wrap.is-mini .osw-preview-ovstyle-reveal-button { margin-top: 14px; padding: 8px 16px; font-size: 12px; }
 .osw-preview-ovstyle-wrap.is-mini .osw-preview-ovstyle-learning-notice { font-size: 11px; }
 
 /* Mini uses the same top-aligned placement as the real Overviewer; Pro stays
@@ -5975,7 +8859,9 @@ html body .osw-preview-ovstyle-reveal-button:active {
    geometry. */
 .osw-preview-kind-sidebar_background .osw-designer-preview-stage,
 .osw-preview-kind-sidebar_actions .osw-designer-preview-stage,
-.osw-preview-kind-deck_list .osw-designer-preview-stage {
+.osw-preview-kind-sidebar_ready .osw-designer-preview-stage,
+.osw-preview-kind-deck_list .osw-designer-preview-stage,
+.osw-preview-kind-sidebar_markers .osw-designer-preview-stage {
   min-height: 360px;
 }
 
@@ -5983,11 +8869,54 @@ html body .osw-preview-ovstyle-reveal-button:active {
   position: absolute;
   overflow: hidden;
   box-sizing: border-box;
+  z-index: 1;
+}
+
+/* Centered-sidebar previews include four deliberately neutral dashboard
+   placeholders. They indicate where widgets will sit without competing with
+   the real sidebar styling shown above. */
+.osw-sbprev-widget-placeholders {
+  position: absolute;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.osw-sbprev-widget-placeholder {
+  display: block;
+  aspect-ratio: 1;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+/* Shima's deck-only frame is centered in both axes and intentionally leaves
+   enough surrounding canvas visible to read as an island, not a sidebar. */
+.osw-sbprev-frame.is-shima {
+  left: 50%;
+  top: 50%;
+  width: min(68%, 360px);
+  height: 76%;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 18px;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.osw-sbprev-frame.is-shima .osw-sbprev-content {
+  padding: 20px 18px 14px;
 }
 
 .osw-sbprev-fill {
   position: absolute;
   inset: 0;
+  /* Filtered layers need their own rounded clip in Qt WebEngine. A parent's
+     overflow clip alone can leave a square composited corner over its stroke.
+     Use the padding-box radius so thick borders stay visible as well. */
+  border-radius: var(--osw-sbprev-inner-radius, 0px);
+  clip-path: inset(0 round var(--osw-sbprev-inner-radius, 0px));
 }
 
 .osw-sbprev-image {
@@ -6001,10 +8930,22 @@ html body .osw-preview-ovstyle-reveal-button:active {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: 0;
+  padding: 25px 25px 0;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.osw-sbprev-section {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.osw-sbprev-section-decks {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .osw-sbprev-glyph {
@@ -6027,6 +8968,7 @@ html body .osw-preview-ovstyle-reveal-button:active {
 /* Just a slot: paintProfileItem() (the Profile page's own renderer) fills it,
    and its .osw-profile-preview-item rules own the look. */
 .osw-sbprev-profile {
+  margin-bottom: 20px;
   flex: 0 0 auto;
 }
 
@@ -6056,6 +8998,20 @@ html body .osw-preview-ovstyle-reveal-button:active {
   gap: 6px;
   flex: 0 0 auto;
   opacity: 0.75;
+}
+
+.osw-sbprev-deckhead-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
 }
 
 /* The deck list takes the slack. It keeps a floor, and the action strip is the
@@ -6097,25 +9053,15 @@ html body .osw-preview-ovstyle-reveal-button:active {
 
 .osw-sbprev-counts {
   display: inline-flex;
-  gap: 3px;
+  gap: 4px;
   flex: 0 0 auto;
-}
-
-.osw-sbprev-badge {
-  color: #ffffff;
-  border-radius: 999px;
-  padding: 0 0.45em;
-  min-width: 1.5em;
-  line-height: 1.55em;
-  text-align: center;
-  font-weight: 600;
 }
 
 .osw-sbprev-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 0 1 auto;
+  gap: 5px;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
 }
@@ -6129,8 +9075,8 @@ html body .osw-preview-ovstyle-reveal-button:active {
 .osw-sbprev-action {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 7px;
+  gap: 18px;
+  padding: 10px;
   border: 1px solid transparent;
   border-radius: 8px;
   box-sizing: border-box;
@@ -6151,6 +9097,62 @@ html body .osw-preview-ovstyle-reveal-button:active {
   border-radius: 9px;
 }
 
+/* Ready to Go mirrors the real Classic sidebar in both its labeled list and
+   four-icon collapsed layouts. The complete native-size frame is scaled as
+   one unit by designerSidebarFrame, preserving these exact proportions. */
+.osw-sbprev-ready {
+  margin: 4px 0 14px;
+  padding: 0;
+}
+
+.osw-sbprev-ready-title {
+  margin: 0 0 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.osw-sbprev-ready-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.osw-sbprev-ready-actions.is-collapsed {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.osw-sbprev-ready-action {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid;
+  box-sizing: border-box;
+}
+
+.osw-sbprev-ready.is-collapsed .osw-sbprev-ready-action {
+    justify-content: center;
+    gap: 0;
+    padding: 7px 0;
+}
+
+.osw-sbprev-ready.is-collapsed .osw-sbprev-ready-label {
+  display: none;
+}
+
+.osw-sbprev-ready-label {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .osw-sbprev-action.is-dashed {
   border-style: dashed;
 }
@@ -6163,9 +9165,10 @@ html body .osw-preview-ovstyle-reveal-button:active {
 }
 
 /* ── Action-button order editor ─────────────────────────────────────────────
-   Two buckets (on the sidebar / archived) of draggable rows — settings.js
-   renderButtonOrder. auto-fit rather than a fixed 2-up: the field can sit in a
-   ~45%-wide deck column, where two buckets side by side would be unreadable. */
+   Two or three buckets (outside More / More / archived) of draggable rows —
+   settings.js renderButtonOrder. Auto-fit rather than a fixed 2-up: the field
+   can sit in a ~45%-wide deck column, where side-by-side buckets would be
+   unreadable. */
 .osw-btnorder {
   display: flex;
   flex-direction: column;
@@ -6204,6 +9207,11 @@ html body .osw-preview-ovstyle-reveal-button:active {
   background: var(--osw-accent-wash);
 }
 
+.osw-btnorder-bucket.is-archived {
+  /* Keep the recovery area easy to target: it spans both action columns. */
+  grid-column: 1 / -1;
+}
+
 .osw-btnorder-row {
   display: flex;
   align-items: center;
@@ -6214,6 +9222,9 @@ html body .osw-preview-ovstyle-reveal-button:active {
   background: var(--osw-surface);
   cursor: grab;
   box-sizing: border-box;
+  /* Pointer dragging a label must never select its text. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .osw-btnorder-row:hover {
@@ -6221,7 +9232,28 @@ html body .osw-preview-ovstyle-reveal-button:active {
 }
 
 .osw-btnorder-row.is-dragging {
+  opacity: 0.96;
+  cursor: grabbing;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  transform: scale(1.015);
+}
+
+.osw-btnorder-placeholder {
+  min-height: 52px;
+  border: 1px dashed var(--osw-accent-line-strong);
+  border-radius: 10px;
+  background: var(--osw-accent-wash);
+  box-sizing: border-box;
+}
+
+.osw-btnorder.has-active-drag,
+.osw-btnorder.has-active-drag * {
+  cursor: grabbing;
+}
+
+.osw-btnorder.is-dragging-more .osw-btnorder-list[data-bucket="more"] {
   opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .osw-btnorder-row.is-drop-before {
@@ -6341,6 +9373,11 @@ html body .osw-preview-ovstyle-reveal-button:active {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+  min-width: max-content;
+  padding: 0 14px;
+  border: 1px solid var(--osw-hairline);
+  border-radius: var(--osw-radius-control);
+  white-space: nowrap;
 }
 
 .osw-assets-import.is-busy {
@@ -6488,15 +9525,21 @@ html body .osw-preview-ovstyle-reveal-button:active {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
+  /* Both columns occupy one grid row. Stretch the preview card to the height
+     of the configuration deck (or vice versa when the preview is taller), so
+     the Sidebar page reads as one balanced two-column panel. */
+  align-items: stretch;
 }
 
 .is-stage-side .osw-designer-preview-card {
   position: sticky;
   top: 0;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .is-stage-side .osw-designer-preview-stage {
+  flex: 1 1 auto;
   min-height: 560px;
 }
 
@@ -6537,11 +9580,93 @@ html body .osw-preview-ovstyle-reveal-button:active {
   letter-spacing: 0.04em;
 }
 
+/* At the dialog floor, a Sidebar preview is still a two-column card even
+   though the WebView itself is wide. Keep its complete header on one line:
+   title yields space first, Dynamic keeps its switch, and Reset becomes its
+   familiar compact action icon. Their accessible names remain on the buttons. */
+@media (max-width: 1100px) {
+  .is-stage-side .osw-designer-preview-head {
+    gap: 8px;
+    padding: 8px 12px;
+    overflow-x: hidden;
+  }
+
+  .is-stage-side .osw-designer-preview-title {
+    flex: 1 1 auto;
+    flex-shrink: 1;
+  }
+
+  .is-stage-side .osw-preview-head-controls {
+    gap: 8px;
+  }
+
+  .is-stage-side .osw-preview-ctl {
+    gap: 0;
+  }
+
+  .is-stage-side .osw-preview-ctl-label,
+  .is-stage-side .osw-designer-reset-label {
+    display: none;
+  }
+
+  /* The compact form retains Dynamic mode's identity after its text label is
+     removed. Its D badge sits inside the white thumb: grey while off, then a
+     light accent wash with the exact accent-coloured glyph while on. */
+  .is-stage-side .osw-sq-switch::after {
+    content: "";
+  }
+
+  .is-stage-side .osw-sq-switch::before {
+    content: "D";
+    position: absolute;
+    z-index: 1;
+    top: 5px;
+    left: 5px;
+    display: grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    /* Match Reviewer Background's theme-independent off-state badge. */
+    background: #d0d0d4;
+    color: #44444a;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    transition: transform 170ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 160ms ease;
+  }
+
+  .is-stage-side .osw-sq-switch.is-on::before {
+    background: var(--osw-accent-a16);
+    color: var(--osw-accent);
+    transform: translateX(16px);
+  }
+
+  html body .is-stage-side button.osw-btn.osw-designer-reset {
+    width: 30px;
+    padding: 0;
+  }
+
+  .is-stage-side .osw-designer-reset-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .is-stage-side .osw-designer-reset-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.osw-designer-reset-icon { display: none; }
+
 @media (max-width: 900px) {
   .osw-designer-page-wrap.is-stage-side {
     grid-template-columns: minmax(0, 1fr);
   }
-  .is-stage-side .osw-designer-preview-card { position: static; }
+  .is-stage-side .osw-designer-preview-card { position: static; height: auto; }
   .is-stage-side .osw-designer-preview-stage { min-height: 380px; }
 }
 
@@ -6692,7 +9817,7 @@ html body .osw-preview-ovstyle-reveal-button:active {
 
 .osw-marker-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -6701,6 +9826,8 @@ html body .osw-preview-ovstyle-reveal-button:active {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   padding: 7px 10px;
   border: 1px solid var(--osw-hairline);
   border-radius: 12px;
@@ -6729,70 +9856,26 @@ html body .osw-preview-ovstyle-reveal-button:active {
   text-overflow: ellipsis;
 }
 
-/* ── Profile, at sidebar scale ──────────────────────────────────────────────
-   The Profile page paints its preview large (it is the subject of that page);
-   inside the Sidebar preview the same markup has to sit beside 24px deck rows,
-   where it was rendering at roughly twice the size it has in the real sidebar.
-   These overrides only re-scale it — the layout, colours and markup stay the
-   Profile renderer's (paintProfileItem), so the two previews can't drift apart.
-   Ratios follow the real sidebar: picture ~1.5x a deck row, name ~1.25x a deck
-   name. */
-.osw-sbprev-profile .osw-preview-bar-pill {
-  height: 40px;
-  border-radius: 20px;
-  padding: 0 7px;
-  gap: 8px;
-}
-
-.osw-sbprev-profile .osw-preview-avatar {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  font-size: 12px;
-}
-
-.osw-sbprev-profile .osw-preview-avatar.is-small {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  font-size: 11px;
-}
-
-.osw-sbprev-profile .osw-preview-name {
-  font-size: 13px;
-}
-
-.osw-sbprev-profile .osw-preview-sub-text {
-  font-size: 9px;
-}
-
-.osw-sbprev-profile .osw-preview-bar-pill .restaurant-level-chip {
-  gap: 5px;
-  padding: 2px 6px;
-  font-size: 9px;
-}
-
-.osw-sbprev-profile .osw-preview-bar-pill .restaurant-level-chip .rl-chip-progress {
-  width: 34px;
-  height: 4px;
+/* Use native sidebar dimensions here; designerSidebarFrame scales the entire
+   surface. Individually shrinking the profile distorts its ratio to text. */
+.osw-sbprev-profile .osw-profile-preview-item {
+  max-width: none;
 }
 
 .osw-sbprev-profile .osw-profile-preview-item.is-type-ring,
 .osw-sbprev-profile .osw-profile-preview-item.is-type-minimal {
-  gap: 8px;
+  padding: 6px;
+  box-sizing: border-box;
 }
 
 .osw-sbprev-profile .osw-preview-ring-wrap {
-  width: 32px;
-  height: 32px;
+  flex: 0 0 52px;
 }
 
-.osw-sbprev-profile .osw-preview-minimal-info {
-  gap: 4px;
-}
-
-.osw-sbprev-profile .osw-preview-minimal-track {
-  height: 4px;
+.osw-sbprev-profile .is-type-ring .osw-preview-avatar.is-small {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
 }
 
 /* An icon tint showing its inherited default rather than a value of its own.
@@ -6804,63 +9887,12 @@ html body .osw-preview-ovstyle-reveal-button:active {
   border-color: var(--osw-hairline);
 }
 
-/* Give the tint back: only present while the colour is a custom one, so it
-   never sits there offering to reset something that is already the default. */
-.onigiri-icon-color-reset {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--osw-fg-faint);
-  cursor: pointer;
-}
-
-.onigiri-icon-color-reset:hover {
-  background: var(--osw-surface);
-  color: var(--osw-fg);
-}
-
-.onigiri-icon-color-reset svg { width: 15px; height: 15px; display: block; }
-
 /* A colour slot showing what it inherits rather than a value of its own: same
    swatch and hex, dashed edge, so "not set" stays legible as a state. */
 .osw-colorslot.is-default {
   border-style: dashed;
   border-color: var(--osw-hairline);
 }
-
-/* Give the colour back to whatever it inherits from. A flex item after the
-   "Change" affordance (the slot is not a positioning context); only rendered
-   while the slot carries its own colour. */
-.osw-colorslot-reset {
-  flex: 0 0 auto;
-  margin-left: 2px;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--osw-fg-faint);
-  cursor: pointer;
-}
-
-.osw-colorslot .osw-colorslot-reset { opacity: 0.55; }
-.osw-colorslot:hover .osw-colorslot-reset { opacity: 1; }
-
-.osw-colorslot-reset:hover {
-  background: var(--osw-surface);
-  color: var(--osw-fg);
-}
-
-.osw-colorslot-reset svg { width: 13px; height: 13px; display: block; }
 
 /* ── Icon tile colours (Stats Widgets) ──────────────────────────────────────
    Under the tile, below its label: the metric's accent, one swatch per theme
@@ -7078,10 +10110,39 @@ html body .osw-pomo-value-chip.is-selected {
   gap: 10px;
 }
 .osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_sound_enabled"],
-.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_start_sound"],
-.osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_end_sound"],
 .osw-section[data-section="pomodoro_sound"] [data-field-host="pomodoro_choose_sound_action"] {
   grid-column: 1 / -1;
+}
+/* Seven paired families need independent pickers, not long segmented strips.
+   Size each picker to its own column and leave its popup free to escape. */
+.osw-section[data-section="pomodoro_sound"] .osw-row:has(.osw-select-menu) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-row-control:has(.osw-select-menu) {
+  min-width: 0;
+  width: 100%;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-select-menu {
+  width: 100%;
+  min-width: 0;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-select-menu-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-select-menu-chevron {
+  flex: 0 0 auto;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-select-menu-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.osw-section[data-section="pomodoro_sound"] .osw-select-menu-option {
+  overflow-wrap: anywhere;
 }
 .osw-section[data-section="pomodoro_sound"] .osw-segmented-wrap {
   align-items: stretch;
@@ -7153,8 +10214,8 @@ html body .osw-pomo-value-chip.is-selected {
   padding: 14px 16px;
 }
 
-/* The reset/sync actions are deliberately quiet peers. Reset adds a progress
-   wash while held, then the native Onigiri confirmation is opened by Python. */
+/* The reset/sync actions are deliberately quiet peers. Reset adds the shared
+   three-second progress wash while held. */
 html body .osw-action-btn.is-neutral,
 html body .osw-action-btn.is-neutral:hover,
 html body .osw-action-btn.is-neutral:focus,
@@ -7165,31 +10226,6 @@ html body .osw-action-btn.is-neutral:active {
 }
 html body .osw-action-btn.is-neutral:hover {
   background: var(--osw-inset-hover) !important;
-}
-.osw-action-btn.is-hold-action {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-html body .osw-action-btn.is-hold-action::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 0;
-  background: var(--osw-fg);
-  opacity: 0.12;
-}
-.osw-action-btn.is-hold-action > * { position: relative; z-index: 1; }
-.osw-action-btn.is-hold-action.is-holding::before {
-  width: 100%;
-  transition: width 3s linear;
-}
-.osw-action-btn.is-hold-action.is-ready::before {
-  width: 100%;
-  background: var(--osw-accent);
-  opacity: 0.24;
-  transition: background-color 120ms ease;
 }
 .osw-action-btn.is-busy { opacity: 0.58; cursor: wait !important; }
 
@@ -7313,13 +10349,13 @@ html body .osw-action-btn.is-hold-action::before {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(300px, calc(100% - 40px));
+  width: min(360px, calc(100% - 32px));
   transition: top 160ms ease, bottom 160ms ease, left 160ms ease, right 160ms ease;
 }
 
-.osw-notifstage-stack.is-top-left { top: 14px; left: 20px; align-items: flex-start; }
-.osw-notifstage-stack.is-top-center { top: 14px; left: 50%; transform: translateX(-50%); align-items: center; }
-.osw-notifstage-stack.is-top-right { top: 14px; right: 20px; align-items: flex-end; }
+.osw-notifstage-stack.is-top-left { top: 5px; left: 20px; align-items: flex-start; }
+.osw-notifstage-stack.is-top-center { top: 5px; left: 50%; transform: translateX(-50%); align-items: center; }
+.osw-notifstage-stack.is-top-right { top: 5px; right: 20px; align-items: flex-end; }
 .osw-notifstage-stack.is-bottom-left { bottom: 20px; left: 20px; align-items: flex-start; flex-direction: column-reverse; }
 .osw-notifstage-stack.is-bottom-center { bottom: 20px; left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
 .osw-notifstage-stack.is-bottom-right { bottom: 20px; right: 20px; align-items: flex-end; flex-direction: column-reverse; }
@@ -7335,6 +10371,11 @@ html body .osw-action-btn.is-hold-action::before {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* The live reviewer header is width:max-content. Without it, an absolutely
+     positioned header whose left edge starts at 50% is shrink-to-fit against
+     only the right half of a narrow preview; its button row wraps and Mini's
+     inset:0 card expands into a tall rectangle instead of the real pill. */
+  width: max-content;
   max-width: calc(100% - 24px);
   min-height: 40px;
   padding: 4px 10px;
@@ -7373,37 +10414,15 @@ html body .osw-action-btn.is-hold-action::before {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.osw-notifstage:not(.night-mode)
+  .onigiri-notification-card[data-variant="mochi"]
+  .onigiri-notification-icon {
+  background: transparent;
+}
+
 .osw-notifstage:not(.night-mode) .onigiri-mini-notification {
   background: var(--onigiri-notification-bg-light);
   color: var(--onigiri-notification-text-light);
-}
-
-/* A restrained edge helps the preview card read against similarly coloured
-   reviewer backgrounds. Keep this scoped to the settings stage so the live
-   notification appearance is unchanged. */
-.osw-notifstage .onigiri-notification-card,
-.osw-notifstage .onigiri-mini-notification {
-  outline: 1px solid rgba(15, 23, 42, 0.16);
-  outline-offset: -1px;
-}
-
-.osw-notifstage .onigiri-notification-card {
-  border-radius: 16px;
-  box-shadow: none;
-}
-
-.osw-notifstage .onigiri-mini-notification {
-  border-radius: 999px;
-}
-
-.osw-notifstage.night-mode .onigiri-notification-card,
-.osw-notifstage.night-mode .onigiri-mini-notification {
-  outline-color: rgba(255, 255, 255, 0.18);
-}
-
-.osw-notifstage .onigiri-mini-notification-icon img {
-  width: 20px;
-  height: 20px;
 }
 
 /* ── picture-card choice ───────────────────────────────────────────────── */
@@ -7541,6 +10560,7 @@ html body .osw-action-btn.is-hold-action::before {
 .osw-companions-grid.is-empty { display: none; }
 
 .osw-companion-tile {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7554,8 +10574,46 @@ html body .osw-action-btn.is-hold-action::before {
 
 .osw-companion-tile:hover { background: var(--osw-inset-hover); }
 .osw-companion-tile.is-active { border-color: var(--osw-accent); background: var(--osw-accent-wash-strong); }
-.osw-companion-tile img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; }
+.osw-companion-tile.is-on-menu { border-color: var(--osw-accent-line-strong); }
+.osw-companion-tile img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  -ms-interpolation-mode: nearest-neighbor;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
 .osw-companion-initials { font-size: 13px; font-weight: 500; color: var(--osw-fg-muted); }
+.osw-companion-menu-pin {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: inline-flex;
+  width: 19px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--osw-hairline);
+  border-radius: 50%;
+  background: var(--osw-surface);
+  color: var(--osw-fg-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.osw-companion-menu-pin[aria-pressed="true"] {
+  border-color: var(--osw-accent);
+  background: var(--osw-accent);
+  color: #fff;
+}
+.osw-companions-menu-hint {
+  margin-top: 10px;
+  color: var(--osw-fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 .osw-companions-actions { display: flex; gap: 8px; margin-top: 12px; }
 .osw-companions .osw-row-desc { margin-top: 10px; }
@@ -7763,7 +10821,7 @@ html body .osw-action-btn.is-hold-action::before {
 
 /* ── preview: level chip ───────────────────────────────────────────────── */
 
-/* The chip is drawn on the profile panel's own shade, because a translucent
+/* The chip is drawn on the Profile Sidebar's own shade, because a translucent
    chip judged against nothing is a chip judged against the wrong thing. */
 .osw-chipstage-plate {
   display: flex;
@@ -7834,6 +10892,8 @@ html body .osw-action-btn.is-hold-action::before {
 .osw-onistage-card {
   flex: 0 0 auto;
   max-width: 100%;
+  position: relative;
+  z-index: 1;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(120, 120, 120, 0.42);
@@ -7846,6 +10906,7 @@ html body .osw-action-btn.is-hold-action::before {
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 14px;
   min-height: 112px;
   padding: 16px 14px;
@@ -7877,6 +10938,10 @@ html body .osw-action-btn.is-hold-action::before {
   width: 86px;
   height: 86px;
   object-fit: contain;
+  -ms-interpolation-mode: nearest-neighbor;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
   filter: drop-shadow(0 10px 9px rgba(0, 0, 0, 0.24));
 }
 
@@ -7895,11 +10960,103 @@ html body .osw-action-btn.is-hold-action::before {
   padding: 12px 14px;
 }
 
+.osw-onistage-bottom > .osw-onistage-info {
+  flex: 0 0 auto;
+  width: 100%;
+  padding-bottom: 8px;
+  border-bottom: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.osw-onistage-bottom > .osw-onistage-info .osw-onistage-name {
+  font-size: 15px;
+}
+
+.osw-onistage-bottom > .osw-onistage-info .osw-onistage-level {
+  margin-top: 1px;
+  font-size: 10px;
+}
+
+.osw-onistage-meters { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+
 .osw-onistage-meter { display: flex; align-items: center; gap: 6px; }
 .osw-onistage-meter-name { flex: 0 0 68px; font-size: 12px; }
 .osw-onistage-meter-value { flex: 0 0 34px; text-align: right; font-size: 12px; font-weight: 500; }
 .osw-onistage-meter-track { flex: 1; height: 7px; border-radius: 3px; overflow: hidden; }
 .osw-onistage-meter-fill { display: block; height: 100%; border-radius: 3px; }
+
+/* Three- and four-row footprints expose the same growth/study facts as the
+   live widget. These compact groups fill the extra room without stretching
+   the five need meters into a sparse column. */
+.osw-onistage-growth {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding-top: 9px;
+  border-top: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.osw-onistage-growth-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 10px;
+}
+
+.osw-onistage-growth-head span { overflow: hidden; text-overflow: ellipsis; }
+.osw-onistage-growth-head b { font-size: 10px; }
+.osw-onistage-growth-head em { font-size: 8px; font-style: normal; opacity: 0.64; white-space: nowrap; }
+.osw-onistage-growth-track { height: 6px; overflow: hidden; border-radius: 999px; }
+.osw-onistage-growth-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8b6ce0, #c866e5);
+}
+
+.osw-onistage-quick-stats,
+.osw-onistage-battle-stats { display: grid; gap: 7px; width: 100%; }
+.osw-onistage-quick-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.osw-onistage-battle-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.osw-onistage-quick-stat {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.osw-onistage-quick-stat span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 8px;
+  line-height: 1.15;
+  opacity: 0.68;
+  white-space: nowrap;
+}
+.osw-onistage-quick-stat b { font-size: 13px; line-height: 1; font-variant-numeric: tabular-nums; }
+
+.osw-onistage-card.is-tall:not(.is-wide) .osw-onistage-top {
+  flex: 0 0 36%;
+  min-height: 0;
+  justify-content: center;
+}
+
+.osw-onistage-card.is-tall .osw-onistage-bottom {
+  justify-content: space-evenly;
+  gap: 9px;
+  padding: 14px;
+}
+
+.osw-onistage-card.is-extra-tall:not(.is-wide) .osw-onistage-sprite {
+  flex-basis: 112px;
+  height: 112px;
+}
+.osw-onistage-card.is-extra-tall:not(.is-wide) .osw-onistage-sprite img { width: 102px; height: 102px; }
 
 /* One row is the real compact widget: no stats, and no label at one column. */
 .osw-onistage-card.is-compact .osw-onistage-top {
@@ -7923,7 +11080,8 @@ html body .osw-action-btn.is-hold-action::before {
   flex: 0 1 auto;
 }
 
-/* At 2 columns x 2 rows, the live card puts scene and meters side by side. */
+/* Two-column footprints use the scene as a left rail and the companion
+   dashboard as the right rail. */
 .osw-onistage-card.is-wide { flex-direction: row; }
 
 .osw-onistage-card.is-wide .osw-onistage-top {
@@ -7949,43 +11107,277 @@ html body .osw-action-btn.is-hold-action::before {
   padding: 14px 16px;
 }
 
-/* ── preview: Mochi notification ───────────────────────────────────────── */
+.osw-onistage-card.is-wide.is-tall .osw-onistage-top { flex-basis: 42%; }
+.osw-onistage-card.is-wide.is-tall .osw-onistage-bottom { flex-basis: 58%; }
+.osw-onistage-card.is-wide.is-extra-tall .osw-onistage-sprite { flex-basis: 132px; height: 132px; }
+.osw-onistage-card.is-wide.is-extra-tall .osw-onistage-sprite img { width: 120px; height: 120px; }
 
-.osw-mochistage-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 320px;
-  margin: 0 auto;
-  padding: 14px 16px;
-  border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+/* The live 1x2 widget has just enough height for its scene, identity, and five
+   meters. Mirror its compact proportions here so the preview does not push
+   the heading over the seam or crop the final Hunger row. */
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-top {
+  flex: 0 0 40%;
+  min-height: 0;
+  padding: 8px 10px;
 }
 
-.osw-mochistage-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: rgba(128, 128, 128, 0.14);
-  font-size: 24px;
-  overflow: hidden;
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-sprite {
+  flex-basis: 86px;
+  height: 86px;
 }
 
-.osw-mochistage-icon img { width: 38px; height: 38px; object-fit: contain; }
-.osw-mochistage-content { flex: 1; min-width: 0; }
-.osw-mochistage-title { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
-.osw-mochistage-desc { font-size: 12.5px; line-height: 1.5; }
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-sprite img {
+  width: 82px;
+  height: 82px;
+}
 
-/* The notification is a small card. Stage-side previews reserve 560px because
-   the one they were built for (the sidebar) is a full-height column; a toast
-   in that box would be a stamp in the middle of a page. */
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-bottom {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-info {
+  padding-bottom: 5px;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-name {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-level {
+  margin-top: 1px;
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-meters {
+  gap: 4px;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-meter {
+  gap: 5px;
+  line-height: 1.2;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-meter-name {
+  flex-basis: 62px;
+  font-size: 10px;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-meter-value {
+  flex-basis: 30px;
+  font-size: 10px;
+}
+
+.osw-onistage[data-onigimon-columns="1"][data-onigimon-rows="2"]
+    .osw-onistage-meter-track {
+  height: 6px;
+}
+
+.osw-onistage[data-onigimon-columns="2"][data-onigimon-rows="3"]
+    .osw-onistage-info {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+/* The configured Main Menu background is a non-interactive layer underneath
+   the card; scrolling remains available when a 4-row preview exceeds the
+   visible settings stage. */
+.osw-preview-kind-onigimon_scene .osw-bg-preview-layer,
+.osw-preview-kind-onigimon_scene .osw-bg-preview-image { pointer-events: none; }
+
+/* Mochi now uses the reviewer's real notification card and positioning stage;
+   this block controls only how much simulated screen is visible. */
 .osw-designer-preview-card.osw-preview-kind-mochi_message { align-self: start; }
 
 .osw-preview-kind-mochi_message .osw-designer-preview-stage {
-  min-height: 190px;
-  display: flex;
+  min-height: 300px;
+}
+
+/* The phrase preview uses the same independent backdrop as the real widget. */
+.osw-organize-live-preview .osw-organize-tile.is-menu-title-tile {
+  isolation: isolate;
+  background: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  /* The background layer owns the clip. Clipping this ancestor would create
+     a backdrop root and stop that layer blurring the canvas behind the tile. */
+  clip-path: none;
+}
+.osw-organize-title-background {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-position: center;
+  background-size: cover;
+  border-radius: var(--osw-organize-tile-inner-radius, 0px);
+  clip-path: inset(0 round var(--osw-organize-tile-inner-radius, 0px));
+}
+.osw-organize-title-background[hidden],
+.osw-organize-tile-name[hidden],
+.osw-organize-menu.is-menu-title [data-field-host].is-hidden {
+  display: none !important;
+}
+.osw-organize-tile.is-menu-title-tile .osw-organize-tile-name {
+  width: 100%;
+  min-width: 0;
+}
+.osw-organize-menu.is-menu-title .osw-segmented-title,
+.osw-organize-menu.is-menu-title .osw-imagefield-head {
+  font-size: 12.5px;
+}
+.osw-organize-menu.is-menu-title .osw-imagefield {
+  padding: 0;
+}
+/* All labels share the same left column as the existing title/font rows. */
+.osw-organize-menu.is-menu-title .osw-row-text {
+  flex-basis: 112px;
+}
+.osw-organize-menu.is-menu-title [data-field-host="modern_menu_title_sync_widgets"] .osw-row-text {
+  flex: 1 1 auto;
+}
+.osw-organize-menu.is-menu-title [data-field-host="modern_menu_title_sync_widgets"] .osw-row-label {
+  white-space: normal;
+}
+.osw-organize-menu.is-menu-title [data-field-host="modern_menu_title_sync_widgets"] .osw-row-control {
+  flex: 0 0 auto;
+}
+.osw-organize-menu.is-menu-title .osw-segmented-wrap {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
   align-items: center;
+  justify-content: stretch;
+  min-height: 34px;
+  gap: 12px;
+  margin: 0;
+}
+.osw-organize-menu.is-menu-title .osw-segmented-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.osw-organize-menu.is-menu-title .osw-segmented-control {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--osw-widget-popup-radius);
+}
+.osw-organize-menu.is-menu-title .osw-segment-btn {
+  flex: 1 0 auto;
+  padding: 5px 6px !important;
+  border-radius: var(--osw-widget-popup-inner-radius) !important;
+  font-size: 11.5px !important;
+}
+.osw-organize-menu.is-menu-title .osw-slider-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 36px;
+  align-items: center;
+  min-height: 34px;
+  gap: 12px;
+  padding: 0;
+}
+.osw-organize-menu.is-menu-title .osw-slider-header {
+  display: contents;
+}
+.osw-organize-menu.is-menu-title .osw-slider-title {
+  grid-column: 1;
+  grid-row: 1;
+  font-weight: 500;
+}
+.osw-organize-menu.is-menu-title .osw-slider-track {
+  grid-column: 2;
+  grid-row: 1;
+  height: 20px;
+  min-width: 0;
+  border-radius: 8px;
+}
+.osw-organize-menu.is-menu-title .osw-slider-value {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: 11.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.osw-organize-menu.is-menu-title .osw-slider-fill {
+  min-width: 16px;
+  border-radius: 0 7px 7px 0;
+}
+.osw-organize-menu.is-menu-title .osw-slider-thumb {
+  width: 4px;
+  height: 12px;
+}
+
+/* Organizer-only silhouette keeps a transparent or empty title draggable. */
+.osw-organize-live-preview .osw-organize-tile.is-menu-title-tile:not(.has-title-background) {
+  border: 1px solid color-mix(in srgb, var(--osw-organize-preview-text, var(--osw-fg)) 38%, transparent);
+  background: color-mix(in srgb, var(--osw-surface) 8%, transparent);
+}
+.osw-organize-live-preview .osw-organize-tile.is-menu-title-tile.is-selected {
+  border-color: var(--osw-accent);
+}
+
+/* Shared widget popup surfaces override the theme's pill-shaped controls.
+   Scope includes tile menus and the compact Widget Fonts / Colors editors. */
+html body .osw-organize-menu :is(
+  .osw-text-input,
+  .osw-chip,
+  .osw-number,
+  .osw-select-menu-trigger,
+  .osw-imgslot,
+  .osw-linkchip,
+  .osw-switch,
+  .osw-sq-switch,
+  .osw-organize-font-sync-switch,
+  .osw-segmented-control,
+  .osw-slider-track,
+  .osw-organize-menu-stepper,
+  .osw-organize-menu-input,
+  .osw-organize-menu-remove,
+  .osw-organize-font-role,
+  .osw-organize-font-info-text,
+  .osw-reviewer-color-card
+) {
+  border-radius: var(--osw-widget-popup-radius) !important;
+}
+html body .osw-organize-menu :is(
+  .osw-segment-btn,
+  .osw-organize-menu-step-btn,
+  .osw-organize-font-close,
+  .osw-organize-font-info,
+  .osw-reviewer-color-sample
+) {
+  border-radius: var(--osw-widget-popup-inner-radius) !important;
+}
+html body .osw-organize-menu :is(
+  .osw-switch,
+  .osw-sq-switch,
+  .osw-organize-font-sync-switch
+)::after {
+  border-radius: var(--osw-widget-popup-inner-radius) !important;
+}
+.osw-organize-menu .osw-slider-fill {
+  border-radius: 0 var(--osw-widget-popup-radius) var(--osw-widget-popup-radius) 0;
+}
+/* Role lists leave the popup to escape clipping; retain its shape there. */
+.osw-organize-menu .osw-organize-font-role-list,
+.osw-organize-font-role-list.is-floating {
+  border-radius: var(--osw-widget-popup-radius, 11px);
 }

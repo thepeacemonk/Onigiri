@@ -13,11 +13,12 @@ from typing import Any, Dict
 
 import requests
 from aqt import mw
-from aqt.qt import QDialog, QVBoxLayout
+from aqt.qt import QDesktopServices, QDialog, QUrl, QVBoxLayout
 from aqt.webview import AnkiWebView
 
 from ..translations import tr
 from . import redeem_net
+from .haptics import trigger as trigger_haptic
 from .onigimon import (
     FOOD_ITEM_KEYS,
     HAPPINESS_ITEM_KEYS,
@@ -43,6 +44,13 @@ STATUS_DEFS = {
 STATUS_ORDER = tuple(STATUS_DEFS)
 
 
+def _item_status(item_key: str) -> str:
+    for status_key in STATUS_ORDER:
+        if item_key in STATUS_DEFS[status_key]["items"]:
+            return status_key
+    return ""
+
+
 def _addon_package() -> str:
     return mw.addonManager.addonFromModule(__name__)
 
@@ -59,7 +67,7 @@ def _short_message(message: str) -> str:
     message = str(message or "")
     if name and message.startswith(name):
         message = message[len(name):].lstrip(" 's,.")
-    return message
+    return message[:1].upper() + message[1:] if message else ""
 
 
 def _idle_message(needs: Dict[str, Any]) -> str:
@@ -90,11 +98,30 @@ def onigimon_payload() -> Dict[str, Any]:
     companion = raw.get("companion")
     if not companion:
         return {"companion": None}
+    scene_config = manager.config()
+    try:
+        scene_blur = max(
+            0, min(40, int(scene_config.get("scene_background_blur", 9) or 0))
+        )
+    except (TypeError, ValueError):
+        scene_blur = 9
+    try:
+        scene_opacity = max(
+            0, min(100, int(scene_config.get("scene_background_opacity", 90) or 0))
+        )
+    except (TypeError, ValueError):
+        scene_opacity = 90
     needs = raw.get("needs") or {}
     inventory = raw.get("inventory") or {}
     statuses = []
+    backpack = []
+    backpack_keys = set()
     for key in STATUS_ORDER:
         definition = STATUS_DEFS[key]
+        status_items = [
+            {"key": item_key, "label": _label(item_key), "count": int(inventory.get(item_key, 0) or 0), "icon": _item_asset_url(ITEMS.get(item_key, {})), "status": _item_status(item_key)}
+            for item_key in definition["items"] if int(inventory.get(item_key, 0) or 0) > 0
+        ]
         statuses.append({
             "id": key,
             "label": tr(f"onigimon_status_{key}", key.title()),
@@ -103,11 +130,12 @@ def onigimon_payload() -> Dict[str, Any]:
             "color": definition["color"],
             "icon": _addon_asset_url(definition["icon"]),
             "empty": tr(f"onigimon_empty_{key}", tr("onigimon_empty_generic")),
-            "items": [
-                {"key": item_key, "label": _label(item_key), "count": int(inventory.get(item_key, 0) or 0), "icon": _item_asset_url(ITEMS.get(item_key, {}))}
-                for item_key in definition["items"] if int(inventory.get(item_key, 0) or 0) > 0
-            ],
+            "items": status_items,
         })
+        for item in status_items:
+            if item["key"] not in backpack_keys:
+                backpack.append(item)
+                backpack_keys.add(item["key"])
     market = []
     bought = set(raw.get("marketPurchased") or [])
     for offer in raw.get("marketItems") or []:
@@ -118,18 +146,40 @@ def onigimon_payload() -> Dict[str, Any]:
             "slot": str(offer.get("slot") or ""), "itemKey": item_key, "label": _label(item_key),
             "icon": _item_asset_url(ITEMS.get(item_key, {})), "amount": int(offer.get("amount") or 1),
             "price": int(offer.get("price") or 0), "currency": currency,
-            "currencyIcon": _item_asset_url(ITEMS.get(currency_key, {})), "purchased": str(offer.get("slot") or "") in bought,
+            "currencyIcon": _item_asset_url(ITEMS.get(currency_key, {})), "status": _item_status(item_key),
+            "purchased": str(offer.get("slot") or "") in bought,
         })
     gift = raw.get("lastGift") or None
+    is_study_reward = raw.get("lastAction") == "study_reward"
     return {
         "companion": {**companion, "name": manager.companion_display_name(companion), "spriteUrls": manager.sprite_urls_for_companion(companion)},
-        "needs": statuses, "market": market, "wallet": raw.get("wallet") or {},
+        "needs": statuses, "backpack": backpack, "market": market, "wallet": raw.get("wallet") or {},
         "marketGiftReady": bool(raw.get("marketGiftReady")),
         "message": _short_message(raw.get("lastMessage") or "") or _idle_message(needs),
-        "gift": {"amount": int(gift.get("amount") or 1), "label": _label(str(gift.get("item_key") or "")), "icon": _item_asset_url(ITEMS.get(str(gift.get("item_key") or ""), {}))} if gift else None,
+        "gift": {
+            "amount": int(gift.get("amount") or 1),
+            "label": _label(str(gift.get("item_key") or "")),
+            "icon": _item_asset_url(ITEMS.get(str(gift.get("item_key") or ""), {})),
+            "eyebrow": tr(
+                "onigimon_item_acquired_eyebrow",
+                "ITEM ACQUIRED",
+            ) if is_study_reward else tr("onigimon_daily_gift"),
+            "title": tr(
+                "onigimon_item_acquired",
+                "Item acquired!",
+            ) if is_study_reward else tr("onigimon_gift_received"),
+            "feeling": _idle_message(needs),
+        } if gift else None,
         "assets": {
             "background": _onigimon_scene_image_url(),
-            "backgroundColor": str(manager.config().get("scene_background_color", "#6ea96a") or "#6ea96a"),
+            "backgroundColor": str(
+                scene_config.get("scene_background_color", "#6ea96a") or "#6ea96a"
+            ),
+            "backgroundMode": str(
+                scene_config.get("scene_background_mode", "preset") or "preset"
+            ),
+            "backgroundBlur": scene_blur,
+            "backgroundOpacity": scene_opacity,
             "mart": _addon_asset_url("system_files/gamification_images/Mart.webp"),
             "backpack": _addon_asset_url("system_files/pokesprite/items/key-item-travel-trunk.png"),
             "heart": _addon_asset_url("system_files/system_icons/available_for_users/heart.svg"),
@@ -137,7 +187,31 @@ def onigimon_payload() -> Dict[str, Any]:
             "comet": _item_asset_url(ITEMS.get("valuable_comet_shard", {})),
             "starPiece": _item_asset_url(ITEMS.get("valuable_star_piece", {})),
         },
-        "labels": {"backpack": tr("onigimon_backpack"), "market": tr("onigimon_daily_market"), "dailyGift": tr("onigimon_daily_gift"), "giftOpened": tr("onigimon_gift_opened"), "redeem": tr("redeem_action"), "redeemTitle": tr("redeem_onigimon_title"), "redeemHint": tr("redeem_onigimon_hint"), "empty": tr("onigimon_empty_generic"), "level": tr("onigimon_level"), "idle": tr("onigimon_idle_item"), "noCompanion": tr("onigimon_no_companion"), "close": tr("close"), "rewardsEyebrow": tr("onigimon_rewards_eyebrow"), "dailyGiftEyebrow": tr("onigimon_daily_gift"), "giftReceived": tr("onigimon_gift_received"), "okay": tr("okay"), "companion": tr("onigimon_companion_title")},
+        "labels": {
+            "moreCodes": tr("store_more_coins_title"),
+            "supportCodes": tr("store_support_desc"),
+            "buyCodes": tr("buy_coin_codes"),
+            "alreadyHaveCode": tr("already_have_code"),
+            "pasteCode": tr("paste_code_short"),
+            "backpack": tr("onigimon_backpack"),
+            "market": tr("onigimon_daily_market"),
+            "dailyGift": tr("onigimon_daily_gift"),
+            "giftOpened": tr("onigimon_gift_opened"),
+            "redeem": tr("redeem_action"),
+            "redeemTitle": tr("redeem_onigimon_title"),
+            "redeemHint": tr("redeem_onigimon_hint"),
+            "empty": tr("onigimon_empty_generic"),
+            "level": tr("onigimon_level"),
+            "noCompanion": tr("onigimon_no_companion"),
+            "close": tr("close"),
+            "pet": tr("onigimon_pet", "Pet companion"),
+            "petHint": tr("onigimon_pet_click_hint", "Click to give a little pet"),
+            "rewardsEyebrow": tr("onigimon_rewards_eyebrow"),
+            "dailyGiftEyebrow": tr("onigimon_daily_gift"),
+            "giftReceived": tr("onigimon_gift_received"),
+            "okay": tr("okay"),
+            "companion": tr("onigimon_companion_title"),
+        },
     }
 
 
@@ -161,6 +235,11 @@ class OnigimonWebDialog(QDialog):
     def _render(self) -> None:
         root = os.path.dirname(os.path.dirname(__file__))
         html_path = os.path.join(root, "web", "gamification", "onigimon", "onigimon.html")
+        css_path = os.path.join(root, "web", "gamification", "onigimon", "onigimon.css")
+        js_path = os.path.join(root, "web", "gamification", "onigimon", "onigimon.js")
+        purchase_path = os.path.join(
+            root, "web", "gamification", "purchase_modal.css"
+        )
         try:
             with open(html_path, encoding="utf-8") as handle:
                 body = handle.read()
@@ -168,7 +247,26 @@ class OnigimonWebDialog(QDialog):
             body = "<main><h1>Onigimon page assets are missing.</h1></main>"
         payload = json.dumps(onigimon_payload(), ensure_ascii=False).replace("</", "<\\/")
         package = _addon_package()
-        self.web.stdHtml(body, css=[f"/_addons/{package}/web/gamification/onigimon/onigimon.css"], js=[f"/_addons/{package}/web/gamification/onigimon/onigimon.js"], head=f"<script>window.ONIGIRI_ONIGIMON_DATA={payload};</script>", context=self)
+        try:
+            asset_version = max(
+                os.stat(css_path).st_mtime_ns,
+                os.stat(js_path).st_mtime_ns,
+                os.stat(purchase_path).st_mtime_ns,
+            )
+        except OSError:
+            asset_version = 1
+        asset_root = f"/_addons/{package}/web/gamification/onigimon"
+        self.web.stdHtml(
+            body,
+            css=[
+                f"{asset_root}/onigimon.css?v={asset_version}",
+                f"/_addons/{package}/web/gamification/"
+                f"purchase_modal.css?v={asset_version}",
+            ],
+            js=[f"{asset_root}/onigimon.js?v={asset_version}"],
+            head=f"<script>window.ONIGIRI_ONIGIMON_DATA={payload};</script>",
+            context=self,
+        )
 
     def _push(self, notice: Dict[str, Any] | None = None) -> None:
         payload = json.dumps(onigimon_payload(), ensure_ascii=False).replace("</", "<\\/")
@@ -177,19 +275,60 @@ class OnigimonWebDialog(QDialog):
         except RuntimeError:
             pass
 
-    def _after_change(self, message: str, kind: str = "success") -> None:
+    def _after_change(
+        self,
+        message: str,
+        kind: str = "success",
+        item_key: str = "",
+    ) -> None:
         self._refresh_deck_browser()
-        self._push({"message": _short_message(message), "kind": kind})
+        notice = {"message": _short_message(message), "kind": kind}
+        if item_key in ITEMS:
+            notice.update({
+                "icon": _item_asset_url(ITEMS[item_key]),
+                "itemLabel": _label(item_key),
+            })
+        self._push(notice)
 
     def _on_bridge(self, command: str) -> bool:
+        if command.startswith("haptic:"):
+            try:
+                trigger_haptic(int(command.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                trigger_haptic()
+            return True
         if command.startswith("onigimon:use:"):
-            self._after_change(manager.use_item(command.split(":", 2)[2]) or "", "success")
+            item_key = command.split(":", 2)[2]
+            state = manager.load()
+            before = int(state.inventory.get(item_key, 0) or 0)
+            message = manager.use_item(item_key) or ""
+            after = int(state.inventory.get(item_key, 0) or 0)
+            self._after_change(
+                message,
+                "success" if after < before else "error",
+                item_key if after < before else "",
+            )
             return True
         if command.startswith("onigimon:market-buy:"):
-            self._after_change(manager.purchase_market_item(command.split(":", 2)[2]) or "", "success")
+            message = manager.purchase_market_item(command.split(":", 2)[2]) or ""
+            item_key = manager.last_market_purchase_item
+            self._after_change(
+                message,
+                "success" if item_key else "error",
+                item_key,
+            )
             return True
         if command == "onigimon:market-gift":
-            self._after_change(manager.claim_market_gift() or tr("onigimon_gift_opened"), "success")
+            message = manager.claim_market_gift() or tr("onigimon_gift_opened")
+            gift = getattr(manager, "last_gift", None) or {}
+            # The market gift records its reward before this view refreshes.
+            # Pass that item through to the toast so it shows the same sprite
+            # as the gift reveal card and backpack.
+            item_key = str(gift.get("item_key") or "")
+            self._after_change(message, "success", item_key)
+            return True
+        if command == "onigimon:open-store":
+            QDesktopServices.openUrl(QUrl("https://buymeacoffee.com/peacemonk/extras"))
             return True
         if command.startswith("onigimon:redeem:"):
             code = command.split(":", 2)[2].strip()
@@ -222,7 +361,19 @@ class OnigimonWebDialog(QDialog):
             from .onigimon import render_widget_html
             web = getattr(mw, "web", None) or getattr(getattr(mw, "deckBrowser", None), "web", None)
             if web:
-                web.eval(f"(function(){{var widget=document.querySelector('.onigimon-widget');if(widget)widget.outerHTML={json.dumps(render_widget_html())};}})();")
+                replacement = json.dumps(render_widget_html())
+                web.eval(
+                    "(function(){"
+                    "var widget=document.querySelector('.onigimon-card');"
+                    "if(!widget)return;"
+                    "var template=document.createElement('template');"
+                    f"template.innerHTML={replacement}.trim();"
+                    "var next=template.content.querySelector('.onigimon-card');"
+                    "if(!next)return;"
+                    "next.setAttribute('style',widget.getAttribute('style')||'');"
+                    "widget.replaceWith(next);"
+                    "})();"
+                )
         except Exception as exc:
             print(f"Onigimon: Error refreshing deck browser: {exc}")
 

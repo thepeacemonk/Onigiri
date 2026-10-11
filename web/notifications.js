@@ -219,105 +219,87 @@
         }, duration);
     }
 
-    function renderNotification(data) {
-        if (window.onigiriNotificationMode === "mini") {
-            let headerBtnContainer = null;
-            if (window.onigiriIsReviewerCardWebview) {
-                const uiHost = document.getElementById('onigiri-reviewer-ui-host');
-                if (uiHost && uiHost.shadowRoot) {
-                    headerBtnContainer = uiHost.shadowRoot.querySelector('.onigiri-reviewer-header-buttons');
+    function notificationVariant(data) {
+        if (data.variant) {
+            return data.variant;
+        }
+        return data.id === "mochi_message" ? "mochi" : "";
+    }
+
+    function notificationIconImage(data, variant) {
+        let iconImageSrc = null;
+        if (Object.prototype.hasOwnProperty.call(data, "iconImage")) {
+            iconImageSrc = data.iconImage || null;
+        } else if (variant === "mochi" || data.id === "mochi_message") {
+            iconImageSrc = MOCHI_ICON_IMAGE;
+        } else if (data.icon && (data.icon.includes("/") || data.icon.includes("."))) {
+            iconImageSrc = data.icon;
+        }
+        return iconImageSrc || defaultIconImage(data);
+    }
+
+    function createNotificationIcon(data, className, variant) {
+        const icon = document.createElement("div");
+        icon.className = className;
+        const iconImageSrc = notificationIconImage(data, variant);
+        if (iconImageSrc) {
+            const img = document.createElement("img");
+            img.src = iconImageSrc;
+            img.alt = data.iconAlt || "";
+            const fallbacks = Array.isArray(data.iconFallbacks)
+                ? data.iconFallbacks.filter((src) => src && src !== iconImageSrc) : [];
+            img.addEventListener("error", () => {
+                if (fallbacks.length) {
+                    img.src = fallbacks.shift();
+                } else {
+                    img.style.display = "none";
                 }
-            } else {
-                headerBtnContainer = document.querySelector('.onigiri-reviewer-header-buttons');
+            });
+            icon.appendChild(img);
+        } else {
+            icon.textContent = data.icon || "🍙";
+        }
+        return icon;
+    }
+
+    function createNotificationElement(payload, mode) {
+        const data = payload || {};
+        const variant = notificationVariant(data);
+
+        if (mode === "mini") {
+            const card = document.createElement("div");
+            card.className = "onigiri-mini-notification";
+
+            if (data.textColorLight) {
+                card.style.setProperty("--onigiri-notification-text-light", data.textColorLight);
             }
-            if (headerBtnContainer) {
-                const existing = headerBtnContainer.querySelector('.onigiri-mini-notification');
-                if (existing) {
-                    existing.remove();
-                }
-
-                const card = document.createElement("div");
-                card.className = "onigiri-mini-notification";
-                
-                if (data.textColorLight) {
-                    card.style.setProperty("--onigiri-notification-text-light", data.textColorLight);
-                }
-                if (data.textColorDark) {
-                    card.style.setProperty("--onigiri-notification-text-dark", data.textColorDark);
-                }
-                if (data.fontFamily) {
-                    card.style.setProperty("--notification-font", data.fontFamily);
-                }
-
-                let iconImageSrc = null;
-                if (Object.prototype.hasOwnProperty.call(data, "iconImage")) {
-                    iconImageSrc = data.iconImage || null;
-                } else if (data.variant === "mochi" || data.id === "mochi_message") {
-                    iconImageSrc = MOCHI_ICON_IMAGE;
-                } else if (data.icon && (data.icon.includes("/") || data.icon.includes("."))) {
-                    iconImageSrc = data.icon;
-                }
-                if (!iconImageSrc) {
-                    iconImageSrc = defaultIconImage(data);
-                }
-
-                if (!data.hideIcon) {
-                    const icon = document.createElement("div");
-                    icon.className = "onigiri-mini-notification-icon";
-                    if (iconImageSrc) {
-                        const img = document.createElement("img");
-                        img.src = iconImageSrc;
-                        img.alt = data.iconAlt || "";
-                        icon.appendChild(img);
-                    } else {
-                        icon.textContent = data.icon || "🍙";
-                    }
-                    card.appendChild(icon);
-                }
-
-                const content = document.createElement("div");
-                content.className = "onigiri-mini-notification-content";
-                content.textContent = data.description || data.name || "";
-                card.appendChild(content);
-
-                headerBtnContainer.appendChild(card);
-
-                const showCard = () => {
-                    card.classList.add(CARD_VISIBLE_CLASS);
-                };
-
-                requestAnimationFrame(() => requestAnimationFrame(showCard));
-
-                const duration = displayDuration(data);
-                let hideTimer = window.setTimeout(() => removeCard(card), duration);
-
-                card.addEventListener("mouseenter", () => {
-                    window.clearTimeout(hideTimer);
-                });
-                card.addEventListener("mouseleave", () => {
-                    hideTimer = window.setTimeout(() => removeCard(card), duration);
-                });
-                card.addEventListener("click", () => {
-                    removeCard(card);
-                });
-                
-                return;
+            if (data.textColorDark) {
+                card.style.setProperty("--onigiri-notification-text-dark", data.textColorDark);
             }
+            if (data.fontFamily) {
+                card.style.setProperty("--notification-font", data.fontFamily);
+            }
+
+            if (!data.hideIcon) {
+                card.appendChild(createNotificationIcon(
+                    data, "onigiri-mini-notification-icon", variant
+                ));
+            }
+
+            const content = document.createElement("div");
+            content.className = "onigiri-mini-notification-content";
+            content.textContent = data.description || data.name || "";
+            card.appendChild(content);
+            return card;
         }
 
-        const stack = ensureStack();
-        if (data.forceTop) {
-            stack.classList.add("is-forced-top");
-        }
         const card = document.createElement("article");
         card.className = "onigiri-notification-card";
         if (data.forceTop) {
             card.dataset.forceTop = "true";
         }
-        if (data.variant) {
-            card.dataset.variant = data.variant;
-        } else if (data.id === "mochi_message") {
-            card.dataset.variant = "mochi";
+        if (variant) {
+            card.dataset.variant = variant;
         }
         if (data.hideIcon) {
             card.classList.add("has-no-icon");
@@ -339,28 +321,10 @@
             card.style.setProperty("--notification-font", data.fontFamily);
         }
 
-        const icon = document.createElement("div");
-        icon.className = "onigiri-notification-icon";
-
-        let iconImageSrc = null;
-        if (Object.prototype.hasOwnProperty.call(data, "iconImage")) {
-            iconImageSrc = data.iconImage || null;
-        } else if (card.dataset.variant === "mochi" || data.id === "mochi_message") {
-            iconImageSrc = MOCHI_ICON_IMAGE;
-        } else if (data.icon && (data.icon.includes("/") || data.icon.includes("."))) {
-            iconImageSrc = data.icon;
-        }
-        if (!iconImageSrc) {
-            iconImageSrc = defaultIconImage(data);
-        }
-
-        if (iconImageSrc) {
-            const img = document.createElement("img");
-            img.src = iconImageSrc;
-            img.alt = data.iconAlt || "";
-            icon.appendChild(img);
-        } else {
-            icon.textContent = data.icon || "🍙";
+        if (!data.hideIcon) {
+            card.appendChild(createNotificationIcon(
+                data, "onigiri-notification-icon", variant
+            ));
         }
 
         const content = document.createElement("div");
@@ -400,13 +364,11 @@
             content.appendChild(rewards);
         }
 
-        if (!data.hideIcon) {
-            card.appendChild(icon);
-        }
         card.appendChild(content);
+        return card;
+    }
 
-        stack.appendChild(card);
-
+    function activateNotification(card, data) {
         const showCard = () => {
             card.classList.add(CARD_VISIBLE_CLASS);
         };
@@ -425,6 +387,41 @@
         card.addEventListener("click", () => {
             removeCard(card);
         });
+    }
+
+    function renderNotification(data) {
+        if (window.onigiriNotificationMode === "mini") {
+            let headerBtnContainer = null;
+            if (window.onigiriIsReviewerCardWebview) {
+                const uiHost = document.getElementById('onigiri-reviewer-ui-host');
+                if (uiHost && uiHost.shadowRoot) {
+                    headerBtnContainer = uiHost.shadowRoot.querySelector('.onigiri-reviewer-header-buttons');
+                }
+            } else {
+                headerBtnContainer = document.querySelector('.onigiri-reviewer-header-buttons');
+            }
+            if (headerBtnContainer) {
+                const existing = headerBtnContainer.querySelector('.onigiri-mini-notification');
+                if (existing) {
+                    existing.remove();
+                }
+
+                const card = createNotificationElement(data, "mini");
+
+                headerBtnContainer.appendChild(card);
+                activateNotification(card, data);
+                return;
+            }
+        }
+
+        const stack = ensureStack();
+        if (data.forceTop) {
+            stack.classList.add("is-forced-top");
+        }
+        const card = createNotificationElement(data, "classic");
+
+        stack.appendChild(card);
+        activateNotification(card, data);
     }
 
     const api = {
@@ -448,6 +445,11 @@
                 stack.remove();
                 removeReviewerHostIfEmpty();
             }
+        },
+        createElement(payload, mode) {
+            return createNotificationElement(
+                payload || {}, mode === "mini" ? "mini" : "classic"
+            );
         },
     };
 

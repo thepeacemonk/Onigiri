@@ -4,7 +4,6 @@ from aqt import mw
 from aqt.qt import (
     QApplication,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -21,7 +20,6 @@ from aqt.qt import (
     QPen,
     QPoint,
     QCursor,
-    QRect,
     QRectF,
     QSize,
     Qt,
@@ -34,8 +32,6 @@ from PyQt6.QtSvg import QSvgRenderer
 from .translations import tr
 
 
-FAVORITES_KEY = "onigiri_palette_favorites"
-MAX_FAVORITES = 10
 DEFAULT_COLOR = "#FF5985"
 POPUP_WIDTH = 260
 ADDON_ROOT = os.path.dirname(__file__)
@@ -63,7 +59,6 @@ def _contrast_icon_color(background):
     return QColor("#111111") if luminance > 0.56 else QColor("#ffffff")
 
 
-ADD_ICON_PATH = _system_icon_path("add.svg")
 REMOVE_ICON_PATH = _system_icon_path("cancel.svg")
 CHECK_ICON_PATH = _system_icon_path("check-simple.svg")
 
@@ -99,34 +94,6 @@ def _render_svg_icon(painter, path, rect, color):
             tinted = tinted.replace("<path ", f'<path fill="{color.name()}" ', 1)
         renderer = QSvgRenderer(QByteArray(tinted.encode("utf-8")))
         renderer.render(painter, QRectF(rect))
-    except Exception:
-        pass
-
-
-def _load_favorites():
-    try:
-        raw = mw.col.conf.get(FAVORITES_KEY, []) if mw and mw.col else []
-    except Exception:
-        raw = []
-
-    favorites = []
-    if isinstance(raw, list):
-        for value in raw:
-            color = QColor(str(value))
-            if color.isValid():
-                hex_value = color.name().upper()
-                if hex_value not in favorites:
-                    favorites.append(hex_value)
-            if len(favorites) >= MAX_FAVORITES:
-                break
-    return favorites
-
-
-def _save_favorites(favorites):
-    try:
-        if mw and mw.col:
-            mw.col.conf[FAVORITES_KEY] = favorites[:MAX_FAVORITES]
-            mw.col.setMod()
     except Exception:
         pass
 
@@ -334,66 +301,6 @@ class _TransparentSwatchButton(QWidget):
             self.clicked.emit()
 
 
-class _FavoriteSlot(QWidget):
-    addRequested = pyqtSignal()
-    selectRequested = pyqtSignal(str)
-    removeRequested = pyqtSignal(str)
-
-    def __init__(self, color_hex=None, dark=False, parent=None):
-        super().__init__(parent)
-        self.color_hex = color_hex
-        self.dark = dark
-        self.setFixedSize(30, 30)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMouseTracking(True)
-        self._hovered = False
-
-    def enterEvent(self, event):
-        self._hovered = True
-        self.update()
-
-    def leaveEvent(self, event):
-        self._hovered = False
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-
-        if self.color_hex:
-            painter.setBrush(QColor(self.color_hex))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(rect)
-            if self._hovered:
-                badge = QRectF(self.width() - 14, 0, 13, 13)
-                painter.setBrush(QColor(0, 0, 0, 150))
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.drawEllipse(badge)
-                icon_rect = badge.adjusted(3, 3, -3, -3)
-                _render_svg_icon(painter, REMOVE_ICON_PATH, icon_rect, QColor("#ffffff"))
-            return
-
-        fill = QColor("#3f3f43") if self.dark else QColor("#E4E4E4")
-        icon = QColor("#f4f4f5") if self.dark else QColor("#000000")
-        painter.setBrush(fill)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(rect)
-        icon_rect = QRectF(self.rect()).adjusted(8, 8, -8, -8)
-        _render_svg_icon(painter, ADD_ICON_PATH, icon_rect, icon)
-
-    def mousePressEvent(self, event):
-        if not self.color_hex:
-            self.addRequested.emit()
-            return
-
-        remove_rect = QRect(self.width() - 18, 0, 18, 18)
-        if event.button() == Qt.MouseButton.RightButton or remove_rect.contains(event.pos()):
-            self.removeRequested.emit(self.color_hex)
-        elif event.button() == Qt.MouseButton.LeftButton:
-            self.selectRequested.emit(self.color_hex)
-
-
 class _IconButton(QWidget):
     clicked = pyqtSignal()
     hoverChanged = pyqtSignal(bool)
@@ -455,7 +362,10 @@ class _OnigiriPalettePopup(QFrame):
         self._event_filter_installed = False
         self._allow_transparent = allow_transparent
         self._color = QColor(_normalized_hex(initial_color))
-        self._favorites = _load_favorites()
+        # The compact picker is a miniature of Settings' web modal. Its save
+        # affordance therefore uses the app accent, not the draft colour — a
+        # red draft must not turn the confirmation action red.
+        self._accent = QColor("#0077C8")
 
         hue = self._color.hueF()
         self._hue = 0.0 if hue < 0 else hue
@@ -468,76 +378,72 @@ class _OnigiriPalettePopup(QFrame):
         self.setFixedWidth(POPUP_WIDTH)
 
         bg = "#28282A" if self._dark else "#FFFFFF"
-        border = "#3F3F44" if self._dark else "#F1F1F1"
+        border = "#3F3F44" if self._dark else "#E3E4E7"
         self.setStyleSheet(
             f"""
             QFrame#OnigiriPalettePopup {{
                 background-color: {bg};
                 border: 1px solid {border};
-                border-radius: 22px;
+                border-radius: 20px;
             }}
             """
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        close_row = QHBoxLayout()
-        close_row.setContentsMargins(0, 0, 0, 0)
-        close_row.setSpacing(6)
-        self.action_hint = QLabel(self)
-        self.action_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.action_hint.setFixedHeight(22)
-        self.action_hint.setFixedWidth(176)
-        self.action_hint.hide()
-        hint_bg = "#3A3A3D" if self._dark else "#F4F4F5"
-        hint_text = "#F5F5F6" if self._dark else "#171719"
-        self.action_hint.setStyleSheet(
-            f"""
-            QLabel {{
-                background-color: {hint_bg};
-                color: {hint_text};
-                border: 0px;
-                border-radius: 11px;
-                padding: 0 10px;
-                font-size: 11px;
-            }}
-            """
+        header = QFrame(self)
+        header.setFixedHeight(50)
+        header.setStyleSheet(
+            f"background: {'#303033' if self._dark else '#F0F0EF'}; "
+            f"border: none; border-bottom: 1px solid {'#3F3F44' if self._dark else '#E3E4E7'}; "
+            "border-top-left-radius: 20px; border-top-right-radius: 20px;"
         )
-        close_row.addWidget(self.action_hint)
+        close_row = QHBoxLayout(header)
+        close_row.setContentsMargins(12, 0, 12, 0)
+        close_row.setSpacing(8)
+        title = QLabel(tr("color", "Color"), header)
+        title.setStyleSheet(
+            f"background: transparent; border: none; color: {'#F4F4F5' if self._dark else '#202124'}; "
+            "font-size: 13px; font-weight: 600;"
+        )
+        close_row.addWidget(title)
         close_row.addStretch()
-        self.cancel_button = _IconButton(REMOVE_ICON_PATH, self._dark, parent=self)
+        self.cancel_button = _IconButton(REMOVE_ICON_PATH, self._dark, parent=header)
         self.cancel_button.clicked.connect(self.cancel)
-        self.cancel_button.hoverChanged.connect(
-            lambda hovered: self._set_action_hint("Your color will be canceled", hovered)
-        )
         close_row.addWidget(self.cancel_button)
-        self.close_button = _IconButton(CHECK_ICON_PATH, self._dark, filled=True, parent=self)
+        self.close_button = _IconButton(CHECK_ICON_PATH, self._dark, filled=True, parent=header)
         self.close_button.clicked.connect(self.accept)
-        self.close_button.hoverChanged.connect(
-            lambda hovered: self._set_action_hint("Your color will be saved", hovered)
-        )
+        self.close_button.setAccentColor(self._accent)
         close_row.addWidget(self.close_button)
-        layout.addLayout(close_row)
+        layout.addWidget(header)
 
-        self.color_area = _ColorArea(self)
+        content = QFrame(self)
+        self._content = content
+        content.setStyleSheet("background: transparent; border: none;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 12, 12, 12)
+        content_layout.setSpacing(8)
+        layout.addWidget(content)
+
+        self.color_area = _ColorArea(content)
         self.color_area.colorChanged.connect(self._set_color_from_area)
-        layout.addWidget(self.color_area)
+        content_layout.addWidget(self.color_area)
 
-        self.value_slider = _GradientSlider("value", self)
+        self.value_slider = _GradientSlider("value", content)
         self.value_slider.valueChanged.connect(self._set_value)
-        layout.addWidget(self.value_slider)
+        content_layout.addWidget(self.value_slider)
 
-        self.hue_slider = _GradientSlider("hue", self)
+        self.hue_slider = _GradientSlider("hue", content)
         self.hue_slider.valueChanged.connect(self._set_hue)
-        layout.addWidget(self.hue_slider)
+        content_layout.addWidget(self.hue_slider)
 
-        hex_frame = QFrame(self)
+        hex_frame = QFrame(content)
         hex_frame.setObjectName("OnigiriHexFrame")
         hex_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         hex_frame.setFixedHeight(38)
-        pill_bg = "#3A3A3D" if self._dark else "#E7E7E7"
+        pill_bg = "#3A3A3D" if self._dark else "#F0F0EF"
         hex_frame.setStyleSheet(
             f"QFrame#OnigiriHexFrame {{ background-color: {pill_bg}; border: 0px; border-radius: 19px; }}"
         )
@@ -548,8 +454,18 @@ class _OnigiriPalettePopup(QFrame):
         self.preview = _PreviewCircle(hex_frame)
         hex_layout.addWidget(self.preview)
 
+        prefix_color = "#D5D5D8" if self._dark else "#28282A"
+        self.hex_prefix = QLabel("#", hex_frame)
+        self.hex_prefix.setStyleSheet(
+            f"background: transparent; border: none; color: {prefix_color}; "
+            "font-family: Arial; font-size: 13px; font-weight: 400;"
+        )
+        hex_layout.addWidget(self.hex_prefix)
+
         self.hex_input = QLineEdit(hex_frame)
         self.hex_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Seven characters accepts a pasted legacy value with '#'; the input
+        # is immediately normalized to six visible HEX digits below.
         self.hex_input.setMaxLength(7)
         self.hex_input.setFont(QFont("Arial", 13, QFont.Weight.Normal))
         text_color = "#F5F5F6" if self._dark else "#000000"
@@ -559,7 +475,6 @@ class _OnigiriPalettePopup(QFrame):
                 background: transparent;
                 border: none;
                 color: {text_color};
-                selection-background-color: #FF5985;
                 padding: 0px;
             }}
             """
@@ -572,27 +487,9 @@ class _OnigiriPalettePopup(QFrame):
             self.transparent_button.clicked.connect(self._select_transparent)
             hex_layout.addWidget(self.transparent_button)
 
-        layout.addWidget(hex_frame)
-
-        self.favorites_grid = QGridLayout()
-        self.favorites_grid.setContentsMargins(18, 0, 18, 0)
-        self.favorites_grid.setHorizontalSpacing(6)
-        self.favorites_grid.setVerticalSpacing(6)
-        layout.addLayout(self.favorites_grid)
+        content_layout.addWidget(hex_frame)
 
         self._sync_widgets()
-        self._refresh_favorites()
-
-    def _set_action_hint(self, text, visible):
-        if visible:
-            self.action_hint.setText(text)
-            self.action_hint.setFixedHeight(22)
-            self.action_hint.show()
-        else:
-            self._hide_action_hint()
-
-    def _hide_action_hint(self):
-        self.action_hint.hide()
 
     def _position_at_top(self):
         self.adjustSize()
@@ -710,8 +607,12 @@ class _OnigiriPalettePopup(QFrame):
         self._sync_widgets()
 
     def _set_color_from_hex(self, text):
-        raw = str(text).strip()
-        candidate = f"#{raw}" if raw and not raw.startswith("#") and len(raw) in (3, 6) else raw
+        raw = str(text).strip().lstrip("#")[:6]
+        if raw != text:
+            self.hex_input.blockSignals(True)
+            self.hex_input.setText(raw)
+            self.hex_input.blockSignals(False)
+        candidate = f"#{raw}" if raw and len(raw) in (3, 6) else raw
         color = QColor(candidate)
         if not color.isValid():
             return
@@ -732,55 +633,12 @@ class _OnigiriPalettePopup(QFrame):
         self.value_slider.setValue(self._val)
         self.hue_slider.setValue(self._hue)
         self.preview.setColor(self._color)
-        self.close_button.setAccentColor(self._color)
+        self.close_button.setAccentColor(self._accent)
 
         if update_hex:
             self.hex_input.blockSignals(True)
-            self.hex_input.setText(self._color.name().upper())
+            self.hex_input.setText(self._color.name().lstrip("#").upper())
             self.hex_input.blockSignals(False)
-
-    def _refresh_favorites(self):
-        while self.favorites_grid.count():
-            item = self.favorites_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
-        slots = self._favorites[:MAX_FAVORITES]
-        slots.extend([None] * (MAX_FAVORITES - len(slots)))
-        for index, color_hex in enumerate(slots):
-            slot = _FavoriteSlot(color_hex, self._dark, self)
-            slot.addRequested.connect(self._add_current_to_favorites)
-            slot.selectRequested.connect(self._select_favorite)
-            slot.removeRequested.connect(self._remove_favorite)
-            row, col = divmod(index, 5)
-            self.favorites_grid.addWidget(slot, row, col)
-
-    def _add_current_to_favorites(self):
-        color_hex = self._color.name().upper()
-        if color_hex in self._favorites:
-            return
-        if len(self._favorites) >= MAX_FAVORITES:
-            self._favorites.pop(0)
-        self._favorites.append(color_hex)
-        _save_favorites(self._favorites)
-        self._refresh_favorites()
-
-    def _select_favorite(self, color_hex):
-        self._color = QColor(color_hex)
-        hue = self._color.hueF()
-        self._hue = 0.0 if hue < 0 else hue
-        self._sat = max(0.0, self._color.saturationF())
-        self._val = max(0.0, self._color.valueF())
-        self._sync_widgets()
-        self.accept()
-
-    def _remove_favorite(self, color_hex):
-        if color_hex in self._favorites:
-            self._favorites.remove(color_hex)
-            _save_favorites(self._favorites)
-            self._refresh_favorites()
-
 
 class OnigiriColorDialog:
     @staticmethod

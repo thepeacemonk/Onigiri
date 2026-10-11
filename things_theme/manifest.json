@@ -1,0 +1,11 @@
+{
+  "name": "Anki Design",
+  "package": "anki-design",
+  "human_version": "0.4.2",
+  "min_point_version": 250900,
+  "conflicts": [
+    "1011095603",
+    "1708250053",
+    "1771074083"
+  ]
+}

@@ -1,0 +1,217 @@
+/* Hexagon Land's redeem design, shared by Taiyaki Store and Onigimon.
+   Scope every rule to purchase dialogs so reward and item dialogs keep
+   their own layouts. Load after each page's stylesheet and Anki defaults. */
+.modal.purchase-modal {
+  --purchase-paper: rgba(255, 255, 255, .97);
+  --purchase-ink: #21313a;
+  --purchase-muted: #697b84;
+  --purchase-line: rgba(33, 49, 58, .12);
+  --purchase-panel: #eef8fc;
+  --purchase-input: #fff;
+  --purchase-input-line: rgba(33, 49, 58, .18);
+  --purchase-border: rgba(255, 255, 255, .72);
+  z-index: 10000;
+  padding: 24px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 36, 52, .46);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.purchase-modal .purchase-card {
+  width: min(460px, 100%);
+  max-height: min(660px, calc(100vh - 48px));
+  overflow: auto;
+  margin: 0;
+  padding: 26px;
+  border: 1px solid var(--purchase-border);
+  border-radius: 22px;
+  background: var(--purchase-paper);
+  color: var(--purchase-ink);
+  box-shadow: 0 24px 70px rgba(7, 35, 50, .34);
+}
+
+.purchase-card .purchase-close,
+.purchase-card .purchase-close:is(:hover, :focus, :active) {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: rgba(33, 49, 58, .06) !important;
+  color: var(--purchase-muted) !important;
+  cursor: pointer;
+}
+
+.purchase-close svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: .6;
+}
+
+.purchase-identity {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding-right: 38px;
+}
+
+.purchase-identity > img {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(31, 182, 255, .12);
+}
+
+.purchase-card h2 {
+  margin: 0;
+  padding: 0;
+  color: var(--purchase-ink);
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: normal;
+}
+
+.purchase-card p:not(.eyebrow) {
+  margin: 8px 0 0;
+  color: var(--purchase-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.purchase-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 15px;
+  background: var(--purchase-panel);
+}
+
+.purchase-panel strong { display: block; font-size: 12.5px; }
+.purchase-panel p:not(.eyebrow) { margin-top: 2px; font-size: 11px; }
+
+/* Override Anki's button states and each page's accent color consistently. */
+.purchase-card .purchase-code-btn,
+.purchase-card .purchase-submit,
+.purchase-card .purchase-code-btn:is(:hover, :focus, :active),
+.purchase-card .purchase-submit:is(:hover, :focus, :active) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 9px 12px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: #1597d1 !important;
+  color: #fff !important;
+  font-size: 11.5px !important;
+  font-weight: 500;
+  line-height: 1.5 !important;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.purchase-card .purchase-code-btn:focus-visible,
+.purchase-card .purchase-submit:focus-visible,
+.purchase-card .purchase-close:focus-visible {
+  outline: 2px solid #1597d1;
+  outline-offset: 3px;
+}
+
+.purchase-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 14px;
+  color: #80919a;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  text-align: center;
+}
+
+.purchase-divider::before,
+.purchase-divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--purchase-line);
+}
+
+.purchase-card .purchase-input {
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0 13px;
+  border: 1px solid var(--purchase-input-line);
+  border-radius: 11px;
+  background: var(--purchase-input);
+  color: var(--purchase-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.purchase-card .purchase-input:focus {
+  border-color: #1597d1;
+  box-shadow: 0 0 0 3px rgba(21, 151, 209, .12);
+}
+
+.purchase-card .purchase-submit,
+.purchase-card .purchase-submit:is(:hover, :focus, :active) {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 46px !important;
+  padding: 10px 16px !important;
+  border-radius: 11px !important;
+  font-size: 13px !important;
+}
+
+/* Mirror Hexagon Land's dark palette and honor the Store's explicit override. */
+:root[data-store-theme="dark"] .purchase-modal,
+body[data-theme="dark"] .purchase-modal,
+body.nightMode:not([data-theme="light"]) .purchase-modal,
+body.night_mode:not([data-theme="light"]) .purchase-modal {
+  --purchase-paper: rgba(28, 28, 30, .98);
+  --purchase-ink: #e5edf1;
+  --purchase-muted: #8a9ba3;
+  --purchase-line: rgba(255, 255, 255, .12);
+  --purchase-panel: rgba(79, 174, 222, .11);
+  --purchase-input: #242426;
+  --purchase-input-line: rgba(255, 255, 255, .14);
+  --purchase-border: rgba(255, 255, 255, .12);
+}
+
+@media (max-width: 900px) {
+  .modal.purchase-modal { padding: 16px; }
+  .purchase-modal .purchase-card {
+    max-height: calc(100vh - 32px);
+    padding: 22px;
+  }
+}
+
+/* Keep the purchase action readable when translations or narrow windows
+   leave insufficient room for the two-column panel. */
+@media (max-width: 420px) {
+  .purchase-panel { grid-template-columns: 1fr; }
+  .purchase-card .purchase-code-btn { width: 100%; }
+}

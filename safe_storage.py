@@ -22,6 +22,7 @@ import json
 import os
 import shutil
 import time
+import zipfile
 
 # Files whose loss would visibly undo the user's setup. Everything else in
 # user_files (caches, generated icons) can be rebuilt, so it stays out of the
@@ -32,8 +33,39 @@ CRITICAL_PREFIXES = (
     "onigimon_",
     "hexagon_land_",
     "mochi_history_",
+    "communications_",
 )
 CRITICAL_SUBDIRS = ("hashi_notes", "user_themes", "prep_station", "pomodoro")
+
+
+def backup_before_upgrade(shared_config=None):
+    """Keep one untouched copy of legacy saves and assets outside addons21.
+
+    The archive is never refreshed by later launches or saves. It therefore
+    remains useful even after a migration has written new-format data.
+    """
+    target = os.path.join(external_backup_dir(), "before_progress_upgrade_v1.zip")
+    if os.path.exists(target):
+        return target
+    tmp = target + ".tmp"
+    try:
+        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            root = user_files_dir()
+            for current, dirs, files in os.walk(root):
+                dirs[:] = [name for name in dirs if name != "__pycache__"]
+                for name in files:
+                    if name.endswith(".log") or ".tmp" in name:
+                        continue
+                    source = os.path.join(current, name)
+                    archive.write(source, "user_files/" + os.path.relpath(source, root))
+            if isinstance(shared_config, dict):
+                archive.writestr("legacy_addon_config.json", json.dumps(shared_config))
+        os.replace(tmp, target)
+        return target
+    except Exception as exc:
+        _cleanup(tmp)
+        _note(f"The pre-upgrade backup could not be created: {exc}")
+        return None
 
 # Recovery notices collected during load, drained once by the startup check so
 # the user hears about a rescued file instead of quietly seeing defaults.

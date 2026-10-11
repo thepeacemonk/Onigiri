@@ -38,6 +38,7 @@ from aqt.webview import AnkiWebView
 
 from . import config
 from . import safe_storage
+from .theme_palette import utility_chrome_palette
 from .translations import tr
 
 
@@ -92,7 +93,7 @@ def _is_dark_mode(conf=None):
 def _accent_color(conf=None):
     conf = conf or config.get_config_readonly()
     mode = "dark" if _is_dark_mode(conf) else "light"
-    return conf.get("colors", {}).get(mode, {}).get("--accent-color", "#00A982")
+    return conf.get("colors", {}).get(mode, {}).get("--accent-color", config.DEFAULT_ACCENT_COLOR)
 
 
 # ─── Preferences (local config) ───────────────────────────────────────────────
@@ -122,6 +123,14 @@ def trash_grace_days():
         return max(0, int(get_prefs().get("trash_grace_days", 7)))
     except Exception:
         return 7
+
+
+def note_font_size():
+    """Shared note body text size for every Hashi Notes surface."""
+    try:
+        return max(12, min(24, int(get_prefs().get("font_size", 14))))
+    except (TypeError, ValueError):
+        return 14
 
 
 # ─── Persistence: mw.col.conf source of truth ─────────────────────────────────
@@ -487,7 +496,8 @@ def _profile_bar_context():
             color = _accent_color()
         else:
             color = conf.get(f"modern_menu_profile_bg_color_{suffix}", "#555555" if dark else "#EEEEEE")
-        opacity = int(conf.get("modern_menu_profile_bg_opacity", 50) or 50)
+        opacity_value = conf.get("modern_menu_profile_bg_opacity", 50)
+        opacity = int(50 if opacity_value is None else opacity_value)
         blur = int(conf.get("modern_menu_profile_bg_blur", 0) or 0)
         image = ""
         if mode == "image":
@@ -516,19 +526,11 @@ def _profile_name():
 # ─── Theme palette for the webviews ───────────────────────────────────────────
 
 def _palette(dark):
-    if dark:
-        return {
-            "bg": "#161616", "shell": "#1f1f1f", "surface": "#2a2a2a",
-            "border": "#343434", "fg": "#f4f4f5", "fg2": "#b6b6b8", "fg3": "#7c7c80",
-            "input_bg": "#242424", "hover": "#343434", "chip": "#2a2a2a",
-            "highlight": "#fff3b0",
-        }
-    return {
-        "bg": "#f5f5f4", "shell": "#ffffff", "surface": "#f1f1f0",
-        "border": "#e5e7eb", "fg": "#1f2933", "fg2": "#4b5563", "fg3": "#8a9099",
-        "input_bg": "#ffffff", "hover": "#f1f3f5", "chip": "#eef0f2",
-        "highlight": "#fff3b0",
-    }
+    mode = "dark" if dark else "light"
+    colors = config.get_config_readonly().get("colors", {}).get(mode, {})
+    pal = utility_chrome_palette(colors, dark)
+    pal["highlight"] = "#fff3b0"
+    return pal
 
 
 def _hex_to_rgb(h):
@@ -718,9 +720,10 @@ def _build_context_json(dark):
     return {
         "strings": _webview_strings(),
         "dark": bool(dark),
-        "accent": _accent_color(),
+        "accent": pal["accent"],
         "palette": pal,
         "customCss": str(prefs.get("custom_css", "") or ""),
+        "noteFontSize": note_font_size(),
         "defaultSort": str(prefs.get("default_sort", "age") or "age"),
         "avatar": _avatar_data_uri(),
         "profileName": _profile_name(),
@@ -1298,6 +1301,20 @@ def _widget_date_label(iso: str) -> str:
     return tr("hashi_days_ago", "{}d ago").format(days)
 
 
+def _widget_font_css() -> str:
+    """CSS variables for the dashboard widget's note body text."""
+    size = note_font_size()
+    return (
+        f"--hashiw-card-excerpt-size:{size}px;"
+        f"--hashiw-single-text-size:{size}px;"
+    )
+
+
+def _style_attr(*declarations: str) -> str:
+    css = "".join(value for value in declarations if value)
+    return f' style="{css}"' if css else ""
+
+
 def widget_notes(style=None):
     """Notes the widget should display, newest first, already limited."""
     style = style if isinstance(style, dict) else widget_style()
@@ -1321,9 +1338,14 @@ def widget_notes(style=None):
 def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
     style = widget_style()
     mode = "single" if style.get("mode") == "single" else "gallery"
+    direct_edit = mode == "single" and bool(style.get("direct_edit", False))
+    use_widget_surface = mode == "single" and bool(
+        style.get("single_use_widget_surface", False)
+    )
     show_excerpt = bool(style.get("show_excerpt", True))
     show_icon = bool(style.get("show_icon", True))
     show_date = bool(style.get("show_date", True))
+    widget_font_css = _widget_font_css()
 
     title_html = html.escape(tr("hashi_notes_title", "Hashi Notes"), quote=False)
     notes = widget_notes(style)
@@ -1358,16 +1380,16 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
         except Exception:
             return ""
         return (
-            f' style="--hashiw-note-fill:{html.escape(paper, quote=True)};'
+            f'--hashiw-note-fill:{html.escape(paper, quote=True)};'
             f'--hashiw-note-fg:{html.escape(fg, quote=True)};'
             f'--hashiw-note-fg2:{html.escape(fg2, quote=True)};'
             f'--hashiw-note-fg3:{html.escape(fg3, quote=True)};'
-            f'--hashiw-note-edge:{html.escape(edge, quote=True)}"'
+            f'--hashiw-note-edge:{html.escape(edge, quote=True)};'
         )
 
     if not notes:
         return f"""
-<div class="hashi-notes-widget is-{mode}" onclick="pycmd('openHashiGallery')">
+<div class="hashi-notes-widget is-{mode}"{_style_attr(widget_font_css)} onclick="pycmd('openHashiGallery')">
   <div class="onigiri-widget-head"><h3>{title_html}</h3></div>
   <div class="hashi-widget-empty">{html.escape(tr("hashi_no_notes_yet", "No notes yet"), quote=False)}</div>
 </div>"""
@@ -1375,7 +1397,14 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
     if mode == "single":
         note = notes[0]
         note_title = html.escape(note.get("title") or "", quote=False)
-        accent_style = _note_style(note)
+        title_label = html.escape(tr("hashi_title_label", "Title"), quote=True)
+        editor_placeholder = html.escape(
+            tr("hashi_editor_placeholder", "Jot something…"), quote=True
+        )
+        # A single note normally takes on its paper colour.  The optional
+        # widget surface mode intentionally leaves those variables unset, so
+        # the shell uses the same color/opacity/blur tokens as every widget.
+        accent_css = "" if use_widget_surface else _note_style(note)
         icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
         date_html = ""
         if show_date:
@@ -1383,20 +1412,74 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
             if label:
                 date_html = f'<span class="hashi-widget-date">{html.escape(label, quote=False)}</span>'
         body_html = ""
-        if show_excerpt:
+        if direct_edit:
+            body_html = (
+                '<div class="hashi-widget-editor" data-hashi-widget-body '
+                'contenteditable="true" spellcheck="true" role="textbox" '
+                f'aria-multiline="true" data-placeholder="{editor_placeholder}"></div>'
+            )
+        elif show_excerpt:
             excerpt = _plain_excerpt(note.get("body_md"), 420)
             body_html = (
                 f'<p class="hashi-widget-excerpt">{html.escape(excerpt, quote=False)}</p>'
                 if excerpt
                 else f'<p class="hashi-widget-excerpt is-empty">{html.escape(tr("hashi_empty_note", "Empty note"), quote=False)}</p>'
             )
-        head_html = (
-            f'<div class="hashi-widget-single-title">{icon_html}<span>{note_title}</span></div>'
-            if (note_title or icon_html)
-            else ""
-        )
+        if direct_edit:
+            head_html = (
+                f'<div class="hashi-widget-single-title">{icon_html}'
+                '<input class="hashi-widget-title-input" data-hashi-widget-title '
+                'type="text" maxlength="120" '
+                f'placeholder="{html.escape(tr("hashi_note_title_placeholder", "Hashi note"), quote=True)}" '
+                f'aria-label="{title_label}"></div>'
+            )
+        else:
+            head_html = (
+                f'<div class="hashi-widget-single-title">{icon_html}<span>{note_title}</span></div>'
+                if (note_title or icon_html)
+                else ""
+            )
+        direct_edit_script = ""
+        if direct_edit:
+            widget_data = _safe_json({
+                "id": str(note.get("id") or ""),
+                "title": str(note.get("title") or ""),
+                "body_md": str(note.get("body_md") or ""),
+            })
+            direct_edit_script = f"""
+<script>
+(() => {{
+  const root = document.currentScript.previousElementSibling;
+  const note = {widget_data};
+  const title = root.querySelector("[data-hashi-widget-title]");
+  const body = root.querySelector("[data-hashi-widget-body]");
+  title.value = note.title;
+  body.innerHTML = note.body_md;
+  let timer = null;
+  let dirty = false;
+  const save = () => {{
+    clearTimeout(timer);
+    timer = null;
+    if (!dirty) return;
+    dirty = false;
+    pycmd("hashiWidget:save:" + encodeURIComponent(note.id) + ":" +
+      encodeURIComponent(JSON.stringify({{title: title.value, body_md: body.innerHTML}})));
+  }};
+  const scheduleSave = () => {{ dirty = true; clearTimeout(timer); timer = setTimeout(save, 500); }};
+  [title, body].forEach((field) => {{
+    field.addEventListener("input", scheduleSave);
+    field.addEventListener("blur", save);
+    field.addEventListener("click", (event) => event.stopPropagation());
+  }});
+  window.addEventListener("beforeunload", save);
+}})();
+</script>"""
+        click_attr = ""
+        if not direct_edit:
+            note_id = html.escape(str(note.get("id")), quote=True)
+            click_attr = f" onclick=\"pycmd('hashiWidget:open:{note_id}')\""
         return f"""
-<div class="hashi-notes-widget is-single"{accent_style} onclick="pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
+<div class="hashi-notes-widget is-single{' is-editing' if direct_edit else ''}{' uses-widget-surface' if use_widget_surface else ''}"{_style_attr(widget_font_css, accent_css)}{click_attr}>
   <div class="onigiri-widget-head">
     <h3>{title_html}</h3>
     {date_html}
@@ -1405,12 +1488,12 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
     {head_html}
     {body_html}
   </div>
-</div>"""
+</div>{direct_edit_script}"""
 
     cards_html = ""
     for note in notes:
         note_title = html.escape(note.get("title") or "", quote=False)
-        accent_style = _note_style(note)
+        accent_css = _note_style(note)
         icon_html = _widget_icon_html(note.get("icon")) if show_icon else ""
         date_html = ""
         if show_date:
@@ -1429,14 +1512,14 @@ def render_widget_html(row_span: int = 1, col_span: int = 1) -> str:
             else ""
         )
         cards_html += f"""
-<div class="hashi-widget-card"{accent_style} onclick="event.stopPropagation(); pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
+<div class="hashi-widget-card"{_style_attr(accent_css)} onclick="event.stopPropagation(); pycmd('hashiWidget:open:{html.escape(str(note.get('id')), quote=True)}')">
   {head_html}
   {excerpt_html}
   {date_html}
 </div>"""
 
     return f"""
-<div class="hashi-notes-widget is-gallery" onclick="pycmd('openHashiGallery')">
+<div class="hashi-notes-widget is-gallery"{_style_attr(widget_font_css)} onclick="pycmd('openHashiGallery')">
   <div class="onigiri-widget-head"><h3>{title_html}</h3></div>
   <div class="hashi-widget-cards">{cards_html}</div>
 </div>"""

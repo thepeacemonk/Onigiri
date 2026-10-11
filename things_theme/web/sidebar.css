@@ -1,0 +1,1145 @@
+/* Anki Design — left sidebar.
+   Vertical layered structure: wordmark · totals · nav · quick · (stretch) ·
+   streak block · footer. Sections separated by subtle rules + breathing
+   space. Standing data is bootstrapped from window.__baStandingData and
+   refreshed via window.__baSetStanding(). */
+
+body.ba-with-side {
+  padding-left: var(--rf-side-w, 264px);
+  box-sizing: border-box;
+}
+
+.ba-side {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--rf-side-w, 264px);
+  background: var(--rf-sidebar-bg, var(--rf-paper));
+  border-right: 1px solid var(--rf-line);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 18px 16px;
+  z-index: 50;
+  font-family: var(--rf-sans);
+  color: var(--rf-ink);
+  -webkit-user-select: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+:root[data-rf-background="image"] .ba-side {
+  background: color-mix(
+    in srgb,
+    var(--rf-sidebar-bg, var(--rf-paper)) var(--rf-sidebar-opacity, 100%),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--rf-sidebar-blur, 0px));
+  backdrop-filter: blur(var(--rf-sidebar-blur, 0px));
+  will-change: backdrop-filter;
+}
+.ba-side, .ba-side * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Shared rule for between-section breaks. */
+.ba-side-hero,
+.ba-side-nav,
+.ba-side-quick,
+.ba-side-tasks-block,
+.ba-side-donut-block,
+.ba-side-progress-block {
+  border-bottom: 1px solid var(--rf-line);
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+/* ---------------------------- HERO (Due Today) ---------------------------- */
+.ba-side-hero {
+  padding: 2px 4px 16px;
+}
+.ba-side-hero-label {
+  font: 600 10.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-faint);
+  margin: 0 0 8px;
+}
+.ba-side-hero-num {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.ba-side-hero-n {
+  font: 700 40px/1 var(--rf-sans);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  color: var(--rf-ink);
+}
+.ba-side-hero-unit {
+  font: 500 14px/1 var(--rf-sans);
+  color: var(--rf-ink-faint);
+}
+
+/* ---------------------------- ACTIVE CARDS LEGEND ---------------------------- */
+.ba-side-donut-block {
+  padding: 4px 2px 18px;
+  --ba-donut-new: var(--rf-active-new, #55a8ee);
+  --ba-donut-learning: var(--rf-active-learning, #ffd33d);
+  --ba-donut-relearning: var(--rf-active-relearning, #eb3f70);
+  --ba-donut-young: var(--rf-active-young, #6fc66f);
+  --ba-donut-mature: var(--rf-active-mature, #78b8b4);
+}
+.ba-side-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 10.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-faint);
+  margin: 0 4px 14px;
+}
+.ba-side-donut-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 4px;
+}
+.ba-side-donut-ring {
+  flex: 0 0 78px;
+  width: 78px;
+  height: 78px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.ba-side-donut-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+.ba-side-donut-track,
+.ba-side-donut-segment {
+  fill: none;
+  stroke-width: 12;
+}
+.ba-side-donut-track { stroke: var(--rf-line-2); }
+.ba-side-donut-segment {
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+  transition: stroke-dasharray 260ms ease, stroke-dashoffset 260ms ease;
+}
+.ba-side-donut-segment--new        { stroke: var(--ba-donut-new); }
+.ba-side-donut-segment--learning   { stroke: var(--ba-donut-learning); }
+.ba-side-donut-segment--relearning { stroke: var(--ba-donut-relearning); }
+.ba-side-donut-segment--young      { stroke: var(--ba-donut-young); }
+.ba-side-donut-segment--mature     { stroke: var(--ba-donut-mature); }
+.ba-side-donut-core {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+.ba-side-donut-core strong {
+  color: var(--rf-ink);
+  font: 700 23px/1 var(--rf-sans);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.ba-side-donut-core strong.is-compact { font-size: 17px; }
+.ba-side-donut-core strong.is-tiny { font-size: 14px; }
+.ba-side-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  flex: 1;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ba-side-donut-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 12px/1.2 var(--rf-sans);
+  color: var(--rf-ink-dim);
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 -4px;
+  padding: 1px 4px;
+  transition: background 120ms ease, color 120ms ease;
+}
+.ba-side-donut-item:hover,
+.ba-side-donut-item:focus-visible {
+  background: var(--rf-row-hover);
+  color: var(--rf-ink);
+  outline: none;
+}
+.ba-side-donut-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.ba-side-donut-item--new        .ba-side-donut-dot { background: var(--ba-donut-new); }
+.ba-side-donut-item--learning   .ba-side-donut-dot { background: var(--ba-donut-learning); }
+.ba-side-donut-item--relearning .ba-side-donut-dot { background: var(--ba-donut-relearning); }
+.ba-side-donut-item--young      .ba-side-donut-dot { background: var(--ba-donut-young); }
+.ba-side-donut-item--mature     .ba-side-donut-dot { background: var(--ba-donut-mature); }
+.ba-side-donut-l {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ba-side-donut-v {
+  flex: 0 0 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--rf-ink);
+}
+
+/* ---------------------------- TASKS CHECKLIST ---------------------------- */
+.ba-side-tasks-block {
+  padding: 4px 2px 16px;
+}
+
+/* ---------------------------- RECENT PROGRESS ---------------------------- */
+.ba-side-progress-block {
+  padding: 4px 2px 16px;
+}
+.ba-side-progress-meta {
+  color: var(--rf-progress-color, #0077c8);
+  font: 600 9px/1 var(--rf-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ba-side-progress-meta b { font-weight: 750; }
+.ba-side-progress-chart {
+  height: 62px;
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  align-items: end;
+  gap: 3px;
+  padding: 5px 4px 0;
+  border-bottom: 1px dashed var(--rf-line-2);
+}
+.ba-side-progress-col {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.ba-side-progress-col i {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--rf-progress-color, #0077c8);
+  opacity: .78;
+  transition: height 240ms ease;
+}
+.ba-side-progress-col i.is-empty {
+  background: var(--rf-line-2);
+  opacity: .65;
+}
+.ba-side-progress-days {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 4px 0;
+  color: var(--rf-ink-faint);
+  font: 600 7.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.ba-side .ba-side-tasks-add-btn,
+.ba-side .ba-side-tasks-add-btn:hover,
+.ba-side .ba-side-tasks-add-btn:active,
+.ba-side .ba-side-tasks-add-btn:focus {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: var(--rf-ink-faint);
+  cursor: pointer;
+  outline: none;
+  transition: color 120ms ease;
+}
+.ba-side .ba-side-tasks-add-btn:hover {
+  color: var(--rf-ink);
+}
+.ba-side .ba-side-tasks-add-btn:focus-visible {
+  color: var(--rf-ink);
+  outline: 2px solid var(--rf-accent) !important;
+  outline-offset: 2px;
+}
+.ba-side-tasks-add-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+.ba-side-tasks-form {
+  margin: 0 0 10px;
+}
+.ba-side-tasks-input {
+  width: 100%;
+  appearance: none;
+  border: 1px solid var(--rf-line);
+  background: var(--rf-row-hover);
+  color: var(--rf-ink);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: 500 12px/1.3 var(--rf-sans);
+  outline: none;
+}
+.ba-side-tasks-input:focus {
+  border-color: var(--rf-accent, #0077c8);
+}
+.ba-side-tasks-input::placeholder {
+  color: var(--rf-ink-faint);
+}
+.ba-side-tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ba-side-tasks-empty {
+  font: 500 11.5px/1.3 var(--rf-sans);
+  color: var(--rf-ink-faint);
+  padding: 4px 4px;
+}
+.ba-side-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+.ba-side-task:hover {
+  background: var(--rf-row-hover);
+}
+.ba-side-task-box {
+  flex: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--rf-line-2);
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+}
+.ba-side-task-box:hover,
+.ba-side-task-box:focus-visible {
+  border-color: var(--rf-accent, #0077c8);
+  outline: none;
+}
+.ba-side-task--done .ba-side-task-box {
+  background: var(--rf-accent, #0077c8);
+  border-color: var(--rf-accent, #0077c8);
+}
+.ba-side-task--done .ba-side-task-box::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(45deg);
+}
+.ba-side-task-text {
+  flex: 1;
+  min-width: 0;
+  font: 500 12px/1.3 var(--rf-sans);
+  color: var(--rf-ink);
+  overflow-wrap: break-word;
+}
+.ba-side-task--done .ba-side-task-text {
+  color: var(--rf-ink-faint);
+  text-decoration: line-through;
+}
+.ba-side .ba-side-task-del,
+.ba-side .ba-side-task-del:hover,
+.ba-side .ba-side-task-del:active,
+.ba-side .ba-side-task-del:focus {
+  flex: none;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: var(--rf-ink-faint);
+  cursor: pointer;
+  outline: none;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+.ba-side-task:hover .ba-side-task-del,
+.ba-side-task-del:focus-visible {
+  opacity: 1;
+}
+.ba-side-task-del:hover {
+  color: var(--rf-bad, #e0663f);
+}
+.ba-side .ba-side-task-del:focus-visible {
+  color: var(--rf-bad, #e0663f);
+  outline: 2px solid var(--rf-accent) !important;
+  outline-offset: 2px;
+}
+.ba-side-task-del-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* ---------------------------- CMD-K LAUNCHER ---------------------------- */
+/* Styled as a search input — magnifying glass on the left, placeholder
+   text, ⌘K key chips on the right. Clicking it opens the command palette
+   (web/cmdk.js). Sits between the wordmark and the totals so it reads as
+   the primary discovery surface of the sidebar. */
+.ba-side-cmdk {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 16px;
+  /* line-height 1 was clipping descenders ("y" / "g" in the placeholder).
+     Bumping to 1.4 and trimming vertical padding keeps the overall height
+     unchanged while giving descenders the room they need. */
+  padding: 6px 10px;
+  /* !important: the congrats page is a Svelte page whose own button-reset
+     CSS lands in <head> AFTER ours and would wipe the input look. The
+     decks page has no such reset so it's untouched. */
+  background: var(--rf-paper-inset, rgba(255, 255, 255, 0.03)) !important;
+  border: 1px solid var(--rf-line) !important;
+  border-radius: 8px !important;
+  color: var(--rf-ink-faint);
+  font: 500 12px/1.4 var(--rf-sans);
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: none;
+  transition: border-color 200ms ease, color 200ms ease, background 200ms ease;
+}
+:root:not([data-rf-theme="dark"]) .ba-side-cmdk,
+:root[data-rf-theme="light"] .ba-side-cmdk {
+  background: rgba(31, 29, 24, 0.05) !important;
+  border-color: rgba(31, 29, 24, 0.12) !important;
+}
+.ba-side-cmdk:hover {
+  color: var(--rf-ink-dim);
+  border-color: var(--rf-line-2);
+  background: var(--rf-row-hover);
+}
+.ba-side-cmdk:focus-visible {
+  outline: 2px solid var(--rf-accent, #0077c8);
+  outline-offset: 2px;
+}
+.ba-side-cmdk-ico {
+  flex: none;
+  color: var(--rf-ink-faint);
+  transition: color 200ms ease, transform 320ms cubic-bezier(.2,.8,.2,1);
+}
+.ba-side-cmdk:hover .ba-side-cmdk-ico {
+  color: var(--rf-ink-dim);
+  transform: rotate(-8deg);
+}
+.ba-side-cmdk-l {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ba-side-cmdk-kbd {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.ba-side-cmdk:hover .ba-side-cmdk-kbd,
+.ba-side-cmdk:focus-visible .ba-side-cmdk-kbd {
+  opacity: 1;
+}
+.ba-side-cmdk-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--rf-line-2);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--rf-ink-faint);
+  font: 600 10px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+}
+/* "Ctrl" needs a wider chip than a single glyph. */
+.ba-side-cmdk-key--w {
+  padding: 0 5px;
+  letter-spacing: 0.02em;
+}
+:root:not([data-rf-theme="dark"]) .ba-side-cmdk-key,
+:root[data-rf-theme="light"] .ba-side-cmdk-key {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ---------------------------- NAV / QUICK ---------------------------- */
+.ba-side-nav,
+.ba-side-quick,
+.ba-side-actions-grid,
+.ba-side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;             /* slightly more breathing room between rows */
+}
+.ba-side-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 6px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--rf-line);
+}
+.ba-side-actions-grid .ba-side-item {
+  min-width: 0;
+  gap: 8px;
+  padding: 8px 7px;
+}
+.ba-side-actions-grid .ba-side-icon {
+  /* Keep the six action glyphs visually unified in the sidebar's subdued
+     gray, including the currently selected Decks action. */
+  color: var(--rf-ink-faint);
+}
+.ba-side-actions-grid .ba-side-item[data-active="true"] .ba-side-icon {
+  color: var(--rf-ink-faint);
+}
+.ba-side-actions-grid .ba-side-item[data-active="true"] {
+  color: var(--rf-ink-faint);
+}
+.ba-side-actions-grid .ba-side-key { display: none; }
+.ba-side-icon--fa {
+  display: block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask: var(--ba-side-icon-url) no-repeat center / contain;
+  mask: var(--ba-side-icon-url) no-repeat center / contain;
+}
+
+/* ---------------------------- READY TO GO ----------------------------- */
+.ba-side-ready-block {
+  padding: 4px 2px 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--rf-line);
+}
+.ba-side-ready-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 6px;
+}
+.ba-side-ready-actions .ba-side-item {
+  min-width: 0;
+  gap: 8px;
+  padding: 8px 7px;
+}
+.ba-side-ready-actions .ba-side-key { display: none; }
+.ba-side-ready-actions .ba-side-item[data-cmd="ready:inbox"] .ba-side-icon--fa {
+  color: var(--rf-active-new, #55a8ee);
+}
+.ba-side-ready-actions .ba-side-item[data-cmd="ready:warm_up"] .ba-side-icon--fa {
+  color: var(--rf-active-learning, #ffd33d);
+}
+.ba-side-ready-actions .ba-side-item[data-cmd="ready:today"] .ba-side-icon--fa {
+  color: var(--rf-active-young, #6fc66f);
+}
+.ba-side-ready-actions .ba-side-item[data-cmd="ready:cool_down"] .ba-side-icon--fa {
+  color: var(--rf-active-relearning, #eb3f70);
+}
+.ba-side-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--rf-line);
+}
+
+.ba-side-item {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  /* Anki's webview.css ships `.fancy button` (specificity 0,0,1,1) which
+     adds a 3-layer drop shadow + gradient background, and `.fancy button:hover`
+     (0,0,2,1) which swaps to a heavier hover shadow. Both beat a plain
+     `.ba-side-item` rule (0,0,1,0), so the sidebar rows pick up Anki's pill
+     chrome unless we override with at least equal specificity *and* cover
+     every interaction state — hence the `!important`s. Same pattern the
+     congrats overlay used; moving it here makes the sidebar tab-flat on
+     every page (deck browser, overview, reviewer, addcard) without each
+     page needing its own copy. */
+  --canvas: transparent;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  /* Anki's `button { margin: 0 4px }` (in webview.css) was shrinking every
+     <button> row by 8px total — the New deck <div> wasn't affected, so it
+     was the only row whose hover/active fill reached the divider lines.
+     Zero the margin so every row is the same full width as the rules. */
+  margin: 0 !important;
+  /* Anki's `.fancy button` also sets `border-radius: var(--border-radius-large)`
+     (15px) which beats `.ba-side-item` on plain specificity, so the <button>
+     rows rendered as half-pills while the New deck <div> stayed at 7px.
+     !important here unifies the radius across both element types. */
+  border-radius: 7px !important;
+  padding: 10px 12px;        /* more vertical space per item */
+  /* Lock the item box so nothing — font-size overrides, sub-pixel
+     rounding, browser default :hover styles — can change its height.
+     Padding 10 + 12.5 line + 10 = 32.5 → 34 with a tiny optical buffer. */
+  height: 34px;
+  box-sizing: border-box;
+  text-align: left;
+  font-weight: 500;
+  font-size: 12.5px;
+  line-height: 14px;
+  font-family: var(--rf-sans);
+  letter-spacing: 0.005em;
+  color: var(--rf-ink-dim);
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease;
+  position: relative;
+}
+.ba-side-item .ba-side-l { flex: 1; }
+.ba-side-icon {
+  flex: none;
+  width: 14px; height: 14px;
+  color: var(--rf-ink-faint);
+  transition: color 200ms ease;
+}
+/* Hover changes ONLY the background — nothing else moves. No text-color
+   change, no icon-color change, no font-weight, no transform. The bg fade
+   alone signals interactivity without any optical weight shift. */
+.ba-side-item:hover {
+  background: var(--rf-row-hover) !important;
+}
+
+.ba-side-item[data-active="true"] {
+  color: var(--rf-ink);
+  background: var(--rf-row-current) !important;
+}
+.ba-side-item[data-active="true"] .ba-side-icon { color: var(--rf-ink); }
+
+/* Quick actions — slightly lighter weight to read as actions. The fixed
+   height on .ba-side-item keeps these the same row height as the nav,
+   even with a smaller font-size. */
+.ba-side-act {
+  font-size: 12px !important;
+  color: var(--rf-ink-faint) !important;
+}
+.ba-side-act:hover {
+  background: var(--rf-row-hover) !important;
+  color: var(--rf-ink-dim) !important;
+}
+
+/* Streak block + lifetime stats moved out of the sidebar; styles deleted. */
+
+/* ---------------------------- ICON HOVER ANIMATIONS ----------------------------
+   Each row's icon gets a small, on-hover gesture matched to its glyph:
+   layers lift, plus rotates, search wiggles, bars rise, arrows bob,
+   sync spins, gear turns. Animations target inner <g class="ba-i-*">
+   hooks set in sidebar.js so the parent .ba-side-icon's own color
+   transition stays clean. `transform-box: fill-box` makes
+   transform-origin compute against the group's own bounding box rather
+   than the SVG's outer canvas — without it, rotations pivot around the
+   (0,0) corner instead of the glyph center. Focus-visible mirrors hover
+   so keyboard nav gets the same gesture. */
+
+.ba-i-decks-top, .ba-i-decks-mid, .ba-i-decks-bot,
+.ba-i-plus, .ba-i-search-lens, .ba-i-bar,
+.ba-i-import, .ba-i-sync, .ba-i-gear {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 260ms cubic-bezier(.2, .8, .2, 1);
+}
+
+/* DECKS — top card peels up, middle nudges a touch — reads as lifting
+   a sheet off the stack. */
+.ba-side-item[data-cmd="decks"]:hover .ba-i-decks-top,
+.ba-side-item[data-cmd="decks"]:focus-visible .ba-i-decks-top {
+  transform: translateY(-2px);
+}
+.ba-side-item[data-cmd="decks"]:hover .ba-i-decks-mid,
+.ba-side-item[data-cmd="decks"]:focus-visible .ba-i-decks-mid {
+  transform: translateY(-0.5px);
+}
+
+/* ADD / CREATE (idle) — plus rotates 90° (briefly an "x"). */
+.ba-side-item[data-cmd="add"]:hover .ba-i-plus,
+.ba-side-item[data-cmd="add"]:focus-visible .ba-i-plus,
+.ba-side-newdeck[data-state="idle"]:hover .ba-i-plus,
+.ba-side-newdeck[data-state="idle"]:focus-visible .ba-i-plus {
+  transform: rotate(90deg);
+}
+
+/* BROWSE — magnifying lens scans (rotates left, then right). */
+.ba-side-item[data-cmd="browse"]:hover .ba-i-search-lens,
+.ba-side-item[data-cmd="browse"]:focus-visible .ba-i-search-lens {
+  animation: ba-i-search-scan 700ms ease-in-out;
+}
+@keyframes ba-i-search-scan {
+  0%, 100% { transform: rotate(0); }
+  30%      { transform: rotate(-12deg); }
+  70%      { transform: rotate(12deg); }
+}
+
+/* STATS — bars rise from their base, staggered 70ms apart. */
+.ba-i-bar { transform-origin: center bottom; }
+.ba-side-item[data-cmd="stats"]:hover .ba-i-bar-1,
+.ba-side-item[data-cmd="stats"]:focus-visible .ba-i-bar-1 {
+  animation: ba-i-bar-rise 520ms cubic-bezier(.2, .8, .2, 1) 0ms;
+}
+.ba-side-item[data-cmd="stats"]:hover .ba-i-bar-2,
+.ba-side-item[data-cmd="stats"]:focus-visible .ba-i-bar-2 {
+  animation: ba-i-bar-rise 520ms cubic-bezier(.2, .8, .2, 1) 70ms;
+}
+.ba-side-item[data-cmd="stats"]:hover .ba-i-bar-3,
+.ba-side-item[data-cmd="stats"]:focus-visible .ba-i-bar-3 {
+  animation: ba-i-bar-rise 520ms cubic-bezier(.2, .8, .2, 1) 140ms;
+}
+@keyframes ba-i-bar-rise {
+  0%   { transform: scaleY(0.55); }
+  60%  { transform: scaleY(1.18); }
+  100% { transform: scaleY(1); }
+}
+
+/* IMPORT — arrow bobs upward, overshoots a touch, then settles. */
+.ba-side-item[data-cmd="import"]:hover .ba-i-import,
+.ba-side-item[data-cmd="import"]:focus-visible .ba-i-import {
+  animation: ba-i-import-bob 580ms cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes ba-i-import-bob {
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(-2.5px); }
+  70%  { transform: translateY(0.5px); }
+  100% { transform: translateY(0); }
+}
+
+/* SYNC — one full 360° turn on hover. Skipped while the row is already
+   spinning for an active sync, so the two animations don't fight. */
+.ba-side-item[data-cmd="sync"]:not(.ba-sync-active):hover .ba-i-sync,
+.ba-side-item[data-cmd="sync"]:not(.ba-sync-active):focus-visible .ba-i-sync {
+  animation: ba-i-sync-spin 720ms cubic-bezier(.4, 0, .2, 1);
+}
+@keyframes ba-i-sync-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* SETTINGS — gear turns a quarter rotation, the classic gear gesture. */
+.ba-side-item[data-cmd="settings"]:hover .ba-i-gear,
+.ba-side-item[data-cmd="settings"]:focus-visible .ba-i-gear {
+  transform: rotate(90deg);
+  transition: transform 600ms cubic-bezier(.4, 0, .2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ba-i-decks-top, .ba-i-decks-mid, .ba-i-decks-bot,
+  .ba-i-plus, .ba-i-search-lens, .ba-i-bar,
+  .ba-i-import, .ba-i-sync, .ba-i-gear {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---------------------------- NEW DECK ROW ----------------------------
+   Morphing inline-create row. Idle: same shape as .ba-side-act. Active:
+   the label slot swaps for a borderless text input — Enter creates the
+   deck via pycmd("ba:create:<name>"). The icon column anchors the swap,
+   but is itself a two-glyph cross-fade: a plus in idle and a submit
+   (right-arrow) in active. Clicking the submit icon is equivalent to
+   pressing Enter from the input. State is held on the row via
+   data-state. */
+.ba-side-newdeck { cursor: pointer; }
+.ba-side-newdeck[data-state="active"] { cursor: text; }
+.ba-side-newdeck:focus-visible { outline: none; }
+.ba-side-newdeck:focus-visible .ba-side-newdeck-label {
+  /* When the row itself is keyboard-focused in idle, lift the label tone
+     to mirror :hover — a clearer "I'll respond" affordance. */
+  color: var(--rf-ink-dim);
+}
+
+/* The shared label/input slot. Has its own line-height so it doesn't
+   collapse when both children are absolutely positioned. */
+.ba-side-newdeck-swap {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  line-height: 14px;
+}
+
+.ba-side-newdeck-label,
+.ba-side-newdeck-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  width: 100%;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(.2, .8, .2, 1);
+}
+.ba-side-newdeck-input {
+  caret-color: var(--rf-accent, #0077c8);
+  color: var(--rf-ink);
+}
+.ba-side-newdeck-input::placeholder {
+  color: var(--rf-ink-faint);
+  font-style: italic;
+}
+/* Idle: label visible, input tucked. */
+.ba-side-newdeck[data-state="idle"] .ba-side-newdeck-input {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+}
+.ba-side-newdeck[data-state="idle"] .ba-side-newdeck-label {
+  opacity: 1;
+  transform: translateX(0);
+}
+/* Active: input visible, label tucked. The icon warms to the accent so
+   the row reads as "alive" without resizing. */
+.ba-side-newdeck[data-state="active"] {
+  background: var(--rf-row-hover);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-label {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-input {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+/* Icon slot — a fixed 14×14 box that holds the plus and submit SVGs
+   stacked on top of each other. They cross-fade as data-state flips.
+   Their shared horizontal stroke creates the morph illusion: the
+   vertical arm of the plus dissolves and the arrowhead grows in. */
+.ba-side-newdeck-icons {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  color: var(--rf-ink-faint);
+  transition: color 220ms ease, transform 180ms cubic-bezier(.2, .8, .2, 1);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-icons {
+  color: var(--rf-accent, #0077c8);
+  cursor: pointer;
+}
+/* Tactile feedback when the icon is acting as a submit button. */
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-icons:hover {
+  transform: scale(1.18);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-icons:active {
+  transform: scale(0.92);
+}
+.ba-side-newdeck-icon--plus,
+.ba-side-newdeck-icon--submit {
+  position: absolute;
+  inset: 0;
+  width: 14px;
+  height: 14px;
+  transition: opacity 200ms ease,
+              transform 260ms cubic-bezier(.2, .8, .2, 1);
+}
+.ba-side-newdeck[data-state="idle"] .ba-side-newdeck-icon--plus {
+  opacity: 1;
+  transform: scale(1);
+}
+.ba-side-newdeck[data-state="idle"] .ba-side-newdeck-icon--submit {
+  opacity: 0;
+  transform: scale(0.7);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-icon--plus {
+  opacity: 0;
+  transform: scale(0.7);
+}
+.ba-side-newdeck[data-state="active"] .ba-side-newdeck-icon--submit {
+  opacity: 1;
+  transform: scale(1.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ba-side-newdeck-label,
+  .ba-side-newdeck-input,
+  .ba-side-newdeck-icons,
+  .ba-side-newdeck-icon--plus,
+  .ba-side-newdeck-icon--submit {
+    transition: none;
+  }
+}
+
+/* ---------------------------- SYNC ----------------------------
+   Standing states on the Sync row:
+   • pending     — local changes to push; soft accent dot, slow breathe
+   • full        — full re-sync required; amber dot (stronger signal, no pulse)
+   • active      — sync in progress; icon spins, label morphs to "Syncing…"
+   Transient end-of-sync reveals (data-sync-result attribute):
+   • ok          — real changes synced; cloud icon cross-fades to a green
+                   check that pops in (overshoot), label morphs to "Synced",
+                   the row briefly tints success-green, then settles back.
+   • noop        — heartbeat; nothing changed. The cloud icon does a
+                   gentle "settle" bounce as the spin stops, label fades
+                   silently back to "Sync". No check, no color shift —
+                   the quietest possible "done."
+   • error       — icon tints red and shakes, label morphs to "Sync failed".
+                   The actual error detail still surfaces via Anki's
+                   handle_sync_error warning dialog.
+   The dot lives at the row's right edge (next to the label) so it doesn't
+   visually compete with the icon, and gets a faint ring matching the row
+   background so it reads as a token rather than a colored speck. */
+.ba-side-item[data-cmd="sync"] .ba-side-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--rf-ink-faint);
+  opacity: 0;
+  transition: opacity 160ms ease, background 160ms ease,
+              box-shadow 160ms ease;
+}
+/* "Pending" (changes to push) — accent dot + matching icon/label tint. */
+.ba-side-item[data-cmd="sync"].ba-sync-pending { color: var(--rf-accent, #0077c8); }
+.ba-side-item[data-cmd="sync"].ba-sync-pending .ba-side-icon { color: var(--rf-accent, #0077c8); }
+.ba-side-item[data-cmd="sync"].ba-sync-pending .ba-side-dot {
+  opacity: 1;
+  background: var(--rf-accent, #0077c8);
+  box-shadow: 0 0 0 2px color-mix(in srgb,
+                var(--rf-accent, #0077c8) 22%, transparent);
+  animation: ba-sync-breathe 2.8s ease-in-out infinite;
+}
+/* "Full" — warning amber, no pulse (it's a stronger signal than pending). */
+.ba-side-item[data-cmd="sync"].ba-sync-full { color: var(--rf-learn); }
+.ba-side-item[data-cmd="sync"].ba-sync-full  .ba-side-icon { color: var(--rf-learn); }
+.ba-side-item[data-cmd="sync"].ba-sync-full  .ba-side-dot {
+  opacity: 1;
+  background: var(--rf-learn);
+  box-shadow: 0 0 0 2px color-mix(in srgb,
+                var(--rf-learn) 22%, transparent);
+}
+
+/* Icon wrap — stacks the cloud-spinner and the success-check in the same
+   14px box so they can cross-fade in place during the reveal. */
+.ba-side-item[data-cmd="sync"] .ba-sync-iconwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+.ba-side-item[data-cmd="sync"] .ba-sync-iconwrap > .ba-side-icon {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  transition: opacity 220ms ease, color 220ms ease;
+}
+.ba-side-item[data-cmd="sync"] .ba-sync-check {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  color: var(--rf-good, #34c759);
+  opacity: 0;
+  transform: scale(0.5);
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+/* Label morph — cross-fade text changes ("Sync" ↔ "Syncing…" ↔ "Synced"). */
+.ba-side-item[data-cmd="sync"] .ba-side-l-text {
+  display: inline-block;
+  transition: color 220ms ease;
+}
+.ba-side-item[data-cmd="sync"].ba-sync-active .ba-side-l-text {
+  color: var(--rf-accent, #0077c8);
+}
+
+/* Active sync — icon spins. (Stays on through the reveal so the rotation
+   doesn't snap back to 0deg the moment the check fades in.) */
+.ba-side-item[data-cmd="sync"].ba-sync-active .ba-side-icon {
+  animation: ba-spin 1.4s linear infinite;
+}
+@keyframes ba-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+/* Slow breath for the pending dot. Stays mostly visible — the cycle just
+   nudges opacity down and back so it catches the eye at a glance without
+   pulling attention away from real work. */
+@keyframes ba-sync-breathe {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.88); }
+}
+
+/* ---- Reveal: OK (real changes happened) ---- */
+.ba-side-item[data-cmd="sync"][data-sync-result="ok"] > .ba-sync-iconwrap > .ba-side-icon {
+  opacity: 0;
+}
+.ba-side-item[data-cmd="sync"][data-sync-result="ok"] .ba-sync-check {
+  animation: ba-sync-check-in 420ms cubic-bezier(.34, 1.56, .64, 1) forwards;
+}
+.ba-side-item[data-cmd="sync"][data-sync-result="ok"] .ba-side-l-text {
+  color: var(--rf-good, #34c759);
+}
+@keyframes ba-sync-check-in {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+  60%  { opacity: 1; transform: scale(1.18) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* ---- Reveal: noop (heartbeat, nothing changed) ---- */
+.ba-side-item[data-cmd="sync"][data-sync-result="noop"] .ba-side-icon {
+  animation: ba-sync-settle 680ms cubic-bezier(.34, 1.56, .64, 1) forwards;
+}
+@keyframes ba-sync-settle {
+  /* Inherits the spin's current rotation, decelerates, gentle bounce, rest. */
+  0%   { transform: rotate(0deg)   scale(1); }
+  50%  { transform: rotate(180deg) scale(1.15); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+/* ---- Reveal: error ---- */
+.ba-side-item[data-cmd="sync"][data-sync-result="error"] .ba-side-icon {
+  color: var(--rf-bad, #ff453a);
+  animation: ba-sync-shake 380ms ease-in-out forwards;
+}
+.ba-side-item[data-cmd="sync"][data-sync-result="error"] .ba-side-l-text {
+  color: var(--rf-bad, #ff453a);
+}
+@keyframes ba-sync-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-2.5px); }
+  60%      { transform: translateX(2.5px); }
+  80%      { transform: translateX(-1.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ba-side-item[data-cmd="sync"].ba-sync-pending .ba-side-dot,
+  .ba-side-item[data-cmd="sync"].ba-sync-active .ba-side-icon,
+  .ba-side-item[data-cmd="sync"][data-sync-result="ok"] .ba-sync-check,
+  .ba-side-item[data-cmd="sync"][data-sync-result="noop"] .ba-side-icon,
+  .ba-side-item[data-cmd="sync"][data-sync-result="error"] .ba-side-icon {
+    animation: none;
+  }
+}
+
+/* Hover-reveal keyboard chip (absolutely positioned, no layout shift). */
+.ba-side-key {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%) translateX(6px);
+  opacity: 0;
+  pointer-events: none;
+  font: 600 9.5px/1 var(--rf-sans);
+  letter-spacing: 0.06em;
+  color: var(--rf-ink-dim);
+  background: var(--rf-row-current);
+  border: 1px solid var(--rf-line);
+  border-radius: 5px;
+  padding: 3px 6px;
+  text-transform: uppercase;
+  min-width: 18px;
+  text-align: center;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.ba-side-item:hover .ba-side-key {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+/* When sync is in pending (blue) mode, the dot owns the right edge — the
+   "Y" chip would overlap it on hover, so suppress the chip. */
+.ba-side-item[data-cmd="sync"].ba-sync-pending:hover .ba-side-key {
+  opacity: 0;
+  transform: translateY(-50%) translateX(6px);
+}
+
+/* ---------------------------- FLOATING COG ---------------------------- */
+.ba-cog {
+  position: fixed;
+  top: 12px;
+  right: 14px;
+  z-index: 200;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--rf-line);
+  background: var(--rf-panel);
+  color: var(--rf-ink-dim);
+  font: 400 15px/1 var(--rf-sans);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.ba-cog:hover {
+  opacity: 1;
+  color: var(--rf-ink);
+  border-color: var(--rf-line-2);
+}
+body.ba-with-side .ba-cog { display: none; }
+
+/* .ba-back styling lives in reviewer.css — it's only used on the reviewer
+   webview, and that's where the relevant base context (paper, ink, line)
+   is set up. */

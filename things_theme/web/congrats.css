@@ -1,0 +1,315 @@
+/* Anki Design — redesigned congrats page.
+   A session debrief: confetti burst over the deck name, one-line result,
+   proportional accuracy bar, click-to-jump deck list. Top half centered
+   editorial; bottom half left-aligned navigation. */
+
+/* Hide Anki's stock Svelte congrats panel — we replace it with our own. */
+.congrats,
+svelte-css-wrapper:has(> div.container > svelte-css-wrapper > div.col > div.congrats) {
+  display: none !important;
+}
+
+/* Anki's Svelte webview CSS adds night-mode body classes that knock down
+   our text colours. Override so our sidebar nav rows and deck-list buttons
+   read at the same weights as on the regular homepage. */
+.ba-cg button,
+.ba-side button,
+.ad-list button,
+button.ba-side-item {
+  --canvas: transparent !important;
+  background-color: transparent !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.ba-side .ba-side-item {
+  color: var(--rf-ink-dim) !important;
+  opacity: 1 !important;
+}
+.ba-side .ba-side-item[data-active="true"] {
+  color: var(--rf-ink) !important;
+  background-color: var(--rf-row-current) !important;
+}
+.ba-side .ba-side-item:hover {
+  background-color: var(--rf-row-hover) !important;
+}
+.ba-side .ba-side-icon {
+  color: var(--rf-ink-faint) !important;
+  opacity: 1 !important;
+}
+.ba-side .ba-side-item[data-active="true"] .ba-side-icon {
+  color: var(--rf-ink) !important;
+}
+
+html, body {
+  background: var(--rf-paper) !important;
+  color: var(--rf-ink) !important;
+  margin: 0 !important;
+  padding-top: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0 !important;
+  font-family: var(--rf-sans) !important;
+}
+body.ba-with-side {
+  padding-left: var(--rf-side-w, 264px) !important;
+}
+
+/* Local accuracy-color tokens. Kept here so theme.css doesn't grow. */
+.ba-cg {
+  --c-again: #c95a4b;
+  --c-hard:  #c69142;
+  --c-good:  #4a8f6b;
+  --c-easy:  #3f7fb2;
+  --c-gold:  #c69142;
+}
+:root[data-rf-theme="dark"] .ba-cg,
+:root.night-mode .ba-cg {
+  --c-again: #e07466;
+  --c-hard:  #d4a35d;
+  --c-good:  #79b69b;
+  --c-easy:  #6fa9d8;
+  --c-gold:  #d4a35d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-rf-theme="light"]) .ba-cg {
+    --c-again: #e07466;
+    --c-hard:  #d4a35d;
+    --c-good:  #79b69b;
+    --c-easy:  #6fa9d8;
+    --c-gold:  #d4a35d;
+  }
+}
+
+.ba-cg {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 48px 72px;
+  text-align: left;          /* default; top section overrides to center */
+  animation: ba-cg-fade 180ms ease both;
+}
+@media (max-width: 900px) {
+  .ba-cg { padding: 40px 28px 56px; }
+}
+@keyframes ba-cg-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ba-cg { animation: none; }
+}
+
+/* ---------------- Head: deck title (centered) ------------------------ */
+.ba-cg-head {
+  margin: 0 0 32px;
+  text-align: center;
+  position: relative;
+}
+
+/* Deck title — serif, centered, doubles as a deck-options trigger. The
+   hover state is subtle (no row-hover background) so the title doesn't
+   feel like a navigation link — just a soft cue that it can be tapped. */
+.ba-cg-title {
+  font: 500 38px/1.05 var(--rf-serif);
+  letter-spacing: -0.022em;
+  color: var(--rf-ink);
+  margin: 0;
+  display: inline-block;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  outline: none;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+.ba-cg-title:hover,
+.ba-cg-title:focus-visible {
+  color: var(--rf-ink-strong);
+  background: transparent;
+}
+.ba-cg-title:focus-visible {
+  outline: 2px solid var(--rf-line-2);
+  outline-offset: 4px;
+}
+
+/* ---------------- Hero result: "58 cards · 10m 13s" (centered) -------
+   Each item (digit, unit label, separator dot) is a direct flex child so
+   they share one cross-axis center line. The unit labels and the dot
+   are the same font-size and sit on the same y-line as a result. */
+.ba-cg-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 36px;
+  font-family: var(--rf-serif);
+  color: var(--rf-ink);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-weight: 500;
+  font-size: clamp(40px, 7vw, 60px);
+  text-align: center;
+}
+.ba-cg-result-n {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.ba-cg-result-n + .ba-cg-result-u {
+  /* No gap between a digit and its trailing unit ("58 cards", "10 m"). */
+  margin-left: -2px;
+}
+.ba-cg-result-u {
+  /* Unit label — small sans, all uppercase, sits on the same y-line as
+     the dot and the other unit labels (flex center alignment). */
+  font-family: var(--rf-sans);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--rf-ink-faint);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ba-cg-result-sep {
+  /* Same family / size as the unit labels → same y-line via flex center. */
+  font-family: var(--rf-sans);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--rf-ink-faint);
+  /* The mid-dot glyph already centers vertically; nudge for optical fit. */
+  margin: 0 4px;
+}
+
+/* ---------------- Accuracy: proportional bar + 4-cell legend -------- */
+.ba-cg-acc {
+  margin: 0 0 28px;
+  text-align: center;
+}
+.ba-cg-bar {
+  display: flex;
+  width: 100%;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--rf-line);
+}
+.ba-cg-seg {
+  display: block;
+  height: 100%;
+  transition: width 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.ba-cg-seg.again { background: var(--c-again); }
+.ba-cg-seg.hard  { background: var(--c-hard); }
+.ba-cg-seg.good  { background: var(--c-good); }
+.ba-cg-seg.easy  { background: var(--c-easy); }
+
+.ba-cg-keys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px 8px;
+  margin: 18px 0 0;
+}
+.ba-cg-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ba-cg-key-n {
+  font: 600 24px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.015em;
+  color: var(--rf-ink);
+}
+.ba-cg-key-l {
+  font: 600 10.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--c, var(--rf-ink-dim));
+}
+.ba-cg-key.again  { --c: var(--c-again); }
+.ba-cg-key.hard   { --c: var(--c-hard); }
+.ba-cg-key.good   { --c: var(--c-good); }
+.ba-cg-key.easy   { --c: var(--c-easy); }
+.ba-cg-key.is-zero .ba-cg-key-l { color: var(--rf-ink-faint); }
+.ba-cg-key.is-zero .ba-cg-key-n { color: var(--rf-ink-faint); }
+
+/* ---------------- Aside: quiet supporting strip ---------------------- */
+.ba-cg-aside {
+  margin: 0 0 48px;
+  font: 400 13px/1.5 var(--rf-sans);
+  color: var(--rf-ink-dim);
+  letter-spacing: 0.005em;
+  text-align: center;
+}
+
+/* Empty-stats state: when 0 cards were reviewed in this deck today. */
+.ba-cg-empty {
+  margin: 0 0 40px;
+  font: 400 16px/1.5 var(--rf-serif);
+  color: var(--rf-ink-dim);
+  font-style: italic;
+  text-align: center;
+}
+.ba-cg-empty-h {
+  display: block;
+  margin: 0 0 4px;
+  font-style: normal;
+  color: var(--rf-ink);
+  font-weight: 500;
+}
+.ba-cg-empty b {
+  color: var(--rf-ink);
+  font-weight: 600;
+  font-style: normal;
+}
+
+/* ---------------- Other-decks tree (left-aligned navigation) -------- */
+.ba-cg-decks-h {
+  padding-top: 32px;
+  border-top: 1px solid var(--rf-line);
+  margin: 0 0 18px;
+  font: 600 11px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--rf-ink-faint);
+  text-align: left;
+}
+
+/* The deck list itself is rendered by __adDeckList.render() into
+   `.ad-list--congrats` — see decklist.css for row layout / chevron / gear
+   / count styling. No congrats-specific row rules here: the list is the
+   same component as the home page. */
+
+/* All clear: when other_decks is empty. */
+.ba-cg-clear {
+  padding: 28px 0;
+  font: 500 14px/1.5 var(--rf-sans);
+  color: var(--rf-ink-dim);
+  text-align: center;
+}
+.ba-cg-clear b {
+  color: var(--rf-ink);
+  font-weight: 600;
+}
+
+/* ---------------- Foot: custom study link ---------------------------- */
+.ba-cg-foot {
+  margin: 56px 0 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--rf-line);
+  font: 500 12.5px/1.4 var(--rf-sans);
+  color: var(--rf-ink-faint);
+  text-align: left;
+}
+.ba-cg-foot a {
+  color: var(--rf-ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rf-line-2);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.ba-cg-foot a:hover {
+  color: var(--rf-ink);
+  border-bottom-color: currentColor;
+}

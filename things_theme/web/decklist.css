@@ -1,0 +1,432 @@
+/* Anki Design — shared deck-list visual primitives.
+   The chevron / gear / row layout is identical between the home tree and
+   the congrats Keep-going list. Both pages render via __adDeckList.render()
+   so the DOM is byte-identical; the CSS below paints it. */
+
+:root { --icon-color: var(--rf-ink-faint, #888888); }
+
+/* Whole list container — no list semantics, just a column of rows.
+   Column widths live here once so the header and every row line up:
+   [chevron/flag] [name] [progress] [new] [learn] [due] [gear]. */
+.ad-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  --ad-cols: 24px 1fr 112px 38px 38px 38px 28px;
+  --ad-row-cols: minmax(0, 1fr) 112px 38px 38px 38px 28px;
+}
+
+/* Column-label row — DECK / PROGRESS / NEW / LEARN / DUE, small caps, same grid as
+   the rows below it so every label sits directly above its column. */
+.ad-list-header {
+  display: grid;
+  grid-template-columns: var(--ad-cols);
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 8px;
+  border-bottom: 1px solid var(--rf-line);
+  margin-bottom: 2px;
+}
+.ad-list-header-cell {
+  font: 600 10px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--rf-ink-faint);
+}
+.ad-list-header-cell--due,
+.ad-list-header-cell--learn,
+.ad-list-header-cell--new { text-align: right; padding: 0 2px; }
+.ad-list-header-cell--progress { padding: 0 2px; }
+
+/* Browser default <button> chrome — and Anki's own `.fancy button:hover`
+   gradient + box-shadow — flat against the page in every state. We
+   override `:hover` and `:active` explicitly so the deck-name button
+   never paints a halo behind the text. */
+.ad-list button,
+.ad-list button:hover,
+.ad-list button:active,
+.ad-list button:focus {
+  --canvas: transparent !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Row container: [chevron] [name] [counts] [gear].
+   No row-hover background — the wash + rounded corners read as a heavy
+   "card shadow" against the cream paper, which fights with the editorial
+   tone of the rest of the page. Hover affordance is carried by the inner
+   parts (name gets stronger, chevron gets full ink, gear fades in). */
+.ad-list-row {
+  display: grid;
+  grid-template-columns: var(--ad-row-cols);
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px;
+  border-radius: 8px;
+}
+.ad-list-row:hover .ad-list-gear { opacity: 0.85; }
+
+/* The first row cell owns the hierarchy. Indentation lives here rather
+   than on the whole row, so Due / Progress / New remain perfectly aligned
+   regardless of nesting depth. */
+.ad-list-tree {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  padding-left: var(--ad-indent, 0px);
+}
+
+/* With a wallpaper, the deck list becomes one configurable glass surface.
+   Keeping the treatment on the list (rather than every row) preserves the
+   quiet Things hierarchy and its aligned columns. */
+:root[data-rf-background="image"] .ad-list--home {
+  background: color-mix(
+    in srgb,
+    var(--rf-panel) var(--rf-decks-opacity, 100%),
+    transparent
+  );
+  padding: 10px;
+  border-radius: 14px;
+  -webkit-backdrop-filter: blur(var(--rf-decks-blur, 0px));
+  backdrop-filter: blur(var(--rf-decks-blur, 0px));
+}
+
+/* Hidden (collapsed under a parent). */
+.ad-list-row-hidden { display: none !important; }
+
+/* Deck name button — borderless, reads as plain text, full-width clickable. */
+.ad-list-name {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  flex: 1 1 auto;
+  padding: 4px 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--rf-ink);
+  font: 500 16px/1.25 var(--rf-serif);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  transition: color 160ms ease;
+}
+.ad-list-title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ad-list-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Deck-name hover — a quiet underline tracking the text width. Reads as
+   "this is a link" without painting any boxy background behind the row. */
+.ad-list-row:hover .ad-list-name {
+  color: var(--rf-ink-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--rf-line-2);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.ad-list-name:focus { outline: none; }
+.ad-list-name:focus-visible {
+  outline: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--rf-ink-faint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+/* Filtered (dynamic) deck — Anki convention is italic + accent color. */
+.ad-list-row[data-filtered="true"] .ad-list-name {
+  color: var(--rf-accent, #0077c8);
+  font-style: italic;
+}
+
+/* Sub-deck rows — any nesting depth, dim and slightly smaller. */
+.ad-list-row[data-parent-did] .ad-list-name {
+  font-weight: 400;
+  color: var(--rf-ink-dim);
+  font-size: 15px;
+}
+
+/* Deck icon — every icon is a button into Classic's shared chooser. SVGs
+   remain tintable per appearance; uploaded/emoji images keep their colour. */
+.ad-list .ad-list-deck-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 1px !important;
+  margin: 0;
+  border-radius: 5px !important;
+  color: var(--ad-icon-light, var(--rf-ink-faint));
+  text-decoration: none !important;
+}
+.ad-list .ad-list-deck-icon:hover {
+  background: color-mix(in oklab, var(--rf-accent, #0077c8) 12%, transparent) !important;
+  color: var(--ad-icon-light, var(--rf-accent, #0077c8));
+}
+.ad-list .ad-list-deck-icon:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--rf-accent, #0077c8) 58%, transparent) !important;
+  outline-offset: 2px;
+}
+.ad-list-deck-icon-mask,
+.ad-list-deck-icon-image {
+  display: block;
+  width: 17px;
+  height: 17px;
+}
+.ad-list-deck-icon-mask {
+  background-color: currentColor;
+  -webkit-mask-image: var(--ad-icon-image);
+  mask-image: var(--ad-icon-image);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.ad-list-deck-icon-image { object-fit: contain; }
+.ad-list-deck-icon-emoji {
+  font: 15px/1 "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+}
+:root[data-rf-theme="dark"] .ad-list .ad-list-deck-icon {
+  color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-ink-faint)));
+}
+:root[data-rf-theme="dark"] .ad-list .ad-list-deck-icon:hover {
+  color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-accent, #0077c8)));
+}
+:root:not([data-rf-theme="light"]).night-mode .ad-list .ad-list-deck-icon,
+:root:not([data-rf-theme="light"]).nightMode .ad-list .ad-list-deck-icon,
+:root:not([data-rf-theme="light"]) body.night-mode .ad-list .ad-list-deck-icon,
+:root:not([data-rf-theme="light"]) body.nightMode .ad-list .ad-list-deck-icon {
+  color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-ink-faint)));
+}
+:root:not([data-rf-theme="light"]).night-mode .ad-list .ad-list-deck-icon:hover,
+:root:not([data-rf-theme="light"]).nightMode .ad-list .ad-list-deck-icon:hover,
+:root:not([data-rf-theme="light"]) body.night-mode .ad-list .ad-list-deck-icon:hover,
+:root:not([data-rf-theme="light"]) body.nightMode .ad-list .ad-list-deck-icon:hover {
+  color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-accent, #0077c8)));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-rf-theme="light"]) .ad-list .ad-list-deck-icon {
+    color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-ink-faint)));
+  }
+  :root:not([data-rf-theme="light"]) .ad-list .ad-list-deck-icon:hover {
+    color: var(--ad-icon-dark, var(--ad-icon-light, var(--rf-accent, #0077c8)));
+  }
+}
+
+/* Learn / Due / New — plain right-aligned counts around the progress bar.
+   Empty (0) cells render no digit at all, just blank grid space. */
+.ad-list-learn,
+.ad-list-due,
+.ad-list-new {
+  font: 600 13px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  text-align: right;
+  padding: 0 2px;
+}
+/* Calm, high-contrast status tones that remain distinct from the New blue. */
+.ad-list-learn { color: #d65d67; }
+.ad-list-due { color: #3b9f73; }
+/* Match the configurable New swatch in the sidebar's Active Cards legend. */
+.ad-list-new { color: var(--rf-active-new, #55a8ee); }
+
+:root[data-rf-theme="dark"] .ad-list-learn { color: #ed7b84; }
+:root[data-rf-theme="dark"] .ad-list-due { color: #68c997; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-rf-theme="light"]) .ad-list-learn { color: #ed7b84; }
+  :root:not([data-rf-theme="light"]) .ad-list-due { color: #68c997; }
+}
+
+/* Progress — a thin rail with a filled portion + trailing percent. Decks
+   with nothing due today (no rawLen to show) get an empty rail and no
+   label, same as the reference deck list. The percent span is ALWAYS
+   rendered (see progressHTML in decklist.js), even empty, so every
+   row's track is the same width regardless of whether it has a percent
+   to share space with. */
+.ad-list-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 2px;
+}
+.ad-list-progress-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rf-line-2);
+  overflow: hidden;
+}
+.ad-list-progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 2px;
+  background: var(--rf-progress-color, #0077c8);
+  transition: width 320ms cubic-bezier(.2, .8, .2, 1);
+}
+.ad-list-progress-pct {
+  flex: none;
+  width: 30px;
+  text-align: right;
+  font: 600 11px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--rf-ink-faint);
+}
+
+/* Chevron — 12px icon inside a 24px square hover target. Big enough to
+   land on by mouse, padded so the icon never crowds the deck name. */
+.ad-list-chev {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--rf-ink-faint);
+  cursor: pointer;
+  text-decoration: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: color 160ms ease, background 160ms ease,
+              transform 240ms cubic-bezier(.2, .8, .2, 1);
+}
+.ad-list-chev svg {
+  width: 12px;
+  height: 12px;
+  transform-origin: 50% 50%;
+  transition: transform 240ms cubic-bezier(.2, .8, .2, 1);
+}
+/* Hover lifts the icon, no bg pill — the row-hover wash already provides
+   the "this row is targeted" affordance, so a second background under the
+   chevron just stacks visual weight. */
+.ad-list-chev:hover { color: var(--rf-ink); }
+.ad-list-chev:focus { outline: none; }
+.ad-list-chev:focus-visible { outline: 2px solid var(--rf-line-2); outline-offset: 2px; }
+.ad-list-chev:active svg { transform: scale(0.88); }
+.ad-list-chev--collapsed svg { transform: rotate(-90deg); }
+.ad-list-chev--collapsed:active svg { transform: rotate(-90deg) scale(0.88); }
+
+/* Leaf placeholder — same footprint as a chevron so deck names line up
+   across siblings whether or not the row has a toggle. */
+.ad-list-chev--spacer {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Gear — 14px icon inside a 28px square hover target. Hidden until the
+   row is hovered, full opacity when the gear itself is hovered. The host
+   page is responsible for triggering the row-hover state since the row
+   container varies (tr.deck vs ba-cg-row). */
+.ad-list-gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--rf-ink-faint);
+  opacity: 0;
+  transition: opacity 160ms ease, color 160ms ease, background 160ms ease;
+}
+.ad-list-gear-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: color 160ms ease;
+}
+
+/* Direct hover lifts opacity; no bg pill (matches chevron). */
+.ad-list-gear:hover { color: var(--rf-ink); }
+.ad-list-gear:focus { outline: none; }
+.ad-list-gear:focus-visible { outline: 2px solid var(--rf-line-2); outline-offset: 2px; }
+
+/* ---- Drag to move (Settings → Deck list → "Drag decks to move them") ----
+   The row is the drag source; the row under the pointer is the drop
+   target (tinted with the accent), and a dashed "top level" zone appears
+   above the list while a nested deck is in flight. */
+.ad-list-row[draggable="true"] { cursor: grab; }
+.ad-list--dragging,
+.ad-list--dragging .ad-list-row,
+.ad-list--dragging .ad-list-row * { cursor: grabbing; }
+.ad-list-row--dragging { opacity: 0.35; }
+.ad-list--dragging .ad-list-row:not(.ad-list-row--dragging) .ad-list-name {
+  text-decoration: none !important;
+}
+.ad-list-row--drop {
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--rf-accent, #0077c8) 12%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--rf-accent, #0077c8) 45%, transparent);
+}
+.ad-list-row--drop .ad-list-name { color: var(--rf-ink-strong); }
+.ad-list-dropzone {
+  display: none;
+  margin: 0 6px 8px;
+  padding: 9px 12px;
+  border: 1px dashed var(--rf-line-2);
+  border-radius: 8px;
+  font: 500 12px/1.2 var(--rf-sans);
+  letter-spacing: 0.01em;
+  color: var(--rf-ink-faint);
+  text-align: center;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.ad-list-dropzone--show { display: block; }
+.ad-list-dropzone--over {
+  color: var(--rf-ink);
+  border-color: var(--rf-accent, #0077c8);
+  background: color-mix(in oklab, var(--rf-accent, #0077c8) 10%, transparent);
+}
+
+/* Section label above a nested list (the sub-decks under a single-deck
+   hero). Same quiet caps as the heatmap foot. */
+.ad-list-h {
+  margin: 0 0 6px 6px;
+  font: 600 10px/1 var(--rf-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rf-ink-faint);
+  text-align: left;
+}

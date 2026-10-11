@@ -1,0 +1,2343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studylytics Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+/* ===== CSS Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #FAF8F5;
+  --surface: #FFFFFF;
+  --border: #E8E2DA;
+  --border-light: #F0EBE4;
+  --text-primary: #2D2118;
+  --text-secondary: #6B5D4F;
+  --text-muted: #9B8E80;
+  --accent: #3A5E8C;
+  --accent-light: #5A7EA8;
+  --accent-bg: #EDF2F8;
+  --accent-hover: #2E4A6E;
+  --green: #4A7C59;
+  --green-bg: #EFF5F0;
+  --gold: #9B7B2C;
+  --gold-bg: #F8F4E8;
+  --blue: #3A5A8C;
+  --blue-bg: #EDF2F8;
+  --red: #C44B4B;
+  --red-bg: #FCEAEA;
+  --shadow-sm: 0 1px 3px rgba(45,33,24,0.06);
+  --shadow-md: 0 4px 12px rgba(45,33,24,0.08);
+  --shadow-lg: 0 8px 24px rgba(45,33,24,0.10);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --transition: 0.2s ease;
+}
+
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== Layout ===== */
+.dashboard {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+}
+
+/* ===== Card ===== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition);
+}
+.card:hover { box-shadow: var(--shadow-md); }
+.card-title {
+  font-size: 1.14rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.card-subtitle {
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+/* ===== Header ===== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-brand { display: flex; align-items: center; gap: 12px; }
+.header-brand h1 { line-height: 1.2; }
+.header-brand p { line-height: 1.3; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.86rem; font-weight: 600;
+  background: var(--green-bg); color: var(--green);
+  border: 1px solid rgba(74,124,89,0.2);
+}
+.badge svg { width: 16px; height: 16px; }
+
+/* ===== Activity Summary ===== */
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+}
+.activity-item {
+  padding: 16px 20px;
+  border-right: 1px solid var(--border-light);
+}
+.activity-item:last-child { border-right: none; }
+.activity-label {
+  font-size: 0.79rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.activity-value {
+  font-size: 1.57rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* ===== Score Cards ===== */
+.scores-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 16px 0; }
+.score-card { padding: 20px 24px; cursor: pointer; transition: box-shadow var(--transition), border-color var(--transition); }
+.score-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.score-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.score-icon {
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+.score-label {
+  font-size: 0.93rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.score-row { display: flex; align-items: baseline; gap: 6px; }
+.score-value { font-size: 2.14rem; font-weight: 800; color: var(--accent); }
+.score-max { font-size: 1rem; color: var(--text-muted); }
+.score-percentile { font-size: 0.86rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* ===== Section Grid ===== */
+.section-mb { margin-bottom: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* ===== Usage Trends ===== */
+.trend-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.trend-header-right { display: flex; align-items: center; gap: 8px; }
+.trends-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.trend-item-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.trend-label { display: flex; align-items: center; gap: 8px; font-size: 0.93rem; font-weight: 600; }
+.trend-label svg { color: var(--text-muted); width: 16px; height: 16px; }
+.trend-avg { font-size: 1.28rem; font-weight: 800; }
+.trend-avg span { font-size: 0.79rem; font-weight: 400; color: var(--text-secondary); }
+.trend-chart { height: 180px; }
+
+/* ===== Cohort Comparison ===== */
+.cohort-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.cohort-card { padding: 20px 24px; }
+.cohort-card-title { font-size: 0.93rem; font-weight: 700; margin-bottom: 2px; }
+.cohort-avg-label { font-size: 0.79rem; color: var(--text-secondary); margin-bottom: 8px; }
+.cohort-row { display: flex; align-items: baseline; justify-content: space-between; }
+.cohort-value { font-size: 1.86rem; font-weight: 800; color: var(--accent); }
+.cohort-value span { font-size: 0.86rem; font-weight: 400; color: var(--text-secondary); }
+.cohort-pctl { font-size: 0.86rem; color: var(--text-secondary); }
+.bell-curve { height: 120px; margin: 12px 0 4px; }
+.bell-labels {
+  display: flex; justify-content: space-between;
+  font-size: 0.71rem; color: var(--text-muted);
+}
+
+/* ===== Time of Day ===== */
+.tod-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.tod-card { padding: 16px 20px; }
+.tod-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tod-icon { font-size: 1.5rem; }
+.tod-label { font-weight: 700; font-size: 0.93rem; }
+.tod-range { font-size: 0.79rem; color: var(--text-secondary); }
+.tod-pct { font-size: 2rem; font-weight: 800; color: var(--accent); margin-bottom: 8px; }
+.tod-pct span { font-size: 0.86rem; font-weight: 400; color: var(--text-secondary); }
+.tod-bar { height: 6px; background: var(--border-light); border-radius: 3px; margin-bottom: 14px; overflow: hidden; }
+.tod-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.5s ease; }
+.tod-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tod-metric-label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.71rem; color: var(--text-secondary);
+}
+.tod-metric-value { font-size: 1.14rem; font-weight: 700; }
+
+/* ===== Topic Table ===== */
+.topic-table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.search-input {
+  padding: 8px 14px 8px 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  outline: none;
+  background: var(--bg);
+  width: 220px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(58,94,140,0.1);
+}
+.search-wrap { position: relative; }
+.search-wrap svg {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 14px; color: var(--text-muted);
+}
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 10px 16px;
+  border-bottom: 2px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th:hover { color: var(--text-primary); }
+th .sort-icon { display: inline-block; margin-left: 4px; font-size: 0.71rem; }
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.93rem;
+}
+tr:hover td { background: var(--bg); }
+.retention-cell, .efficiency-cell { font-weight: 700; }
+
+/* ===== Metrics Over Time ===== */
+.mot-chart { height: 300px; }
+
+/* ===== Contribution Heatmap ===== */
+.contrib-heatmap-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+}
+.contrib-heatmap-header .card-title { margin: 0; }
+.contrib-period-selector {
+  display: flex; gap: 4px;
+}
+.contrib-period-btn {
+  padding: 4px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-secondary); font-size: 0.75rem; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+}
+.contrib-period-btn:hover { border-color: var(--accent); color: var(--accent); }
+.contrib-period-btn.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.contrib-stats {
+  display: flex; gap: 24px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.contrib-stat { font-size: 0.79rem; color: var(--text-secondary); }
+.contrib-stat strong { color: var(--text-primary); font-weight: 700; }
+.contrib-scroll { overflow-x: auto; padding-bottom: 4px; }
+.contrib-grid {
+  display: flex; gap: 3px;
+}
+.contrib-week {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.contrib-cell {
+  width: 13px; height: 13px; border-radius: 2px;
+  transition: transform 0.15s ease;
+}
+.contrib-cell:hover { transform: scale(1.4); outline: 1px solid var(--text-muted); }
+.contrib-month-labels {
+  display: flex; gap: 3px; margin-bottom: 4px; margin-left: 32px;
+}
+.contrib-month-label {
+  font-size: 0.64rem; color: var(--text-muted); white-space: nowrap;
+}
+.contrib-day-labels {
+  display: flex; flex-direction: column; gap: 3px; margin-right: 6px; padding-top: 0;
+}
+.contrib-day-label {
+  height: 13px; display: flex; align-items: center;
+  font-size: 0.64rem; color: var(--text-muted); line-height: 1;
+}
+.contrib-body { display: flex; }
+.contrib-legend {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; font-size: 0.71rem; color: var(--text-muted);
+}
+.contrib-legend-cell {
+  width: 13px; height: 13px; border-radius: 2px;
+}
+
+/* ===== Heatmap ===== */
+.heatmap-container { overflow-x: auto; }
+.heatmap-grid { display: flex; gap: 2px; }
+.heatmap-col { display: flex; flex-direction: column; gap: 2px; }
+.heatmap-cell {
+  width: 18px; height: 18px;
+  border-radius: 3px;
+  transition: transform var(--transition);
+}
+.heatmap-cell:hover { transform: scale(1.3); }
+.heatmap-labels { display: flex; gap: 2px; }
+.heatmap-label {
+  width: 18px; text-align: center;
+  font-size: 0.64rem; color: var(--text-muted);
+}
+.heatmap-day-label {
+  width: 36px; height: 18px;
+  display: flex; align-items: center;
+  font-size: 0.71rem; color: var(--text-muted);
+}
+.heatmap-row { display: flex; align-items: center; gap: 2px; }
+.heatmap-legend {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; font-size: 0.71rem; color: var(--text-muted);
+}
+.heatmap-legend-cell {
+  width: 14px; height: 14px; border-radius: 2px;
+}
+
+/* ===== Session Analysis ===== */
+.session-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.session-stat { text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+.session-stat-value { font-size: 1.43rem; font-weight: 800; color: var(--accent); }
+.session-stat-label { font-size: 0.71rem; color: var(--text-secondary); margin-top: 2px; }
+.session-chart { height: 200px; }
+
+/* ===== Retention by Interval ===== */
+.rbi-chart { height: 220px; }
+
+/* ===== Lapse Analysis ===== */
+.lapse-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.lapse-stat { text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+.lapse-stat-value { font-size: 1.43rem; font-weight: 800; color: var(--red); }
+.lapse-stat-label { font-size: 0.71rem; color: var(--text-secondary); }
+.lapse-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lapse-bar-label { width: 220px; font-size: 0.79rem; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lapse-bar-track { flex: 1; height: 8px; background: var(--border-light); border-radius: 4px; overflow: hidden; }
+.lapse-bar-fill { height: 100%; background: var(--red); border-radius: 4px; transition: width 0.5s ease; }
+.lapse-bar-pct { width: 40px; font-size: 0.79rem; color: var(--text-secondary); text-align: right; }
+
+/* ===== Mature Cards ===== */
+.mature-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.mature-stat { text-align: center; padding: 14px; background: var(--bg); border-radius: var(--radius-sm); }
+.mature-stat-value { font-size: 1.43rem; font-weight: 800; color: var(--green); }
+.mature-stat-label { font-size: 0.71rem; color: var(--text-secondary); margin-top: 2px; }
+
+/* ===== Learning Velocity ===== */
+.velocity-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.velocity-stat { text-align: center; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+.velocity-stat-value { font-size: 1.43rem; font-weight: 800; color: var(--blue); }
+.velocity-stat-label { font-size: 0.71rem; color: var(--text-secondary); }
+.velocity-chart { height: 180px; }
+
+/* ===== Export Button ===== */
+.btn-export {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.86rem; font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-export:hover {
+  background: var(--bg);
+  border-color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
+}
+.btn-export svg { width: 14px; height: 14px; }
+
+/* ===== Nav Tabs (for topic table) ===== */
+.tab-group { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.tab {
+  padding: 10px 20px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all var(--transition);
+}
+.tab:hover { color: var(--text-secondary); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ===== Tooltip ===== */
+.tooltip-container { position: relative; }
+.tooltip-text {
+  visibility: hidden;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-primary);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.71rem;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.tooltip-container:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* ===== Heatmap Tooltip ===== */
+.contrib-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  background: var(--text-primary);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.79rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.contrib-tooltip.visible { opacity: 1; }
+.contrib-tooltip-date { font-weight: 700; }
+.contrib-tooltip-count { color: rgba(255,255,255,0.85); }
+
+/* ===== Footer ===== */
+.footer {
+  text-align: center;
+  padding: 24px 0 0;
+  font-size: 0.79rem;
+  color: var(--text-muted);
+}
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+
+/* ===== Animations ===== */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in {
+  animation: fadeInUp 0.4s ease both;
+}
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.1s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.2s; }
+.delay-5 { animation-delay: 0.25s; }
+.delay-6 { animation-delay: 0.3s; }
+.delay-7 { animation-delay: 0.35s; }
+.delay-8 { animation-delay: 0.4s; }
+.delay-9 { animation-delay: 0.45s; }
+.delay-10 { animation-delay: 0.5s; }
+
+/* Color coding for retention/efficiency */
+.color-low { color: var(--red); }
+.color-mid { color: var(--gold); }
+.color-high { color: var(--green); }
+
+/* ===== DARK MODE ===== */
+[data-theme="dark"] {
+  --bg: #1A1614;
+  --surface: #252220;
+  --border: #3A3632;
+  --border-light: #302C28;
+  --text-primary: #F0EBE4;
+  --text-secondary: #A99E92;
+  --text-muted: #7A7068;
+  --accent: #7AABE0;
+  --accent-light: #9DC2EC;
+  --accent-bg: #1C2430;
+  --accent-hover: #A8CFF0;
+  --green: #7BC88E;
+  --green-bg: #1E2A20;
+  --gold: #D4B85C;
+  --gold-bg: #2A2618;
+  --blue: #7AABE0;
+  --blue-bg: #1C2430;
+  --red: #E07070;
+  --red-bg: #2E1C1C;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #4A4440; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #6A6460; }
+
+/* ===== Time Period Selector (Shopify-style) ===== */
+.time-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+}
+.time-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.time-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface);
+}
+.time-btn.active {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+[data-theme="dark"] .time-btn.active {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.time-selector-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.time-custom-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+}
+.time-custom-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface);
+}
+.time-custom-btn svg { width: 14px; height: 14px; }
+
+/* ===== Theme Toggle ===== */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.theme-toggle:hover { border-color: var(--text-muted); }
+.theme-toggle-track {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--border);
+  position: relative;
+  transition: background var(--transition);
+}
+[data-theme="dark"] .theme-toggle-track {
+  background: var(--accent);
+}
+.theme-toggle-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+[data-theme="dark"] .theme-toggle-thumb {
+  transform: translateX(16px);
+}
+.theme-toggle-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+/* ===== Header Controls Row ===== */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ===== Help Button ===== */
+.help-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.help-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* ===== Modal Overlay (shared by Help & Date Picker) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.visible {
+  display: flex;
+}
+
+/* ===== Help Modal ===== */
+.help-modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.help-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.help-modal-header h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.help-close-btn {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.help-close-btn:hover {
+  background: var(--bg);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.help-modal-body {
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+.help-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+.help-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.help-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.help-section-title .help-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.help-detail {
+  margin-bottom: 4px;
+  line-height: 1.5;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.help-detail strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ===== Date Picker Modal ===== */
+.datepicker-modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 22px;
+  width: min(360px, 90vw);
+  box-shadow: var(--shadow-lg);
+}
+.datepicker-modal h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 14px;
+}
+.datepicker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.datepicker-row label {
+  width: 45px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.datepicker-row input[type="date"] {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.datepicker-row input[type="date"]:focus {
+  border-color: var(--accent);
+}
+.datepicker-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  justify-content: flex-end;
+}
+.datepicker-actions button {
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.datepicker-cancel {
+  background: var(--bg);
+  color: var(--text-secondary);
+}
+.datepicker-cancel:hover { background: var(--border); }
+.datepicker-apply {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.datepicker-apply:hover { opacity: 0.9; }
+</style>
+</head>
+<body>
+<script>
+/*__STUDYLYTICS_DATA__*/
+</script>
+
+<div class="dashboard" id="app">
+  <!-- ===== HEADER ===== -->
+  <div class="header animate-in">
+    <div class="header-left">
+      <div class="header-brand">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#3A5E8C"/><path d="M8 22V10l8 6-8 6z" fill="white" opacity="0.9"/><path d="M16 22V10l8 6-8 6z" fill="white" opacity="0.5"/></svg>
+        <div>
+          <h1 style="font-size:1.57rem;font-weight:800;">Studylytics</h1>
+          <p style="font-size:0.79rem;color:var(--text-secondary);">Your Personal Analytics Dashboard</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-controls">
+      <!-- Time Period Selector -->
+      <div class="time-selector" id="timePeriodSelector">
+        <button class="time-btn" data-period="today" onclick="setTimePeriod('today')">Today</button>
+        <button class="time-btn" data-period="7d" onclick="setTimePeriod('7d')">7D</button>
+        <button class="time-btn active" data-period="30d" onclick="setTimePeriod('30d')">30D</button>
+        <button class="time-btn" data-period="90d" onclick="setTimePeriod('90d')">90D</button>
+        <button class="time-btn" data-period="12m" onclick="setTimePeriod('12m')">12M</button>
+        <div class="time-selector-divider"></div>
+        <button class="time-custom-btn" onclick="setTimePeriod('custom')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Custom
+        </button>
+      </div>
+      <!-- Help Button -->
+      <button class="help-btn" onclick="openHelp()" title="What do these metrics mean?">?</button>
+      <!-- Theme Toggle -->
+      <div class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">
+        <svg class="theme-toggle-icon" id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <div class="theme-toggle-track">
+          <div class="theme-toggle-thumb"></div>
+        </div>
+      </div>
+      <!-- Status Badge -->
+      <div class="badge" id="statusBadge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span id="statusText"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTRIBUTION HEATMAP ===== -->
+  <div class="card section-mb animate-in delay-1">
+    <div class="contrib-heatmap-header">
+      <div>
+        <div class="card-title">Study Activity</div>
+        <div class="card-subtitle" id="contribSubtitle">Review activity over the past year</div>
+      </div>
+      <div class="contrib-period-selector">
+        <button class="contrib-period-btn" data-contrib="3m" onclick="setContribPeriod('3m')">3M</button>
+        <button class="contrib-period-btn" data-contrib="6m" onclick="setContribPeriod('6m')">6M</button>
+        <button class="contrib-period-btn active" data-contrib="12m" onclick="setContribPeriod('12m')">1Y</button>
+        <button class="contrib-period-btn" data-contrib="all" onclick="setContribPeriod('all')">All</button>
+      </div>
+    </div>
+    <div class="contrib-stats" id="contribStats"></div>
+    <div class="contrib-scroll" id="contribContainer"></div>
+  </div>
+
+  <!-- ===== ACTIVITY SUMMARY ===== -->
+  <div class="card section-mb animate-in delay-2">
+    <div class="card-title" id="activityTitle">Activity Summary</div>
+    <div class="activity-grid" id="activityGrid"></div>
+  </div>
+
+  <!-- ===== SCORE CARDS ===== -->
+  <div class="scores-grid animate-in delay-2" id="scoresGrid"></div>
+
+  <!-- ===== KEY METRICS OVER TIME ===== -->
+  <div class="card section-mb animate-in delay-3" id="metricsSection">
+    <div class="trend-header">
+      <div>
+        <div class="card-title">Key Metrics Over Time</div>
+        <div class="card-subtitle">Weekly trends for retention, consistency, and efficiency</div>
+      </div>
+      <button class="btn-export" onclick="exportData('metrics')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+    <div class="mot-chart"><canvas id="chartMetrics"></canvas></div>
+  </div>
+
+  <!-- ===== PERFORMANCE BY TIME OF DAY ===== -->
+  <div class="card section-mb animate-in delay-4">
+    <div class="card-title">Performance by Time of Day</div>
+    <div class="card-subtitle">Retention & efficiency across study time blocks</div>
+    <div class="tod-grid" id="todGrid" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- ===== USAGE TRENDS ===== -->
+  <div class="card section-mb animate-in delay-5">
+    <div class="trend-header">
+      <div>
+        <div class="card-title">Usage Trends</div>
+        <div class="card-subtitle" id="trendSubtitle">Weekly averages over time (active days only)</div>
+      </div>
+      <button class="btn-export" onclick="exportData('trends')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+    <div class="trends-row">
+      <div>
+        <div class="trend-item-header">
+          <div class="trend-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Duration
+          </div>
+          <div class="trend-avg" id="trendDurationAvg"></div>
+        </div>
+        <div class="trend-chart"><canvas id="chartDuration"></canvas></div>
+      </div>
+      <div>
+        <div class="trend-item-header">
+          <div class="trend-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg>
+            Cards Reviewed
+          </div>
+          <div class="trend-avg" id="trendCardsAvg"></div>
+        </div>
+        <div class="trend-chart"><canvas id="chartCards"></canvas></div>
+      </div>
+      <div>
+        <div class="trend-item-header">
+          <div class="trend-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Seconds per Card
+          </div>
+          <div class="trend-avg" id="trendSecAvg"></div>
+        </div>
+        <div class="trend-chart"><canvas id="chartSec"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CARD PERFORMANCE BY TOPIC ===== -->
+  <div class="card section-mb animate-in delay-6">
+    <div class="topic-table-header">
+      <div>
+        <div class="card-title">Card Performance by Topic</div>
+        <div class="card-subtitle" id="topicSubtitle"></div>
+      </div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="topicSearch" placeholder="Search subtopics..." oninput="filterTopics()">
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortTopics('name')">Subtopic <span class="sort-icon" id="sortName">&#8597;</span></th>
+          <th onclick="sortTopics('retention')" style="text-align:center;">Retention <span class="sort-icon" id="sortRetention">&#8593;</span></th>
+          <th onclick="sortTopics('efficiency')" style="text-align:center;">Efficiency <span class="sort-icon" id="sortEfficiency">&#8597;</span></th>
+        </tr>
+      </thead>
+      <tbody id="topicTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ===== CARD PERFORMANCE BY TAG ===== -->
+  <div class="card section-mb animate-in delay-7">
+    <div class="topic-table-header">
+      <div>
+        <div class="card-title">Card Performance by Tag</div>
+        <div class="card-subtitle" id="tagSubtitle"></div>
+      </div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="tagSearch" placeholder="Search tags..." oninput="filterTags()">
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Tag</th>
+          <th style="text-align:center;">Reviews</th>
+          <th style="text-align:center;">Retention</th>
+          <th style="text-align:center;">Efficiency</th>
+        </tr>
+      </thead>
+      <tbody id="tagTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ===== SESSION ANALYSIS + RETENTION BY INTERVAL ===== -->
+  <div class="grid-2 section-mb animate-in delay-7">
+    <div class="card">
+      <div class="card-title">Session Analysis</div>
+      <div class="card-subtitle">Session length distribution and averages</div>
+      <div class="session-stats" id="sessionStats"></div>
+      <div class="session-chart"><canvas id="chartSession"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Retention by Interval</div>
+      <div class="card-subtitle">How retention changes as intervals grow</div>
+      <div class="rbi-chart" style="margin-top:12px;"><canvas id="chartRetInterval"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===== HOW YOU COMPARE (peer comparison) ===== -->
+  <div class="card section-mb animate-in delay-8">
+    <div class="trend-header">
+      <div>
+        <div class="card-title">How You Compare</div>
+        <div class="card-subtitle" id="cohortSubtitle"></div>
+      </div>
+      <button class="btn-export" onclick="exportData('cohort')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+    <!-- Top row: 3 score bell curves -->
+    <div class="cohort-grid section-mb" id="cohortScoresGrid"></div>
+    <!-- Bottom row: 3 usage bell curves -->
+    <div class="cohort-grid" id="cohortUsageGrid"></div>
+  </div>
+
+  <!-- ===== WEEKLY HEATMAP ===== -->
+  <div class="card section-mb animate-in delay-9">
+    <div class="card-title">Weekly Study Heatmap</div>
+    <div class="card-subtitle">Reviews by day of week and hour</div>
+    <div class="heatmap-container" id="heatmapContainer" style="margin-top:16px;"></div>
+  </div>
+
+  <div class="footer">
+    Powered by <a href="#">Studylytics</a> from <a href="#">StudyRemote</a>
+  </div>
+</div>
+
+<!-- Floating tooltip for heatmap -->
+<div class="contrib-tooltip" id="contribTooltip"></div>
+
+<!-- ===== HELP MODAL ===== -->
+<div class="modal-overlay" id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-modal">
+    <div class="help-modal-header">
+      <h2>Understanding Your Metrics</h2>
+      <button class="help-close-btn" onclick="closeHelp()">&times;</button>
+    </div>
+    <div class="help-modal-body">
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🎯</span> Retention Score</div>
+        <p class="help-detail"><strong>What it measures:</strong> The percentage of mature card reviews (cards with an interval of 21+ days) that you answered correctly (ease 2 or higher).</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Correct mature reviews divided by total mature reviews, expressed as a percentage.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> This is the gold standard for measuring long-term memory effectiveness. A high retention rate means your spaced repetition is working and you're truly retaining material over time.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">📅</span> Consistency Score</div>
+        <p class="help-detail"><strong>What it measures:</strong> The percentage of days you studied during the selected time period, along with streak information.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Number of days with at least one review divided by the total number of days in the period.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Regular study is one of the strongest predictors of success with spaced repetition. Even short daily sessions outperform infrequent cramming.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">⚡</span> Efficiency Score</div>
+        <p class="help-detail"><strong>What it measures:</strong> How effectively you're studying, combining both accuracy and speed into a single score.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> A weighted blend of accuracy (60% weight) and a speed factor (40% weight). The speed factor is calculated as min(15 seconds / your average answer time, 1.0), meaning you get full speed credit at 15 seconds or less per card.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Efficiency captures study quality per unit of time. High accuracy with reasonable speed means you're reviewing material confidently without overthinking.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">📊</span> Activity Summary</div>
+        <p class="help-detail"><strong>What it measures:</strong> Days active, current streak, longest streak, and average streak length.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Streaks are counted by finding consecutive days with at least one review across your entire history.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Tracking streaks and active days helps you build and maintain consistent study habits. Your current streak is a powerful motivator.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">📈</span> Key Metrics Over Time</div>
+        <p class="help-detail"><strong>What it measures:</strong> Weekly trends of your retention, consistency, and efficiency scores plotted on a timeline.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Each data point represents a week's aggregated performance for each metric.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Shows your improvement trajectory over time. Upward trends confirm your study strategy is working; downward trends signal it's time to adjust.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">📉</span> Usage Trends</div>
+        <p class="help-detail"><strong>What it measures:</strong> Daily study duration, number of cards reviewed, and seconds spent per card over time.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Each data point is derived from your review log, aggregated by day. The average line shows your typical daily performance.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Helps you understand your study volume patterns and identify whether you're spending the right amount of time on reviews.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🕐</span> Performance by Time of Day</div>
+        <p class="help-detail"><strong>What it measures:</strong> Your review count, retention rate, and efficiency broken down into four time blocks: Morning (6 AM-12 PM), Afternoon (12-6 PM), Evening (6 PM-12 AM), and Night (12-6 AM).</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Reviews are bucketed by the hour they occurred, then retention and efficiency are computed per bucket.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Identifies your optimal study times. You may find you retain material better in the morning or are more efficient in the evening.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">📚</span> Topic Performance</div>
+        <p class="help-detail"><strong>What it measures:</strong> Retention rate and efficiency for each of your Anki decks (topics).</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Reviews are grouped by their card's deck. Retention = correct / total. Efficiency uses the same weighted formula as the main score.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Pinpoints which subjects you're mastering and which need extra attention, so you can focus your study time where it matters most.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🏷️</span> Tag Performance</div>
+        <p class="help-detail"><strong>What it measures:</strong> Retention rate and efficiency for each of your Anki tags, with review count.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Reviews are grouped by the tags on their parent note. Cards with multiple tags count toward each tag. The table shows the leaf tag name, but you can search by the full tag path (e.g., "Biology::Cells").</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Tags often represent finer-grained topics than decks. If your cards are tagged by subject or concept, this table reveals exactly which areas need more work.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">⏱️</span> Session Analysis</div>
+        <p class="help-detail"><strong>What it measures:</strong> Average and median session length, sessions per day, optimal session length, and a distribution of session durations.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Sessions are detected by grouping reviews with gaps of less than 30 minutes between them. The optimal session length is the duration range with the highest retention rate.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Helps you plan your study schedule. Knowing your typical session length and how many sessions you do per day guides better time management.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🗓️</span> Weekly Heatmap</div>
+        <p class="help-detail"><strong>What it measures:</strong> A 7-day by 24-hour grid showing when you study, with intensity based on review count.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Each cell counts the number of reviews that occurred during that day-of-week and hour combination.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Gives a clear visual picture of your actual study schedule, helping you identify patterns and gaps in your routine.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🔄</span> Retention by Interval</div>
+        <p class="help-detail"><strong>What it measures:</strong> Your pass rate for cards at different interval lengths (1 day, 3 days, 7 days, up to 365 days).</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Reviews of mature cards are bucketed by their previous interval, then the pass rate is calculated per bucket.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Shows how well your memory holds at different spacings. A steep drop-off at longer intervals may suggest your cards need better formulation.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">👥</span> Cohort Comparison</div>
+        <p class="help-detail"><strong>What it measures:</strong> How your average study duration, cards per day, and seconds per card compare to other learners.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Currently uses your own values as placeholders. Future versions will include real peer comparison data.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Provides context for your study habits. Understanding how you compare to peers helps set realistic goals.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">💔</span> Lapse Analysis</div>
+        <p class="help-detail"><strong>What it measures:</strong> Total lapses (forgotten cards), lapse rate, and which topics/decks have the most lapses.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> A lapse is counted when you press "Again" (ease=1) on a review card (type=1). Lapse rate = total lapses / total reviews.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Identifies your weakest areas. High-lapse topics may need better mnemonics, more context, or restructured cards.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🏆</span> Mature Card Stats</div>
+        <p class="help-detail"><strong>What it measures:</strong> Statistics for your well-learned cards (interval of 21+ days): total count, retention rate, average interval, and longest interval.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> Queries cards where type=2 (review queue) and interval is 21+ days. Retention is from the mature review pass rate.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Mature cards represent your long-term knowledge base. A growing count with high retention means your learning system is effective.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title"><span class="help-icon">🚀</span> Learning Velocity</div>
+        <p class="help-detail"><strong>What it measures:</strong> How quickly you're absorbing new material: new cards per day, graduation rate, and average time to graduate a card.</p>
+        <p class="help-detail"><strong>How it's calculated:</strong> New card introductions per day from your review log. Graduation rate = cards that reached review queue / total new cards introduced. Time to graduate is estimated from average learning steps.</p>
+        <p class="help-detail"><strong>Why it matters:</strong> Tracks your pace of learning new material. Balancing new card intake with review load is key to sustainable long-term study.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== DATE PICKER MODAL ===== -->
+<div class="modal-overlay" id="datepickerOverlay" onclick="if(event.target===this)closeDatePicker()">
+  <div class="datepicker-modal">
+    <h3>Custom Date Range</h3>
+    <div class="datepicker-row">
+      <label>From</label>
+      <input type="date" id="dpFrom">
+    </div>
+    <div class="datepicker-row">
+      <label>To</label>
+      <input type="date" id="dpTo">
+    </div>
+    <div class="datepicker-actions">
+      <button class="datepicker-cancel" onclick="closeDatePicker()">Cancel</button>
+      <button class="datepicker-apply" onclick="applyCustomRange()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+const BASE_DATA = window.__STUDYLYTICS__ || {};
+let D = JSON.parse(JSON.stringify(BASE_DATA));
+
+// ===== PERIOD LABELS =====
+
+/* generatePeriodData removed — data now comes from Python via pycmd */
+
+// ===== CHART DEFAULTS =====
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#9B8E80';
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.plugins.tooltip.backgroundColor = '#2D2118';
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.titleFont = { size: 12, weight: '600' };
+Chart.defaults.plugins.tooltip.bodyFont = { size: 11 };
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 5;
+Chart.defaults.elements.line.tension = 0.35;
+Chart.defaults.elements.line.borderWidth = 2.5;
+Chart.defaults.scale.grid.color = 'rgba(232,226,218,0.6)';
+Chart.defaults.scale.grid.drawBorder = false;
+Chart.defaults.scale.ticks.padding = 8;
+
+const ACCENT = '#3A5E8C';
+const ACCENT_LIGHT = '#5A7EA8';
+const GREEN = '#4A7C59';
+const GOLD = '#9B7B2C';
+const BLUE = '#3A5A8C';
+const RED = '#C44B4B';
+
+// ===== RENDER HEADER =====
+function renderHeader() {
+  const s = D.student;
+  document.getElementById('statusText').textContent = s.status;
+}
+
+// ===== RENDER ACTIVITY =====
+function renderActivity() {
+  const a = D.activity;
+  const s = D.student;
+  const items = [
+    { label: 'Days Active', value: a.daysActive },
+    { label: 'Longest Streak', value: `${a.longestStreak} days` },
+    { label: 'Avg Streak', value: `${a.avgStreak} days` },
+    { label: 'Last Used', value: s.lastUsed },
+    { label: 'Account Status', value: s.status },
+  ];
+  const grid = document.getElementById('activityGrid');
+  grid.innerHTML = items.map(i => `
+    <div class="activity-item">
+      <div class="activity-label">${i.label}</div>
+      <div class="activity-value">${i.value}</div>
+    </div>
+  `).join('');
+}
+
+// ===== RENDER SCORES =====
+function renderScores() {
+  const sc = D.scores;
+  const icons = {
+    retention: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>',
+    consistency: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    efficiency: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  };
+  const tooltips = {
+    retention: 'Percentage of cards answered correctly on mature reviews',
+    consistency: 'How regularly you study (streak and frequency based)',
+    efficiency: 'How quickly and accurately you complete reviews',
+  };
+  const grid = document.getElementById('scoresGrid');
+  grid.innerHTML = Object.entries(sc).map(([key, v]) => `
+    <div class="card score-card" onclick="scrollToMetrics()">
+      <div class="score-header tooltip-container">
+        <div class="score-icon">${icons[key]}</div>
+        <div class="score-label">${key.charAt(0).toUpperCase() + key.slice(1)}</div>
+        <span class="tooltip-text">${tooltips[key]}</span>
+      </div>
+      <div class="score-row">
+        <span class="score-value">${v.value}</span>
+        <span class="score-max">/100</span>
+      </div>
+      <div class="score-percentile">${v.percentile}th percentile</div>
+    </div>
+  `).join('');
+}
+
+// ===== RENDER USAGE TRENDS =====
+function renderUsageTrends() {
+  const t = D.usageTrends;
+  document.getElementById('trendDurationAvg').innerHTML = `${t.duration.avg} <span>min/day</span>`;
+  document.getElementById('trendCardsAvg').innerHTML = `${t.cardsReviewed.avg} <span>cards/day</span>`;
+  document.getElementById('trendSecAvg').innerHTML = `${t.secondsPerCard.avg} <span>sec</span>`;
+
+  function trendChart(id, data, color, unit) {
+    const ctx = document.getElementById(id).getContext('2d');
+    const avg = data.length ? data.reduce((a,b) => a+b, 0) / data.length : 0;
+    return new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: t.labels,
+        datasets: [
+          {
+            data: data,
+            borderColor: color,
+            backgroundColor: color + '15',
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: color,
+          },
+          {
+            data: Array(data.length).fill(avg),
+            borderColor: color + '40',
+            borderDash: [4, 4],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { display: true, grid: { display: false }, ticks: { maxTicksLimit: 7, font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 5, font: { size: 10 } } },
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.datasetIndex === 0 ? `${ctx.parsed.y} ${unit}` : `Avg: ${avg.toFixed(1)} ${unit}`,
+            },
+          },
+        },
+      },
+    });
+  }
+
+  trendChart('chartDuration', t.duration.data, ACCENT, 'min');
+  trendChart('chartCards', t.cardsReviewed.data, GOLD, 'cards');
+  trendChart('chartSec', t.secondsPerCard.data, BLUE, 'sec');
+}
+
+// ===== BELL CURVE HELPER =====
+function drawBellCurve(canvasId, dist, studentVal, accentColor) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+
+  const mean = dist.avg;
+  const range = dist.max - dist.min;
+  const stdDev = range / 6;
+
+  const points = 80;
+  const labels = [];
+  const data = [];
+  for (let i = 0; i <= points; i++) {
+    const x = dist.min + (range * i / points);
+    labels.push(x.toFixed(1));
+    const z = (x - mean) / stdDev;
+    data.push(Math.exp(-0.5 * z * z));
+  }
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        borderColor: accentColor + '80',
+        backgroundColor: accentColor + '12',
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: { display: false },
+      },
+      plugins: {
+        tooltip: { enabled: false },
+        annotation: false,
+      },
+      animation: { duration: 800 },
+    },
+    plugins: [{
+      afterDraw(chart) {
+        const { ctx: c, chartArea } = chart;
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+
+        // Draw student line
+        const sIdx = Math.round((studentVal - dist.min) / range * points);
+        if (sIdx >= 0 && sIdx <= points) {
+          const sx = xScale.getPixelForValue(sIdx);
+          c.save();
+          c.strokeStyle = accentColor;
+          c.lineWidth = 2.5;
+          c.beginPath();
+          c.moveTo(sx, chartArea.top);
+          c.lineTo(sx, chartArea.bottom);
+          c.stroke();
+          // Dot
+          const sy = yScale.getPixelForValue(data[sIdx] || 0);
+          c.fillStyle = accentColor;
+          c.beginPath();
+          c.arc(sx, sy, 5, 0, Math.PI * 2);
+          c.fill();
+          c.restore();
+        }
+
+        // Draw avg line (dashed)
+        const aIdx = Math.round((mean - dist.min) / range * points);
+        if (aIdx >= 0 && aIdx <= points) {
+          const ax = xScale.getPixelForValue(aIdx);
+          c.save();
+          c.strokeStyle = currentTheme === 'dark' ? '#7A7068' : '#9B8E80';
+          c.lineWidth = 1.5;
+          c.setLineDash([4, 4]);
+          c.beginPath();
+          c.moveTo(ax, chartArea.top);
+          c.lineTo(ax, chartArea.bottom);
+          c.stroke();
+          c.restore();
+        }
+      },
+    }],
+  });
+}
+
+// ===== RENDER COHORT COMPARISON =====
+function renderCohort() {
+  const sc = D.scores;
+  const co = D.cohort;
+  document.getElementById('cohortSubtitle').textContent = `Your position compared to students like you`;
+
+  // Score bell curves
+  const scoreItems = [
+    { key: 'retention', label: 'Retention', data: sc.retention },
+    { key: 'consistency', label: 'Consistency', data: sc.consistency },
+    { key: 'efficiency', label: 'Efficiency', data: sc.efficiency },
+  ];
+
+  const scoresGrid = document.getElementById('cohortScoresGrid');
+  scoresGrid.innerHTML = scoreItems.map((item, i) => `
+    <div class="card cohort-card">
+      <div class="cohort-card-title" style="text-decoration:underline;text-underline-offset:3px;">${item.label}</div>
+      <div class="cohort-avg-label">Peer avg: ${item.data.cohortAvg} /100</div>
+      <div class="cohort-row">
+        <div class="cohort-value">${item.data.value} <span>/100</span></div>
+        <div class="cohort-pctl">${item.data.percentile}th pctl</div>
+      </div>
+      <div class="bell-curve"><canvas id="bellScore${i}"></canvas></div>
+      <div class="bell-labels">
+        <span>${item.data.distribution.min}</span>
+        <span>\u2190 Lower &nbsp;&nbsp; \u2014 Student &nbsp;&nbsp; \u2014 Avg &nbsp;&nbsp; Higher \u2192</span>
+        <span>${item.data.distribution.max}</span>
+      </div>
+    </div>
+  `).join('');
+
+  scoreItems.forEach((item, i) => {
+    drawBellCurve(`bellScore${i}`, item.data.distribution, item.data.value, ACCENT);
+  });
+
+  // Usage bell curves
+  const usageItems = [
+    { label: 'Avg Duration', unit: 'min/day', data: co.avgDuration },
+    { label: 'Avg Cards', unit: 'cards/day', data: co.avgCards },
+    { label: 'Sec/Card', unit: 'sec', data: co.secPerCard },
+  ];
+
+  const usageGrid = document.getElementById('cohortUsageGrid');
+  usageGrid.innerHTML = usageItems.map((item, i) => `
+    <div class="card cohort-card">
+      <div class="cohort-card-title">${item.label}</div>
+      <div class="cohort-avg-label">Peer avg: ${item.data.cohortAvg} ${item.unit}</div>
+      <div class="cohort-row">
+        <div class="cohort-value">${item.data.value} <span>${item.unit}</span></div>
+        <div class="cohort-pctl">${item.data.percentile}th pctl</div>
+      </div>
+      <div class="bell-curve"><canvas id="bellUsage${i}"></canvas></div>
+      <div class="bell-labels">
+        <span>${item.data.min}</span>
+        <span>\u2190 Lower &nbsp;&nbsp; \u2014 Student &nbsp;&nbsp; \u2014 Avg &nbsp;&nbsp; Higher \u2192</span>
+        <span>${item.data.max}</span>
+      </div>
+    </div>
+  `).join('');
+
+  usageItems.forEach((item, i) => {
+    drawBellCurve(`bellUsage${i}`, { min: item.data.min, avg: item.data.avg, max: item.data.max }, item.data.value, ACCENT);
+  });
+}
+
+// ===== RENDER TIME OF DAY =====
+function renderTimeOfDay() {
+  const icons = { morning: '\uD83C\uDF05', afternoon: '\u2600\uFE0F', evening: '\uD83C\uDF06', night: '\uD83C\uDF19' };
+  const grid = document.getElementById('todGrid');
+  grid.innerHTML = D.timeOfDay.map(t => `
+    <div class="card tod-card">
+      <div class="tod-header">
+        <div class="tod-icon">${icons[t.icon]}</div>
+        <div>
+          <div class="tod-label">${t.period}</div>
+          <div class="tod-range">${t.range}</div>
+        </div>
+      </div>
+      <div class="tod-pct">${t.pct}% <span>of sessions</span></div>
+      <div class="tod-bar"><div class="tod-bar-fill" style="width:${t.pct / 0.4}%"></div></div>
+      <div class="tod-metrics">
+        <div>
+          <div class="tod-metric-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+            Retention
+          </div>
+          <div class="tod-metric-value">${t.retention}</div>
+        </div>
+        <div>
+          <div class="tod-metric-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Efficiency
+          </div>
+          <div class="tod-metric-value">${t.efficiency}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===== RENDER CONTRIBUTION HEATMAP =====
+let currentContribPeriod = '12m';
+const contribPeriodLabels = {
+  '3m': 'Last 3 months', '6m': 'Last 6 months',
+  '12m': 'Last 12 months', 'all': 'All time',
+};
+
+function setContribPeriod(period) {
+  currentContribPeriod = period;
+  document.querySelectorAll('.contrib-period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.contrib === period);
+  });
+  document.getElementById('contribSubtitle').textContent =
+    'Review activity \u00B7 ' + (contribPeriodLabels[period] || period);
+  pycmd('studylytics:getContrib:' + period);
+}
+
+function renderContributionHeatmap() {
+  const ch = D.contributionHeatmap;
+  if (!ch || !ch.days || ch.days.length === 0) {
+    document.getElementById('contribContainer').innerHTML =
+      '<div style="text-align:center;color:var(--text-muted);padding:40px 0;">No review data available</div>';
+    document.getElementById('contribStats').innerHTML = '';
+    return;
+  }
+
+  const isDark = currentTheme === 'dark';
+
+  // Stats
+  const statsEl = document.getElementById('contribStats');
+  const avgPerDay = ch.activeDays > 0 ? Math.round(ch.totalReviews / ch.activeDays) : 0;
+  statsEl.innerHTML =
+    `<div class="contrib-stat"><strong>${ch.totalReviews.toLocaleString()}</strong> reviews</div>` +
+    `<div class="contrib-stat"><strong>${ch.activeDays}</strong> active days</div>` +
+    `<div class="contrib-stat"><strong>${ch.totalDays > 0 ? Math.round(ch.activeDays / ch.totalDays * 100) : 0}%</strong> days active</div>` +
+    `<div class="contrib-stat"><strong>${avgPerDay}</strong> avg reviews/active day</div>`;
+
+  // Build weeks (columns) from days array
+  // Each week is a column of up to 7 cells (Mon=0 .. Sun=6)
+  const maxCount = Math.max(...ch.days.map(d => d.count), 1);
+
+  function contribColor(count) {
+    if (count === 0) return isDark ? '#302C28' : '#EBEDF0';
+    const pct = count / maxCount;
+    if (isDark) {
+      if (pct < 0.25) return '#1C2E44';
+      if (pct < 0.5) return '#2E4A6E';
+      if (pct < 0.75) return '#5580B0';
+      return '#7AABE0';
+    }
+    if (pct < 0.25) return '#D5DEE8';
+    if (pct < 0.5) return '#9AB5D4';
+    if (pct < 0.75) return '#6888AC';
+    return '#3A5E8C';
+  }
+
+  // Group days into weeks
+  const weeks = [];
+  let currentWeek = [];
+
+  // Pad first week with empty cells if it doesn't start on Monday
+  if (ch.days.length > 0) {
+    const firstDow = ch.days[0].dow; // 0=Mon, 6=Sun
+    for (let i = 0; i < firstDow; i++) {
+      currentWeek.push(null);
+    }
+  }
+
+  for (const day of ch.days) {
+    currentWeek.push(day);
+    if (day.dow === 6) { // Sunday = end of week
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  }
+  if (currentWeek.length > 0) {
+    weeks.push(currentWeek);
+  }
+
+  // Month labels
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let monthLabelsHtml = '';
+  let lastMonth = -1;
+  const cellWidth = 16; // 13px cell + 3px gap
+  let monthPositions = [];
+
+  for (let w = 0; w < weeks.length; w++) {
+    for (const day of weeks[w]) {
+      if (day && day.date) {
+        const m = parseInt(day.date.split('-')[1], 10) - 1;
+        if (m !== lastMonth) {
+          monthPositions.push({ month: monthNames[m], weekIdx: w });
+          lastMonth = m;
+        }
+        break;
+      }
+    }
+  }
+
+  monthLabelsHtml = '<div class="contrib-month-labels" style="position:relative;height:16px;">';
+  for (const mp of monthPositions) {
+    monthLabelsHtml += `<span class="contrib-month-label" style="position:absolute;left:${mp.weekIdx * cellWidth}px;">${mp.month}</span>`;
+  }
+  monthLabelsHtml += '</div>';
+
+  // Day labels (Mon, Wed, Fri)
+  const dayLabels = ['Mon', '', 'Wed', '', 'Fri', '', ''];
+  let dayLabelsHtml = '<div class="contrib-day-labels">';
+  for (const label of dayLabels) {
+    dayLabelsHtml += `<div class="contrib-day-label">${label}</div>`;
+  }
+  dayLabelsHtml += '</div>';
+
+  // Grid
+  let gridHtml = '<div class="contrib-grid">';
+  for (const week of weeks) {
+    gridHtml += '<div class="contrib-week">';
+    for (let d = 0; d < 7; d++) {
+      const day = week[d] || null;
+      if (day === null) {
+        gridHtml += '<div class="contrib-cell" style="background:transparent;"></div>';
+      } else {
+        const color = contribColor(day.count);
+        gridHtml += `<div class="contrib-cell" style="background:${color};" data-date="${day.date}" data-count="${day.count}"></div>`;
+      }
+    }
+    gridHtml += '</div>';
+  }
+  gridHtml += '</div>';
+
+  // Legend
+  const legendColors = isDark
+    ? ['#302C28', '#1C2E44', '#2E4A6E', '#5580B0', '#7AABE0']
+    : ['#EBEDF0', '#D5DEE8', '#9AB5D4', '#6888AC', '#3A5E8C'];
+  let legendHtml = '<div class="contrib-legend"><span>Less</span>';
+  for (const c of legendColors) {
+    legendHtml += `<div class="contrib-legend-cell" style="background:${c};"></div>`;
+  }
+  legendHtml += '<span>More</span></div>';
+
+  const container = document.getElementById('contribContainer');
+  container.innerHTML = monthLabelsHtml +
+    '<div class="contrib-body">' + dayLabelsHtml + gridHtml + '</div>' +
+    legendHtml;
+
+  // Wire up custom tooltip for heatmap cells
+  const tip = document.getElementById('contribTooltip');
+  container.addEventListener('mouseover', function(e) {
+    const cell = e.target.closest('.contrib-cell[data-date]');
+    if (!cell) return;
+    const dateStr = cell.dataset.date;
+    const count = parseInt(cell.dataset.count, 10);
+    const dateObj = new Date(dateStr + 'T12:00:00');
+    const fmtDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const cardText = count === 0 ? 'No cards reviewed' : `${count} card${count !== 1 ? 's' : ''} reviewed`;
+    tip.innerHTML = `<div class="contrib-tooltip-date">${fmtDate}</div><div class="contrib-tooltip-count">${cardText}</div>`;
+    tip.classList.add('visible');
+  });
+  container.addEventListener('mousemove', function(e) {
+    tip.style.left = (e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY - 40) + 'px';
+  });
+  container.addEventListener('mouseout', function(e) {
+    const cell = e.target.closest('.contrib-cell[data-date]');
+    if (!cell) return;
+    tip.classList.remove('visible');
+  });
+}
+
+// ===== RENDER HEATMAP =====
+function renderHeatmap() {
+  const hm = D.weeklyHeatmap;
+  const container = document.getElementById('heatmapContainer');
+  const maxVal = Math.max(...hm.data.flat());
+
+  const isDark = currentTheme === 'dark';
+  function heatColor(v) {
+    if (isDark) {
+      if (v === 0) return '#302C28';
+      const pct = v / maxVal;
+      if (pct < 0.25) return '#1C2E44';
+      if (pct < 0.5) return '#2E4A6E';
+      if (pct < 0.75) return '#5580B0';
+      return '#7AABE0';
+    }
+    if (v === 0) return '#F0EBE4';
+    const pct = v / maxVal;
+    if (pct < 0.25) return '#D5DEE8';
+    if (pct < 0.5) return '#9AB5D4';
+    if (pct < 0.75) return '#6888AC';
+    return '#3A5E8C';
+  }
+
+  let html = '<div style="display:flex;gap:4px;">';
+  // Day labels
+  html += '<div style="display:flex;flex-direction:column;gap:2px;padding-top:22px;">';
+  hm.days.forEach(d => html += `<div class="heatmap-day-label">${d}</div>`);
+  html += '</div>';
+
+  // Grid
+  html += '<div>';
+  // Hour labels
+  html += '<div style="display:flex;gap:2px;margin-bottom:2px;">';
+  hm.hours.forEach(h => {
+    const label = h % 3 === 0 ? (h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h-12}p`) : '';
+    html += `<div class="heatmap-label">${label}</div>`;
+  });
+  html += '</div>';
+
+  // Cells
+  hm.data.forEach((row, dayIdx) => {
+    html += '<div style="display:flex;gap:2px;">';
+    row.forEach((val, hourIdx) => {
+      html += `<div class="heatmap-cell" style="background:${heatColor(val)}" title="${hm.days[dayIdx]} ${hourIdx}:00 - ${val} cards"></div>`;
+    });
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // Legend
+  html += '<div class="heatmap-legend">';
+  html += '<span>Less</span>';
+  const legendColors = isDark
+    ? ['#302C28', '#1C2E44', '#2E4A6E', '#5580B0', '#7AABE0']
+    : ['#F0EBE4', '#D5DEE8', '#9AB5D4', '#6888AC', '#3A5E8C'];
+  legendColors.forEach(c => {
+    html += `<div class="heatmap-legend-cell" style="background:${c}"></div>`;
+  });
+  html += '<span>More</span>';
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+// ===== RENDER SESSION ANALYSIS =====
+function renderSessionAnalysis() {
+  const sa = D.sessionAnalysis;
+  const stats = document.getElementById('sessionStats');
+  stats.innerHTML = [
+    { v: `${sa.avgSessionLength} min`, l: 'Avg Session' },
+    { v: `${sa.medianSessionLength} min`, l: 'Median Session' },
+    { v: sa.sessionsPerDay, l: 'Sessions/Day' },
+    { v: sa.optimalSessionLength, l: 'Optimal Length' },
+  ].map(s => `
+    <div class="session-stat">
+      <div class="session-stat-value">${s.v}</div>
+      <div class="session-stat-label">${s.l}</div>
+    </div>
+  `).join('');
+
+  new Chart(document.getElementById('chartSession'), {
+    type: 'bar',
+    data: {
+      labels: sa.distribution.map(d => d.range),
+      datasets: [{
+        data: sa.distribution.map(d => d.pct),
+        backgroundColor: sa.distribution.map((d, i) => i === 2 ? ACCENT : ACCENT + '50'),
+        borderRadius: 6,
+        barPercentage: 0.7,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { ticks: { callback: v => v + '%', font: { size: 11 } }, beginAtZero: true },
+      },
+      plugins: {
+        tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% of sessions` } },
+      },
+    },
+  });
+}
+
+// ===== RENDER RETENTION BY INTERVAL =====
+function renderRetentionByInterval() {
+  const rbi = D.retentionByInterval;
+  new Chart(document.getElementById('chartRetInterval'), {
+    type: 'line',
+    data: {
+      labels: rbi.labels,
+      datasets: [
+        {
+          label: 'Your Retention',
+          data: rbi.retention,
+          borderColor: ACCENT,
+          backgroundColor: ACCENT + '15',
+          fill: true,
+          pointRadius: 4,
+          pointBackgroundColor: ACCENT,
+        },
+        {
+          label: 'Peer Average',
+          data: rbi.cohortAvg,
+          borderColor: '#9B8E80',
+          borderDash: [4, 4],
+          pointRadius: 3,
+          pointBackgroundColor: '#9B8E80',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 40, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
+        x: { grid: { display: false } },
+      },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } },
+      },
+    },
+  });
+}
+
+// ===== RENDER LAPSE ANALYSIS =====
+function renderLapseAnalysis() {
+  const la = D.lapseAnalysis;
+  document.getElementById('lapseStats').innerHTML = [
+    { v: la.totalLapses.toLocaleString(), l: 'Total Lapses' },
+    { v: `${la.lapseRate}%`, l: 'Lapse Rate' },
+  ].map(s => `
+    <div class="lapse-stat">
+      <div class="lapse-stat-value">${s.v}</div>
+      <div class="lapse-stat-label">${s.l}</div>
+    </div>
+  `).join('');
+
+  const maxPct = Math.max(...la.commonLapseTopics.map(t => t.pct));
+  document.getElementById('lapseBars').innerHTML = la.commonLapseTopics.map(t => `
+    <div class="lapse-bar-row">
+      <div class="lapse-bar-label" title="${t.topic}">${t.topic}</div>
+      <div class="lapse-bar-track"><div class="lapse-bar-fill" style="width:${t.pct / maxPct * 100}%"></div></div>
+      <div class="lapse-bar-pct">${t.pct}%</div>
+    </div>
+  `).join('');
+}
+
+// ===== RENDER MATURE CARDS =====
+function renderMatureCards() {
+  const mc = D.matureCardStats;
+  document.getElementById('matureStats').innerHTML = [
+    { v: mc.totalMature.toLocaleString(), l: 'Total Mature' },
+    { v: `${mc.matureRetention}%`, l: 'Retention' },
+    { v: `${mc.avgInterval}d`, l: 'Avg Interval' },
+    { v: `${mc.longestInterval}d`, l: 'Longest Interval' },
+  ].map(s => `
+    <div class="mature-stat">
+      <div class="mature-stat-value">${s.v}</div>
+      <div class="mature-stat-label">${s.l}</div>
+    </div>
+  `).join('');
+}
+
+// ===== RENDER LEARNING VELOCITY =====
+function renderLearningVelocity() {
+  const lv = D.learningVelocity;
+  document.getElementById('velocityStats').innerHTML = [
+    { v: lv.newCardsPerDay, l: 'New Cards/Day' },
+    { v: `${lv.graduationRate}%`, l: 'Graduation Rate' },
+    { v: `${lv.avgTimeToGraduate}d`, l: 'Avg Days to Grad' },
+  ].map(s => `
+    <div class="velocity-stat">
+      <div class="velocity-stat-value">${s.v}</div>
+      <div class="velocity-stat-label">${s.l}</div>
+    </div>
+  `).join('');
+
+  new Chart(document.getElementById('chartVelocity'), {
+    type: 'bar',
+    data: {
+      labels: lv.labels,
+      datasets: [{
+        data: lv.velocity,
+        backgroundColor: BLUE + '70',
+        borderColor: BLUE,
+        borderWidth: 1,
+        borderRadius: 4,
+        barPercentage: 0.6,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { maxTicksLimit: 5 } },
+      },
+      plugins: {
+        tooltip: { callbacks: { label: ctx => `${ctx.parsed.y} new cards/day` } },
+      },
+    },
+  });
+}
+
+// ===== RENDER TOPIC TABLE =====
+let topicSortKey = 'retention';
+let topicSortDir = 1; // 1 = asc, -1 = desc
+let topicData = [];
+
+function renderTopicTable() {
+  topicData = [...D.topics];
+  document.getElementById('topicSubtitle').textContent =
+    `${D.topics.length} subtopics \u00B7 Retention & efficiency breakdown`;
+  sortTopics('retention');
+}
+
+function sortTopics(key) {
+  if (topicSortKey === key) {
+    topicSortDir *= -1;
+  } else {
+    topicSortKey = key;
+    topicSortDir = key === 'name' ? 1 : 1;
+  }
+
+  // Update sort indicators
+  ['Name', 'Retention', 'Efficiency'].forEach(k => {
+    const el = document.getElementById('sort' + k);
+    if (el) el.innerHTML = k.toLowerCase() === topicSortKey ? (topicSortDir === 1 ? '&#8593;' : '&#8595;') : '&#8597;';
+  });
+
+  topicData.sort((a, b) => {
+    const va = key === 'name' ? a.name : a[key];
+    const vb = key === 'name' ? b.name : b[key];
+    if (key === 'name') return topicSortDir * va.localeCompare(vb);
+    return topicSortDir * (va - vb);
+  });
+
+  renderTopicRows();
+}
+
+function filterTopics() {
+  const q = document.getElementById('topicSearch').value.toLowerCase();
+  renderTopicRows(q);
+}
+
+function retentionColor(v) {
+  if (v < 78) return 'color-low';
+  if (v < 85) return 'color-mid';
+  return 'color-high';
+}
+
+function efficiencyColor(v) {
+  if (v < 50) return 'color-low';
+  if (v < 75) return 'color-mid';
+  return 'color-high';
+}
+
+function renderTopicRows(filter = '') {
+  const tbody = document.getElementById('topicTableBody');
+  const filtered = filter ? topicData.filter(t => t.name.toLowerCase().includes(filter)) : topicData;
+  tbody.innerHTML = filtered.map(t => `
+    <tr>
+      <td>${t.name}</td>
+      <td style="text-align:center;" class="retention-cell ${retentionColor(t.retention)}">${t.retention}%</td>
+      <td style="text-align:center;" class="efficiency-cell ${efficiencyColor(t.efficiency)}">${t.efficiency} <span style="color:var(--text-muted);font-weight:400">/100</span></td>
+    </tr>
+  `).join('');
+}
+
+// ===== RENDER TAG TABLE =====
+let tagData = [];
+let tagExpandedGroups = new Set();
+
+function renderTagTable() {
+  tagData = [...(D.tagPerformance || [])];
+  const totalTags = tagData.reduce((sum, g) => sum + Math.max(g.children.length, 1), 0);
+  document.getElementById('tagSubtitle').textContent =
+    `${tagData.length} categories \u00B7 ${totalTags} tags \u00B7 Retention & efficiency breakdown`;
+  renderTagRows();
+}
+
+function toggleTagGroup(category) {
+  if (tagExpandedGroups.has(category)) {
+    tagExpandedGroups.delete(category);
+  } else {
+    tagExpandedGroups.add(category);
+  }
+  renderTagRows(document.getElementById('tagSearch').value.toLowerCase());
+}
+
+function filterTags() {
+  const q = document.getElementById('tagSearch').value.toLowerCase();
+  renderTagRows(q);
+}
+
+function renderTagRows(filter = '') {
+  const tbody = document.getElementById('tagTableBody');
+  let html = '';
+
+  for (const group of tagData) {
+    const catMatch = group.category.toLowerCase().includes(filter);
+    const matchingChildren = filter
+      ? group.children.filter(c => c.name.toLowerCase().includes(filter) || c.path.toLowerCase().includes(filter) || (c.fullTag && c.fullTag.toLowerCase().includes(filter)))
+      : group.children;
+
+    // Skip groups with no matches
+    if (filter && !catMatch && matchingChildren.length === 0) continue;
+
+    const hasChildren = group.children.length > 0;
+    const isExpanded = tagExpandedGroups.has(group.category) || (filter && matchingChildren.length > 0);
+    const chevron = hasChildren
+      ? `<span style="display:inline-block;width:16px;font-size:0.7rem;color:var(--text-muted);transition:transform 0.2s;transform:rotate(${isExpanded ? '90' : '0'}deg);">&#9654;</span>`
+      : '<span style="display:inline-block;width:16px;"></span>';
+
+    // Category header row
+    html += `<tr class="tag-group-header" style="cursor:${hasChildren ? 'pointer' : 'default'};background:var(--bg);" ${hasChildren ? `onclick="toggleTagGroup('${group.category.replace(/'/g, "\\'")}')"` : ''} title="${group.fullCategory}">
+      <td style="font-weight:700;">${chevron} ${group.category}</td>
+      <td style="text-align:center;font-weight:600;">${group.reviews}</td>
+      <td style="text-align:center;font-weight:600;" class="retention-cell ${retentionColor(group.retention)}">${group.retention}%</td>
+      <td style="text-align:center;font-weight:600;" class="efficiency-cell ${efficiencyColor(group.efficiency)}">${group.efficiency} <span style="color:var(--text-muted);font-weight:400">/100</span></td>
+    </tr>`;
+
+    // Child rows (visible when expanded or when filter matches)
+    if (isExpanded && hasChildren) {
+      const children = filter ? matchingChildren : group.children;
+      for (const c of children) {
+        html += `<tr class="tag-child-row" title="${c.fullTag}">
+          <td style="padding-left:36px;color:var(--text-secondary);">${c.name}</td>
+          <td style="text-align:center;">${c.reviews}</td>
+          <td style="text-align:center;" class="retention-cell ${retentionColor(c.retention)}">${c.retention}%</td>
+          <td style="text-align:center;" class="efficiency-cell ${efficiencyColor(c.efficiency)}">${c.efficiency} <span style="color:var(--text-muted);font-weight:400">/100</span></td>
+        </tr>`;
+      }
+    }
+  }
+
+  tbody.innerHTML = html;
+}
+
+// ===== RENDER KEY METRICS OVER TIME =====
+function scrollToMetrics() {
+  const el = document.getElementById('metricsSection');
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Brief highlight effect
+    el.style.boxShadow = '0 0 0 2px var(--accent), var(--shadow-lg)';
+    setTimeout(() => { el.style.boxShadow = ''; }, 1500);
+  }
+}
+
+function renderMetricsOverTime() {
+  const m = D.metricsOverTime;
+  new Chart(document.getElementById('chartMetrics'), {
+    type: 'line',
+    data: {
+      labels: m.labels,
+      datasets: [
+        {
+          label: 'Retention',
+          data: m.retention,
+          borderColor: GREEN,
+          pointBackgroundColor: GREEN,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: 'Consistency',
+          data: m.consistency,
+          borderColor: GOLD,
+          pointBackgroundColor: GOLD,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: 'Efficiency',
+          data: m.efficiency,
+          borderColor: BLUE,
+          pointBackgroundColor: BLUE,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: { stepSize: 25, font: { size: 11 }, callback: v => v + '/100' },
+          title: { display: true, text: 'Score', font: { size: 12, weight: '600' }, padding: { bottom: 4 } },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11 } },
+          title: { display: true, text: 'Time', font: { size: 12, weight: '600' }, padding: { top: 4 } },
+        },
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { usePointStyle: true, pointStyle: 'circle', padding: 20, font: { size: 12 } },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}`,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ===== EXPORT STUB =====
+function exportData(section) {
+  // In a real addon, this would export CSV/PDF
+  alert(`Export for "${section}" will be available in the full version.`);
+}
+
+// ===== THEME TOGGLE =====
+let currentTheme = 'light';
+const sunIcon = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+const moonIcon = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+
+function toggleTheme() {
+  currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', currentTheme === 'dark' ? 'dark' : '');
+  const icon = document.getElementById('themeIcon');
+  icon.innerHTML = currentTheme === 'dark' ? moonIcon : sunIcon;
+  updateChartTheme();
+}
+
+function updateChartTheme() {
+  const isDark = currentTheme === 'dark';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(232,226,218,0.6)';
+  const textColor = isDark ? '#A99E92' : '#9B8E80';
+  const tooltipBg = isDark ? '#F0EBE4' : '#2D2118';
+  const tooltipTextColor = isDark ? '#1A1614' : '#FFFFFF';
+
+  Chart.defaults.color = textColor;
+  Chart.defaults.scale.grid.color = gridColor;
+  Chart.defaults.plugins.tooltip.backgroundColor = tooltipBg;
+  Chart.defaults.plugins.tooltip.titleColor = tooltipTextColor;
+  Chart.defaults.plugins.tooltip.bodyColor = tooltipTextColor;
+
+  // Update all existing chart instances
+  Chart.helpers.each(Chart.instances, (chart) => {
+    if (chart.options.scales) {
+      Object.values(chart.options.scales).forEach(scale => {
+        if (scale.grid) scale.grid.color = gridColor;
+        if (scale.ticks) scale.ticks.color = textColor;
+      });
+    }
+    chart.update('none');
+  });
+
+}
+
+// ===== TIME PERIOD SELECTOR =====
+let currentPeriod = '30d';
+const periodLabels = {
+  'today': 'Today',
+  '7d': 'Last 7 days',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+  '12m': 'Last 12 months',
+  'custom': 'Custom range',
+};
+
+function destroyAllCharts() {
+  const instances = Object.values(Chart.instances || {});
+  instances.forEach(c => { try { c.destroy(); } catch(e) {} });
+}
+
+function renderAll() {
+  // Refresh D from latest data (Python updates window.__STUDYLYTICS__ before calling this)
+  D = JSON.parse(JSON.stringify(window.__STUDYLYTICS__ || {}));
+  destroyAllCharts();
+  renderHeader();
+  renderContributionHeatmap();
+  renderActivity();
+  renderScores();
+  renderTimeOfDay();
+  renderUsageTrends();
+  renderTopicTable();
+  renderTagTable();
+  renderSessionAnalysis();
+  renderRetentionByInterval();
+  renderCohort();
+  renderMetricsOverTime();
+  renderHeatmap();
+  renderLapseAnalysis();
+  renderMatureCards();
+  renderLearningVelocity();
+}
+
+// ===== HELP MODAL =====
+function openHelp() {
+  document.getElementById('helpOverlay').classList.add('visible');
+}
+function closeHelp() {
+  document.getElementById('helpOverlay').classList.remove('visible');
+}
+
+// ===== DATE PICKER MODAL =====
+function openDatePicker() {
+  const today = new Date();
+  const fiveYearsAgo = new Date(today);
+  fiveYearsAgo.setFullYear(today.getFullYear() - 5);
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+
+  const fmt = d => d.toISOString().slice(0, 10);
+  const dpFrom = document.getElementById('dpFrom');
+  const dpTo = document.getElementById('dpTo');
+
+  dpFrom.min = fmt(fiveYearsAgo);
+  dpFrom.max = fmt(today);
+  dpTo.min = fmt(fiveYearsAgo);
+  dpTo.max = fmt(today);
+
+  dpFrom.value = fmt(thirtyDaysAgo);
+  dpTo.value = fmt(today);
+
+  document.getElementById('datepickerOverlay').classList.add('visible');
+}
+function closeDatePicker() {
+  document.getElementById('datepickerOverlay').classList.remove('visible');
+}
+function applyCustomRange() {
+  const fromStr = document.getElementById('dpFrom').value;
+  const toStr = document.getElementById('dpTo').value;
+  if (!fromStr || !toStr) return;
+
+  const fromMs = new Date(fromStr + 'T00:00:00').getTime();
+  const toMs = new Date(toStr + 'T23:59:59.999').getTime();
+
+  if (fromMs >= toMs) return;
+
+  closeDatePicker();
+
+  currentPeriod = 'custom';
+  document.querySelectorAll('.time-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelector('.time-custom-btn').classList.add('active');
+
+  pycmd('studylytics:getData:custom:' + fromMs + ':' + toMs);
+
+  const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+  const fromLabel = new Date(fromMs).toLocaleDateString('en-US', opts);
+  const toLabel = new Date(toMs).toLocaleDateString('en-US', opts);
+  const rangeLabel = fromLabel + ' \u2013 ' + toLabel;
+
+  const trendSub = document.getElementById('trendSubtitle');
+  if (trendSub) trendSub.textContent = 'Weekly averages \u00B7 ' + rangeLabel;
+  const actT = document.getElementById('activityTitle');
+  if (actT) actT.textContent = 'Activity Summary \u00B7 ' + rangeLabel;
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeHelp(); closeDatePicker(); }
+});
+
+function setTimePeriod(period) {
+  if (period === 'custom') { openDatePicker(); return; }
+
+  currentPeriod = period;
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === period);
+  });
+  document.querySelector('.time-custom-btn').classList.remove('active');
+
+  pycmd('studylytics:getData:' + period);
+  // Visual feedback — show which range is active in the Usage Trends subtitle
+  const trendSubtitle = document.getElementById('trendSubtitle');
+  if (trendSubtitle) {
+    trendSubtitle.textContent = `Weekly averages \u00B7 ${periodLabels[period] || period}`;
+  }
+  // Update the activity summary card subtitle if present
+  const actTitle = document.getElementById('activityTitle');
+  if (actTitle) {
+    actTitle.textContent = `Activity Summary \u00B7 ${periodLabels[period] || ''}`;
+  }
+}
+
+// ===== INIT =====
+function init() {
+  renderAll();
+  // Set default period button active (data is already base/30d)
+  currentPeriod = '30d';
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === '30d');
+  });
+}
+
+// Wait for DOM and Chart.js
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

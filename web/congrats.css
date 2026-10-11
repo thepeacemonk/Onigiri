@@ -332,6 +332,19 @@ body {
     margin: 0;
     font-size: 15px;
 }
+
+.profile-pic-generated-icon {
+    display: block;
+    width: 58%;
+    height: 58%;
+    background: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
 .onigiri-profile .opro-name {
     font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 600;
@@ -355,7 +368,7 @@ body {
 }
 .onigiri-profile.ring-profile .opro-avatar {
     position: absolute;
-    inset: 6px;
+    inset: 8px;
 }
 .onigiri-profile.ring-profile .opro-ring {
     position: absolute;

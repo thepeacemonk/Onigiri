@@ -6,9 +6,11 @@
 <style>
   /*__HASHI_FONT_FACE__*/
   :root {
-    --bg: #f4f4f1; --shell: #fbfbf9; --surface: #fff; --surface-2: #efefeb;
-    --border: #deded8; --fg: #20211f; --fg2: #5d605b; --fg3: #92958e;
-    --accent: #00a982; --hover: #e9e9e4;
+    /* Boot defaults match Settings before the shared palette is applied. */
+    --bg: #ececeb; --shell: #f8f8f7; --surface: #fff; --surface-2: #f0f0ef;
+    --border: #e3e4e7; --fg: #202124; --fg2: #63666c; --fg3: #8f9299;
+    --accent: #00a982; --danger: #d64545; --hover: #e7e7e6;
+    --hashi-note-font-size: 14px;
   }
   /* Animatable length that drives the bottom-left page-fold on hover. */
   @property --fold { syntax: '<length>'; inherits: true; initial-value: 0px; }
@@ -20,7 +22,7 @@
   html body button { appearance: none !important; -webkit-appearance: none !important; box-shadow: none !important; background-image: none !important; border: 0 !important; }
   html body button:hover, html body button:focus, html body button:active { border: 0 !important; }
   html body button:focus, html body button:focus-visible, html body input:focus-visible { outline: none !important; }
-  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px; }
   button { color: inherit; }
   svg { display: block; }
   .window-shell { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); opacity: 0; transition: opacity .15s ease; }
@@ -87,7 +89,7 @@
   .card-age { margin-top: 3px; color: var(--card-fg3); font-size: 9.5px; }
   .card-title-wrap > .card-age:only-child { margin-top: 0; }
   .priority-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--priority, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--priority) 11%, transparent); }
-  .card-body { flex: 1 1 auto; overflow: hidden; margin: 18px 1px 14px; color: var(--card-fg2); font-size: 11.5px; line-height: 1.55; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+  .card-body { flex: 1 1 auto; overflow: hidden; margin: 18px 1px 14px; color: var(--card-fg2); font-size: var(--hashi-note-font-size); line-height: 1.55; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
   .card-body.empty { color: var(--card-fg3); font-style: italic; }
   .card-footer:empty { display: none; }
   .card-footer { min-height: 23px; display: flex; align-items: center; gap: 7px; color: var(--card-fg3); font-size: 9.5px; }
@@ -143,7 +145,7 @@
   .barbtn:hover { color: var(--fg); }
   .barbtn svg { width: 13px; height: 13px; }
   html body .barbtn.primary, html body .barbtn.primary:hover, html body .barbtn.primary:active { background-color: var(--accent); color: #fff; }
-  .barbtn.danger:hover { color: #e05353; }
+  .barbtn.danger:hover { color: var(--danger); }
   @media (max-width: 680px) { .canvas { padding: 16px 18px 34px; } .pagebar { top: -16px; flex-wrap: wrap; } .page-title { order: 1; } .searchbox { flex-basis: 100%; } .toolset { order: 4; } #grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -167,10 +169,12 @@ const HASHI_DATA = /*__HASHI_DATA__*/null;
   "use strict";
   const ctx = HASHI_CTX || {}, pal = ctx.palette || {}, data = HASHI_DATA || {notes:[],trashed:[]}, S = ctx.strings || {}, accent = ctx.accent || "#00a982", isDark = !!ctx.dark;
   const $ = (id) => document.getElementById(id), rootStyle = document.documentElement.style;
+  const noteFontSize = Math.max(12, Math.min(24, Number(ctx.noteFontSize) || 14));
+  rootStyle.setProperty("--hashi-note-font-size", noteFontSize + "px");
   function tS(key,fallback){const value=S[key];return value==null||value===""?fallback:value;}
   function applyI18n(root){root.querySelectorAll("[data-i18n-text]").forEach((el)=>{const value=S[el.dataset.i18nText];if(value)el.textContent=value;});root.querySelectorAll("[data-i18n-title]").forEach((el)=>{const value=S[el.dataset.i18nTitle];if(value)el.title=value;});}
   applyI18n(document);
-  const themeMap={"--bg":pal.bg,"--shell":pal.shell,"--surface":pal.input_bg||pal.surface,"--surface-2":pal.surface,"--border":pal.border,"--fg":pal.fg,"--fg2":pal.fg2,"--fg3":pal.fg3,"--hover":pal.hover,"--accent":accent};Object.keys(themeMap).forEach((key)=>{if(themeMap[key])rootStyle.setProperty(key,themeMap[key]);});
+  const themeMap={"--bg":pal.bg,"--shell":pal.shell,"--surface":pal.input_bg||pal.surface,"--surface-2":pal.surface2,"--border":pal.border,"--fg":pal.fg,"--fg2":pal.fg2,"--fg3":pal.fg3,"--hover":pal.hover,"--accent":accent,"--danger":pal.danger};Object.keys(themeMap).forEach((key)=>{if(themeMap[key])rootStyle.setProperty(key,themeMap[key]);});
   if(ctx.customCss){const style=document.createElement("style");style.textContent=ctx.customCss;document.head.appendChild(style);}
   requestAnimationFrame(()=>requestAnimationFrame(()=>$("shell").classList.add("hashi-in")));
   const active=data.notes||[],trashed=(data.trashed||[]).filter((note)=>note.trashed_at);

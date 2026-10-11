@@ -14,11 +14,14 @@ from typing import Any, Dict, List
 import requests
 from aqt import mw
 from aqt.qt import QDialog, QVBoxLayout
+from aqt.theme import theme_manager
 from aqt.webview import AnkiWebView
 
+from .. import config
 from ..translations import tr
 from ..refresh import schedule_ui_refresh
 from . import redeem_net
+from .haptics import trigger as trigger_haptic
 from .nook_level import manager
 
 
@@ -33,12 +36,17 @@ def _asset_url(path: str) -> str:
     return f"/_addons/{_addon_package()}/system_files/gamification_images/{path}"
 
 
+def _system_asset_url(path: str) -> str:
+    return f"/_addons/{_addon_package()}/system_files/{path}"
+
+
 def _item_groups() -> Dict[str, Dict[str, Any]]:
     store = manager.get_store_data()
     return {
         "restaurants": store.get("restaurants", {}),
         "evolutions": store.get("evolutions", {}),
         "shops": store.get("shops", {}),
+        "devs": store.get("devs", {}),
     }
 
 
@@ -83,15 +91,22 @@ _NOOK_STRING_KEYS = (
     "nook_store_short", "nook_your_study_space", "nook_level_uppercase",
     "nook_browse_store", "current_restaurant_header", "nook_change_your_nook",
     "nook_todays_rush", "nook_view_order", "nook_daily_study_order",
-    "nook_closes_in", "nook_collect", "nook_ingredients", "nook_reward",
+    "nook_closes_in", "nook_collect", "nook_ingredients", "nook_deliver_to",
+    "nook_delivery_message_1", "nook_delivery_message_2",
+    "nook_delivery_message_3", "nook_delivery_message_4",
+    "nook_delivery_message_5", "nook_reward",
     "nook_rush_finish_hint", "nook_recipe_book", "nook_completed_rushes",
     "nook_your_unlocks", "restaurant_collection_header", "nook_open_store",
+    "nook_nooks_owned",
     "nook_navigation_aria", "nook_equipped_alt", "nook_no_items_yet",
     "nook_ingredients_hidden", "nook_history_empty", "restaurants_header",
-    "evolutions_header", "shops_header", "cards", "xp_label",
+    "evolutions_header", "shops_header", "devs_header", "cards", "xp_label",
     "nook_stage_prepare", "nook_stage_deliver", "nook_stage_completed",
     "rarity_common", "rarity_uncommon", "rarity_rare", "rarity_epic",
     "rarity_legendary",
+    "owned", "locked", "store_equipped", "store_equip",
+    "store_categories_aria", "store_desc_restaurants",
+    "store_desc_evolutions", "store_desc_shops", "store_desc_devs",
 )
 
 _STORE_STRING_KEYS = (
@@ -105,7 +120,9 @@ _STORE_STRING_KEYS = (
     "awesome", "close", "store_mascot_alt", "store_equip", "store_equipped",
     "store_no_items_section", "store_about_item", "store_desc_restaurants",
     "store_desc_evolutions", "store_desc_shops", "restaurants_header",
-    "evolutions_header", "shops_header", "buy", "close_restaurant",
+    "evolutions_header", "shops_header", "devs_header", "buy", "close_restaurant",
+    "store_desc_devs",
+    "buy_coin_codes", "already_have_code", "paste_code_short", "redeem_action",
 )
 
 
@@ -123,6 +140,12 @@ def nook_payload() -> Dict[str, Any]:
     progress = manager.get_progress_payload()
     store = manager.get_store_data()
     current = _current_item(store)
+    # Match settings_web's effective theme, including an explicit light-mode
+    # override when the operating system itself is dark.
+    try:
+        dark = bool(config.effective_night_mode())
+    except Exception:
+        dark = bool(theme_manager.night_mode)
     rush = manager.get_daily_special_status()
     target = max(1, int(rush.get("target", 0) or 1))
     current_progress = max(0, int(rush.get("current_progress", 0) or 0))
@@ -142,6 +165,8 @@ def nook_payload() -> Dict[str, Any]:
         "progress": progress,
         "store": store,
         "current": current,
+        "defaultItem": _current_item({"current_theme_id": "default"}),
+        "colorMode": "dark" if dark else "light",
         "rush": {
             **rush,
             "target": target,
@@ -157,7 +182,9 @@ def nook_payload() -> Dict[str, Any]:
         },
         "history": history,
         "recipeCounts": counts,
-        "imageBase": _asset_url("nook_folder/") ,
+        "imageBase": _asset_url("nook_folder/"),
+        "logoImage": _asset_url("nook.webp"),
+        "rewardImage": _asset_url("onigiri_trophy.webp"),
         "coinImage": _asset_url("Tayaki_coin.webp"),
         "strings": _strings(_NOOK_STRING_KEYS),
     }
@@ -165,10 +192,18 @@ def nook_payload() -> Dict[str, Any]:
 
 def store_payload() -> Dict[str, Any]:
     """Build the store's read model without refreshing Nook Rush data."""
+    # Keep the shop aligned with Nook Level when the add-on has an explicit
+    # light/dark override that differs from the operating system setting.
+    try:
+        dark = bool(config.effective_night_mode())
+    except Exception:
+        dark = bool(theme_manager.night_mode)
     return {
         "store": manager.get_store_data(),
+        "colorMode": "dark" if dark else "light",
         "imageBase": _asset_url("nook_folder/"),
         "coinImage": _asset_url("Tayaki_coin.webp"),
+        "pokeballImage": _system_asset_url("pokesprite/items/ball-poke.png"),
         "strings": _strings(_STORE_STRING_KEYS),
     }
 
@@ -197,6 +232,9 @@ class _NookWebDialog(QDialog):
         super().closeEvent(event)
         if should_refresh:
             schedule_ui_refresh()
+        if self.page == "store" and _nook_dialog is not None:
+            # Return to an up-to-date collection and scene after equipping.
+            _nook_dialog._push()
 
     def _render(self) -> None:
         root = os.path.dirname(os.path.dirname(__file__))
@@ -214,7 +252,43 @@ class _NookWebDialog(QDialog):
         except OSError:
             body = "<main><h1>Onigiri page assets are missing.</h1></main>"
         payload = json.dumps(self._payload(), ensure_ascii=False).replace("</", "<\\/")
-        self.web.stdHtml(body, css=css, js=js, head=f"<script>window.ONIGIRI_NOOK_DATA={payload};</script>", context=self)
+        head = f"<script>window.ONIGIRI_NOOK_DATA={payload};</script>"
+        if self.page == "nook":
+            # Apply the palette before first paint.
+            head += (
+                "<script>document.documentElement.dataset.nookTheme="
+                "window.ONIGIRI_NOOK_DATA.colorMode;</script>"
+            )
+        else:
+            head += (
+                "<script>document.documentElement.dataset.storeTheme="
+                "window.ONIGIRI_NOOK_DATA.colorMode;</script>"
+            )
+
+        # Avoid cached UI assets when this installed add-on is updated in
+        # place. Both WebView pages use this behavior.
+        asset_dir = os.path.dirname(html_path)
+        filenames = (
+            ("nook_level.css", "nook_level.js")
+            if self.page == "nook"
+            else ("mr_taiyaki_store.css", "mr_taiyaki_store.js")
+        )
+        for urls, filename in zip((css, js), filenames):
+            try:
+                version = os.stat(os.path.join(asset_dir, filename)).st_mtime_ns
+                urls[0] += f"?v={version}"
+            except OSError:
+                pass
+        if self.page == "store":
+            purchase_path = os.path.join(
+                root, "web", "gamification", "purchase_modal.css"
+            )
+            purchase_version = os.stat(purchase_path).st_mtime_ns
+            css.append(
+                f"/_addons/{_addon_package()}/web/gamification/"
+                f"purchase_modal.css?v={purchase_version}"
+            )
+        self.web.stdHtml(body, css=css, js=js, head=head, context=self)
 
     def _payload(self) -> Dict[str, Any]:
         return nook_payload() if self.page == "nook" else store_payload()
@@ -229,6 +303,12 @@ class _NookWebDialog(QDialog):
             pass
 
     def _on_bridge(self, command: str) -> bool:
+        if command.startswith("haptic:"):
+            try:
+                trigger_haptic(int(command.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                trigger_haptic()
+            return True
         if command == "nook:open-store":
             open_taiyaki_store_dialog()
             return True

@@ -1,0 +1,162 @@
+/* Anki Design — top toolbar.
+
+   Replaces Anki's default "fancy" floating gray pill with one cohesive,
+   full-width dark header that color-matches the page below and the macOS
+   title bar above, so the whole top of the window reads as a single
+   designed surface.
+
+   DOM (Anki 25.x, aqt/toolbar.py):
+     .header > .left-tray | .toolbar | .right-tray
+     nav links: a.hitem with ids #decks #add #browse #stats #sync
+     #sync contains <img id=sync-spinner> (hidden until syncing; .spin)
+   Body classes Anki toggles: .fancy (floating pill), .flat (reviewer),
+   .hidden (auto-hide). We restyle visuals only and never touch .hidden's
+   show/hide transforms. Heavy !important: we're overriding shipped CSS. */
+
+html,
+body {
+  background: var(--canvas, #0e1014) !important;
+}
+body,
+body.fancy {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+/* One flat bar. Kill the pill: elevated bg, shadow, rounded corners, blur. */
+.header {
+  display: grid !important;
+  grid-template-columns: 1fr auto 1fr !important;
+  align-items: center !important;
+  background: var(--canvas, #0e1014) !important;
+  border-bottom: 1px solid var(--border-subtle, #232831) !important;
+  padding: 7px 16px !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.toolbar,
+body.fancy .toolbar,
+body.fancy:not(.flat) .toolbar {
+  justify-self: center;
+  display: flex !important;
+  align-items: center;
+  gap: 3px;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  overflow: visible !important;
+}
+
+.left-tray {
+  justify-self: start;
+}
+.right-tray {
+  justify-self: end;
+}
+.left-tray,
+.right-tray {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Nav links — refined, medium weight, smooth pill hover. */
+a.hitem,
+body.fancy a.hitem,
+body.fancy:not(.flat) a.hitem {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  color: var(--fg-subtle, #aeb4c0) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  padding: 7px 13px !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: background 130ms ease, color 130ms ease, transform 90ms ease;
+}
+/* Anki adds extra edge padding to the first/last pill — normalize it. */
+a.hitem:first-child,
+body.fancy a.hitem:first-child {
+  padding-left: 13px !important;
+}
+a.hitem:last-child,
+body.fancy a.hitem:last-child {
+  padding-right: 13px !important;
+}
+
+a.hitem:hover,
+body.fancy a.hitem:hover,
+body.fancy:not(.flat) a.hitem:hover {
+  color: var(--fg, #eef1f6) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: transparent !important;
+  text-decoration: none !important;
+}
+a.hitem:active,
+body.fancy a.hitem:active {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+a.hitem:focus {
+  outline: 0 !important;
+}
+
+/* Current section — set by Python via <body data-rf-state>. Only the deck
+   list maps to a persistent screen; Add/Browse/Stats open dialogs. */
+body[data-rf-state="deckBrowser"] a#decks {
+  color: var(--accent, #0077c8) !important;
+  background: rgba(108, 140, 255, 0.16) !important;
+  background: color-mix(in srgb, var(--accent, #0077c8) 18%, transparent) !important;
+}
+
+/* Sync — a status-aware accent action. Anki's JS adds .normal-sync /
+   .full-sync when there are changes to push; keep that meaning, recolored. */
+a#sync,
+a#sync.normal-sync {
+  color: var(--accent, #0077c8) !important;
+  font-weight: 600 !important;
+}
+a#sync:hover {
+  background: rgba(108, 140, 255, 0.14) !important;
+  background: color-mix(in srgb, var(--accent, #0077c8) 14%, transparent) !important;
+}
+a#sync.full-sync {
+  color: var(--state-learn, #ff9e57) !important;
+}
+#sync-spinner {
+  height: 15px;
+  width: 0;
+  visibility: hidden;
+  margin: 0 0 -2px 0;
+}
+#sync-spinner.spin {
+  width: 15px !important;
+  visibility: visible !important;
+}
+
+/* Add-on tray items — keep them legible and in-theme. */
+.tray-item {
+  display: flex;
+  align-items: center;
+}
+.tray-item a,
+.tray-item button,
+.tray-item .hitem {
+  color: var(--fg-subtle, #aeb4c0) !important;
+  font-size: 12px !important;
+}

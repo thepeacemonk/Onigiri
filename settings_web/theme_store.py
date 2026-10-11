@@ -6,6 +6,7 @@
 # read a theme, write a theme's keys into config/mw.col.conf, zip one up.
 
 import copy
+import colorsys
 import json
 import os
 import shutil
@@ -16,6 +17,7 @@ from aqt import mw
 from .. import config, safe_storage
 from ..constants import ALL_THEME_KEYS, DEFAULT_ICON_SIZES, ICON_DEFAULTS, REVIEWER_THEME_KEYS
 from ..themes import THEMES
+from ..theme_palette import complete_palette, heatmap_zero_color, mix, readable_text, rgb, visible_color
 from .store import _col_get, _col_set
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -113,7 +115,6 @@ def theme_customization_key_groups():
         "onigiri_overview_bg_image_light", "onigiri_overview_bg_image_dark", "onigiri_overview_bg_image_mode",
         "onigiri_overview_bg_color_theme_mode", "onigiri_overview_bg_image_theme_mode",
         "onigiri_overview_bg_blur", "onigiri_overview_bg_opacity",
-        "onigiri_overview_slideshow_images", "onigiri_overview_slideshow_interval",
         "onigiri_reviewer_bg_mode", "onigiri_reviewer_bg_main_blur", "onigiri_reviewer_bg_main_opacity",
         "onigiri_reviewer_bg_light_color", "onigiri_reviewer_bg_dark_color", "onigiri_reviewer_bg_image",
         "onigiri_reviewer_bg_image_light", "onigiri_reviewer_bg_image_dark", "onigiri_reviewer_bg_image_mode",
@@ -146,6 +147,8 @@ def theme_customization_key_groups():
         and any(token in key for token in addon_tokens)
     ]
     addon_keys.extend(explicit_addon_keys)
+    addon_keys.extend(("things_theme", "stats_widgets_style", "deck_stats_style",
+                       "prep_widget_style", "hashi_widget_style", "heatmap_style"))
     addon_keys.extend(REVIEWER_THEME_KEYS)
     addon_keys = sorted(set(addon_keys))
 
@@ -155,6 +158,11 @@ def theme_customization_key_groups():
         "onigiri_overview_border_radius", "onigiri_overview_border_width",
         "modern_menu_hide_folder_icon", "modern_menu_hide_subdeck_icon", "modern_menu_hide_deck_icon",
         "modern_menu_hide_filtered_deck_icon", "modern_menu_hide_default_icons",
+        "modern_menu_title_background_enabled", "modern_menu_title_background_type",
+        "modern_menu_title_background_color", "modern_menu_title_background_image",
+        "modern_menu_title_background_opacity", "modern_menu_title_background_blur",
+        "modern_menu_title_sync_widgets",
+        "modern_menu_title_alignment",
         "modern_menu_background_mode", "modern_menu_bg_color_theme_mode", "modern_menu_bg_image_theme_mode",
         "modern_menu_background_image_mode", "modern_menu_bg_color_light", "modern_menu_bg_color_dark",
         "modern_menu_background_image", "modern_menu_background_image_light", "modern_menu_background_image_dark",
@@ -167,6 +175,7 @@ def theme_customization_key_groups():
         "modern_menu_sidebar_slideshow_images", "modern_menu_sidebar_slideshow_interval",
         "modern_menu_sidebar_bg_blur", "modern_menu_sidebar_bg_opacity", "modern_menu_sidebar_bg_transparency",
         "modern_menu_sidebar_radius", "modern_menu_sidebar_stroke", "modern_menu_sidebar_margin",
+        "modern_menu_sidebar_border_custom",
         "modern_menu_profile_bg_mode", "modern_menu_profile_bg_dynamic_mode",
         "modern_menu_profile_bg_color_light", "modern_menu_profile_bg_color_dark",
         "modern_menu_profile_bg_image", "modern_menu_profile_bg_image_light", "modern_menu_profile_bg_image_dark",
@@ -174,16 +183,27 @@ def theme_customization_key_groups():
         "modern_menu_profile_picture", "modern_menu_profile_picture_light", "modern_menu_profile_picture_dark",
         "modern_menu_profile_picture_mode", "modern_menu_profile_picture_dynamic_mode",
         "modern_menu_profile_picture_color_light", "modern_menu_profile_picture_color_dark",
-        "modern_menu_profile_picture_blur", "modern_menu_profile_picture_opacity",
+        "modern_menu_profile_picture_content_type", "modern_menu_profile_picture_letter",
+        "modern_menu_profile_picture_icon",
+        "modern_menu_profile_picture_icon_color_light", "modern_menu_profile_picture_icon_color_dark",
+        "modern_menu_profile_picture_opacity",
+        "modern_menu_profile_name_dynamic_mode",
+        "modern_menu_profile_name_color_light", "modern_menu_profile_name_color_dark",
+        "modern_menu_profile_name_color_theme_mode",
+        "modern_menu_profile_level_color_light", "modern_menu_profile_level_color_dark",
+        "modern_menu_profile_level_color_theme_mode",
         "onigiri_profile_page_bg_mode", "onigiri_profile_page_bg_dynamic_mode",
         "onigiri_profile_page_bg_light_color1", "onigiri_profile_page_bg_light_color2",
         "onigiri_profile_page_bg_dark_color1", "onigiri_profile_page_bg_dark_color2",
+        "onigiri_profile_sidebar_cover_image", "onigiri_profile_sidebar_cover_image_light",
+        "onigiri_profile_sidebar_cover_image_dark",
         "onigiri_canvas_inset_color_theme_mode", "onigiri_canvas_inset_effect_mode",
         "onigiri_canvas_inset_effect_intensity", "onigiri_canvas_inset_effect_blur",
         "onigiri_canvas_inset_effect_opacity", "onigiri_canvas_inset_border_radius",
         "onigiri_canvas_inset_border_width", "onigiri_canvas_inset_color_light", "onigiri_canvas_inset_color_dark",
         "onigiri_font_main", "onigiri_font_subtle", "onigiri_font_small_title",
         "onigiri_font_size_main", "onigiri_font_size_subtle", "onigiri_font_size_small_title",
+        "onigiri_font_profile_level", "onigiri_font_size_profile_level",
         "onigiri_toolbar_bg_mode", "onigiri_toolbar_bg_color_light", "onigiri_toolbar_bg_color_dark",
         "onigiri_toolbar_bg_image", "onigiri_toolbar_bg_blur",
         "onigiri_sidebar_main_bg_effect_mode", "onigiri_sidebar_main_bg_effect_intensity",
@@ -209,7 +229,171 @@ def _asset_config_value(path_value):
 
 # ── apply ──────────────────────────────────────────────────────────────────────
 
-def apply_theme(store, theme_data):
+def _merge_theme_values(target, values):
+    """Partial imported customizations override only the fields they supply."""
+    for key, value in values.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _merge_theme_values(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def _stats_widget_theme_colors(palette, mode):
+    """Create a distinct, theme-signature palette for Expressive Stats.
+
+    The older mapping reused global New/Learn/Review defaults, so three of the
+    four cards looked alike across official themes. Each role now starts at the
+    theme accent and shifts from that hue, preserving the theme's character
+    while keeping the metrics easy to distinguish.
+    """
+    source = str(palette.get("--accent-color") or "#808080").strip()
+    surface = str(palette.get("--canvas-inset") or "#ffffff").strip()
+    red, green, blue = (channel / 255 for channel in rgb(source))
+    hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
+    saturation = max(saturation, 0.58)
+
+    # Each metric has a stable position around the theme's hue. This keeps
+    # sibling cards legible while making the full set unmistakably belong to
+    # the active official theme.
+    roles = (
+        ("studied", 0, -0.08),
+        ("time", 34, -0.04),
+        ("pace", -32, -0.10),
+        ("retention", 118, -0.06),
+    )
+    chosen = {}
+    for role, shift, lightness_adjustment in roles:
+        if mode == "dark":
+            role_lightness = max(0.56, min(0.74, lightness + lightness_adjustment))
+        else:
+            role_lightness = max(0.34, min(0.56, lightness + lightness_adjustment))
+        channels = colorsys.hls_to_rgb(
+            (hue + shift / 360) % 1, role_lightness, saturation
+        )
+        color = "#" + "".join(f"{round(channel * 255):02x}" for channel in channels)
+        chosen[role] = visible_color(color, surface, minimum=3.2)
+
+    # Rating stars share Retention's signature color rather than falling back
+    # to the same yellow in every official theme.
+    chosen["retention_star"] = chosen["retention"]
+    return chosen
+
+
+def _apply_palette_surfaces(cfg, collection, palettes):
+    """Seed every layout from one palette before explicit theme overrides."""
+    collection.update({
+        "modern_menu_background_mode": "color",
+        "modern_menu_bg_color_theme_mode": "separate",
+        "modern_menu_sidebar_bg_mode": "custom",
+        "modern_menu_sidebar_bg_type": "color",
+        "modern_menu_sidebar_bg_color_theme_mode": "separate",
+        "modern_menu_profile_bg_mode": "color",
+        "modern_menu_profile_bg_dynamic_mode": True,
+        "modern_menu_profile_picture_dynamic_mode": True,
+        "modern_menu_profile_name_dynamic_mode": True,
+        "modern_menu_profile_fill_dynamic_mode": True,
+        "onigiri_profile_page_bg_mode": "color",
+        "onigiri_toolbar_bg_mode": "main",
+    })
+    for key in ("onigiri_overview_bg_mode", "onigiri_reviewer_bg_mode",
+                "onigiri_reviewer_bottom_bar_bg_mode", "onigiri_toolbar_bg_mode"):
+        cfg[key] = "main"
+    kome = cfg.setdefault("things_theme", {})
+    for key in ("background_light", "background_dark", "sidebar_background_light",
+                "sidebar_background_dark", "background_image", "heatmap_color",
+                "weekly_reviews_color", "progress_color"):
+        kome[key] = ""
+    # Persist empty leaves: config's deep merge would refill an empty dict
+    # with the old blue/yellow/green defaults on the next load.
+    kome["active_cards_colors"] = dict.fromkeys(
+        ("new", "learning", "relearning", "young", "mature"), ""
+    )
+    # Ring and Minimal Profile Level draw from the shared Level Chip progress
+    # token.  Store a separate accent for each palette here so both layouts
+    # change with every official theme instead of retaining a prior chip color.
+    level_chip = cfg.setdefault("restaurant_level", {})
+    level_chip["dynamic_chip_colors"] = True
+    for mode, palette in palettes.items():
+        bg, inset = palette["--bg"], palette["--canvas-inset"]
+        fg, subtle = palette["--fg"], palette["--fg-subtle"]
+        accent, border = palette["--accent-color"], palette["--border"]
+        # Reviewer chrome follows the palette; card templates remain owned
+        # by their note types. Explicit reviewer_settings are applied later.
+        for key in config.DEFAULTS:
+            if not key.startswith("onigiri_reviewer_") or not key.endswith("_" + mode):
+                continue
+            if "_hover_text_" in key:
+                cfg[key] = readable_text(accent)
+            elif "_hover_bg_" in key:
+                cfg[key] = accent
+            elif "_text_" in key or "_color_" in key:
+                cfg[key] = fg
+            elif "_bg_" in key or "_track_" in key:
+                cfg[key] = inset
+            elif "_fill_" in key:
+                cfg[key] = accent
+        for role, token in (("again", "learn"), ("hard", "learn"),
+                            ("good", "review"), ("easy", "new")):
+            fill = palette[f"--{token}-count-bubble-bg"]
+            if role == "hard":
+                fill = mix(fill, inset, .65)
+            cfg[f"onigiri_reviewer_btn_{role}_bg_{mode}"] = fill
+            cfg[f"onigiri_reviewer_btn_{role}_text_{mode}"] = readable_text(fill)
+        collection_colors = {
+            "modern_menu_bg_color": bg, "modern_menu_sidebar_bg_color": inset,
+            "modern_menu_profile_bg_color": inset,
+            "modern_menu_profile_picture_color": accent,
+            "modern_menu_profile_picture_icon_color": readable_text(accent),
+            "modern_menu_profile_name_color": fg,
+            "modern_menu_profile_level_color": accent,
+            "modern_menu_profile_fill_color": accent,
+            "onigiri_canvas_inset_color": inset,
+            "onigiri_toolbar_bg_color": bg,
+        }
+        level_chip[f"chip_progress_color_{mode}"] = accent
+        for key, value in collection_colors.items():
+            collection[f"{key}_{mode}"] = value
+        for number, value in ((1, bg), (2, inset)):
+            collection[f"onigiri_profile_page_bg_{mode}_color{number}"] = value
+        base = {"box_bg": inset, "box_border": border}
+        overview = dict(base, study_button=palette["--button-primary-bg"],
+                        study_button_stroke=border, options_button=inset,
+                        custom_study_button=inset, description_button=inset,
+                        reveal_button=accent)
+        for role in ("new", "learn", "review"):
+            overview[f"{role}_bubble"] = palette[f"--{role}-count-bubble-bg"]
+            overview[f"{role}_text"] = palette[f"--{role}-count-bubble-fg"]
+        # Expressive Stats use this theme's own accent/status hues, with a
+        # distinct tint for every metric and the independently colored rating
+        # stars in both light and dark mode.
+        stats_widget_colors = _stats_widget_theme_colors(palette, mode)
+        stats_widget_accents = {
+            key: stats_widget_colors[key]
+            for key in ("studied", "time", "pace", "retention")
+        }
+        styles = {
+            "overview_style": overview,
+            "prep_widget_style": base, "heatmap_style": base,
+            "hashi_widget_style": dict(base, card_bg=bg, title=fg,
+                                      excerpt=subtle, accent=accent),
+            "stats_widgets_style": dict(
+                base, label=subtle, value=fg, **stats_widget_accents,
+                retention_star=stats_widget_colors["retention_star"],
+                retention_star_empty=palette["--empty-star-color"]),
+            "deck_stats_style": dict(
+                base, in_progress=accent, mastered=accent, new=accent,
+                learning=palette["--learn-count-bubble-bg"],
+                relearning=palette["--learn-count-bubble-bg"],
+                young=palette["--review-count-bubble-bg"], mature=accent,
+                unseen=subtle, suspended=subtle, buried=subtle, total=fg),
+        }
+        for key, colors in styles.items():
+            style = cfg.setdefault(key, {})
+            style["dynamic"] = True
+            style.setdefault("colors", {})[mode] = dict(colors)
+
+
+def apply_theme(store, theme_data, *, write=True, normalize_heatmap_zero=True):
     """Writes every persisted part of a theme into store.config / mw.col.conf.
 
     Returns the set of raw config/col keys touched, so the caller can work out
@@ -234,11 +418,25 @@ def apply_theme(store, theme_data):
     collection_key_set = set(collection_keys)
 
     cfg = store.config
-    colors = cfg.setdefault("colors", {})
-    colors.setdefault("light", {}).update(light_palette)
-    colors.setdefault("dark", {}).update(dark_palette)
-    touched.update(light_palette.keys())
-    touched.update(dark_palette.keys())
+    palettes = {
+        mode: complete_palette(palette, config.DEFAULTS["colors"][mode])
+        for mode, palette in (("light", light_palette), ("dark", dark_palette))
+    }
+    # The settings preview and the live heatmap both consume this saved token.
+    # Imported themes get a contrast adjustment so zero-review cells do not
+    # merge into their card surface. Reset-to-default keeps its authored values.
+    if normalize_heatmap_zero:
+        for palette in palettes.values():
+            palette["--heatmap-color-zero"] = heatmap_zero_color(palette)
+    cfg["colors"] = palettes
+    collection = {}
+    _apply_palette_surfaces(cfg, collection, palettes)
+    for key, value in collection.items():
+        _col_set(mw.col, key, value)
+    touched.update(collection)
+    touched.update(cfg)
+    for palette in palettes.values():
+        touched.update(palette)
 
     if isinstance(assets.get("images"), dict):
         for config_key, path_value in assets["images"].items():
@@ -279,42 +477,50 @@ def apply_theme(store, theme_data):
         cfg.update(reviewer_settings)
         touched.update(reviewer_settings.keys())
 
-    if "modern_menu_bg_color_light" not in customization_collection and light_palette.get("--bg"):
-        _col_set(mw.col, "modern_menu_bg_color_light", light_palette["--bg"])
-        touched.add("modern_menu_bg_color_light")
-    if "modern_menu_bg_color_dark" not in customization_collection and dark_palette.get("--bg"):
-        _col_set(mw.col, "modern_menu_bg_color_dark", dark_palette["--bg"])
-        touched.add("modern_menu_bg_color_dark")
-
-    overview_colors = cfg.setdefault("overview_style", {}).setdefault("colors", {})
-    for mode, palette in (("light", light_palette), ("dark", dark_palette)):
-        theme_bg = palette.get("--bg")
-        if not theme_bg:
-            continue
-        if "overview_style" not in customization_addon:
-            overview_colors.setdefault(mode, {})["box_bg"] = theme_bg
-        sidebar_key = f"modern_menu_sidebar_bg_color_{mode}"
-        if sidebar_key not in customization_collection:
-            _col_set(mw.col, sidebar_key, theme_bg)
-            touched.add(sidebar_key)
-
     if customization_addon:
-        cfg.update(copy.deepcopy(customization_addon))
+        _merge_theme_values(cfg, customization_addon)
         touched.update(customization_addon.keys())
     if customization_collection:
         for key, value in customization_collection.items():
             _col_set(mw.col, key, copy.deepcopy(value))
             touched.add(key)
 
-    store.write_config()
+    if write:
+        store.write_config()
     return touched
 
 
 def reset_theme_to_default(store):
     """Resets colors and reviewer button styling to the color-only default."""
     cfg = store.config
-    cfg["colors"] = copy.deepcopy(config.DEFAULTS["colors"])
-    touched = set(cfg["colors"]["light"].keys()) | set(cfg["colors"]["dark"].keys())
+    touched = apply_theme(
+        store, config.DEFAULTS["colors"], write=False, normalize_heatmap_zero=False
+    )
+    # Restore the default surface hierarchy after the generic theme seeding.
+    # Imported themes continue to use their own palette and customization.
+    neutral_keys = {
+        "box_bg", "box_border", "study_button_stroke", "options_button",
+        "custom_study_button", "description_button", "label", "value",
+        "retention_star_empty", "card_bg", "title", "excerpt", "total",
+    }
+    for style_key in (
+        "overview_style", "stats_widgets_style", "prep_widget_style",
+        "hashi_widget_style", "deck_stats_style",
+    ):
+        for mode in ("light", "dark"):
+            defaults = config.DEFAULTS[style_key]["colors"][mode]
+            colors = cfg[style_key]["colors"][mode]
+            colors.update({k: v for k, v in defaults.items() if k in neutral_keys})
+    for mode, palette in config.DEFAULTS["colors"].items():
+        collection_colors = {
+            f"modern_menu_sidebar_bg_color_{mode}": palette["--profile-page-bg"],
+            f"modern_menu_profile_bg_color_{mode}": palette["--profile-page-bg"],
+            f"onigiri_profile_page_bg_{mode}_color1": palette["--profile-page-bg"],
+            f"onigiri_profile_page_bg_{mode}_color2": palette["--profile-export-btn-bg"],
+        }
+        for key, value in collection_colors.items():
+            _col_set(mw.col, key, value)
+        touched.update(collection_colors)
     for key in REVIEWER_THEME_KEYS:
         if key in config.DEFAULTS:
             cfg[key] = copy.deepcopy(config.DEFAULTS[key])
@@ -327,12 +533,16 @@ def reset_theme_to_default(store):
 
 def _gather_active_images(cfg):
     image_key_map = {
+        "modern_menu_title_background_image": "main_bg",
         "modern_menu_background_image": "main_bg", "modern_menu_background_image_light": "main_bg",
         "modern_menu_background_image_dark": "main_bg", "modern_menu_slideshow_images": "main_bg",
         "onigiri_overview_bg_image": "main_bg", "onigiri_overview_bg_image_light": "main_bg",
-        "onigiri_overview_bg_image_dark": "main_bg", "onigiri_overview_slideshow_images": "main_bg",
+        "onigiri_overview_bg_image_dark": "main_bg",
         "modern_menu_profile_bg_image": "profile_bg", "modern_menu_profile_bg_image_light": "profile_bg",
         "modern_menu_profile_bg_image_dark": "profile_bg",
+        "onigiri_profile_sidebar_cover_image": "profile_bg",
+        "onigiri_profile_sidebar_cover_image_light": "profile_bg",
+        "onigiri_profile_sidebar_cover_image_dark": "profile_bg",
         "modern_menu_profile_picture": "profile", "modern_menu_profile_picture_light": "profile",
         "modern_menu_profile_picture_dark": "profile",
         "modern_menu_sidebar_bg_image": "sidebar_bg", "modern_menu_sidebar_bg_image_light": "sidebar_bg",

@@ -1,0 +1,1300 @@
+/* Anki Design — deck homepage + global palette.
+
+   Loads on the deck browser AND the Overview. The heavy homepage layout is
+   scoped to `.ba-home` (a class the add-on adds to the deck browser's
+   <center> only) so the Overview keeps its own simple stacking.
+
+   Two themes, system-aware:
+     • default to @media (prefers-color-scheme: light|dark)
+     • settings can override via :root[data-rf-theme="light"|"dark"]
+*/
+
+/* ============================ THEME TOKENS ============================ */
+/* dark = default */
+/* Page-level density scales — driven by data-rf-density on <html>. The
+   values are picked up by the .ba-home spacing block further down, and
+   by the row-padding on deck rows. Default is "comfortable". */
+:root[data-rf-density="compact"] {
+  --rf-pad-page: 26px;
+  --rf-pad-page-bottom: 20px;
+  --rf-pad-row: 12px;
+  --rf-gap-section: 26px;
+}
+:root[data-rf-density="cozy"] {
+  --rf-pad-page: 32px;
+  --rf-pad-page-bottom: 26px;
+  --rf-pad-row: 16px;
+  --rf-gap-section: 32px;
+}
+:root[data-rf-density="comfortable"],
+:root:not([data-rf-density]) {
+  --rf-pad-page: 40px;
+  --rf-pad-page-bottom: 32px;
+  --rf-pad-row: 20px;
+  --rf-gap-section: 40px;
+}
+
+:root {
+  --rf-paper: var(--rf-dark-bg, #171717);
+  /* Shared theme aliases also cover charts and the activity donut. */
+  --rf-heatmap-color: var(--rf-dark-heatmap-color, var(--rf-dark-accent));
+  --rf-weekly-reviews-color: var(--rf-dark-weekly-reviews-color, var(--rf-dark-accent));
+  --rf-progress-color: var(--rf-dark-progress-color, var(--rf-dark-accent));
+  --rf-active-new: var(--rf-dark-active-new, var(--rf-dark-accent));
+  --rf-active-learning: var(--rf-dark-active-learning, var(--rf-dark-accent));
+  --rf-active-relearning: var(--rf-dark-active-relearning, var(--rf-dark-accent));
+  --rf-active-young: var(--rf-dark-active-young, var(--rf-dark-accent));
+  --rf-active-mature: var(--rf-dark-active-mature, var(--rf-dark-accent));
+  --rf-panel: var(--rf-dark-inset, #2c2c2c);
+  --rf-ink: var(--rf-dark-fg, #e0e0e0);
+  --rf-ink-strong: var(--rf-dark-fg, #e0e0e0);
+  --rf-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+  --rf-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+  --rf-line: color-mix(in srgb, var(--rf-dark-border, #424242) 64%, transparent);
+  --rf-line-2: var(--rf-dark-border, #424242);
+  --rf-row-hover: rgba(224, 224, 224, 0.04);
+  --rf-row-current: rgba(224, 224, 224, 0.03);
+  --rf-glow: none;
+  --rf-sidebar-bg: var(--rf-sidebar-dark-bg, var(--rf-paper));
+
+  --rf-due: var(--rf-dark-review, #68d98a);
+  --rf-new: var(--rf-dark-new, #68a0d9);
+  --rf-learn: var(--rf-dark-learn, #d96868);
+  --rf-relearn: #e0708a;
+  --rf-young: #5fb88f;
+
+  /* The Kome main menu uses one Poppins family throughout, including the
+     deck names and display headings that previously used the serif token. */
+  --rf-serif: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI",
+              Roboto, Helvetica, Arial, sans-serif;
+  --rf-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Roboto, Helvetica, Arial, sans-serif;
+  --rf-measure: 1120px;
+  --rf-side-w: 264px;
+
+  /* shared with heatmap.css (it uses var(...,fallback)) */
+  --rf-surface: var(--rf-panel);
+  --rf-border: var(--rf-line);
+  --rf-text: var(--rf-ink);
+  --rf-text-dim: var(--rf-ink-dim);
+  --rf-radius: 14px;
+  --rf-bg: var(--rf-dark-inset, #2c2c2c);
+}
+
+/* light = system */
+@media (prefers-color-scheme: light) {
+  :root:not([data-rf-theme="dark"]) {
+    --rf-paper: var(--rf-light-bg, #eeeeee);
+    /* Shared theme aliases also cover charts and the activity donut. */
+    --rf-heatmap-color: var(--rf-light-heatmap-color, var(--rf-light-accent));
+    --rf-weekly-reviews-color: var(--rf-light-weekly-reviews-color, var(--rf-light-accent));
+    --rf-progress-color: var(--rf-light-progress-color, var(--rf-light-accent));
+    --rf-active-new: var(--rf-light-active-new, var(--rf-light-accent));
+    --rf-active-learning: var(--rf-light-active-learning, var(--rf-light-accent));
+    --rf-active-relearning: var(--rf-light-active-relearning, var(--rf-light-accent));
+    --rf-active-young: var(--rf-light-active-young, var(--rf-light-accent));
+    --rf-active-mature: var(--rf-light-active-mature, var(--rf-light-accent));
+    --rf-panel: var(--rf-light-inset, #ffffff);
+    --rf-ink: var(--rf-light-fg, #212121);
+    --rf-ink-strong: var(--rf-light-fg, #212121);
+    --rf-ink-dim: var(--rf-light-subtle, #757575);
+    --rf-ink-faint: var(--rf-light-subtle, #757575);
+    --rf-line: color-mix(in srgb, var(--rf-light-border, #e0e0e0) 64%, transparent);
+    --rf-line-2: var(--rf-light-border, #e0e0e0);
+    --rf-row-hover: rgba(33, 33, 33, 0.035);
+    --rf-row-current: rgba(33, 33, 33, 0.025);
+    --rf-glow: none;
+    --rf-sidebar-bg: var(--rf-sidebar-light-bg, var(--rf-paper));
+
+    --rf-due: var(--rf-light-review, #a3e8b8);
+    --rf-new: var(--rf-light-new, #a3c5e8);
+    --rf-learn: var(--rf-light-learn, #e8a3a3);
+    --rf-relearn: #b3355a;
+    --rf-young: #2f9668;
+
+    --rf-bg: var(--rf-light-inset, #ffffff);
+  }
+}
+
+/* explicit overrides (settings) */
+:root[data-rf-theme="light"] {
+  --rf-paper: var(--rf-light-bg, #eeeeee);
+  /* Shared theme aliases also cover charts and the activity donut. */
+  --rf-heatmap-color: var(--rf-light-heatmap-color, var(--rf-light-accent));
+  --rf-weekly-reviews-color: var(--rf-light-weekly-reviews-color, var(--rf-light-accent));
+  --rf-progress-color: var(--rf-light-progress-color, var(--rf-light-accent));
+  --rf-active-new: var(--rf-light-active-new, var(--rf-light-accent));
+  --rf-active-learning: var(--rf-light-active-learning, var(--rf-light-accent));
+  --rf-active-relearning: var(--rf-light-active-relearning, var(--rf-light-accent));
+  --rf-active-young: var(--rf-light-active-young, var(--rf-light-accent));
+  --rf-active-mature: var(--rf-light-active-mature, var(--rf-light-accent));
+  --rf-panel: var(--rf-light-inset, #ffffff);
+  --rf-ink: var(--rf-light-fg, #212121);
+  --rf-ink-strong: var(--rf-light-fg, #212121);
+  --rf-ink-dim: var(--rf-light-subtle, #757575);
+  --rf-ink-faint: var(--rf-light-subtle, #757575);
+  --rf-line: color-mix(in srgb, var(--rf-light-border, #e0e0e0) 64%, transparent);
+  --rf-line-2: var(--rf-light-border, #e0e0e0);
+  --rf-row-hover: rgba(33, 33, 33, 0.035);
+  --rf-row-current: rgba(33, 33, 33, 0.025);
+  --rf-glow: none;
+  --rf-sidebar-bg: var(--rf-sidebar-light-bg, var(--rf-paper));
+  --rf-due: var(--rf-light-review, #a3e8b8);
+  --rf-new: var(--rf-light-new, #a3c5e8);
+  --rf-learn: var(--rf-light-learn, #e8a3a3);
+  --rf-relearn: #b3355a;
+  --rf-young: #2f9668;
+  --rf-bg: var(--rf-light-inset, #ffffff);
+}
+:root[data-rf-theme="dark"] {
+  --rf-paper: var(--rf-dark-bg, #171717);
+  /* Shared theme aliases also cover charts and the activity donut. */
+  --rf-heatmap-color: var(--rf-dark-heatmap-color, var(--rf-dark-accent));
+  --rf-weekly-reviews-color: var(--rf-dark-weekly-reviews-color, var(--rf-dark-accent));
+  --rf-progress-color: var(--rf-dark-progress-color, var(--rf-dark-accent));
+  --rf-active-new: var(--rf-dark-active-new, var(--rf-dark-accent));
+  --rf-active-learning: var(--rf-dark-active-learning, var(--rf-dark-accent));
+  --rf-active-relearning: var(--rf-dark-active-relearning, var(--rf-dark-accent));
+  --rf-active-young: var(--rf-dark-active-young, var(--rf-dark-accent));
+  --rf-active-mature: var(--rf-dark-active-mature, var(--rf-dark-accent));
+  --rf-panel: var(--rf-dark-inset, #2c2c2c);
+  --rf-ink: var(--rf-dark-fg, #e0e0e0);
+  --rf-ink-strong: var(--rf-dark-fg, #e0e0e0);
+  --rf-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+  --rf-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+  --rf-line: color-mix(in srgb, var(--rf-dark-border, #424242) 64%, transparent);
+  --rf-line-2: var(--rf-dark-border, #424242);
+  --rf-row-hover: rgba(224, 224, 224, 0.04);
+  --rf-row-current: rgba(224, 224, 224, 0.03);
+  --rf-glow: none;
+  --rf-sidebar-bg: var(--rf-sidebar-dark-bg, var(--rf-paper));
+  --rf-due: var(--rf-dark-review, #68d98a);
+  --rf-new: var(--rf-dark-new, #68a0d9);
+  --rf-learn: var(--rf-dark-learn, #d96868);
+  --rf-relearn: #e0708a;
+  --rf-young: #5fb88f;
+  --rf-bg: var(--rf-dark-inset, #2c2c2c);
+}
+
+/* Heatmap palette — set as CSS variables so the user's "heatmap_palette"
+   setting in Anki Design preferences can override these via a higher-
+   specificity injection. heatmap.css consumes the vars; we just provide
+   defaults appropriate to the active theme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-rf-theme="dark"]) {
+    --rf-hm-l0: rgba(31,29,24,.07);
+    --rf-hm-l1: #cfe0f5;
+    --rf-hm-l2: #8eb1de;
+    --rf-hm-l3: #4d7fc4;
+    --rf-hm-l4: #1f5cae;
+  }
+}
+:root[data-rf-theme="light"] {
+  --rf-hm-l0: rgba(31,29,24,.07);
+  --rf-hm-l1: #cfe0f5;
+  --rf-hm-l2: #8eb1de;
+  --rf-hm-l3: #4d7fc4;
+  --rf-hm-l4: #1f5cae;
+}
+
+/* ============================== BASE ============================== */
+html, body {
+  background: var(--rf-paper) !important;
+  color: var(--rf-ink);
+}
+body {
+  margin: 0 !important;
+  font-family: var(--rf-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+}
+/* Scrollbar — thin and quiet, styled to match the paper/ink palette
+   instead of the OS default slab. This is the deck-browser/overview
+   equivalent of the reviewer's #qa scrollbar (reviewer.css): same
+   recipe, applied to the page-level scroller here since these pages
+   have no single inner scroll container the way the reviewer's card
+   view does. Pinned to the window's true hard-right edge either way. */
+html, body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rf-line-2) transparent;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar { width: 9px; }
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: var(--rf-line-2);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  transition: background-color 160ms ease;
+}
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--rf-ink-faint);
+  background-clip: padding-box;
+}
+/* Border-box everywhere inside our scopes so width:100% + padding never
+   overflows the parent. Fixes the narrow-display card overflow. */
+.ba-home, .ba-home *,
+.ba-over, .ba-over * {
+  box-sizing: border-box;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: var(--rf-glow);
+}
+
+/* Optional Kome wallpaper. Surface effects are scoped to the deck browser
+   and only activate when a picture is selected, preserving the plain theme's
+   established appearance. */
+:root[data-rf-background="image"] {
+  background-color: var(--rf-paper) !important;
+  background-image: var(--rf-background-image) !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+  background-attachment: fixed !important;
+}
+:root[data-rf-background="image"] body {
+  /* Paint the same fixed wallpaper on the body layer as well as the canvas.
+     Chromium can then sample it reliably for fixed-element backdrop filters
+     such as the Things sidebar. */
+  background-color: transparent !important;
+  background-image: var(--rf-background-image) !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+  background-attachment: fixed !important;
+}
+.descfont { color: var(--rf-ink-dim) !important; }
+
+/* a single utility for ledger figures: clean sans tabular, NOT serif */
+.ba-num {
+  font-family: var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0;
+}
+
+/* ===================================================================== */
+/* Homepage layout — scoped to the deck browser only                     */
+/* ===================================================================== */
+.ba-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--rf-pad-page, 40px)
+           var(--rf-pad-page, 40px)
+           var(--rf-pad-page-bottom, 32px);
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+/* Single-deck mode is a fixed-size composition; center it in the viewport so
+   the user never has to scroll on the homepage. */
+.ba-home.ba-single {
+  justify-content: center;
+  padding-top: 24px;
+  padding-bottom: 24px;
+  gap: 0;                       /* spacing handled by each section's own margin */
+}
+.ba-home.ba-single .ba-deck-head { margin-bottom: 6px; }
+.ba-home.ba-single .ba-hero { margin-bottom: 28px; }
+/* The one deck's sub-decks, listed right under the hero (homedeck.js).
+   Left-aligned like the multi-deck list; the practice section follows. */
+.ba-home.ba-single > .ad-list-wrap {
+  order: 0;
+  width: 100%;
+  max-width: var(--rf-measure);
+  margin: -6px auto 0;
+  text-align: left;
+  animation: ba-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: 0.1s;
+}
+.ba-home.ba-single > .ad-list-wrap .ad-list--home { margin: 0 auto; }
+.ba-home > br { display: none; }
+.ba-home > :not(table):not(.ad-list--home):not(.ad-list-wrap):not(.ba-practice):not(script):not(style):not(link) {
+  display: none !important;
+}
+.ba-home > * {
+  width: 100%;
+  max-width: var(--rf-measure);
+}
+
+/* page-load reveal: one calm staggered rise */
+@keyframes ba-rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+.ba-home > table,
+.ba-home .ba-practice,
+.ba-home .ba-hero {
+  animation: ba-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.ba-home > table { animation-delay: 0.05s; }
+.ba-home .ba-practice { animation-delay: 0.18s; }
+/* A forwards-filled opacity animation makes this ancestor a backdrop root,
+   preventing the widget cards from sampling the wallpaper even after the
+   fade finishes. Keep the entrance movement without fading their parent. */
+@keyframes ba-rise-glass {
+  from { transform: translateY(10px); }
+}
+:where(:root[data-rf-background="image"]) .ba-home .ba-practice {
+  animation-name: ba-rise-glass;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ba-home > table, .ba-home .ba-practice, .ba-home .ba-hero {
+    animation: none;
+  }
+}
+
+/* order: hero (single-deck) or deck list → practice section (stats + heatmap) */
+.ba-home .ba-hero { order: 0; }
+.ba-home > table { order: 1; }
+.ba-home .ba-practice { order: 2; }
+/* Legacy classes the addon no longer renders — safety net for stale state. */
+.ba-mast, .ba-mast-row, .ba-stand, .ba-actions { display: none !important; }
+
+/* --------------------------- DECK LIST ---------------------------- */
+/* Anki ships a 5-column table. We drop the column-header row entirely and
+   render counts as a compact inline group on the right of each row, so it
+   reads as a clean list — not a spreadsheet. */
+.ba-home > table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  table-layout: auto;
+}
+/* The "Deck NEW LEARN DUE" header row — gone. */
+.ba-home > table > tbody > tr:first-child,
+.ba-home > table > thead > tr {
+  display: none !important;
+}
+/* Force the deck table to fit its container width regardless of intrinsic
+   min-content. Without this, Anki's `.decktd { min-width: 15em }` + `.count
+   { min-width: 4em }` pushes the table wider than the available content
+   area at narrow widths, and `align-items: center` on .ba-home lets it
+   spill both sides (the left side ends up under the sidebar). */
+.ba-home > table {
+  width: 100% !important;
+  max-width: var(--rf-measure);
+  table-layout: fixed;
+}
+.ba-home .decktd {
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow: hidden;
+}
+.ba-home th.optscol { width: 32px; }
+.ba-home th.count   { width: 56px; }    /* fixed-layout column widths */
+.ba-home tr.deck td[align="end"] { width: 56px; }
+/* Opts cell shrinks to the gear's hover-target footprint and aligns the
+   gear LEFT inside it, so it sits a few pixels right of the last count
+   instead of being shoved to the far right of the table. */
+.ba-home tr.deck td.opts { width: 32px; }
+@media (max-width: 820px) {
+  .ba-home th.count, .ba-home tr.deck td[align="end"] { width: 44px; }
+}
+
+/* Rows have no inter-row hairline — separation comes from the row-hover
+   wash like the congrats "Keep going" list. Same compact density too. */
+.ba-home tr.deck td {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 8px 10px !important;
+  vertical-align: middle;
+  transition: background 160ms ease;
+}
+.ba-home tr.deck td.decktd { padding-left: 4px !important; }
+.ba-home tr.deck td[align="end"] { padding: 8px 6px !important; }
+.ba-home tr.deck td.opts { padding: 6px 4px !important; }
+.ba-home tr.deck:hover:not(.top-level-drag-row) td {
+  background: var(--rf-row-hover) !important;
+}
+.ba-home tr.deck:hover:not(.top-level-drag-row) td:first-child {
+  border-top-left-radius: 8px !important;
+  border-bottom-left-radius: 8px !important;
+}
+.ba-home tr.deck:hover:not(.top-level-drag-row) td:last-child {
+  border-top-right-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+.ba-home tr.deck.current td,
+.ba-home .current td {
+  background: var(--rf-row-current) !important;
+}
+.ba-home tr.deck.current td:first-child {
+  border-top-left-radius: 8px !important;
+  border-bottom-left-radius: 8px !important;
+  box-shadow: inset 2px 0 0 var(--rf-accent, #0077c8);
+}
+.ba-home tr.deck.current td:last-child {
+  border-top-right-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+.ba-home tr.deck.current a.deck { color: var(--rf-ink-strong) !important; }
+.ba-home tr.top-level-drag-row td {
+  padding: 0 !important; height: 6px; border: 0 !important;
+  background: transparent !important;
+}
+
+.ba-home a.deck,
+.ba-home a.deck:visited {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--rf-ink) !important;
+  font: 500 16px/1.25 var(--rf-serif) !important;
+  letter-spacing: -0.005em;
+  text-decoration: none !important;
+}
+.ba-home a.deck:hover { color: var(--rf-ink-strong) !important; text-decoration: none !important; }
+.ba-home a.deck.filtered {
+  color: var(--rf-accent, #0077c8) !important;
+  font-style: italic;
+}
+
+/* Sub-deck rows — dimmer, slightly smaller serif. Indent is carried by
+   Anki's existing `&nbsp;` whitespace in the leading text node, so the
+   visual hierarchy is "smaller / dimmer / pushed right" without a glyph. */
+.ba-home tr.deck[data-level="1"] a.deck,
+.ba-home tr.deck[data-level="2"] a.deck,
+.ba-home tr.deck[data-level="3"] a.deck {
+  font-weight: 400 !important;
+  color: var(--rf-ink-dim) !important;
+  font-size: 15px !important;
+}
+/* Hide Anki's untouched `<a class="collapse">-` toggles before decktree.js
+   replaces them with our shared chevron/spacer. Once swapped in, they live
+   under `.ad-list-chev` and inherit visuals from decklist.css. */
+.ba-home a.collapse:not(.ad-list-chev),
+.ba-home span.collapse:not(.ad-list-chev) { display: none !important; }
+
+/* Chevron sits in a table cell next to the deck-name anchor. The text
+   sits on its baseline; the chevron uses `vertical-align: middle` (the
+   parent line's x-height middle) and a small upward tweak so its optical
+   centre lands on the serif font's visual centre, not on the baseline. */
+.ba-home td.decktd > .ad-list-chev {
+  margin: 0 4px 0 -4px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+/* Whole row is a study target — make that intent visible on hover. */
+.ba-home tr.deck { cursor: pointer; }
+.ba-home tr.deck td.opts,
+.ba-home tr.deck td.opts a { cursor: pointer; }
+
+/* Counts: tight sans tabular figures grouped on the right of each row.
+   Visually they read as a single small cluster, not three table columns. */
+.ba-home td[align="end"] {
+  text-align: right;
+  font: 500 13.5px/1 var(--rf-sans) !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.005em;
+  width: 1%;             /* shrink-wrap to content */
+  white-space: nowrap;
+}
+.ba-home td[align="end"] span {
+  display: inline-block;
+  min-width: 22px;
+  text-align: right;
+}
+.ba-home .new-count    { color: var(--rf-new)   !important; }
+.ba-home .learn-count  { color: var(--rf-learn) !important; }
+.ba-home .review-count { color: var(--rf-due)   !important; }
+.ba-home .zero-count   { color: var(--rf-ink-faint) !important; font-weight: 400; }
+
+/* Gear cell — decktree.js wraps the per-row gear in `.ad-list-gear`, so
+   the visuals come from decklist.css. The cell hugs the counts (no extra
+   right padding) and aligns the gear LEFT so it reads as adjacent to the
+   count cluster, not as a separate column at the end of the table. */
+.ba-home td.opts {
+  text-align: left !important;
+  padding: 6px 0 6px 4px !important;
+}
+.ba-home tr.deck:hover td.opts .ad-list-gear { opacity: 0.85; }
+
+/* Anki's <table>-based deck tree is replaced wholesale by the shared
+   __adDeckList.render() output (homedeck.js). The styles above are kept
+   as a safety net for the brief moment between page paint and the JS
+   running; the rules below hide the table once the component takes over. */
+.ba-home > table { display: none !important; }
+.ba-home > .ad-list--home {
+  width: 100%;
+  max-width: var(--rf-measure);
+  margin: 0 auto;
+}
+.ba-home #studiedToday { display: none !important; }
+
+/* ---------------- PRACTICE — pulse strip + heatmap below the decks --------- */
+.ba-practice {
+  width: 100%;
+  max-width: var(--rf-measure);
+  margin: 36px auto 0;
+}
+/* Reference-inspired two-card analytics row: weekly review volume
+   beside the contribution heatmap. Both use the active Onigiri palette. */
+.ba-analytics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  width: 100%;
+}
+.ba-analytics.is-single { grid-template-columns: minmax(0, 1fr); }
+.ba-review-chart,
+.ba-heatmap-card {
+  min-width: 0;
+  min-height: 178px;
+  padding: 18px 20px 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--rf-line-2);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rf-panel) 88%, transparent);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow, #000) 16%, transparent);
+}
+:root[data-rf-background="image"] .ba-review-chart,
+:root[data-rf-background="image"] .ba-heatmap-card {
+  background: color-mix(
+    in srgb,
+    var(--rf-panel) var(--rf-widgets-opacity, 100%),
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--rf-widgets-blur, 0px));
+  backdrop-filter: blur(var(--rf-widgets-blur, 0px));
+}
+.ba-analytics-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 2px 8px;
+  color: var(--rf-ink-faint);
+  font: 650 10px/1 var(--rf-sans);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ba-analytics-head strong {
+  color: var(--rf-ink);
+  font: 700 20px/1 var(--rf-sans);
+  letter-spacing: -.02em;
+}
+.ba-analytics-head strong small {
+  color: var(--rf-ink-faint);
+  font: 600 9px/1 var(--rf-sans);
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+.ba-review-chart-svg {
+  display: block;
+  width: 100%;
+  height: 112px;
+  overflow: visible;
+}
+.ba-chart-grid {
+  stroke: var(--rf-line);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  vector-effect: non-scaling-stroke;
+}
+.ba-chart-area {
+  fill: color-mix(
+    in srgb,
+    var(--rf-weekly-reviews-color, #0077c8) 18%,
+    transparent
+  );
+}
+.ba-chart-line {
+  fill: none;
+  stroke: var(--rf-weekly-reviews-color, #0077c8);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.ba-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  margin: -7px 3px 0;
+  color: var(--rf-ink-faint);
+  font: 550 8px/1 var(--rf-sans);
+}
+/* Heatmap inside its analytics card. */
+.ba-home .ba-practice .rf-heatmap {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.ba-home .rf-hm-head {
+  display: flex !important;
+  min-height: 22px;
+  margin-bottom: 10px;
+}
+.ba-home .rf-hm-title {
+  color: var(--rf-ink-faint);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.ba-home .rf-hm-stats { font-size: 9px; }
+.ba-home .rf-hm-foot {
+  margin-top: 14px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rf-ink-faint);
+}
+@media (max-width: 980px) {
+  .ba-analytics { grid-template-columns: 1fr; }
+}
+
+/* ---------------- PULSE — today panel + separated streak -------------------
+   Two stacked elements above the heatmap:
+     • .ba-today  — soft-bg card with totals header + hourly session bars
+     • .ba-streak — flat editorial chip with the streak count
+   They sit inside .ba-practice so they share the section's width and
+   entrance with the heatmap, and render the same in single-deck and
+   multi-deck mode (no per-mode branches).
+
+   Why two elements (not one): today's stats describe *immediate effort*
+   (cards reviewed in this session, time spent right now). The streak
+   describes *long-term consistency* — same theme as the heatmap below.
+   Pairing the streak with the heatmap, rather than with today, makes the
+   visual story read top-to-bottom as: deck list → what you did today
+   → what you've been doing all along. */
+.ba-pulse {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 22px;
+  padding: 4px 0 22px;
+  margin: 0;
+}
+
+/* ---------- TODAY PANEL ---------- */
+.ba-today {
+  background: var(--rf-panel);
+  border: 1px solid var(--rf-line);
+  border-radius: 14px;
+  padding: 20px 26px 22px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Header: "47 CARDS · 12 MIN" — exact .ba-cg-result vocabulary, scaled
+   down so it reads as a panel header rather than a top-of-page hero.
+   align-items: center keeps the unit labels and mid-dot on the same y-
+   line as the digit middles. */
+.ba-today-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+  font-family: var(--rf-serif);
+  color: var(--rf-ink);
+  line-height: 1;
+  letter-spacing: -0.018em;
+  font-weight: 500;
+  font-size: 30px;
+  /* When the user hovers a bar, fade the header to make room for the
+     per-hour tooltip that lands in the same y-area. The header
+     reappears the instant the hover ends. Cleaner than the alternative
+     of pushing the chart down 60px just so a tooltip can clear the
+     totals on the rare tall-bar case. */
+  transition: opacity 180ms ease;
+}
+.ba-today:has(.ba-today-bar-col:hover) .ba-today-head {
+  opacity: 0;
+}
+.ba-today-n {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+/* Same -2px trick as .ba-cg-result: keep the trailing unit tight against
+   its digit ("47 cards"). */
+.ba-today-n + .ba-today-u {
+  margin-left: -2px;
+}
+.ba-today-u,
+.ba-today-sep {
+  font-family: var(--rf-sans);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--rf-ink-faint);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.ba-today-sep {
+  margin: 0 4px;
+}
+
+/* Bars: thin verticals, one per hour from first studied → current. Each
+   hour is its own column wrapper so the bar can grow from the baseline
+   while a small count label rides at the top of the column without ever
+   colliding with the bar. The column heights are fixed; bar heights are
+   set inline as a percentage capped at 88% so the count above always has
+   breathing room.
+
+   Layout: a flex row of columns. Columns get a generous width budget
+   (max ~38px) so a 1-hour session reads as a confident single bar
+   rather than a sliver lost in the panel. Bars push to the LEFT edge
+   so the visualization always reads chronologically from the first
+   studied hour. */
+.ba-today-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 72px;
+  margin: 4px 0 10px;
+  justify-content: flex-start;
+}
+.ba-today-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  min-width: 14px;
+  max-width: 38px;
+  height: 100%;
+  position: relative;
+}
+.ba-today-bar-count {
+  /* Tiny tabular sans count riding the top of each column; sits just
+     above the bar. Uses --rf-ink-dim so it reads as a quiet annotation
+     rather than competing with the panel header. */
+  font: 600 9.5px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  color: var(--rf-ink-dim);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  min-height: 9.5px;
+  /* Don't reserve space when the count is empty (zero-hour). */
+  opacity: 1;
+}
+.ba-today-bar-col:has(.ba-today-bar.is-empty) .ba-today-bar-count {
+  /* Hide the count above empty-hour stubs — there's nothing to count
+     and the slot would just print a blank gap. */
+  opacity: 0;
+}
+.ba-today-bar {
+  width: 100%;
+  /* Bar color follows whichever heatmap palette the user picked in
+     settings — same token the heatmap below uses for its peak-intensity
+     cells. Picking accent/green/teal/violet/rose/amber for the heatmap
+     re-colors the bars in lockstep, so the section reads as one
+     coordinated piece instead of two unrelated visualisations. */
+  background: var(--rf-hm-l4);
+  border-radius: 3px 3px 0 0;
+  transition: background 160ms ease, filter 160ms ease;
+}
+/* Hover lift: brighten the bar so the user can see which column the
+   tooltip belongs to, while the count label above warms to ink to
+   reinforce the focus. Light/dark themes both have headroom on a
+   brightness(1.15) — l4 is the heatmap's most-saturated shade, not
+   already white, so it still has somewhere to go. */
+.ba-today-bar-col:hover .ba-today-bar {
+  filter: brightness(1.15);
+}
+.ba-today-bar-col:hover .ba-today-bar-count {
+  color: var(--rf-ink);
+}
+
+/* ---------- TOOLTIP ----------
+   Custom hover card above each bar with hour + cards + minutes. Built
+   from real DOM (not the browser's title attr) so the typography and
+   chrome match the page — cream panel bg, subtle border, soft shadow,
+   tiny down-arrow pointing at the bar. Slides up a few pixels on
+   reveal so the hover feels alive without bouncing. */
+.ba-today-bar-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  background: var(--rf-panel);
+  border: 1px solid var(--rf-line-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08),
+              0 1px 2px  rgba(0, 0, 0, 0.04);
+  padding: 9px 13px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  text-align: center;
+  z-index: 10;
+  transition: opacity 160ms ease, transform 200ms cubic-bezier(.2,.8,.2,1);
+}
+.ba-today-bar-col:hover .ba-today-bar-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 60ms; /* tiny pause so quick scrub-overs don't strobe */
+}
+.ba-today-bar-tip-h {
+  display: block;
+  font: 600 9.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--rf-ink-faint);
+  margin-bottom: 6px;
+}
+.ba-today-bar-tip-d {
+  display: block;
+  font: 500 12.5px/1 var(--rf-sans);
+  color: var(--rf-ink-dim);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.005em;
+}
+.ba-today-bar-tip-d b {
+  font-weight: 700;
+  color: var(--rf-ink);
+}
+/* Down-pointing arrow attached to the tooltip — two stacked pseudos
+   build a 1px line + fill triangle so the arrow inherits the same
+   border/fill as the tooltip body. */
+.ba-today-bar-tip::before,
+.ba-today-bar-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+.ba-today-bar-tip::before {
+  border-top: 7px solid var(--rf-line-2);
+}
+.ba-today-bar-tip::after {
+  margin-top: -1px;
+  border-top: 7px solid var(--rf-panel);
+}
+/* Empty-hour stub — a thin dim tick along the baseline. */
+.ba-today-bar.is-empty {
+  background: var(--rf-line-2);
+  border-radius: 999px;
+  /* Override the inline height with a fixed thin stub so empty hours
+     visually collapse to a "tick" rather than a tiny bar. */
+  height: 3px !important;
+  width: 60%;
+}
+
+/* Hour labels under the bars — first hour at the left, "NOW" at the
+   right, mirroring the bars container. Small uppercase sans, dim.
+   The --solo variant centers a single "NOW" when the session sits in
+   one hour, since "5 PM ... NOW" would be redundant. */
+.ba-today-labels {
+  display: flex;
+  justify-content: space-between;
+  font: 600 9.5px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-faint);
+}
+.ba-today-labels--solo {
+  justify-content: flex-start;
+  /* Align the "NOW" label under the (single) bar column at the left,
+     not the panel's right edge. Approximate column width = 38px max. */
+  padding-left: 6px;
+}
+.ba-today-now {
+  color: var(--rf-ink-dim);
+}
+
+/* Empty state — when today has 0 reviews. Italic serif, quiet, takes
+   the place of the bar strip so the panel doesn't go hollow. */
+.ba-today-empty {
+  font: italic 400 14px/1.5 var(--rf-serif);
+  color: var(--rf-ink-dim);
+  padding: 10px 0 6px;
+}
+
+/* ---------- STREAK (separate flat element) ----------
+   Fire glyph + number, no caption. Uses sans bold instead of the
+   today panel's serif so the streak reads as a distinct second voice
+   on the page — the panel is editorial, the streak is a confident
+   badge. Color: --rf-hm-l4 throughout so the icon and digits track
+   whichever heatmap palette the user picked in settings; the whole
+   pulse section then reads as one coordinated palette instead of
+   three independently coloured pieces. */
+.ba-streak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 0 2px;
+  color: var(--rf-hm-l4);
+}
+.ba-streak-fire {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  color: var(--rf-hm-l4);
+  /* Pivot near the base so the flicker reads as the tip dancing,
+     not the whole glyph drifting. */
+  transform-origin: 50% 82%;
+  animation: ba-streak-flicker 4.4s ease-in-out infinite;
+}
+.ba-streak-n {
+  font: 700 36px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.015em;
+  color: var(--rf-hm-l4);
+}
+/* Zero-streak: drop the warm accent and hide the fire — nothing earned
+   yet, nothing to celebrate. The number alone in faint ink reads as
+   "0" without any visual fanfare. */
+.ba-streak.is-zero {
+  color: var(--rf-ink-faint);
+}
+.ba-streak.is-zero .ba-streak-n {
+  color: var(--rf-ink-faint);
+  font-weight: 600;
+}
+.ba-streak.is-zero .ba-streak-fire {
+  display: none;
+}
+@keyframes ba-streak-flicker {
+  0%, 100% { transform: scale(1)    rotate(0);       opacity: 1;    }
+  35%      { transform: scale(0.96) rotate(-1.5deg); opacity: 0.92; }
+  65%      { transform: scale(1.03) rotate(1.5deg);  opacity: 1;    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ba-streak-fire { animation: none; }
+}
+
+/* Pulse and heatmap stack with breathing space — no hairline. */
+.ba-home .ba-practice .ba-pulse + .rf-heatmap {
+  padding-top: 16px !important;
+  margin-top: 0 !important;
+}
+
+/* Match the practice section's staggered entrance. */
+.ba-home .ba-pulse {
+  animation: ba-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: 0.18s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ba-home .ba-pulse { animation: none; }
+}
+
+/* Responsive — keep the panel shape, just tighten typography and bars
+   at narrow widths. */
+@media (max-width: 620px) {
+  .ba-today        { padding: 16px 18px 18px; }
+  .ba-today-head   { font-size: 24px; }
+  .ba-today-bars   { height: 52px; }
+  .ba-streak-n     { font-size: 24px; }
+}
+
+/* Anki's "Studied N cards today" caption — hide; superfluous next to deck list. */
+.ba-home #studiedToday { display: none !important; }
+
+/* ============================ SINGLE-DECK HERO ============================ */
+/* Composition: a quiet deck title ABOVE a focused click-anywhere card.
+   The card has the three big numbers + a slide-in "Study →" cue on hover. */
+.ba-home.ba-single > table,
+.ba-home.ba-single > table * { display: none !important; }
+
+/* Deck title — big editorial heading, sits tight against the card. */
+.ba-deck-head {
+  order: 0;
+  width: 100%;
+  max-width: var(--rf-measure);
+  margin: 0 auto;
+  padding: 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;       /* counteract <center>'s legacy text-align: center */
+}
+.ba-deck-name {
+  margin: 0 0 4px;
+  font: 500 42px/1 var(--rf-serif);
+  letter-spacing: -0.025em;
+  color: var(--rf-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+/* Deck options gear — sits next to the title, opens this deck's options. */
+.ba-deck-opts {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  background: transparent;
+  border: 0;
+  padding: 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--rf-ink-faint);
+  opacity: 0.55;
+  transition: opacity 160ms ease, color 160ms ease, background 160ms ease;
+  align-self: center;
+  margin-bottom: 4px;
+}
+.ba-deck-opts svg { width: 18px; height: 18px; display: block; }
+.ba-deck-opts:hover {
+  opacity: 1;
+  color: var(--rf-ink);
+  background: var(--rf-row-hover);
+}
+
+/* The card. Click anywhere to study. */
+.ba-hero {
+  -webkit-appearance: none;
+  appearance: none;
+  order: 1;
+  display: block;
+  position: relative;
+  width: 100%;
+  max-width: var(--rf-measure);      /* matches heatmap width below */
+  margin: 0 auto;
+  padding: 28px 36px 30px;
+  box-sizing: border-box;
+  background: var(--rf-panel);
+  border: 1px solid var(--rf-line-2);
+  border-radius: 16px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 180ms ease, border-color 180ms ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Hover — a single calm background tint composed onto the panel.
+   Earlier versions stacked an accent border, ring shadow, drop glow,
+   gradient overlay, and translateY lift; together those read as a
+   heavy dark blot on warm paper. */
+.ba-hero:hover,
+.ba-hero.is-hover {
+  background: color-mix(in srgb, var(--rf-ink) 4%, var(--rf-panel));
+}
+.ba-hero:focus-visible {
+  outline: 2px solid var(--rf-accent, #0077c8);
+  outline-offset: 4px;
+}
+.ba-hero.ba-hero--done {
+  cursor: default;
+  border-color: var(--rf-line);
+}
+.ba-hero.ba-hero--done:hover {
+  background: var(--rf-panel);
+}
+
+.ba-hero.ba-hero--done .ba-hero-go { display: none; }
+.ba-hero-arrow {
+  font-family: var(--rf-sans);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+/* Big numbers — what actually matters. Three equal columns. */
+.ba-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: end;
+}
+.ba-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.ba-hero-n {
+  font: 500 54px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.025em;
+  color: var(--rf-ink);
+}
+.ba-hero-l {
+  font: 600 10px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--rf-ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ba-hero-stat.ba-due   .ba-hero-n { color: var(--rf-due); }
+.ba-hero-stat.ba-new   .ba-hero-n { color: var(--rf-new); }
+.ba-hero-stat.ba-learn .ba-hero-n { color: var(--rf-learn); }
+.ba-hero--done .ba-hero-n { color: var(--rf-ink-faint); }
+
+/* Responsive — keep the three numbers in a row at narrow widths, just scale
+   the type down so they don't crowd. */
+@media (max-width: 820px) {
+  .ba-hero { padding: 22px 24px 22px; }
+  .ba-hero-n { font-size: 44px; }
+  .ba-hero-go { right: 18px; top: 18px; }
+}
+@media (max-width: 620px) {
+  .ba-hero { padding: 18px 16px 18px; }
+  .ba-hero-n { font-size: 36px; }
+  .ba-hero-l { font-size: 9px; letter-spacing: 0.08em; }
+  .ba-hero-stats { gap: 8px; }
+  .ba-deck-name { font-size: 17px; }
+  .ba-hero-go { font-size: 9px; padding: 5px 9px; top: 14px; right: 14px; }
+}
+
+/* ===================================================================== */
+/* Overview (per-deck landing) — scoped redesign                         */
+/* The Anki DOM is a nested table; we flatten it via display:block/flex.  */
+/* ===================================================================== */
+.ba-over {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80px 32px 80px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  text-align: center;
+}
+.ba-over > *:not(table) {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto !important;
+}
+.ba-over h3 {
+  font: 500 36px/1.05 var(--rf-serif) !important;
+  letter-spacing: -0.015em;
+  color: var(--rf-ink) !important;
+  margin: 0 0 14px !important;
+}
+.ba-over .smallLink {
+  display: inline-block;
+  color: var(--rf-ink-faint) !important;
+  font: 600 10px/1 var(--rf-sans) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin: 0 0 26px !important;
+  text-decoration: none !important;
+}
+.ba-over .smallLink:hover { color: var(--rf-accent, #0077c8) !important; }
+.ba-over .descfont,
+.ba-over .description {
+  color: var(--rf-ink-dim) !important;
+  font: italic 400 15px/1.6 var(--rf-serif) !important;
+  margin: 0 auto 36px !important;
+  max-width: 480px;
+}
+
+/* Flatten the nested table layout to a clean column */
+.ba-over > table {
+  width: 100% !important;
+  max-width: 600px !important;
+  margin: 0 auto !important;
+  border-collapse: collapse !important;
+  background: transparent !important;
+  display: block;
+}
+.ba-over > table,
+.ba-over > table tbody,
+.ba-over > table tr,
+.ba-over > table td {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  vertical-align: top;
+}
+.ba-over > table > tbody { display: block; }
+.ba-over > table > tbody > tr {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+}
+.ba-over > table > tbody > tr > td {
+  display: block !important;
+}
+/* The inner counts table — 3-up horizontal stat row */
+.ba-over > table > tbody > tr > td > table {
+  display: block;
+  margin: 0 auto;
+  background: transparent !important;
+}
+.ba-over > table > tbody > tr > td > table tbody {
+  display: flex;
+  gap: 56px;
+}
+.ba-over > table > tbody > tr > td > table tr {
+  display: flex;
+  flex-direction: column-reverse; /* number on top, label below */
+  align-items: center;
+  gap: 6px;
+}
+.ba-over > table > tbody > tr > td > table td {
+  font: 600 10px/1 var(--rf-sans) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-dim) !important;
+}
+.ba-over > table > tbody > tr > td > table td b {
+  font-weight: 500;
+}
+.ba-over > table > tbody > tr > td > table td b span {
+  font: 500 36px/1 var(--rf-sans) !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.ba-over .new-count    { color: var(--rf-new)   !important; }
+.ba-over .learn-count  { color: var(--rf-learn) !important; }
+.ba-over .review-count { color: var(--rf-due)   !important; }
+.ba-over .bury-count {
+  display: block !important;
+  margin-left: 0 !important;
+  color: var(--rf-ink-faint) !important;
+  font: 500 11px/1 var(--rf-sans) !important;
+  margin-top: 4px;
+}
+.ba-over .bury-count:empty { display: none !important; }
+
+/* "Study Now" — the page's primary CTA */
+.ba-over #study,
+.ba-over button#study {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  min-width: 220px;
+  padding: 16px 30px !important;
+  font: 600 14px/1 var(--rf-sans) !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff !important;
+  background: var(--rf-accent, #0077c8) !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 20px rgba(108, 140, 255, 0.18) !important;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 90ms ease;
+}
+.ba-over #study:hover { filter: brightness(1.08); }
+.ba-over #study:active { transform: scale(0.98); }

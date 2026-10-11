@@ -80,10 +80,15 @@ window.OnigiriIconChooser = (function () {
     }
 
     function isNightMode() {
+        const forced = document.documentElement.dataset.rfTheme;
+        if (forced === "dark") return true;
+        if (forced === "light") return false;
         return document.documentElement.classList.contains("night-mode")
             || document.documentElement.classList.contains("nightMode")
             || document.body.classList.contains("night-mode")
-            || document.body.classList.contains("nightMode");
+            || document.body.classList.contains("nightMode")
+            || (window.matchMedia
+                && window.matchMedia("(prefers-color-scheme: dark)").matches);
     }
 
     // The colour the grid preview and the modal's own tinted mask actually
@@ -112,11 +117,15 @@ window.OnigiriIconChooser = (function () {
             ':root{--odlg-surface:#ffffff;--odlg-inset:#ffffff;',
             '  --odlg-fg:#202124;--odlg-fg-subtle:#6f7177;',
             '  --odlg-border:#dcdde1;--odlg-highlight:#f2f2f2;--odlg-hover:#e9e9e9;',
-            '  --odlg-accent:var(--accent-color,#0077C8);--odlg-scrim:rgba(0,0,0,0.45);}',
-            '.night-mode,.nightMode{--odlg-surface:#242424;--odlg-inset:#242424;',
+            '  --odlg-accent:var(--rf-accent,var(--accent-color,#0077C8));--odlg-scrim:rgba(0,0,0,0.45);}',
+            '.night-mode,.nightMode,:root[data-rf-theme="dark"]{--odlg-surface:#242424;--odlg-inset:#242424;',
             '  --odlg-fg:#f4f4f5;--odlg-fg-subtle:#c4c4c4;',
             '  --odlg-border:#454545;--odlg-highlight:#303030;--odlg-hover:#3a3a3a;',
-            '  --odlg-accent:var(--accent-color,#0077C8);--odlg-scrim:rgba(0,0,0,0.62);}'
+            '  --odlg-accent:var(--rf-accent,var(--accent-color,#0077C8));--odlg-scrim:rgba(0,0,0,0.62);}',
+            ':root[data-rf-theme="light"],:root[data-rf-theme="light"] body{--odlg-surface:#ffffff;--odlg-inset:#ffffff;',
+            '  --odlg-fg:#202124;--odlg-fg-subtle:#6f7177;',
+            '  --odlg-border:#dcdde1;--odlg-highlight:#f2f2f2;--odlg-hover:#e9e9e9;',
+            '  --odlg-accent:var(--rf-accent,var(--accent-color,#0077C8));--odlg-scrim:rgba(0,0,0,0.45);}'
         ].join('');
         (document.head || document.documentElement).appendChild(tokenStyle);
     }

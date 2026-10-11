@@ -73,8 +73,6 @@ ONIGIMON_DIFFICULTY_SETTINGS = {
 #   stoutland   blunt     does not care about the user's feelings
 ONIGIMON_TONES = ("lillipup", "herdier", "stoutland")
 DEFAULT_ONIGIMON_TONE = "herdier"
-
-
 ITEMS = {
     "berries": {
         "label": "Berries",
@@ -492,7 +490,9 @@ class AnkimonBridge:
         if not self.detect():
             return []
         now = time.time()
-        if now - self._collection_cache_time < 10:
+        # Never cache an empty result: Ankimon boots asynchronously and may
+        # attach ``mw.ankimon_db`` a moment after Onigiri's first render.
+        if self._collection_cache and now - self._collection_cache_time < 10:
             return self._collection_cache
 
         db = getattr(mw, "ankimon_db", None)
@@ -507,10 +507,46 @@ class AnkimonBridge:
                 return res
             except Exception:
                 pass
-        
-        self._collection_cache = []
+
+        # Ankimon's runtime database service is populated asynchronously. The
+        # Main Menu and Overview can render before it is attached to ``mw``;
+        # read the same SQLite collection directly in that window so the team
+        # widget never becomes an empty placeholder merely due to load order.
+        self._collection_cache = self._read_collection_from_db()
         self._collection_cache_time = now
         return self._collection_cache
+
+    def get_team(self) -> List[Dict[str, Any]]:
+        """Return Ankimon's ordered team, with its own collection fallback.
+
+        Ankimon's legacy overview behaves this way too: explicit team slots
+        win; when no team was created yet, the first captured Pokémon are the
+        effective team. Returning normalized collection dictionaries keeps
+        the widget's sprite/type path identical in both cases.
+        """
+        collection = self.get_collection()
+        if not collection:
+            return []
+        by_id = {
+            str(pokemon.get("ankimon_id", "")): pokemon
+            for pokemon in collection
+            if pokemon.get("ankimon_id")
+        }
+
+        team_ids = []
+        db = getattr(mw, "ankimon_db", None)
+        if db and hasattr(db, "get_team"):
+            try:
+                for entry in db.get_team() or []:
+                    if isinstance(entry, dict) and entry.get("individual_id"):
+                        team_ids.append(str(entry["individual_id"]))
+            except Exception:
+                team_ids = []
+        if not team_ids:
+            team_ids = self._read_team_ids_from_db()
+
+        team = [by_id[individual_id] for individual_id in team_ids if individual_id in by_id]
+        return (team or collection)[:6]
 
     def clear_cache(self) -> None:
         self._collection_cache = []
@@ -1032,6 +1068,54 @@ class AnkimonBridge:
             print(f"Onigimon: direct DB read (raw) failed: {e}")
         return {}
 
+    def _read_collection_from_db(self) -> List[Dict[str, Any]]:
+        """Read and normalize every captured Pokémon without runtime APIs."""
+        path = self._db_path()
+        if not path:
+            return []
+        try:
+            uri = f"file:{path}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT individual_id, is_main, data FROM captured_pokemon"
+            ).fetchall()
+            conn.close()
+            collection = []
+            for row in rows:
+                try:
+                    data = json.loads(row["data"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                data["individual_id"] = str(
+                    data.get("individual_id") or row["individual_id"] or ""
+                )
+                data["is_main"] = bool(row["is_main"])
+                collection.append(self._normalize_pokemon(data))
+            return collection
+        except Exception as exc:
+            print(f"Onigimon: direct DB collection read failed: {exc}")
+            return []
+
+    def _read_team_ids_from_db(self) -> List[str]:
+        """Read Ankimon team slots in their explicit display order."""
+        path = self._db_path()
+        if not path:
+            return []
+        try:
+            uri = f"file:{path}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+            rows = conn.execute(
+                "SELECT individual_id FROM team ORDER BY slot_position ASC"
+            ).fetchall()
+            conn.close()
+            return [str(row[0]) for row in rows if row and row[0]]
+        except Exception as exc:
+            print(f"Onigimon: direct DB team read failed: {exc}")
+            return []
+
     def _read_main_from_db(self) -> Dict[str, Any]:
         """Reads and normalises the main Pokémon from ankimon.db (read-only fallback)."""
         data = self._read_main_pokemon_raw()
@@ -1072,6 +1156,10 @@ class OnigimonManager:
         self.last_action: Optional[str] = None
         self.last_message: str = ""
         self.last_gift: Optional[Dict[str, Any]] = None
+        # Ephemeral UI detail for the market purchase toast.  Keeping this
+        # separate from ``last_action`` avoids treating a failed purchase as
+        # an acquired item.
+        self.last_market_purchase_item: str = ""
 
     def config(self) -> Dict[str, Any]:
         # Read-only accessor: every answered card asks for the difficulty,
@@ -1091,6 +1179,10 @@ class OnigimonManager:
         key = str(self.config().get("notification_tone", DEFAULT_ONIGIMON_TONE)
                   or DEFAULT_ONIGIMON_TONE).lower()
         return key if key in ONIGIMON_TONES else DEFAULT_ONIGIMON_TONE
+
+    def reviewer_notifications_enabled(self) -> bool:
+        """Whether Onigimon may show its own Reviewer notifications."""
+        return bool(self.config().get("reviewer_notifications_enabled", True))
 
     def tone_text(self, base_key: str, **values: Any) -> str:
         """The current tone's wording for `base_key`, with {placeholders} filled.
@@ -1180,13 +1272,14 @@ class OnigimonManager:
         if self._state is not None:
             return self._state
         path = self._data_path()
-        if not os.path.exists(path):
-            self._state = OnigimonState()
-            return self._state
         try:
             data = safe_storage.read_json(
                 path, default={}, label="Your Onigimon companions"
             )
+            # Discard retired pet-interaction state without resetting the rest
+            # of an existing inventory or companion save.
+            data.pop("last_pet_day", None)
+            data.pop("pets_used_today", None)
             self._state = OnigimonState(**data) if data else OnigimonState()
         except Exception as exc:
             print(f"Onigimon: Could not load state: {exc}")
@@ -1210,6 +1303,9 @@ class OnigimonManager:
 
     def get_available_companions(self) -> List[Dict[str, Any]]:
         return self.bridge.get_collection()
+
+    def get_team_companions(self) -> List[Dict[str, Any]]:
+        return self.bridge.get_team()
 
     def set_active_companion(self, ankimon_id: str, update_ankimon_main: bool = True) -> bool:
         state = self.load()
@@ -1541,6 +1637,7 @@ class OnigimonManager:
                 self.last_message,
                 companion.sprite_url,
                 kind="streak_broken",
+                companion=companion,
             )
         else:
             self.last_message = self.tone_text("onigimon_tone_miss_body", name=name)
@@ -1669,6 +1766,7 @@ class OnigimonManager:
         self.save()
 
     def purchase_market_item(self, slot: str) -> Optional[str]:
+        self.last_market_purchase_item = ""
         state = self.load()
         self._ensure_market(state)
         if slot in state.market_purchased:
@@ -1691,6 +1789,7 @@ class OnigimonManager:
         state.inventory[key] = int(state.inventory.get(key, 0) or 0) + amount
         state.market_purchased.append(str(slot))
         self.last_action = key
+        self.last_market_purchase_item = key
         self.last_message = f"Purchased {amount} {ITEMS.get(key, {}).get('label', key)}."
         self.save()
         return self.last_message
@@ -1831,6 +1930,7 @@ class OnigimonManager:
             message,
             companion.sprite_url,
             kind="daily_gift",
+            companion=companion,
         )
         return message
 
@@ -2065,12 +2165,28 @@ class OnigimonManager:
     # would be noise on screen.
     NOTIFIED_KINDS = ("reward", "daily_gift", "streak_broken")
 
-    def notify(self, title: str, description: str, icon_image: str = "", kind: str = "") -> None:
+    def notify(
+        self, title: str, description: str, icon_image: str = "", kind: str = "",
+        *, companion: Optional[OnigimonCompanion] = None,
+    ) -> None:
+        # This is the one entry point for Onigimon's Reviewer toasts. Keep the
+        # preference here so present and future notification types all respect
+        # the same Onigimon-only mute.
+        if not self.reviewer_notifications_enabled():
+            return
+
         # Titles vary with the notification tone, so the gate is what happened
         # rather than how it was worded.
         if kind not in self.NOTIFIED_KINDS:
             return
         try:
+            # Resolve companion images just like the widget, honoring current
+            # motion/shiny settings instead of trusting a saved sprite URL.
+            icon_fallbacks = []
+            if companion is not None:
+                sprite_urls = self.sprite_urls_for_companion(asdict(companion))
+                if sprite_urls:
+                    icon_image, *icon_fallbacks = sprite_urls
             context = None
             if getattr(mw, "state", "") == "review":
                 context = getattr(mw, "reviewer", None)
@@ -2081,6 +2197,7 @@ class OnigimonManager:
                 variant="onigimon",
                 icon="On",
                 icon_image=icon_image,
+                icon_fallbacks=icon_fallbacks,
                 duration=5200,
                 gamification=True,
             )
@@ -2096,7 +2213,11 @@ class OnigimonManager:
                 yield web
 
 
-def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
+def render_widget_html(
+    row_span: int = 2,
+    col_span: int = 1,
+    grid_style: str = "",
+) -> str:
     payload = manager.widget_payload()
     status = payload["status"]
     inventory = payload["inventory"]
@@ -2107,10 +2228,10 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
         addon_package = "1011095603"
     pokeball_icon = f"/_addons/{addon_package}/system_files/system_icons/available_for_users/circle.svg"
 
-    # 1-4 rows by 1-2 columns. 1 row is the compact scene (name only when it
-    # has 2 columns), 2x2 is the wide card (scene beside the meters), and every
-    # other size is the stacked card, which keeps the same design at every
-    # height — the extra rows go to the meters section.
+    # 1-4 rows by 1-2 columns. One row is the compact scene (name only when it
+    # has 2 columns). Two rows keep the simple scene + needs card. Three and
+    # four rows reveal growth/study details so the extra footprint carries
+    # useful information instead of turning into empty padding.
     try:
         row_span = max(1, min(4, int(row_span)))
     except (TypeError, ValueError):
@@ -2135,7 +2256,7 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
                 </div>
             """
         return f"""
-        <div class="onigimon-widget onigimon-widget-compact {span_class}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+        <div class="onigimon-card onigimon-card-compact {span_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
             <div class="onigimon-main onigimon-scene onigimon-scene-compact" {_onigimon_scene_style_attr()}>
                 {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
@@ -2180,36 +2301,88 @@ def render_widget_html(row_span: int = 2, col_span: int = 1) -> str:
             {_meter(tr("onigimon_status_training"), int(status_values.get("training", 0)), "#c866e5", str(int(companion.get("training", 0) or 0)))}
             {_meter(tr("onigimon_status_hunger"), int(status_values.get("hunger", 0)), "#f45bb3", str(int(companion.get("hunger", 0) or 0)))}
         """
-        # One continuous card: a coloured top section (sprite + name) fused to a
-        # neutral lower section (stat meters) with a flat seam, mirroring the
-        # Prep Station card structure.
-        # At exactly 2x2 the two sections sit side by side; once there are extra
-        # rows to fill, stacking reads better and keeps the scene large.
+        expanded_html = ""
+        if row_span >= 3:
+            bond_level = max(1, int(companion.get("bond_level") or 1))
+            bond_xp = max(0, int(companion.get("bond_xp") or 0))
+            bond_target = max(1, bond_level * 40)
+            bond_percent = max(0, min(100, int(round((bond_xp / bond_target) * 100))))
+            streak = max(0, int(payload.get("streak") or 0))
+            item_count = 0
+            for amount in inventory.values():
+                try:
+                    item_count += max(0, int(amount or 0))
+                except (TypeError, ValueError):
+                    continue
+            battle_html = ""
+            if row_span >= 4:
+                battle_html = f"""
+                <div class="onigimon-battle-stats">
+                    {_quick_stat(
+                        tr("onigimon_attack", "Attack"),
+                        int(companion.get("attack") or 0),
+                    )}
+                    {_quick_stat(
+                        tr("onigimon_defense", "Defense"),
+                        int(companion.get("defense") or 0),
+                    )}
+                    {_quick_stat(
+                        tr("onigimon_speed", "Speed"),
+                        int(companion.get("speed") or 0),
+                    )}
+                </div>
+                """
+
+            expanded_html = f"""
+            <div class="onigimon-growth">
+                <div class="onigimon-growth-head">
+                    <span>{escape(tr("onigimon_bond", "Bond"))}</span>
+                    <b>{escape(tr("onigimon_level_short", "Lv"))} {bond_level}</b>
+                    <em>{bond_xp}/{bond_target} XP</em>
+                </div>
+                <div class="onigimon-growth-track"><i style="width:{bond_percent}%;"></i></div>
+            </div>
+            <div class="onigimon-quick-stats">
+                {_quick_stat(tr("pomodoro_streak_short", "Streak"), streak)}
+                {_quick_stat(tr("onigimon_items", "Items"), item_count)}
+            </div>
+            {battle_html}
+            """
+        # One continuous card: a centred companion scene fused to a neutral
+        # stats panel. The companion identity belongs with the readings it
+        # describes, so it leads the lower panel instead of competing with the
+        # sprite in the scene.
+        # Wide cards use the scene as a full-height left rail. Tall cards add
+        # growth and study details beneath the meters; narrow cards retain a
+        # stacked split so their labels never become cramped.
         card_class = (
             "onigimon-card onigimon-card-wide"
-            if (col_span >= 2 and row_span <= 2)
+            if col_span >= 2
             else "onigimon-card"
         )
+        if row_span >= 3:
+            card_class += " onigimon-card-tall"
+        if row_span >= 4:
+            card_class += " onigimon-card-extra-tall"
         body = f"""
-        <div class="{card_class}">
-            <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr()}>
-                {_onigimon_scene_background_layer("onigimon-scene-bg")}
-                <div class="onigimon-sprite">{img}</div>
-                <div class="onigimon-info">
-                    <strong>{name}</strong>
-                    <span>{escape(tr("onigimon_level"))} {int(companion.get("level") or 1)}</span>
-                </div>
+        <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr()}>
+            {_onigimon_scene_background_layer("onigimon-scene-bg")}
+            <div class="onigimon-sprite">{img}</div>
+        </div>
+        <div class="onigimon-bottom" {_onigimon_bottom_style_attr()}>
+            <div class="onigimon-info">
+                <strong>{name}</strong>
+                <span>{escape(tr("onigimon_level"))} {int(companion.get("level") or 1)}</span>
             </div>
-            <div class="onigimon-bottom" {_onigimon_bottom_style_attr()}>{meters}</div>
+            <div class="onigimon-meters">{meters}</div>
+            {expanded_html}
         </div>
         """
 
+    root_class = card_class if companion else "onigimon-card onigimon-card-disabled"
     return f"""
-    <div class="onigimon-widget {span_class}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
-        <div class="onigimon-header onigiri-widget-head">
-            <h3>Onigimon</h3>
-        </div>
-        <div class="onigimon-body">{body}</div>
+    <div class="{root_class} {span_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+        {body}
     </div>
     """
 
@@ -2226,6 +2399,15 @@ def _meter(label: str, value: int, color: str, detail: str = "") -> str:
     """
 
 
+def _quick_stat(label: str, value: Any) -> str:
+    return f"""
+    <div class="onigimon-quick-stat">
+        <span>{escape(str(label))}</span>
+        <b>{escape(str(value))}</b>
+    </div>
+    """
+
+
 def _sprite_img_html(urls: List[str], label: str, fallback_class: str = "") -> str:
     cleaned: List[str] = []
     for url in urls:
@@ -2234,7 +2416,12 @@ def _sprite_img_html(urls: List[str], label: str, fallback_class: str = "") -> s
             cleaned.append(text)
     if not cleaned:
         return ""
-    class_attr = f' class="{escape(fallback_class)}"' if fallback_class else ""
+    classes = " ".join(
+        class_name
+        for class_name in ("onigimon-pixel-sprite", fallback_class)
+        if class_name
+    )
+    class_attr = f' class="{escape(classes)}"'
     fallback_json = escape(json.dumps(cleaned[1:]), quote=True)
     onerror = (
         "var f=JSON.parse(this.dataset.fallbacks||'[]');"
@@ -2284,8 +2471,23 @@ def _normalize_scene_color(value: Any) -> str:
     return "#6ea96a"
 
 
+DEFAULT_SCENE_BACKGROUND = (
+    "system_files/gamification_images/onigimon/scenarios/nature/default.png"
+)
+
+
 def _onigimon_scene_image_url() -> str:
-    image_path = str(manager.config().get("scene_background_image", "") or "").strip()
+    scene_config = manager.config()
+    mode = str(scene_config.get("scene_background_mode", "preset") or "preset").lower()
+    if mode == "color":
+        return ""
+    if mode == "custom":
+        image_path = str(scene_config.get("scene_background_image", "") or "").strip()
+    else:
+        image_path = str(
+            scene_config.get("scene_background_preset", DEFAULT_SCENE_BACKGROUND)
+            or DEFAULT_SCENE_BACKGROUND
+        ).strip()
     if not image_path:
         return ""
     if image_path.startswith("/_addons/") or image_path.startswith("http://") or image_path.startswith("https://"):

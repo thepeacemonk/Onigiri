@@ -1,0 +1,44 @@
+<!doctype html>
+<html class="bws-booting">
+<head>
+<meta charset="utf-8">
+<style>html,body{background:/*__BWS_BOOT_BG__*/}.bws-booting .bws-shell{visibility:hidden}</style>
+<style>/*__BWS_CSS__*/</style>
+</head>
+<body>
+<div class="bws-shell" id="bwsShell">
+  <aside class="bws-panel bws-rail">
+    <div class="bws-brand">
+      <img class="bws-brand-logo" id="bwsBrandLogo" alt="">
+      <img class="bws-brand-mini-logo" id="bwsBrandMiniLogo" alt="">
+      <span class="bws-brand-mark" id="bwsBrandMark"></span>
+      <div class="bws-brand-copy"><b id="bwsTitle"></b><small>Bento Widget</small></div>
+    </div>
+    <nav id="bwsNav"></nav>
+    <div class="bws-rail-bottom">
+      <button class="bws-rail-action" id="bwsDonate"><i data-icon="heart"></i><span>Donate</span></button>
+      <button class="bws-rail-action" id="bwsBugs"><i data-icon="circle-help"></i><span>Report bugs</span></button>
+      <div class="bws-autosave" id="bwsAutosave" data-state="idle"><i></i><span>Changes save automatically</span></div>
+      <div class="bws-bridge-status" id="bwsBridgeStatus"><span class="bws-bridge-icon" data-icon="circle-check"></span><span id="bwsBridgeLabel"></span></div>
+      <div class="bws-footprint" id="bwsFootprint" hidden>
+        <b>Widget footprint</b>
+        <small>Onigiri is unavailable, so this size is used directly.</small>
+        <div class="bws-footprint-fields" id="bwsFootprintFields"></div>
+      </div>
+      <button class="bws-done" id="bwsDone" type="button">
+        <span class="bws-done-label">Done</span>
+        <span class="bws-done-action-icon" aria-hidden="true">
+          <span class="bws-done-icon" data-icon="check"></span>
+        </span>
+      </button>
+    </div>
+  </aside>
+  <main class="bws-panel bws-main">
+    <header class="bws-page-head"><h1 id="bwsPageTitle"></h1><p id="bwsPageDesc"></p></header>
+    <div class="bws-page-scroll"><div class="bws-page" id="bwsPage"></div></div>
+  </main>
+</div>
+<div class="bws-toast" id="bwsToast"></div>
+<script>const BENTO_SETTINGS_CONTEXT=/*__BWS_CONTEXT__*/null;/*__BWS_JS__*/</script>
+</body>
+</html>

@@ -5,12 +5,14 @@
 # native pickers (which stay Qt because other modules share them), and commit.
 
 import json
+import re
 
 from aqt import mw
 from aqt.qt import (
     QColor,
     QDialog,
     QFileDialog,
+    QLabel,
     Qt,
     QTimer,
     QVBoxLayout,
@@ -25,6 +27,39 @@ from . import gallery, render, schema, side_effects, theme_store
 from .store import Store
 
 BRIDGE_PREFIX = "osw:"
+
+# The native picker accepts Qt colour names, while several CSS-facing add-on
+# settings store translucent colours as ``rgba(r, g, b, alpha)``. Convert that
+# representation before opening the picker and restore its alpha after a new
+# hue is chosen, so a Gallery swatch always opens on the colour it shows.
+_CSS_RGBA = re.compile(
+    r"^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*"
+    r"(0(?:\.\d+)?|1(?:\.0+)?)\s*\)$",
+    re.IGNORECASE,
+)
+
+
+def _picker_color_value(value):
+    """Return a Qt-compatible initial value for CSS ``rgba(...)`` strings."""
+    match = _CSS_RGBA.match(str(value or ""))
+    if not match:
+        return value
+    red, green, blue = (
+        max(0, min(255, int(channel))) for channel in match.groups()[:3]
+    )
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
+def _with_original_alpha(original, chosen):
+    """Keep a CSS colour's opacity when the picker returns its opaque hex."""
+    match = _CSS_RGBA.match(str(original or ""))
+    if not match or not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(chosen or "")):
+        return chosen
+    alpha = match.group(4)
+    return "rgba({}, {}, {}, {})".format(
+        int(chosen[1:3], 16), int(chosen[3:5], 16), int(chosen[5:7], 16), alpha
+    )
+
 
 # The classic dialog's page order. Callers (api/bento.open_settings, the
 # openSettings bridge command) may still pass one of its integer indices, so an
@@ -45,17 +80,23 @@ class SettingsWebDialog(QDialog):
         super().__init__(parent or mw)
         self.addon_path = addon_path or render.ADDON_ROOT
         self.store = Store()
-        # Registered up front: _apply_proportional_size() reads it below, and
-        # _commit() stages it back so the window remembers its size.
-        self.store.register("window_settings", {"kind": "config", "key": "window_settings"}, {})
         self.store.register(
             "settings_sidebar_collapsed",
             {"kind": "config", "key": "settings_sidebar_collapsed"},
             False,
         )
+        self.store.register(
+            "settings_complexity",
+            {"kind": "config", "key": "settings_complexity"},
+            "advanced",
+        )
         self.pages = schema.build_pages()
         self._page_by_id = {page["id"]: page for page in self.pages}
         self._refresh_timer = None
+        self._initial_page = self._resolve_initial_page(initial_page)
+        self._page_ready = False
+        self._startup_failed = False
+        self._closed = False
 
         self.setWindowTitle("Onigiri Settings")
         self._apply_proportional_size()
@@ -66,9 +107,9 @@ class SettingsWebDialog(QDialog):
         except Exception:
             pass
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
 
         self.web = AnkiWebView(self)
         try:
@@ -82,7 +123,7 @@ class SettingsWebDialog(QDialog):
         # Set webview background color matching palette to eliminate white flash/gap
         try:
             pal = render.palette(render.is_dark())
-            self.web.page().setBackgroundColor(QColor(pal.get("outer", "#ececeb")))
+            self.web.page().setBackgroundColor(QColor(pal.get("outer", "#ffffff")))
         except Exception:
             try:
                 self.web.page().setBackgroundColor(Qt.GlobalColor.transparent)
@@ -90,24 +131,31 @@ class SettingsWebDialog(QDialog):
                 pass
 
         if mac_titlebar.is_supported():
-            hide_tb = bool(self.store.read("hideMacTitleBar"))
-            if hide_tb:
-                mac_titlebar.apply(True, self)
-            else:
-                mac_titlebar.apply(False, self)
-                try:
-                    self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
-                except Exception:
-                    pass
+            # Settings must always remain a conventional macOS dialog.  In
+            # particular, the global Seamless mode belongs to Anki's main
+            # window, not this configuration surface: removing this dialog's
+            # native title bar also removes its visible title and makes the
+            # traffic-light controls float over the web content.
+            mac_titlebar.apply(False, self)
 
-        layout.addWidget(self.web, 1)
+        self._layout.addWidget(self.web, 1)
 
-        self.web.stdHtml(render.render(self.store, self.pages))
+        # Register both channels before navigation begins. Qt's load signal owns
+        # startup; Anki's pycmd bridge is intentionally not part of readiness,
+        # because it may become available only after the inline page boot ends.
         self.web.set_bridge_command(self._on_bridge, self)
-
-        target = self._resolve_initial_page(initial_page)
-        if target:
-            QTimer.singleShot(0, lambda: self._eval_js(f"window.onigiriSettings.showPage({json.dumps(target)})"))
+        self.web.loadFinished.connect(self._on_load_finished)
+        page_html = render.render(
+            self.store, self.pages, initial_page=self._initial_page
+        )
+        # Do not leave a broken script as an invisible, apparently unresponsive
+        # command. A native error surface is guaranteed to replace the webview if
+        # the page does not complete its boot handshake.
+        self._load_watchdog = QTimer(self)
+        self._load_watchdog.setSingleShot(True)
+        self._load_watchdog.timeout.connect(self._show_load_error)
+        self._load_watchdog.start(5000)
+        self.web.stdHtml(page_html)
 
     # ─── window ────────────────────────────────────────────────────────────────
 
@@ -115,7 +163,7 @@ class SettingsWebDialog(QDialog):
         screen = (self.screen() if hasattr(self, "screen") else None) or (mw.app.primaryScreen() if mw and mw.app else None)
         if screen is None:
             self.setMinimumSize(1080, 480)
-            self.resize(1260, 780)
+            self.resize(self.minimumWidth(), 510)
             return
         available = screen.availableGeometry()
         width, height = available.width(), available.height()
@@ -131,17 +179,18 @@ class SettingsWebDialog(QDialog):
         # window is wider than rail + gutters + that 940px there is nothing
         # left to fill — just dead background to the right of every preview
         # card. This is that width, with a little slack for borders/scrollbar.
-        # Always opened at this width (capped to the screen) rather than a
-        # saved/proportional one — height stays proportional, not maxed, so
-        # the window opens wide and comfortably tall, not tall and cramped.
+        # Open at the maximum useful width. The content is designed around a
+        # 1260px-wide canvas, and narrower widths make dense settings pages
+        # needlessly cramped.
         max_dialog_width = 1260
         self.setMaximumWidth(min(max_dialog_width, width))
-        default_w = min(max_dialog_width, width)
+        default_w = self.maximumWidth()
+        # Keep enough vertical room for the UI's minimum layout, then let the
+        # web page scroll for longer settings sections. Deliberately do not
+        # restore the last window height here: macOS can report a green-button
+        # zoomed window as a normal window, which used to persist a full-height
+        # value and make every subsequent opening look maximized.
         default_h = min(max(self.minimumHeight(), int(height * 0.65)), height)
-
-        saved = self.store.read("window_settings") or {}
-        if isinstance(saved, dict) and saved.get("height"):
-            default_h = max(self.minimumHeight(), min(int(saved["height"]), height))
         self.resize(default_w, default_h)
         # Centered on the screen the dialog is opening on — not wherever Qt's
         # own default placement (often relative to the main window, or the
@@ -187,6 +236,89 @@ class SettingsWebDialog(QDialog):
             print(f"[Onigiri] settings_web bridge error ({body[:60]}):\n{traceback.format_exc()}")
             return None
 
+    def _on_load_finished(self, ok):
+        """Verify the synchronous WebUI boot after Chromium finishes loading."""
+        if self._closed or self._page_ready or self._startup_failed:
+            return
+        if not ok:
+            self._show_load_error()
+            return
+        # This callback is provided directly by QWebEnginePage. Unlike pycmd it
+        # is available during startup and cannot lose a one-shot ready message.
+        self.web.page().runJavaScript(
+            "Boolean(document.documentElement.classList.contains('osw-ready') "
+            "&& window.onigiriSettings)",
+            self._on_boot_checked,
+        )
+
+    def _on_boot_checked(self, ready):
+        if self._closed or self._page_ready or self._startup_failed:
+            return
+        if not ready:
+            self._show_load_error()
+            return
+        self._page_ready = True
+        self._load_watchdog.stop()
+        # Leave the JavaScript result callback before showing a top-level window.
+        # Chromium has already completed the DOM build at this point.
+        QTimer.singleShot(0, self._reveal)
+
+    def _reveal(self):
+        if self._closed or not self._page_ready:
+            return
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        # Measurements made while a WebView is hidden can be stale on some Qt
+        # builds. Re-run only the cheap layout measurements after the first show.
+        self._eval_js(
+            "window.onigiriSettings && "
+            "window.onigiriSettings.afterNativeShow && "
+            "window.onigiriSettings.afterNativeShow();"
+        )
+
+    def bring_to_front(self, initial_page=None):
+        """Reuse a live dialog instead of restarting its WebEngine load."""
+        if self._closed or self._startup_failed:
+            return False
+        if self._page_ready:
+            target = self._resolve_initial_page(initial_page)
+            if target:
+                self._eval_js(
+                    "window.onigiriSettings && window.onigiriSettings.showPage(%s);"
+                    % json.dumps(target)
+                )
+            self._reveal()
+        # While loading there is deliberately nothing else to do: keeping this
+        # instance alive lets its imminent loadFinished signal complete startup.
+        return True
+
+    def _show_load_error(self):
+        """Show a styled native failure state instead of a blank WebView."""
+        if self._closed or self._page_ready:
+            return
+        self._startup_failed = True
+        self.web.hide()
+        palette = render.palette(render.is_dark())
+        message = QLabel(
+            "Onigiri Settings could not finish loading.\n\n"
+            "Close this window and try opening Settings again.",
+            self,
+        )
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message.setWordWrap(True)
+        message.setStyleSheet(
+            "QLabel {"
+            f"background: {palette['outer']};"
+            f"color: {palette['fg']};"
+            "font-size: 15px; padding: 48px;"
+            "}"
+        )
+        self._layout.addWidget(message, 1)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
     def _cmd_patch(self, arg):
         """Auto-save: apply and persist a small patch as the user edits.
 
@@ -207,7 +339,11 @@ class SettingsWebDialog(QDialog):
         hook_failures = side_effects.run(hooks, self.store)
         
         is_profile_patch = any(
-            k.startswith("modern_menu_profile_") or k in ("userName", "userBirthday", "profile_status", "profile_bio", "profile_music")
+            k.startswith(("modern_menu_profile_", "g_rl_chip_")) or k in (
+                "userName", "userBirthday", "profile_bio", "profile_music",
+                "g_profile_level_game", "g_rl_dynamic_chip_colors",
+                "g_nook_enabled", "g_nook_profile_bar", "g_onigimon_enabled", "g_hexagon_enabled",
+            )
             for k in touched
         )
         if is_profile_patch:
@@ -222,7 +358,70 @@ class SettingsWebDialog(QDialog):
         errors = [f"{name}: {error}" for name, error in list(failures) + list(hook_failures)]
         if errors:
             return {"ok": False, "error": "; ".join(errors), "applied": sorted(touched)}
-        return {"ok": True, "applied": sorted(touched)}
+        result = {"ok": True, "applied": sorted(touched)}
+        if is_profile_patch:
+            result["profilePreview"] = render.profile_preview_context()
+        if "onigiri_theme_mode" in touched:
+            dark = render.is_dark()
+            palette = render.palette(dark)
+            self.web.page().setBackgroundColor(QColor(palette["outer"]))
+            result["appearance"] = {
+                "dark": dark,
+                "palette": palette,
+                "accent": render.accent_color(),
+            }
+        return result
+
+    def _cmd_profile_context(self, _arg):
+        return render.profile_preview_context()
+
+    def _cmd_grid_background(self, _arg):
+        """Mirror the displayed menu backdrop, including its slideshow frame."""
+        if self._closed or mw is None or not getattr(mw, "web", None):
+            return None
+
+        def push_background(background):
+            if self._closed:
+                return
+            self._eval_js(
+                "window.onigiriSettings && "
+                "window.onigiriSettings.setGridBackground(%s);"
+                % json.dumps(background)
+            )
+
+        # Read the actual rendered layers rather than starting another
+        # slideshow clock in Settings. The two views then show the same image
+        # even when the menu was opened long before this dialog.
+        mw.web.page().runJavaScript(
+            r"""
+            (function () {
+                const menu = document.querySelector('.container.modern-main-menu');
+                if (!menu) return null;
+                const style = getComputedStyle(menu);
+                function layer(pseudo) {
+                    const css = getComputedStyle(menu, pseudo);
+                    const matrix = /^matrix\(([^,]+)/.exec(css.transform);
+                    return {
+                        image: css.backgroundImage,
+                        position: css.backgroundPosition,
+                        size: css.backgroundSize,
+                        opacity: css.opacity,
+                        filter: css.filter,
+                        scale: matrix ? Number(matrix[1]) : 1
+                    };
+                }
+                return {
+                    dark: document.documentElement.classList.contains('night-mode')
+                        || document.body.classList.contains('night-mode'),
+                    color: style.backgroundColor,
+                    base: layer('::before'),
+                    next: layer('::after')
+                };
+            })();
+            """,
+            push_background,
+        )
+        return {"ok": True}
 
     def _cmd_close(self, _arg):
         self.close()
@@ -234,6 +433,16 @@ class SettingsWebDialog(QDialog):
         _touched, failures = self.store.apply_now({"settings_sidebar_collapsed": arg == "1"})
         for name, error in failures:
             print(f"[Onigiri] settings_web: could not persist rail state ({name}): {error}")
+        return {"ok": not failures}
+
+    def _cmd_complexity(self, arg):
+        """Persist the settings UI's Simple/Advanced presentation locally."""
+        mode = "advanced" if arg == "advanced" else "simple"
+        _touched, failures = self.store.apply_now({"settings_complexity": mode})
+        for name, error in failures:
+            print(f"[Onigiri] settings_web: could not persist complexity ({name}): {error}")
+        if not failures:
+            self._schedule_refresh()
         return {"ok": not failures}
 
     # ─── Study Tools actions ────────────────────────────────────────────────
@@ -276,19 +485,30 @@ class SettingsWebDialog(QDialog):
             print(f"[Onigiri] settings_web: Pomodoro sound import failed: {exc}")
         return "ok"
 
-    def _cmd_pomodoro_test_start_sound(self, _arg):
+    def _pomodoro_preview_settings(self, arg):
+        """Use current WebUI values without waiting for its auto-save."""
+        payload = json.loads(arg) if arg else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        return {
+            key: payload.get(key, self.store.read("pomodoro_" + key))
+            for key in ("start_sound", "end_sound", "sound_file")
+        }
+
+    def _cmd_pomodoro_test_start_sound(self, arg):
         from .. import pomodoro
 
-        pomodoro.play_test_sound("start")
+        pomodoro.play_test_sound(
+            "start", settings_override=self._pomodoro_preview_settings(arg)
+        )
         return "ok"
 
-    def _cmd_pomodoro_test_end_sound(self, _arg):
+    def _cmd_pomodoro_test_end_sound(self, arg):
         from .. import pomodoro
 
-        sound_file = None
-        if self.store.read("pomodoro_end_sound") == "custom":
-            sound_file = self.store.read("pomodoro_sound_file") or None
-        pomodoro.play_test_sound("end", sound_file)
+        pomodoro.play_test_sound(
+            "end", settings_override=self._pomodoro_preview_settings(arg)
+        )
         return "ok"
 
     # ─── Games actions ──────────────────────────────────────────────────────
@@ -344,9 +564,9 @@ class SettingsWebDialog(QDialog):
 
     def _cmd_color(self, arg):
         field_id, _, current = arg.partition(":")
-        chosen, ok = self._run_color_picker(current or "#00A982")
+        chosen, ok = self._run_color_picker(_picker_color_value(current) or "#00A982")
         if ok and chosen:
-            self._push_value(field_id, chosen)
+            self._push_value(field_id, _with_original_alpha(current, chosen))
         return "ok"
 
     def _cmd_font(self, arg):
@@ -395,10 +615,17 @@ class SettingsWebDialog(QDialog):
     def _cmd_icon_import(self, arg):
         kind = (arg or "svg").strip().lower()
         extensions = (".svg",) if kind == "svg" else (".png",)
-        added, error = gallery.import_images(
-            "icons", parent=self, title=tr("import_image", "Import image"),
-            extensions=extensions, filter_label="SVG" if kind == "svg" else "PNG",
-        )
+        host = self._picker_host()
+        try:
+            added, error = gallery.import_images(
+                "icons",
+                parent=host,
+                title=tr("import_image", "Import image"),
+                extensions=extensions,
+                filter_label="SVG" if kind == "svg" else "PNG",
+            )
+        finally:
+            self._release_picker_host(host)
         if error:
             return {"ok": False, "error": error}
         return self._icon_reply(added=added)
@@ -433,7 +660,7 @@ class SettingsWebDialog(QDialog):
             pattern = int(arg) if arg and arg.isdigit() else 0
         except Exception:
             pattern = 0
-        _trigger_mac_haptic(pattern)
+        self._trigger_mac_haptic(pattern)
         return "ok"
 
     # ─── image gallery ─────────────────────────────────────────────────────────
@@ -465,12 +692,18 @@ class SettingsWebDialog(QDialog):
     def _cmd_gallery_import(self, arg):
         payload = self._gallery_arg(arg)
         folder = payload.get("folder", "")
-        # Parented to the dialog itself, not to a _picker_host(): the file
-        # chooser is the platform's own window rather than a Qt widget, so it
-        # is never painted over by the webview and needs no host to lift it.
-        added, error = gallery.import_images(
-            folder, parent=self, title=tr("import_image", "Import image")
-        )
+        # A native chooser can still open behind Anki's WebEngine surface on
+        # macOS after returning from Review. Use the same temporary top-level
+        # host as the color/font pickers so the dialog is always visible.
+        host = self._picker_host()
+        try:
+            added, error = gallery.import_images(
+                folder,
+                parent=host,
+                title=tr("import_image", "Import image"),
+            )
+        finally:
+            self._release_picker_host(host)
         if error:
             return {"ok": False, "error": error, "folder": folder}
         return self._gallery_reply(folder, added=added)
@@ -538,9 +771,9 @@ class SettingsWebDialog(QDialog):
     # field-id-keyed patch path entirely (see theme_store.apply_theme) and
     # writes store.config / mw.col.conf directly — the same thing
     # _cmd_gallery_delete already does when a deleted file's references live on
-    # unported pages. `refresh` reports back only the *registered* WebUI fields
-    # a theme happened to touch (e.g. Fonts' color pairs), so the page can
-    # patch itself locally instead of the user finding stale values on return.
+    # unported pages. `refresh` preserves the narrow control update path, while
+    # `preview` returns every bound WebUI value as one coherent snapshot so all
+    # Settings previews repaint from the same theme at the same time.
     #
     # There is no _cmd_theme_list: the grid seeds from CTX.themeGallery (like
     # the gallery popover's initial paint) and only changes through this same
@@ -559,6 +792,20 @@ class SettingsWebDialog(QDialog):
             for field_id in self._field_ids_for_keys(touched_keys)
         }
 
+    def _theme_preview_payload(self):
+        """Return a coherent snapshot for every Settings preview.
+
+        Applying a theme writes both add-on and collection config directly. A
+        preview can depend on either store, so its fields are not necessarily
+        among the raw keys reported as touched. Sending all bound fields
+        together prevents a preview from mixing values from two themes.
+        """
+        return {
+            field["id"]: self.store.read(field["id"])
+            for _page, _section, field in schema.iter_fields(self.pages)
+            if field.get("bind")
+        }
+
     def _cmd_theme_apply(self, arg):
         payload = self._theme_arg(arg)
         kind, name = payload.get("kind", ""), payload.get("name", "")
@@ -567,12 +814,18 @@ class SettingsWebDialog(QDialog):
             return {"ok": False, "error": f"theme not found: {name!r}"}
         touched = theme_store.apply_theme(self.store, theme_data)
         self._schedule_refresh()
-        return {"ok": True, "name": name, "refresh": self._theme_refresh_payload(touched)}
+        return {"ok": True, "name": name, "refresh": self._theme_refresh_payload(touched),
+                "preview": self._theme_preview_payload(),
+                "accent": render.accent_color(),
+                "palettes": self.store.config.get("colors", {})}
 
     def _cmd_theme_reset(self, _arg):
         touched = theme_store.reset_theme_to_default(self.store)
         self._schedule_refresh()
-        return {"ok": True, "refresh": self._theme_refresh_payload(touched)}
+        return {"ok": True, "refresh": self._theme_refresh_payload(touched),
+                "preview": self._theme_preview_payload(),
+                "accent": render.accent_color(),
+                "palettes": self.store.config.get("colors", {})}
 
     def _cmd_theme_import(self, _arg):
         # Parented to the dialog itself, not _picker_host(): same reasoning as
@@ -696,14 +949,11 @@ class SettingsWebDialog(QDialog):
 
     def closeEvent(self, event):
         global _dialog
-        # Window geometry is the one thing that can only be read at close time.
+        self._closed = True
         try:
-            if not self.isMaximized() and not self.isFullScreen():
-                self.store.apply_now({
-                    "window_settings": {"width": self.width(), "height": self.height()}
-                })
+            self._load_watchdog.stop()
         except Exception as exc:  # noqa: BLE001
-            print(f"[Onigiri] settings_web: could not save window size: {exc}")
+            print(f"[Onigiri] settings_web: could not stop load watchdog: {exc}")
         # A pending coalesced refresh must still land once the window is gone.
         if self._refresh_timer is not None and self._refresh_timer.isActive():
             self._refresh_timer.stop()
@@ -717,35 +967,56 @@ def open_settings(initial_page=0, parent=None, addon_path=None):
     global _dialog
     try:
         if _dialog is not None:
-            _dialog.close()
+            if _dialog.bring_to_front(initial_page):
+                return _dialog
+            stale = _dialog
+            _dialog = None
+            stale.close()
+            stale.deleteLater()
     except Exception:
-        pass
+        _dialog = None
     _dialog = SettingsWebDialog(parent or mw, addon_path=addon_path, initial_page=initial_page)
-    _dialog.show()
-    _dialog.raise_()
-    _dialog.activateWindow()
     return _dialog
 
 
 def _trigger_mac_haptic_native(pattern=0):
+    if not mac_titlebar.is_supported():
+        return
     try:
         import ctypes
         import ctypes.util
 
+        pattern = int(pattern)
+        if pattern not in (0, 1, 2):
+            return
         appkit = ctypes.cdll.LoadLibrary(ctypes.util.find_library("AppKit"))
         objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
         objc.objc_getClass.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
         objc.sel_registerName.restype = ctypes.c_void_p
-        objc.objc_msgSend.restype = ctypes.c_void_p
+
+        # ctypes defaults untyped integer arguments to C int, truncating
+        # Objective-C pointers on 64-bit macOS.  Each objc_msgSend call also
+        # needs the method's fixed signature for the Apple ARM64 ABI.
+        address = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
+        send_object = ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+        )(address)
+        send_feedback = ctypes.CFUNCTYPE(
+            None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long, ctypes.c_ulong
+        )(address)
 
         cls = objc.objc_getClass(b"NSHapticFeedbackManager")
-        performer = objc.objc_msgSend(cls, objc.sel_registerName(b"defaultPerformer"))
+        if not cls:
+            return
+        performer = send_object(cls, objc.sel_registerName(b"defaultPerformer"))
         if performer:
-            objc.objc_msgSend(
+            send_feedback(
                 performer,
                 objc.sel_registerName(b"performFeedbackPattern:performanceTime:"),
-                ctypes.c_long(pattern),
-                ctypes.c_long(0),
+                pattern,
+                0,
             )
     except Exception:
         pass

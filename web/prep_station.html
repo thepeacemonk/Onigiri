@@ -6,20 +6,33 @@
 <style>
 /*__PREP_FONT_FACE__*/
 :root {
-  --bg: #f3f3f3; --surface: #fff; --surface2: #eee; --border: #e0e0e0;
-  --fg: #212121; --fg2: #757575; --fg3: #92948d; --accent: #0077c8;
-  --danger: #d85a5a; --learning: #6eafe0; --review: #0077c8;
+  /* Boot defaults mirror Settings; the shared palette supplies both modes. */
+  --bg: #ececeb; --surface: #fff; --surface2: #f0f0ef; --border: #e3e4e7;
+  --fg: #202124; --fg2: #63666c; --fg3: #8f9299; --accent: #00a982;
+  --danger: #d64545; --learning: #6eafe0; --review: #00a982;
   --relearning: #004d82; --filtered: #82a0b6;
 }
 * { box-sizing: border-box; }
 html, body {
   width: 100%; height: 100%; margin: 0; overflow: hidden;
   background: var(--bg) !important; color: var(--fg) !important;
-  font: 13px 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font: 13px 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 button, input, textarea { font: inherit; }
 button { border: 0; color: inherit; cursor: pointer; }
-button:hover, button:active { transform: none !important; outline: none; }
+/* Anki's stdHtml stylesheet injects button borders, shadows and transitions.
+   Keep Prep Station controls visually stable in every interaction state. */
+html body button,
+html body button:hover,
+html body button:focus,
+html body button:focus-visible,
+html body button:active {
+  appearance: none !important; -webkit-appearance: none !important;
+  border: 0 !important; box-shadow: none !important; filter: none !important;
+  background-image: none !important;
+  transform: none !important; transition: none !important; animation: none !important;
+}
+button:hover, button:active { outline: none; }
 button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: 2px;
 }
@@ -36,15 +49,14 @@ html body .title {
 }
 .button {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 9px 15px; border-radius: 999px; background: var(--surface2) !important;
+  padding: 9px 15px; border-radius: 999px !important; background: var(--surface2) !important;
   color: var(--fg) !important; font-size: 12px; font-weight: 700;
-  transition: background .16s ease, color .16s ease;
 }
 .button:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)) !important; }
 html body .button.primary { background: var(--accent) !important; color: var(--accent-ink, white) !important; }
 .button.primary:hover { background: color-mix(in srgb, var(--accent) 86%, #000) !important; }
 .button.danger { color: var(--danger) !important; background: color-mix(in srgb, var(--danger) 9%, var(--surface)) !important; }
-.weekly, .detail-chart, .card, .empty, .editor, .metric, .breakdown {
+.weekly, .detail-chart, .card, .empty, .editor, .metric, .projection, .breakdown {
   border: 1px solid var(--border); background: var(--surface); border-radius: 18px;
 }
 .weekly { max-width: 1180px; margin: 0 auto 22px; padding: 18px 20px 16px; }
@@ -83,7 +95,7 @@ html body .section-head h2 {
 .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--card) 55%, var(--border)); }
 .banner {
   height: 78px; padding: 12px 14px; display: flex; align-items: flex-start; justify-content: space-between;
-  background-color: var(--card); background-image: linear-gradient(100deg, #0004, transparent), var(--photo);
+  background-color: var(--card); background-image: var(--banner-shade, none), var(--photo, none);
   background-size: cover; background-position: center; color: var(--on-card) !important;
 }
 .exam-name { display: flex; align-items: center; gap: 9px; max-width: 78%; font-size: 14px; font-weight: 750; letter-spacing: -.02em; }
@@ -93,7 +105,7 @@ html body .section-head h2 {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--icon-color) 24%, transparent);
 }
 .exam-icon img { width: 22px; height: 22px; object-fit: contain; }
-.icon-mask { width: 20px; height: 20px; display: block; background: var(--icon-color); -webkit-mask: var(--icon-url) center / contain no-repeat; mask: var(--icon-url) center / contain no-repeat; }
+.icon-mask { width: 20px; height: 20px; display: block; background-color: var(--icon-color); -webkit-mask-position: center; mask-position: center; -webkit-mask-size: contain; mask-size: contain; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
 .days { padding: 4px 7px; border-radius: 99px; background: #0004; color: inherit !important; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .card-body { padding: 15px 14px 14px; }
 .pace-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -106,7 +118,7 @@ html body .section-head h2 {
 .progress-head b { color: var(--fg2); font-weight: 650; }
 .progress { height: 7px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: var(--surface2); }
 .progress i { display: block; width: var(--progress); height: 100%; border-radius: inherit; background: var(--card); }
-.add { min-height: 205px; display: grid; place-content: center; text-align: center; border-style: dashed; color: var(--fg2); background: transparent !important; }
+.add { min-height: 205px; display: grid; place-content: center; border-radius: 18px !important; outline: 1px dashed var(--border); outline-offset: -1px; text-align: center; color: var(--fg2); background: transparent !important; }
 .add strong { color: var(--accent); font-size: 25px; font-weight: 400; }
 .add span { margin-top: 4px; font-size: 12px; }
 .tooltip {
@@ -121,13 +133,20 @@ html body .section-head h2 {
 .tip-row i { width: 7px; height: 7px; border-radius: 2px; background: var(--kind-color); }
 .tip-row span { flex: 1; }
 .tip-row b { color: var(--fg) !important; }
-.empty { max-width: 520px; margin: 70px auto; padding: 35px; color: var(--fg2); text-align: center; }
-.empty b { display: block; margin-bottom: 5px; color: var(--fg) !important; font-size: 15px; }
+.empty { max-width: 720px; margin: clamp(34px, 8vh, 78px) auto 0; padding: clamp(28px, 5vw, 48px); color: var(--fg2); text-align: center; }
+.empty-mark { width: 70px; height: 70px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 24px; background: color-mix(in srgb, var(--accent) 11%, var(--surface2)); color: var(--accent); font-size: 31px; }
+.empty-mark svg { width: 34px; height: 34px; display: block; }
+html body .empty h2 { margin: 0; color: var(--fg) !important; font-size: 21px; letter-spacing: -.035em; }
+.empty > p { max-width: 500px; margin: 8px auto 22px; color: var(--fg3); font-size: 12px; line-height: 1.6; }
+.empty-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 auto 22px; }
+.empty-step { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 999px; background: var(--surface2); color: var(--fg2); font-size: 10px; text-align: left; }
+.empty-step b { width: 21px; height: 21px; display: grid; place-items: center; flex: 0 0 21px; border-radius: 50%; background: var(--surface); color: var(--accent) !important; font-size: 10px; }
+.empty .button { min-width: 132px; }
 .detail { max-width: 930px; margin: auto; }
-.back { margin-bottom: 20px; padding-left: 0; background: transparent !important; color: var(--fg2) !important; }
+.back { margin-bottom: 20px; padding: 9px 15px; border-radius: 999px; background: var(--surface2) !important; color: var(--fg2) !important; }
 .detail-hero {
   min-height: 118px; padding: 22px; border-radius: 19px; color: var(--on-card) !important;
-  background-color: var(--card); background-image: linear-gradient(100deg, #0006, transparent), var(--photo);
+  background-color: var(--card); background-image: var(--hero-shade, none), var(--photo, none);
   background-size: cover; background-position: center;
 }
 html body .detail-hero h1 { margin: 16px 0 2px; color: inherit !important; font-size: 25px; font-weight: 760; letter-spacing: -.05em; }
@@ -135,10 +154,32 @@ html body .detail-hero h1 { margin: 16px 0 2px; color: inherit !important; font-
 .hero-top { display: flex; justify-content: space-between; align-items: center; }
 .detail-grid { display: grid; grid-template-columns: 1.55fr .8fr; gap: 14px; margin-top: 14px; }
 .detail-chart { padding: 16px; }
-.metrics { display: grid; gap: 9px; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .metric { padding: 14px 15px; }
 .metric b { display: block; color: var(--accent) !important; font-size: 21px; letter-spacing: -.05em; }
 .metric span { color: var(--fg3); font-size: 10px; }
+.projection-note { margin: 14px 0 0; padding: 11px 13px; border-radius: 13px; background: color-mix(in srgb, #aa7822 10%, var(--surface)); color: var(--fg2); font-size: 11px; }
+.projection { margin-top: 14px; padding: 18px; }
+.projection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+html body .projection h3 { margin: 0 0 3px; color: var(--fg) !important; font-size: 12px; letter-spacing: .08em; }
+.projection-head p { margin: 0; color: var(--fg3); font-size: 10px; }
+.projection-inputs { flex: 0 0 auto; padding: 5px 8px; border-radius: 99px; background: var(--surface2); color: var(--fg2); font-size: 9px; font-weight: 650; white-space: nowrap; }
+/* The stacked track makes each source of exam-day maturity visible. */
+.maturity-track-wrap { position: relative; margin-top: 25px; }
+.maturity-track { height: 16px; display: flex; overflow: hidden; border-radius: 99px; background: var(--surface2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 65%, transparent); }
+.maturity-segment { min-width: 0; height: 100%; transition: width .25s ease; }
+.maturity-current { background: var(--card); }
+.maturity-scheduled { background: color-mix(in srgb, var(--card) 60%, var(--accent)); }
+.maturity-introduced { background: color-mix(in srgb, var(--accent) 75%, white); }
+.maturity-target { position: absolute; top: -9px; bottom: -9px; width: 2px; transform: translateX(-1px); border-radius: 2px; background: var(--fg); box-shadow: 0 0 0 2px var(--surface); }
+.maturity-target span { position: absolute; right: 0; bottom: calc(100% + 5px); padding: 2px 5px; transform: translateX(50%); border-radius: 6px; background: var(--fg); color: var(--bg); font-size: 8px; font-weight: 750; white-space: nowrap; }
+.projection-legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 17px; }
+.projection-legend-item { min-width: 0; display: grid; grid-template-columns: 8px 1fr; column-gap: 7px; align-items: center; }
+.projection-legend-item i { width: 8px; height: 8px; border-radius: 3px; background: var(--legend-color); }
+.projection-legend-item b { color: var(--fg) !important; font-size: 13px; line-height: 1; }
+.projection-legend-item span { grid-column: 2; margin-top: 2px; overflow: hidden; color: var(--fg3); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.projection-equation { display: flex; align-items: baseline; justify-content: center; gap: 7px; margin-top: 16px; padding: 11px; border-radius: 12px; background: var(--surface2); color: var(--fg2); font-size: 11px; text-align: center; }
+.projection-equation b { color: var(--accent) !important; font-size: 15px; }
 .breakdown { margin-top: 14px; padding: 16px; }
 html body .breakdown h3 { margin: 0 0 10px; color: var(--fg3) !important; font-size: 10px; letter-spacing: .1em; }
 .deck { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid var(--border); }
@@ -160,6 +201,9 @@ html body .editor h2 { margin: 0 0 20px; color: var(--fg) !important; font-size:
 .field input[type='date'] { appearance: none; -webkit-appearance: none; }
 .field input[type='date']::-webkit-calendar-picker-indicator { display: none; opacity: 0; }
 .field textarea { min-height: 75px; resize: none; }
+.planning-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.planning-fields .field { margin-top: 0; }
+.field-help { display: block; margin-top: 5px; color: var(--fg3); font-size: 9px; line-height: 1.45; }
 input[type='checkbox'] { accent-color: var(--accent); }
 .deck-search { margin-bottom: 7px !important; }
 .choices { max-height: 205px; overflow: auto; padding: 5px; border: 1px solid var(--border); border-radius: 16px; }
@@ -172,29 +216,31 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .deck-option-icon .icon-mask { width: 19px; height: 19px; }
 .deck-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .appearance { padding: 12px; border: 1px solid var(--border); border-radius: 18px; }
-.appearance-preview { height: 68px; margin-bottom: 10px; border-radius: 9px; background-color: var(--card); background-image: linear-gradient(100deg, #0004, transparent), var(--photo); background-size: cover; background-position: center; }
+.appearance-preview { height: 68px; margin-bottom: 10px; border-radius: 16px; background-color: var(--card); background-image: var(--preview-image, none); background-size: cover; background-position: center; }
 .appearance-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .color-field { min-width: 74px; color: var(--fg3); font-size: 9px; }
-.color-field input { width: 100%; height: 34px; margin-top: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface2); overflow: hidden; }
-.icon-trigger { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg) !important; text-align: left; transition: background-color .16s ease, border-color .16s ease; }
+.color-field > span { display: block; margin-bottom: 4px; }
+.color-trigger { min-width: 116px; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border-radius: 999px !important; background: var(--surface2) !important; color: var(--fg2); }
+.color-trigger i { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; background: var(--swatch); outline: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); outline-offset: -1px; }
+.color-trigger span { font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.icon-trigger { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 14px !important; background: var(--bg) !important; text-align: left; }
 .icon-trigger:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--bg)) !important; }
 .icon-trigger .exam-icon { width: 28px; height: 28px; flex-basis: 28px; border-radius: 9px; }
 .icon-trigger-copy { display: grid; gap: 1px; min-width: 0; }
 .icon-trigger-copy b { color: var(--fg); font-size: 11px; font-weight: 700; }
 .icon-trigger-copy span { color: var(--fg3); font-size: 9px; }
 .icon-trigger-arrow { margin-left: auto; color: var(--fg3); font-size: 17px; line-height: 1; }
-.icon-modal-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 16px; background: #0007; animation: icon-backdrop-in .18s ease forwards; }
-.icon-modal-backdrop.is-closing { animation: icon-backdrop-out .16s ease forwards; pointer-events: none; }
-.icon-modal { width: min(510px, 100%); height: min(610px, calc(100vh - 32px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--fg); box-shadow: 0 24px 70px #0006; animation: icon-modal-in .2s cubic-bezier(.22,.8,.28,1) forwards; }
-.icon-modal-backdrop.is-closing .icon-modal { animation: icon-modal-out .16s ease forwards; }
+.icon-modal-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 16px; background: #0007; }
+.icon-modal-backdrop.is-closing { pointer-events: none; }
+.icon-modal { width: min(510px, 100%); height: min(610px, calc(100vh - 32px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--fg); box-shadow: none; }
 .icon-modal-head { display: flex; align-items: center; gap: 10px; padding: 17px 19px; border-bottom: 1px solid var(--border); background: var(--surface2); }
 .icon-modal-head b { flex: 1; font-size: 15px; letter-spacing: -.025em; }
-.icon-close { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 10px; color: var(--fg3); background: transparent !important; font-size: 19px; line-height: 1; }
+.icon-close { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 10px !important; color: var(--fg3); background: transparent !important; font-size: 19px; line-height: 1; }
 .icon-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent) !important; }
-.icon-tabs { display: flex; gap: 2px; margin: 14px 19px 0; padding: 3px; border-radius: 12px; background: var(--surface2); }
-.icon-tab { flex: 1 1 0; height: 30px; padding: 0 10px; border-radius: 9px; color: var(--fg2); background: transparent !important; font-size: 11px; font-weight: 650; transition: color .16s ease, background-color .16s ease; }
+.icon-tabs { display: flex; gap: 2px; margin: 14px 19px 0; padding: 3px; border-radius: 999px; background: var(--surface2); }
+.icon-tab { flex: 1 1 0; height: 30px; padding: 0 10px; border-radius: 999px !important; color: var(--fg2); background: transparent !important; font-size: 11px; font-weight: 650; }
 .icon-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent) !important; }
-.icon-tab.active { color: var(--fg) !important; background: var(--surface) !important; box-shadow: 0 1px 3px #0002; }
+.icon-tab.active { color: var(--fg) !important; background: var(--surface) !important; box-shadow: none; }
 .icon-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 19px 7px; overflow: hidden; }
 .icon-search { width: 100%; height: 35px; margin: 0 0 10px !important; padding: 0 11px !important; border: 1px solid var(--border) !important; border-radius: 11px !important; background: var(--surface2) !important; color: var(--fg) !important; }
 .icon-results { flex: 1; min-height: 0; overflow: auto; padding: 4px 7px 12px; }
@@ -202,23 +248,51 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .icon-section + .icon-section { margin-top: 11px; }
 .icon-section-label { position: sticky; top: -4px; z-index: 1; margin: 0 -7px 7px; padding: 6px 7px 4px; color: var(--fg3); background: var(--surface); font-size: 9px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 7px; }
-.icon-choice { height: 42px; display: grid; place-items: center; padding: 5px; border: 1px solid transparent; border-radius: 10px; color: var(--fg2); background: var(--surface2) !important; }
+.icon-choice { height: 42px; display: grid; place-items: center; padding: 5px; border-radius: 13px !important; color: var(--fg2); background: var(--surface2) !important; }
 .icon-choice:hover { background: color-mix(in srgb, var(--fg) 7%, var(--surface2)) !important; }
 .icon-choice.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent) !important; }
 .icon-choice img { width: 23px; height: 23px; object-fit: contain; }.icon-choice .icon-mask { width: 21px; height: 21px; }
 .icon-empty { padding: 18px 4px; color: var(--fg3); text-align: center; font-size: 11px; }
 .icon-modal-foot { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 19px 17px; }
-.icon-modal-foot label { display: inline-flex; align-items: center; gap: 7px; color: var(--fg3); font-size: 10px; font-weight: 650; }.icon-modal-foot input { width: 46px; height: 28px; padding: 2px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface2); overflow: hidden; }
+.icon-modal-foot[hidden] { display: none !important; }
+.icon-modal-foot > span { color: var(--fg3); font-size: 10px; font-weight: 650; }
+.icon-modal-foot .color-trigger { min-width: 132px; }
 .editor-footer { position: sticky; bottom: -24px; display: flex; justify-content: center; gap: 8px; margin: 26px 0 0; padding: 17px 0 20px; background: var(--surface); }
 .deck { border-radius: 12px; }
 .deck-icon { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; }
 .deck-icon img { width: 20px; height: 20px; object-fit: contain; }
 .deck-icon .icon-mask { width: 19px; height: 19px; }
 .notice { min-height: 14px; margin-top: 3px; color: var(--danger); font-size: 11px; }
+/* Minimal in-page dialogs replace browser/Anki-native confirmation and colour
+   pop-ups, keeping controls inside the Prep Station visual system. */
+.web-dialog-backdrop { position: fixed; z-index: 70; inset: 0; display: grid; place-items: center; padding: 18px; background: #0007; }
+.web-dialog { width: min(340px, 100%); padding: 22px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--fg); text-align: center; }
+.web-dialog-mark { width: 42px; height: 42px; display: grid; place-items: center; margin: 0 auto 13px; border-radius: 50%; background: color-mix(in srgb, var(--danger) 12%, var(--surface2)); color: var(--danger); font-size: 20px; font-weight: 750; }
+html body .web-dialog h3 { margin: 0; color: var(--fg) !important; font-size: 16px; }
+.web-dialog p { margin: 7px 0 18px; color: var(--fg3); font-size: 11px; line-height: 1.55; }
+.web-dialog-actions { display: flex; justify-content: center; gap: 8px; }
+.color-popover-layer { position: fixed; z-index: 79; inset: 0; }
+.color-popover { position: fixed; z-index: 80; width: min(276px, calc(100vw - 24px)); padding: 14px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--fg); }
+.color-popover-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.color-popover-head b { color: var(--fg) !important; font-size: 12px; }
+.color-popover-head span { color: var(--fg3); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.color-sv { position: relative; width: 100%; height: 116px; overflow: hidden; border-radius: 14px; cursor: crosshair; touch-action: none; background-color: hsl(var(--picker-hue, 0), 100%, 50%); background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); }
+.color-cursor { position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.hue-range { width: 100%; height: 16px; margin: 10px 0 8px; padding: 0; border: 0; appearance: none; border-radius: 999px; outline: 0; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.hue-range::-webkit-slider-thumb { width: 18px; height: 18px; appearance: none; border: 2px solid var(--surface); border-radius: 50%; background: hsl(var(--picker-hue, 0), 100%, 50%); cursor: pointer; }
+.color-entry { display: flex; align-items: center; gap: 8px; }
+.color-entry i { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; background: var(--picker-color); outline: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); outline-offset: -1px; }
+.color-entry input { min-width: 0; flex: 1 1 auto; height: 34px; padding: 0 11px; border: 0; border-radius: 999px; outline: 0; color: var(--fg); background: var(--surface2); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.color-popover-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
 @keyframes icon-backdrop-in { from { opacity: 0; } to { opacity: 1; } } @keyframes icon-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes icon-modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } } @keyframes icon-modal-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(8px) scale(.985); } }
 @media (max-width: 680px) {
   .app { padding: 20px 16px; } .detail-grid { grid-template-columns: 1fr; }
+  .planning-fields { grid-template-columns: 1fr; }
+  .projection-head { display: block; } .projection-inputs { display: inline-block; margin-top: 9px; }
+  .projection-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .projection-equation { flex-wrap: wrap; }
+  .empty-steps { grid-template-columns: 1fr; }
   .top { margin-bottom: 18px; } .weekly { padding: 15px; }
   .bar-chart { height: 155px; gap: 8px; padding-inline: 4px; }
   .chart-legend { justify-content: flex-start; }
@@ -240,6 +314,85 @@ function esc(value) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 function t(key, fallback) { return (ctx.strings || {})[key] || fallback; }
+function normalizeHex(value) {
+  let hex = String(value || '').trim().replace(/^#/, '');
+  if (hex.length === 3) hex = hex.split('').map(char => char + char).join('');
+  return /^[0-9a-f]{6}$/i.test(hex) ? '#' + hex.toUpperCase() : '';
+}
+function hexToRgb(value) {
+  const hex = normalizeHex(value).slice(1);
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+}
+function rgbToHex(rgb) {
+  return '#' + rgb.map(value => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+function rgbToHsv(rgb) {
+  const [r, g, b] = rgb.map(value => value / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === r) hue = ((g - b) / delta) % 6;
+    else if (max === g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    hue *= 60; if (hue < 0) hue += 360;
+  }
+  return [hue, max ? delta / max : 0, max];
+}
+function hsvToHex(hue, saturation, value) {
+  const chroma = value * saturation;
+  const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
+  const match = value - chroma;
+  let rgb;
+  if (hue < 60) rgb = [chroma, x, 0]; else if (hue < 120) rgb = [x, chroma, 0];
+  else if (hue < 180) rgb = [0, chroma, x]; else if (hue < 240) rgb = [0, x, chroma];
+  else if (hue < 300) rgb = [x, 0, chroma]; else rgb = [chroma, 0, x];
+  return rgbToHex(rgb.map(channel => (channel + match) * 255));
+}
+function colorControl(id, label, value) {
+  const color = normalizeHex(value) || '#0077C8';
+  return `<label class="color-field">${label ? `<span>${esc(label)}</span>` : ''}<button class="color-trigger" id="${esc(id)}" type="button" style="--swatch:${color}"><i></i><span>${color}</span></button></label>`;
+}
+function syncColorControl(id, value) {
+  const control = $(id), color = normalizeHex(value);
+  if (!control || !color) return;
+  control.style.setProperty('--swatch', color);
+  const label = control.querySelector('span'); if (label) label.textContent = color;
+}
+function closeWebColorPicker() {
+  const layer = $('prep-color-popover'); if (layer) layer.remove();
+}
+function openWebColorPicker(anchor, initial, label, onApply) {
+  closeWebColorPicker();
+  let draft = normalizeHex(initial) || '#0077C8';
+  let hsv = rgbToHsv(hexToRgb(draft));
+  document.body.insertAdjacentHTML('beforeend', `<div class="color-popover-layer" id="prep-color-popover"><section class="color-popover" role="dialog" aria-modal="true" aria-label="${esc(label)}"><div class="color-popover-head"><b>${esc(label)}</b><span>${draft}</span></div><div class="color-sv"><i class="color-cursor"></i></div><input class="hue-range" type="range" min="0" max="359" value="${hsv[0]}" aria-label="Hue"><div class="color-entry"><i></i><input maxlength="7" spellcheck="false" value="${draft}" aria-label="Hex color"></div><div class="color-popover-actions"><button class="button color-cancel" type="button">${esc(t('cancel', 'Cancel'))}</button><button class="button primary color-apply" type="button">${esc(t('prep_apply_color', 'Apply'))}</button></div></section></div>`);
+  const layer = $('prep-color-popover'), popover = layer.querySelector('.color-popover');
+  const area = popover.querySelector('.color-sv'), cursor = popover.querySelector('.color-cursor');
+  const hue = popover.querySelector('.hue-range'), hex = popover.querySelector('.color-entry input');
+  function paint() {
+    draft = hsvToHex(hsv[0], hsv[1], hsv[2]);
+    popover.style.setProperty('--picker-hue', hsv[0]); popover.style.setProperty('--picker-color', draft);
+    cursor.style.left = (hsv[1] * 100) + '%'; cursor.style.top = ((1 - hsv[2]) * 100) + '%';
+    hue.value = String(hsv[0]); hex.value = draft; popover.querySelector('.color-popover-head span').textContent = draft;
+  }
+  function pick(event) {
+    const rect = area.getBoundingClientRect();
+    hsv[1] = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    hsv[2] = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)); paint();
+  }
+  area.addEventListener('pointerdown', event => { area.setPointerCapture(event.pointerId); pick(event); });
+  area.addEventListener('pointermove', event => { if (area.hasPointerCapture(event.pointerId)) pick(event); });
+  hue.oninput = () => { hsv[0] = Number(hue.value); paint(); };
+  hex.onchange = () => { const value = normalizeHex(hex.value); if (value) { hsv = rgbToHsv(hexToRgb(value)); paint(); } else paint(); };
+  popover.querySelector('.color-cancel').onclick = closeWebColorPicker;
+  popover.querySelector('.color-apply').onclick = () => { closeWebColorPicker(); onApply(draft); };
+  layer.onclick = event => { if (event.target === layer) closeWebColorPicker(); };
+  layer.onkeydown = event => { if (event.key === 'Escape') closeWebColorPicker(); };
+  layer.tabIndex = -1; layer.focus(); paint();
+  const anchorRect = anchor.getBoundingClientRect(), popRect = popover.getBoundingClientRect();
+  const left = Math.max(12, Math.min(anchorRect.right - popRect.width, window.innerWidth - popRect.width - 12));
+  const below = anchorRect.bottom + 7, above = anchorRect.top - popRect.height - 7;
+  popover.style.left = left + 'px'; popover.style.top = (below + popRect.height <= window.innerHeight - 12 ? below : Math.max(12, above)) + 'px';
+}
 function hexParts(hex) {
   let value = String(hex || '#0077c8').replace('#', '');
   if (value.length === 3) value = value.split('').map(char => char + char).join('');
@@ -294,7 +447,7 @@ function icon(value, color) {
   else if ((ctx.systemIcons || []).includes(value)) src = base + 'system_files/system_icons/available_for_users/' + value;
   else src = (ctx.iconPaths || {})[value] || base + 'user_files/custom_deck_icons/' + value;
   if (value.toLowerCase().endsWith('.svg')) {
-    return `<span class="icon-mask" style="--icon-url:url(&quot;${esc(src)}&quot;);${color ? `--icon-color:${esc(color)};` : ''}"></span>`;
+    return `<span class="icon-mask" style="-webkit-mask-image:url(&quot;${esc(src)}&quot;);mask-image:url(&quot;${esc(src)}&quot;);${color ? `--icon-color:${esc(color)};` : ''}"></span>`;
   }
   return `<img${tint} src="${esc(src)}">`;
 }
@@ -347,10 +500,10 @@ function iconTrigger(plan) {
   return `<span class="exam-icon">${icon(plan.icon)}</span><span class="icon-trigger-copy"><b>${esc(iconLabel(plan.icon))}</b><span>${esc(t('prep_choose_icon_or_emoji', 'Choose an icon or emoji'))}</span></span><span class="icon-trigger-arrow">›</span>`;
 }
 function closeIconPicker() {
+  closeWebColorPicker();
   const modal = $('prep-icon-picker');
   if (!modal) return;
-  modal.classList.add('is-closing');
-  setTimeout(() => modal.remove(), 165);
+  modal.remove();
 }
 function openIconPicker() {
   if (!view.editing || $('prep-icon-picker')) return;
@@ -360,36 +513,55 @@ function openIconPicker() {
   let active = selectedIcon.startsWith('emoji:') ? 0 : selectedIcon.startsWith('system:') ? 1 : 2;
   if (!catalog[active]?.[1]?.length) active = catalog.findIndex(([, items]) => items.length);
   if (active < 0) active = 0;
-  document.body.insertAdjacentHTML('beforeend', `<div class="icon-modal-backdrop" id="prep-icon-picker"><section class="icon-modal" role="dialog" aria-modal="true" aria-label="${esc(t('icon_picker', 'Icon picker'))}">
+  document.body.insertAdjacentHTML('beforeend', `<div class="icon-modal-backdrop" id="prep-icon-picker"><section class="icon-modal" style="--icon-color:${esc(plan.icon_color || ctx.accent)}" role="dialog" aria-modal="true" aria-label="${esc(t('icon_picker', 'Icon picker'))}">
     <header class="icon-modal-head"><b>${esc(t('choose_icon', 'Choose icon'))}</b><button class="icon-close" type="button" aria-label="${esc(t('close', 'Close'))}">×</button></header>
     <div class="icon-tabs">${catalog.map(([label], index) => `<button type="button" class="icon-tab ${index === active ? 'active' : ''}" data-tab="${index}">${esc(label)}</button>`).join('')}</div>
     <div class="icon-modal-body"><input class="icon-search" placeholder="${esc(t('search_icons_placeholder', 'Search icons…'))}"><div class="icon-results"></div></div>
-    <footer class="icon-modal-foot"><label>${esc(t('icon_label', 'Icon Color'))} <input type="color" value="${esc(plan.icon_color || ctx.accent)}"></label></footer>
+    <footer class="icon-modal-foot" id="icon-color-foot" ${active === 1 ? '' : 'hidden'}><span>${esc(t('icon_label', 'Icon Color'))}</span>${colorControl('icon-color-trigger', '', plan.icon_color || ctx.accent)}</footer>
   </section></div>`);
-  const modal = $('prep-icon-picker'), search = modal.querySelector('.icon-search'), color = modal.querySelector('input[type=color]');
+  const modal = $('prep-icon-picker'), dialog = modal.querySelector('.icon-modal'), search = modal.querySelector('.icon-search');
   function paint() {
     modal.querySelectorAll('.icon-tab').forEach(tab => tab.classList.toggle('active', Number(tab.dataset.tab) === active));
+    $('icon-color-foot').hidden = active !== 1;
     renderIconPicker(modal, search.value, plan.icon, active);
   }
   modal.querySelector('.icon-close').onclick = closeIconPicker;
   modal.addEventListener('click', event => { if (event.target === modal) closeIconPicker(); });
   modal.querySelectorAll('.icon-tab').forEach(tab => tab.onclick = () => { active = Number(tab.dataset.tab); search.value = ''; paint(); search.focus(); });
   search.oninput = paint;
-  color.oninput = event => { plan.icon_color = event.target.value; if (view.refreshAppearance) view.refreshAppearance(); };
+  $('icon-color-trigger').onclick = event => openWebColorPicker(event.currentTarget, plan.icon_color, t('icon_label', 'Icon Color'), value => {
+    plan.icon_color = value; dialog.style.setProperty('--icon-color', value); syncColorControl('icon-color-trigger', value);
+    if (view.refreshAppearance) view.refreshAppearance(); paint();
+  });
   modal.addEventListener('keydown', event => { if (event.key === 'Escape') closeIconPicker(); });
   paint(); setTimeout(() => search.focus(), 0);
 }
 function closeEditor() {
+  closeWebColorPicker();
   closeIconPicker();
   const editor = $('editor');
   if (!editor) return;
   editor.classList.add('is-closing');
   setTimeout(() => editor.remove(), 185);
 }
+function closeDeleteDialog() {
+  const dialog = $('prep-delete-dialog'); if (dialog) dialog.remove();
+}
+function openDeleteDialog(plan) {
+  closeDeleteDialog(); closeWebColorPicker();
+  document.body.insertAdjacentHTML('beforeend', `<div class="web-dialog-backdrop" id="prep-delete-dialog"><section class="web-dialog" role="alertdialog" aria-modal="true" aria-labelledby="prep-delete-title"><div class="web-dialog-mark">!</div><h3 id="prep-delete-title">${esc(t('prep_delete_plan_title', 'Delete this plan?'))}</h3><p>${esc(t('prep_delete_plan_desc', 'The plan and its maturity projection will be permanently removed.'))}</p><div class="web-dialog-actions"><button class="button dialog-cancel" type="button">${esc(t('cancel', 'Cancel'))}</button><button class="button danger dialog-confirm" type="button">${esc(t('prep_delete', 'Delete'))}</button></div></section></div>`);
+  const dialog = $('prep-delete-dialog');
+  dialog.querySelector('.dialog-cancel').onclick = closeDeleteDialog;
+  dialog.querySelector('.dialog-confirm').onclick = () => { closeDeleteDialog(); pycmd('prep:delete:' + plan.id); };
+  dialog.onclick = event => { if (event.target === dialog) closeDeleteDialog(); };
+  dialog.onkeydown = event => { if (event.key === 'Escape') closeDeleteDialog(); };
+  dialog.tabIndex = -1; dialog.focus();
+}
 function planVars(plan) {
   const color = activePlanColor(plan);
   const iconColor = plan.icon_color || ctx.accent;
-  return `--card:${color};--on-card:${onColor(color)};--icon-color:${iconColor};--photo:url('${plan.thumbnailUrl || ''}')`;
+  const hasPhoto = Boolean(plan.thumbnailUrl), photo = hasPhoto ? `url('${plan.thumbnailUrl}')` : 'none';
+  return `--card:${color};--on-card:${onColor(color)};--icon-color:${iconColor};--photo:${photo};--banner-shade:${hasPhoto ? 'linear-gradient(100deg,#0004,transparent)' : 'none'};--hero-shade:${hasPhoto ? 'linear-gradient(100deg,#0006,transparent)' : 'none'}`;
 }
 function seriesFor(data) {
   const source = data.series || {};
@@ -435,6 +607,7 @@ function pulse(plan) {
     ahead: ['Ahead of pace', '#23855f'], steady: ['In rhythm', '#2774a7'],
     reset: ['A little behind', '#aa7822'], starting: ['Ready when you are', '#80766d'],
     caught_up: ['All caught up', '#23855f'], past: ['Exam passed', '#80766d'], not_ready: ['Add decks', '#80766d'],
+    needs_more_time: [t('prep_needs_more_time', 'Needs more time'), '#aa7822'],
   };
   const value = labels[plan._week?.pulse] || labels.not_ready;
   return `<span class="pulse" style="--pulse:${value[1]};--pulse-bg:color-mix(in srgb,${value[1]} 12%,transparent)">${value[0]}</span>`;
@@ -448,44 +621,77 @@ function days(plan) {
 function card(plan) {
   const week = plan._week || {}, pace = plan._pace || {}, decks = plan.decks || [];
   const target = !decks.length || pace.required_per_day == null ? 0 : Math.ceil(pace.required_per_day);
-  const reviewedToday = Number(week.today_reviewed || 0);
-  const progress = target ? Math.min(100, Math.round(reviewedToday / target * 100)) : 0;
+  const matureNow = Number(pace.current_mature || 0), matureTarget = Number(pace.target_mature || 0);
+  const progress = matureTarget ? Math.min(100, Math.round(matureNow / matureTarget * 100)) : 0;
   return `<article class="card" style="${planVars(plan)}" data-open="${esc(plan.id)}">
     <div class="banner"><div class="exam-name"><span class="exam-icon">${icon(plan.icon)}</span><span>${esc(plan.name || 'Exam')}</span></div><span class="days">${esc(days(plan))}</span></div>
-    <div class="card-body"><div class="pace-row"><div class="target-wrap"><span class="target-label">${esc(t('prep_target_today', 'Target today'))}</span><span class="target">${target || '—'} <small>cards / day</small></span></div>${pulse(plan)}</div>
-    <div class="progress-head"><b>${esc(t('prep_today_progress', "Today's progress"))}</b><span>${reviewedToday} / ${target || '—'}</span></div><div class="progress"><i style="--progress:${progress}%"></i></div></div>
+    <div class="card-body"><div class="pace-row"><div class="target-wrap"><span class="target-label">${esc(t('prep_target_today', 'Target today'))}</span><span class="target">${target || '—'} <small>${esc(t('prep_reviews_per_day_unit', 'reviews / day'))}</small></span></div>${pulse(plan)}</div>
+    <div class="progress-head"><b>${esc(t('prep_maturity_progress', 'Maturity progress'))}</b><span>${matureNow} / ${matureTarget || '—'}</span></div><div class="progress"><i style="--progress:${progress}%"></i></div></div>
   </article>`;
 }
 function home() {
   const week = Object.assign({ counts: [], labels: [], series: {}, elapsed: new Date().getDay() || 7 }, ctx.week || {});
   const plans = ctx.plans || [];
   const add = `<button class="card add" id="add"><strong>＋</strong><span>${esc(t('prep_new_plan', 'New Plan'))}</span></button>`;
-  const cards = plans.length ? `<section class="grid">${plans.map(card).join('')}${add}</section>` :
-    `<section class="empty"><b>${esc(t('prep_empty_title', 'Start with one exam.'))}</b><span>${esc(t('prep_empty_desc', 'Add the decks you want to keep in view; the pace will update from your reviews.'))}</span><p>${add}</p></section>`;
+  const cards = plans.length ? `<section class="grid">${plans.map(card).join('')}${add}</section>` : `<section class="empty"><div class="empty-mark"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"></path><path fill="currentColor" d="M12.001 2a4.75 4.75 0 0 0-4.163 2.46a3.73 3.73 0 0 0-2.723 6.86l.425.245V20c0 .414.336.75.75.75h11.352a.75.75 0 0 0 .75-.75v-8.397l.494-.284a3.73 3.73 0 0 0-2.723-6.86A4.75 4.75 0 0 0 12 2M8.944 5.645a3.252 3.252 0 0 1 6.114-.001a.75.75 0 0 0 1.023.424a2.23 2.23 0 0 1 2.055 3.952l-.869.5a.75.75 0 0 0-.375.65v4.33H7.04v-4.368a.75.75 0 0 0-.375-.65l-.8-.461a2.23 2.23 0 0 1 2.056-3.952a.75.75 0 0 0 1.023-.424M7.04 17h9.852v2.25H7.04z"></path></svg></div><h2>${esc(t('prep_empty_title', 'Start with one exam.'))}</h2><p>${esc(t('prep_empty_desc', 'Add the decks you want to keep in view; the pace will update from your reviews.'))}</p><div class="empty-steps"><span class="empty-step"><b>1</b>${esc(t('prep_empty_exam_step', 'Choose the exam date'))}</span><span class="empty-step"><b>2</b>${esc(t('prep_empty_decks_step', 'Select study decks'))}</span><span class="empty-step"><b>3</b>${esc(t('prep_empty_goal_step', 'Set a maturity goal'))}</span></div><button class="button primary" id="empty-add">＋ ${esc(t('prep_new_plan', 'New Plan'))}</button></section>`;
   app.innerHTML = `<header class="top"><div><div class="eyebrow">${esc(t('prep_study_plans_eyebrow', 'STUDY PLANS'))}</div><h1 class="title">${esc(t('prep_station_title', 'Prep Station'))}</h1></div><button class="button primary" id="new">＋ ${esc(t('prep_new_plan', 'New Plan'))}</button></header>
-    <section class="weekly">${barChart(week, 'week')}</section>${cards}`;
-  bindBarHover(app, week);
+    ${plans.length ? `<section class="weekly">${barChart(week, 'week')}</section>` : ''}${cards}`;
+  if (plans.length) bindBarHover(app, week);
   $('new').onclick = () => edit();
   if ($('add')) $('add').onclick = () => edit();
+  if ($('empty-add')) $('empty-add').onclick = () => edit();
   app.querySelectorAll('[data-open]').forEach(element => element.onclick = () => detail(planById(element.dataset.open)));
+}
+function projectionPanel(pace) {
+  const total = Math.max(0, Number(pace.projected_total || 0));
+  const current = Math.max(0, Number(pace.current_mature || 0));
+  const scheduledTotal = Math.max(current, Number(pace.expected_mature_from_scheduled || current));
+  const projected = Math.max(scheduledTotal, Number(pace.projected_mature || scheduledTotal));
+  const scheduled = Math.max(0, scheduledTotal - current);
+  const introduced = Math.max(0, projected - scheduledTotal);
+  const remaining = Math.max(0, total - projected);
+  const width = value => total ? Math.min(100, value / total * 100) : 0;
+  const marker = total ? Math.min(100, Number(pace.target_mature || 0) / total * 100) : 0;
+  const retentionMin = Number(pace.desired_retention_min ?? pace.desired_retention ?? 90);
+  const retentionMax = Number(pace.desired_retention_max ?? pace.desired_retention ?? 90);
+  const retention = retentionMin === retentionMax ? `${retentionMin}%` : `${retentionMin}–${retentionMax}%`;
+  const inputs = t('prep_projection_inputs', 'FSRS {0} retention · {1} future cards')
+    .replace('{0}', retention).replace('{1}', pace.future_new_cards ?? 0);
+  const reviewTotal = Number(pace.workload_reviews || 0).toFixed(1).replace(/\.0$/, '');
+  const studyDays = Math.max(1, Number(pace.study_days || 1));
+  const daily = pace.required_per_day == null ? '—' : Math.ceil(Number(pace.required_per_day));
+  const legends = [
+    [current, t('prep_current_mature_legend', 'Mature now'), 'var(--card)'],
+    [scheduled, t('prep_scheduled_gain_legend', 'From scheduled reviews'), 'color-mix(in srgb,var(--card) 60%,var(--accent))'],
+    [introduced, t('prep_introduced_gain_legend', 'From new introductions'), 'color-mix(in srgb,var(--accent) 75%,white)'],
+    [remaining, t('prep_remaining_legend', 'Not mature by exam'), 'var(--surface2)'],
+  ];
+  return `<section class="projection"><div class="projection-head"><div><h3>${esc(t('prep_projection_title', 'EXAM MATURITY PROJECTION'))}</h3><p>${esc(t('prep_projection_subtitle', 'How Prep Station builds your daily target'))}</p></div><span class="projection-inputs">${esc(inputs)}</span></div>
+    <div class="maturity-track-wrap"><div class="maturity-track" role="img" aria-label="${esc(`${projected} / ${total}`)}"><i class="maturity-segment maturity-current" style="width:${width(current)}%"></i><i class="maturity-segment maturity-scheduled" style="width:${width(scheduled)}%"></i><i class="maturity-segment maturity-introduced" style="width:${width(introduced)}%"></i></div><i class="maturity-target" style="left:${marker}%"><span>${esc(t('prep_target_marker', '{0}% target').replace('{0}', pace.target_mature_percent ?? 80))}</span></i></div>
+    <div class="projection-legend">${legends.map(([value, label, color]) => `<div class="projection-legend-item" style="--legend-color:${color}"><i></i><b>${value}</b><span>${esc(label)}</span></div>`).join('')}</div>
+    <div class="projection-equation"><span>${reviewTotal} ${esc(t('prep_expected_reviews', 'expected reviews'))}</span><span>÷</span><span>${studyDays} ${esc(t('prep_study_days', 'study days'))}</span><span>=</span><b>${daily} ${esc(t('prep_daily_result', 'reviews / day'))}</b></div></section>`;
 }
 function detail(plan) {
   if (!plan) return home();
   view.plan = plan;
   const pace = plan._pace || {}, week = plan._week || {}, deckCounts = pace.deck_counts || {};
+  const projectionNote = pace.status === 'unreachable' ? `<p class="projection-note">${esc(t('prep_unreachable_projection', 'With cards arriving throughout the remaining time, only {0}% can reach a 21-day interval before the exam. Add cards earlier, move the exam, or lower the maturity target.').replace('{0}', pace.achievable_percent ?? 0))}</p>` : '';
   app.innerHTML = `<section class="detail" style="${planVars(plan)}"><button class="button back" id="back">← Back to plans</button>
     <header class="detail-hero"><div class="hero-top"><span class="exam-icon">${icon(plan.icon)}</span><button class="button" id="edit">${esc(t('prep_edit', 'Edit'))}</button></div><h1>${esc(plan.name)}</h1><p>${esc(days(plan))} · ${esc(plan.exam_date || '')}</p></header>
-    <div class="detail-grid"><section class="detail-chart">${barChart(week, 'plan')}</section><aside class="metrics">
+    ${projectionNote}<div class="detail-grid"><section class="detail-chart">${barChart(week, 'plan')}</section><aside class="metrics">
       <div class="metric"><b>${pace.required_per_day == null ? '—' : Math.ceil(pace.required_per_day)}</b><span>${esc(t('prep_daily_target', 'Daily target'))}</span></div>
-      <div class="metric"><b>${pace.total_pending ?? 0}</b><span>${esc(t('prep_cards_remaining', 'Cards remaining'))}</span></div>
+      <div class="metric"><b>${pace.current_mature ?? 0}</b><span>${esc(t('prep_mature_now', 'Mature now'))}</span></div>
+      <div class="metric"><b>${pace.target_mature ?? 0}</b><span>${esc(t('prep_mature_target', 'Mature target'))}</span></div>
+      <div class="metric"><b>${pace.desired_retention ?? 90}%</b><span>${esc(t('prep_fsrs_retention', 'FSRS retention'))}</span></div>
+      <div class="metric"><b>${pace.projected_total ?? 0}</b><span>${esc(t('prep_exam_deck_size', 'Cards by exam'))}</span></div>
       <div class="metric"><b>${week.reviewed || 0}</b><span>${esc(t('prep_reviewed_this_week', 'Reviewed this week'))}</span></div>
-    </aside></div><section class="breakdown"><h3>${esc(t('prep_deck_breakdown', 'DECK BREAKDOWN'))}</h3>${Object.keys(deckCounts).length ? Object.entries(deckCounts).map(([name, count]) => { const deck = deckByName(name); return `<div class="deck" title="${esc(name)}"><span class="deck-icon">${icon(deck.icon, deck.iconColor)}</span><span class="deck-name">${esc(deckLeaf(name))}</span><span class="deck-count">${count.new || 0} new · ${count.due || 0} due</span></div>`; }).join('') : `<span class="muted">${esc(t('prep_no_decks', 'No decks assigned to this plan yet.'))}</span>`}</section></section>`;
+    </aside></div>${projectionPanel(pace)}<section class="breakdown"><h3>${esc(t('prep_deck_breakdown', 'DECK BREAKDOWN'))}</h3>${Object.keys(deckCounts).length ? Object.entries(deckCounts).map(([name, count]) => { const deck = deckByName(name); return `<div class="deck" title="${esc(name)}"><span class="deck-icon">${icon(deck.icon, deck.iconColor)}</span><span class="deck-name">${esc(deckLeaf(name))}</span><span class="deck-count">${count.mature || 0} mature · ${count.young || 0} young · ${count.new || 0} new</span></div>`; }).join('') : `<span class="muted">${esc(t('prep_no_decks', 'No decks assigned to this plan yet.'))}</span>`}</section></section>`;
   bindBarHover(app, week);
   $('back').onclick = home;
   $('edit').onclick = () => edit(plan);
 }
 function defaultPlan() {
-  return { id: '', name: '', icon: 'emoji:📚', icon_color: ctx.accent, exam_date: new Date().toISOString().slice(0, 10), decks: [], notes: '', thumbnail: '', thumbnailUrl: '', thumbnail_opacity: 100, thumbnail_blur: 0, color_only: false, color_dynamic: false, color_light: ctx.accent, color_dark: ctx.accent };
+  return { id: '', name: '', icon: 'emoji:📚', icon_color: ctx.accent, exam_date: new Date().toISOString().slice(0, 10), target_mature_percent: 80, future_new_cards: 0, decks: [], notes: '', thumbnail: '', thumbnailUrl: '', thumbnail_opacity: 100, thumbnail_blur: 0, color_only: false, color_dynamic: false, color_light: ctx.accent, color_dark: ctx.accent };
 }
 function edit(source) {
   const plan = Object.assign(defaultPlan(), source || {});
@@ -498,11 +704,13 @@ function edit(source) {
     <h2>${plan.id ? esc(t('prep_edit', 'Edit plan')) : esc(t('prep_new_plan', 'New Plan'))}</h2>
     <label class="field"><span>${esc(t('prep_name_label', 'NAME'))}</span><input id="name" value="${esc(plan.name)}" placeholder="${esc(t('prep_plan_name_placeholder', 'Plan name'))}"><div class="notice" id="error"></div></label>
     <label class="field"><span>${esc(t('prep_exam_date_label', 'EXAM DATE'))}</span><input id="date" type="date" value="${esc(plan.exam_date)}"></label>
+    <div class="planning-fields"><label class="field"><span>${esc(t('prep_target_mature_label', 'TARGET MATURE CARDS (%)'))}</span><input id="target-mature" type="number" min="1" max="100" value="${esc(plan.target_mature_percent)}"><small class="field-help">${esc(t('prep_target_mature_help', 'A mature card has an interval of 21 days or more.'))}</small></label>
+    <label class="field"><span>${esc(t('prep_future_cards_label', 'EXPECTED FUTURE CARDS'))}</span><input id="future-cards" type="number" min="0" max="100000" value="${esc(plan.future_new_cards)}"><small class="field-help">${esc(t('prep_future_cards_help', 'Cards you expect to add before the exam, spread evenly across the remaining study days.'))}</small></label></div>
     <div class="field"><span>${esc(t('prep_icon_label', 'ICON'))}</span><button class="icon-trigger" id="icon-trigger" type="button">${iconTrigger(plan)}</button></div>
     <label class="field"><span>${esc(t('prep_study_decks_label', 'STUDY DECKS'))}</span><input class="deck-search" id="deck-search" placeholder="${esc(t('prep_search_decks_placeholder', 'Search decks…'))}"><div class="choices">${decks || `<span class="muted">${esc(t('prep_no_decks_available', 'No decks available.'))}</span>`}</div></label>
     <div class="field"><span>${esc(t('prep_appearance_label', 'APPEARANCE'))}</span><div class="appearance"><div class="appearance-preview" id="preview"></div><div class="appearance-actions">
       <button class="button" type="button" id="photo">${esc(t('prep_choose_photo', 'Choose Photo…'))}</button><button class="button" type="button" id="remove-photo">${esc(t('prep_remove_photo', 'Remove'))}</button>
-      <label class="color-field">${esc(t('prep_light_card', 'Light card'))}<input id="light" type="color" value="${esc(plan.color_light)}"></label><label class="color-field">${esc(t('prep_dark_card', 'Dark card'))}<input id="dark" type="color" value="${esc(plan.color_dark)}"></label>
+      ${colorControl('light-color-trigger', t('prep_light_card', 'Light card'), plan.color_light)}${colorControl('dark-color-trigger', t('prep_dark_card', 'Dark card'), plan.color_dark)}
     </div></div></div>
     <label class="field"><span>${esc(t('prep_notes_label', 'NOTES'))}</span><textarea id="notes" placeholder="${esc(t('prep_notes_placeholder', 'Add any notes…'))}">${esc(plan.notes)}</textarea></label>
     <div class="editor-footer">${plan.id ? `<button class="button danger" type="button" id="delete">${esc(t('prep_delete', 'Delete'))}</button>` : ''}<button class="button" type="button" id="cancel">${esc(t('cancel', 'Cancel'))}</button><button class="button primary" id="save">${esc(plan.id ? t('prep_save_changes', 'Save Changes') : t('prep_create_plan', 'Create Plan'))}</button></div>
@@ -510,10 +718,16 @@ function edit(source) {
   const editor = $('editor'), form = editor.querySelector('form');
   function refreshAppearance() {
     const color = ctx.dark && plan.color_dynamic ? plan.color_dark : plan.color_light;
+    const hasPhoto = Boolean(plan.thumbnailUrl);
     form.style.setProperty('--card', color);
     form.style.setProperty('--icon-color', plan.icon_color);
-    form.style.setProperty('--photo', `url('${plan.thumbnailUrl || ''}')`);
-    $('preview').style.cssText = `background-color:${color};background-image:linear-gradient(100deg,#0004,transparent),url('${plan.thumbnailUrl || ''}')`;
+    form.style.setProperty('--photo', hasPhoto ? `url('${plan.thumbnailUrl}')` : 'none');
+    form.style.setProperty('--banner-shade', hasPhoto ? 'linear-gradient(100deg,#0004,transparent)' : 'none');
+    form.style.setProperty('--hero-shade', hasPhoto ? 'linear-gradient(100deg,#0006,transparent)' : 'none');
+    $('preview').style.backgroundColor = color;
+    $('preview').style.setProperty('--preview-image', hasPhoto ? `linear-gradient(100deg,#0004,transparent),url('${plan.thumbnailUrl}')` : 'none');
+    syncColorControl('light-color-trigger', plan.color_light);
+    syncColorControl('dark-color-trigger', plan.color_dark);
   }
   view.refreshAppearance = refreshAppearance;
   refreshAppearance();
@@ -524,15 +738,17 @@ function edit(source) {
   };
   $('photo').onclick = () => pycmd('prep:choose_photo');
   $('remove-photo').onclick = () => { plan.thumbnail = ''; plan.thumbnailUrl = ''; refreshAppearance(); };
-  $('light').oninput = event => { plan.color_light = event.target.value; refreshAppearance(); };
-  $('dark').oninput = event => { plan.color_dark = event.target.value; refreshAppearance(); };
+  $('light-color-trigger').onclick = event => openWebColorPicker(event.currentTarget, plan.color_light, t('prep_light_card', 'Light card'), value => { plan.color_light = value; refreshAppearance(); });
+  $('dark-color-trigger').onclick = event => openWebColorPicker(event.currentTarget, plan.color_dark, t('prep_dark_card', 'Dark card'), value => { plan.color_dark = value; refreshAppearance(); });
   $('cancel').onclick = closeEditor;
   editor.addEventListener('click', event => { if (event.target === editor) closeEditor(); });
   editor.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeEditor(); } });
-  if ($('delete')) $('delete').onclick = () => { if (confirm('Delete this plan?')) pycmd('prep:delete:' + plan.id); };
+  if ($('delete')) $('delete').onclick = () => openDeleteDialog(plan);
   form.onsubmit = event => {
     event.preventDefault();
     plan.name = $('name').value.trim(); plan.exam_date = $('date').value;
+    plan.target_mature_percent = Math.max(1, Math.min(100, Number($('target-mature').value || 80)));
+    plan.future_new_cards = Math.max(0, Math.min(100000, Number($('future-cards').value || 0)));
     plan.decks = [...form.querySelectorAll('.choices input:checked')].map(input => input.value);
     plan.notes = $('notes').value;
     pycmd('prep:save:' + JSON.stringify(plan));
@@ -541,11 +757,7 @@ function edit(source) {
 window.prepReceivePhoto = data => {
   if (!view.editing) return;
   view.editing.thumbnail = data.name; view.editing.thumbnailUrl = data.url;
-  const editor = $('editor');
-  if (editor) {
-    editor.querySelector('form').style.setProperty('--photo', `url('${data.url}')`);
-    $('preview').style.backgroundImage = `linear-gradient(100deg,#0004,transparent),url('${data.url}')`;
-  }
+  if ($('editor') && view.refreshAppearance) view.refreshAppearance();
 };
 window.prepSaveError = kind => {
   const error = $('error');

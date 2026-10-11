@@ -1,39 +1,71 @@
 <main class="nook-app" id="nook-app">
+  <!-- Persistent identity and navigation stay compact so the Nook gets the space. -->
   <header class="topbar">
-    <div class="brand"><span class="brand-mark"><img class="nook-logo" data-i18n-alt="restaurant_level_title" alt="Nook Level"></span><span data-i18n-text="restaurant_level_title">Nook Level</span></div>
+    <div class="brand">
+      <img class="nook-logo" alt="">
+      <span><strong data-i18n-text="restaurant_level_title">Nook Level</strong><small data-i18n-text="nook_your_study_space">YOUR STUDY SPACE</small></span>
+    </div>
     <nav class="tabs" data-i18n-alabel="nook_navigation_aria" aria-label="Nook navigation">
-      <button class="tab is-active" data-page="home" data-i18n-text="home">Home</button>
+      <button class="tab is-active" data-page="home" aria-current="page" data-i18n-text="home">Home</button>
       <button class="tab" data-page="rush" data-i18n-text="recipe_rush_title">Nook Rush</button>
       <button class="tab" data-page="collection" data-i18n-text="nook_tab_collection">Collection</button>
     </nav>
-    <button class="wallet" type="button" data-action="store"><img class="coin" alt=""> <strong data-bind="coins">0</strong><span data-i18n-text="nook_store_short">Store</span></button>
+    <button class="wallet" data-action="store"><img class="coin" alt=""><strong data-bind="coins">0</strong><span data-i18n-text="nook_store_short">Store</span><span class="arrow-icon arrow-out" aria-hidden="true"></span></button>
   </header>
 
   <section class="page is-active" data-page-content="home">
     <div class="hero-card">
       <div class="hero-copy">
-        <p class="eyebrow" data-i18n-text="nook_your_study_space">YOUR STUDY SPACE</p>
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span><span data-i18n-text="nook_your_study_space">YOUR STUDY SPACE</span></p>
         <h1 data-bind="name">Nook Level</h1>
         <p class="phrase" data-bind="phrase"></p>
-        <div class="level-row"><span class="level-pill"><span data-i18n-text="nook_level_uppercase">LEVEL</span> <strong data-bind="level">0</strong></span><span data-bind="xpText">0 / 0 XP</span></div>
-        <div class="progress-track"><i data-bind="xpBar"></i></div>
-        <button class="primary" data-action="store"><span data-i18n-text="nook_browse_store">Browse Mr. Taiyaki's Store</span> <span>→</span></button>
+        <div class="level-summary">
+          <div class="level-row"><span class="level-pill"><span data-i18n-text="nook_level_uppercase">LEVEL</span><strong data-bind="level">0</strong></span><span class="xp-value" data-bind="xpText">0 / 0 XP</span></div>
+          <div class="progress-track" data-progress="xp" role="progressbar" aria-label="XP" aria-valuemin="0" aria-valuemax="100"><i data-bind="xpBar"></i></div>
+        </div>
+        <button class="primary" data-action="store"><span data-i18n-text="nook_browse_store">Browse Mr. Taiyaki's Store</span><span class="arrow-icon arrow-out" aria-hidden="true"></span></button>
       </div>
-      <div class="nook-stage" data-bind="themeStage"><span class="stage-glow"></span><img data-bind="themeImage" data-i18n-alt="nook_equipped_alt" alt="Your equipped Nook"></div>
+      <!-- The scene and its caption are separate grid rows; artwork cannot cover copy. -->
+      <figure class="nook-stage" data-bind="themeStage">
+        <div class="stage-art"><img data-bind="themeImage" data-i18n-alt="nook_equipped_alt" alt="Your equipped Nook"></div>
+        <figcaption><span data-i18n-text="current_restaurant_header">Current Nook</span><strong data-bind="currentName"></strong></figcaption>
+      </figure>
     </div>
     <div class="home-grid">
-      <article class="panel current-panel"><p class="eyebrow" data-i18n-text="current_restaurant_header">CURRENT NOOK</p><h2 data-bind="currentName">Onigiri Stand</h2><p data-bind="currentDescription"></p><button class="quiet-btn" data-action="store" data-i18n-text="nook_change_your_nook">Change your Nook</button></article>
-      <article class="panel rush-glance"><div><p class="eyebrow" data-i18n-text="nook_todays_rush">TODAY'S RUSH</p><h2 data-bind="rushTitle">Nook Rush</h2><p><strong data-bind="rushCurrent">0</strong> / <span data-bind="rushTarget">0</span> <span data-i18n-text="cards">cards</span></p></div><div class="mini-ring" data-bind="rushRing"><span data-bind="rushPercent">0%</span></div><button class="quiet-btn" data-page-link="rush" data-i18n-text="nook_view_order">View order</button></article>
+      <article class="panel current-panel"><div class="panel-heading"><p class="eyebrow" data-i18n-text="current_restaurant_header">CURRENT NOOK</p><span class="subtle-tag" data-i18n-text="store_equipped">Equipped</span></div><h2 data-bind="currentName">Onigiri Stand</h2><p data-bind="currentDescription"></p><button class="quiet-btn" data-page-link="collection"><span data-i18n-text="nook_change_your_nook">Change your Nook</span><span class="arrow-icon" aria-hidden="true"></span></button></article>
+      <article class="panel rush-glance"><div><p class="eyebrow" data-i18n-text="nook_todays_rush">TODAY'S RUSH</p><h2 data-bind="rushName">Nook Rush</h2><p><strong data-bind="rushCurrent">0</strong> / <span data-bind="rushTarget">0</span> <span data-i18n-text="cards">cards</span></p></div><div class="mini-ring" data-bind="rushRing"><svg viewBox="0 0 80 80" aria-hidden="true"><circle class="ring-track" cx="40" cy="40" r="34"></circle><circle class="ring-fill" cx="40" cy="40" r="34" pathLength="100"></circle></svg><span data-bind="rushPercent">0%</span></div><button class="quiet-btn" data-page-link="rush"><span data-i18n-text="nook_view_order">View order</span><span class="arrow-icon" aria-hidden="true"></span></button></article>
     </div>
   </section>
 
   <section class="page" data-page-content="rush">
-    <article class="rush-hero"><div><p class="eyebrow" data-i18n-text="nook_daily_study_order">DAILY STUDY ORDER</p><h1 data-bind="rushTitle">Nook Rush</h1><h2 data-bind="rushName"></h2><p data-bind="rushDescription"></p></div><div class="timer"><span data-i18n-text="nook_closes_in">Closes in</span><strong data-bind="rushTimer">--:--:--</strong></div></article>
-    <div class="rush-progress"><div class="rush-progress-head"><span data-bind="rushStage">Collect</span><strong><span data-bind="rushCurrent">0</span> / <span data-bind="rushTarget">0</span> <span data-i18n-text="cards">cards</span></strong></div><div class="progress-track"><i data-bind="rushBar"></i></div></div>
-    <div class="rush-detail-grid"><article class="panel"><p class="eyebrow" data-bind="ingredientsLabel" data-i18n-text="nook_ingredients">INGREDIENTS</p><div class="ingredient-list" data-bind="ingredients"></div></article><article class="panel"><p class="eyebrow" data-i18n-text="nook_reward">REWARD</p><span class="rarity" data-bind="rarity">Common</span><h2><span data-bind="rushXp">0</span> <span data-i18n-text="xp_label">XP</span></h2><p data-i18n-text="nook_rush_finish_hint">Finish today's order by studying before the Nook closes.</p></article></div>
+    <div class="order-layout">
+      <article class="order-ticket">
+        <div class="rush-hero"><div class="rush-hero-copy"><p class="eyebrow" data-bind="rushTitle">Nook Rush</p><h2 data-bind="rushName"></h2><p data-bind="rushDescription"></p></div><div class="timer"><span class="status-dot" aria-hidden="true"></span><span data-i18n-text="nook_closes_in">Closes in</span><strong data-bind="rushTimer">--:--:--</strong></div></div>
+        <div class="rush-progress"><div class="rush-progress-head"><span class="subtle-tag" data-bind="rushStage">Collect</span><strong><span data-bind="rushCurrent">0</span> / <span data-bind="rushTarget">0</span> <span data-i18n-text="cards">cards</span></strong></div><div class="progress-track" data-progress="rush" role="progressbar" data-i18n-alabel="recipe_rush_title" aria-label="Nook Rush" aria-valuemin="0" aria-valuemax="100"><i data-bind="rushBar"></i></div></div>
+        <div class="ingredient-section"><p class="eyebrow" data-bind="ingredientsLabel" data-i18n-text="nook_ingredients">INGREDIENTS</p><div class="ingredient-list" data-bind="ingredients"></div></div>
+        <div class="delivery-section">
+          <div class="delivery-row">
+            <img class="delivery-nook" data-bind="deliveryImage" alt="">
+            <div class="delivery-copy"><div class="delivery-title"><span data-i18n-text="nook_deliver_to">Deliver to</span><strong data-bind="delivery"></strong></div><p data-bind="deliveryMessage"></p></div>
+          </div>
+        </div>
+      </article>
+      <aside class="panel reward-panel"><div class="reward-seal"><img data-bind="rewardImage" alt=""></div><p class="eyebrow" data-i18n-text="nook_reward">REWARD</p><h2 class="reward-value"><span data-bind="rushXp">0</span><span data-i18n-text="xp_label">XP</span></h2><span class="rarity" data-bind="rarity">Common</span><p data-i18n-text="nook_rush_finish_hint">Finish today's order by studying before the Nook closes.</p></aside>
+    </div>
     <section class="history"><div class="section-heading"><div><p class="eyebrow" data-i18n-text="nook_recipe_book">RECIPE BOOK</p><h2 data-i18n-text="nook_completed_rushes">Completed Rushes</h2></div><div class="rarity-counts" data-bind="recipeCounts"></div></div><div class="history-list" data-bind="history"></div></section>
   </section>
 
-  <section class="page" data-page-content="collection"><div class="section-heading"><div><p class="eyebrow" data-i18n-text="nook_your_unlocks">YOUR UNLOCKS</p><h1 data-i18n-text="restaurant_collection_header">Nook Collection</h1></div><button class="primary" data-action="store"><span data-i18n-text="nook_open_store">Open Store</span> <span>→</span></button></div><div class="collection-tabs"><button class="collection-tab is-active" data-group="restaurants" data-i18n-text="restaurants_header">Restaurants</button><button class="collection-tab" data-group="evolutions" data-i18n-text="evolutions_header">Sushi Evolutions</button><button class="collection-tab" data-group="shops" data-i18n-text="shops_header">Shops</button></div><div class="collection-grid" data-bind="collection"></div></section>
+  <section class="page" data-page-content="collection">
+    <div class="collection-toolbar">
+      <nav class="collection-tabs" data-i18n-alabel="store_categories_aria" aria-label="Store categories">
+        <button class="collection-tab is-active" data-group="restaurants" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 13.87A4 4 0 0 1 7.24 6a5 5 0 0 1 9.52 0A4 4 0 0 1 18 13.87V21H6Z"></path><path d="M6 17h12"></path></svg><span data-i18n-text="restaurants_header">Restaurants</span></button>
+        <button class="collection-tab" data-group="evolutions" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="7"></rect><rect width="8" height="8" x="8" y="8" rx="2"></rect><path d="M12 8v8"></path><path d="M8 12h4"></path></svg><span data-i18n-text="evolutions_header">Sushi Evolutions</span></button>
+        <button class="collection-tab" data-group="shops" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg><span data-i18n-text="shops_header">Shops</span></button>
+        <button class="collection-tab" data-group="devs" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 16 4-4-4-4"></path><path d="m6 8-4 4 4 4"></path><path d="m14.5 4-5 16"></path></svg><span data-i18n-text="devs_header">Developers</span></button>
+      </nav>
+      <div class="owned-summary"><strong><span data-bind="ownedTotal">0</span><span class="owned-divider">/</span><span data-bind="availableTotal">0</span></strong><span data-i18n-text="nook_nooks_owned">Nooks owned</span></div>
+    </div>
+    <div class="collection-grid" data-bind="collection"></div>
+  </section>
   <div class="toast" role="status" aria-live="polite"></div>
 </main>

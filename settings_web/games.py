@@ -16,6 +16,8 @@
 # Values that do not live in the addon config — the Nook's name, the active
 # companion, the island name — bind through games_state's `game` accessors.
 
+import os
+
 from .. import config
 from ..translations import tr
 
@@ -120,6 +122,47 @@ def _hidden(field_id, path, default=""):
         "bind": _conf_path(*path),
         "default": default,
     }
+
+
+ONIGIMON_DEFAULT_SCENARIO = (
+    "system_files/gamification_images/onigimon/scenarios/nature/default.png"
+)
+
+
+def _onigimon_scenario_categories():
+    """Bundled, browser-ready scene choices for the companion card."""
+    base = "system_files/gamification_images/onigimon/scenarios"
+
+    def entries(category, names):
+        return [
+            {
+                "path": f"{base}/{category}/{name}",
+                "label": os.path.splitext(name)[0].replace("_", " ").title(),
+                "image": _asset(f"{base}/{category}/{name}"),
+            }
+            for name in names
+        ]
+
+    return [
+        {
+            "id": "nature",
+            "title": tr("onigimon_scenarios_nature", "Nature"),
+            "items": entries(
+                "nature",
+                ["default.png"] + [f"nature {index}.png" for index in range(1, 11)],
+            ),
+        },
+        {
+            "id": "cities",
+            "title": tr("onigimon_scenarios_cities", "Cities"),
+            "items": entries("cities", [f"{index}.png" for index in (8, 9, 10)]),
+        },
+        {
+            "id": "clouds",
+            "title": tr("onigimon_scenarios_clouds", "Clouds"),
+            "items": entries("clouds", [f"Clouds {index}.png" for index in range(1, 9)]),
+        },
+    ]
 
 
 def _message_values(value, fallback):
@@ -488,6 +531,11 @@ def _nook_page():
                 "id": "nook_difficulty",
                 "title": tr("difficulty_level", "Difficulty"),
                 "fields": [
+                    _note(
+                        "g_nook_difficulty_note",
+                        "",
+                        tr("nook_difficulty_note", ""),
+                    ),
                     {
                         "id": "g_nook_difficulty",
                         "type": "game_choice",
@@ -595,6 +643,15 @@ def _onigimon_page():
                         "default": "",
                     },
                     {
+                        # The team widget is a normal Onigiri menu widget, but
+                        # its choices come from Ankimon's live collection.
+                        "id": "g_onigimon_menu_pokemon",
+                        "type": "hidden",
+                        "label": "",
+                        "bind": _conf_path("onigimon", "menu_pokemon_ids"),
+                        "default": [],
+                    },
+                    {
                         "id": "g_onigimon_nickname",
                         "type": "text",
                         "label": tr("onigimon_nickname_label", "Nickname"),
@@ -621,11 +678,29 @@ def _onigimon_page():
                 ),
                 "fields": [
                     {
-                        "id": "g_onigimon_scene_color",
-                        "type": "color_pair",
-                        "label": tr("background_color", "Background"),
-                        "bind": _conf_path("onigimon", "scene_background_color"),
-                        "default": "#6ea96a",
+                        "id": "g_onigimon_scene_mode",
+                        "type": "choice",
+                        "label": tr("onigimon_background_type", "Background type"),
+                        "desc": tr(
+                            "onigimon_background_type_desc",
+                            "Choose whether this background is a color, your own image, or a bundled scenario.",
+                        ),
+                        "bind": _conf_path("onigimon", "scene_background_mode"),
+                        "default": "preset",
+                        "options": [
+                            {"value": "color", "label": tr("onigimon_scene_color_only", "Color only")},
+                            {"value": "custom", "label": tr("onigimon_scene_image", "Image")},
+                            {"value": "preset", "label": tr("onigimon_scenarios", "Scenario")},
+                        ],
+                    },
+                    {
+                        "id": "g_onigimon_scene_preset",
+                        "type": "scenario_picker",
+                        "bind": _conf_path("onigimon", "scene_background_preset"),
+                        "default": ONIGIMON_DEFAULT_SCENARIO,
+                        "mode_field": "g_onigimon_scene_mode",
+                        "categories": _onigimon_scenario_categories(),
+                        "show_when": {"field": "g_onigimon_scene_mode", "values": ["preset"]},
                     },
                     {
                         "id": "g_onigimon_scene_image",
@@ -640,6 +715,19 @@ def _onigimon_page():
                             asset_dir="user_files/onigimon_backgrounds",
                         ),
                         "default": "",
+                        # A custom upload replaces a preset; clearing it makes
+                        # the selected colour the whole background.
+                        "mode_field": "g_onigimon_scene_mode",
+                        "mode_value": "custom",
+                        "empty_mode": "color",
+                        "show_when": {"field": "g_onigimon_scene_mode", "values": ["custom"]},
+                    },
+                    {
+                        "id": "g_onigimon_scene_color",
+                        "type": "color_pair",
+                        "label": tr("background_color", "Background Color"),
+                        "bind": _conf_path("onigimon", "scene_background_color"),
+                        "default": "#6ea96a",
                     },
                     {
                         "id": "g_onigimon_bottom_color",
@@ -657,6 +745,7 @@ def _onigimon_page():
                         "label": tr("onigimon_blur_intensity", "Blur"),
                         "bind": _conf_path("onigimon", "scene_background_blur"),
                         "default": 9, "min": 0, "max": 40, "step": 1, "suffix": "px",
+                        "show_when": {"field": "g_onigimon_scene_mode", "values": ["custom", "preset"]},
                     },
                     {
                         "id": "g_onigimon_scene_opacity",
@@ -664,6 +753,7 @@ def _onigimon_page():
                         "label": tr("background_opacity", "Opacity"),
                         "bind": _conf_path("onigimon", "scene_background_opacity"),
                         "default": 90, "min": 0, "max": 100, "step": 1, "suffix": "%",
+                        "show_when": {"field": "g_onigimon_scene_mode", "values": ["custom", "preset"]},
                     },
                     {
                         "id": "g_onigimon_sprite_motion",
@@ -711,6 +801,30 @@ def _onigimon_page():
                             },
                         ],
                     },
+                ],
+            },
+            {
+                "id": "onigimon_reviewer_notifications",
+                "title": tr(
+                    "onigimon_reviewer_notifications_title",
+                    "Reviewer notifications",
+                ),
+                "fields": [
+                    _toggle(
+                        "g_onigimon_reviewer_notifications",
+                        tr(
+                            "onigimon_reviewer_notifications_enabled",
+                            "Show Onigimon notifications",
+                        ),
+                        ("onigimon", "reviewer_notifications_enabled"),
+                        True,
+                        desc=tr(
+                            "onigimon_reviewer_notifications_desc",
+                            "Turn this off to hide every Onigimon notification "
+                            "during reviews. Onigimon still tracks rewards, "
+                            "streaks, and companion care.",
+                        ),
+                    ),
                 ],
             },
             {
@@ -1047,6 +1161,7 @@ def _mochi_page():
                     {
                         "id": "g_mochi_font",
                         "type": "font",
+                        "advanced": True,
                         "label": tr("mochi_message_font", "Message font"),
                         "bind": _conf_path("mochi_messages", "font"),
                         "default": "system",

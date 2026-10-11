@@ -3,6 +3,7 @@
 import html
 import json
 import os
+from urllib.parse import quote as quote_url_component
 from dataclasses import dataclass
 from datetime import date, datetime
 from aqt import mw
@@ -25,6 +26,27 @@ SHIGE_LEADERBOARD_HOOK_MARKERS = (
     SHIGE_LEADERBOARD_ADDON_ID,
     "lb_on_homescreen.on_deck_browser_will_render_content",
 )
+
+POKEMON_TYPE_COLORS = {
+    "bug": ("#91A119", "#FFFFFF"),
+    "dark": ("#624D4E", "#FFFFFF"),
+    "dragon": ("#5060E1", "#FFFFFF"),
+    "electric": ("#FAC000", "#302800"),
+    "fairy": ("#EF70EF", "#3D173D"),
+    "fighting": ("#FF8000", "#3D1E00"),
+    "fire": ("#E62829", "#FFFFFF"),
+    "flying": ("#81B9EF", "#17314A"),
+    "ghost": ("#704170", "#FFFFFF"),
+    "grass": ("#3FA129", "#FFFFFF"),
+    "ground": ("#915121", "#FFFFFF"),
+    "ice": ("#3DCEF3", "#10343D"),
+    "normal": ("#9FA19F", "#222322"),
+    "poison": ("#9141CB", "#FFFFFF"),
+    "psychic": ("#EF4179", "#FFFFFF"),
+    "rock": ("#AFA981", "#29281D"),
+    "steel": ("#60A1B8", "#142C34"),
+    "water": ("#2980EF", "#FFFFFF"),
+}
 
 
 def _nook_level():
@@ -69,6 +91,12 @@ def _hashi_notes():
     return hashi_notes
 
 
+def _ready_to_go():
+    from . import ready_to_go
+
+    return ready_to_go
+
+
 def _is_deck_stats_widget_id(widget_id: str) -> bool:
     """Whether an Organize tile is the original or a copied Deck Stats widget."""
     widget_id = str(widget_id or "")
@@ -83,6 +111,11 @@ def _is_deckline_hook_id(hook_id: str) -> bool:
 def _is_shige_leaderboard_hook_id(hook_id: str) -> bool:
     normalized = str(hook_id or "").lower()
     return all(marker.lower() in normalized for marker in SHIGE_LEADERBOARD_HOOK_MARKERS)
+
+
+def _is_ankimon_team_hook_id(hook_id: str) -> bool:
+    """Whether *hook_id* is Ankimon's legacy deck/overview sprite grid."""
+    return "overview_team" in str(hook_id or "").lower()
 
 
 def _layout_item_ids(layout_section) -> set[str]:
@@ -113,7 +146,9 @@ def _render_registered_bento_home(hook_id: str) -> str:
     using the traditional hook path.
     """
     try:
-        widgets = getattr(mw, "bento_widgets", {})
+        from .api import bento as bento_api
+
+        widgets = bento_api.get_bento_widgets()
         if not isinstance(widgets, dict):
             return ""
         for widget in widgets.values():
@@ -125,6 +160,121 @@ def _render_registered_bento_home(hook_id: str) -> str:
     except Exception as exc:
         return f"<div style='color: red;'>Error rendering Bento widget: {html.escape(str(exc))}</div>"
     return ""
+
+
+def render_ankimon_team_widget_html(
+    row_span: int = 2,
+    col_span: int = 1,
+    surface: str = "menu",
+) -> str:
+    """Render Ankimon companions with Onigiri's lightweight widget system.
+
+    Ankimon's own ``poke-grid`` embeds a complete card theme and fixed 120px
+    sprites. This adapter reads the same bridge data but owns all markup and
+    layout, keeping the team sharp and inside its assigned Onigiri cell.
+    """
+    try:
+        manager = _onigimon().manager
+        manager.sync_active_companion_from_ankimon()
+        roster = list(manager.get_team_companions())
+        active_id = str(manager.load().active_companion_id or "")
+    except Exception:
+        return ""
+
+    if not roster:
+        return ""
+
+    if surface == "overview":
+        # Preserve the exact team order supplied by Ankimon.
+        selected = roster
+    else:
+        configured_ids = (config.get_config_readonly().get("onigimon", {}) or {}).get(
+            "menu_pokemon_ids", []
+        )
+        if not isinstance(configured_ids, list):
+            configured_ids = []
+        selected_ids = {str(pokemon_id) for pokemon_id in configured_ids if pokemon_id}
+
+        selected = [
+            pokemon for pokemon in roster
+            if str(pokemon.get("ankimon_id", "")) in selected_ids
+        ]
+        # No pins means "the whole Ankimon team". Pins remain an optional way
+        # to make a deliberately smaller Main Menu lineup.
+        if not selected and not selected_ids:
+            selected = roster
+    if not selected:
+        return ""
+
+    try:
+        row_span = max(1, min(4, int(row_span)))
+    except (TypeError, ValueError):
+        row_span = 2
+    try:
+        col_span = max(1, min(4, int(col_span)))
+    except (TypeError, ValueError):
+        col_span = 1
+
+    # A Pokémon team has at most six members. Never truncate it based on the
+    # widget footprint—the internal responsive grid is responsible for fitting
+    # all members into narrow or short placements.
+    max_items = 6
+    cards = []
+    for pokemon in selected[:max_items]:
+        name = html.escape(str(manager.companion_display_name(pokemon) or "Pokémon"))
+        try:
+            level = max(1, int(pokemon.get("level", 1) or 1))
+        except (TypeError, ValueError):
+            level = 1
+        sprite_urls = manager.sprite_urls_for_companion(pokemon, motion="static")
+        sprite = html.escape(str(sprite_urls[0]), quote=True) if sprite_urls else ""
+        sprite_html = (
+            f'<img src="{sprite}" alt="" draggable="false">'
+            if sprite else '<span class="onigiri-ankimon-team-initial">?</span>'
+        )
+        type_badges = []
+        raw_types = pokemon.get("types", [])
+        if not isinstance(raw_types, list):
+            raw_types = []
+        for raw_type in raw_types[:2]:
+            pokemon_type = str(raw_type or "").strip().lower()
+            if not pokemon_type:
+                continue
+            type_bg, type_fg = POKEMON_TYPE_COLORS.get(
+                pokemon_type, ("#8A8D91", "#FFFFFF")
+            )
+            type_badges.append(
+                '<span class="onigiri-ankimon-team-type" '
+                f'style="--pokemon-type-bg:{type_bg};--pokemon-type-fg:{type_fg}">'
+                f'{html.escape(pokemon_type.title())}</span>'
+            )
+        types_html = (
+            '<span class="onigiri-ankimon-team-types">'
+            + "".join(type_badges)
+            + "</span>"
+            if type_badges else ""
+        )
+        cards.append(f"""
+            <button class="onigiri-ankimon-team-member" type="button"
+                    title="{name} · Lv. {level}"
+                    onclick="pycmd('openOnigimonCare');">
+                <span class="onigiri-ankimon-team-sprite">{sprite_html}</span>
+                <span class="onigiri-ankimon-team-name">{name}</span>
+                <span class="onigiri-ankimon-team-level">Lv. {level}</span>
+                {types_html}
+            </button>
+        """)
+
+    widget_class = "onigiri-ankimon-team-overview" if surface == "overview" else ""
+    return f"""
+        <section class="onigiri-ankimon-team-widget {widget_class}"
+                 aria-label="Ankimon team">
+            <div class="onigiri-ankimon-team-head">
+                <span>{html.escape(tr("ankimon_team_widget_title", "Pokémon"))}</span><em>{len(selected[:max_items])}</em>
+            </div>
+            <div class="onigiri-ankimon-team-list">{''.join(cards)}</div>
+        </section>
+    """
 
 
 def process_tr_markers(html_str: str) -> str:
@@ -197,51 +347,298 @@ BUTTON_HTML = {
             <span>{tr("onigiri_games")}</span>
         </div>
     """,
-    "more": """
+    "get_shared": """
+        <div class="menu-item action-get-shared" onclick="pycmd('shared')">
+            <i class="icon"></i>
+            <span>{tr("get_shared")}</span>
+        </div>
+    """,
+    "create_deck": """
+        <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
+            <i class="icon"></i>
+            <span>{tr("create_deck")}</span>
+        </div>
+    """,
+    "import_file": """
+        <div class="menu-item action-import-file" onclick="pycmd('import')">
+            <i class="icon"></i>
+            <span>{tr("import_file")}</span>
+        </div>
+    """,
+}
+
+
+MORE_ACTION_IDS = ("get_shared", "create_deck", "import_file")
+
+
+def _build_more_menu_html(action_ids: list[str]) -> str:
+    """Render More with only the actions assigned to its layout bucket."""
+    items = "".join(
+        BUTTON_HTML[action_id]
+        for action_id in action_ids
+        if action_id in MORE_ACTION_IDS
+    )
+    return f"""
         <details class="menu-group">
             <summary class="menu-item action-more">
                 <i class="icon"></i>
                 <span>{tr("more")}</span>
             </summary>
             <div class="menu-group-items">
-                <div class="menu-item action-get-shared" onclick="pycmd('shared')">
-                    <i class="icon"></i>
-                    <span>{tr("get_shared")}</span>
-                </div>
-                <div class="menu-item action-create-deck" onclick="pycmd('onigiri_create_deck')">
-                    <i class="icon"></i>
-                    <span>{tr("create_deck")}</span>
-                </div>
-                <div class="menu-item action-import-file" onclick="pycmd('import')">
-                    <i class="icon"></i>
-                    <span>{tr("import_file")}</span>
-                </div>
+                {items}
             </div>
         </details>
     """
+
+
+COLLAPSED_ACTIONS = {
+    "add": ("add", "add", "Add"),
+    "browse": ("browse", "browse", "Browse"),
+    "stats": ("stats", "stats", "Stats"),
+    "sync": ("sync", "sync", "Sync"),
+    "settings": ("openOnigiriSettings", "settings", "Settings"),
+    "gamification": (
+        "openGamificationSettings",
+        "onigiri_games",
+        "Onigiri Games",
+    ),
+    "more": ("", "more", "More"),
+    "get_shared": ("shared", "get_shared", "Get Shared"),
+    "create_deck": ("onigiri_create_deck", "create_deck", "Create Deck"),
+    "import_file": ("import", "import_file", "Import File"),
 }
+
+
+def _build_archived_home_button(conf: dict, addon_package: str) -> str:
+    """Render the Home menu trigger when sidebar actions are hidden.
+
+    Keeping this in the initial HTML makes the control available before (and
+    independently of) ``injector.js``. That is required by Shima, which does
+    not load the Classic sidebar injector, and also avoids timing failures in
+    Classic's deck header.
+    """
+    if conf.get("sidebarActionsMode", "list") != "archived":
+        return ""
+
+    label = html.escape(tr("home", "Home"), quote=True)
+    icon_markup = _sidebar_header_icon_markup(
+        "modern_menu_icon_header_home", "home.svg", "home-btn-icon", addon_package
+    )
+    return f"""
+        <button id="onigiri-home-toolbar-btn" class="deck-header-btn"
+                type="button" title="{label}" aria-label="{label}"
+                onclick="OnigiriEngine.showHomeMenu(this, event)">
+            {icon_markup}
+        </button>
+    """.strip()
+
+
+def _sidebar_header_icon_markup(field_id: str, fallback: str, css_class: str,
+                                addon_package: str) -> str:
+    """Render a Settings Web icon choice in one of the deck-header controls."""
+    value = str(_col_conf_get(field_id, "") or f"system:{fallback}")
+    if value.startswith("emoji:"):
+        emoji = html.escape(value[len("emoji:"):])
+        return (
+            f'<span class="deck-header-emoji-icon {css_class}" aria-hidden="true" '
+            f'style="display:inline-flex;width:15px;height:15px;flex:0 0 15px;'
+            f'align-items:center;justify-content:center;background:none;'
+            f'font-size:14px;line-height:1">{emoji}</span>'
+        )
+
+    addon_dir = os.path.dirname(__file__)
+    package_url = quote_url_component(addon_package, safe="")
+    if value.startswith("system:"):
+        filename = os.path.basename(value[len("system:"):])
+        protected_path = os.path.join(
+            addon_dir, "system_files", "system_icons", "unavailable_for_users", filename
+        )
+        icon_dir = "unavailable_for_users" if os.path.exists(protected_path) else "available_for_users"
+        icon_url = (
+            f"/_addons/{package_url}/system_files/system_icons/{icon_dir}/"
+            f"{quote_url_component(filename, safe='')}"
+        )
+    else:
+        filename = os.path.basename(value)
+        icon_url = f"/_addons/{package_url}/user_files/icons/{quote_url_component(filename, safe='')}"
+
+    style = (
+        f'display:block;width:15px;height:15px;flex:0 0 15px;'
+        f'background-color:currentColor;mask-position:center;mask-size:contain;'
+        f'mask-repeat:no-repeat;-webkit-mask-position:center;'
+        f'-webkit-mask-size:contain;-webkit-mask-repeat:no-repeat;'
+        f'mask-image:url("{icon_url}");'
+        f'-webkit-mask-image:url("{icon_url}");'
+    )
+    # The CSS url() quotes must be escaped for the enclosing HTML attribute.
+    # Otherwise the browser parses four empty masks and the buttons disappear.
+    return f'<i class="{css_class}" aria-hidden="true" style="{html.escape(style, quote=True)}"></i>'
+
+
+def _build_hidden_ready_marker(addon_package: str) -> str:
+    """Show one Ready to Go marker in the deck header when its sidebar is hidden."""
+    if _col_conf_get("modern_menu_ready_layout_mode", "list") != "hidden":
+        return ""
+
+    label = html.escape(
+        str(_col_conf_get("modern_menu_ready_title", "Ready to go") or "Ready to go"),
+        quote=True,
+    )
+    icon_markup = _sidebar_header_icon_markup(
+        "modern_menu_icon_ready_section", "lucide-zap.svg",
+        "ready-toolbar-icon", addon_package,
+    )
+    return f"""
+        <button id="onigiri-ready-toolbar-marker" class="deck-header-btn"
+                type="button" aria-label="{label}" title="{label}"
+                onclick="OnigiriEngine.showReadyMenu(this, event)">
+            {icon_markup}
+        </button>
+    """.strip()
+
+def _collapsed_action_button(
+    action_id: str,
+    command: str,
+    label: str,
+    *,
+    more_item: bool = False,
+) -> str:
+    """Server-render one toolbar action so collapsed mode never depends on JS."""
+    safe_id = html.escape(action_id, quote=True)
+    safe_label = html.escape(label, quote=True)
+    classes = f"action-btn action-{safe_id}"
+    if more_item:
+        classes += " more-item"
+    if action_id == "more":
+        click = (
+            "event.stopPropagation();"
+            "this.classList.toggle('more-expanded')"
+        )
+    else:
+        safe_command = html.escape(command, quote=True)
+        click = f"event.stopPropagation();pycmd('{safe_command}')"
+    return (
+        f'<div class="{classes}" role="button" tabindex="0" '
+        f'title="{safe_label}" aria-label="{safe_label}" '
+        f'onclick="{click}" '
+        "onkeydown=\"if(event.key==='Enter'||event.key===' '){"
+        "event.preventDefault();this.click()}\">"
+        '<i class="action-icon" aria-hidden="true"></i>'
+        "</div>"
+    )
+
+
+def _build_collapsed_toolbar_html(layout_config: dict) -> str:
+    """Render visible actions in their saved order inside the Actions section."""
+    raw_visible = layout_config.get("visible", [])
+    visible = raw_visible if isinstance(raw_visible, list) else []
+    raw_archived = layout_config.get("archived", [])
+    archived_values = raw_archived if isinstance(raw_archived, list) else []
+    archived = {str(value) for value in archived_values}
+    raw_more = layout_config.get("more", list(MORE_ACTION_IDS))
+    more_values = raw_more if isinstance(raw_more, list) else list(MORE_ACTION_IDS)
+    more_ids = []
+    for value in more_values:
+        action_id = str(value)
+        if (action_id in MORE_ACTION_IDS and action_id not in archived
+                and action_id not in more_ids):
+            more_ids.append(action_id)
+    if visible:
+        action_ids = []
+        for value in visible:
+            action_id = str(value)
+            if (
+                action_id in COLLAPSED_ACTIONS
+                and action_id not in archived
+                and action_id not in more_ids
+                and action_id not in action_ids
+            ):
+                action_ids.append(action_id)
+    else:
+        action_ids = [
+            action_id
+            for action_id in COLLAPSED_ACTIONS
+            if action_id not in MORE_ACTION_IDS
+            if action_id not in archived
+        ]
+    if not action_ids:
+        return ""
+
+    buttons = []
+    for action_id in action_ids:
+        command, translation_key, fallback = COLLAPSED_ACTIONS[action_id]
+        buttons.append(
+            _collapsed_action_button(
+                action_id,
+                command,
+                tr(translation_key, fallback),
+            )
+        )
+        if action_id == "more":
+            for item_id in more_ids:
+                item_command, item_key, item_fallback = COLLAPSED_ACTIONS[item_id]
+                buttons.append(
+                    _collapsed_action_button(
+                        item_id,
+                        item_command,
+                        tr(item_key, item_fallback),
+                        more_item=True,
+                    )
+                )
+    return (
+        '<div class="sidebar-toolbar sidebar-actions-inline" '
+        'aria-label="Actions">'
+        f'{"".join(buttons)}'
+        "</div>"
+    )
+
 
 # --- ADDED: Sidebar HTML builder function ---
 def _build_sidebar_html(conf: dict) -> str:
     """
     Builds the sidebar HTML content based on the user's saved layout.
     """
-    layout_config = conf.get("sidebarButtonLayout", copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]))
+    layout_config = conf.get(
+        "sidebarButtonLayout",
+        copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]),
+    )
+    if conf.get("sidebarActionsMode", "list") == "collapsed":
+        return _build_collapsed_toolbar_html(layout_config)
+
     visible_keys = layout_config.get("visible", [])
+    raw_more = layout_config.get("more", list(MORE_ACTION_IDS))
+    more_keys = raw_more if isinstance(raw_more, list) else list(MORE_ACTION_IDS)
+    raw_archived = layout_config.get("archived", [])
+    archived = {str(key) for key in raw_archived} if isinstance(raw_archived, list) else set()
+    more_ids = []
+    for key in more_keys:
+        action_id = str(key)
+        if (action_id in MORE_ACTION_IDS and action_id not in archived
+                and action_id not in more_ids):
+            more_ids.append(action_id)
+    more_id_set = set(more_ids)
     external_entries = sidebar_api.get_sidebar_entries()
     
     # --- MODIFICATION START: Sidebar Actions Mode Logic ---
-    action_buttons = {"add", "browse", "stats", "sync", "settings", "gamification", "more"}
+    action_buttons = {
+        "add", "browse", "stats", "sync", "settings", "gamification",
+        "more", *MORE_ACTION_IDS,
+    }
     # Default to "list" if not set
     actions_mode = conf.get("sidebarActionsMode", "list")
     
     html_parts = []
     for key in visible_keys:
+        # Profile now has its own reorderable section and template slot.
+        if key == "profile":
+            continue
         # If this key is one of our special action buttons...
         if key in action_buttons:
             # Only render it in the list if mode is "list"
             if actions_mode == "list":
-                if key in BUTTON_HTML:
+                if key == "more":
+                    html_parts.append(_build_more_menu_html(more_ids))
+                elif key in BUTTON_HTML and key not in more_id_set:
                     html_parts.append(BUTTON_HTML[key])
         # Otherwise render normally (external entries or profile if it was in visible_keys? profile is usually separate)
         elif key in BUTTON_HTML:
@@ -263,13 +660,71 @@ def _build_sidebar_html(conf: dict) -> str:
     full_html = "\n".join(part for part in html_parts if part)
     return process_tr_markers(full_html)
 
+
+def _sidebar_section_order() -> list[str]:
+    """Normalized top-to-bottom order for Classic's visible sidebar blocks."""
+    known = ("profile", "actions", "ready_to_go", "decks")
+    raw = _col_conf_get(
+        "modern_menu_sidebar_section_layout",
+        {"visible": list(known), "archived": []},
+    )
+    if isinstance(raw, dict):
+        saved = raw.get("visible", [])
+    elif isinstance(raw, list):
+        saved = raw
+    else:
+        saved = []
+    order = [str(value) for value in saved if str(value) in known]
+    if "profile" not in order:
+        actions_index = order.index("actions") if "actions" in order else 0
+        order.insert(actions_index, "profile")
+    order.extend(value for value in known if value not in order)
+    return order
+
 def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
     """
     Generates CSS to apply custom or default icons to the sidebar list items.
     """
     css_lines = []
-    icon_base = f"/_addons/{addon_package}/system_files/system_icons/unavailable_for_users/"
+    bundled_icon_base = (
+        f"/_addons/{addon_package}/system_files/system_icons/"
+        "unavailable_for_users/"
+    )
+    pickable_icon_base = (
+        f"/_addons/{addon_package}/system_files/system_icons/"
+        "available_for_users/"
+    )
     user_icon_base = f"/_addons/{addon_package}/user_files/icons/"
+    addon_dir = os.path.dirname(__file__)
+
+    def configured_icon_url(value: object) -> str:
+        """Resolve the same icon references written by the Settings picker.
+
+        A page-wide reset writes the schema default as ``system:name.svg``.
+        Action-button defaults live in the protected bundled directory, while
+        user-selectable system icons live in ``available_for_users``.  Treating
+        every non-empty value as a user-file name turned the reset value into
+        ``user_files/icons/system:name.svg`` and removed the visible glyph.
+        """
+        icon_value = str(value or "")
+        if not icon_value:
+            return ""
+        if icon_value.startswith("system:"):
+            icon_name = os.path.basename(icon_value[len("system:"):])
+            protected_path = os.path.join(
+                addon_dir,
+                "system_files",
+                "system_icons",
+                "unavailable_for_users",
+                icon_name,
+            )
+            base = (
+                bundled_icon_base
+                if os.path.exists(protected_path)
+                else pickable_icon_base
+            )
+            return f"{base}{icon_name}"
+        return f"{user_icon_base}{os.path.basename(icon_value)}"
     
     # Map action id -> default system icon filename
     default_icons = {
@@ -295,17 +750,18 @@ def _generate_action_icons_css(conf: dict, addon_package: str) -> str:
         custom_file = _col_conf_get(f"modern_menu_icon_{action_id}", "")
 
         if custom_file:
-            icon_url = f"{user_icon_base}{custom_file}"
+            icon_url = configured_icon_url(custom_file)
         else:
-            icon_url = f"{icon_base}{filename}"
+            icon_url = f"{bundled_icon_base}{filename}"
 
         # Per-button icon color (set from Action Button Customization); falls
         # back to the shared --icon-color when none is configured.
-        custom_color = _col_conf_get(f"modern_menu_icon_color_{action_id}", "")
+        custom_color = config.themed_icon_color(f"modern_menu_icon_color_{action_id}")
         icon_color_css = custom_color if custom_color else "var(--icon-color)"
 
         css = f"""
-        .action-{action_id} .icon {{
+        .action-{action_id} .icon,
+        .action-{action_id} .action-icon {{
             display: inline-block !important;
             width: {icon_size}px !important;
             height: {icon_size}px !important;
@@ -353,16 +809,52 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
     if mode == "accent":
         color = "var(--accent-color)"
     
-    blur = max(0, min(100, int(_col_conf_get("modern_menu_profile_picture_blur", 0) or 0)))
-    style_parts = []
-    if blur:
-        style_parts.append(f"filter: blur({blur * 0.2}px)")
-
     if mode in {"accent", "custom"}:
-        initial = html.escape((user_name[:1] or "U").upper(), quote=False)
-        style_parts.insert(0, f"background-color: {color}")
-        style_str = "; ".join(style_parts)
-        return f'<span class="{css_class} profile-pic-generated" style="{style_str}">{initial}</span>'
+        content = html.escape((user_name[:1] or "U").upper(), quote=False)
+        if mode in {"accent", "custom"}:
+            content_type = _col_conf_get("modern_menu_profile_picture_content_type", "letter")
+            letter = str(_col_conf_get("modern_menu_profile_picture_letter", "") or "").strip()
+            if content_type == "letter" and letter == "...":
+                content = ""
+            elif content_type == "letter" and letter:
+                content = html.escape(letter.upper(), quote=False)
+            elif content_type == "icon":
+                icon_value = str(_col_conf_get("modern_menu_profile_picture_icon", "system:onigiri.svg") or "")
+                if icon_value.startswith("emoji:") and icon_value[6:]:
+                    content = html.escape(icon_value[6:], quote=False)
+                else:
+                    icon_name = os.path.basename(
+                        icon_value[7:] if icon_value.startswith("system:") else icon_value
+                    )
+                    addon_dir = mw.addonManager.addonsFolder(addon_package)
+                    if icon_value.startswith("system:"):
+                        icon_path = os.path.join(
+                            addon_dir, "system_files", "system_icons",
+                            "available_for_users", icon_name,
+                        )
+                        icon_url = (
+                            f"/_addons/{addon_package}/system_files/system_icons/"
+                            f"available_for_users/{icon_name}"
+                        )
+                    else:
+                        icon_path = os.path.join(addon_dir, "user_files", "icons", icon_name)
+                        icon_url = f"/_addons/{addon_package}/user_files/icons/{icon_name}"
+                    if icon_name and os.path.isfile(icon_path):
+                        safe_url = html.escape(icon_url, quote=True)
+                        icon_color = (
+                            _col_conf_get(
+                                f"modern_menu_profile_picture_icon_color_{theme_key}",
+                                "#FFFFFF",
+                            )
+                            if dynamic
+                            else _col_conf_get("modern_menu_profile_picture_icon_color_light", "#FFFFFF")
+                        )
+                        content = (
+                            '<span class="profile-pic-generated-icon" '
+                            f'style="color: {icon_color}; -webkit-mask-image: url(\'{safe_url}\'); '
+                            f'mask-image: url(\'{safe_url}\')"></span>'
+                        )
+        return f'<span class="{css_class} profile-pic-generated" style="background-color: {color}">{content}</span>'
 
     if dynamic:
         profile_pic_filename = _col_conf_get(f"modern_menu_profile_picture_{theme_key}", "") or _col_conf_get("modern_menu_profile_picture", "")
@@ -375,8 +867,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
 
-    style_attr = f' style="{"; ".join(style_parts)}"' if style_parts else ""
-    return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
+    return f'<img src="{pic_url}" class="{css_class}">'
 
 
 def _chip_color_to_css(color: str) -> str:
@@ -402,16 +893,15 @@ def _nook_level_progress():
     in patcher.py."""
     try:
         conf = config.get_config_readonly()
-        restaurant_conf = conf.get("restaurant_level", {})
-        if not restaurant_conf:
-            restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
-        if not restaurant_conf.get("enabled", False):
-            return (False, 0, 0.0, "")
-        if not restaurant_conf.get("show_profile_bar_progress", True):
-            return (False, 0, 0.0, "")
         nook = _nook_level()
+        # Nook's gamification state is authoritative after its one-time
+        # settings migration.  Reading the old config copy first can make the
+        # profile render its demo level even though the saved Nook is enabled
+        # and has real XP/level data.
         progress = nook.manager.get_progress()
         if not progress or not getattr(progress, "enabled", False):
+            return (False, 0, 0.0, "")
+        if not getattr(progress, "show_profile_bar_progress", True):
             return (False, 0, 0.0, "")
         level = getattr(progress, "level", 0)
         fraction = float(getattr(progress, "progress_fraction", 0.0) or 0.0)
@@ -506,6 +996,15 @@ def _profile_level_progress():
     return result
 
 
+def _profile_level_source_name(game: str) -> str:
+    """Localized name of the game currently driving Profile Level."""
+    return {
+        "nook": tr("profile_level_opt_nook", "Nook"),
+        "onigimon": tr("profile_level_opt_onigimon", "Onigimon XP"),
+        "hexagon": tr("profile_level_opt_hexagon", "Hexagon Land"),
+    }.get(game, tr("profile_level_opt_nook", "Nook"))
+
+
 def _profile_fill_color():
     """User-picked fallback fill color (theme-aware) used when Nook Level is off."""
     is_dark = config.effective_night_mode()
@@ -514,31 +1013,34 @@ def _profile_fill_color():
     return _col_conf_get(f"modern_menu_profile_fill_color_{theme_key}", "#4f7cff") or "#4f7cff"
 
 
-def _profile_panel_accent_color():
+def _profile_sidebar_accent_color():
     """Weekly-chart color: the bar-mode name color when profile_type is 'bar',
     else the same ring/minimal progress color used by build_profile_type_html."""
     profile_type = _col_conf_get("modern_menu_profile_type", "bar")
     if profile_type == "bar":
         is_dark = config.effective_night_mode()
         theme_key = "dark" if is_dark else "light"
-        return _col_conf_get(f"modern_menu_profile_name_color_{theme_key}", "#111827") or "#111827"
+        default_color = config.DEFAULTS["colors"][theme_key]["--fg"]
+        return _col_conf_get(
+            f"modern_menu_profile_name_color_{theme_key}", default_color
+        ) or default_color
     enabled, _level, _fraction, theme_color = _profile_level_progress()
     return theme_color if (enabled and theme_color) else _profile_fill_color()
 
 
 def _nook_level_page_progress():
-    """Like _nook_level_progress but gated on show_profile_page_progress
-    (the profile-panel toggle) instead of show_profile_bar_progress."""
+    """Return Nook Level data for the expanded Profile Sidebar.
+
+    Visibility is deliberately handled by ``onigiriProfilePanel`` alongside
+    the other sidebar rows. The Nook manager retains progress even when its
+    gameplay loop is paused, so the Profile Sidebar can faithfully render an
+    enabled Nook row instead of silently dropping it.
+    """
     try:
         conf = config.get_config_readonly()
-        restaurant_conf = conf.get("restaurant_level", {})
-        if not restaurant_conf.get("enabled", False):
-            return (False, 0, 0.0, "")
-        if not restaurant_conf.get("show_profile_page_progress", True):
-            return (False, 0, 0.0, "")
         nook = _nook_level()
         progress = nook.manager.get_progress()
-        if not progress or not getattr(progress, "enabled", False):
+        if not progress:
             return (False, 0, 0.0, "")
         level = getattr(progress, "level", 0)
         fraction = float(getattr(progress, "progress_fraction", 0.0) or 0.0)
@@ -662,17 +1164,18 @@ def _weekly_chart_html(color):
 def _profile_gamification_summary_html(panel_conf):
     items = []
 
-    enabled, level, fraction, color = _nook_level_page_progress()
-    if enabled:
-        pct = fraction * 100
-        items.append(f"""
-        <div class="onigiri-sidebar-profile-summary-row">
-            <span class="onigiri-sidebar-profile-summary-label">{html.escape(tr("restaurant_level", "Nook Level"))} {level}</span>
-            <div class="onigiri-sidebar-profile-summary-track">
-                <div class="onigiri-sidebar-profile-summary-fill" style="width: {pct:.1f}%; background: {color};"></div>
+    if panel_conf.get("show_nook_level", True):
+        enabled, level, fraction, color = _nook_level_page_progress()
+        if enabled:
+            pct = fraction * 100
+            items.append(f"""
+            <div class="onigiri-sidebar-profile-summary-row">
+                <span class="onigiri-sidebar-profile-summary-label">{html.escape(tr("restaurant_level", "Nook Level"))} {level}</span>
+                <div class="onigiri-sidebar-profile-summary-track">
+                    <div class="onigiri-sidebar-profile-summary-fill" style="width: {pct:.1f}%; background: {color};"></div>
+                </div>
             </div>
-        </div>
-        """)
+            """)
 
     if panel_conf.get("show_hexagon_land", True):
         hex_enabled, count = _hexagon_land_count()
@@ -706,25 +1209,72 @@ def _profile_gamification_summary_html(panel_conf):
     """
 
 
-def _profile_mantras_html():
-    try:
-        history = _mochi_messages().get_mantra_history()
-    except Exception as exc:
-        print(f"Onigiri: Error reading mantra history: {exc}")
-        history = []
-    if not history:
-        return ""
-    rows = "".join(
-        f'<li><span class="onigiri-sidebar-profile-mantra-text">{html.escape(str(item.get("text", "")))}</span>'
-        f'<span class="onigiri-sidebar-profile-mantra-date">{html.escape(str(item.get("date", "")))}</span></li>'
-        for item in history
-    )
-    return f"""
-    <section class="onigiri-sidebar-profile-mantras">
-        <h3>{html.escape(tr("profile_panel_mantras", "My Mantras"))}</h3>
-        <ul class="onigiri-sidebar-profile-mantras-list">{rows}</ul>
-    </section>
-    """
+def _profile_study_summary_html(sidebar_conf):
+    """Collection-backed details for the Profile Sidebar, in every theme."""
+    from . import things_theme
+
+    sections = []
+    if sidebar_conf.get("show_active_cards", True):
+        states = things_theme._card_state_counts()
+        total = sum(states.values())
+        palette = config.get_config_readonly().get("things_theme", {}).get("active_cards_colors", {})
+        defaults = config.DEFAULTS["things_theme"]["active_cards_colors"]
+        segments, legend, colors = [], [], []
+        cursor = 0.0
+        labels = (("new", "New"), ("learning", "Learning"),
+                  ("relearning", "Relearning"), ("young", "Young"), ("mature", "Mature"))
+        for key, fallback in labels:
+            count = states.get(key, 0)
+            percent = count / total * 100 if total else 0
+            gap = min(5, percent * 0.72)
+            length = (0.01 if percent <= 5.5 else max(0.01, percent - gap)) if percent else 0
+            start = cursor + (percent / 2 if percent <= 5.5 else gap / 2)
+            color = html.escape(str(palette.get(key) or defaults[key]), quote=True)
+            colors.append(f"--ba-donut-{key}: {color};")
+            segments.append(f'<circle class="ba-side-donut-segment ba-side-donut-segment--{key}" '
+                            f'cx="50" cy="50" r="40" pathLength="100" '
+                            f'style="stroke-dasharray: {length:.2f} {100-length:.2f}; '
+                            f'stroke-dashoffset: {-start:.2f}; opacity: {1 if percent else 0};" />')
+            label = html.escape(tr(f"profile_sidebar_cards_{key}", fallback))
+            legend.append(f'<li><button type="button" class="ba-side-donut-item ba-side-donut-item--{key}" '
+                          f'onclick="pycmd(\'ba:donut-open:{key}\')">'
+                          f'<span class="ba-side-donut-dot" aria-hidden="true"></span>'
+                          f'<span class="ba-side-donut-l">{label}</span>'
+                          f'<span class="ba-side-donut-v">{count:,}</span></button></li>')
+            cursor += percent
+        compact = ' class="is-tiny"' if len(f"{total:,}") >= 7 else (' class="is-compact"' if len(f"{total:,}") >= 5 else '')
+        sections.append(f"""
+        <section class="ba-side-donut-block" style="{''.join(colors)}">
+            <div class="onigiri-sidebar-profile-chart-head"><h3>{html.escape(tr("profile_sidebar_active_cards", "Active Cards"))}</h3></div>
+            <div class="ba-side-donut-row">
+                <div class="ba-side-donut-ring">
+                    <svg class="ba-side-donut-svg" viewBox="0 0 100 100" aria-hidden="true">
+                        <circle class="ba-side-donut-track" cx="50" cy="50" r="40" pathLength="100" />
+                        {''.join(segments)}
+                    </svg>
+                    <div class="ba-side-donut-core"><strong{compact}>{total:,}</strong></div>
+                </div>
+                <ul class="ba-side-donut-legend">{''.join(legend)}</ul>
+            </div>
+        </section>
+        """)
+    if sidebar_conf.get("show_today_stats", True) and mw.col:
+        try:
+            cutoff = (mw.col.sched.day_cutoff - 86400) * 1000
+            reviews, seconds = mw.col.db.first(
+                "select count(), coalesce(sum(time), 0)/1000.0 from revlog where type IN (0,1,2,3) and id > ?", cutoff
+            ) or (0, 0)
+            streak = things_theme._standing()["streak"]
+            minutes = int(seconds or 0) // 60
+            duration = f"{minutes // 60}h {minutes % 60}m" if minutes >= 60 else f"{minutes}m"
+            rows = ((tr("profile_sidebar_reviews", "Reviews"), f"{reviews:,}"),
+                    (tr("profile_sidebar_study_time", "Study Time"), duration),
+                    (tr("profile_sidebar_streak", "Study Streak"), f'{streak} {tr("profile_sidebar_days", "days")}'))
+            details = ''.join(f'<div class="onigiri-sidebar-profile-summary-row onigiri-sidebar-profile-summary-row-count"><dt>{html.escape(label)}</dt><dd>{html.escape(value)}</dd></div>' for label, value in rows)
+            sections.append(f'<section class="onigiri-sidebar-profile-today"><div class="onigiri-sidebar-profile-chart-head"><h3>{html.escape(tr("profile_sidebar_today", "Today"))}</h3></div><dl>{details}</dl></section>')
+        except Exception as exc:
+            print(f"Onigiri: Error reading Profile Sidebar study stats: {exc}")
+    return ''.join(sections)
 
 
 def _profile_birthday_badge_html(birthday_str):
@@ -759,16 +1309,23 @@ def build_profile_type_html(surface, profile_type, user_name, profile_pic_html):
     shared_color = _shared_chip_progress_color()
     fill_color = shared_color or (theme_color if (enabled and theme_color) else _profile_fill_color())
     if not enabled:
-        fraction = 0.65  # static, default fill matching settings preview
+        # This is a live profile, not a settings preview.  Do not present the
+        # former demo 65% ring / "Lv. 12" as real progress when its selected
+        # source is unavailable.
+        fraction = 0.0
 
     surface_class = f"opro-surface-{surface}"
     onclick_attr = (
         ' onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.toggle(event)"'
         if surface == "sidebar" else ""
     )
-    level_html = (
-        f'<span class="opro-level">{tr("level_prefix", "Lv.")} {level} · Onigiri</span>' if enabled else '<span class="opro-level">Lv. 12 · Onigiri</span>'
-    )
+    level_html = ""
+    if enabled:
+        source_name = html.escape(_profile_level_source_name(_selected_profile_level_game()), quote=False)
+        level_html = (
+            f'<span class="opro-level">{tr("level_prefix", "Lv.")} {level}'
+            f' · {source_name}</span>'
+        )
 
     if profile_type == "ring":
         import math
@@ -835,7 +1392,10 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
     dyn_bg = bool(_col_conf_get("modern_menu_profile_bg_dynamic_mode", True))
     is_dark = config.effective_night_mode()
     theme_key = "dark" if (is_dark and dyn_bg) else "light"
-    bg_color = _col_conf_get(f"modern_menu_profile_bg_color_{theme_key}", "#3C3C3C" if is_dark else "#EEEEEE") or ("#3C3C3C" if is_dark else "#EEEEEE")
+    default_color = config.DEFAULTS["colors"][theme_key]["--profile-page-bg"]
+    bg_color = _col_conf_get(
+        f"modern_menu_profile_bg_color_{theme_key}", default_color
+    ) or default_color
 
     if bg_mode == "image":
         bg_image_file = _profile_bg_image_name()
@@ -861,6 +1421,47 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
     else:
         container_style = "background-color: var(--accent-color) !important;"
     return container_style, layer_style
+
+
+def _profile_sidebar_page_background_style():
+    """The flat or gradient backdrop of the expanded Profile Sidebar."""
+    is_dark = config.effective_night_mode()
+    dynamic = bool(_col_conf_get("onigiri_profile_page_bg_dynamic_mode", True))
+    theme_key = "dark" if (is_dark and dynamic) else "light"
+    color1 = _col_conf_get(
+        f"onigiri_profile_page_bg_{theme_key}_color1",
+        "#2C2C2C" if is_dark else "#F5F5F5",
+    ) or ("#2C2C2C" if is_dark else "#F5F5F5")
+    if _col_conf_get("onigiri_profile_page_bg_mode", "color") != "gradient":
+        return f"background: {color1} !important;"
+    color2 = _col_conf_get(
+        f"onigiri_profile_page_bg_{theme_key}_color2",
+        "#1A1A1A" if is_dark else "#E0E0E0",
+    ) or ("#1A1A1A" if is_dark else "#E0E0E0")
+    return f"background: linear-gradient(135deg, {color1}, {color2}) !important;"
+
+
+def _profile_sidebar_cover_render_parts(addon_package):
+    """Return the Profile Sidebar cover, falling back to the profile-bar art."""
+    is_dark = config.effective_night_mode()
+    cover_file = config.themed_asset(
+        _col_conf_get,
+        "onigiri_profile_sidebar_cover_image",
+        is_dark,
+        dynamic_key="onigiri_profile_page_bg_dynamic_mode",
+    )
+    if cover_file:
+        base_dir = os.path.join(
+            mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg"
+        )
+        if os.path.isfile(os.path.join(base_dir, cover_file)):
+            url = f"/_addons/{addon_package}/user_files/profile_bg/{cover_file}"
+            return (
+                "background-color: var(--accent-color) !important;",
+                "background-image: url('{0}'); background-size: cover; "
+                "background-position: center;".format(url),
+            )
+    return _profile_background_render_parts(addon_package)
 
 
 def _spotify_embed_url(url: str) -> str:
@@ -940,18 +1541,17 @@ def _profile_sidebar_config(conf: dict) -> dict:
         profile = {}
     return {
         "bio": str(profile.get("bio") or "").strip(),
-        "status": str(profile.get("status") or "").strip(),
         "musicLink": str(profile.get("spotifyLink") or profile.get("musicLink") or "").strip(),
     }
 
 
 def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, profile_pic_html: str) -> str:
     profile = _profile_sidebar_config(conf)
-    bg_style, layer_style = _profile_background_render_parts(addon_package)
+    page_style = _profile_sidebar_page_background_style()
+    bg_style, layer_style = _profile_sidebar_cover_render_parts(addon_package)
     bg_layer_html = f'<div class="onigiri-sidebar-profile-bg-layer" style="{layer_style}"></div>' if layer_style else ""
 
     bio_html = f'<p class="onigiri-sidebar-profile-bio">{html.escape(profile["bio"], quote=False)}</p>' if profile["bio"] else ""
-    status_html = f'<p class="onigiri-sidebar-profile-status">{html.escape(profile["status"], quote=False)}</p>' if profile["status"] else ""
     birthday_html = _profile_birthday_badge_html(conf.get("userBirthday", ""))
     music_link = profile["musicLink"]
     music_html = ""
@@ -977,16 +1577,13 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
 
     chart_html = ""
     if panel_conf.get("show_weekly_chart", True):
-        chart_html = _weekly_chart_html(_profile_panel_accent_color())
+        chart_html = _weekly_chart_html(_profile_sidebar_accent_color())
 
     summary_html = _profile_gamification_summary_html(panel_conf)
-
-    mantras_html = ""
-    if panel_conf.get("show_mantras", True):
-        mantras_html = _profile_mantras_html()
+    study_html = _profile_study_summary_html(panel_conf)
 
     return f"""
-    <section class="onigiri-sidebar-profile" data-profile-sidebar>
+    <section class="onigiri-sidebar-profile" data-profile-sidebar style="{page_style}">
         <button type="button" class="onigiri-sidebar-profile-back" aria-label="Back" onclick="window.OnigiriProfileSidebar && OnigiriProfileSidebar.close(event)"></button>
         <div class="onigiri-sidebar-profile-cover" style="{bg_style}">
             {bg_layer_html}
@@ -995,12 +1592,11 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
             <div class="onigiri-sidebar-profile-avatar">{profile_pic_html}</div>
             <h2>{html.escape(user_name, quote=False)}</h2>
             {birthday_html}
-            {status_html}
             {bio_html}
             {music_html}
             {chart_html}
             {summary_html}
-            {mantras_html}
+            {study_html}
         </div>
     </section>
     """
@@ -1015,14 +1611,15 @@ def _build_profile_sidebar_html(conf: dict, addon_package: str, user_name: str, 
 #                  suffix, and an optional 7-day sparkline along the bottom.
 #
 # Everything the two designs draw (box surface, accents, label/value colors,
-# radius, stroke, blur, type scale) arrives as --swidget-* CSS variables emitted
+# radius, stroke, blur, type size) arrives as --swidget-* CSS variables emitted
 # by patcher.generate_dynamic_css, so this function never hardcodes a color.
 
 _STATS_WIDGET_DEFAULT_ICONS = {
-    "studied": "system:check.svg",
-    "time": "system:pomodoro.svg",
-    "pace": "system:bolt.svg",
-    "retention": "system:star.svg",
+    "studied": "system:stats-widget-studied.svg",
+    "time": "system:stats-widget-time.svg",
+    "pace": "system:stats-widget-pace.svg",
+    "retention": "system:stats-widget-retention.svg",
+    "retention_star": "system:star.svg",
 }
 
 
@@ -1078,22 +1675,24 @@ def _stats_widget_stars_shown() -> bool:
     return bool(_stats_widgets_style().get("show_retention_stars", True))
 
 
+def _stats_widget_icon_value(widget_id: str) -> str:
+    """Configured icon value, with the Stats Widgets default as fallback."""
+    icons = _stats_widgets_style().get("icons", {})
+    if isinstance(icons, dict):
+        value = str(icons.get(widget_id) or "")
+        if value:
+            return value
+    return _STATS_WIDGET_DEFAULT_ICONS.get(widget_id, "")
+
+
 def _stats_widget_icon_url(widget_id: str) -> str:
-    """Data URI for a stat card's icon, or "" when icons are off/unresolvable.
+    """Data URI for a configured Stats Widgets icon, or "" if unresolved.
 
     Mirrors the deck-icon resolution used elsewhere: a "system:" prefix points
     into system_files/system_icons, anything else is looked up in the user's own
     icon folders first. Emoji values are handled by the caller.
     """
-    style = _stats_widgets_style()
-    if not style.get("show_icons", True):
-        return ""
-    icons = style.get("icons", {})
-    value = ""
-    if isinstance(icons, dict):
-        value = str(icons.get(widget_id) or "")
-    if not value:
-        value = _STATS_WIDGET_DEFAULT_ICONS.get(widget_id, "")
+    value = _stats_widget_icon_value(widget_id)
     if not value or value.startswith("emoji:"):
         return ""
 
@@ -1128,10 +1727,7 @@ def _stats_widget_icon_html(widget_id: str) -> str:
     style = _stats_widgets_style()
     if not style.get("show_icons", True):
         return ""
-    icons = style.get("icons", {})
-    raw = ""
-    if isinstance(icons, dict):
-        raw = str(icons.get(widget_id) or "")
+    raw = _stats_widget_icon_value(widget_id)
     if raw.startswith("emoji:"):
         glyph = raw[len("emoji:"):]
         return f'<span class="stat-icon-chip"><span class="stat-icon-emoji">{html.escape(glyph)}</span></span>'
@@ -1141,6 +1737,27 @@ def _stats_widget_icon_html(widget_id: str) -> str:
     return (
         f'<span class="stat-icon-chip"><span class="stat-icon"'
         f' style="-webkit-mask-image: url(\'{url}\'); mask-image: url(\'{url}\');"></span></span>'
+    )
+
+
+def _stats_widget_star_html(is_empty: bool) -> str:
+    """One Retention rating glyph from its own Stats Widgets picker.
+
+    This intentionally does not use the legacy `.star` class: that class is
+    still configured by the menu-wide Retention Star setting. Keeping a local
+    class makes the card heading icon and the five rating glyphs two wholly
+    separate choices.
+    """
+    raw = _stats_widget_icon_value("retention_star")
+    classes = "stats-widget-star" + (" empty" if is_empty else "")
+    if raw.startswith("emoji:"):
+        return f'<span class="{classes} is-emoji">{html.escape(raw[6:])}</span>'
+    url = _stats_widget_icon_url("retention_star")
+    if not url:
+        return ""
+    return (
+        f'<span class="{classes}" style="-webkit-mask-image: url(\'{url}\'); '
+        f'mask-image: url(\'{url}\');"></span>'
     )
 
 
@@ -1333,7 +1950,7 @@ def _get_onigiri_retention_html(row_span: int = 1, col_span: int = 1) -> str:
     else: stars = 0
     
     if _stats_widget_stars_shown():
-        star_html = "".join([f"<i class='star{' empty' if i >= stars else ''}'></i>" for i in range(5)])
+        star_html = "".join(_stats_widget_star_html(i >= stars) for i in range(5))
         star_rating_html = f'<div class="star-rating">{star_html}</div>'
     else:
         star_rating_html = ""
@@ -1423,6 +2040,7 @@ def _get_onigiri_favorites_html() -> str:
             links_html.append(
                 f"""<a class="favorite-deck-link" 
                       href=# onclick="return OnigiriEngine.openDeck(event, '{did_str}');"
+                      oncontextmenu="return OnigiriEngine.showFavoriteDeckContextMenu(event, '{did_str}');"
                       title="{tr('open')} {html.escape(deck_name, quote=True)}">
                     <span class="fav-deck-icon"></span>
                     <span class="fav-deck-name">{html.escape(short_name)}</span>
@@ -1466,15 +2084,56 @@ def _get_onigiri_favorites_html() -> str:
 # --- END OF NEW FUNCTION ---
 
 def _get_onigiri_stats_title_html() -> str:
-    """The user's custom one-line phrase, rendered as a grid widget."""
-    # None == key never set (fresh install) -> show the welcome default.
-    # "" == user cleared the title on purpose -> keep it blank.
+    """Keep a selected backdrop visible even when the phrase is cleared."""
     stats_title = _col_conf_get("modern_menu_statsTitle", None)
     if stats_title is None:
         stats_title = config.DEFAULTS["statsTitle"]
-    if not str(stats_title).strip():
+    has_text = bool(str(stats_title).strip())
+    enabled = bool(_col_conf_get("modern_menu_title_background_enabled", False))
+    if not has_text and not enabled:
         return ""
-    return f'<h1 class="onigiri-widget-title">{stats_title}</h1>'
+    alignment = _col_conf_get("modern_menu_title_alignment", "left")
+    if alignment not in ("left", "center", "right"):
+        alignment = "left"
+
+    def bounded(key, default, maximum):
+        try:
+            value = float(_col_conf_get(key, default))
+            return max(0, min(maximum, value))
+        except (TypeError, ValueError):
+            return default
+
+    background = ""
+    if enabled:
+        opacity = bounded("modern_menu_title_background_opacity", 100, 100) / 100
+        blur = bounded("modern_menu_title_background_blur", 0, 40)
+        kind = _col_conf_get("modern_menu_title_background_type", "color")
+        layer_style = ""
+        if bool(_col_conf_get("modern_menu_title_sync_widgets", False)):
+            layer_style = (
+                "opacity:1;background-color:var(--canvas-inset);"
+                "backdrop-filter:blur(var(--onigiri-widget-blur, 0px));"
+                "-webkit-backdrop-filter:blur(var(--onigiri-widget-blur, 0px));"
+            )
+        elif kind == "image":
+            layer_style = f"opacity:{opacity};"
+            filename = os.path.basename(str(_col_conf_get("modern_menu_title_background_image", "") or ""))
+            if filename:
+                package = quote_url_component(mw.addonManager.addonFromModule(__name__), safe="")
+                url = f"/_addons/{package}/user_files/main_bg/{quote_url_component(filename, safe='')}"
+                layer_style += f"background-image:url('{url}');filter:blur({blur}px);"
+        else:
+            color = str(_col_conf_get("modern_menu_title_background_color", "#FFFFFF") or "#FFFFFF")
+            # Match the colour picker's hex/rgba output without accepting CSS declarations.
+            if not re.fullmatch(r"#[0-9a-fA-F]{3,8}|rgba?\([0-9.,%\s]+\)", color):
+                color = "#FFFFFF"
+            # Fade the tint, not the filtered layer: an opaque fill would
+            # cover the blurred backdrop before element opacity is applied.
+            layer_style += f"opacity:1;background-color:color-mix(in srgb, {color} {opacity * 100}%, transparent);backdrop-filter:blur({blur}px);-webkit-backdrop-filter:blur({blur}px);"
+        background = f'<div class="onigiri-menu-title-background" aria-hidden="true" style="{html.escape(layer_style, quote=True)}"></div>'
+    phrase = f'<h1 class="onigiri-widget-title">{html.escape(str(stats_title))}</h1>' if has_text else ""
+    classes = "onigiri-menu-title" + (" has-background" if enabled else "")
+    return f'<div class="{classes}" style="--menu-title-alignment:{alignment};">{background}{phrase}</div>'
 
 def _get_onigiri_nook_level_html(orientation: str = "horizontal", row_span: int = 2, col_span: int = 2) -> str:
     """
@@ -1698,18 +2357,40 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "favorites": _get_onigiri_favorites_html, 
         "restaurant_level": _get_onigiri_nook_level_html,
         "onigimon": lambda: _onigimon().render_widget_html(),
+        "ankimon_team": render_ankimon_team_widget_html,
         "hexagon_land": lambda: _hexagon_land().render_widget_html(),
         "deck_stats": lambda: _learner_stats_widget()._render_widget(self, "deck_stats"),
         "prep_station": lambda: _prep_station().render_widget_html(),
         "hashi_notes": lambda: _hashi_notes().render_widget_html(),
+        "ready_to_go": lambda: _ready_to_go().render_widget_html(),
     }
+
+    def render_widget_safely(widget_id, renderer):
+        """Keep one stale widget payload from blanking the whole dashboard."""
+        try:
+            return renderer()
+        except Exception as exc:
+            print(f"Onigiri: {widget_id} widget failed: {exc}")
+            return ""
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
             if widget_id in widget_generators or _is_deck_stats_widget_id(widget_id):
-                pos = widget_config.get("pos", 0)
-                row_span = widget_config.get("row", 1)
-                col_span = widget_config.get("col", 1)
+                if not isinstance(widget_config, dict):
+                    print(f"Onigiri: ignored invalid {widget_id} widget layout")
+                    continue
+                try:
+                    pos = max(0, int(widget_config.get("pos", 0)))
+                except (TypeError, ValueError):
+                    pos = 0
+                try:
+                    row_span = max(1, int(widget_config.get("row", 1)))
+                except (TypeError, ValueError):
+                    row_span = 1
+                try:
+                    col_span = max(1, min(col_count, int(widget_config.get("col", 1))))
+                except (TypeError, ValueError):
+                    col_span = 1
                 if _is_deck_stats_widget_id(widget_id):
                     try:
                         row_span = max(1, min(2, int(row_span)))
@@ -1758,15 +2439,49 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                 col = pos % col_count + 1
                 style = f"grid-area: {row} / {col} / span {row_span} / span {col_span};"
                 if widget_id == "restaurant_level":
-                    widget_html = _get_onigiri_nook_level_html(widget_config.get("orientation", "horizontal"), row_span=row_span, col_span=col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _get_onigiri_nook_level_html(
+                            widget_config.get("orientation", "horizontal"),
+                            row_span=row_span,
+                            col_span=col_span,
+                        ),
+                    )
+                elif widget_id == "ready_to_go":
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _ready_to_go().render_widget_html(
+                            design=widget_config.get("design", "squares")
+                        ),
+                    )
                 elif widget_id == "prep_station":
-                    widget_html = _prep_station().render_widget_html(slot_count=col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _prep_station().render_widget_html(
+                            slot_count=col_span
+                        ),
+                    )
                 elif widget_id == "hashi_notes":
-                    widget_html = _hashi_notes().render_widget_html(row_span=row_span, col_span=col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _hashi_notes().render_widget_html(
+                            row_span=row_span,
+                            col_span=col_span,
+                        ),
+                    )
                 elif widget_id in ("studied", "time", "pace"):
-                    widget_html = widget_generators[widget_id](row_span, col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: widget_generators[widget_id](row_span, col_span),
+                    )
                 elif widget_id == "retention":
-                    widget_html = _get_onigiri_retention_html(row_span=row_span, col_span=col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _get_onigiri_retention_html(
+                            row_span=row_span,
+                            col_span=col_span,
+                        ),
+                    )
                 elif widget_id == "onigimon":
                     try:
                         onigimon_row_span = int(row_span)
@@ -1776,17 +2491,57 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
                         onigimon_col_span = int(col_span)
                     except (TypeError, ValueError):
                         onigimon_col_span = 1
-                    widget_html = _onigimon().render_widget_html(row_span=onigimon_row_span, col_span=onigimon_col_span)
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _onigimon().render_widget_html(
+                            row_span=onigimon_row_span,
+                            col_span=onigimon_col_span,
+                            grid_style=style,
+                        ),
+                    )
+                elif widget_id == "ankimon_team":
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: render_ankimon_team_widget_html(
+                            row_span=row_span,
+                            col_span=col_span,
+                        ),
+                    )
+                elif widget_id == "hexagon_land":
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _hexagon_land().render_widget_html(
+                            grid_style=style,
+                        ),
+                    )
                 elif _is_deck_stats_widget_id(widget_id):
                     # row_span drives the compact fallback body inside the widget.
-                    widget_html = _learner_stats_widget()._render_widget(
-                        self, widget_id, row_span=row_span, col_span=col_span
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        lambda: _learner_stats_widget()._render_widget(
+                            self,
+                            widget_id,
+                            row_span=row_span,
+                            col_span=col_span,
+                        ),
                     )
                 else:
-                    widget_html = widget_generators[widget_id]()
+                    widget_html = render_widget_safely(
+                        widget_id,
+                        widget_generators[widget_id],
+                    )
                 if not str(widget_html or "").strip():
                     continue
-                onigiri_grid_html += f'<div class="onigiri-widget-container" style="{style}">{widget_html}</div>'
+                # Onigimon and Hexagon Land are self-contained visual scenes.
+                # Their root surface participates in the grid directly, so an
+                # empty generic card cannot add a second border or title.
+                if widget_id in ("onigimon", "hexagon_land"):
+                    onigiri_grid_html += widget_html
+                else:
+                    onigiri_grid_html += (
+                        f'<div class="onigiri-widget-container" '
+                        f'style="{style}">{widget_html}</div>'
+                    )
 
     # --- Part 2: Build External Add-on Widgets (into the same unified grid) ---
     external_hooks = patcher._get_external_hooks()
@@ -1805,6 +2560,11 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     deckline_auto_embed = conf.get("onigiriDecklineAutoEmbed", True)
     for hook in external_hooks:
         hook_id = patcher._get_hook_name(hook)
+        # The native Ankimon team widget above replaces this legacy hook. Do
+        # not execute it: it emits a fixed-size ``.poke-grid`` plus a complete
+        # foreign stylesheet, which is exactly what breaks the unified grid.
+        if _is_ankimon_team_hook_id(hook_id):
+            continue
         should_render_grid_hook = hook_id in grid_hook_ids
         should_render_deckline_compat = (
             deckline_auto_embed
@@ -1918,15 +2678,38 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     grid_gap = 15
     widget_layout_conf = conf.get("onigiriWidgetLayout", {})
     try:
-        saved_grid_width = int(widget_layout_conf.get("grid_width", 230))
+        saved_grid_width = int(widget_layout_conf.get("grid_width", 250))
     except (TypeError, ValueError):
-        saved_grid_width = 230
+        saved_grid_width = 250
     grid_column_width = max(200, min(340, saved_grid_width))
     try:
-        saved_widget_height = int(widget_layout_conf.get("widget_height", 120))
+        saved_widget_height = int(widget_layout_conf.get("widget_height", 150))
     except (TypeError, ValueError):
-        saved_widget_height = 120
+        saved_widget_height = 150
     grid_widget_height = max(120, min(320, saved_widget_height))
+
+    # Layout Items applies its spacing as margins on each tile.  Those margins
+    # are deliberately outside the tile's content box, but grid rows used to
+    # stay at their pre-margin height.  A Spacious 24px top/bottom margin could
+    # consequently remove 48px from a one-row tile and the container's hidden
+    # overflow would cut off the widget's bottom.  Reserve the vertical margin
+    # in every regular grid row, so a tile always retains its configured height
+    # (and a smaller window scrolls the main content rather than cropping it).
+    def _widget_margin_value(edge: str) -> int:
+        try:
+            value = int(float(mw.col.conf.get(
+                f"modern_menu_widget_margin_{edge}", 0
+            )))
+        except (TypeError, ValueError):
+            return 0
+        # Match the CSS generator exactly. The settings UI limits this to
+        # 240px, but legacy/manual collection values must still reserve all of
+        # their applied spacing instead of reintroducing clipping.
+        return max(0, value)
+
+    widget_margin_top = _widget_margin_value("top")
+    widget_margin_bottom = _widget_margin_value("bottom")
+    grid_row_height = grid_widget_height + widget_margin_top + widget_margin_bottom
     grid_alignment = widget_layout_conf.get("grid_alignment", "center")
     if grid_alignment not in {"left", "center", "right"}:
         grid_alignment = "center"
@@ -1944,7 +2727,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     if "stats_title" in onigiri_layout and col_count > 0:
         pos = onigiri_layout["stats_title"].get("pos", 0)
         title_row = pos // col_count + 1
-    grid_template_rows = " ".join([f"{grid_widget_height}px"] * (title_row - 1)) + " min-content"
+    grid_template_rows = " ".join([f"{grid_row_height}px"] * (title_row - 1)) + " min-content"
     title_margin_top = "12px" if title_row == 1 else "-5px"
 
     # [CHANGED] Updated CSS to force grid expansion and row height
@@ -1966,7 +2749,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: grid;
             gap: {grid_gap}px;
             grid-template-rows: {grid_template_rows};
-            grid-auto-rows: {grid_widget_height}px;
+            grid-auto-rows: {grid_row_height}px;
             grid-template-columns: repeat({col_count}, minmax(0, {grid_column_width}px));
             justify-content: {grid_justify_content};
             width: 100%;
@@ -2000,6 +2783,37 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             overflow: hidden;
         }}
 
+        .onigiri-menu-title {{
+            position: relative;
+            isolation: isolate;
+            width: 100%;
+            flex: 1;
+            min-width: 0;
+            box-sizing: border-box;
+        }}
+        .onigiri-menu-title.has-background {{
+            min-height: 54px;
+            padding: 12px 16px;
+            border-radius: var(--onigiri-widget-border-radius, 20px);
+            border: var(--onigiri-widget-border-width, 1px) solid var(--border, rgba(128, 128, 128, 0.24));
+            overflow: hidden;
+        }}
+        .onigiri-menu-title-background {{
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background-size: cover;
+            background-position: center;
+        }}
+        .onigiri-widget-container .onigiri-menu-title .onigiri-widget-title {{
+            justify-content: var(--menu-title-alignment, left);
+            text-align: var(--menu-title-alignment, left);
+        }}
+        .onigiri-widget-container .onigiri-menu-title.has-background .onigiri-widget-title {{
+            margin: 0;
+        }}
+
         /* Make the container expand to fill the grid area (rows/cols) */
         .onigiri-widget-container, .external-widget-container {{
             width: 100%;
@@ -2021,11 +2835,146 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         /* Force the inner content (cards, heatmap, favorites) to fill the container */
-        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget, .hashi-notes-widget {{
+        .stat-card, #onigiri-heatmap-container, .onigiri-favorites-widget, .onigimon-card, .hex-land-preview, .prep-station-widget, .hashi-notes-widget, .onigiri-ankimon-team-widget {{
             flex: 1;
             width: 100%;
             height: 100%;
             box-sizing: border-box;
+        }}
+
+        /* Ankimon team — deliberately small, neutral, and grid-contained.
+           These rules never target Ankimon's legacy .poke-grid, so a normal
+           Ankimon screen remains untouched. */
+        .onigiri-ankimon-team-widget {{
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            padding: var(--onigiri-widget-pad, 12px);
+            border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, var(--border, rgba(128,128,128,.22)));
+            border-radius: var(--onigiri-box-effect-radius, 14px);
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(128,128,128,.08)));
+            color: var(--onigiri-box-effect-fg, var(--fg, inherit));
+            box-shadow: none !important;
+            backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
+            -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
+            overflow: hidden;
+        }}
+        .onigiri-ankimon-team-head {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 0 0 8px;
+            font-size: var(--font-size-small-title, 13px);
+            font-weight: 700;
+            line-height: 1;
+        }}
+        .onigiri-ankimon-team-head em {{
+            display: inline-flex;
+            min-width: 18px;
+            height: 18px;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            border-radius: 999px;
+            background: var(--accent-color, #00a982);
+            color: #fff;
+            font-size: 10px;
+            font-style: normal;
+        }}
+        .onigiri-ankimon-team-list {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(92px, 100%), 1fr));
+            gap: 7px;
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            align-content: center;
+        }}
+        .onigiri-ankimon-team-member {{
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: minmax(0, 1fr) auto auto auto;
+            justify-items: center;
+            gap: 2px;
+            min-width: 0;
+            min-height: 0;
+            padding: 5px 3px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            overflow: hidden;
+            box-shadow: none !important;
+        }}
+        .onigiri-ankimon-team-member:hover {{
+            background: color-mix(in srgb, var(--accent-color, #00a982) 10%, transparent);
+        }}
+        .onigiri-ankimon-team-sprite {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }}
+        .onigiri-ankimon-team-sprite img {{
+            display: block;
+            width: min(100%, 74px);
+            height: min(100%, 74px);
+            max-height: 74px;
+            object-fit: contain;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }}
+        .onigiri-ankimon-team-name {{
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 10px;
+            font-weight: 650;
+            line-height: 1.1;
+        }}
+        .onigiri-ankimon-team-level {{
+            font-size: 9px;
+            opacity: .62;
+            line-height: 1;
+        }}
+        .onigiri-ankimon-team-types {{
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 3px;
+            width: 100%;
+            min-width: 0;
+            margin-top: 3px;
+            box-sizing: border-box;
+            white-space: normal !important;
+        }}
+        .onigiri-ankimon-team-type {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            max-width: 100%;
+            padding: 2px 4px;
+            box-sizing: border-box;
+            border-radius: 999px;
+            background: var(--pokemon-type-bg, #8a8d91);
+            color: var(--pokemon-type-fg, #fff);
+            font-size: 7px;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            overflow: visible;
+        }}
+        .onigiri-ankimon-team-initial {{
+            font-size: 18px;
+            opacity: .55;
         }}
 
         /* Prep Station widget */
@@ -2174,34 +3123,12 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             flex-shrink: 0;
         }}
 
-        .hex-land-widget {{
-            display: grid;
-            grid-template-columns: minmax(150px, 1fr) minmax(156px, .78fr);
-            gap: 14px;
-            padding: var(--onigiri-widget-pad);
-            border-radius: 18px;
-            border: 1px solid var(--border, #e0e0e0);
-            background: var(--canvas-inset, #ffffff);
-            color: var(--fg, #222);
-            overflow: hidden;
-            cursor: pointer;
-        }}
-
-        .hex-land-widget.land-only {{
-            display: block;
-            padding: var(--onigiri-widget-pad);
-        }}
-
-        .hex-land-widget.disabled {{
-            display: flex;
-            align-items: center;
-            background: var(--canvas-inset, #ffffff);
-        }}
-
         .hex-land-preview {{
             position: relative;
+            flex: 1;
+            width: 100%;
             min-width: 0;
-            min-height: 120px;
+            min-height: 0;
             height: 100%;
             border-radius: 14px;
             overflow: hidden;
@@ -2209,8 +3136,13 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             background-image: linear-gradient(180deg, var(--hl-top, #48c0ee), var(--hl-bottom, #1597d1));
         }}
 
-        .hex-land-widget.land-only .hex-land-preview {{
-            min-height: 100%;
+        .hex-land-preview.disabled {{
+            display: grid;
+            place-items: center;
+            padding: var(--onigiri-widget-pad);
+            box-sizing: border-box;
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
         }}
 
         .hex-land-preview-stage {{
@@ -2362,28 +3294,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             font-weight: 800;
         }}
 
-        .onigimon-widget, .onigimon-widget * {{
+        .onigimon-card, .onigimon-card * {{
             font-family: "Silkscreen", var(--font-main), Nunito, sans-serif !important;
-        }}
-
-        /* The header title opts out of the pixel font above so it reads as the
-           same Small Title as every other widget's; the body stays Silkscreen. */
-        .onigimon-widget .onigiri-widget-head > h3 {{
-            font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-        }}
-
-        .onigimon-widget {{
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: var(--onigiri-widget-pad);
-            border-radius: 15px;
-            border: 1px solid var(--border, #e0e0e0);
-            background: var(--canvas-inset, #ffffff);
-            color: var(--fg, #222);
-            overflow: hidden;
-            position: relative;
-            cursor: pointer;
         }}
 
         .onigimon-main,
@@ -2407,10 +3319,23 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             flex: 1;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
             min-height: 0;
             border-radius: 12px;
             overflow: hidden;
             border: 1px solid var(--border, #e0e0e0);
+            cursor: pointer;
+        }}
+
+        .onigimon-card-disabled {{
+            display: grid;
+            place-items: center;
+            padding: var(--onigiri-widget-pad);
+            background: var(--canvas-inset, #ffffff);
+            color: var(--fg, #222);
+            text-align: center;
         }}
 
         .onigimon-header span,
@@ -2516,12 +3441,13 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             z-index: 0;
         }}
 
-        /* Coloured top section (sprite + name). Reuses .onigimon-scene for the
-           background image/blur machinery, but drops the scene's own border and
-           radius — the enclosing .onigimon-card owns the grey border + corners. */
+        /* Coloured top section. Reuses .onigimon-scene for the background
+           image/blur machinery, but drops the scene's own border and radius —
+           the enclosing .onigimon-card owns the grey border + corners. */
         .onigimon-top {{
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 14px;
             min-height: 80px;
             box-sizing: border-box;
@@ -2584,13 +3510,33 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 5px;
+            gap: 10px;
             padding: 12px 14px;
             flex: 1 1 auto;
             min-height: 0;
             overflow: hidden;
             background: #efefec;
             color: var(--fg, #222);
+        }}
+
+        /* The identity is the heading for the meter panel: it gives the
+           readings an immediate owner while leaving the companion centred in
+           the scene above (or to the left on wide cards). */
+        .onigimon-bottom .onigimon-info {{
+            width: 100%;
+            padding-bottom: 8px;
+            border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        }}
+
+        .onigimon-bottom .onigimon-info strong {{
+            color: inherit;
+            font-size: 15px;
+        }}
+
+        .onigimon-bottom .onigimon-info > span {{
+            color: inherit;
+            font-size: 10px;
+            opacity: 0.68;
         }}
 
         .night-mode .onigimon-bottom {{
@@ -2616,6 +3562,14 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             background: color-mix(in srgb, currentColor 14%, transparent);
         }}
 
+        .onigimon-meters {{
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            width: 100%;
+            min-width: 0;
+        }}
+
         .onigimon-sprite {{
             width: 58px;
             height: 58px;
@@ -2630,11 +3584,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             background: transparent;
         }}
 
+        .onigimon-pixel-sprite,
+        .onigimon-sprite img {{
+            -ms-interpolation-mode: nearest-neighbor;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }}
+
         .onigimon-sprite img {{
             width: 54px;
             height: 54px;
             object-fit: contain;
-            image-rendering: pixelated;
         }}
 
         .onigimon-placeholder {{
@@ -2685,6 +3646,122 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             border-radius: inherit;
         }}
 
+        /* Extra rows become a compact companion dashboard rather than empty
+           meter-panel padding. All values come from the same payload as the
+           care window, so the larger footprint remains useful at a glance. */
+        .onigimon-growth {{
+            display: grid;
+            gap: 6px;
+            width: 100%;
+            padding-top: 9px;
+            border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        }}
+
+        .onigimon-growth-head {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            align-items: baseline;
+            gap: 7px;
+            font-size: 10px;
+        }}
+
+        .onigimon-growth-head span {{
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: inherit !important;
+            font-size: inherit !important;
+        }}
+
+        .onigimon-growth-head b {{
+            font-size: 10px;
+        }}
+
+        .onigimon-growth-head em {{
+            font-size: 8px;
+            font-style: normal;
+            opacity: 0.64;
+            white-space: nowrap;
+        }}
+
+        .onigimon-growth-track {{
+            height: 6px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: color-mix(in srgb, currentColor 14%, transparent);
+        }}
+
+        .onigimon-growth-track i {{
+            display: block;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #8b6ce0, #c866e5);
+        }}
+
+        .onigimon-quick-stats,
+        .onigimon-battle-stats {{
+            display: grid;
+            gap: 7px;
+            width: 100%;
+        }}
+
+        .onigimon-quick-stats {{
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
+
+        .onigimon-battle-stats {{
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }}
+
+        .onigimon-quick-stat {{
+            display: grid;
+            justify-items: start;
+            gap: 3px;
+            min-width: 0;
+            padding: 8px 9px;
+            border-radius: 9px;
+            background: color-mix(in srgb, currentColor 8%, transparent);
+        }}
+
+        .onigimon-quick-stat span {{
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: inherit !important;
+            font-size: 8px !important;
+            line-height: 1.15;
+            opacity: 0.68;
+            white-space: nowrap;
+        }}
+
+        .onigimon-quick-stat b {{
+            color: inherit;
+            font-size: 13px;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }}
+
+        .onigimon-card-tall > .onigimon-top {{
+            flex: 0 0 36%;
+            justify-content: center;
+        }}
+
+        .onigimon-card-tall > .onigimon-bottom {{
+            justify-content: space-evenly;
+            gap: 9px;
+            padding: 14px;
+        }}
+
+        .onigimon-card-extra-tall > .onigimon-top .onigimon-sprite {{
+            width: 112px;
+            height: 112px;
+            flex-basis: 112px;
+        }}
+
+        .onigimon-card-extra-tall > .onigimon-top .onigimon-sprite img {{
+            width: 102px;
+            height: 102px;
+        }}
+
         .onigimon-inventory {{
             gap: 7px;
             flex-wrap: wrap;
@@ -2714,7 +3791,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         /* Compact 1-row Onigimon widget: just the companion over its background */
-        .onigimon-widget-compact {{
+        .onigimon-card-compact {{
             padding: 8px;
             gap: 0;
         }}
@@ -2762,8 +3839,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             color: rgba(255, 255, 255, 0.82);
         }}
 
-        /* 2x2: the coloured scene and the meters sit side by side, each taking
-           half the card, instead of stacking. */
+        /* Two-column footprints use the coloured scene as a left rail and the
+           companion dashboard on the right. */
         .onigimon-card-wide {{
             flex-direction: row;
         }}
@@ -2799,6 +3876,88 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             min-width: 0;
             gap: 8px;
             padding: 14px 16px;
+        }}
+
+        .onigimon-card-wide.onigimon-card-tall > .onigimon-top {{
+            flex-basis: 42%;
+        }}
+
+        .onigimon-card-wide.onigimon-card-tall > .onigimon-bottom {{
+            flex-basis: 58%;
+        }}
+
+        .onigimon-card-wide.onigimon-card-extra-tall > .onigimon-top .onigimon-sprite {{
+            width: 132px;
+            height: 132px;
+            flex-basis: 132px;
+        }}
+
+        .onigimon-card-wide.onigimon-card-extra-tall > .onigimon-top .onigimon-sprite img {{
+            width: 120px;
+            height: 120px;
+        }}
+
+        /* A 1x2 card is the tightest layout that includes all five meters.
+           Give the dashboard enough vertical room so its heading stays below
+           the seam and Hunger is never clipped, while preserving a centered
+           companion scene above it. */
+        .onigimon-card.onigimon-span-2x1 > .onigimon-top {{
+            flex: 0 0 40%;
+            min-height: 0;
+            padding: 8px 10px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-top .onigimon-sprite {{
+            width: 86px;
+            height: 86px;
+            flex-basis: 86px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-top .onigimon-sprite img {{
+            width: 82px;
+            height: 82px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-bottom {{
+            justify-content: flex-start;
+            gap: 6px;
+            padding: 8px 10px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-bottom .onigimon-info {{
+            gap: 1px;
+            padding-bottom: 5px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-bottom .onigimon-info strong {{
+            font-size: 14px;
+            line-height: 1.2;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 > .onigimon-bottom .onigimon-info > span {{
+            font-size: 9px;
+            line-height: 1.2;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 .onigimon-meters {{
+            gap: 4px;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 .onigimon-meter {{
+            grid-template-columns: 62px 30px minmax(0, 1fr);
+            gap: 5px;
+            font-size: 10px;
+            line-height: 1.2;
+        }}
+
+        .onigimon-card.onigimon-span-2x1 .onigimon-meter > div {{
+            height: 6px;
+        }}
+
+        /* Keep the companion identity centered in the 2x3 dashboard. */
+        .onigimon-card.onigimon-span-3x2 > .onigimon-bottom .onigimon-info {{
+            justify-items: center;
+            text-align: center;
         }}
 
         /* Restaurant Level Widget Styles */
@@ -2853,7 +4012,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             display: flex;
             align-items: center;
             justify-content: center;
-            background: var(--canvas-inset);
+            /* Let the widget's backdrop supply the opacity behind the sprite. */
+            background: transparent;
             padding: calc(10px * var(--onigiri-widget-pad-scale));
             position: relative;
             transition: all 0.3s ease;
@@ -2912,10 +4072,6 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             z-index: 10;
         }}
         
-        .night .restaurant-image-container {{
-            background: var(--canvas-inset);
-        }}
-
         .restaurant-image {{
             max-width: 100%;
             max-height: 100%;
@@ -3147,7 +4303,23 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # Anki's native _delete method expects self._render_data.tree to exist
     tree_data = self.mw.col.sched.deck_due_tree()
     self._render_data = RenderData(tree=tree_data)
-    tree_html = deck_tree_updater._render_deck_tree_html_only(self)
+    sidebar_content_mode = str(conf.get("sidebarContentMode", "decks")).lower()
+    if sidebar_content_mode not in {"decks", "tags"}:
+        sidebar_content_mode = "decks"
+    if sidebar_content_mode == "tags":
+        tree_html = deck_tree_updater._render_tag_tree_html(self)
+        sidebar_content_title = tr("tags_header", "TAGS")
+        sidebar_search_placeholder = tr("search_tags", "Search tags…")
+        sidebar_search_title = tr("search_tags", "Search tags")
+        sidebar_list_class = "is-tags-mode"
+        sidebar_table_class = "onigiri-tag-table"
+    else:
+        tree_html = deck_tree_updater._render_deck_tree_html_only(self)
+        sidebar_content_title = tr("decks_header", "DECKS")
+        sidebar_search_placeholder = tr("search_decks", "Search decks…")
+        sidebar_search_title = tr("search_decks", "Search decks")
+        sidebar_list_class = "is-decks-mode"
+        sidebar_table_class = ""
     
     # Add OnigiriEngine JavaScript
     onigiri_engine_js = """
@@ -3403,19 +4575,59 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # --- ADDED: Generate CSS for Action Icons ---
     action_icons_css = _generate_action_icons_css(conf, addon_package)
     theme_css += action_icons_css
+    search_header_icon_html = _sidebar_header_icon_markup(
+        "modern_menu_icon_header_search", "search.svg", "search-btn-icon", addon_package
+    )
+    sort_header_icon_html = _sidebar_header_icon_markup(
+        "modern_menu_icon_header_sort", "sort_default.svg", "sort-btn-icon", addon_package
+    )
+    home_button_html = _build_archived_home_button(conf, addon_package)
+    ready_marker_html = _build_hidden_ready_marker(addon_package)
+
+    section_order = {
+        section_id: index for index, section_id in enumerate(_sidebar_section_order())
+    }
+    theme_css += f"""
+    <style id="onigiri-sidebar-section-order">
+        .onigiri-sidebar-profile-section {{ order: {section_order['profile']}; }}
+        .onigiri-sidebar-actions-section {{ order: {section_order['actions']}; }}
+        .onigiri-ready-sidebar {{ order: {section_order['ready_to_go']}; }}
+        .onigiri-sidebar-decks-section {{ order: {section_order['decks']}; }}
+    </style>
+    """
 
     # --- Custom profile name color (light/dark aware) ---
     name_dynamic = _col_conf_get("modern_menu_profile_name_dynamic_mode", True)
-    name_light = _col_conf_get("modern_menu_profile_name_color_light", "#111827")
-    name_dark = _col_conf_get("modern_menu_profile_name_color_dark", "#f9fafb") if name_dynamic else name_light
+    name_light = _col_conf_get(
+        "modern_menu_profile_name_color_light",
+        config.DEFAULTS["colors"]["light"]["--fg"],
+    )
+    name_dark = _col_conf_get(
+        "modern_menu_profile_name_color_dark",
+        config.DEFAULTS["colors"]["dark"]["--fg"],
+    ) if name_dynamic else name_light
+    level_light = _col_conf_get(
+        "modern_menu_profile_level_color_light",
+        config.DEFAULT_PROFILE_LEVEL_COLOR,
+    )
+    level_dark = _col_conf_get(
+        "modern_menu_profile_level_color_dark",
+        config.DEFAULT_PROFILE_LEVEL_COLOR,
+    ) if name_dynamic else level_light
     theme_css += f"""
     <style id="profile-name-color">
         .profile-bar .profile-name,
         .onigiri-profile .opro-name {{ color: {name_light} !important; text-shadow: none !important; }}
+        .profile-bar .restaurant-level-chip .rl-chip-level,
+        .onigiri-profile .opro-level {{ color: {level_light} !important; }}
         .night-mode .profile-bar .profile-name,
         .nightMode .profile-bar .profile-name,
         .night-mode .onigiri-profile .opro-name,
         .nightMode .onigiri-profile .opro-name {{ color: {name_dark} !important; }}
+        .night-mode .profile-bar .restaurant-level-chip .rl-chip-level,
+        .nightMode .profile-bar .restaurant-level-chip .rl-chip-level,
+        .night-mode .onigiri-profile .opro-level,
+        .nightMode .onigiri-profile .opro-level {{ color: {level_dark} !important; }}
     </style>
     """
 
@@ -3451,17 +4663,17 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     # 1. Build the dynamic sidebar HTML from the layout config
     sidebar_buttons_html = _build_sidebar_html(conf)
     
-    # 2. Manually replace {profile_bar} inside the sidebar HTML string
-    #    (This is necessary because {profile_bar} is one of the items in BUTTON_HTML)
-    sidebar_buttons_html = sidebar_buttons_html.replace("{profile_bar}", profile_bar_html)
-    
-    # --- This logic remains the same ---
     profile_pic_html_collapsed = _get_profile_pic_html(user_name, addon_package, "collapsed-profile-pic")
     
+    sidebar_width_pinned = bool(
+        _col_conf_get("modern_menu_sidebar_width_pinned", False)
+    )
     try:
-        saved_width = max(320, int(float(_col_conf_get("modern_menu_sidebar_width", 345))))
+        saved_width = max(320, int(float(_col_conf_get("modern_menu_sidebar_width", 600))))
+        if sidebar_width_pinned:
+            saved_width = min(saved_width, 1200)
     except (TypeError, ValueError):
-        saved_width = 345
+        saved_width = 600
     try:
         saved_height = max(260, int(float(_col_conf_get("modern_menu_sidebar_height", 520))))
     except (TypeError, ValueError):
@@ -3505,12 +4717,15 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
         "sidebarButtonLayout": {
             "visible": sidebar_button_layout.get("visible", []),
+            "more": sidebar_button_layout.get("more", list(MORE_ACTION_IDS)),
             "archived": sidebar_button_layout.get("archived", []),
         },
         "addonPackage": mw.addonManager.addonFromModule(__name__),
         "collapsedIcons": collapsed_icons,
         "deckCycleState": deck_cycle_state,
         "sidebarPosition": sidebar_position,
+        "sidebarWidthPinned": sidebar_width_pinned,
+        "sidebarContentMode": sidebar_content_mode,
         "deckSortMode": _col_conf_get("onigiri_sort_mode", "default"),
         "decklineAvailable": deckline_available,
         "fsrsHelperAvailable": fsrs_helper_integration.is_available(),
@@ -3540,8 +4755,18 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .replace("{container_extra_class}", container_extra_class) \
         .replace("{sidebar_initial_class}", sidebar_initial_class) \
         .replace("{sidebar_style}", sidebar_style) \
-        .replace("{tr_decks}", tr("decks_header")) \
+        .replace("{sidebar_content_title}", html.escape(sidebar_content_title)) \
+        .replace("{sidebar_search_placeholder}", html.escape(sidebar_search_placeholder, quote=True)) \
+        .replace("{sidebar_search_title}", html.escape(sidebar_search_title, quote=True)) \
+        .replace("{home_button}", home_button_html) \
+        .replace("{ready_marker}", ready_marker_html) \
+        .replace("{search_header_icon}", search_header_icon_html) \
+        .replace("{sort_header_icon}", sort_header_icon_html) \
+        .replace("{sidebar_list_class}", sidebar_list_class) \
+        .replace("{sidebar_table_class}", sidebar_table_class) \
+        .replace("{profile_bar}", profile_bar_html) \
         .replace("{sidebar_buttons}", sidebar_buttons_html) \
+        .replace("{ready_to_go}", _ready_to_go().render_sidebar_html()) \
         .replace("{profile_sidebar}", profile_sidebar_html) \
         .replace("{profile_pic_html_collapsed}", profile_pic_html_collapsed)
     

@@ -43,6 +43,9 @@ from PyQt6.QtWidgets import QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsS
 
 from . import config
 from . import safe_storage
+from .fonts import register_poppins_qt
+from .theme_palette import utility_chrome_palette
+from .pomodoro_tones import BUILTIN_SOUNDS
 from .onigiri_notifications import notify as tooltip
 from .prep_station_ui import WeeklyChart, render_icon_pixmap
 from .translations import current_locale, tr
@@ -110,12 +113,6 @@ STYLE_PRESETS = {
 }
 DEFAULT_STYLE = "minimal"
 
-BUILTIN_SOUNDS = {
-    "soft_start": "pomodoro_start_soft.mp3",
-    "soft_bell": "pomodoro_end_soft_bell.mp3",
-    "classic_chime": "pomodoro_chime.wav",
-}
-
 DEFAULT_SETTINGS = {
     "focus_minutes": 25,
     "short_break_minutes": 5,
@@ -155,6 +152,7 @@ DEFAULT_SETTINGS = {
 _widget = None
 _stats_dialog = None
 _timer = None
+_tone_player = None
 _font_family_cache = {}
 
 
@@ -197,22 +195,13 @@ def _is_dark_mode(conf=None):
 def _accent_color(conf=None):
     conf = conf or config.get_config()
     mode = "dark" if _is_dark_mode(conf) else "light"
-    return conf.get("colors", {}).get(mode, {}).get("--accent-color", "#00A982")
+    return conf.get("colors", {}).get(mode, {}).get("--accent-color", config.DEFAULT_ACCENT_COLOR)
 
 
 def base_chrome_palette(dark):
-    accent = _accent_color()
-    if dark:
-        return {
-            "shell": "#1f1f1f", "surface": "#2a2a2a", "border": "#343434",
-            "fg": "#f4f4f5", "fg2": "#b6b6b8", "fg3": "#7c7c80",
-            "hover": "#343434", "accent": accent,
-        }
-    return {
-        "shell": "#ffffff", "surface": "#f1f1f0", "border": "#e5e7eb",
-        "fg": "#1f2933", "fg2": "#4b5563", "fg3": "#8a9099",
-        "hover": "#f1f3f5", "accent": accent,
-    }
+    mode = "dark" if dark else "light"
+    colors = config.get_config_readonly().get("colors", {}).get(mode, {})
+    return utility_chrome_palette(colors, dark)
 
 
 def _palette(dark, settings=None):
@@ -390,24 +379,66 @@ def import_sound_file(source_path):
     return filename
 
 
-def _play_sound(settings, event="end"):
-    if not settings.get("sound_enabled", True):
-        return
-    path = _resolve_sound_path(settings, event)
-    if not path or not os.path.exists(path):
-        return
+def _play_tone_fallback(path):
+    """Use Anki's player if the native multimedia backend is unavailable."""
     try:
         from anki.sound import SoundOrVideoTag
         from aqt.sound import av_player
 
-        av_player.play_tags([SoundOrVideoTag(filename=path)])
-    except Exception as e:
-        print(f"Pomodoro: sound playback error: {e}")
+        av_player.append_tags([SoundOrVideoTag(filename=path)])
+    except Exception as exc:
+        print(f"Pomodoro: sound playback error: {exc}")
 
 
-def play_test_sound(event="end", sound_file=None):
+def _tone_playback_error(_error, message):
+    print(f"Pomodoro: native sound playback error: {message}")
+    if _tone_player is not None:
+        path = _tone_player.source().toLocalFile()
+        if path:
+            _play_tone_fallback(path)
+
+
+def _play_sound(settings, event="end"):
+    """Play cues independently of Anki's interruptible card-audio queue."""
+    global _tone_player
+
+    if not settings.get("sound_enabled", True):
+        return
+    path = _resolve_sound_path(settings, event)
+    if not path:
+        return
+    if not os.path.isfile(path):
+        print(f"Pomodoro: sound file not found: {path}")
+        return
+    try:
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+
+        # Keep the player and its output alive beyond this function call.
+        # Parenting the output to the player retains it for asynchronous audio.
+        if _tone_player is None:
+            player = QMediaPlayer(mw)
+            output = QAudioOutput(player)
+            output.setVolume(1.0)
+            player.setAudioOutput(output)
+            player.errorOccurred.connect(_tone_playback_error)
+            _tone_player = player
+        _tone_player.stop()
+        _tone_player.setSource(QUrl.fromLocalFile(os.path.abspath(path)))
+        _tone_player.setPosition(0)
+        _tone_player.play()
+    except Exception as exc:
+        print(f"Pomodoro: native audio unavailable: {exc}")
+        _play_tone_fallback(path)
+
+
+def play_test_sound(event="end", sound_file=None, settings_override=None):
     """Preview a start/end tone regardless of the master sound toggle."""
     settings = dict(get_settings())
+    if settings_override:
+        for key in ("start_sound", "end_sound", "sound_file"):
+            if key in settings_override:
+                settings[key] = settings_override[key]
     settings["sound_enabled"] = True
     if sound_file is not None:
         settings["sound_file"] = sound_file
@@ -916,6 +947,7 @@ class PomodoroIslandView(_PomoShellFrame):
     # ─── Styling ─────────────────────────────────────────────────────────
 
     def _shell_qss(self):
+        register_poppins_qt(_addon_root())
         pal = self.pal
         preset = self.preset
         family = _resolve_font_family(self.settings.get("font_key", "system"))
@@ -923,19 +955,20 @@ class PomodoroIslandView(_PomoShellFrame):
         digits_font = f"font-family: '{family}';" if family else "font-family: 'Poppins';"
         tile_bg = shell_alpha_color(pal["icon"], 10)
         return f"""
+            QWidget {{ font-family: 'Poppins'; color: {pal['fg']}; }}
             QFrame#pomoTopbar {{ background: transparent; font-family: 'Poppins'; }}
-            QLabel#pomoPhase {{ color: {pal['icon']}; font-size: {preset['phase_px']}px; font-weight: 800;
+            QLabel#pomoPhase {{ color: {pal['icon']}; font-size: {preset['phase_px']}px; font-weight: 500;
                 letter-spacing: 1px; text-transform: uppercase; background: transparent; font-family: 'Poppins'; }}
-            QLabel#pomoTime {{ color: {pal['digits']}; font-size: {preset['time_px']}px; font-weight: 800; background: transparent; {digits_font} }}
-            QLabel#pomoMeta {{ color: {pal['icon']}; font-size: {max(9, preset['phase_px'] - 1)}px; font-weight: 700;
+            QLabel#pomoTime {{ color: {pal['digits']}; font-size: {preset['time_px']}px; font-weight: 500; background: transparent; {digits_font} }}
+            QLabel#pomoMeta {{ color: {pal['icon']}; font-size: {max(9, preset['phase_px'] - 1)}px; font-weight: 500;
                 letter-spacing: 0.5px; background: transparent; font-family: 'Poppins'; }}
             QFrame#pomoIslandTile {{ background: {tile_bg}; border: 1px solid {shell_alpha_color(pal['icon'], 18)}; border-radius: 10px; }}
-            QLabel#pomoTileCaption {{ color: {pal['icon']}; font-size: 8px; font-weight: 800; letter-spacing: 1px; background: transparent; font-family: 'Poppins'; }}
-            QLabel#pomoTileValue {{ color: {pal['digits']}; font-size: 14px; font-weight: 800; background: transparent; {digits_font} }}
+            QLabel#pomoTileCaption {{ color: {pal['icon']}; font-size: 8px; font-weight: 500; letter-spacing: 1px; background: transparent; font-family: 'Poppins'; }}
+            QLabel#pomoTileValue {{ color: {pal['digits']}; font-size: 14px; font-weight: 500; background: transparent; {digits_font} }}
             QToolButton {{ background: transparent; border: none; border-radius: 8px; color: {pal['icon']}; font-size: {round(preset['btn'] / 2)}px; }}
             QToolButton:hover {{ background: {pal['hover']}; }}
             QToolButton#pomoPlay {{ background: {pal['accent']}; color: white; border-radius: {round(preset['play'] / 2)}px;
-                font-size: {round(preset['play'] * 0.42)}px; font-weight: 700; }}
+                font-size: {round(preset['play'] * 0.42)}px; font-weight: 500; }}
             QToolButton#pomoPlay:hover {{ background: {pal['accent']}; }}
         """
 
@@ -1288,7 +1321,7 @@ def _modern_button(pal, text, primary=False):
             border-radius: 9px;
             padding: 7px 16px;
             font-size: 12px;
-            font-weight: 700;
+            font-weight: 500;
         }}
         QPushButton:hover {{ background: {hover}; }}
         QPushButton:pressed {{ background: {pressed}; }}
@@ -1306,9 +1339,9 @@ def _stat_tile(pal, label, value):
     layout.setContentsMargins(14, 12, 14, 12)
     layout.setSpacing(2)
     lab = QLabel(label.upper())
-    lab.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1px; color: {pal['fg3']}; background: transparent;")
+    lab.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1px; color: {pal['fg3']}; background: transparent;")
     val = QLabel(value)
-    val.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {pal['fg']}; background: transparent;")
+    val.setStyleSheet(f"font-size: 20px; font-weight: 500; color: {pal['fg']}; background: transparent;")
     layout.addWidget(lab)
     layout.addWidget(val)
     return tile
@@ -1318,11 +1351,18 @@ class PomodoroStatsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent or mw)
         self.dark = _is_dark_mode()
-        self.pal = pal = _palette(self.dark)
+        # Dashboard chrome stays neutral; timer appearance overrides belong
+        # to the floating island, just as in the Settings preview.
+        self.pal = pal = base_chrome_palette(self.dark)
+        register_poppins_qt(_addon_root())
         self.setWindowTitle(tr("pomodoro_stats_title", "Pomodoro Stats"))
         self.setMinimumSize(640, 580)
         self.resize(680, 640)
-        self.setStyleSheet(f"QDialog {{ background: {pal['shell']}; }} QLabel {{ background: transparent; }}")
+        self.setStyleSheet(
+            f"QDialog {{ background: {pal['bg']}; }}"
+            f"QWidget {{ font-family: 'Poppins'; color: {pal['fg']}; }}"
+            "QLabel { background: transparent; }"
+        )
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 18, 20, 18)
@@ -1330,7 +1370,7 @@ class PomodoroStatsDialog(QDialog):
 
         header = QHBoxLayout()
         title = QLabel(tr("pomodoro_stats_title", "Pomodoro Stats"))
-        title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {pal['fg']};")
+        title.setStyleSheet(f"font-size: 18px; font-weight: 500; color: {pal['fg']};")
         settings_btn = _modern_button(pal, tr("pomodoro_open_settings", "Settings"), primary=True)
         settings_btn.clicked.connect(self._open_settings)
         open_btn = _modern_button(pal, tr("pomodoro_open_timer", "Open Timer"))
@@ -1359,17 +1399,18 @@ class PomodoroStatsDialog(QDialog):
         chart_layout = QVBoxLayout(chart_card)
         chart_layout.setContentsMargins(16, 12, 16, 12)
         chart_label = QLabel(tr("pomodoro_last_7_days", "Last 7 Days (focus minutes)"))
-        chart_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {pal['fg3']};")
+        chart_label.setStyleSheet(f"font-size: 11px; font-weight: 500; color: {pal['fg3']};")
         chart_layout.addWidget(chart_label)
         self.chart = WeeklyChart()
         self.chart.set_colors(pal["accent"], pal["fg3"])
+        self.chart.set_tooltip_palette(pal)
         values, labels = self._weekly_focus_minutes(sessions)
         self.chart.set_data(values, labels)
         chart_layout.addWidget(self.chart)
         outer.addWidget(chart_card)
 
         history_label = QLabel(tr("pomodoro_history", "Session History"))
-        history_label.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {pal['fg3']};")
+        history_label.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {pal['fg3']};")
         outer.addWidget(history_label)
         self.history_list = QListWidget()
         self.history_list.setFrameShape(QFrame.Shape.NoFrame)

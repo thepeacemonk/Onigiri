@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
+import time
 import uuid
 from datetime import date, datetime, timedelta
 
@@ -26,6 +28,15 @@ from PyQt6.QtCore import QLocale
 
 from . import config
 from . import safe_storage
+from .theme_palette import utility_chrome_palette
+from .prep_station_math import (
+    DEFAULT_DESIRED_RETENTION,
+    DEFAULT_FSRS_PARAMETERS,
+    FsrsSettings,
+    ProjectionCard,
+    calculate_plan_projection,
+    evenly_spaced_arrival_days,
+)
 from .translations import tr, current_locale
 
 _dialog: "PrepStationDialog | None" = None
@@ -168,14 +179,18 @@ def _get_deck_card_counts(deck_names: list) -> dict:
         for name in deck_names:
             dids = [d.id for d in all_decks if d.name == name or d.name.startswith(name + "::")]
             if not dids:
-                result[name] = {"new": 0, "due": 0, "susp": 0, "total": 0}
+                result[name] = {
+                    "new": 0, "due": 0, "susp": 0, "young": 0,
+                    "mature": 0, "total": 0,
+                }
                 continue
             dids_str = ",".join(str(d) for d in dids)
             rows = mw.col.db.all(
-                f"SELECT queue, count(*) FROM cards WHERE did IN ({dids_str}) GROUP BY queue"
+                "SELECT queue, type, CASE WHEN ivl >= 21 THEN 1 ELSE 0 END, count(*) "
+                f"FROM cards WHERE did IN ({dids_str}) GROUP BY queue, type, ivl >= 21"
             )
-            new_cnt = due_cnt = susp_cnt = total_cnt = 0
-            for queue, cnt in rows:
+            new_cnt = due_cnt = susp_cnt = young_cnt = mature_cnt = total_cnt = 0
+            for queue, card_type, is_mature, cnt in rows:
                 total_cnt += cnt
                 if queue == 0:
                     new_cnt += cnt
@@ -183,10 +198,160 @@ def _get_deck_card_counts(deck_names: list) -> dict:
                     due_cnt += cnt
                 elif queue == -1:
                     susp_cnt += cnt
-            result[name] = {"new": new_cnt, "due": due_cnt, "susp": susp_cnt, "total": total_cnt}
+                if card_type != 0:
+                    if is_mature:
+                        mature_cnt += cnt
+                    else:
+                        young_cnt += cnt
+            result[name] = {
+                "new": new_cnt, "due": due_cnt, "susp": susp_cnt,
+                "young": young_cnt, "mature": mature_cnt, "total": total_cnt,
+            }
     except Exception as e:
         print(f"Prep Station: deck count error: {e}")
     return result
+
+
+def _selected_deck_ids(deck_names: list) -> list[int]:
+    """Resolve a selection to unique deck IDs, including descendants."""
+
+    if not mw or not mw.col or not deck_names:
+        return []
+    wanted = {str(name) for name in deck_names}
+    try:
+        return sorted({
+            int(deck.id)
+            for deck in mw.col.decks.all_names_and_ids()
+            if deck.name in wanted
+            or any(deck.name.startswith(name + "::") for name in wanted)
+        })
+    except Exception:
+        return []
+
+
+def _fsrs_settings_for_deck(deck_id: int) -> FsrsSettings:
+    """Read the effective FSRS preset used by a deck.
+
+    Modern Anki can override desired retention on an individual deck, while
+    parameters and learning steps continue to come from its preset.
+    """
+
+    retention = DEFAULT_DESIRED_RETENTION
+    params = DEFAULT_FSRS_PARAMETERS
+    learning_steps = (1.0, 10.0)
+    maximum_interval = 36500
+    try:
+        deck = mw.col.decks.get(deck_id) or {}
+        conf = mw.col.decks.config_dict_for_deck_id(deck_id) or {}
+        retention = float(
+            deck.get("desiredRetention")
+            or deck.get("desired_retention")
+            or conf.get("desiredRetention")
+            or conf.get("desired_retention")
+            or DEFAULT_DESIRED_RETENTION
+        )
+        raw_params = (
+            conf.get("fsrsParams6")
+            or conf.get("fsrs_params_6")
+            or conf.get("fsrsWeights")
+            or conf.get("fsrs_weights")
+            or ()
+        )
+        if len(raw_params) == 21:
+            params = tuple(float(value) for value in raw_params)
+        raw_steps = (conf.get("new") or {}).get("delays")
+        if isinstance(raw_steps, (list, tuple)):
+            learning_steps = tuple(float(value) for value in raw_steps)
+        maximum_interval = int((conf.get("rev") or {}).get("maxIvl", 36500))
+    except Exception as exc:
+        print(f"Prep Station: FSRS settings error for deck {deck_id}: {exc}")
+    return FsrsSettings(
+        desired_retention=retention,
+        parameters=tuple(params),
+        learning_steps=tuple(learning_steps),
+        maximum_interval=maximum_interval,
+    )
+
+
+def _card_due_day(queue: int, due: int, original_due: int, sched_today: int) -> int:
+    effective_due = int(original_due or due or 0)
+    if queue in (1, 3) and effective_due > 100_000_000:
+        return max(0, int((effective_due - time.time()) // 86400))
+    if queue in (2, 3) or original_due:
+        return max(0, effective_due - sched_today)
+    return 0
+
+
+def _plan_projection_cards(deck_names: list) -> tuple[list, dict, list[int]]:
+    """Load lightweight card snapshots for the selected plan decks."""
+
+    dids = _selected_deck_ids(deck_names)
+    if not dids:
+        return [], {}, []
+    settings_by_did = {did: _fsrs_settings_for_deck(did) for did in dids}
+    include_suspended = _include_suspended()
+    dids_sql = ",".join(str(did) for did in dids)
+    rows = mw.col.db.all(
+        "SELECT did, type, queue, due, ivl, left, odue, data "
+        f"FROM cards WHERE did IN ({dids_sql})"
+    )
+    try:
+        sched_today = int(mw.col.sched.today)
+    except Exception:
+        sched_today = 0
+    now = time.time()
+    cards = []
+    for did, card_type, queue, due, interval, left, original_due, raw_data in rows:
+        did = int(did)
+        if int(queue) == -1 and not include_suspended:
+            continue
+        try:
+            data = json.loads(raw_data or "{}")
+        except (TypeError, ValueError):
+            data = {}
+        last_review = data.get("lrt")
+        last_review_day = None
+        if last_review:
+            last_review_day = int((float(last_review) - now) // 86400)
+        cards.append(ProjectionCard(
+            interval=max(0, int(interval or 0)),
+            due_day=_card_due_day(
+                int(queue), int(due), int(original_due), sched_today
+            ),
+            stability=float(data["s"]) if data.get("s") is not None else None,
+            difficulty=float(data["d"]) if data.get("d") is not None else None,
+            last_review_day=last_review_day,
+            is_new=int(card_type) == 0,
+            learning_steps_remaining=(
+                max(1, int(left or 0) % 1000) if int(card_type) in (1, 3) else 0
+            ),
+            settings=settings_by_did.get(did, FsrsSettings()),
+        ))
+    return cards, settings_by_did, dids
+
+
+def _future_projection_cards(
+    count: int,
+    days_left: int,
+    settings_by_did: dict,
+    dids: list[int],
+) -> list[ProjectionCard]:
+    arrivals = evenly_spaced_arrival_days(count, max(1, days_left))
+    if not arrivals:
+        return []
+    weighted_settings = []
+    for did in dids:
+        weighted_settings.append(settings_by_did.get(did, FsrsSettings()))
+    if not weighted_settings:
+        weighted_settings = [FsrsSettings()]
+    return [
+        ProjectionCard(
+            due_day=arrival,
+            is_new=True,
+            settings=weighted_settings[index % len(weighted_settings)],
+        )
+        for index, arrival in enumerate(arrivals)
+    ]
 
 
 def _include_suspended() -> bool:
@@ -260,23 +425,54 @@ def _enrich_plan(plan: dict) -> dict:
         today = date.today()
         days_left = (exam_date - today).days
         counts = _get_deck_card_counts(decks)
-        total_new = sum(v["new"] for v in counts.values())
-        total_due = sum(v["due"] for v in counts.values())
+        cards, settings_by_did, dids = _plan_projection_cards(decks)
+        future_new_cards = max(0, int(plan.get("future_new_cards", 0) or 0))
+        target_percent = max(
+            1, min(100, int(plan.get("target_mature_percent", 80) or 80))
+        )
+        future_cards = _future_projection_cards(
+            future_new_cards, max(1, days_left), settings_by_did, dids
+        )
+        projection = calculate_plan_projection(
+            cards,
+            future_cards,
+            max(1, days_left),
+            target_percent,
+        )
+        total_new = sum(1 for card in cards if card.is_new)
+        total_due = sum(
+            1 for card in cards if not card.is_new and card.due_day == 0
+        )
         total_susp = sum(v.get("susp", 0) for v in counts.values())
         include_susp = _include_suspended()
-        total_pending = total_new + total_due + (total_susp if include_susp else 0)
+        total_pending = int(projection["mature_gap"])
+        retention_values = [
+            card.settings.desired_retention for card in cards + future_cards
+        ]
+        if not retention_values:
+            retention_values = [
+                settings.desired_retention
+                for settings in settings_by_did.values()
+            ]
+        average_retention = (
+            sum(retention_values) / len(retention_values)
+            if retention_values else DEFAULT_DESIRED_RETENTION
+        )
 
         if days_left < 0:
             status = "expired"
             req = None
-        elif total_pending == 0:
+        elif not decks:
+            status = "not_ready"
+            req = None
+        elif not projection["feasible"]:
+            status = "unreachable"
+            req = None
+        elif projection["workload_reviews"] <= 0:
             status = "done"
             req = 0.0
         else:
-            req = round(total_pending / max(days_left, 1), 1)
-            # A pace label should describe the student's current rhythm, not
-            # shame them for having a large deck.  The screen turns this into
-            # a gentle, actionable status after it has the week's review data.
+            req = float(math.ceil(float(projection["required_per_day"])))
             status = "active"
 
         p["_pace"] = {
@@ -289,6 +485,33 @@ def _enrich_plan(plan: dict) -> dict:
             "include_suspended": include_susp,
             "required_per_day": req,
             "deck_counts": counts,
+            "future_new_cards": future_new_cards,
+            "target_mature_percent": target_percent,
+            "current_mature": projection["current_mature"],
+            "current_mature_percent": round(
+                float(projection["current_mature_percent"]), 1
+            ),
+            "target_mature": projection["target_mature"],
+            "projected_mature": projection["projected_mature"],
+            "expected_mature_from_scheduled": projection[
+                "expected_mature_from_scheduled"
+            ],
+            "cards_to_introduce": projection["cards_to_introduce"],
+            "projected_total": projection["projected_total"],
+            "achievable_mature": projection["achievable_mature"],
+            "achievable_percent": round(
+                float(projection["achievable_percent"]), 1
+            ),
+            "workload_reviews": round(float(projection["workload_reviews"]), 1),
+            "study_days": max(1, days_left),
+            "desired_retention": round(average_retention * 100.0, 1),
+            "desired_retention_min": round(
+                min(retention_values, default=average_retention) * 100.0, 1
+            ),
+            "desired_retention_max": round(
+                max(retention_values, default=average_retention) * 100.0, 1
+            ),
+            "fsrs_enabled": bool(mw.col.conf.get("fsrs", False)),
         }
     except Exception as e:
         print(f"Prep Station: pace error: {e}")
@@ -320,6 +543,8 @@ def _attach_week_progress(plan: dict) -> dict:
         pulse = "caught_up"
     elif status == "expired":
         pulse = "past"
+    elif status == "unreachable":
+        pulse = "needs_more_time"
     elif target is None:
         pulse = "not_ready"
     elif ratio >= 1.1:
@@ -458,7 +683,7 @@ def _accent_color() -> str:
     try:
         default = config.DEFAULTS["colors"][mode]["--accent-color"]
     except Exception:
-        default = "#00A982"
+        default = config.DEFAULT_ACCENT_COLOR
     return conf.get("colors", {}).get(mode, {}).get("--accent-color", default)
 
 
@@ -554,33 +779,32 @@ def _web_strings() -> dict:
         "choose_icon", "icon_label", "no_matching_icons",
         "prep_choose_icon_or_emoji", "prep_target_today", "prep_today_progress",
         "prep_empty_title", "prep_empty_desc", "prep_study_plans_eyebrow",
+        "prep_empty_exam_step", "prep_empty_decks_step", "prep_empty_goal_step",
+        "prep_apply_color", "prep_delete_plan_title", "prep_delete_plan_desc",
         "prep_name_label", "prep_icon_label", "prep_no_decks_available",
         "prep_appearance_label", "prep_light_card", "prep_dark_card",
+        "prep_target_mature_label", "prep_target_mature_help",
+        "prep_future_cards_label", "prep_future_cards_help",
+        "prep_reviews_per_day_unit", "prep_maturity_progress",
+        "prep_mature_now", "prep_mature_target", "prep_fsrs_retention",
+        "prep_exam_deck_size", "prep_needs_more_time",
+        "prep_unreachable_projection",
+        "prep_projection_title", "prep_projection_subtitle",
+        "prep_current_mature_legend", "prep_scheduled_gain_legend",
+        "prep_introduced_gain_legend", "prep_remaining_legend",
+        "prep_expected_reviews", "prep_study_days", "prep_daily_result",
+        "prep_projection_inputs", "prep_target_marker",
     )
     return {key: tr(key) for key in keys}
 
 
 def _web_palette() -> dict:
-    """Resolve Prep Station directly from Onigiri's active theme settings."""
+    """Use Settings' neutral chrome with the active theme's accent."""
     dark = _is_dark_mode()
     mode = "dark" if dark else "light"
     conf = config.get_config_readonly()
-    defaults = config.DEFAULTS.get("colors", {}).get(mode, {})
     colors = conf.get("colors", {}).get(mode, {})
-
-    def value(key: str, fallback: str) -> str:
-        return str(colors.get(key) or defaults.get(key) or fallback)
-
-    return {
-        "bg": value("--bg", "#161616" if dark else "#f5f5f4"),
-        "surface": value("--canvas-inset", "#242424" if dark else "#ffffff"),
-        "surface2": value("--highlight-bg", "#343434" if dark else "#f1f1f0"),
-        "border": value("--border", "#424242" if dark else "#e0e0e0"),
-        "fg": value("--fg", "#f4f4f5" if dark else "#212121"),
-        "fg2": value("--fg-subtle", "#b6b6b8" if dark else "#64655f"),
-        "fg3": value("--fg-subtle", "#7c7c80" if dark else "#92948d"),
-        "accent": value("--accent-color", "#0077C8"),
-    }
+    return utility_chrome_palette(colors, dark)
 
 
 def _web_context() -> dict:
@@ -692,9 +916,25 @@ class PrepStationDialog(QDialog):
             "icon": str(payload.get("icon") or "emoji:📚"),
             "exam_date": exam_date.isoformat(),
             "decks": [str(d) for d in payload.get("decks", []) if str(d) in valid_decks],
+            "future_new_cards": max(
+                0, min(100000, int(payload.get("future_new_cards", 0) or 0))
+            ),
+            "target_mature_percent": max(
+                1, min(100, int(payload.get("target_mature_percent", 80) or 80))
+            ),
             "notes": str(payload.get("notes") or "").strip(),
             "thumbnail": os.path.basename(str(payload.get("thumbnail") or "")),
-            "thumbnail_opacity": max(0, min(100, int(payload.get("thumbnail_opacity", 100) or 100))),
+            "thumbnail_opacity": max(
+                0,
+                min(
+                    100,
+                    int(
+                        100
+                        if payload.get("thumbnail_opacity", 100) is None
+                        else payload.get("thumbnail_opacity", 100)
+                    ),
+                ),
+            ),
             "thumbnail_blur": max(0, min(100, int(payload.get("thumbnail_blur", 0) or 0))),
             "color_only": bool(payload.get("color_only", False)),
             "color_dynamic": bool(payload.get("color_dynamic", False)),
@@ -836,7 +1076,6 @@ def render_widget_html(slot_count: int = 4) -> str:
         color = _resolve_plan_color(p)
         enriched = _attach_week_progress(_enrich_plan(p))
         pace = enriched.get("_pace") or {}
-        week = enriched.get("_week") or {}
         req = pace.get("required_per_day")
         status = pace.get("status", "")
 
@@ -844,12 +1083,14 @@ def render_widget_html(slot_count: int = 4) -> str:
             big, small = "—", tr("prep_set_date_and_decks")
         elif status == "expired":
             big, small = "—", tr("prep_exam_has_passed")
+        elif status == "unreachable":
+            big, small = "—", tr("prep_needs_more_time", "needs more time")
         elif req is None:
             big, small = "—", tr("prep_set_date_and_decks")
         elif status == "done":
             big, small = "✓", tr("prep_all_caught_up")
         else:
-            big, small = f"{req:.0f}", tr("prep_cards_per_day_unit")
+            big, small = f"{req:.0f}", tr("prep_reviews_per_day_unit", "reviews / day")
 
         if days_left == 0:
             badge_text = tr("prep_today_badge")
@@ -862,13 +1103,16 @@ def render_widget_html(slot_count: int = 4) -> str:
         icon_color = str(p.get("icon_color") or fg_on_band)
         icon_html = _prep_card_icon_html(addon_path, addon_package, p.get("icon", "emoji:📚"), icon_color)
 
-        reviewed = int(week.get("reviewed") or 0)
-        weekly_target = int(week.get("target") or 0)
-        percentage = min(100, max(0, round(float(week.get("ratio") or 0) * 100)))
+        mature_now = int(pace.get("current_mature") or 0)
+        mature_target = int(pace.get("target_mature") or 0)
+        percentage = min(
+            100,
+            max(0, round(mature_now / mature_target * 100)) if mature_target else 0,
+        )
         progress_html = f"""
-    <div class="prep-card-progress" title="{reviewed} reviewed this week">
+    <div class="prep-card-progress" title="{html.escape(tr('prep_maturity_progress', 'Maturity progress'))}">
       <span class="prep-card-progress-track"><i class="prep-card-progress-fill" style="width:{percentage}%;background:{color}"></i></span>
-      <span class="prep-card-progress-label">{reviewed}/{weekly_target}</span>
+      <span class="prep-card-progress-label">{mature_now}/{mature_target}</span>
     </div>"""
 
         cards_html += f"""

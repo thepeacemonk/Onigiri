@@ -1,10 +1,11 @@
 <main class="onigimon-app">
   <section class="hero" data-bind="hero">
-    <div class="hero-background" data-bind="background"></div>
     <div class="companion-stage">
+      <div class="hero-background" data-bind="background" aria-hidden="true"></div>
       <div class="fx-layer" aria-hidden="true"></div>
-      <img class="companion-sprite" data-bind="sprite" alt="">
-      <div class="action-item is-idle" data-bind="action-item"><img alt=""><span data-i18n-text="idle">Yawn...</span></div>
+      <div class="companion-display">
+        <img class="companion-sprite" data-bind="sprite" alt="">
+      </div>
       <p class="live-status" data-bind="message"></p>
     </div>
     <aside class="care-panel">
@@ -14,17 +15,52 @@
   </section>
   <section class="content-grid">
     <article class="market-panel">
-      <header class="market-head"><div><img data-bind="mart" alt=""><h1 data-bind="market-title">Daily Market</h1></div><div class="wallet"><span><img data-bind="comet" alt=""><b data-bind="comets">0</b></span><span><img data-bind="star-piece" alt=""><b data-bind="stars">0</b></span><button class="redeem-btn" data-action="open-redeem">Redeem</button></div></header>
+      <header class="market-head"><div class="market-identity"><img data-bind="mart" alt=""><div><p class="market-kicker">CARE SUPPLIES</p><h1 data-bind="market-title">Daily Market</h1><p class="market-lead">Fresh items for your companion, restocked every day.</p></div></div><div class="market-actions"><div class="wallet"><span><img data-bind="comet" alt=""><b data-bind="comets">0</b></span><span><img data-bind="star-piece" alt=""><b data-bind="stars">0</b></span></div><button class="redeem-btn" data-action="open-redeem">Redeem</button></div></header>
       <button class="gift-btn" data-action="gift"></button>
       <div class="market-grid" data-bind="market"></div>
     </article>
     <aside class="backpack-panel">
-      <header><img data-bind="backpack" alt=""><h2 data-bind="backpack-title">Backpack</h2></header>
-      <div class="selected-status" data-bind="selected-status"></div>
-      <div class="backpack-grid" data-bind="backpack"></div>
+      <header><div><img data-bind="backpack-icon" alt=""><h2 data-bind="backpack-title">Backpack</h2></div><span class="backpack-category" data-bind="backpack-category">All items</span></header>
+      <div class="backpack-body">
+        <div class="wallet-display">
+          <div class="item-wallet" tabindex="0" role="listbox" aria-label="Wallet cards. Use the up and down arrow keys to navigate between cards, then press Enter to open one.">
+            <div class="item-wallet-back" aria-hidden="true"></div>
+            <div class="wallet-card-stack" data-bind="backpack"></div>
+            <div class="item-wallet-pocket" aria-hidden="true">
+              <svg viewBox="0 0 280 160" fill="none" preserveAspectRatio="none">
+                <path d="M 0 20 C 0 10, 5 10, 10 10 C 20 10, 25 25, 40 25 L 240 25 C 255 25, 260 10, 270 10 C 275 10, 280 10, 280 20 L 280 120 C 280 155, 260 160, 240 160 L 40 160 C 20 160, 0 155, 0 120 Z" class="wallet-pocket-fill"></path>
+                <path d="M 8 22 C 8 16, 12 16, 15 16 C 23 16, 27 29, 40 29 L 240 29 C 253 29, 257 16, 265 16 C 268 16, 272 16, 272 22 L 272 120 C 272 150, 255 152, 240 152 L 40 152 C 25 152, 8 152, 8 120 Z" class="wallet-stitches"></path>
+              </svg>
+              <div class="onigimon-wallet-logo"><span class="onigimon-wallet-ball"></span><strong>ONIGIMON</strong><small>CARE WALLET</small></div>
+            </div>
+          </div>
+          <p class="wallet-hint"><span>Select the wallet, then use <kbd>↑</kbd> <kbd>↓</kbd> to navigate cards</span></p>
+        </div>
+        <section class="backpack-category-view" data-bind="backpack-category-view" aria-hidden="true">
+          <button class="backpack-return" type="button" data-action="close-category"><span aria-hidden="true">←</span> All categories</button>
+          <div class="backpack-category-dock" data-bind="backpack-category-dock"></div>
+          <div class="backpack-item-grid" data-bind="backpack-items"></div>
+        </section>
+      </div>
     </aside>
   </section>
-  <div class="modal" data-bind="redeem-modal" aria-hidden="true"><form class="modal-card" data-action="redeem-form"><button class="close-btn" type="button" data-action="close-redeem" data-i18n-alabel="close" aria-label="Close">×</button><p class="eyebrow" data-i18n-text="rewardsEyebrow">ONIGIMON REWARDS</p><h2 data-bind="redeem-title">Redeem Onigimon code</h2><p data-bind="redeem-hint"></p><input data-bind="redeem-code" autocomplete="off" placeholder="ONI-XXXX-YYY"><button class="redeem-submit" type="submit">Redeem</button></form></div>
-  <div class="modal" data-bind="gift-modal" aria-hidden="true"><div class="modal-card gift-card"><button class="close-btn" type="button" data-action="close-gift" data-i18n-alabel="close" aria-label="Close">×</button><img data-bind="gift-icon" alt=""><p class="eyebrow" data-i18n-text="dailyGiftEyebrow">DAILY GIFT</p><h2 data-i18n-text="giftReceived">Gift received!</h2><p data-bind="gift-text"></p><button class="redeem-submit" data-action="close-gift" data-i18n-text="okay">Okay</button></div></div>
+  <!-- Purchase codes and redeem them in the same layout as Hexagon Land. -->
+  <div class="modal purchase-modal" data-bind="redeem-modal" aria-hidden="true">
+    <form class="modal-card purchase-card" data-action="redeem-form" role="dialog" aria-modal="true" aria-labelledby="onigimon-redeem-title">
+      <button class="purchase-close" type="button" data-action="close-redeem" data-i18n-alabel="close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+      <div class="purchase-identity">
+        <img data-bind="redeem-icon" alt="">
+        <div><h2 id="onigimon-redeem-title" data-bind="redeem-title">Redeem Onigimon code</h2><p data-bind="redeem-hint"></p></div>
+      </div>
+      <div class="purchase-panel">
+        <div><strong data-i18n-text="moreCodes">Want to get more coins?</strong><p data-i18n-text="supportCodes">Every coin purchase supports development so this project stays free for everyone.</p></div>
+        <button class="purchase-code-btn" type="button" data-action="open-store" data-i18n-text="buyCodes">Buy Coin Codes</button>
+      </div>
+      <div class="purchase-divider"><span data-i18n-text="alreadyHaveCode">Already have a code?</span></div>
+      <input class="purchase-input" data-bind="redeem-code" autocomplete="off" placeholder="Paste code here" data-i18n-placeholder="pasteCode" data-i18n-alabel="redeemTitle" aria-label="Onigimon reward code">
+      <button class="redeem-submit purchase-submit" type="submit">Redeem</button>
+    </form>
+  </div>
+  <div class="modal" data-bind="gift-modal" aria-hidden="true"><div class="modal-card gift-card"><button class="close-btn" type="button" data-action="close-gift" data-i18n-alabel="close" aria-label="Close">×</button><p class="eyebrow" data-bind="gift-eyebrow">ITEM ACQUIRED</p><div class="gift-item-display"><img data-bind="gift-icon" alt=""></div><h2 data-bind="gift-title">Item acquired!</h2><p class="gift-text" data-bind="gift-text"></p><p class="gift-feeling" data-bind="gift-feeling"></p><button class="redeem-submit" data-action="close-gift" data-i18n-text="okay">Okay</button></div></div>
   <div class="toast" role="status" aria-live="polite"></div>
 </main>

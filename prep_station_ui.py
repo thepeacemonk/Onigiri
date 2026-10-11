@@ -22,10 +22,12 @@ from aqt.qt import (
     QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
 )
 from PyQt6.QtCore import pyqtSignal, pyqtProperty, QDate, QTimer, QPoint
-from PyQt6.QtGui import QImage, QLinearGradient, QConicalGradient, QFontMetrics, QFontDatabase, QCursor
+from PyQt6.QtGui import QImage, QLinearGradient, QConicalGradient, QFontMetrics, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 
 from . import config
+from .fonts import register_poppins_qt
+from .theme_palette import utility_chrome_palette
 from .translations import tr, current_locale
 from .onigiri_color_picker import OnigiriColorDialog
 from .ui_kit.widgets import AnimatedToggleButton, MainBackgroundEffectSlider
@@ -51,60 +53,25 @@ def _accent() -> str:
     try:
         default = config.DEFAULTS["colors"][mode]["--accent-color"]
     except Exception:
-        default = "#00A982"
+        default = config.DEFAULT_ACCENT_COLOR
     return conf.get("colors", {}).get(mode, {}).get("--accent-color", default)
 
 
 def palette(dark: bool | None = None) -> dict:
     if dark is None:
-        dark = theme_manager.night_mode
-    accent = _accent()
-    if dark:
-        return {
-            "bg": "#161616", "surface": "#1f1f1f", "surface2": "#2a2a2a",
-            "hover": "#343434", "fg": "#f4f4f5", "fg2": "#b6b6b8", "fg3": "#7c7c80",
-            "border": "#343434", "border2": "#454545", "accent": accent,
-        }
-    return {
-        "bg": "#f5f5f4", "surface": "#ffffff", "surface2": "#f1f1f0",
-        "hover": "#e8e8e7", "fg": "#1d1d1f", "fg2": "#6a6a6e", "fg3": "#9a9a9e",
-        "border": "#e4e4e2", "border2": "#d4d4d2", "accent": accent,
-    }
+        dark = config.effective_night_mode()
+    mode = "dark" if dark else "light"
+    colors = config.get_config_readonly().get("colors", {}).get(mode, {})
+    return utility_chrome_palette(colors, dark)
 
 
 def small_title_font_css(dark: bool | None = None) -> str:
-    """CSS font declaration matching the user's configured "Small Titles" font
-    (Settings → Fonts), used for compact labels/section headings across the add-on."""
-    if dark is None:
-        dark = theme_manager.night_mode
-    mode = "dark" if dark else "light"
-    conf = config.get_config()
-    default_color = config.DEFAULTS["colors"][mode].get("--font-small-title-color", "#212121")
-    color = conf.get("colors", {}).get(mode, {}).get("--font-small-title-color", default_color)
-
-    col_conf = mw.col.conf if mw.col and mw.col else {}
-    font_key = col_conf.get("onigiri_font_small_title", "system")
-    size = col_conf.get("onigiri_font_size_small_title", 15)
-
-    family = None
-    if font_key != "system":
-        from .fonts import get_all_fonts
-        addon_path = os.path.dirname(__file__)
-        info = get_all_fonts(addon_path).get(font_key)
-        if info and info.get("file"):
-            if info.get("user"):
-                font_path = os.path.join(addon_path, "user_files", "fonts", info["file"])
-            else:
-                font_path = os.path.join(addon_path, "system_files", "fonts", "system_fonts", info["file"])
-            if os.path.exists(font_path):
-                font_id = QFontDatabase.addApplicationFont(font_path)
-                if font_id != -1:
-                    families = QFontDatabase.applicationFontFamilies(font_id)
-                    if families:
-                        family = families[0]
-
-    family_css = f"'{family}', " if family else "'Poppins', "
-    return f"font-family: {family_css}-apple-system, 'Segoe UI', sans-serif; font-size: {size}px; color: {color};"
+    """Section labels use Settings typography, not dashboard font roles."""
+    register_poppins_qt(os.path.dirname(__file__))
+    return (
+        "font-family: 'Poppins'; font-size: 15px; "
+        f"color: {palette(dark)['fg']};"
+    )
 
 
 def with_alpha(hex_color: str, alpha: int) -> QColor:
@@ -165,6 +132,7 @@ def readable_on(color: str) -> str:
 
 
 def build_qss(p: dict) -> str:
+    register_poppins_qt(os.path.dirname(__file__))
     accent = p["accent"]
     return f"""
     QWidget {{ font-family: 'Poppins', -apple-system, 'Segoe UI', sans-serif; color: {p['fg']}; }}
@@ -186,13 +154,13 @@ def build_qss(p: dict) -> str:
         border-radius: 10px;
         padding: 8px 16px;
         color: {p['fg']};
-        font-weight: 600;
+        font-weight: 500;
     }}
     QPushButton:hover {{ background: {p['hover']}; }}
     QPushButton[psPrimary="true"] {{ background: {accent}; border: 1px solid {accent}; color: #ffffff; }}
     QPushButton[psPrimary="true"]:hover {{ background: {QColor(accent).lighter(112).name()}; }}
-    QPushButton[psDanger="true"] {{ background: transparent; border: 1px solid transparent; color: #ef4444; }}
-    QPushButton[psDanger="true"]:hover {{ background: rgba(239,68,68,0.12); }}
+    QPushButton[psDanger="true"] {{ background: transparent; border: 1px solid transparent; color: {p['danger']}; }}
+    QPushButton[psDanger="true"]:hover {{ background: {with_alpha(p['danger'], 31).name(QColor.NameFormat.HexArgb)}; }}
     QPushButton[psGhost="true"] {{ background: transparent; border: 1px solid transparent; color: {p['fg2']}; }}
     QPushButton[psGhost="true"]:hover {{ background: {p['surface2']}; color: {p['fg']}; }}
     QCheckBox {{ spacing: 8px; color: {p['fg']}; }}
@@ -298,7 +266,7 @@ def render_icon_pixmap(addon_path: str, icon_value: str, color: str, size: int) 
                 if renderer.isValid():
                     renderer.render(painter, svg_contain_rect(renderer, size))
             else:
-                font = QFont()
+                font = QFont("Poppins")
                 font.setPointSize(max(8, int(size * 0.7)))
                 painter.setFont(font)
                 painter.setPen(QColor(color))
@@ -591,7 +559,7 @@ class WeeklyChart(QWidget):
 
         # Labels
         painter.setPen(QPen(self._label_color))
-        font = QFont()
+        font = QFont("Poppins")
         font.setPointSize(8)
         painter.setFont(font)
         for i, pt in enumerate(points):
@@ -604,9 +572,9 @@ class WeeklyChart(QWidget):
             num_color = QColor(self._label_color)
             num_color.setAlpha(255)
             painter.setPen(QPen(num_color))
-            num_font = QFont()
+            num_font = QFont("Poppins")
             num_font.setPointSize(8)
-            num_font.setBold(True)
+            num_font.setWeight(QFont.Weight.Medium)
             painter.setFont(num_font)
             for i, pt in enumerate(points):
                 v = self._values[i] if i < len(self._values) else 0
@@ -679,10 +647,7 @@ class _ChartHoverBubble(QWidget):
         self._title_text = ""
         self._body_w = 10
         self._body_h = 10
-        self._pal = {
-            "surface": "#ffffff", "border": "#e0e0e0",
-            "fg": "#202124", "fg3": "#8a8a8a", "accent": "#00A982",
-        }
+        self._pal = palette()
 
     def set_palette(self, pal: dict) -> None:
         for k in ("surface", "border", "fg", "fg3", "accent"):
@@ -690,13 +655,13 @@ class _ChartHoverBubble(QWidget):
                 self._pal[k] = pal[k]
 
     def _value_font(self) -> QFont:
-        f = QFont()
+        f = QFont("Poppins")
         f.setPointSize(10)
-        f.setBold(True)
+        f.setWeight(QFont.Weight.Medium)
         return f
 
     def _title_font(self) -> QFont:
-        f = QFont()
+        f = QFont("Poppins")
         f.setPointSize(8)
         return f
 
@@ -889,7 +854,7 @@ class HeaderBar(QWidget):
         layout.addWidget(self.avatar_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.name_label = QLabel("")
-        self.name_label.setStyleSheet("font-size: 21px; font-weight: 700; background: transparent;")
+        self.name_label.setStyleSheet("font-size: 21px; font-weight: 500; background: transparent;")
         layout.addWidget(self.name_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         layout.addStretch(1)
@@ -913,7 +878,7 @@ class HeaderBar(QWidget):
         # text color: white over images, contrast-aware over solid color
         fg = "#ffffff" if self._on_image else readable_on(self._bg_color.name())
         chart_label = QColor(255, 255, 255, 200) if fg == "#ffffff" else QColor(0, 0, 0, 150)
-        self.name_label.setStyleSheet(f"font-size: 21px; font-weight: 700; color: {fg}; background: transparent;")
+        self.name_label.setStyleSheet(f"font-size: 21px; font-weight: 500; color: {fg}; background: transparent;")
         self._chart_label_color = chart_label
         self.update()
 
@@ -1091,7 +1056,7 @@ class ExamCard(QWidget):
                 badge_text = tr("prep_days_left_badge").format(days_left)
             else:
                 badge_text = tr("prep_past_badge")
-            badge_font = QFont(); badge_font.setPointSize(8); badge_font.setBold(True)
+            badge_font = QFont("Poppins"); badge_font.setPointSize(8); badge_font.setWeight(QFont.Weight.Medium)
             painter.setFont(badge_font)
             fm = QFontMetrics(badge_font)
             bw = fm.horizontalAdvance(badge_text) + 18
@@ -1102,7 +1067,7 @@ class ExamCard(QWidget):
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)
 
         # Plan name (bottom of band)
-        name_font = QFont(); name_font.setPointSize(13); name_font.setBold(True)
+        name_font = QFont("Poppins"); name_font.setPointSize(13); name_font.setWeight(QFont.Weight.Medium)
         painter.setFont(name_font)
         painter.setPen(QPen(QColor(fg_on_band)))
         fm = QFontMetrics(name_font)
@@ -1123,14 +1088,14 @@ class ExamCard(QWidget):
         else:
             big, small = f"{req:.0f}", tr("prep_cards_per_day_unit")
 
-        num_font = QFont(); num_font.setPointSize(26); num_font.setBold(True)
+        num_font = QFont("Poppins"); num_font.setPointSize(26); num_font.setWeight(QFont.Weight.Medium)
         painter.setFont(num_font)
         painter.setPen(QPen(QColor(resolve_plan_color(self.plan) or p["accent"])))
         painter.drawText(QRectF(rect.left() + 16, body_top + 12, rect.width() - 32, 36),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, big)
         fm_num = QFontMetrics(num_font)
         num_w = fm_num.horizontalAdvance(big)
-        unit_font = QFont(); unit_font.setPointSize(9)
+        unit_font = QFont("Poppins"); unit_font.setPointSize(9)
         painter.setFont(unit_font)
         painter.setPen(QPen(QColor(p["fg3"])))
         painter.drawText(QRectF(rect.left() + 16 + num_w + 7, body_top + 12, rect.width() - 32 - num_w, 36),
@@ -1172,11 +1137,11 @@ class AddExamCard(QWidget):
         painter.setPen(pen)
         painter.drawPath(path)
         painter.setPen(QPen(accent))
-        plus_font = QFont(); plus_font.setPointSize(30); plus_font.setWeight(QFont.Weight.Light)
+        plus_font = QFont("Poppins"); plus_font.setPointSize(30); plus_font.setWeight(QFont.Weight.Light)
         painter.setFont(plus_font)
         painter.drawText(QRectF(rect.left(), rect.center().y() - 34, rect.width(), 50),
                          Qt.AlignmentFlag.AlignCenter, "+")
-        label_font = QFont(); label_font.setPointSize(10); label_font.setBold(True)
+        label_font = QFont("Poppins"); label_font.setPointSize(10); label_font.setWeight(QFont.Weight.Medium)
         painter.setFont(label_font)
         painter.setPen(QPen(accent if self._hover else QColor(p["fg2"])))
         painter.drawText(QRectF(rect.left(), rect.center().y() + 14, rect.width(), 24),
@@ -1437,7 +1402,7 @@ class PlanDetailBanner(QFrame):
                 badge_text = tr("prep_days_left_badge").format(days_left)
             else:
                 badge_text = tr("prep_past_badge")
-            badge_font = QFont(); badge_font.setPointSize(9); badge_font.setBold(True)
+            badge_font = QFont("Poppins"); badge_font.setPointSize(9); badge_font.setWeight(QFont.Weight.Medium)
             painter.setFont(badge_font)
             fm = QFontMetrics(badge_font)
             bw = fm.horizontalAdvance(badge_text) + 20
@@ -1447,7 +1412,7 @@ class PlanDetailBanner(QFrame):
             painter.setPen(QPen(QColor(fg)))
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)
 
-        name_font = QFont(); name_font.setPointSize(17); name_font.setBold(True)
+        name_font = QFont("Poppins"); name_font.setPointSize(17); name_font.setWeight(QFont.Weight.Medium)
         painter.setFont(name_font)
         painter.setPen(QPen(QColor(fg)))
         fm = QFontMetrics(name_font)
@@ -1457,7 +1422,7 @@ class PlanDetailBanner(QFrame):
 
         exam_date = self.plan.get("exam_date", "")
         if exam_date:
-            sub_font = QFont(); sub_font.setPointSize(10)
+            sub_font = QFont("Poppins"); sub_font.setPointSize(10)
             painter.setFont(sub_font)
             painter.setPen(QPen(QColor(fg)))
             painter.drawText(QRectF(rect.left() + 20, rect.bottom() - 22, rect.width() - 40, 18),
@@ -1477,7 +1442,7 @@ class _DetailStatTile(QFrame):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(2)
         self.value_label = QLabel("—")
-        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self._color}; background: transparent;")
+        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 500; color: {self._color}; background: transparent;")
         layout.addWidget(self.value_label)
         self.sub_label = QLabel(sub_text)
         self.sub_label.setWordWrap(True)
@@ -1490,7 +1455,7 @@ class _DetailStatTile(QFrame):
 
     def set_color(self, color: str) -> None:
         self._color = color
-        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 800; color: {self._color}; background: transparent;")
+        self.value_label.setStyleSheet(f"font-size: 28px; font-weight: 500; color: {self._color}; background: transparent;")
 
 
 class _StackedBar(QWidget):
@@ -1584,7 +1549,7 @@ class _DeckBreakdownCard(QFrame):
         header = QHBoxLayout()
         header.setSpacing(8)
         tag = QLabel(tr("prep_deck_breakdown", "DECK BREAKDOWN"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
         header.addWidget(tag)
         header.addStretch(1)
         self.legend = QLabel()
@@ -1649,19 +1614,19 @@ class _DeckBreakdownCard(QFrame):
             name_label = QLabel(leaf)
             dim = pending == 0
             name_label.setStyleSheet(
-                f"font-size: 12.5px; font-weight: 600; color: {p['fg3'] if dim else p['fg']}; background: transparent;"
+                f"font-size: 12.5px; font-weight: 500; color: {p['fg3'] if dim else p['fg']}; background: transparent;"
             )
             top.addWidget(name_label, 1)
             if pending == 0:
                 count_label = QLabel(tr("prep_deck_done", "done ✓"))
-                count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
+                count_label.setStyleSheet(f"font-size: 11px; font-weight: 500; color: {p['fg3']}; background: transparent;")
             else:
                 if susp_n > 0:
                     count_text = tr("prep_new_due_susp_split", "{0} new · {1} due · {2} susp").format(new_n, due_n, susp_n)
                 else:
                     count_text = tr("prep_new_due_split", "{0} new · {1} due").format(new_n, due_n)
                 count_label = QLabel(count_text)
-                count_label.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg2']}; background: transparent;")
+                count_label.setStyleSheet(f"font-size: 11px; font-weight: 500; color: {p['fg2']}; background: transparent;")
             top.addWidget(count_label, 0)
             rl.addLayout(top)
 
@@ -1697,15 +1662,15 @@ class _PaceInsightCard(QFrame):
         outer.setSpacing(8)
 
         tag = QLabel(tr("prep_pace_check", "PACE CHECK"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
         outer.addWidget(tag)
 
         self.status_label = QLabel("—")
-        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {pal['fg']}; background: transparent;")
+        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 500; color: {pal['fg']}; background: transparent;")
         outer.addWidget(self.status_label)
 
         self.detail_label = QLabel("")
-        self.detail_label.setStyleSheet(f"font-size: 11.5px; font-weight: 600; color: {pal['fg2']}; background: transparent;")
+        self.detail_label.setStyleSheet(f"font-size: 11.5px; font-weight: 500; color: {pal['fg2']}; background: transparent;")
         outer.addWidget(self.detail_label)
 
         self.bar = _RatioBar(pal)
@@ -1777,7 +1742,7 @@ class _PaceInsightCard(QFrame):
                     ).format(f"{recent:.0f}", f"{abs(margin):.0f}", f"{target:.0f}")
 
         self.status_label.setText(head)
-        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {accent_status}; background: transparent;")
+        self.status_label.setStyleSheet(f"font-size: 20px; font-weight: 500; color: {accent_status}; background: transparent;")
         self.detail_label.setText(detail)
         self.detail_label.setVisible(bool(detail))
         self.bar.set_fraction(frac, bar_color)
@@ -1862,7 +1827,7 @@ class PlanDetailView(QWidget):
         chart_layout = QVBoxLayout(chart_card)
         chart_layout.setContentsMargins(18, 14, 18, 10)
         chart_tag = QLabel(tr("prep_this_week"))
-        chart_tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        chart_tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
         chart_layout.addWidget(chart_tag)
         self.chart = WeeklyChart(chart_card)
         self.chart.setFixedHeight(74)
@@ -1886,19 +1851,19 @@ class PlanDetailView(QWidget):
             hover = QColor(accent).lighter(112).name()
             btn.setStyleSheet(
                 f"QPushButton#psPillButton {{ background: {accent}; color: #ffffff; border: none; "
-                f"border-radius: 17px; padding: 0 18px; font-weight: 700; }}"
+                f"border-radius: 17px; padding: 0 18px; font-weight: 500; }}"
                 f"QPushButton#psPillButton:hover {{ background: {hover}; }}"
             )
         elif kind == "danger":
             btn.setStyleSheet(
-                "QPushButton#psPillButton { background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.45); "
-                "border-radius: 17px; padding: 0 16px; font-weight: 600; }"
+                f"QPushButton#psPillButton {{ background: transparent; color: {pal['danger']}; border: 1px solid {pal['danger']}; "
+                "border-radius: 17px; padding: 0 16px; font-weight: 500; }"
                 "QPushButton#psPillButton:hover { background: rgba(239,68,68,0.14); }"
             )
         else:
             btn.setStyleSheet(
                 f"QPushButton#psPillButton {{ background: transparent; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
-                f"border-radius: 17px; padding: 0 16px; font-weight: 600; }}"
+                f"border-radius: 17px; padding: 0 16px; font-weight: 500; }}"
                 f"QPushButton#psPillButton:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
             )
         return btn
@@ -2011,14 +1976,14 @@ class CalendarGrid(QWidget):
         cell_h = (self.height() - header_h) / max(rows, 1)
 
         # Weekday header
-        wd_font = QFont(); wd_font.setPointSize(8); wd_font.setBold(True)
+        wd_font = QFont("Poppins"); wd_font.setPointSize(8); wd_font.setWeight(QFont.Weight.Medium)
         painter.setFont(wd_font)
         painter.setPen(QPen(QColor(p["fg3"])))
         for i, letter in enumerate(weekday_letters()):
             painter.drawText(QRectF(i * cell_w, 0, cell_w, header_h), Qt.AlignmentFlag.AlignCenter, letter)
 
         today = date.today()
-        day_font = QFont(); day_font.setPointSize(10)
+        day_font = QFont("Poppins"); day_font.setPointSize(10)
         for day in range(1, days_in_month + 1):
             idx = first_weekday + (day - 1)
             r, c = divmod(idx, 7)
@@ -2036,7 +2001,7 @@ class CalendarGrid(QWidget):
             else:
                 painter.setPen(QPen(QColor(p["fg"])))
 
-            day_font.setBold(is_today)
+            day_font.setWeight(QFont.Weight.Medium if is_today else QFont.Weight.Normal)
             painter.setFont(day_font)
             painter.drawText(QRectF(cx - cell_w / 2, cy - cell_h / 2 - 2, cell_w, cell_h),
                              Qt.AlignmentFlag.AlignCenter, str(day))
@@ -2075,7 +2040,7 @@ class MiniCalendar(QFrame):
         self.next_btn = self._nav_button("›")
         self.title = QLabel()
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {pal['fg']}; background: transparent;")
+        self.title.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {pal['fg']}; background: transparent;")
         nav.addWidget(self.prev_btn)
         nav.addWidget(self.title, 1)
         nav.addWidget(self.next_btn)
@@ -2096,7 +2061,7 @@ class MiniCalendar(QFrame):
         p = self.pal
         btn.setStyleSheet(
             f"QToolButton {{ background: transparent; border: none; border-radius: 8px; "
-            f"color: {p['fg2']}; font-size: 16px; font-weight: 700; }}"
+            f"color: {p['fg2']}; font-size: 16px; font-weight: 500; }}"
             f"QToolButton:hover {{ background: {p['surface2']}; color: {p['fg']}; }}"
         )
         return btn
@@ -2132,7 +2097,7 @@ class UpcomingPlansCard(QFrame):
         self._layout.setContentsMargins(16, 14, 16, 14)
         self._layout.setSpacing(8)
         tag = QLabel(tr("prep_upcoming_dates"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
         self._layout.addWidget(tag)
         self.list_holder = QVBoxLayout()
         self.list_holder.setSpacing(7)
@@ -2162,7 +2127,7 @@ class UpcomingPlansCard(QFrame):
             name_label.setStyleSheet(f"font-size: 12px; color: {p['fg2']}; background: transparent;")
             name_label.setWordWrap(False)
             date_label_w = QLabel(date_label)
-            date_label_w.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {p['fg3']}; background: transparent;")
+            date_label_w.setStyleSheet(f"font-size: 11px; font-weight: 500; color: {p['fg3']}; background: transparent;")
             rl.addWidget(dot, 0, Qt.AlignmentFlag.AlignTop)
             rl.addWidget(name_label, 1)
             rl.addWidget(date_label_w, 0)
@@ -2184,14 +2149,14 @@ class StatCard(QFrame):
         layout.setSpacing(2)
 
         tag = QLabel(tr("prep_daily_target"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['fg3']}; background: transparent;")
         layout.addWidget(tag)
 
         num_row = QHBoxLayout()
         num_row.setSpacing(6)
         num_row.setContentsMargins(0, 2, 0, 0)
         self.value_label = QLabel("0")
-        self.value_label.setStyleSheet(f"font-size: 34px; font-weight: 800; color: {pal['accent']}; background: transparent;")
+        self.value_label.setStyleSheet(f"font-size: 34px; font-weight: 500; color: {pal['accent']}; background: transparent;")
         unit = QLabel(tr("cards"))
         unit.setStyleSheet(f"font-size: 12px; color: {pal['fg2']}; background: transparent;")
         num_row.addWidget(self.value_label, 0, Qt.AlignmentFlag.AlignBottom)
@@ -2221,7 +2186,7 @@ class QuoteCard(QFrame):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(5)
         tag = QLabel(tr("prep_today_tag"))
-        tag.setStyleSheet(f"font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: {pal['accent']}; background: transparent;")
+        tag.setStyleSheet(f"font-size: 9px; font-weight: 500; letter-spacing: 1.5px; color: {pal['accent']}; background: transparent;")
         layout.addWidget(tag)
         self.quote_label = QLabel("")
         self.quote_label.setWordWrap(True)
@@ -2588,7 +2553,7 @@ class _ColorPillRow(QFrame):
         layout.setSpacing(10)
 
         self.label = QLabel(label_text)
-        self.label.setStyleSheet(f"font-weight: 600; font-size: 12px; color: {pal['fg2']}; background: transparent; border: none;")
+        self.label.setStyleSheet(f"font-weight: 500; font-size: 12px; color: {pal['fg2']}; background: transparent; border: none;")
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.label, 1, Qt.AlignmentFlag.AlignVCenter)
 
@@ -2617,7 +2582,7 @@ class _ColorPillRow(QFrame):
         self.badge.setText(qcolor.name().upper())
         self.badge.setStyleSheet(
             f"background-color: {qcolor.name()}; color: {text_color}; border: none; border-radius: 10px; "
-            f"font-family: monospace; font-weight: bold; font-size: 12px;"
+            f"font-family: monospace; font-weight: 500; font-size: 12px;"
         )
 
     def mousePressEvent(self, event) -> None:
@@ -2702,7 +2667,7 @@ class PlanBackgroundPicker(QWidget):
         self.choose_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.choose_btn.setStyleSheet(
             f"QPushButton {{ background: {pal['surface2']}; color: {pal['fg']}; "
-            f"border: 1.5px solid {pal['border2']}; border-radius: 10px; padding: 8px; font-weight: 600; }}"
+            f"border: 1.5px solid {pal['border2']}; border-radius: 10px; padding: 8px; font-weight: 500; }}"
             f"QPushButton:hover {{ border-color: {pal['accent']}; }}"
         )
         self.choose_btn.clicked.connect(self._choose_photo)
@@ -2711,8 +2676,8 @@ class PlanBackgroundPicker(QWidget):
         self.remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.remove_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.remove_btn.setStyleSheet(
-            "QPushButton { background: transparent; color: #ef4444; "
-            "border: 1.5px solid #ef4444; border-radius: 10px; padding: 8px; font-weight: 600; }"
+            f"QPushButton {{ background: transparent; color: {pal['danger']}; "
+            f"border: 1.5px solid {pal['danger']}; border-radius: 10px; padding: 8px; font-weight: 500; }}"
             "QPushButton:hover { background: rgba(239,68,68,0.12); }"
         )
         self.remove_btn.clicked.connect(self._remove_photo)
@@ -3067,7 +3032,7 @@ class PlanEditDialog(QDialog):
 
     def _field_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet(f"{small_title_font_css(theme_manager.night_mode)} font-weight: 800; letter-spacing: 1.2px; background: transparent;")
+        lbl.setStyleSheet(f"{small_title_font_css()} font-weight: 500; letter-spacing: 1.2px; background: transparent;")
         return lbl
 
     def _pill_button(self, text: str, kind: str) -> QPushButton:
@@ -3085,14 +3050,14 @@ class PlanEditDialog(QDialog):
             hover = QColor(accent).lighter(112).name()
             btn.setStyleSheet(
                 f"QPushButton#psFooterPill {{ background: {accent}; color: #ffffff; border: none; "
-                f"border-radius: 20px; padding: 0 14px 0 20px; font-weight: 700; }}"
+                f"border-radius: 20px; padding: 0 14px 0 20px; font-weight: 500; }}"
                 f"QPushButton#psFooterPill:hover {{ background: {hover}; }}"
             )
         elif kind == "danger":
             btn.setStyleSheet(
-                "QPushButton#psFooterPill { background: rgba(239,68,68,0.10); color: #ef4444; "
+                f"QPushButton#psFooterPill {{ background: rgba(239,68,68,0.10); color: {pal['danger']}; "
                 "border: 1px solid rgba(239,68,68,0.45); "
-                "border-radius: 20px; padding: 0 18px; font-weight: 600; }"
+                "border-radius: 20px; padding: 0 18px; font-weight: 500; }"
                 "QPushButton#psFooterPill:hover { background: rgba(239,68,68,0.18); }"
                 "QPushButton#psFooterPill:disabled { background: rgba(239,68,68,0.05); color: rgba(239,68,68,0.35); "
                 "border: 1px solid rgba(239,68,68,0.18); }"
@@ -3100,7 +3065,7 @@ class PlanEditDialog(QDialog):
         else:
             btn.setStyleSheet(
                 f"QPushButton#psFooterPill {{ background: {pal['surface2']}; color: {pal['fg2']}; border: 1px solid {pal['border2']}; "
-                f"border-radius: 20px; padding: 0 18px; font-weight: 600; }}"
+                f"border-radius: 20px; padding: 0 18px; font-weight: 500; }}"
                 f"QPushButton#psFooterPill:hover {{ background: {pal['hover']}; color: {pal['fg']}; }}"
             )
         return btn

@@ -1,0 +1,115 @@
+/* Anki Design — design tokens.
+   Anki 25.x colors every built-in component (deck browser, toolbar, bottom
+   bars, overview, reviewer chrome) through these CSS custom properties.
+   Overriding them here recolors Anki's own UI coherently instead of fighting
+   individual selectors.
+
+   We respect system appearance:
+     • dark = default
+     • @media (prefers-color-scheme: light) flips the palette
+     • :root[data-rf-theme="light|dark"] (settings override) wins
+
+   --rf-accent is injected from config in the page <head>. */
+
+/* All variables live on :root only — declaring them on `body` too would let
+   body's own value win over an attribute override on :root in light mode. */
+
+/* ---------------------------- DARK (default) ---------------------------- */
+:root {
+  --canvas: var(--rf-dark-bg, #171717) !important;
+  --canvas-elevated: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-inset: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-overlay: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-glass: rgba(44, 44, 44, 0.72) !important;
+
+  --fg: var(--rf-dark-fg, #e0e0e0) !important;
+  --fg-subtle: var(--rf-dark-subtle, #9e9e9e) !important;
+  --fg-faint: var(--rf-dark-subtle, #9e9e9e) !important;
+  --fg-disabled: #616161 !important;
+
+  --border: var(--rf-dark-border, #424242) !important;
+  --border-subtle: var(--rf-dark-border, #424242) !important;
+  --border-radius-medium: 14px !important;
+
+  --accent: var(--rf-dark-accent, var(--rf-accent, #0077c8)) !important;
+  --link: var(--rf-dark-accent, var(--rf-accent, #0077c8)) !important;
+
+  --state-new: var(--rf-dark-new, #68a0d9) !important;
+  --state-learn: var(--rf-dark-learn, #d96868) !important;
+  --state-review: var(--rf-dark-review, #68d98a) !important;
+
+  --shadow: rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ---------------------------- LIGHT (system) ---------------------------- */
+@media (prefers-color-scheme: light) {
+  :root:not([data-rf-theme="dark"]) {
+    --canvas: var(--rf-light-bg, #eeeeee) !important;
+    --canvas-elevated: var(--rf-light-inset, #ffffff) !important;
+    --canvas-inset: var(--rf-light-inset, #ffffff) !important;
+    --canvas-overlay: var(--rf-light-inset, #ffffff) !important;
+    --canvas-glass: rgba(255, 255, 255, 0.72) !important;
+
+    --fg: var(--rf-light-fg, #212121) !important;
+    --fg-subtle: var(--rf-light-subtle, #757575) !important;
+    --fg-faint: var(--rf-light-subtle, #757575) !important;
+    --fg-disabled: #bdbdbd !important;
+
+    --border: var(--rf-light-border, #e0e0e0) !important;
+    --border-subtle: var(--rf-light-border, #e0e0e0) !important;
+    --accent: var(--rf-light-accent, var(--rf-accent, #0077c8)) !important;
+    --link: var(--rf-light-accent, var(--rf-accent, #0077c8)) !important;
+
+    --state-new: var(--rf-light-new, #a3c5e8) !important;
+    --state-learn: var(--rf-light-learn, #e8a3a3) !important;
+    --state-review: var(--rf-light-review, #a3e8b8) !important;
+
+    --shadow: rgba(40, 36, 28, 0.18) !important;
+  }
+}
+
+/* --------------------------- explicit overrides -------------------------- */
+:root[data-rf-theme="light"] {
+  --canvas: var(--rf-light-bg, #eeeeee) !important;
+  --canvas-elevated: var(--rf-light-inset, #ffffff) !important;
+  --canvas-inset: var(--rf-light-inset, #ffffff) !important;
+  --canvas-overlay: var(--rf-light-inset, #ffffff) !important;
+  --canvas-glass: rgba(255, 255, 255, 0.72) !important;
+  --fg: var(--rf-light-fg, #212121) !important;
+  --fg-subtle: var(--rf-light-subtle, #757575) !important;
+  --fg-faint: var(--rf-light-subtle, #757575) !important;
+  --fg-disabled: #bdbdbd !important;
+  --border: var(--rf-light-border, #e0e0e0) !important;
+  --border-subtle: var(--rf-light-border, #e0e0e0) !important;
+  --accent: var(--rf-light-accent, var(--rf-accent, #0077c8)) !important;
+  --link: var(--rf-light-accent, var(--rf-accent, #0077c8)) !important;
+  --state-new: var(--rf-light-new, #a3c5e8) !important;
+  --state-learn: var(--rf-light-learn, #e8a3a3) !important;
+  --state-review: var(--rf-light-review, #a3e8b8) !important;
+  --shadow: rgba(40, 36, 28, 0.18) !important;
+}
+:root[data-rf-theme="dark"] {
+  --canvas: var(--rf-dark-bg, #171717) !important;
+  --canvas-elevated: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-inset: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-overlay: var(--rf-dark-inset, #2c2c2c) !important;
+  --canvas-glass: rgba(44, 44, 44, 0.72) !important;
+  --fg: var(--rf-dark-fg, #e0e0e0) !important;
+  --fg-subtle: var(--rf-dark-subtle, #9e9e9e) !important;
+  --fg-faint: var(--rf-dark-subtle, #9e9e9e) !important;
+  --fg-disabled: #616161 !important;
+  --border: var(--rf-dark-border, #424242) !important;
+  --border-subtle: var(--rf-dark-border, #424242) !important;
+  --accent: var(--rf-dark-accent, var(--rf-accent, #0077c8)) !important;
+  --link: var(--rf-dark-accent, var(--rf-accent, #0077c8)) !important;
+  --state-new: var(--rf-dark-new, #68a0d9) !important;
+  --state-learn: var(--rf-dark-learn, #d96868) !important;
+  --state-review: var(--rf-dark-review, #68d98a) !important;
+  --shadow: rgba(0, 0, 0, 0.45) !important;
+}
+
+html,
+body {
+  background: var(--canvas) !important;
+  color: var(--fg) !important;
+}

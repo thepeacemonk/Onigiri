@@ -35,6 +35,144 @@ body {
     box-sizing: border-box;
 }
 
+/* Ankimon's legacy overview grid uses fixed 120px base64 sprites and its own
+   dark card theme. The Onigiri replacement is intentionally quiet and shares
+   the overview palette, so it reads as part of the study card. */
+.overview-container .onigiri-ankimon-team-widget,
+.overview-center-container > .onigiri-ankimon-team-widget {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    margin-top: 10px;
+    padding: 10px;
+    border: var(--overview-box-stroke, 1px) solid var(--overview-box-border, var(--border));
+    border-radius: var(--overview-box-radius, 12px);
+    background: var(--overview-box-bg, var(--canvas-inset));
+    color: var(--fg);
+    box-shadow: none !important;
+}
+
+.overview-center-container > .onigiri-ankimon-team-widget {
+    width: min(560px, calc(100vw - 40px));
+    align-self: center;
+    margin: 0 auto;
+}
+
+.onigiri-ankimon-team-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.onigiri-ankimon-team-head em {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent-color, #00a982);
+    color: #fff;
+    font-size: 10px;
+    font-style: normal;
+}
+
+.onigiri-ankimon-team-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(92px, 100%), 1fr));
+    gap: 6px;
+}
+
+.onigiri-ankimon-team-member {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    padding: 4px 2px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    box-shadow: none !important;
+}
+
+.onigiri-ankimon-team-member:hover {
+    border-color: var(--accent-color, #00a982);
+    background: color-mix(in srgb, var(--accent-color, #00a982) 10%, transparent);
+}
+
+.onigiri-ankimon-team-sprite {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 54px;
+}
+
+.onigiri-ankimon-team-sprite img {
+    display: block;
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.onigiri-ankimon-team-name {
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.onigiri-ankimon-team-level {
+    margin-top: 1px;
+    font-size: 9px;
+    line-height: 1;
+    opacity: .6;
+}
+
+.onigiri-ankimon-team-types {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 3px;
+    width: 100%;
+    min-width: 0;
+    margin-top: 4px;
+    box-sizing: border-box;
+    white-space: normal !important;
+}
+
+.onigiri-ankimon-team-type {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    max-width: 100%;
+    padding: 2px 5px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: var(--pokemon-type-bg, #8a8d91);
+    color: var(--pokemon-type-fg, #fff);
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: visible;
+}
+
 .overview-profile-bar {
     width: max-content;
     min-width: 220px;
@@ -439,6 +577,7 @@ body {
     width: 100% !important;
     box-sizing: border-box !important;
     background: var(--overview-study-button-bg, var(--button-primary-bg)) !important;
+    color: var(--overview-study-button-fg, var(--fg)) !important;
     /* Frosted look, only present when synced with the box effect blur */
     backdrop-filter: blur(var(--overview-study-button-blur, 0px)) !important;
     -webkit-backdrop-filter: blur(var(--overview-study-button-blur, 0px)) !important;
@@ -485,6 +624,19 @@ body {
     margin: 0;
     font-size: 15px;
 }
+
+.profile-pic-generated-icon {
+    display: block;
+    width: 58%;
+    height: 58%;
+    background: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
 .onigiri-profile .opro-name {
     font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 600;
@@ -508,7 +660,7 @@ body {
 }
 .onigiri-profile.ring-profile .opro-avatar {
     position: absolute;
-    inset: 6px;
+    inset: 8px;
 }
 .onigiri-profile.ring-profile .opro-ring {
     position: absolute;

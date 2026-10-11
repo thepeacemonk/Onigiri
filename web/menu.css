@@ -45,8 +45,16 @@ body {
 
 .container.modern-main-menu {
     display: flex;
+    /* A flex item's automatic minimum is its content width.  During a live
+       window resize that let the fixed-column dashboard keep its old width,
+       so Chromium could show an off-screen/stale slice of the page.  The grid
+       already uses minmax(0, …) tracks and can safely shrink with its host. */
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
     height: 100vh;
     position: relative;
+    overflow: hidden;
     animation: none !important;
     transition: opacity 0.25s ease, filter 0.25s ease !important;
 }
@@ -402,6 +410,12 @@ body.is-card-editing .main-content,
     display: none !important;
 }
 
+/* A pinned width is configured in Settings, so leave only the collapse control
+   on the edge pill and prevent the resize hitbox from accepting input. */
+#onigiri-sidebar-edge-pill.sidebar-width-pinned .resize-handle {
+    display: none !important;
+}
+
 #onigiri-sidebar-edge-pill .resize-handle {
     width: 22px;
     min-width: 22px;
@@ -644,6 +658,19 @@ body.is-card-editing .main-content,
     font-weight: 700;
 }
 
+.profile-pic-generated-icon {
+    display: block;
+    width: 58%;
+    height: 58%;
+    background: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
+
 .profile-name {
     font-size: calc(var(--font-size-main, 14px) * 1.14);
     font-weight: 500;
@@ -691,9 +718,21 @@ body.is-card-editing .main-content,
     box-sizing: border-box;
 }
 
-/* Sidebar Profile Panel */
+/* Sidebar Profile Sidebar */
 .sidebar-expanded-content {
     position: relative;
+}
+
+.onigiri-sidebar-profile-section,
+.onigiri-sidebar-actions-section {
+    flex: 0 0 auto;
+}
+
+.onigiri-sidebar-decks-section {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .onigiri-sidebar-profile {
@@ -719,19 +758,19 @@ body.is-card-editing .main-content,
     transition: opacity 0.16s ease, transform 0.2s ease;
 }
 
-.sidebar-left.profile-panel-open .sidebar-expanded-content > :not(.onigiri-sidebar-profile) {
+.sidebar-left.profile-sidebar-open .sidebar-expanded-content > :not(.onigiri-sidebar-profile) {
     opacity: 0;
     transform: translateX(-16px);
     pointer-events: none;
 }
 
-.sidebar-left.profile-panel-open .onigiri-sidebar-profile {
+.sidebar-left.profile-sidebar-open .onigiri-sidebar-profile {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;
 }
 
-.sidebar-left.profile-panel-open {
+.sidebar-left.profile-sidebar-open {
     padding: 0 !important;
 }
 
@@ -834,19 +873,12 @@ body.is-card-editing .main-content,
     color: var(--fg);
 }
 
-.onigiri-sidebar-profile-bio,
-.onigiri-sidebar-profile-status {
+.onigiri-sidebar-profile-bio {
     margin: 0 0 12px;
     font-size: 16px;
     line-height: 1.38;
     color: var(--fg);
     overflow-wrap: anywhere;
-}
-
-.onigiri-sidebar-profile-status {
-    padding-left: 12px;
-    border-left: 3px solid var(--accent-color);
-    color: var(--fg-subtle);
 }
 
 .onigiri-sidebar-profile-music,
@@ -906,8 +938,7 @@ body.is-card-editing .main-content,
 }
 
 .onigiri-sidebar-profile-chart,
-.onigiri-sidebar-profile-summary,
-.onigiri-sidebar-profile-mantras {
+.onigiri-sidebar-profile-summary {
     margin: 18px 0 0;
     padding-top: 16px;
     border-top: 1px solid var(--border, rgba(127, 127, 127, 0.18));
@@ -920,8 +951,7 @@ body.is-card-editing .main-content,
     margin-bottom: 8px;
 }
 
-.onigiri-sidebar-profile-chart-head h3,
-.onigiri-sidebar-profile-mantras h3 {
+.onigiri-sidebar-profile-chart-head h3 {
     margin: 0;
     font-size: 13px;
     font-weight: 600;
@@ -994,37 +1024,6 @@ body.is-card-editing .main-content,
 .onigiri-sidebar-profile-summary-value {
     font-size: 15px;
     font-weight: 700;
-}
-
-.onigiri-sidebar-profile-mantras-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-height: 220px;
-    overflow-y: auto;
-}
-
-.onigiri-sidebar-profile-mantras-list li {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: var(--canvas-inset, rgba(127, 127, 127, 0.1));
-}
-
-.onigiri-sidebar-profile-mantra-text {
-    font-size: 13px;
-    line-height: 1.35;
-    color: var(--fg);
-}
-
-.onigiri-sidebar-profile-mantra-date {
-    font-size: 11px;
-    color: var(--fg-subtle);
 }
 
 /* --- Action Buttons & Menu Items --- */
@@ -1102,6 +1101,244 @@ details.menu-group[open]>summary.menu-item::after {
     padding-bottom: 5px;
 }
 
+/* --- Ready to go: collection-wide reviewer shortcuts ------------------- */
+.onigiri-ready-sidebar {
+    flex: 0 0 auto;
+    margin: 4px 0 14px;
+    padding: 0;
+    border: 0;
+}
+
+.onigiri-ready-sidebar h3,
+.onigiri-ready-widget h3 {
+    margin: 0 0 9px;
+    color: var(--onigiri-ready-text-color, var(--fg-subtle));
+    font: 600 11px/1 var(--font-main, inherit);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.onigiri-ready-actions {
+    display: grid;
+    gap: var(--onigiri-ready-gap, 6px);
+}
+
+.onigiri-ready-sidebar .onigiri-ready-actions {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action {
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0;
+    height: max(32px, calc(var(--onigiri-action-icon-size, 14px) + 18px));
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--highlight-bg) !important;
+    box-sizing: border-box;
+}
+
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action span {
+    display: none;
+}
+
+.onigiri-ready-widget .onigiri-ready-actions {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(34px, 1fr));
+}
+
+.onigiri-ready-action {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    margin: 0 !important;
+    padding: 8px 9px !important;
+    border: var(--onigiri-ready-border-width, 1px) solid var(--onigiri-ready-border-color, var(--border)) !important;
+    border-radius: var(--onigiri-ready-radius, 9px) !important;
+    background: var(--onigiri-ready-button-bg, transparent) !important;
+    box-shadow: none !important;
+    color: var(--onigiri-ready-text-color, var(--fg-subtle)) !important;
+    cursor: pointer;
+    font: 500 12px/1.1 var(--font-main, inherit);
+    text-align: left;
+    transition: border-color .14s ease, background-color .14s ease, color .14s ease;
+}
+
+.onigiri-ready-action:hover,
+.onigiri-ready-action:focus-visible {
+    border-color: var(--accent-color) !important;
+    background: var(--highlight-bg) !important;
+    color: var(--fg) !important;
+    outline: none;
+}
+
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action:hover,
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action:focus-visible {
+    border-color: var(--border) !important;
+    background: var(--canvas-inset) !important;
+}
+
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action:hover .onigiri-ready-icon,
+.onigiri-ready-sidebar.is-collapsed .onigiri-ready-action:focus-visible .onigiri-ready-icon {
+    background-color: var(--fg) !important;
+}
+
+.onigiri-ready-action span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.onigiri-ready-icon {
+    flex: 0 0 var(--onigiri-ready-icon-size, 16px);
+    width: var(--onigiri-ready-icon-size, 16px);
+    height: var(--onigiri-ready-icon-size, 16px);
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+}
+
+.onigiri-ready-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: var(--onigiri-widget-pad, 14px);
+    box-sizing: border-box;
+    background-color: var(--canvas-inset);
+    border: 1px solid var(--border);
+    border-radius: 15px;
+}
+
+.onigiri-ready-widget .onigiri-widget-head {
+    margin-bottom: 8px;
+}
+
+.onigiri-ready-widget .onigiri-ready-action {
+    min-height: 34px;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
+    border-radius: 12px !important;
+}
+
+.onigiri-ready-widget .onigiri-ready-action:hover {
+    border-color: color-mix(in srgb, currentColor 18%, transparent) !important;
+}
+
+.onigiri-ready-widget .onigiri-ready-action:focus-visible {
+    border-color: var(--accent-color) !important;
+}
+
+/* MagneticSelect: Bencho's chip/skin split keeps the field spring and the
+   shared cursor lean on separate elements. No transform transition belongs
+   on the button; it would fight the spring every frame. */
+.onigiri-ready-magnetic-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.onigiri-ready-widget .mag {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 166px;
+    height: 166px;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-main, inherit);
+}
+
+.onigiri-ready-widget.is-circles .onigiri-ready-action {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    min-height: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    border-radius: 50% !important;
+    overflow: visible;
+    transition: color .24s ease;
+}
+
+/* The chip is a POSITION and nothing else: no surface, no corner, no
+   colour. Everything you can see is the skin. */
+.onigiri-ready-widget .mag-skin {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    background: var(--canvas-inset);
+    transform: translate(var(--lx, 0px), var(--ly, 0px));
+    transition: transform 260ms cubic-bezier(.22, .9, .28, 1),
+        background-color .24s ease, border-color .24s ease;
+}
+
+.onigiri-ready-widget.is-circles .onigiri-ready-icon {
+    flex-basis: var(--onigiri-ready-icon-size, 24px);
+    width: var(--onigiri-ready-icon-size, 24px);
+    height: var(--onigiri-ready-icon-size, 24px);
+}
+
+.onigiri-ready-widget .onigiri-ready-action[data-on] {
+    z-index: 2;
+}
+
+.onigiri-ready-widget .onigiri-ready-action[data-on] .mag-skin {
+    background: var(--highlight-bg);
+    border-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.onigiri-ready-widget .onigiri-ready-action:focus-visible .mag-skin {
+    border-color: var(--accent-color);
+    outline: 2px solid var(--accent-color);
+    outline-offset: 3px;
+}
+
+/* The label is positioned within the widget by MagneticSelect, independently
+   of the disc's spring transform, with a small gap and edge clearance. */
+.onigiri-ready-widget .mag-label {
+    position: absolute;
+    padding: 2px 5px;
+    border-radius: 6px;
+    background: var(--canvas-inset);
+    color: var(--fg);
+    font: 500 11px/1.3 var(--font-main, inherit);
+    white-space: nowrap;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 3;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .15s ease, visibility .15s ease;
+}
+
+.onigiri-ready-widget .mag-label[data-on] {
+    opacity: 1;
+    visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .onigiri-ready-widget .mag-skin,
+    .onigiri-ready-widget .mag-label { transition: none; }
+}
+
 /* --- Deck List Specific Styles --- */
 #deck-list-container {
     overflow: hidden;
@@ -1169,8 +1406,6 @@ tr.deck {
     max-width: 100%;
     box-sizing: border-box;
     position: relative;
-    will-change: transform;
-    transform: translateZ(0);
     box-shadow: none !important;
     /* Remove any shadow */
 }
@@ -1181,7 +1416,9 @@ tr.deck {
 }
 
 .deck-table tr:not(.drag-hover) a.deck:hover {
-    background-color: var(--deck-hover-bg);
+    /* The row owns the configurable hover fill. A second anchor-level wash
+       used to cover it with a fixed light grey in dark mode (#275). */
+    background-color: transparent !important;
 }
 
 tr.deck.current {
@@ -1195,6 +1432,16 @@ tr.deck.current {
 tr.deck:hover,
 tr.deck.is-hovered {
     background-color: var(--highlight-bg);
+    color: var(--highlight-fg, var(--fg));
+}
+
+tr.deck:hover a.deck,
+tr.deck.is-hovered a.deck,
+tr.deck:hover span.collapse,
+tr.deck.is-hovered span.collapse,
+tr.deck:hover a.collapse,
+tr.deck.is-hovered a.collapse {
+    color: var(--highlight-fg, var(--fg)) !important;
 }
 
 /* Cell holding main content */
@@ -1243,10 +1490,22 @@ a.deck .deck-name {
     text-overflow: clip;
     white-space: nowrap;
     display: block;
+    unicode-bidi: plaintext;
+    text-align: start;
     /* The box always fills the free space, so on short names the fade sits
        over empty space and is invisible; only overflowing text gets softened. */
     -webkit-mask-image: var(--onigiri-name-fade);
     mask-image: var(--onigiri-name-fade);
+}
+
+/* The name chooses its own writing direction without reversing the row's
+   controls or count bubbles. Its overflow fade follows the inline end. */
+a.deck .deck-name:dir(rtl) {
+    --onigiri-name-fade: linear-gradient(to left,
+            #000 calc(100% - 30px),
+            rgba(0, 0, 0, 0.4) calc(100% - var(--onigiri-name-overlap)),
+            transparent 100%);
+    text-align: right;
 }
 
 .deck-mark-dot {
@@ -1662,6 +1921,10 @@ tr.deck.drag-over-nest {
 /* --- Main Content Area & Stats --- */
 .main-content {
     flex-grow: 1;
+    /* Permit this flex item, and therefore the configured grid within it, to
+       reflow when the Anki window becomes narrower than the saved layout. */
+    min-width: 0;
+    min-height: 0;
     padding: 40px;
     overflow-y: auto;
     display: flex;
@@ -1693,6 +1956,7 @@ tr.deck.drag-over-nest {
 
 .main-content>* {
     width: 100%;
+    min-width: 0;
     box-sizing: border-box;
     max-width: 900px;
 }
@@ -1820,6 +2084,7 @@ tr.deck.drag-over-nest {
 }
 
 .stat-card.onigiri-stat-card h3 {
+    font-size: var(--swidget-label-size, var(--font-size-small-title)) !important;
     color: var(--swidget-label-color, var(--fg-subtle)) !important;
     margin: 0;
     letter-spacing: 0.06em;
@@ -1848,10 +2113,11 @@ tr.deck.drag-over-nest {
     font-weight: 500;
     line-height: 1;
     min-width: 0;
+    font-size: var(--swidget-number-size, 30px);
 }
 
 .stat-card.onigiri-stat-card .stat-unit {
-    font-size: 0.46em;
+    font-size: var(--swidget-value-size, 14px);
     font-weight: 400;
     opacity: 0.55;
     white-space: nowrap;
@@ -1868,7 +2134,7 @@ tr.deck.drag-over-nest {
 }
 
 .stat-card.onigiri-stat-card.is-minimal .stat-value {
-    font-size: calc(30px * var(--swidget-value-scale, 1));
+    font-size: var(--swidget-number-size, 30px);
     justify-content: flex-start;
 }
 
@@ -1945,9 +2211,13 @@ tr.deck.drag-over-nest {
 }
 
 .stat-card.onigiri-stat-card.is-expressive .stat-value {
-    font-size: calc(40px * var(--swidget-value-scale, 1));
+    font-size: var(--swidget-number-size, 40px);
     color: var(--stat-accent);
     letter-spacing: -0.02em;
+}
+
+.stat-card.onigiri-stat-card.is-expressive h3 {
+    color: var(--stat-accent) !important;
 }
 
 .stat-card.onigiri-stat-card.is-expressive .star-rating {
@@ -2086,6 +2356,54 @@ tr.deck.drag-over-nest {
     color: var(--swidget-retention-empty-star, var(--empty-star-color));
 }
 
+/* The Stats Widgets rating glyph is intentionally independent of the
+   menu-wide `.star` setting. Its own picker supplies the mask inline, while
+   these rules provide the same layout and per-picker colours. */
+.stat-card.onigiri-stat-card .stats-widget-star {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    background-color: var(--swidget-retention-star, var(--star-color));
+    color: var(--swidget-retention-star, var(--star-color));
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+}
+
+.stat-card.onigiri-stat-card .stats-widget-star.empty {
+    background-color: var(--swidget-retention-empty-star, var(--empty-star-color));
+    color: var(--swidget-retention-empty-star, var(--empty-star-color));
+}
+
+.stat-card.onigiri-stat-card .stats-widget-star.is-emoji {
+    background-color: transparent;
+    mask-image: none;
+    -webkit-mask-image: none;
+    font-size: 12px;
+    line-height: 12px;
+    text-align: center;
+}
+
+/* Expressive empty rating glyphs use the icon chip's background tint in
+   every theme, including profiles with older saved palettes. */
+.stat-card.onigiri-stat-card.is-expressive .star.empty,
+.stat-card.onigiri-stat-card.is-expressive .stats-widget-star.empty {
+    color: var(--stat-chip, rgba(128, 128, 128, 0.16));
+}
+
+.stat-card.onigiri-stat-card.is-expressive .star.empty:not(.is-emoji),
+.stat-card.onigiri-stat-card.is-expressive .stats-widget-star.empty:not(.is-emoji) {
+    background-color: var(--stat-chip, rgba(128, 128, 128, 0.16));
+}
+
+.stat-card.onigiri-stat-card.is-minimal .stats-widget-star {
+    width: 10px;
+    height: 10px;
+}
+
 /* @onigiri:stats-widgets:end */
 
 /* =========================================================================
@@ -2198,7 +2516,7 @@ tr.deck.drag-over-nest {
 .hashi-widget-card-excerpt {
     margin: 0;
     flex: 1;
-    font-size: 11px;
+    font-size: var(--hashiw-card-excerpt-size, 14px) !important;
     line-height: 1.35;
     color: var(--hashiw-note-fg2, var(--hashiw-excerpt-color, var(--fg-subtle)));
     overflow: hidden;
@@ -2234,10 +2552,21 @@ tr.deck.drag-over-nest {
     background-color: var(--hashiw-note-fill, var(--hashiw-box-bg, var(--canvas-inset)));
 }
 
+/* A pinned note can keep its content while inheriting the regular dashboard
+   surface. The --hashiw-box-* values already include the widget's configured
+   opacity and blur, including when "Sync with Widgets" is enabled. */
+.hashi-notes-widget.is-single.uses-widget-surface {
+    background-color: var(--hashiw-box-bg, var(--canvas-inset));
+}
+
 .hashi-notes-widget.is-single .onigiri-widget-head {
     padding: var(--onigiri-widget-pad) var(--onigiri-widget-pad) 8px;
     /* Hairline in the note's own ink, so the split reads on any paper. */
     border-bottom: 1px solid var(--hashiw-note-edge, transparent);
+}
+
+.hashi-notes-widget.is-single.uses-widget-surface .onigiri-widget-head {
+    border-bottom-color: var(--hashiw-box-border, var(--border));
 }
 
 .hashi-notes-widget.is-single .onigiri-widget-head h3 {
@@ -2287,10 +2616,59 @@ tr.deck.drag-over-nest {
     text-overflow: ellipsis;
 }
 
+/* The optional single-note editor keeps the pinned paper's visual language,
+   but removes the card click affordance so typing never opens the pop-up. */
+.hashi-notes-widget.is-editing {
+    cursor: default;
+}
+
+.hashi-widget-title-input {
+    min-width: 0;
+    flex: 1;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.hashi-widget-title-input::placeholder,
+.hashi-widget-editor:empty::before {
+    color: currentColor;
+    opacity: 0.55;
+}
+
+.hashi-widget-editor {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    outline: 0;
+    font-size: var(--hashiw-single-text-size, 14px) !important;
+    line-height: 1.45;
+    color: var(--hashiw-note-fg2, var(--hashiw-excerpt-color, var(--fg-subtle)));
+    white-space: pre-wrap;
+    cursor: text;
+}
+
+.hashi-widget-editor:empty::before {
+    content: attr(data-placeholder);
+}
+
+.hashi-widget-editor p:first-child,
+.hashi-widget-editor div:first-child {
+    margin-top: 0;
+}
+
+.hashi-widget-editor p:last-child,
+.hashi-widget-editor div:last-child {
+    margin-bottom: 0;
+}
+
 .hashi-widget-excerpt {
     margin: 0;
     flex: 1;
-    font-size: 12px;
+    font-size: var(--hashiw-single-text-size, 14px) !important;
     line-height: 1.45;
     color: var(--hashiw-note-fg2, var(--hashiw-excerpt-color, var(--fg-subtle)));
     overflow: hidden;
@@ -2330,9 +2708,11 @@ tr.deck.drag-over-nest {
     cursor: pointer;
     overflow: hidden;
     font-family: inherit;
-    background-color: var(--canvas-inset, #f2f2f2);
-    border: 1px solid var(--border, rgba(128, 128, 128, 0.24));
-    border-radius: 15px;
+    background-color: var(--prepw-box-bg, var(--canvas-inset, #f2f2f2));
+    border: var(--prepw-box-stroke, 1px) solid var(--prepw-box-border, var(--border, rgba(128, 128, 128, 0.24)));
+    border-radius: var(--prepw-box-radius, 15px);
+    backdrop-filter: blur(var(--prepw-box-blur, 0px));
+    -webkit-backdrop-filter: blur(var(--prepw-box-blur, 0px));
 }
 .prep-widget-empty {
     flex: 1;
@@ -2516,8 +2896,8 @@ td.count {
 /* Performance fix: Disable transitions during resize to prevent lag */
 .sidebar-left.is-resizing {
     transition: none !important;
-    transform: translateZ(0);
-    /* Force hardware acceleration */
+    /* Do not promote the entire changing sidebar to another GPU texture. */
+    will-change: auto;
 }
 
 /* Also disable any child element transitions during resize */
@@ -2650,18 +3030,27 @@ td.count {
     position: static;
     z-index: auto;
     flex: 0 0 auto;
-    color: inherit;
 }
 
 #onigiri-home-toolbar-btn {
-    display: none;
+    display: inline-flex;
     position: static;
     z-index: auto;
     flex: 0 0 auto;
-    color: inherit;
 }
 
-#onigiri-home-toolbar-btn .home-btn-icon {
+#onigiri-search-toolbar-btn,
+#onigiri-sort-toolbar-btn,
+#onigiri-ready-toolbar-marker,
+#onigiri-home-toolbar-btn {
+    color: var(--icon-color, var(--fg-subtle)) !important;
+    opacity: 0.72;
+}
+
+.search-btn-icon,
+.sort-btn-icon,
+#onigiri-home-toolbar-btn .home-btn-icon,
+#onigiri-ready-toolbar-marker .ready-toolbar-icon {
     display: block;
     width: 15px;
     height: 15px;
@@ -2674,13 +3063,33 @@ td.count {
     -webkit-mask-repeat: no-repeat;
 }
 
-.sidebar-actions-archived #onigiri-home-toolbar-btn {
-    display: flex;
+.deck-header-emoji-icon {
+    display: inline-flex;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#onigiri-ready-toolbar-marker {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
 }
 
 #onigiri-search-toolbar-btn:hover,
-#onigiri-home-toolbar-btn:hover {
-    color: var(--accent-color);
+#onigiri-sort-toolbar-btn:hover,
+#onigiri-home-toolbar-btn:hover,
+#onigiri-ready-toolbar-marker:hover {
+    color: var(--accent-color) !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -2695,6 +3104,12 @@ td.count {
     background-color: currentColor;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") center / contain no-repeat;
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.deck-header-emoji-icon {
+    background: none !important;
+    mask: none !important;
+    -webkit-mask: none !important;
 }
 
 #deck-list-header {
@@ -2833,7 +3248,9 @@ td.count {
     gap: 6px;
     width: 100%;
     box-sizing: border-box;
-    margin: -12px 0 14px 0;
+    /* The toolbar lives in its own reorderable section, so its spacing cannot
+       depend on Profile being immediately above it. */
+    margin: 0 0 14px 0;
     z-index: 1;
 }
 
@@ -2864,10 +3281,13 @@ td.count {
 .sidebar-toolbar .action-btn {
     position: relative;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: center !important;
+    justify-content: center !important;
     width: max(24px, calc(var(--onigiri-action-icon-size, 14px) + 10px));
     height: max(24px, calc(var(--onigiri-action-icon-size, 14px) + 10px));
+    margin: 0 !important;
+    padding: 0 !important;
+    text-indent: 0 !important;
 }
 
 .sidebar-toolbar.sidebar-actions-inline .action-btn {
@@ -2886,6 +3306,10 @@ td.count {
     height: var(--onigiri-action-icon-size, 14px);
     flex-shrink: 0;
     display: block;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box;
     background-color: var(--icon-color, #888888);
     mask-size: contain;
     mask-repeat: no-repeat;
@@ -3328,6 +3752,8 @@ td.count {
 }
 
 /* --- Deck Count Bubbles --- */
+/* @onigiri:sidebar-count-bubbles:start — the Settings Web sidebar preview uses
+   these same rules and classes, so count pills stay visually identical there. */
 .deck-counts {
     display: flex;
     align-items: center;
@@ -3342,12 +3768,14 @@ td.count {
 
 tr.deck .new-count-bubble,
 tr.deck .review-count-bubble,
-tr.deck .learn-count-bubble {
+tr.deck .learn-count-bubble,
+.osw-sbprev-badge.new-count-bubble,
+.osw-sbprev-badge.review-count-bubble,
+.osw-sbprev-badge.learn-count-bubble {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    font-size: 0.75em !important;
     font-weight: 500;
     padding: 0 0.6em;
     height: 1.5em;
@@ -3360,6 +3788,12 @@ tr.deck .learn-count-bubble {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+tr.deck .new-count-bubble,
+tr.deck .review-count-bubble,
+tr.deck .learn-count-bubble {
+    font-size: 0.75em !important;
 }
 
 /* Sidebar count bubbles follow whatever the Overviewer's card count colors
@@ -3384,10 +3818,12 @@ tr.deck .learn-count-bubble {
 /* Zero count styling - more subtle appearance */
 tr.deck .new-count-bubble.zero,
 tr.deck .review-count-bubble.zero,
-tr.deck .learn-count-bubble.zero {
+tr.deck .learn-count-bubble.zero,
+.osw-sbprev-badge.zero {
     opacity: 0.6;
     font-weight: 400;
 }
+/* @onigiri:sidebar-count-bubbles:end */
 
 /* --- Responsive tweaks for cramped layouts --- */
 @media (max-width: 420px) {
@@ -3788,8 +4224,8 @@ tr.deck.is-multi-selected::before {
     justify-content: center;
 }
 .onigiri-profile.ring-profile .opro-avatar {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
 }
 .onigiri-profile.ring-profile .opro-ring {
@@ -3871,3 +4307,144 @@ tr.deck.is-multi-selected::before {
 .container.modern-main-menu.onigiri-sidebar-center .onigiri-profile.opro-surface-sidebar {
     align-self: center;
 }
+
+/* Active card distribution and study details in the Profile Sidebar. */
+.onigiri-sidebar-profile .ba-side-donut-block,
+.onigiri-sidebar-profile-today {
+    margin: 18px 0 0;
+    padding: 16px 0 0;
+    border-top: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+    --rf-ink: var(--fg);
+    --rf-ink-dim: var(--fg);
+    --rf-line-2: var(--canvas-inset, rgba(127, 127, 127, 0.16));
+    --rf-row-hover: var(--canvas-inset, rgba(127, 127, 127, 0.12));
+}
+.onigiri-sidebar-profile .ba-side-donut-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 4px;
+}
+.onigiri-sidebar-profile .ba-side-donut-ring {
+  flex: 0 0 78px;
+  width: 78px;
+  height: 78px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.onigiri-sidebar-profile .ba-side-donut-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+.onigiri-sidebar-profile .ba-side-donut-track,
+.onigiri-sidebar-profile .ba-side-donut-segment {
+  fill: none;
+  stroke-width: 12;
+}
+.onigiri-sidebar-profile .ba-side-donut-track { stroke: var(--rf-line-2); }
+.onigiri-sidebar-profile .ba-side-donut-segment {
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+  transition: stroke-dasharray 260ms ease, stroke-dashoffset 260ms ease;
+}
+.onigiri-sidebar-profile .ba-side-donut-segment--new        { stroke: var(--ba-donut-new); }
+.onigiri-sidebar-profile .ba-side-donut-segment--learning   { stroke: var(--ba-donut-learning); }
+.onigiri-sidebar-profile .ba-side-donut-segment--relearning { stroke: var(--ba-donut-relearning); }
+.onigiri-sidebar-profile .ba-side-donut-segment--young      { stroke: var(--ba-donut-young); }
+.onigiri-sidebar-profile .ba-side-donut-segment--mature     { stroke: var(--ba-donut-mature); }
+.onigiri-sidebar-profile .ba-side-donut-core {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+.onigiri-sidebar-profile .ba-side-donut-core strong {
+  color: var(--rf-ink);
+  font: 700 23px/1 var(--font-family, system-ui);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.onigiri-sidebar-profile .ba-side-donut-core strong.is-compact { font-size: 17px; }
+.onigiri-sidebar-profile .ba-side-donut-core strong.is-tiny { font-size: 14px; }
+.onigiri-sidebar-profile .ba-side-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  flex: 1;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.onigiri-sidebar-profile .ba-side-donut-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 12px/1.2 var(--font-family, system-ui);
+  color: var(--rf-ink-dim);
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 -4px;
+  padding: 1px 4px;
+  transition: background 120ms ease, color 120ms ease;
+}
+.onigiri-sidebar-profile .ba-side-donut-item:hover,
+.onigiri-sidebar-profile .ba-side-donut-item:focus-visible {
+  background: var(--rf-row-hover);
+  color: var(--rf-ink);
+  outline: none;
+}
+.onigiri-sidebar-profile .ba-side-donut-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.onigiri-sidebar-profile .ba-side-donut-item--new        .ba-side-donut-dot { background: var(--ba-donut-new); }
+.onigiri-sidebar-profile .ba-side-donut-item--learning   .ba-side-donut-dot { background: var(--ba-donut-learning); }
+.onigiri-sidebar-profile .ba-side-donut-item--relearning .ba-side-donut-dot { background: var(--ba-donut-relearning); }
+.onigiri-sidebar-profile .ba-side-donut-item--young      .ba-side-donut-dot { background: var(--ba-donut-young); }
+.onigiri-sidebar-profile .ba-side-donut-item--mature     .ba-side-donut-dot { background: var(--ba-donut-mature); }
+.onigiri-sidebar-profile .ba-side-donut-l {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.onigiri-sidebar-profile .ba-side-donut-v {
+  flex: 0 0 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--rf-ink);
+}
+
+
+.onigiri-sidebar-profile .ba-side-donut-item {
+    width: 100%;
+    margin: 0;
+    padding: 5px 4px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    font-family: inherit;
+}
+.onigiri-sidebar-profile .ba-side-donut-item:hover {
+    background: var(--rf-row-hover);
+}
+.onigiri-sidebar-profile .ba-side-donut-item:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+.onigiri-sidebar-profile .ba-side-donut-row { padding: 0; gap: 12px; }
+.onigiri-sidebar-profile-today dl { margin: 0; }
+.onigiri-sidebar-profile-today dt { font-size: 13px; color: var(--fg); }
+.onigiri-sidebar-profile-today dd { margin: 0; font-size: 13px; color: var(--fg); font-variant-numeric: tabular-nums; }

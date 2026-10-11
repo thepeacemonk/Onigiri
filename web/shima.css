@@ -1,0 +1,146 @@
+/* Shima: a single, calm deck island centered on the main-menu background. */
+.container.modern-main-menu.onigiri-shima {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100vh;
+    padding: 28px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.onigiri-quick-menu {
+    --onigiri-quick-menu-bg: var(--canvas-inset, #ffffff);
+}
+
+.container.modern-main-menu.onigiri-shima > .sidebar-left.shima-island {
+    width: clamp(360px, 42vw, 560px) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 48px) !important;
+    height: clamp(300px, 58vh, 620px) !important;
+    min-height: 0 !important;
+    max-height: calc(100vh - 56px) !important;
+    margin: 0 !important;
+    padding: 24px 20px 18px !important;
+    flex: 0 1 auto;
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+    border-radius: 20px;
+    box-shadow: none !important;
+    overflow: hidden;
+}
+
+.night-mode .container.modern-main-menu.onigiri-shima > .sidebar-left.shima-island,
+.nightMode .container.modern-main-menu.onigiri-shima > .sidebar-left.shima-island {
+    box-shadow: none !important;
+}
+
+.onigiri-shima .sidebar-expanded-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.onigiri-shima .onigiri-sidebar-decks-section {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.onigiri-shima #deck-list-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 26px;
+    margin: 0 2px 14px;
+}
+
+.onigiri-shima #deck-list-header h2 {
+    margin: 0;
+    color: var(--icon-color, var(--fg-subtle));
+    font-size: 13px;
+    line-height: 24px;
+    text-transform: uppercase;
+}
+
+.onigiri-shima .deck-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.onigiri-shima .deck-header-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 7px !important;
+    outline: 0 !important;
+    background: transparent !important;
+    color: var(--icon-color, var(--fg-subtle));
+    box-shadow: none !important;
+    cursor: pointer;
+    opacity: 0.72;
+}
+
+.onigiri-shima .deck-header-btn:hover {
+    color: var(--accent-color);
+    opacity: 1;
+}
+
+.onigiri-shima .deck-header-btn svg {
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+.onigiri-shima #deck-list-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding-bottom: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    contain: layout style paint;
+}
+
+.onigiri-shima .deck-table .decktd {
+    display: flex;
+    align-items: center;
+    padding: 0 5px !important;
+    pointer-events: auto !important;
+}
+
+.onigiri-shima .deck-table a.deck {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 4px;
+    pointer-events: auto !important;
+}
+
+/* The island keeps room for long collections without becoming a dashboard. */
+@media (max-width: 520px), (max-height: 520px) {
+    .container.modern-main-menu.onigiri-shima {
+        padding: 16px;
+    }
+
+    .container.modern-main-menu.onigiri-shima > .sidebar-left.shima-island {
+        width: 100% !important;
+        max-width: none !important;
+        height: min(76vh, 520px) !important;
+        max-height: calc(100vh - 32px) !important;
+        padding: 18px 14px 14px !important;
+        border-radius: 16px;
+    }
+}

@@ -1,0 +1,140 @@
+/* Anki Design — contribution-style review heatmap (deck browser). */
+
+.rf-heatmap {
+  margin: 28px auto 8px;
+  max-width: 860px;
+  background: var(--rf-surface, #171a21);
+  border: 1px solid var(--rf-border, #272b36);
+  border-radius: var(--rf-radius, 12px);
+  padding: 18px 20px;
+  text-align: left;
+}
+
+.rf-hm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+.rf-hm-title { font-weight: 700; font-size: 14px; }
+.rf-hm-stats { color: var(--rf-text-dim, #9aa0ad); font-size: 12px; }
+.rf-hm-stats b { color: var(--rf-text, #e6e8ee); }
+
+/* body = fixed weekday gutter + a horizontally scrolling calendar */
+.rf-hm-body { display: flex; align-items: flex-start; }
+
+.rf-hm-wds {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-right: 6px;
+  font-size: 9px;
+  color: var(--rf-text-dim, #9aa0ad);
+}
+.rf-hm-mon-spacer { height: 20px; flex: none; } /* aligns with months row */
+.rf-hm-wd {
+  flex: none;
+  height: 11px;
+  margin-bottom: 3px;
+  line-height: 11px;
+  text-align: right;
+}
+.rf-hm-wd:last-child { margin-bottom: 0; }
+
+.rf-hm-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  /* Gutter is reserved at all times (thin in Firefox, 6px in webkit) so
+     the thumb appearing on hover never adds height — the only thing that
+     changes between states is the thumb color. */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 160ms ease;
+}
+.rf-hm-scroll::-webkit-scrollbar { height: 5px; width: 5px; }
+.rf-hm-scroll::-webkit-scrollbar-track { background: transparent; }
+.rf-hm-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 160ms ease;
+}
+.rf-hm-scroll:hover {
+  scrollbar-color: var(--rf-border, #3a4150) transparent;
+}
+.rf-hm-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--rf-border, #3a4150);
+}
+.rf-hm-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--rf-text-dim, #5a6172);
+}
+
+.rf-hm-months {
+  display: flex;
+  height: 15px;
+  margin-bottom: 5px;
+  font-size: 10px;
+  color: var(--rf-text-dim, #9aa0ad);
+}
+.rf-hm-mon { flex: none; white-space: nowrap; line-height: 15px; }
+
+.rf-hm-grid { display: flex; }
+.rf-hm-col {
+  display: flex;
+  flex-direction: column;
+  flex: none;          /* keep 11px under overflow so the grid scrolls */
+  width: 11px;
+  margin-right: 3px;
+}
+
+.rf-hm-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: #20242e;
+}
+.rf-hm-col .rf-hm-cell { flex: none; margin-bottom: 3px; }
+.rf-hm-col .rf-hm-cell:last-child { margin-bottom: 0; }
+.rf-hm-empty { background: transparent; }
+
+.rf-hm-l0 { background: var(--rf-hm-l0, #20242e); }
+.rf-hm-l1 { background: var(--rf-hm-l1, #1f3d5c); }
+.rf-hm-l2 { background: var(--rf-hm-l2, #2f6aa8); }
+.rf-hm-l3 { background: var(--rf-hm-l3, #4f9ae0); }
+.rf-hm-l4 { background: var(--rf-hm-l4, #7fc4ff); }
+
+.rf-hm-col .rf-hm-cell:not(.rf-hm-empty) { cursor: pointer; }
+.rf-hm-col .rf-hm-cell:not(.rf-hm-empty):hover {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 0 1.5px var(--rf-text, #e6e8ee);
+}
+
+/* custom instant tooltip (replaces the slow native title) */
+.rf-hm-tip {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity .06s linear, transform .06s linear;
+  background: var(--rf-bg, #0f1217);
+  border: 1px solid var(--rf-border, #2c3340);
+  border-radius: 8px;
+  padding: 8px 11px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.rf-hm-tip.show { opacity: 1; transform: translateY(0); }
+.rf-hm-tip-n {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--rf-text, #e6e8ee);
+}
+.rf-hm-tip-d { color: var(--rf-text-dim, #9aa0ad); margin-top: 1px; }
+.rf-hm-tip-rel { color: var(--rf-accent, #0077c8); font-weight: 600; }
+.rf-hm-tip-peak { color: #f0a93b; margin-top: 3px; font-size: 11px; }

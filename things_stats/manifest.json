@@ -1,0 +1,12 @@
+{
+    "package": "studylytics",
+    "name": "Studylytics - Advanced Analytics Dashboard",
+    "mod": 1709568000,
+    "conflicts": [],
+    "min_point_version": 231000,
+    "max_point_version": -1,
+    "branch_index": 0,
+    "human_version": "1.0.0",
+    "update_enabled": true,
+    "homepage": "https://studyremote.com/studylytics"
+}

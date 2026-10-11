@@ -1,0 +1,335 @@
+/* Anki Design — overrides for the SvelteKit graphs ("/graphs") page.
+
+   The stats embed renders the standard graphs page inside our themed
+   wrapper (see stats_embed.py). Anki's own CSS uses these tokens:
+     --canvas, --fg, --fg-subtle, --fg-faint, --border, --border-subtle,
+     --fg-link, --font-size, --border-radius, ...
+   Mapping them to our palette via tokens.css (already injected before
+   this stylesheet) gives the graphs the same paper, ink, and divider
+   colors the rest of the app uses without rewriting any Svelte. */
+
+:root {
+  /* Anki's own variables, mapped to our --rf-* tokens. All "canvas"
+     variants point at the SAME paper so cards merge into the page. */
+  --canvas: var(--rf-paper);
+  --canvas-elevated: var(--rf-paper);
+  --canvas-inset: var(--rf-paper);
+  --canvas-overlay: var(--rf-paper);
+  --fg: var(--rf-ink);
+  --fg-subtle: var(--rf-ink-dim);
+  --fg-faint: var(--rf-ink-faint);
+  --fg-disabled: var(--rf-ink-faint);
+  --fg-link: var(--rf-accent, #0077c8);
+  --border: var(--rf-line);
+  --border-subtle: var(--rf-line);
+  --border-strong: var(--rf-line-2);
+  --border-focus: var(--rf-accent, #0077c8);
+  --shadow: transparent;
+  --shadow-inset: transparent;
+  --shadow-subtle: transparent;
+  --font-size: 14px;
+  --button-bg: transparent;
+  --button-gradient-start: transparent;
+  --button-gradient-end: transparent;
+  --button-hover-border: var(--rf-line-2);
+  --button-primary-bg: var(--rf-ink);
+  --button-primary-gradient-start: var(--rf-ink);
+  --button-primary-gradient-end: var(--rf-ink);
+}
+
+/* ------------------------ Type ------------------------ */
+html, body {
+  background: var(--rf-paper) !important;
+  color: var(--rf-ink);
+  font-family: var(--rf-sans);
+  -webkit-font-smoothing: antialiased;
+}
+body { margin: 0; padding: 0; }
+
+/* Graph card headings: editorial serif, no Anki-default underline. */
+.graphs-container h1,
+.graphs-container .title,
+h1, h2, h3 {
+  font-family: var(--rf-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--rf-ink);
+  margin: 0 0 18px;
+  padding-bottom: 0;
+  border: 0;
+  border-bottom: 0 !important;
+}
+.graphs-container h1 { font-size: 17px; }
+
+/* Tabular figures for numbers across the page. */
+table, td, th {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* ============================ Range box ============================
+   Sticky top strip with deck/collection + range radios + the search
+   field. Defaults render as 1990s form controls — replace with pill
+   toggles and a quiet inline search. */
+.range-box,
+[class*="range-box"] {
+  background: var(--rf-paper) !important;
+  border-bottom: 0 !important;
+  color: var(--rf-ink) !important;
+  padding: 18px 36px 6px !important;
+  font-family: var(--rf-sans);
+  font-size: 12.5px;
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+}
+
+/* The deck-search text field at the right of the range box. */
+.range-box input[type="text"],
+.range-box input:not([type]),
+[class*="range-box"] input[type="text"],
+[class*="range-box"] input:not([type]) {
+  background: transparent !important;
+  border: 1px solid var(--rf-line-2) !important;
+  border-radius: 8px !important;
+  color: var(--rf-ink) !important;
+  font-family: var(--rf-sans) !important;
+  font-size: 12.5px !important;
+  padding: 6px 12px !important;
+  min-width: 180px;
+  outline: none !important;
+  box-shadow: none !important;
+  margin: 0 6px;
+}
+.range-box input[type="text"]:focus,
+.range-box input:not([type]):focus,
+[class*="range-box"] input[type="text"]:focus,
+[class*="range-box"] input:not([type]):focus {
+  border-color: var(--rf-accent, #0077c8) !important;
+}
+
+/* ============================ Pill toggles ============================
+   Apply pill styling to ALL radio/checkbox <label>s on the page (range
+   box AND in-chart selectors like Backlog/1 month/3 months on Future
+   Due, Time/1 month/etc on Reviews, suspended-buried on Card Counts).
+   Hide the actual <input> and let the label do the work. */
+.range-box label,
+[class*="range-box"] label,
+.graphs-container label,
+[class*="graphs-container"] label {
+  display: inline-flex !important;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: var(--rf-ink-dim);
+  font-family: var(--rf-sans);
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  margin: 0;
+}
+.range-box label:hover,
+.graphs-container label:hover,
+[class*="range-box"] label:hover,
+[class*="graphs-container"] label:hover {
+  color: var(--rf-ink);
+  background: var(--rf-row-hover);
+}
+/* Selected radio/checkbox → ink-on-paper inverted pill. */
+.range-box label:has(input:checked),
+[class*="range-box"] label:has(input:checked),
+.graphs-container label:has(input:checked),
+[class*="graphs-container"] label:has(input:checked) {
+  color: var(--rf-paper) !important;
+  background: var(--rf-ink) !important;
+  border-color: var(--rf-ink) !important;
+}
+
+/* Hide the native radio/checkbox glyph — the pill IS the indicator. */
+.range-box input[type="radio"],
+.range-box input[type="checkbox"],
+[class*="range-box"] input[type="radio"],
+[class*="range-box"] input[type="checkbox"],
+.graphs-container input[type="radio"],
+.graphs-container input[type="checkbox"],
+[class*="graphs-container"] input[type="radio"],
+[class*="graphs-container"] input[type="checkbox"] {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0 !important;
+}
+
+/* ============================ Graphs grid ============================
+   Anki's defaults key column count off `100vw` — but our embed loses
+   ~264px to the sidebar, so its breakpoints fire too early and the
+   page collapses to a single column at typical window widths. Re-key
+   the grid off the embed's container so 1 / 2 / 3 columns track the
+   space the graphs actually have. Container queries would be cleaner
+   but require the .graphs-container itself to be the container; just
+   override the existing widths instead. */
+.graphs-container,
+[class*="graphs-container"] {
+  padding: 12px 36px 56px !important;
+  width: auto !important;
+  margin: 0 !important;
+  gap: 28px 36px !important;
+  align-items: start !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+@media only screen and (max-width: 1500px) {
+  .graphs-container,
+  [class*="graphs-container"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media only screen and (max-width: 1000px) {
+  .graphs-container,
+  [class*="graphs-container"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Each individual graph card — a quiet panel tint (--rf-panel sits a
+   few percent above --rf-paper in both themes) with a hairline border
+   so cards lift off the page without shouting. No drop shadow; the
+   contrast does the work. */
+.graphs-container > div,
+[class*="graphs-container"] > div {
+  background: var(--rf-panel) !important;
+  border: 1px solid var(--rf-line) !important;
+  box-shadow: none !important;
+  border-radius: 12px !important;
+  padding: 20px 24px !important;
+}
+
+/* The .graph area inside each card defaults to flex-grow:1 +
+   justify-content:center, which centers the empty-state text in a huge
+   vertical void on charts with no data. Anchor content to the top of
+   the card so the page reads as a compact column. */
+.graph,
+[class*="svelte"].graph,
+.container .graph {
+  flex-grow: 0 !important;
+  justify-content: flex-start !important;
+  min-height: 0 !important;
+}
+.legend, [class*="legend"] {
+  text-align: left !important;
+}
+
+/* Hide the Bootstrap-reset hr inside graph cards (Anki ships <hr>
+   between title and chart on a few graphs). */
+.graphs-container hr,
+[class*="graphs-container"] hr { display: none !important; }
+
+/* SVG axis text inherits from the body but Anki's defaults render
+   slightly heavier than we want; pull contrast down on axis labels. */
+svg text {
+  fill: var(--rf-ink);
+  font-family: var(--rf-sans);
+}
+svg .tick text,
+svg .axis text {
+  fill: var(--rf-ink-dim);
+}
+
+/* Tables inside the graphs (counts, retention, true retention). */
+.graphs-container table,
+[class*="graphs-container"] table {
+  border-collapse: collapse;
+  color: var(--rf-ink);
+  font-size: 13px;
+}
+.graphs-container tr,
+[class*="graphs-container"] tr {
+  border-top: 1px solid var(--rf-line) !important;
+  border-bottom: 1px solid var(--rf-line) !important;
+}
+.graphs-container td,
+.graphs-container th {
+  padding: 6px 10px !important;
+}
+
+/* The "search this card" link rendered as a faux-link button on the
+   future-due chart. */
+.search-link {
+  color: var(--rf-ink-dim) !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+.search-link:hover {
+  color: var(--rf-accent, #0077c8) !important;
+}
+
+/* Calendar weekday labels (S M T W T F S) and axis ticks — Anki sets
+   `fill="black"` and `font-family="monospace"` as SVG attributes; CSS
+   overrides them. */
+svg .weekdays text,
+svg .x-ticks text,
+svg .y-ticks text,
+svg .y2-ticks text,
+svg .tick text,
+svg .domain {
+  fill: var(--rf-ink-dim) !important;
+  font-family: var(--rf-sans) !important;
+  font-size: 11px;
+}
+svg .weekdays text { font-size: 10px; }
+
+/* Bare <button>s — used by the Calendar widget for year navigation
+   (◄ ►). Inherit our chip-button look. */
+.graphs-container button:not(.search-link):not([class*="svelte-"]):not(.btn),
+[class*="graphs-container"] button:not(.search-link):not([class*="svelte-"]):not(.btn) {
+  -webkit-appearance: none;
+  background: transparent !important;
+  border: 1px solid var(--rf-line-2) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  color: var(--rf-ink) !important;
+  font-family: var(--rf-sans) !important;
+  font-size: 12px !important;
+  padding: 2px 9px !important;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.graphs-container button:not(.search-link):not([class*="svelte-"]):not(.btn):hover,
+[class*="graphs-container"] button:not(.search-link):not([class*="svelte-"]):not(.btn):hover {
+  background: var(--rf-row-hover) !important;
+  border-color: var(--rf-ink-faint) !important;
+}
+.graphs-container button[disabled],
+[class*="graphs-container"] button[disabled] {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+/* Chart subtitles (e.g. "The number of reviews due in the future.")
+   sit quietly under the title. Sans (not italic serif — that renders
+   as a calligraphic script in some serif stacks and gets unreadable
+   at this size). */
+.subtitle, [class*="subtitle"] {
+  color: var(--rf-ink-dim) !important;
+  font-family: var(--rf-sans) !important;
+  font-style: normal;
+  font-size: 12.5px !important;
+  font-weight: 400;
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+/* Help-badge (small ? icon next to chart titles) — keep, just neutral. */
+.help-badge {
+  color: var(--rf-ink-faint) !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+/* Print stays whatever Anki gave us — graphs are printed during Save PDF.
+   Don't override print rules so the PDF output keeps its known layout. */

@@ -1,0 +1,213 @@
+/* Anki Design — wordmark.
+
+   Two-typeface lockup: "anki." in Helvetica Neue (semibold, the period is
+   red), then "DESIGN" in Architects Daughter with each letter independently
+   sized and rotated to give a hand-drawn wobble. The whole mark scales from
+   a single CSS variable: set `--ad-logo-size` on the parent.
+
+   Source design: 78px cap height for "anki.", 90–94px ranged caps for
+   "DESIGN". `--ad-logo-size` controls the "anki." cap height; the DESIGN
+   letters scale proportionally off the same variable. */
+
+@font-face {
+  font-family: "Architects Daughter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/architects-daughter.woff2") format("woff2"),
+       url("./fonts/architects-daughter-ext.woff2") format("woff2");
+}
+
+.ad-logo {
+  /* Defaults tuned for sidebar use (small). Override at use-site. */
+  --ad-logo-size: 22px;
+  --ad-logo-ink: var(--rf-ink, #1a1a1a);
+  --ad-logo-dot: #c84431;
+
+  display: inline-flex;
+  align-items: baseline;
+  /* No gap between "anki." and "DESIGN" — matches the source design. */
+  gap: 0;
+  vertical-align: baseline;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ad-logo .ad-mark {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 600;
+  font-size: var(--ad-logo-size);
+  /* -1.56px at 78px ≈ -0.02em. */
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--ad-logo-ink);
+  /* Stacking context so the hover eye (and its particle burst) paints
+     above the DESIGN letters where they overlap. */
+  position: relative;
+  z-index: 1;
+}
+
+/* The "dot" is no longer the literal period character — it's a drawn
+   pupil so we can move it freely and grow a sclera around it. The .ad-dot
+   wrapper reserves a period's natural advance width so the wordmark
+   layout doesn't shift. */
+.ad-logo .ad-dot {
+  color: var(--ad-logo-dot);
+  position: relative;
+  display: inline-block;
+  width: 0.26em;
+  height: 1em;
+  vertical-align: baseline;
+}
+
+/* Pupil: the visible red disc. At rest it looks exactly like the period
+   that used to live here. On hover, JS translates it within the sclera
+   to follow the cursor. */
+.ad-logo .ad-pupil {
+  position: absolute;
+  left: 50%;
+  bottom: 0.1em;
+  width: 0.22em;
+  height: 0.22em;
+  border-radius: 50%;
+  background: var(--ad-logo-dot);
+  transform: translate(
+    calc(-50% + var(--ad-pupil-x, 0px)),
+    calc(50% + var(--ad-pupil-y, 0px))
+  );
+  transition: transform 140ms cubic-bezier(.2, .8, .2, 1);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Sclera: the white eyeball that grows behind the pupil on hover. Sized
+   to be unmistakably an eye — about cap-height tall. Springy entry. */
+.ad-logo .ad-dot::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0.1em;
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 50%;
+  background: #fff;
+  border: 0.07em solid var(--ad-logo-ink, #1a1a1a);
+  transform: translate(-50%, 50%) scale(0);
+  transition: transform 260ms cubic-bezier(.34, 1.56, .64, 1);
+  z-index: 0;
+  pointer-events: none;
+  box-sizing: content-box;
+}
+
+/* Shock-burst: six little ink-colored dots positioned via box-shadow that
+   radiate outward during the double-take. Invisible at rest. */
+.ad-logo .ad-dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0.1em;
+  width: 0.08em;
+  height: 0.08em;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+     0     -0.9em 0 var(--ad-logo-ink, #1a1a1a),
+     0.78em -0.45em 0 var(--ad-logo-ink, #1a1a1a),
+     0.78em  0.45em 0 var(--ad-logo-ink, #1a1a1a),
+     0      0.9em 0 var(--ad-logo-ink, #1a1a1a),
+    -0.78em  0.45em 0 var(--ad-logo-ink, #1a1a1a),
+    -0.78em -0.45em 0 var(--ad-logo-ink, #1a1a1a);
+  transform: translate(-50%, 50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ad-logo .ad-design {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: "Architects Daughter", "Bradley Hand", "Comic Sans MS", cursive;
+  font-weight: 400;
+  /* The "DESIGN" letters in the source range from 90 to 94px while "anki."
+     is 78px — so DESIGN is ~1.18× the anki size. */
+  font-size: calc(var(--ad-logo-size) * 1.18);
+  color: var(--ad-logo-ink);
+  letter-spacing: -0.007em;
+  line-height: 1;
+  /* Architects Daughter sits a touch above the Helvetica baseline at the
+     same logical font-size — pull it down so the bases align optically. */
+  position: relative;
+  top: calc(var(--ad-logo-size) * 0.07);
+  /* Lower stacking than .ad-mark so the hover eye covers any overlap. */
+  z-index: 0;
+}
+
+/* Per-letter wobble: each letter has its own size jitter, tiny rotation,
+   and vertical offset. Values match the source design (0.04em ≈ 3px at the
+   78px reference size). The slight negative left margins let consecutive
+   letters tuck under each other for the hand-drawn feel. */
+.ad-logo .ad-design > span {
+  display: inline-block;
+  transform-origin: 50% 70%;
+  transition: transform 360ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.ad-logo .ad-d {
+  font-size: calc(var(--ad-logo-size) * 1.154);   /* 90/78 */
+  transform: rotate(-3deg) translateY(-0.04em);
+}
+.ad-logo .ad-e {
+  font-size: calc(var(--ad-logo-size) * 1.179);   /* 92/78 */
+  margin-left: -0.05em;
+  transform: rotate(-1deg) translateY(0.013em);
+}
+.ad-logo .ad-s {
+  font-size: calc(var(--ad-logo-size) * 1.205);   /* 94/78 */
+  margin-left: -0.05em;
+  transform: rotate(1deg) translateY(-0.026em);
+}
+.ad-logo .ad-i {
+  font-size: calc(var(--ad-logo-size) * 1.167);   /* 91/78 */
+  margin-left: -0.05em;
+  transform: rotate(3deg) translateY(0.026em);
+}
+.ad-logo .ad-g {
+  font-size: calc(var(--ad-logo-size) * 1.192);   /* 93/78 */
+  margin-left: -0.05em;
+  transform: rotate(-2deg) translateY(-0.013em);
+}
+.ad-logo .ad-n {
+  font-size: calc(var(--ad-logo-size) * 1.154);   /* 90/78 */
+  margin-left: -0.07em;
+  transform: rotate(0deg) translateY(0.04em);
+}
+
+/* Hover: the red period becomes a googly eye that tracks the cursor.
+   After a beat, ink particles burst outward around the eye. The DESIGN
+   letters do nothing — they just sit there in their wobble (and render
+   beneath the eye where it overlaps them, via the .ad-mark z-index). */
+@media (prefers-reduced-motion: no-preference) {
+  .ad-logo:hover .ad-dot::before {
+    transform: translate(-50%, 50%) scale(1);
+  }
+
+  /* Particle burst: ink dots radiate outward, fade in then out. The
+     240ms animation-delay times it so the burst lands right as the
+     sclera finishes its 260ms scale-in transition. */
+  .ad-logo.is-burst .ad-dot::after {
+    animation: ad-shock 460ms 240ms ease-out;
+  }
+  @keyframes ad-shock {
+    0%   { transform: translate(-50%, 50%) scale(0); opacity: 0; }
+    20%  { transform: translate(-50%, 50%) scale(1); opacity: 1; }
+    60%  { transform: translate(-50%, 50%) scale(1.35); opacity: 0.85; }
+    100% { transform: translate(-50%, 50%) scale(1.7); opacity: 0; }
+  }
+}
+
+/* Size convenience modifiers. */
+.ad-logo.ad-logo--sm { --ad-logo-size: 18px; }
+.ad-logo.ad-logo--md { --ad-logo-size: 28px; }
+.ad-logo.ad-logo--lg { --ad-logo-size: 48px; }
+.ad-logo.ad-logo--xl { --ad-logo-size: 78px; }

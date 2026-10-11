@@ -55,6 +55,12 @@ def _open_taiyaki_store():
     patcher.open_mr_taiyaki_store_dialog()
 
 
+def _open_communications():
+    from .gamification.communications import open_communications_dialog
+
+    open_communications_dialog()
+
+
 def _open_onigimon_care():
     from . import patcher
 
@@ -67,7 +73,14 @@ def _open_hexagon_land():
     open_hexagon_land_dialog()
 
 
+def _open_focus_dango_settings():
+    """Open the dedicated Focus Dango settings page."""
+    open_settings("focus_dango")
 
+
+def _open_mochi_messages_settings():
+    """Open the dedicated Mochi Messages settings page."""
+    open_settings("mochi_messages")
 
 
 def _open_onigiri_guide():
@@ -214,7 +227,18 @@ def setup_onigiri_menu(addon_path):
     hexagon_land_action = QAction(tr("hexland_title", "Hexagon Land"), mw)
     hexagon_land_action.triggered.connect(_open_hexagon_land)
     gamification_menu.addAction(hexagon_land_action)
-    
+
+    gamification_menu.addSeparator()
+
+    focus_dango_action = QAction(tr("focus_dango", "Focus Dango"), mw)
+    focus_dango_action.triggered.connect(_open_focus_dango_settings)
+    gamification_menu.addAction(focus_dango_action)
+
+    mochi_messages_action = QAction(
+        tr("mochi_messages_title", "Mochi Messages"), mw
+    )
+    mochi_messages_action.triggered.connect(_open_mochi_messages_settings)
+    gamification_menu.addAction(mochi_messages_action)
 
     # Add the Gamification submenu to the main menu
     onigiri_menu.addMenu(gamification_menu)
@@ -255,6 +279,10 @@ def setup_onigiri_menu(addon_path):
 
     # --- ADD THIS BLOCK ---
     info_menu = onigiri_menu.addMenu("Info")
+
+    announcements_action = QAction(tr("communications_title", "Announcements"), mw)
+    announcements_action.triggered.connect(_open_communications)
+    info_menu.addAction(announcements_action)
 
     guide_action = QAction(tr("onigiri_guide", "Onigiri Guide"), mw)
     guide_action.triggered.connect(_open_onigiri_guide)

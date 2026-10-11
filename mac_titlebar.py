@@ -1,8 +1,10 @@
 """macOS-only: dissolve Anki's window title bar into the Onigiri canvas.
 
-Qt exposes no API for the three NSWindow properties that make a title bar
-disappear, so we reach the real window through the Objective-C runtime with
-ctypes:
+Qt 6.9+ owns the expanded content area through ExpandedClientAreaHint and
+NoTitleBarBackgroundHint. Use those flags so Qt's Cocoa platform plugin can
+coordinate native geometry, safe-area changes and WebEngine composition. Older
+Qt versions retain the Objective-C fallback. Native title visibility and the
+separator are adjusted through ctypes:
 
     mw.winId()  ->  NSView*  ->  [view window]  ->  NSWindow*
 
@@ -188,6 +190,34 @@ def _set_safe_area_respected(widget, respected: bool) -> None:
         print(f"[Onigiri] macOS title bar: safe-area margins unchanged: {exc}")
 
 
+def _set_qt_titlebar_flags(widget, enabled: bool) -> bool:
+    """Let Qt manage the full-size native content view when it supports it.
+
+    Setting NSWindow.styleMask behind Qt's back bypasses Cocoa's guarded style
+    change and leaves the QWindow flags inconsistent with the native window.
+    That is particularly unsafe for WebEngine's off-screen compositing surface.
+    """
+    from aqt.qt import Qt
+
+    expanded = getattr(Qt.WindowType, "ExpandedClientAreaHint", None)
+    transparent = getattr(Qt.WindowType, "NoTitleBarBackgroundHint", None)
+    if expanded is None or transparent is None:
+        return False
+    flags = widget.windowFlags()
+    hints = expanded | transparent
+    next_flags = flags | hints if enabled else flags & ~hints
+    if next_flags != flags:
+        was_visible = widget.isVisible()
+        state = widget.windowState()
+        widget.setWindowFlags(next_flags)
+        # QWidget.setWindowFlags hides a visible widget. Restore its existing
+        # presentation only when the user changes this setting at runtime.
+        if was_visible:
+            widget.setWindowState(state)
+            widget.show()
+    return True
+
+
 def apply(enabled: bool, widget=None) -> bool:
     """Merge (or restore) the title bar of `widget` -- the main window by default.
 
@@ -200,19 +230,29 @@ def apply(enabled: bool, widget=None) -> bool:
     if window is None:
         return False
     try:
+        frame = _send(window, "frame", restype=_NSRect)
+        qt_managed = _set_qt_titlebar_flags(target, enabled)
+        # Changing QWidget flags may recreate its native handle.
+        window = _nswindow(target)
+        if window is None:
+            return False
         mask = _send(window, "styleMask", restype=ctypes.c_ulong)
         if enabled:
             new_mask = mask | _NS_WINDOW_STYLE_MASK_FULL_SIZE_CONTENT_VIEW
         else:
             new_mask = mask & ~_NS_WINDOW_STYLE_MASK_FULL_SIZE_CONTENT_VIEW
-        if new_mask != mask:
+        if not qt_managed and new_mask != mask:
             # Toggling fullSizeContentView keeps the *content* size fixed, so
             # AppKit resizes the window frame by the title bar's height instead.
             # Anki saves that shrunken frame on quit and reopens smaller every
             # time, so put the frame back exactly where it was.
-            frame = _send(window, "frame", restype=_NSRect)
             _send(window, "setStyleMask:", ctypes.c_ulong(new_mask),
                   argtypes=[ctypes.c_ulong], restype=None)
+        current_frame = _send(window, "frame", restype=_NSRect)
+        if (current_frame.origin.x != frame.origin.x
+                or current_frame.origin.y != frame.origin.y
+                or current_frame.size.width != frame.size.width
+                or current_frame.size.height != frame.size.height):
             _send(window, "setFrame:display:", frame, ctypes.c_bool(True),
                   argtypes=[_NSRect, ctypes.c_bool], restype=None)
         _send(window, "setTitlebarAppearsTransparent:", ctypes.c_bool(bool(enabled)),
@@ -271,6 +311,8 @@ def inset_css(context_kind: str = "page") -> str:
       "deck_browser" - the main menu flex row (sidebar + widget grid).
       "toolbar"      - Anki's own top toolbar, which has no background layer of
                        its own to protect, so body padding is the right tool.
+      "things3"      - the Kome sidebar begins at the window edge, so its
+                       first block must clear the floating traffic lights.
       "page"         - overview/congrats: vertically centred layouts, and a top
                        bar that is horizontally centred, so the traffic lights
                        (top left) never reach any of it. Only the seam fix.
@@ -306,6 +348,14 @@ def inset_css(context_kind: str = "page") -> str:
         body {
             padding-top: var(--onigiri-mac-titlebar-inset) !important;
             box-sizing: border-box !important;
+        }
+        """
+    elif context_kind == "things3":
+        rules += """
+        .ba-side {
+            padding-top: calc(
+                var(--onigiri-mac-titlebar-inset) + 12px
+            ) !important;
         }
         """
     return f"""

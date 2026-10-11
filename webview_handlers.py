@@ -35,8 +35,9 @@ _WEBVIEW_STRING_KEYS = (
     "ctx_rename", "ctx_move_to", "ctx_change_icon", "markers",
     "ctx_remove_marker", "ctx_deadline", "ctx_deck_options", "ctx_export_deck",
     "ctx_copy_deck_id", "ctx_delete_deck", "ctx_favorite_selected",
-    "ctx_remove_favorites", "delete_selected", "marker_red", "marker_blue",
+    "ctx_remove_favorite", "ctx_remove_favorites", "delete_selected", "marker_red", "marker_blue",
     "marker_green", "marker_yellow", "get_shared", "create_deck", "import_file",
+    "rebuild",
     "hashi_notes_title", "sort_default_order", "sort_a_to_z", "sort_z_to_a",
     "sort_most_due", "sort_most_new", "sort_most_reviews",
     "sort_favorites_first", "sort_custom_order",
@@ -206,6 +207,15 @@ def _deck_name(deck_id: str) -> str:
         return deck.get("name", "") if isinstance(deck, dict) else ""
 
 
+def _is_filtered_deck(deck_id: int) -> bool:
+    """Return whether a deck is a dynamic (filtered) deck."""
+    try:
+        deck = mw.col.decks.get(DeckId(deck_id))
+        return bool(deck and deck.get("dyn", 0))
+    except Exception:
+        return False
+
+
 def _rename_deck(deck_id: str, new_name: str) -> None:
     deck = mw.col.decks.get(DeckId(int(deck_id)))
     if not deck:
@@ -242,6 +252,20 @@ def _icon_label(filename: str) -> str:
     return stem.replace("_", " ").replace("-", " ").title()
 
 
+def _tag_icon_token(tag: str) -> str:
+    """Return a command-safe icon-picker target for a tag name."""
+    from urllib.parse import quote
+
+    return f"tag~{quote(tag, safe='')}"
+
+
+def _icon_store_target(target_id: str) -> tuple[str, str]:
+    """Map an icon-picker target to its collection key and item key."""
+    if str(target_id).startswith("tag~"):
+        return "onigiri_custom_tag_icons", unquote(str(target_id)[4:])
+    return "onigiri_custom_deck_icons", str(target_id)
+
+
 def _icon_payload(deck_id: str) -> dict:
     addon_package = _addon_package()
     addon_path = _addon_path()
@@ -272,7 +296,10 @@ def _icon_payload(deck_id: str) -> dict:
             if name.lower().endswith(".svg")
         ]
         priority = {name: index for index, name in enumerate(_ICON_PRIORITY)}
-        for name in sorted(system_files, key=lambda item: (priority.get(item, 999), item.lower())):
+        for name in sorted(
+            system_files,
+            key=lambda item: (priority.get(item, 999), item.lower()),
+        ):
             icons.append({
                 "name": f"system:{name}",
                 "label": _icon_label(name),
@@ -297,8 +324,9 @@ def _icon_payload(deck_id: str) -> dict:
                         "system": False,
                     })
 
-    custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
-    current = custom_icons.get(str(deck_id), {})
+    store_key, target_key = _icon_store_target(deck_id)
+    custom_icons = config.get_collection_config(store_key, {}) or {}
+    current = custom_icons.get(target_key, {})
     # "" means "follow the theme's --icon-color", the default for decks that
     # have never had an explicit colour picked. Entries saved before the
     # light/dark split only ever wrote "color" — colorDark falls back to it so
@@ -322,6 +350,10 @@ def _icon_payload(deck_id: str) -> dict:
 def _open_icon_modal(context, deck_id: str) -> None:
     payload = json.dumps(_icon_payload(deck_id))
     context.web.eval(f"if(window.OnigiriIconChooser){{OnigiriIconChooser.open({payload});}}")
+
+
+def _open_tag_icon_modal(context, tag: str) -> None:
+    _open_icon_modal(context, _tag_icon_token(tag))
 
 
 def _run_deck_icon_color_picker(context, current: str):
@@ -493,6 +525,13 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if parent and callable(parent) and type(parent()).__name__ == "OnigimonWebDialog":
         return handled
 
+    if cmd.startswith("onigiri_ready:"):
+        from . import ready_to_go
+
+        action = cmd.split(":", 1)[1]
+        if ready_to_go.handle_command(action):
+            return (True, None)
+
     if cmd == "onigiri_welcome_dismissed":
         try:
             from . import config
@@ -559,6 +598,27 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error opening Hashi note from widget: {e}")
+            return (True, None)
+
+    if cmd.startswith("hashiWidget:save:"):
+        # The optional in-widget editor only owns a note's title and body.
+        # Keeping all other fields intact matches the full Hashi editor.
+        try:
+            from . import hashi_notes
+
+            payload = cmd[len("hashiWidget:save:"):]
+            note_id, separator, encoded_changes = payload.partition(":")
+            if not separator:
+                return (True, None)
+            note = hashi_notes.get_note(unquote(note_id))
+            changes = json.loads(unquote(encoded_changes))
+            if note and not note.get("trashed_at") and isinstance(changes, dict):
+                note["title"] = str(changes.get("title") or "").strip()[:120]
+                note["body_md"] = str(changes.get("body_md") or "")
+                hashi_notes.save_note(note)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error saving Hashi note from widget: {e}")
             return (True, None)
 
     if cmd == "openPrepStation":
@@ -784,6 +844,56 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             print(f"Onigiri: Error searching decks: {e}")
             return (True, None)
 
+    if cmd.startswith("onigiri_tag_search:"):
+        try:
+            query = cmd.split(":", 1)[1]
+            if isinstance(context, DeckBrowser):
+                new_html = deck_tree_updater._render_tag_tree_html(context, query)
+                context.web.eval(
+                    "OnigiriEngine.updateDeckTree({});".format(json.dumps(new_html))
+                )
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error searching tags: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigiri_tag_collapse:"):
+        try:
+            payload = cmd[len("onigiri_tag_collapse:"):]
+            encoded_tag, collapsed_raw = payload.rsplit(":", 1)
+            tag = unquote(encoded_tag)
+            mw.col.tags.set_collapsed(tag, collapsed_raw == "1")
+            if isinstance(context, DeckBrowser):
+                new_html = deck_tree_updater._render_tag_tree_html(context)
+                context.web.eval(
+                    "OnigiriEngine.updateDeckTree({});".format(json.dumps(new_html))
+                )
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error toggling tag branch: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigiri_study_tag:"):
+        try:
+            from . import ready_to_go
+
+            tag = unquote(cmd[len("onigiri_study_tag:"):])
+            ready_to_go.study_tag(tag)
+        except Exception as e:
+            print(f"Onigiri: Error starting tag study: {e}")
+            tooltip(tr("err_tag_study").format(e))
+        return (True, None)
+
+    if cmd.startswith("onigiri_tag_change_icon:"):
+        try:
+            tag = unquote(cmd[len("onigiri_tag_change_icon:"):])
+            if isinstance(context, DeckBrowser) and tag:
+                _open_tag_icon_modal(context, tag)
+        except Exception as e:
+            print(f"Onigiri: Error opening tag icon chooser: {e}")
+            tooltip(tr("err_open_icon_chooser").format(e))
+        return (True, None)
+
     if cmd.startswith("onigiri_collapse:"):
         try:
             deck_id = cmd.split(":", 1)[1]
@@ -807,10 +917,10 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 tooltip(tr("err_favorite_deck_missing"))
                 return (True, None)
             
-            favorites = mw.col.conf.get("onigiri_favorite_decks", [])
+            favorites = _conf_list("onigiri_favorite_decks")
             
             if deck_id in favorites:
-                favorites.remove(deck_id)
+                favorites = [did for did in favorites if did != deck_id]
             else:
                 if len(favorites) >= 10:
                     tooltip(tr("err_favorites_limit"))
@@ -821,9 +931,10 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             mw.col.conf["onigiri_favorite_decks"] = favorites
             mw.col.setMod() # This line is CRITICAL
             
-            # Force a full refresh of the deck browser
+            # Re-render the page so both the deck tree and Favorites widget
+            # immediately reflect the updated collection configuration.
             if isinstance(context, DeckBrowser):
-                deck_tree_updater.refresh_deck_tree_state(context)
+                context.show()
             
             return (True, None)
         except Exception as e:
@@ -997,6 +1108,22 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             print(f"Onigiri: Error opening deck options: {e}")
             return (True, None)
 
+    if cmd.startswith("onigiri_ctx_rebuild:"):
+        try:
+            deck_id = int(cmd.split(":", 1)[1])
+            if not _is_filtered_deck(deck_id):
+                return (True, None)
+            deck_browser = (
+                context if isinstance(context, DeckBrowser)
+                else getattr(mw, "deckBrowser", None)
+            )
+            if deck_browser is not None:
+                deck_browser._rebuild(deck_id)  # type: ignore[attr-defined]
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error rebuilding filtered deck: {e}")
+            return (True, None)
+
     if cmd.startswith("onigiri_ctx_export:"):
         try:
             deck_id = int(cmd.split(":", 1)[1])
@@ -1144,7 +1271,9 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             _, deck_id, payload = cmd.split(":", 2)
             data = json.loads(payload)
             icon_name = data.get("icon", "")
-            custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
+            store_key, target_key = _icon_store_target(deck_id)
+            custom_icons = config.get_collection_config(store_key, {}) or {}
+            custom_icons = dict(custom_icons)
             if icon_name:
                 light_color = data.get("color", "")
                 dark_color = data.get("colorDark", light_color)
@@ -1154,11 +1283,10 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                 # colour for decks that never touched the dark slot.
                 if dark_color != light_color:
                     entry["colorDark"] = dark_color
-                custom_icons[str(deck_id)] = entry
+                custom_icons[target_key] = entry
             else:
-                custom_icons.pop(str(deck_id), None)
-            mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
-            mw.col.setMod()
+                custom_icons.pop(target_key, None)
+            config.set_collection_config(store_key, custom_icons)
             if isinstance(context, DeckBrowser):
                 context.show()
             else:
@@ -1187,10 +1315,11 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if cmd.startswith("onigiri_icon_chooser_reset:"):
         try:
             deck_id = cmd.split(":", 1)[1]
-            custom_icons = mw.col.conf.get("onigiri_custom_deck_icons", {})
-            custom_icons.pop(str(deck_id), None)
-            mw.col.conf["onigiri_custom_deck_icons"] = custom_icons
-            mw.col.setMod()
+            store_key, target_key = _icon_store_target(deck_id)
+            custom_icons = config.get_collection_config(store_key, {}) or {}
+            custom_icons = dict(custom_icons)
+            custom_icons.pop(target_key, None)
+            config.set_collection_config(store_key, custom_icons)
             if isinstance(context, DeckBrowser):
                 context.show()
             else:

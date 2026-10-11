@@ -1,0 +1,600 @@
+/* Anki Design — Add Card editor webview overlay.
+ *
+ * Restyles the Svelte note editor *only* when running inside the AddCards
+ * window (data-ba-editor="add"). Anki's own editor.css uses Bootstrap-ish
+ * tokens; we override the visible surface to match the editorial chrome.
+ *
+ * Svelte components carry hashed class suffixes (.editor-toolbar.svelte-1jmvn33);
+ * the unhashed base class is stable across Anki versions, so we target by
+ * base class alone.
+ */
+
+/* ---------- Design tokens ---------- */
+html[data-ba-editor="add"] {
+  --ba-paper: var(--rf-light-bg, #eeeeee);
+  --ba-panel: var(--rf-light-inset, #ffffff);
+  --ba-field: #ffffff;
+  --ba-ink: var(--rf-light-fg, #212121);
+  --ba-ink-dim: var(--rf-light-subtle, #757575);
+  --ba-ink-faint: var(--rf-light-subtle, #757575);
+  --ba-line: color-mix(in srgb, var(--rf-light-fg, #212121) 10%, transparent);
+  --ba-line-strong: color-mix(in srgb, var(--rf-light-fg, #212121) 22%, transparent);
+  --ba-hover: color-mix(in srgb, var(--rf-light-fg, #212121) 4%, transparent);
+  --ba-accent: var(--rf-accent, #0077c8);
+  --ba-serif: var(--rf-serif, "New York", "Hoefler Text", Charter, Georgia, serif);
+  --ba-sans: var(--rf-sans, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif);
+  --ba-radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-ba-editor="add"]:not([data-rf-theme="light"]) {
+    --ba-paper: var(--rf-dark-bg, #171717);
+    --ba-panel: var(--rf-dark-inset, #2c2c2c);
+    --ba-field: var(--rf-dark-inset, #2c2c2c);
+    --ba-ink: var(--rf-dark-fg, #e0e0e0);
+    --ba-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+    --ba-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+    --ba-line: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 10%, transparent);
+    --ba-line-strong: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 20%, transparent);
+    --ba-hover: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 5%, transparent);
+  }
+}
+html[data-ba-editor="add"][data-rf-theme="dark"] {
+  --ba-paper: var(--rf-dark-bg, #171717);
+  --ba-panel: var(--rf-dark-inset, #2c2c2c);
+  --ba-field: var(--rf-dark-inset, #2c2c2c);
+  --ba-ink: var(--rf-dark-fg, #e0e0e0);
+  --ba-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+  --ba-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+  --ba-line: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 10%, transparent);
+  --ba-line-strong: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 20%, transparent);
+  --ba-hover: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 5%, transparent);
+}
+
+/* Re-map Anki's editor tokens onto our theme. Anki's editor.css defines
+   --fg, --canvas-elevated, --fg-subtle etc. and toggles them via the
+   .night-mode class on <html>. If the user has Anki Design's theme set
+   to "light" but Anki itself is in night mode (or vice versa), Anki's
+   tokens leak into Svelte field contents — most visibly as near-white
+   --fg text on our white field. Re-binding the tokens to our --ba-*
+   variables keeps the field readable regardless of which mode Anki is
+   in. CSS variables inherit across shadow DOM boundaries, so this
+   reaches inside the Svelte rich-text-input / plain-text-input. */
+html[data-ba-editor="add"] {
+  --fg: var(--ba-ink);
+  --fg-subtle: var(--ba-ink-faint);
+  --fg-disabled: var(--ba-ink-faint);
+  --fg-faint: var(--ba-ink-faint);
+  --bs-body-color: var(--ba-ink);
+  --bs-body-bg: var(--ba-paper);
+  --canvas: var(--ba-paper);
+  --canvas-elevated: var(--ba-field);
+  --canvas-inset: var(--ba-paper);
+  --canvas-overlay: var(--ba-panel);
+  --canvas-code: var(--ba-field);
+  --border: var(--ba-line-strong);
+  --border-subtle: var(--ba-line);
+  --border-strong: var(--ba-ink-faint);
+}
+
+html[data-ba-editor="add"], html[data-ba-editor="add"] body {
+  background: var(--ba-paper) !important;
+  color: var(--ba-ink) !important;
+  font-family: var(--ba-sans) !important;
+}
+
+html[data-ba-editor="add"] .note-editor {
+  background: var(--ba-paper) !important;
+  color: var(--ba-ink) !important;
+}
+
+html[data-ba-editor="add"] .mathjax-overlay:empty,
+html[data-ba-editor="add"] .image-overlay:empty {
+  display: none !important;
+}
+
+/* ---------- Format toolbar ----------
+ * Goals:
+ *   1. Icon buttons are uniformly sized (square) so the row reads as a
+ *      coherent strip, not a jumble of variable rectangles.
+ *   2. Hover background fully contains each icon — no clipping at the top.
+ *   3. Dropdown popups (eraser palette, gear settings, color pickers) can
+ *      extend DOWN past the toolbar without being clipped. See the overflow
+ *      block on .button-toolbar below for the spec-level reason this is
+ *      `overflow-x: clip` rather than `overflow-x: auto`.
+ */
+html[data-ba-editor="add"] .editor-toolbar {
+  background: var(--ba-panel) !important;
+  border-bottom: 1px solid var(--ba-line) !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+}
+html[data-ba-editor="add"] .button-toolbar.btn-toolbar {
+  gap: 2px !important;
+  --buttons-size: 1.85rem !important;
+  --buttons-wrap: nowrap !important;
+  flex-wrap: nowrap !important;
+  /* CRITICAL: per the CSS Overflow spec, mixing overflow-x: auto with
+     overflow-y: visible forces BOTH axes to auto — which clips the eraser /
+     settings / color picker dropdowns at the bottom edge of the toolbar.
+     `overflow-x: clip` + `overflow-y: visible` is the one combination the
+     spec explicitly preserves, so the popups can extend down freely while
+     horizontal overflow is still hidden. The trade-off: if a user squeezes
+     the window narrow enough that the toolbar can't fit, trailing buttons
+     get cut off with no scrollbar. That's the right call here — the buttons
+     row is already short and dropdown popups are far more important than a
+     rarely-used horizontal scroll. */
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+  align-items: center !important;
+  padding: 6px 24px !important;
+  scrollbar-width: thin;
+  -ms-overflow-style: none;
+}
+html[data-ba-editor="add"] .button-toolbar.btn-toolbar::-webkit-scrollbar {
+  height: 6px;
+}
+html[data-ba-editor="add"] .button-toolbar.btn-toolbar::-webkit-scrollbar-thumb {
+  background: var(--ba-line-strong);
+  border-radius: 3px;
+}
+html[data-ba-editor="add"] .button-toolbar.btn-toolbar::-webkit-scrollbar-thumb:hover {
+  background: var(--ba-ink-faint);
+}
+html[data-ba-editor="add"] .button-toolbar.btn-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+html[data-ba-editor="add"] .button-group,
+html[data-ba-editor="add"] .button-group.btn-group,
+html[data-ba-editor="add"] .button-group-item,
+html[data-ba-editor="add"] .dynamically-slottable {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  padding: 0 !important;
+  gap: 1px !important;
+  box-shadow: none !important;
+  flex-shrink: 0 !important;
+}
+html[data-ba-editor="add"] .dynamically-slottable {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+}
+
+/* Every toolbar control is a 30×30 square. Icon SVG is centered at 16px
+   so the hover box always fully encloses the icon — no more "icon hanging
+   out the top of its hover halo". */
+html[data-ba-editor="add"] .icon-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  color: var(--ba-ink-dim) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  font-family: var(--ba-sans) !important;
+  flex-shrink: 0 !important;
+  transition: background 120ms ease, color 120ms ease;
+  box-shadow: none !important;
+  line-height: 1 !important;
+}
+/* Label buttons (Fields, Cards, color value, etc.) — sit on the same 30px
+   row baseline as icon buttons but auto-width for their text. */
+html[data-ba-editor="add"] .label-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 8px !important;
+  color: var(--ba-ink-dim) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  font-family: var(--ba-sans) !important;
+  font-size: 10.5pt !important;
+  flex-shrink: 0 !important;
+  transition: background 120ms ease, color 120ms ease;
+  box-shadow: none !important;
+  line-height: 1 !important;
+}
+html[data-ba-editor="add"] .icon-button:hover,
+html[data-ba-editor="add"] .label-button:hover {
+  background: var(--ba-hover) !important;
+  color: var(--ba-ink) !important;
+}
+html[data-ba-editor="add"] .icon-button[aria-pressed="true"],
+html[data-ba-editor="add"] .icon-button.active {
+  background: color-mix(in srgb, var(--ba-accent) 14%, transparent) !important;
+  color: var(--ba-accent) !important;
+}
+/* Uniform SVG size — defeats the original Anki sizing scheme that left
+   superscript/lists/align noticeably smaller than B/I/U. */
+html[data-ba-editor="add"] .icon-button svg,
+html[data-ba-editor="add"] .label-button svg {
+  fill: currentColor !important;
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0;
+}
+/* Chevron-only buttons (the ▾ next to text-color, highlighter, and the
+   format-eraser) read better as adjuncts to their preceding control
+   than as standalone full-size icon buttons. We:
+   - shrink the width (the chevron only needs ~12px),
+   - shrink the SVG (12px),
+   - pull them flush against the preceding button-group-item so they
+     visually read as "the dropdown side of that swatch", not a separate
+     button. The selector uses :has() which the Qt6 WebEngine supports. */
+html[data-ba-editor="add"] .icon-button:has(svg#mdi-chevron-down) {
+  width: 22px !important;
+  min-width: 22px !important;
+  padding: 0 !important;
+}
+html[data-ba-editor="add"] .icon-button:has(svg#mdi-chevron-down) svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+html[data-ba-editor="add"]
+  .button-group-item:has(.icon-button > * svg#mdi-chevron-down) {
+  margin-left: -2px !important;
+}
+/* "Fields" / "Cards" styled as quiet metadata links in sans. The original
+   button text includes a literal "Fields..." / "Cards..."; we hide the
+   ellipsis by clipping the rendered text in a ::after and use the button's
+   text via font-size:0 + ::before for cleaner control. Because the actual
+   button text isn't accessible to a pseudo-element, we instead use a
+   negative letter-spacing trick + ellipsis hiding. Simpler approach: just
+   hide the literal "..." via a sibling node — but easiest is JS-free: use
+   `text-indent` and an explicit `::after` that overlays the cleaned label.
+   Easier: rely on the data-tooltip attribute (Anki sets it) and font-size
+   hack. Cleanest reliable approach is a JS shim that swaps the text at
+   load time — done in addcard.js. CSS here just normalizes the styling. */
+html[data-ba-editor="add"] #notetype .label-button {
+  font-style: normal !important;
+  font-family: var(--ba-sans) !important;
+  color: var(--ba-ink-faint) !important;
+  font-size: 10pt !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.1px !important;
+}
+html[data-ba-editor="add"] #notetype .label-button:hover {
+  color: var(--ba-ink) !important;
+  background: var(--ba-hover) !important;
+}
+/* Gear: push to the very end via flex order. */
+html[data-ba-editor="add"] .item#settings { order: 99 !important; }
+html[data-ba-editor="add"] .item#notetype { order: -1 !important; }
+/* Dropdown panels (Popper-based "floating" elements). Anki's stylesheet
+   already puts them at z-index 890 — high enough to clear the sidebar
+   (z-index 50) and the editor's own canvas-elevated chrome (z-index 60).
+   We must NOT override that with our own z-index: a previous `z-index: 50
+   !important` here was actually demoting the popups *below* the sidebar,
+   making them invisible when the eraser / settings dropdowns opened.
+   IMPORTANT: don't add a background/border unconditionally — when the panel
+   is closed it's still in the DOM and our styles would draw a visible
+   "circle" around every chevron-button in the toolbar. */
+html[data-ba-editor="add"] .floating[data-show],
+html[data-ba-editor="add"] .floating[style*="display: block"],
+html[data-ba-editor="add"] .floating[style*="display:flex"] {
+  background: var(--ba-panel) !important;
+  border: 1px solid var(--ba-line-strong) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+  padding: 6px !important;
+}
+
+/* ---------- Fields ---------- */
+html[data-ba-editor="add"] .fields {
+  background: var(--ba-paper) !important;
+  padding: 18px 28px 4px 28px !important;
+}
+
+/* Tag section is moved into the field stack via JS (addcard.js
+   `moveTagsIntoFields`) so it sits immediately below BACK without
+   needing to fight Anki's nested flex-grow chain — which collapsed
+   the field-input columns when killed at the top. */
+html[data-ba-editor="add"] .field-container {
+  background: transparent !important;
+  border: 0 !important;
+  margin-bottom: 14px !important;
+  padding: 0 !important;
+}
+
+/* Field label — small uppercase sans, like a section subhead. Quiet at
+   rest, accent on focus. Sans-serif at this small size reads better than
+   italic-serif (which felt unreadable). */
+html[data-ba-editor="add"] .label-container {
+  padding: 0 4px 5px 4px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+html[data-ba-editor="add"] .label-container .label-name {
+  font-family: var(--ba-sans) !important;
+  font-style: normal !important;
+  font-size: 9.5pt !important;
+  font-weight: 600 !important;
+  letter-spacing: 1.2px !important;
+  text-transform: uppercase !important;
+  color: var(--ba-ink-faint) !important;
+  transition: color 160ms ease;
+}
+html[data-ba-editor="add"] .field-container:focus-within .label-name {
+  color: var(--ba-accent) !important;
+}
+/* Hide the chevron — fields aren't collapsible in the add window. */
+html[data-ba-editor="add"] .collapse-badge {
+  display: none !important;
+}
+
+/* Field state icons (sticky pin, HTML edit) — hover only. */
+html[data-ba-editor="add"] .field-state {
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+html[data-ba-editor="add"] .field-container:hover .field-state {
+  opacity: 0.55;
+  pointer-events: auto;
+}
+html[data-ba-editor="add"] .field-container:hover .field-state:hover,
+html[data-ba-editor="add"] .field-state:focus-within {
+  opacity: 1;
+}
+html[data-ba-editor="add"] .field-state svg,
+html[data-ba-editor="add"] .field-state .badge svg {
+  width: 12px !important;
+  height: 12px !important;
+  fill: var(--ba-ink-faint) !important;
+}
+html[data-ba-editor="add"] .field-state .badge {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 4px !important;
+}
+html[data-ba-editor="add"] .field-state .badge:hover {
+  background: var(--ba-hover) !important;
+  border-radius: 6px !important;
+}
+
+/* Field input box. Anki nests:
+       editor-field > editing-area > collapsible > rich-text-input >
+       rich-text-relative > rich-text-editable
+   Several of these ship with their own border/radius from editor.css,
+   which stack into a visible double-border. Strip them all and paint a
+   single border on .editor-field (the outermost wrapper). Focus inside
+   the rich-text-editable propagates :focus-within all the way up. */
+html[data-ba-editor="add"] .editor-field,
+html[data-ba-editor="add"] .editing-area,
+html[data-ba-editor="add"] .rich-text-input,
+html[data-ba-editor="add"] .rich-text-relative,
+html[data-ba-editor="add"] .rich-text-editable,
+html[data-ba-editor="add"] .plain-text-input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+html[data-ba-editor="add"] .editor-field {
+  background: var(--ba-field) !important;
+  border: 1px solid var(--ba-line) !important;
+  border-radius: var(--ba-radius) !important;
+  overflow: hidden !important;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+html[data-ba-editor="add"] .editor-field:focus-within {
+  border-color: var(--ba-accent) !important;
+}
+html[data-ba-editor="add"] .rich-text-editable,
+html[data-ba-editor="add"] .plain-text-input {
+  padding: 10px 14px !important;
+  min-height: 22px !important;
+  font-family: var(--ba-serif) !important;
+  font-size: 13pt !important;
+  line-height: 1.5 !important;
+  color: var(--ba-ink) !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+}
+html[data-ba-editor="add"] .rich-text-editable.empty::before {
+  font-family: var(--ba-sans) !important;
+  font-style: normal !important;
+  font-size: 11.5pt !important;
+  color: var(--ba-ink-faint) !important;
+  opacity: 0.85;
+  pointer-events: none;
+}
+html[data-ba-editor="add"] .field-container[data-index="0"] .rich-text-editable.empty::before {
+  content: "Front of the card";
+}
+html[data-ba-editor="add"] .field-container[data-index="1"] .rich-text-editable.empty::before {
+  content: "Back of the card";
+}
+html[data-ba-editor="add"] .field-container:not([data-index="0"]):not([data-index="1"]) .rich-text-editable.empty::before {
+  content: "Optional";
+}
+
+/* ---------- Tags ----------
+ * Goal: the Tags row reads as another field row — uppercase sans label
+ * above, field-shaped input below — regardless of whether the underlying
+ * Svelte component is "expanded" or "collapsed".
+ *
+ * DOM (taken from a live dump):
+ *
+ *   .fields … (FRONT/BACK field rows, each with its OWN .collapse-label
+ *              titled "Collapse field" — DO NOT touch those)
+ *   <span class="collapse-label" title="Collapse">Tags</span>
+ *   <div class="collapsible"><div class="tag-editor">…</div></div>
+ *
+ * The field labels share the .collapse-label class but their title attribute
+ * is "Collapse field" / "Expand field". The tag label uses title="Collapse"
+ * / "Expand". We scope by title, which is the only stable discriminator.
+ */
+html[data-ba-editor="add"] .collapse-label[title="Collapse"],
+html[data-ba-editor="add"] .collapse-label[title="Expand"] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  /* Match the field-row label rhythm exactly. .label-container uses
+     padding: 0 4px 5px 4px (vertical) inside .fields which itself has
+     padding: 18px 28px 4px 28px. So the absolute distance from the
+     row start to the label is 18px + 0 = 18px top, 28px + 4 = 32px left.
+     Replicate that here. */
+  padding: 0 32px 5px 32px !important;
+  margin: 6px 0 0 0 !important;
+  font-family: var(--ba-sans) !important;
+  font-style: normal !important;
+  font-size: 0 !important;  /* clear the literal "Tags" text */
+  color: var(--ba-ink-faint) !important;
+  /* No more border-top divider — the row sits beneath BACK with just
+     spacing so it reads as "another field" instead of a separate
+     bordered section. */
+  border: 0 !important;
+  background: var(--ba-paper) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1.2px !important;
+  cursor: default !important;
+  pointer-events: none !important;  /* can't be clicked to collapse */
+}
+html[data-ba-editor="add"] .collapse-label[title="Collapse"]::before,
+html[data-ba-editor="add"] .collapse-label[title="Expand"]::before {
+  content: "TAGS";
+  font-size: 9.5pt;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+}
+
+/* Force the tag-editor collapsible region to always render — the Svelte
+   component otherwise sets --height:0 + measuring/hidden classes when
+   collapsed, leaving a naked "TAGS" label. Scoped to .collapsible that has
+   a .tag-editor descendant so we don't affect field collapsibles.
+   ALSO: strip every visual property — Anki's editor.css gives .collapsible
+   a background and a shadow during the "measuring" phase that read as a
+   ghostly outlined box around the tag area (the "weird border" the user
+   kept seeing). Nuke everything to be transparent. */
+html[data-ba-editor="add"] .collapsible:has(.tag-editor),
+html[data-ba-editor="add"] .collapsible:has(.tag-editor).measuring,
+html[data-ba-editor="add"] .collapsible:has(.tag-editor).full-hide,
+html[data-ba-editor="add"] .collapsible:has(.tag-editor).hidden {
+  display: block !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Tag editor row — render exactly like a field input box, aligned to
+   the same 28px left/right gutter as .fields. Strip default chrome so
+   nothing draws a phantom outline. */
+html[data-ba-editor="add"] .tag-editor,
+html[data-ba-editor="add"] .tag-spacer,
+html[data-ba-editor="add"] .tag-editor svelte-css-wrapper {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+html[data-ba-editor="add"] .tag-editor {
+  padding: 0 28px 18px 28px !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+/* Hide the leading "tag-options-button" cluster — that's the tag icon plus
+   the tag-plus button bundled inelegantly. Tags are added via typing into
+   the field; no extra icon needed. */
+html[data-ba-editor="add"] .tag-options-button,
+html[data-ba-editor="add"] .tag-add-button {
+  display: none !important;
+}
+
+/* The tag-typing field. NO border-box this time — the previous version
+   reused .editor-field's bordered shape, but stacked beneath FRONT and
+   BACK that created three identical boxes in a row + a wrapping section,
+   which read as "borders everywhere". Tags are now a quieter inline row:
+   just a flat surface with the placeholder text aligned to the same
+   gutter as the field contents above. Chips, when present, sit inline.
+   No visible chrome. */
+html[data-ba-editor="add"] .tag-spacer {
+  flex: 1;
+  min-height: 28px !important;
+  padding: 4px 0 !important;
+  color: var(--ba-ink) !important;
+  font-family: var(--ba-serif) !important;
+  font-size: 12pt !important;
+  line-height: 1.5 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  position: relative;
+  transition: none !important;
+}
+/* Placeholder shown only when there are no tags AND not focused. Quiet
+   ink-faint so the row doesn't shout when empty. */
+html[data-ba-editor="add"] .tag-editor:not(:focus-within):not(:has(.tag)) .tag-spacer::before {
+  content: "Add tags";
+  font-family: var(--ba-sans);
+  font-size: 11pt;
+  color: var(--ba-ink-faint);
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* Tag chips. */
+html[data-ba-editor="add"] .tag {
+  background: color-mix(in srgb, var(--ba-accent) 14%, transparent) !important;
+  color: var(--ba-accent) !important;
+  border-radius: 999px !important;
+  padding: 3px 10px !important;
+  font-size: 10.5pt !important;
+  font-family: var(--ba-sans) !important;
+  font-weight: 500 !important;
+  margin-right: 4px !important;
+}
+
+/* CodeMirror (plain-text mode). */
+html[data-ba-editor="add"] .code-mirror,
+html[data-ba-editor="add"] .CodeMirror {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace !important;
+  font-size: 11.5pt !important;
+  background: var(--ba-field) !important;
+  color: var(--ba-ink) !important;
+}
+
+/* Scrollbars. */
+html[data-ba-editor="add"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html[data-ba-editor="add"] ::-webkit-scrollbar-thumb {
+  background: var(--ba-line-strong);
+  border-radius: 5px;
+}
+html[data-ba-editor="add"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--ba-ink-faint);
+}
+html[data-ba-editor="add"] ::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -6,6 +6,7 @@ from PyQt6 import QtCore
 from aqt.reviewer import Reviewer
 from .. import config
 from ..translations import tr
+from .haptics import trigger as trigger_haptic
 
 _focus_dango_enabled = False
 _dialog_is_showing = False
@@ -350,6 +351,7 @@ def show_dango_dialog(command=None, on_confirm=None):
         return 
     
     _dialog_is_showing = True 
+    trigger_haptic(1)
     
     conf = config.get_config()
     achievements_conf = conf.get("achievements", {})
@@ -457,6 +459,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     def on_button_click():
         global _dialog_is_showing
 
+        trigger_haptic(1)
         _dialog_is_showing = False
         dialog.close()
         if on_confirm:
@@ -465,6 +468,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     def on_exit_click():
         global _dialog_is_showing
 
+        trigger_haptic(1)
         _dialog_is_showing = False
         dialog.close()
         QtCore.QTimer.singleShot(0, lambda: _run_exit_command(command))

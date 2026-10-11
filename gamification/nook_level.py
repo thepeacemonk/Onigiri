@@ -16,8 +16,6 @@ from aqt import mw
 from .. import config
 from ..translations import tr
 
-
-
 XP_PER_REVIEW = 5
 XP_PER_ACHIEVEMENT = 10
 XP_PER_CUSTOM_GOAL = 20
@@ -31,6 +29,14 @@ RECIPE_RUSH_CACHE_TTL = 600      # a ticket we got is reused for 10 minutes
 RECIPE_RUSH_FAIL_RETRY = 1800    # after a failure, wait 30 minutes before asking again
 
 
+def _difficulty_multiplier(value: Any) -> int:
+    """Return the Nook progression multiplier for legacy and current values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in {"legend", "chef", "executive chef"}:
+        return 4
+    if normalized in {"experient", "cook", "sous chef"}:
+        return 2
+    return 1
 
 
 def get_motivational_phrases():
@@ -44,7 +50,7 @@ def get_motivational_phrases():
     ]
 
 # Image filenames are relative to system_files/gamification_images/nook_folder/,
-# organized into subfolders that match the store's 3 tabs (restaurants/sushi/shops).
+# organized into subfolders that match the store's tabs.
 RESTAURANTS = {
     "focus_dango": {
         "name": "focus_dango_name",
@@ -205,7 +211,7 @@ SHOPS = {
         "name": "wizard_shop_name",
         "price": 1200,
         "theme": "#6A4C93",
-        "image": None,
+        "image": "shops/wizard_shop.webp",
         "description": "wizard_shop_desc"
     },
     "onigilab": {
@@ -218,18 +224,89 @@ SHOPS = {
     "paws_whiskers": {
         "name": "paws_whiskers_name",
         "price": 1100,
-        "theme": "#E89CAE",
-        "image": None,
+        "theme": "#11835F",
+        "image": "shops/paws_and_whiskers.webp",
         "description": "paws_whiskers_desc"
     },
     "dino_shop": {
         "name": "dino_shop_name",
         "price": 1400,
-        "theme": "#7A8450",
-        "image": None,
+        "theme": "#39734D",
+        "image": "shops/dino_shop.webp",
         "description": "dino_shop_desc"
     },
 }
+
+# Developer tribute Nooks. These live in their own store/collection category
+# and each has a dedicated Recipe Rush pool in the Onigiri Database script.
+DEVS = {
+    "koeni_nook": {
+        "name": "koeni_nook_name",
+        "price": 1500,
+        "theme": "#D9822B",
+        "image": "devs/Koeni_nook.webp",
+        "description": "koeni_nook_desc",
+    },
+    "dyzur_sushi": {
+        "name": "dyzur_sushi_name",
+        "price": 1500,
+        "theme": "#2F8575",
+        "image": "devs/dyzur_sushi.webp",
+        "description": "dyzur_sushi_desc",
+    },
+    "max_udon_recoin": {
+        "name": "max_udon_recoin_name",
+        "price": 1500,
+        "theme": "#274A82",
+        "image": "devs/max_udon_recoin.webp",
+        "description": "max_udon_recoin_desc",
+    },
+    "maxims_shop": {
+        "name": "maxims_shop_name",
+        "price": 1500,
+        "theme": "#D64A2D",
+        "image": "devs/maxim's_shop.webp",
+        "description": "maxims_shop_desc",
+    },
+    "mochi_girl_shop": {
+        "name": "mochi_girl_shop_name",
+        "price": 1500,
+        "theme": "#4E8D45",
+        "image": "devs/mochi_girl_shop.webp",
+        "description": "mochi_girl_shop_desc",
+    },
+    "nitro_nook": {
+        "name": "nitro_nook_name",
+        "price": 1500,
+        "theme": "#D65732",
+        "image": "devs/nitro_nook.webp",
+        "description": "nitro_nook_desc",
+    },
+    "royal_kulfi": {
+        "name": "royal_kulfi_name",
+        "price": 1500,
+        "theme": "#BE3958",
+        "image": "devs/royal_kulfi.webp",
+        "description": "royal_kulfi_desc",
+    },
+    "tinamon_nook": {
+        "name": "tinamon_nook_name",
+        "price": 1500,
+        "theme": "#2458A6",
+        "image": "devs/tinamon_nook.webp",
+        "description": "tinamon_nook_desc",
+    },
+}
+
+ITEM_GROUPS = (RESTAURANTS, EVOLUTIONS, SHOPS, DEVS)
+
+
+def _find_catalog_item(item_id: str) -> Optional[Dict[str, Any]]:
+    for group in ITEM_GROUPS:
+        item = group.get(item_id)
+        if item:
+            return item
+    return None
 
 def get_localized_restaurants():
     localized = copy.deepcopy(RESTAURANTS)
@@ -247,6 +324,14 @@ def get_localized_evolutions():
 
 def get_localized_shops():
     localized = copy.deepcopy(SHOPS)
+    for key, data in localized.items():
+        data["name"] = tr(data["name"])
+        data["description"] = tr(data["description"])
+    return localized
+
+
+def get_localized_devs():
+    localized = copy.deepcopy(DEVS)
     for key, data in localized.items():
         data["name"] = tr(data["name"])
         data["description"] = tr(data["description"])
@@ -425,22 +510,25 @@ class NookLevelManager:
                 updates["total_xp"] = conf_xp
                 updates["level"] = int(restaurant_conf.get("level", 0))
                 
-                # Also migrate items if needed
-                conf_owned = restaurant_conf.get("owned_items", [])
-                json_owned = game_state.get("owned_items", ["default"])
-                merged_owned = list(set(conf_owned + json_owned))
-                if len(merged_owned) > len(json_owned):
-                     updates["owned_items"] = merged_owned
-                     
-                # Migrate theme
-                conf_theme = restaurant_conf.get("current_theme_id", "default")
-                json_theme = game_state.get("current_theme_id", "default")
-                if conf_theme != "default" and json_theme == "default":
-                    updates["current_theme_id"] = conf_theme
+            # Purchases and the selected theme do not depend on XP.
+            conf_owned = restaurant_conf.get("owned_items", [])
+            json_owned = game_state.get("owned_items", ["default"])
+            merged_owned = list(dict.fromkeys(json_owned + conf_owned))
+            if merged_owned != json_owned:
+                updates["owned_items"] = merged_owned
+
+            conf_theme = restaurant_conf.get("current_theme_id", "default")
+            json_theme = game_state.get("current_theme_id", "default")
+            if conf_theme != "default" and json_theme == "default":
+                updates["current_theme_id"] = conf_theme
+            conf_name = restaurant_conf.get("name", "Nook Level")
+            if (conf_name not in ("Nook Level", "Restaurant Level")
+                    and game_state.get("name") in ("Nook Level", "Restaurant Level")):
+                updates["name"] = conf_name
 
         # Apply migrations if any
         if updates:
-            self._update_gamification_data(updates)
+            self._update_gamification_data(updates, immediate=True)
             # Refresh state
             game_state = self._get_gamification_state()
         
@@ -522,11 +610,32 @@ class NookLevelManager:
             "last_notified_milestone": daily_special.get("last_notified_milestone", 0),
             "last_notified_percent": daily_special.get("last_notified_percent", 0),
         })
+
+        # Tickets saved before delivery became card-free include those cards in
+        # their target. Remove that legacy cost once so an in-progress Rush can
+        # finish after preparation without waiting for invisible extra cards.
+        delivery_cost_removed = False
+        try:
+            legacy_delivery_cards = max(
+                0, int(daily_special.get("delivery_cards", 0) or 0)
+            )
+        except (TypeError, ValueError):
+            legacy_delivery_cards = 0
+        if legacy_delivery_cards:
+            try:
+                old_target = max(1, int(daily_special.get("target", 1) or 1))
+            except (TypeError, ValueError):
+                old_target = 1
+            new_target = max(1, old_target - legacy_delivery_cards)
+            daily_special["target"] = new_target
+            daily_special["target_cards"] = new_target
+            daily_special["delivery_cards"] = 0
+            delivery_cost_removed = True
         
         reset_occurred = self._check_and_reset_daily_special(daily_special)
         sync_occurred = self._sync_daily_progress_with_db(daily_special)
         
-        if reset_occurred or sync_occurred:
+        if reset_occurred or sync_occurred or delivery_cost_removed:
             # Update state in gamification.json
             self._update_gamification_daily_special(daily_special)
             
@@ -582,6 +691,14 @@ class NookLevelManager:
                 "price": int(item.get("price", 0) or 0),
             })
 
+        for item_id, item in DEVS.items():
+            restaurants.append({
+                "id": item_id,
+                "name": tr(item.get("name", item_id), item_id.replace("_", " ").title()),
+                "type": "developer",
+                "price": int(item.get("price", 0) or 0),
+            })
+
         return restaurants
 
     def _normalize_ingredient_cards(self, ingredients: Any, target: int) -> List[Dict[str, Any]]:
@@ -633,27 +750,19 @@ class NookLevelManager:
         except (TypeError, ValueError):
             prep_cards = 0
 
-        try:
-            delivery_cards = int(ticket.get("delivery_cards") or ticket.get("deliveryCards") or 0)
-        except (TypeError, ValueError):
-            delivery_cards = 0
-
         ingredients = self._normalize_ingredient_cards(ticket.get("ingredients"), max(target, 1))
         ingredient_total = sum(int(item.get("cards", 0) or 0) for item in ingredients)
 
         if target <= 0:
-            target = ingredient_total + max(0, prep_cards) + max(0, delivery_cards)
+            target = ingredient_total + max(0, prep_cards)
         if target <= 0:
             return None
 
         if prep_cards <= 0:
             prep_cards = max(1, int(target * 0.2))
-        if delivery_cards <= 0:
-            delivery_cards = max(1, target - ingredient_total - prep_cards)
-        if ingredient_total + prep_cards + delivery_cards != target:
-            delivery_cards = max(1, target - ingredient_total - prep_cards)
-            if ingredient_total + prep_cards + delivery_cards <= 0:
-                delivery_cards = 1
+        # Delivery is the completion destination, not an additional card-cost
+        # stage. The target ends when ingredients and preparation are done.
+        target = max(1, ingredient_total + prep_cards)
 
         difficulty = str(ticket.get("difficulty") or "common").strip().lower()
         if difficulty not in {"common", "uncommon", "rare", "epic", "legendary"}:
@@ -668,7 +777,7 @@ class NookLevelManager:
             "target_cards": max(1, int(target)),
             "ingredients": ingredients,
             "prep_cards": max(1, int(prep_cards)),
-            "delivery_cards": max(1, int(delivery_cards)),
+            "delivery_cards": 0,
             "preparation": str(ticket.get("preparation") or ticket.get("prep") or "").strip(),
             "delivery": str(ticket.get("delivery") or ticket.get("deliver_to") or ticket.get("deliverTo") or "").strip(),
             "restaurant_id": str(ticket.get("restaurant_id") or ticket.get("restaurantId") or self.get_current_theme_id()).strip() or "default",
@@ -843,17 +952,14 @@ class NookLevelManager:
         current = max(0, int(daily_special.get("current_progress", 0) or 0))
         target = max(1, int(daily_special.get("target", 1) or 1))
         ingredients = daily_special.get("ingredients") or []
+        prep_cards = max(1, int(daily_special.get("prep_cards", max(1, int(target * 0.2))) or 1))
         ingredient_total = sum(int(item.get("cards", 0) or 0) for item in ingredients if isinstance(item, dict))
         if ingredient_total <= 0:
-            ingredient_total = max(1, int(target * 0.7))
-
-        prep_cards = max(1, int(daily_special.get("prep_cards", max(1, int(target * 0.2))) or 1))
+            ingredient_total = max(1, target - prep_cards)
         if current < ingredient_total:
             return "collect"
         if current < min(target, ingredient_total + prep_cards):
             return "prepare"
-        if current < target:
-            return "deliver"
         return "completed"
 
     def _update_recipe_rush_stage(self, daily_special: Dict[str, Any]) -> None:
@@ -877,10 +983,11 @@ class NookLevelManager:
 
         conf, restaurant_conf = self._config_bundle()
         difficulty = restaurant_conf.get("difficulty", "Apprendice")
-        if difficulty == "Cook":
+        multiplier = _difficulty_multiplier(difficulty)
+        if multiplier == 2:
             level_loss = 1
             coins_lost = 25
-        elif difficulty == "Chef":
+        elif multiplier == 4:
             level_loss = 2
             coins_lost = 75
         else:
@@ -993,7 +1100,7 @@ class NookLevelManager:
         daily_special["difficulty"] = (recipe_data or {}).get("difficulty", "common")
         daily_special["ingredients"] = (recipe_data or {}).get("ingredients", [])
         daily_special["prep_cards"] = (recipe_data or {}).get("prep_cards", max(1, int(new_target * 0.2)))
-        daily_special["delivery_cards"] = (recipe_data or {}).get("delivery_cards", max(1, int(new_target * 0.1)))
+        daily_special["delivery_cards"] = 0
         daily_special["preparation"] = (recipe_data or {}).get("preparation", "")
         daily_special["delivery"] = (recipe_data or {}).get("delivery", "")
         # restaurant_id always reflects the equipped Nook/shop. A missing
@@ -1194,11 +1301,12 @@ class NookLevelManager:
         # that at the manager boundary so the displayed price and charged price
         # cannot drift apart between clients.
         difficulty = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
-        multiplier = 4 if difficulty == "Chef" else 2 if difficulty == "Cook" else 1
+        multiplier = _difficulty_multiplier(difficulty)
         restaurants = get_localized_restaurants()
         evolutions = get_localized_evolutions()
         shops = get_localized_shops()
-        for group in (restaurants, evolutions, shops):
+        devs = get_localized_devs()
+        for group in (restaurants, evolutions, shops, devs):
             for item in group.values():
                 if isinstance(item.get("price"), int):
                     item["price"] *= multiplier
@@ -1209,7 +1317,8 @@ class NookLevelManager:
             "current_theme_id": current,
             "restaurants": restaurants,
             "evolutions": evolutions,
-            "shops": shops
+            "shops": shops,
+            "devs": devs,
         }
 
     def refresh_state(self) -> None:
@@ -1240,7 +1349,7 @@ class NookLevelManager:
         if item_id in owned:
             return False, "Item already owned."
             
-        item = RESTAURANTS.get(item_id) or EVOLUTIONS.get(item_id) or SHOPS.get(item_id)
+        item = _find_catalog_item(item_id)
         if not item:
             return False, "Item not found."
 
@@ -1262,7 +1371,7 @@ class NookLevelManager:
 
         conf = config.get_config()
         difficulty = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
-        multiplier = 4 if difficulty == "Chef" else 2 if difficulty == "Cook" else 1
+        multiplier = _difficulty_multiplier(difficulty)
         price = int(item["price"]) * multiplier
         if coins < price:
             return False, "Not enough Taiyaki Coins."
@@ -1304,7 +1413,7 @@ class NookLevelManager:
         if current_id == "default":
             return "#D49083"
             
-        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id) or SHOPS.get(current_id)
+        item = _find_catalog_item(current_id)
         if item:
             return item["theme"]
         return None
@@ -1317,7 +1426,7 @@ class NookLevelManager:
         if current_id == "default":
             return "sushi/onigiri_stand.webp"
 
-        item = RESTAURANTS.get(current_id) or EVOLUTIONS.get(current_id) or SHOPS.get(current_id)
+        item = _find_catalog_item(current_id)
         if item and item.get("image"):
             return item["image"]
         return "sushi/onigiri_stand.webp"
@@ -1882,9 +1991,7 @@ class NookLevelManager:
     
     def _get_difficulty_multiplier(self) -> int:
         diff = self._restaurant_conf_readonly().get("difficulty", "Apprendice")
-        if diff == "Cook": return 2
-        if diff == "Chef": return 4
-        return 1
+        return _difficulty_multiplier(diff)
 
     def _xp_for_next(self, level: int) -> int:
         return 50 * (2 * level + 1) * self._get_difficulty_multiplier()
@@ -2126,7 +2233,10 @@ def default_chip_progress_color() -> str:
     try:
         if getattr(mw, "col", None) and hasattr(mw.col, "conf"):
             custom = _valid_hex_color(
-                mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+                mw.col.conf.get(
+                    "onigiri_profile_level_bar_custom_color",
+                    config.DEFAULT_PROFILE_LEVEL_COLOR,
+                )
             )
             if custom:
                 return custom
@@ -2135,7 +2245,7 @@ def default_chip_progress_color() -> str:
             return _valid_hex_color(theme_color) or str(theme_color)
     except Exception:
         pass
-    return "#ffb347"
+    return config.DEFAULT_PROFILE_LEVEL_COLOR
 
 
 def get_chip_style_values(

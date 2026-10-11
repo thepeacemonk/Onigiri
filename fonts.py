@@ -62,10 +62,11 @@ FONTS = {
         "family": "Instrument Serif",
         "file": "Instrument.ttf",
     },
+    # Keep the legacy key so saved SpaceMono selections now resolve to PaperMono.
     "space_mono": {
-        "name": "Space",
-        "family": "SpaceMono",
-        "file": "SpaceMono.ttf",
+        "name": "PaperMono",
+        "family": "Paper Mono",
+        "file": "PaperMono-Regular.ttf",
     },
     "silkscreen": {
         "name": "Silkscreen",

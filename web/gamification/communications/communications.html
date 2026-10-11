@@ -1,0 +1,28 @@
+<main class="communications-app" id="communications-app">
+  <header class="masthead">
+    <div class="brand-logo-wrap">
+      <!--__ONIGIRI_LOGO__-->
+    </div>
+    <div class="heading-copy">
+      <h1 data-i18n-text="communications_title">Announcements</h1>
+      <p class="subtitle" data-i18n-text="communications_subtitle">Updates and messages from the Onigiri team.</p>
+    </div>
+    <button class="sync-button" type="button" data-action="sync" onclick="pycmd('communications:sync')">
+      <span class="sync-icon" aria-hidden="true">↻</span>
+      <span data-i18n-text="communications_sync">Sync announcements</span>
+    </button>
+  </header>
+
+  <section class="inbox-toolbar" aria-label="Inbox controls">
+    <div class="inbox-summary">
+      <span class="unread-count" data-bind="unreadCount">0 unread</span>
+      <span class="last-synced" data-bind="lastSynced">Not synced yet</span>
+    </div>
+    <button class="mark-all" type="button" data-action="mark-all" onclick="pycmd('communications:read-all')" hidden>
+      <span data-i18n-text="communications_mark_all_read">Mark all as read</span>
+    </button>
+  </section>
+
+  <div class="status-line" data-bind="status" role="status" aria-live="polite" hidden></div>
+  <section class="message-list" data-bind="messages" aria-live="polite"></section>
+</main>

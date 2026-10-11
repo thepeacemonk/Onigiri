@@ -48,27 +48,24 @@
     function getSidebarButtonLayout() {
         const configLayout = window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarButtonLayout;
         const visible = Array.isArray(configLayout && configLayout.visible) ? configLayout.visible : [];
+        const more = Array.isArray(configLayout && configLayout.more)
+            ? configLayout.more : ['get_shared', 'create_deck', 'import_file'];
         const archived = Array.isArray(configLayout && configLayout.archived) ? configLayout.archived : [];
-        return { visible, archived: new Set(archived) };
+        return { visible, more, archived: new Set(archived) };
     }
 
-    function isSidebarActionVisible(actionId) {
-        const layout = getSidebarButtonLayout();
-        if (layout.archived.has(actionId)) return false;
-        if (!layout.visible.length) return true;
-        return layout.visible.includes(actionId);
-    }
-
-    function moveToolbarBelowProfile(toolbar) {
+    function moveToolbarToActionsSection(toolbar) {
         const sidebar = document.querySelector('.sidebar-left');
         const expandedContent = sidebar ? sidebar.querySelector('.sidebar-expanded-content') : null;
         if (!toolbar || !expandedContent) return;
 
-        const profileBar = expandedContent.querySelector('.profile-bar, .onigiri-profile.opro-surface-sidebar');
         toolbar.classList.add('sidebar-actions-inline');
-        if (profileBar) {
-            profileBar.insertAdjacentElement('afterend', toolbar);
+        const actionsSection = expandedContent.querySelector('.onigiri-sidebar-actions-section');
+        if (actionsSection) {
+            actionsSection.appendChild(toolbar);
         } else if (toolbar.parentElement !== expandedContent) {
+            // Compatibility with cached/older templates that predate the
+            // independently reorderable Actions section.
             expandedContent.insertBefore(toolbar, expandedContent.firstChild);
         }
     }
@@ -84,10 +81,11 @@
 
         const toolbar = setupSidebarToolbar();
         if (!toolbar) return;
-        moveToolbarBelowProfile(toolbar);
+        moveToolbarToActionsSection(toolbar);
 
         const pkg = window.ONIGIRI_CONFIG.addonPackage || '1011095603';
         const iconBase = `/_addons/${pkg}/system_files/system_icons/unavailable_for_users/`;
+        const pickableIconBase = `/_addons/${pkg}/system_files/system_icons/available_for_users/`;
         const userIconBase = `/_addons/${pkg}/user_files/icons/`;
         const collapsedIcons = window.ONIGIRI_CONFIG.collapsedIcons || {};
 
@@ -105,6 +103,18 @@
             'import_file': 'import_file.svg',
         };
 
+        const protectedIconNames = Object.values(defaultIcons);
+        const actionIconUrl = (value, fallbackName) => {
+            const iconValue = String(value || '');
+            if (!iconValue) return `${iconBase}${fallbackName}`;
+            if (iconValue.startsWith('system:')) {
+                const iconName = iconValue.slice('system:'.length).split('/').pop();
+                const base = protectedIconNames.includes(iconName) ? iconBase : pickableIconBase;
+                return `${base}${iconName}`;
+            }
+            return `${userIconBase}${iconValue.split('/').pop()}`;
+        };
+
         const actions = [
             { id: 'add', cmd: 'add', title: T('add', 'Add') },
             { id: 'browse', cmd: 'browse', title: T('browse', 'Browser') },
@@ -112,18 +122,33 @@
             { id: 'sync', cmd: 'sync', title: T('sync', 'Sync') },
             { id: 'settings', cmd: 'openOnigiriSettings', title: T('settings', 'Settings') },
             { id: 'gamification', cmd: 'openGamificationSettings', title: T('onigiri_games', 'Onigiri Games') },
-            { id: 'more', cmd: null, title: T('more', 'More') }
+            { id: 'more', cmd: null, title: T('more', 'More') },
+            { id: 'get_shared', cmd: 'shared', title: T('get_shared', 'Get Shared') },
+            { id: 'create_deck', cmd: 'onigiri_create_deck', title: T('create_deck', 'Create Deck') },
+            { id: 'import_file', cmd: 'import', title: T('import_file', 'Import File') }
         ];
 
-        actions.forEach(action => {
-            if (!isSidebarActionVisible(action.id)) return;
+        const actionById = Object.fromEntries(actions.map(action => [action.id, action]));
+        const layout = getSidebarButtonLayout();
+        const orderedActions = layout.visible.length
+            ? layout.visible
+                .filter((id, index, ids) => (
+                    !!actionById[id] &&
+                    !layout.archived.has(id) &&
+                    !layout.more.includes(id) &&
+                    ids.indexOf(id) === index
+                ))
+                .map(id => actionById[id])
+            : actions.filter(action => (
+                !layout.archived.has(action.id) && !layout.more.includes(action.id)
+            ));
+
+        orderedActions.forEach(action => {
             if (toolbar.querySelector(`.action-btn.action-${action.id}`)) return;
 
             // Resolve icon URL: use custom collapsed icon if set, else fall back to system icon
             const customFile = collapsedIcons[action.id];
-            const iconUrl = customFile
-                ? `${userIconBase}${customFile}`
-                : `${iconBase}${defaultIcons[action.id]}`;
+            const iconUrl = actionIconUrl(customFile, defaultIcons[action.id]);
 
             const btn = document.createElement('div');
             btn.className = `action-btn action-${action.id}`;
@@ -149,13 +174,13 @@
             }
         });
 
-        setupMoreDropdown(toolbar, iconBase, userIconBase, collapsedIcons, defaultIcons);
+        setupMoreDropdown(toolbar, layout.more, collapsedIcons, defaultIcons, actionIconUrl);
         if (!toolbar.querySelector('.action-btn')) {
             toolbar.remove();
         }
     }
 
-    function setupMoreDropdown(toolbar, iconBase, userIconBase, collapsedIcons, defaultIcons) {
+    function setupMoreDropdown(toolbar, moreIds, collapsedIcons, defaultIcons, actionIconUrl) {
         // Remove old dropdown if it exists
         const old = toolbar.querySelector('.more-dropdown-menu');
         if (old) old.remove();
@@ -166,19 +191,25 @@
         // Remove any previously created inline more-items
         toolbar.querySelectorAll('.action-btn.more-item').forEach(el => el.remove());
 
-        const items = [
+        const allItems = [
             { label: T('get_shared', 'Get Shared'), id: 'get_shared', cmd: 'shared' },
             { label: T('create_deck', 'Create Deck'), id: 'create_deck', cmd: 'onigiri_create_deck' },
             { label: T('import_file', 'Import File'), id: 'import_file', cmd: 'import' }
         ];
+        const itemById = Object.fromEntries(allItems.map(item => [item.id, item]));
+        const archived = getSidebarButtonLayout().archived;
+        const items = moreIds
+            .filter((id, index) => itemById[id] && !archived.has(id) && moreIds.indexOf(id) === index)
+            .map(id => itemById[id]);
 
-        // Insert the 3 inline buttons right after the More button
+        // Insert the actions currently assigned to More right after its button.
         let insertAfter = moreBtn;
         items.forEach(item => {
             const customFile = (collapsedIcons || {})[item.id];
-            const iconUrl = customFile
-                ? `${userIconBase}${customFile}`
-                : `${iconBase}${(defaultIcons || {})[item.id] || item.id + '.svg'}`;
+            const iconUrl = actionIconUrl(
+                customFile,
+                (defaultIcons || {})[item.id] || item.id + '.svg'
+            );
 
             const btn = document.createElement('div');
             btn.className = `action-btn more-item action-${item.id}`;
@@ -257,13 +288,20 @@
         }
 
         const homeIcon = homeButton.querySelector('.home-btn-icon');
-        if (homeIcon && homeIconUrl) {
+        // The current server template already applies the Settings Web icon
+        // choice. Keep the default only as a compatibility fallback for older
+        // cached markup that has no icon mask yet.
+        if (homeIcon && homeIconUrl &&
+            !homeIcon.classList.contains('deck-header-emoji-icon') &&
+            !homeIcon.style.maskImage) {
             homeIcon.style.maskImage = `url("${homeIconUrl}")`;
             homeIcon.style.webkitMaskImage = `url("${homeIconUrl}")`;
         }
 
-        if (homeButton.parentElement !== actions || homeButton.previousElementSibling !== sortButton) {
-            sortButton.insertAdjacentElement('afterend', homeButton);
+        // Ready to Go sits immediately before Home when both are in the
+        // header; with no Ready marker, Home stays at the far right.
+        if (homeButton.parentElement !== actions || homeButton !== actions.lastElementChild) {
+            actions.appendChild(homeButton);
         }
     }
 
@@ -440,6 +478,7 @@
         const sidebarEl = document.querySelector('.sidebar-left');
         const containerEl = document.querySelector('.container.modern-main-menu');
         if (!handle || !sidebarEl || handle.dataset.onigiriSetup) return;
+        if (window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarWidthPinned) return;
         handle.dataset.onigiriSetup = 'true';
 
         let hitbox = handle.querySelector('.resize-handle-hitbox');
@@ -772,7 +811,7 @@
             if (open && sidebar.classList.contains('sidebar-collapsed') && typeof window.onigiriExpandSidebar === 'function') {
                 window.onigiriExpandSidebar();
             }
-            sidebar.classList.toggle('profile-panel-open', !!open);
+            sidebar.classList.toggle('profile-sidebar-open', !!open);
             if (typeof window.onigiriUpdateSidebarEdgeToggle === 'function') {
                 requestAnimationFrame(window.onigiriUpdateSidebarEdgeToggle);
             }
@@ -781,14 +820,17 @@
         window.OnigiriProfileSidebar = {
             open: (event) => setOpen(true, event),
             close: (event) => setOpen(false, event),
-            toggle: (event) => setOpen(!sidebar.classList.contains('profile-panel-open'), event)
+            toggle: (event) => setOpen(!sidebar.classList.contains('profile-sidebar-open'), event)
         };
     }
 
     function init() {
-        const sidebar = document.querySelector('.sidebar-left.skeleton-loading');
-        if (sidebar) {
-            setTimeout(() => sidebar.classList.remove('skeleton-loading'), 150);
+        // Never leave the sidebar hidden if a later initializer fails. The
+        // startup class only masks individual placeholders and is cleared by
+        // this independent timer before the rest of init does any work.
+        const bootSidebar = document.querySelector('.sidebar-left.skeleton-loading');
+        if (bootSidebar) {
+            window.setTimeout(() => bootSidebar.classList.remove('skeleton-loading'), 150);
         }
 
         const sidebarEl = document.querySelector('.sidebar-left');
@@ -796,12 +838,26 @@
         const edgeToggleBtn = document.getElementById('onigiri-sidebar-edge-toggle');
         const edgeToggleZone = document.querySelector('.sidebar-edge-toggle-zone');
         const edgePill = document.getElementById('onigiri-sidebar-edge-pill');
+        const sidebarWidthPinned = !!(
+            window.ONIGIRI_CONFIG && window.ONIGIRI_CONFIG.sidebarWidthPinned
+        );
         if (legacyToggleBtn) legacyToggleBtn.remove();
+        if (sidebarEl) sidebarEl.classList.toggle('sidebar-width-pinned', sidebarWidthPinned);
+        if (edgePill) edgePill.classList.toggle('sidebar-width-pinned', sidebarWidthPinned);
 
         let savedSidebarWidth = null;
         let edgeToggleCollapseLocked = false;
         let lastSidebarOnRight = false;
         let edgeHoverTimer = null;
+        let edgeToggleFrame = null;
+
+        function scheduleSidebarEdgeToggle() {
+            if (edgeToggleFrame !== null) return;
+            edgeToggleFrame = requestAnimationFrame(() => {
+                edgeToggleFrame = null;
+                updateSidebarEdgeToggle();
+            });
+        }
 
         function isSidebarOnRight() {
             const mainContent = document.querySelector('.main-content');
@@ -1207,12 +1263,12 @@
                     expandSidebar();
                 });
             }
-            window.addEventListener('resize', updateSidebarEdgeToggle);
+            window.addEventListener('resize', scheduleSidebarEdgeToggle);
             if (typeof ResizeObserver !== 'undefined') {
-                const edgeToggleObserver = new ResizeObserver(updateSidebarEdgeToggle);
+                const edgeToggleObserver = new ResizeObserver(scheduleSidebarEdgeToggle);
                 edgeToggleObserver.observe(sidebarEl);
             }
-            requestAnimationFrame(updateSidebarEdgeToggle);
+            scheduleSidebarEdgeToggle();
         }
 
         setupResizeHandle();
@@ -1222,6 +1278,7 @@
         setupArchivedHomeButton();
         updateDeckLayouts(); // Initial call
         updateDeckFocusLayout(); // Add this line to handle initial state
+
     }
 
     if (document.readyState === 'loading') {

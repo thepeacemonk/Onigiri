@@ -1,0 +1,254 @@
+/* Anki Design — custom deck-options menu.
+
+   Triggered by the gear button next to a deck name. Replaces Anki's
+   native QMenu (which doesn't match the rest of the chrome) with a
+   small floating panel anchored to the gear. Pure HTML/CSS, no JS
+   framework — see web/deckopts.js for behavior. */
+
+.ad-menu {
+  position: absolute;
+  z-index: 1000;
+  min-width: 184px;
+  padding: 6px;
+  background: var(--rf-paper, #faf7f0);
+  border: 1px solid var(--rf-line, #e3decf);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.04),
+    0 8px 24px -8px rgba(0, 0, 0, 0.18),
+    0 16px 40px -16px rgba(0, 0, 0, 0.12);
+  font-family: var(--rf-sans, "Inter", sans-serif);
+  color: var(--rf-ink, #1a1a1a);
+  -webkit-user-select: none;
+  user-select: none;
+  /* Open animation — fade + small downward translate. */
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.ad-menu.ad-menu--open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* All menu-item rules are scoped with `.ad-menu` to out-specify Anki's
+   `.fancy button` (0,1,1), which would otherwise paint a pill background,
+   border, drop shadow, and 15px corner radius on every item. */
+.ad-menu .ad-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  /* `<button>` defaults to content-box in WebKit, so width:100% + padding
+     pushes the hover background past the menu's right edge. Border-box
+     keeps the highlight inside. */
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  text-align: left;
+  font: 500 13px/1.2 inherit;
+  letter-spacing: 0.005em;
+  color: var(--rf-ink, #1a1a1a);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.ad-menu .ad-menu-item:hover,
+.ad-menu .ad-menu-item:focus-visible {
+  background: var(--rf-row-hover, rgba(0, 0, 0, 0.04));
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+.ad-menu .ad-menu-item .ad-menu-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--rf-ink-faint, #8b8576);
+  transition: color 120ms ease;
+}
+.ad-menu .ad-menu-item:hover .ad-menu-icon,
+.ad-menu .ad-menu-item:focus-visible .ad-menu-icon {
+  color: var(--rf-ink-dim, #4a4538);
+}
+.ad-menu .ad-menu-item .ad-menu-l {
+  flex: 1;
+}
+
+.ad-menu .ad-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--rf-line, #e3decf);
+}
+
+/* Destructive items — quieter at rest, take on a warning tint on hover. */
+.ad-menu .ad-menu-item.ad-menu-danger {
+  color: var(--rf-ink-dim, #4a4538);
+}
+.ad-menu .ad-menu-item.ad-menu-danger:hover,
+.ad-menu .ad-menu-item.ad-menu-danger:focus-visible {
+  background: rgba(200, 68, 49, 0.08);
+  color: #c84431;
+}
+.ad-menu .ad-menu-item.ad-menu-danger:hover .ad-menu-icon,
+.ad-menu .ad-menu-item.ad-menu-danger:focus-visible .ad-menu-icon {
+  color: #c84431;
+}
+
+/* Inline deck rename — see web/deckopts.js → startInlineRename. The
+   <input> sits where `a.deck` would, and inherits the same type metrics
+   so the row doesn't shift when we swap in the editor. Anki's `.fancy
+   input` rule paints native chrome on every input, so we have to be
+   explicit about stripping border/background/padding. */
+.ba-home input.ad-deck-rename,
+.ba-home input.ad-deck-rename:focus {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--rf-ink) !important;
+  font: 500 16px/1.25 var(--rf-serif) !important;
+  letter-spacing: -0.005em;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  -webkit-appearance: none;
+  appearance: none;
+  caret-color: var(--rf-ink-strong, var(--rf-ink));
+}
+.ba-home input.ad-deck-rename.filtered {
+  color: var(--rf-accent, #0077c8) !important;
+  font-style: italic;
+}
+.ba-home input.ad-deck-rename:disabled {
+  opacity: 0.6;
+}
+/* Hero variant — the home page shows an `<h1 class="ba-deck-name">` when a
+   user has just one deck. The inline editor sitting in its place needs
+   the hero type metrics (42px serif, tighter tracking), not the row's
+   16px metrics that inherit from `.ba-home a.deck`. */
+.ba-home input.ad-deck-rename--hero,
+.ba-home input.ad-deck-rename--hero:focus {
+  font: 500 42px/1 var(--rf-serif) !important;
+  letter-spacing: -0.025em;
+  color: var(--rf-ink) !important;
+}
+@media (max-width: 480px) {
+  .ba-home input.ad-deck-rename--hero { font-size: 17px !important; }
+}
+
+/* ---- Move-to picker (deckopts.js → openMovePicker) ----------------------
+   The menu body is swapped for a header, a search field and a scrolling
+   list of candidate parents. Same panel, so it stays anchored to the gear. */
+.ad-menu.ad-menu--picker {
+  min-width: 264px;
+  max-width: 340px;
+}
+.ad-menu .ad-menu-picker-h {
+  padding: 6px 10px 8px;
+  font: 500 12px/1.3 var(--rf-sans, sans-serif);
+  color: var(--rf-ink-dim, #4a4538);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-menu .ad-menu-picker-h b {
+  font-weight: 600;
+  color: var(--rf-ink, #1a1a1a);
+}
+/* Anki's `.fancy input` paints native chrome on every input — strip it. */
+.ad-menu input.ad-menu-picker-q,
+.ad-menu input.ad-menu-picker-q:focus {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 7px 10px;
+  font: 500 13px/1.2 var(--rf-sans, sans-serif);
+  color: var(--rf-ink, #1a1a1a);
+  background: var(--rf-row-hover, rgba(0, 0, 0, 0.04)) !important;
+  border: 1px solid var(--rf-line, #e3decf) !important;
+  border-radius: 7px !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+  caret-color: var(--rf-accent, #0077c8);
+}
+.ad-menu input.ad-menu-picker-q:focus {
+  border-color: var(--rf-line-2, #cfc8b6) !important;
+}
+.ad-menu input.ad-menu-picker-q::placeholder {
+  color: var(--rf-ink-faint, #8b8576);
+}
+.ad-menu .ad-menu-picker-list {
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ad-menu .ad-menu-pick {
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+.ad-menu .ad-menu-pick .ad-menu-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ad-menu .ad-menu-pick.is-active {
+  background: var(--rf-row-hover, rgba(0, 0, 0, 0.04));
+}
+.ad-menu .ad-menu-pick--top .ad-menu-l {
+  color: var(--rf-ink-dim, #4a4538);
+  font-style: italic;
+}
+.ad-menu .ad-menu-picker-empty {
+  padding: 10px;
+  font: 500 12px/1.3 var(--rf-sans, sans-serif);
+  color: var(--rf-ink-faint, #8b8576);
+  text-align: center;
+}
+/* Inline rename inside the shared list rows (same metrics as the name
+   button, so nothing shifts when the input swaps in). */
+.ad-list-row input.ad-deck-rename,
+.ad-list-row input.ad-deck-rename:focus {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px 4px !important;
+  margin: 0 !important;
+  color: var(--rf-ink) !important;
+  font: 500 16px/1.25 var(--rf-serif) !important;
+  letter-spacing: -0.005em;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  -webkit-appearance: none;
+  appearance: none;
+  caret-color: var(--rf-ink-strong, var(--rf-ink));
+}
+.ad-list-row[data-depth="1"] input.ad-deck-rename,
+.ad-list-row[data-depth="2"] input.ad-deck-rename,
+.ad-list-row[data-depth="3"] input.ad-deck-rename {
+  font-weight: 400 !important;
+  font-size: 15px !important;
+}
+/* Slim, paper-toned scrollbar inside the picker list (the default gutter
+   paints a white column against the panel). */
+.ad-menu .ad-menu-picker-list::-webkit-scrollbar { width: 6px; }
+.ad-menu .ad-menu-picker-list::-webkit-scrollbar-track { background: transparent; }
+.ad-menu .ad-menu-picker-list::-webkit-scrollbar-thumb {
+  background: var(--rf-line-2, #cfc8b6);
+  border-radius: 3px;
+}

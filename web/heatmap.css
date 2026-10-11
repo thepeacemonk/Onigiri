@@ -73,7 +73,7 @@
     font-weight: 600;
     line-height: 1.15;
     letter-spacing: 0.04em;
-    color: var(--fg);
+    color: var(--heatmap-title-color, var(--fg)) !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -935,4 +935,26 @@
     50% {
         opacity: 0.4;
     }
+}
+
+/* ══ Particles ═════════════════════════════════════════════
+   Each original day symbol moves as one particle. Its existing mask and
+   heatmap palette supply the shape and ink, without new global tokens. */
+/* The preference controls tooltip visibility even when reduced motion or
+   an offscreen grid temporarily pauses the spring animation. */
+[data-particles-animation="true"] .heatmap-day-cell::after {
+    content: none;
+    display: none;
+}
+.heatmap-grid.ptc .day-shape {
+    pointer-events: none;
+    transition: none;
+}
+/* Avoid running the separate filter glow and hover scaling alongside the
+   spring. These change the masked texture instead of just its position. */
+[data-particles-animation="true"] .heatmap-day-cell .day-shape {
+    animation: none !important;
+}
+[data-particles-animation="true"] .heatmap-day-cell.browsable:is(:hover, :focus-visible, :active) .day-shape {
+    transform: none;
 }

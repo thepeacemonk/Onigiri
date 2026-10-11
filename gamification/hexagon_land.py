@@ -5,7 +5,6 @@ import json
 import math
 import os
 import re
-import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
@@ -17,11 +16,12 @@ from aqt import gui_hooks, mw
 from aqt.qt import QDesktopServices, QDialog, QTimer, QUrl, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from .. import config
+from .. import config, safe_storage
 from ..translations import tr
+from .haptics import trigger as trigger_haptic
 
 
-BUY_HEX_COINS_URL = "https://buymeacoffee.com/peacemonk"
+BUY_HEX_COINS_URL = "https://buymeacoffee.com/peacemonk/extras"
 HEXLAND_GUIDE_URL = "https://onigiri-addon-guide.notion.site/Hexagon-Land-3a43d4f0321380c19e8adfe630ca9a40"
 KEYS_OF_THE_ISLAND_COST = 5000
 SANDBOX_MODE = False
@@ -1621,15 +1621,11 @@ class HexagonLandManager:
         path = self.data_path()
         if self._state_cache is not None and self._data_path_cache == path:
             return copy.deepcopy(self._state_cache)
-        if not os.path.exists(path):
-            state = HexagonLandState()
-            self._state_cache = state
-            self.save(state)
-            return copy.deepcopy(state)
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                raw = json.load(handle)
+            raw = safe_storage.read_json(path, default={}, label="Your Hexagon Land island")
             state = HexagonLandState(**raw)
+            if not raw:
+                self.save(state)
             today = _anki_today()
             if state.last_study_day:
                 last_day = date.fromisoformat(state.last_study_day)
@@ -1667,19 +1663,7 @@ class HexagonLandManager:
     def save(self, state: HexagonLandState) -> None:
         state.updated_at = datetime.now().isoformat()
         path = self.data_path()
-        directory = os.path.dirname(path)
-        os.makedirs(directory, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(prefix="hexagon_land_", suffix=".json", dir=directory)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(asdict(state), handle, indent=2, ensure_ascii=False)
-            os.replace(tmp_path, path)
-        except Exception as exc:
-            print(f"Onigiri: Error saving Hexagon Land data: {exc}")
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+        safe_storage.atomic_write_json(path, asdict(state))
         self._state_cache = copy.deepcopy(state)
 
     def reset(self) -> None:
@@ -2478,7 +2462,7 @@ def _stat_row_html(label: str, value: int, icon_html: str) -> str:
     )
 
 
-def render_widget_html() -> str:
+def render_widget_html(grid_style: str = "") -> str:
     state = manager.load()
     if not manager.is_enabled():
         # Render a visible disabled placeholder (matching how the Onigimon and
@@ -2486,7 +2470,7 @@ def render_widget_html() -> str:
         # empty string. Returning "" makes the deck-browser grid drop the widget
         # entirely, so a widget placed in the grid would silently vanish.
         return f"""
-    <div class="hex-land-widget disabled" ondblclick="pycmd('openHexagonLand')">
+    <div class="hex-land-preview disabled" style="{grid_style}" ondblclick="pycmd('openHexagonLand')">
         <div class="hex-land-copy">
             <h3>{escape(tr('hexland_title'))}</h3>
             <p>{escape(tr('hexland_enable_settings', 'Enable Hexagon Land in Gamification Settings.'))}</p>
@@ -2525,19 +2509,17 @@ def render_widget_html() -> str:
         animation: riskBlink 4s ease-in-out infinite !important;
     }}
     </style>
-    <div class="hex-land-widget {'land-only' if not show_info else 'land-info'}" ondblclick="pycmd('openHexagonLand')">
-        <div class="hex-land-preview" style="--hl-scale: {scale:.3f}; --hl-top: {top_color}; --hl-bottom: {bottom_color};" 
+    <div class="hex-land-preview" style="{grid_style} --hl-scale: {scale:.3f}; --hl-top: {top_color}; --hl-bottom: {bottom_color};" ondblclick="pycmd('openHexagonLand')"
              id="hl-preview-{state.created_at.replace(':', '-')}"
              data-pan-x="{state.widget_offset_x}" data-pan-y="{state.widget_offset_y}" data-scale="{scale:.3f}">
             <div class="hex-land-preview-stage" style="width:{width}px;height:{height}px; transform: translate(calc(-50% + {state.widget_offset_x}px), calc(-50% + {state.widget_offset_y}px)) scale(var(--hl-scale, .72));">
                 {''.join(layers)}
             </div>
             <button class="hl-pin-btn" onclick="event.stopPropagation(); window.pinHexLandWidget(this);" style="display: none; position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; color: #24363e; z-index: 10;">{tr('hexland_pin_position', 'Pin Position')}</button>
-        </div>
         <script>
             (function() {{
-                const preview = document.currentScript.previousElementSibling;
-                const widget = preview.closest('.hex-land-widget');
+                const preview = document.currentScript.parentElement;
+                const widget = preview;
                 const stage = preview.querySelector('.hex-land-preview-stage');
                 const pinBtn = preview.querySelector('.hl-pin-btn');
                 let isDragging = false;
@@ -2611,12 +2593,15 @@ def render_widget_html() -> str:
     """
 
 class HexagonLandDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, open_redeem: bool = False) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("hexagon_land_window_title"))
         self.resize(1120, 760)
         self.setMinimumSize(760, 560)
         self._dirty = False
+        self._redeem_busy = False
+        self._redeem_op = None
+        self._open_redeem = bool(open_redeem)
         self.web = AnkiWebView(self)
         self.web.set_bridge_command(self._on_bridge_cmd, self)
         layout = QVBoxLayout(self)
@@ -2625,11 +2610,62 @@ class HexagonLandDialog(QDialog):
         self.render_page()
 
     def render_page(self) -> None:
-        self.web.stdHtml(_dialog_html(manager.payload()), context=self)
+        self.web.stdHtml(
+            _dialog_html(manager.payload(), open_redeem=self._open_redeem),
+            context=self,
+        )
+        self._open_redeem = False
 
     def push_payload(self) -> None:
         payload = json.dumps(manager.payload(), ensure_ascii=False)
         self.web.eval(f"window.HEX_LAND_DATA = {payload}; if (typeof render === 'function') render();")
+
+    def finish_redeem(self, ok: bool, message: str) -> None:
+        """Refresh the wallet and finish the in-WebView redemption overlay."""
+        payload = json.dumps(manager.payload(), ensure_ascii=False)
+        ok_json = json.dumps(bool(ok))
+        message_json = json.dumps(str(message or ""), ensure_ascii=False)
+        self.web.eval(
+            f"window.HEX_LAND_DATA = {payload}; "
+            f"if (typeof finishRedeem === 'function') finishRedeem({ok_json}, {message_json});"
+        )
+
+    def redeem_code(self, code: str) -> None:
+        """Validate a code off the UI thread and report inside Hexagon Land."""
+        if self._redeem_busy:
+            return
+        clean_code = str(code or "").strip()
+        if not clean_code:
+            self.finish_redeem(False, tr("err_invalid_code"))
+            return
+
+        from aqt.operations import QueryOp
+        from .reward_redemption import apply_reward, fetch_reward_code
+
+        self._redeem_busy = True
+
+        def fetch(_col):
+            return fetch_reward_code(clean_code, context="hex")
+
+        def finish(result) -> None:
+            self._redeem_busy = False
+            if not result.get("ok"):
+                self.finish_redeem(False, result.get("message") or tr("err_invalid_code"))
+                return
+            try:
+                message = apply_reward(result.get("data") or {})
+            except Exception as exc:
+                self.finish_redeem(False, tr("err_reward_not_applied").format(exc))
+                return
+            self._dirty = True
+            self.finish_redeem(True, message)
+
+        self._redeem_op = QueryOp(
+            parent=self,
+            op=fetch,
+            success=finish,
+        ).without_collection()
+        self._redeem_op.run_in_background()
 
     def closeEvent(self, event) -> None:
         if self._dirty:
@@ -2641,16 +2677,25 @@ class HexagonLandDialog(QDialog):
         super().closeEvent(event)
 
     def _on_bridge_cmd(self, cmd: str) -> bool:
+        if cmd.startswith("hex_land_haptic:"):
+            try:
+                trigger_haptic(int(cmd.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                trigger_haptic()
+            return True
         if cmd == "hex_land_guide":
             from aqt.utils import openLink
 
             openLink(HEXLAND_GUIDE_URL)
             return True
         if cmd == "hex_land_buy":
-            from .reward_redemption import open_reward_redeem_dialog
-
-            open_reward_redeem_dialog(self, context="hex")
-            self.push_payload()
+            self.web.eval("if (typeof openRedeem === 'function') openRedeem();")
+            return True
+        if cmd == "hex_land_purchase":
+            QDesktopServices.openUrl(QUrl(BUY_HEX_COINS_URL))
+            return True
+        if cmd.startswith("hex_land_redeem:"):
+            self.redeem_code(unquote(cmd.split(":", 1)[1]))
             return True
         if cmd == "hex_land_refresh":
             self.push_payload()
@@ -2687,21 +2732,20 @@ class HexagonLandDialog(QDialog):
 _dialog: Optional[HexagonLandDialog] = None
 
 
-def open_hexagon_land_dialog() -> None:
+def open_hexagon_land_dialog(open_redeem: bool = False) -> None:
     global _dialog
     if _dialog is not None:
         _dialog.close()
-    _dialog = HexagonLandDialog(mw)
+    _dialog = HexagonLandDialog(mw, open_redeem=open_redeem)
     _dialog.show()
 
 
 def open_buy_hex_coins() -> None:
-    from .reward_redemption import open_reward_redeem_dialog
+    """Open the Hex Coin flow inside Hexagon Land's WebView."""
+    open_hexagon_land_dialog(open_redeem=True)
 
-    open_reward_redeem_dialog(mw, context="hex")
 
-
-def _dialog_html(payload: Dict[str, Any]) -> str:
+def _dialog_html(payload: Dict[str, Any], open_redeem: bool = False) -> str:
     data = json.dumps(payload, ensure_ascii=False)
     html = """
 <!doctype html>
@@ -2804,6 +2848,7 @@ body {
    --side-w / --side-gap are read back by the JS that keeps the island centred
    in the space the panel leaves free. */
 .app {
+    --side-panel-w: 348px;
     --side-w: 348px;
     --side-gap: 16px;
     position: relative;
@@ -2815,9 +2860,16 @@ body {
     --side-w: 0px;
 }
 .app.side-collapsed .side {
-    display: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate3d(calc(100% + (var(--side-gap) * 2)), 0, 0);
+    transition:
+        transform 280ms cubic-bezier(.22, 1, .36, 1),
+        opacity 180ms ease,
+        visibility 0s linear 280ms;
 }
-.side-toggle {
+.app .side-toggle {
     position: absolute;
     top: 22px;
     right: calc(var(--side-gap) + var(--side-w) + 10px);
@@ -2832,12 +2884,34 @@ body {
     box-shadow: 0 2px 6px rgba(15,45,60,.14);
     cursor: pointer;
     z-index: 40;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate3d(8px, 0, 0) scale(.92);
+    transition:
+        opacity 150ms ease,
+        transform 220ms cubic-bezier(.22, 1, .36, 1),
+        visibility 0s linear 220ms;
 }
-.side-toggle .ui-icon {
+.app.side-collapsed .side-toggle,
+.app.side-collapsed .side-toggle:hover,
+.app.side-collapsed .side-toggle:focus,
+.app.side-collapsed .side-toggle:active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0) scale(1);
+    transition:
+        opacity 150ms ease,
+        transform 220ms cubic-bezier(.22, 1, .36, 1),
+        visibility 0s linear 0s;
+    transition-delay: 110ms, 110ms, 0s;
+}
+.app .side-toggle .ui-icon {
     width: 15px;
     height: 15px;
 }
-.side-toggle:hover {
+.app .side-toggle:hover {
     background: #ffffff;
 }
 .world {
@@ -2972,6 +3046,9 @@ body {
     min-height: 420px;
     transform-origin: center;
 }
+.app.side-transitioning .stage {
+    transition: transform 280ms cubic-bezier(.22, 1, .36, 1);
+}
 .stage-content {
     position: absolute;
     inset: 0;
@@ -3062,7 +3139,7 @@ body {
     top: var(--side-gap);
     right: var(--side-gap);
     bottom: var(--side-gap);
-    width: var(--side-w);
+    width: var(--side-panel-w);
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -3077,6 +3154,14 @@ body {
     overflow: auto;
     overscroll-behavior: contain;
     z-index: 30;
+    opacity: 1;
+    visibility: visible;
+    transform: translate3d(0, 0, 0);
+    will-change: transform, opacity;
+    transition:
+        transform 280ms cubic-bezier(.22, 1, .36, 1),
+        opacity 180ms ease,
+        visibility 0s linear 0s;
 }
 /* Scrollbar tuned for the floating card: a thin rounded thumb floating in a
    transparent track, inset far enough that the card's 18px corners never clip
@@ -3129,13 +3214,32 @@ body {
 .resources-panel {
     display: grid;
     gap: 12px;
+    transition: gap 220ms ease;
 }
 .resources-panel.is-collapsed .hl-top-body {
-    display: none;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        max-height 240ms cubic-bezier(.22, 1, .36, 1),
+        opacity 140ms ease,
+        visibility 0s linear 240ms;
+}
+.resources-panel.is-collapsed {
+    gap: 0;
 }
 .hl-top-body {
     display: grid;
     gap: 12px;
+    max-height: 520px;
+    overflow: hidden;
+    opacity: 1;
+    visibility: visible;
+    transition:
+        max-height 280ms cubic-bezier(.22, 1, .36, 1),
+        opacity 180ms ease,
+        visibility 0s linear 0s;
 }
 /* Header: name + rank on the left, level pill and the three panel controls
    (guide, minimise details, hide panel) on the right. */
@@ -3651,9 +3755,133 @@ body {
 .water-tile.water-hover {
     animation: waterHover 1.8s ease-in-out infinite;
 }
+.redeem-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(6, 36, 52, .46);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.redeem-card {
+    position: relative;
+    width: min(460px, 100%);
+    max-height: min(660px, calc(100vh - 48px));
+    overflow: auto;
+    padding: 26px;
+    border: 1px solid rgba(255,255,255,.72);
+    border-radius: 22px;
+    background: rgba(255,255,255,.97);
+    box-shadow: 0 24px 70px rgba(7, 35, 50, .34);
+}
+.redeem-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 10px;
+    background: rgba(33,49,58,.06);
+}
+.redeem-close .ui-icon { width: 14px; height: 14px; opacity: .6; }
+.redeem-identity {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding-right: 38px;
+}
+.redeem-identity > img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    padding: 8px;
+    border-radius: 14px;
+    background: rgba(31,182,255,.12);
+}
+.redeem-card h2 { margin: 0; font-size: 20px; line-height: 1.2; }
+.redeem-card p { margin: 8px 0 0; color: #697b84; font-size: 12.5px; line-height: 1.5; }
+.redeem-purchase {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 15px;
+    background: #eef8fc;
+}
+.redeem-purchase strong { display: block; font-size: 12.5px; }
+.redeem-purchase p { margin-top: 2px; font-size: 11px; }
+.app .redeem-purchase-btn {
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: #1597d1;
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.redeem-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 14px;
+    color: #80919a;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.redeem-divider::before, .redeem-divider::after {
+    content: '';
+    height: 1px;
+    flex: 1;
+    background: rgba(33,49,58,.12);
+}
+.redeem-form { display: grid; gap: 10px; }
+.redeem-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 13px;
+    border: 1px solid rgba(33,49,58,.18);
+    border-radius: 11px;
+    background: #fff;
+    color: #21313a;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+.redeem-input:focus { border-color: #1597d1; box-shadow: 0 0 0 3px rgba(21,151,209,.12); }
+.app .redeem-submit {
+    min-height: 42px;
+    padding: 10px 16px;
+    border-radius: 11px;
+    background: #1597d1;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+}
+.app .redeem-submit:disabled { opacity: .55; cursor: wait; }
+.redeem-feedback {
+    min-height: 18px;
+    margin: 0;
+    color: #b23a3a;
+    font-size: 11.5px;
+}
+.redeem-feedback.success { color: #0e7f60; }
+body.nightMode .redeem-card { background: rgba(28,28,30,.98); border-color: rgba(255,255,255,.12); color: #e5edf1; }
+body.nightMode .redeem-card p, body.nightMode .redeem-divider { color: #8a9ba3; }
+body.nightMode .redeem-purchase { background: rgba(79,174,222,.11); }
+body.nightMode .redeem-input { background: #242426; color: #e5edf1; border-color: rgba(255,255,255,.14); }
+body.nightMode .redeem-divider::before, body.nightMode .redeem-divider::after { background: rgba(255,255,255,.12); }
 /* Narrow windows: the panel becomes a floating bottom sheet. */
 @media (max-width: 900px) {
-    .app { --side-w: auto; }
+    .app { --side-panel-w: auto; --side-w: auto; }
     .side {
         top: auto;
         left: var(--side-gap);
@@ -3662,7 +3890,22 @@ body {
         width: auto;
         max-height: 46vh;
     }
-    .side-toggle { right: var(--side-gap); }
+    .app.side-collapsed { --side-w: 0px; }
+    .app.side-collapsed .side {
+        transform: translate3d(0, calc(100% + (var(--side-gap) * 2)), 0);
+    }
+    .app .side-toggle { right: var(--side-gap); }
+    .redeem-overlay { padding: 16px; }
+    .redeem-card { max-height: calc(100vh - 32px); padding: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .side,
+    .side-toggle,
+    .hl-top-body,
+    .resources-panel,
+    .app.side-transitioning .stage {
+        transition: none !important;
+    }
 }
 body.nightMode .brand, body.nightMode .wallet, body.nightMode .notice, body.nightMode .side, body.nightMode .tool, body.nightMode .panel, body.nightMode .zoom-controls, body.nightMode .land-choice {
     background: rgba(38, 38, 38, .92);
@@ -3723,9 +3966,18 @@ body.nightMode .hl-level-progress-track {
 body.nightMode .hl-level-progress-track span {
     background: #e0e0e0;
 }
-body.nightMode .side-toggle {
+body.nightMode .app .side-toggle {
     background: rgba(38,38,38,.94);
     border-color: rgba(255,255,255,.16);
+}
+body.nightMode .app .side-toggle:hover,
+body.nightMode .app .side-toggle:focus-visible {
+    background: rgba(52,52,54,.98);
+    border-color: rgba(255,255,255,.24);
+}
+body.nightMode .app .side-toggle:active {
+    background: rgba(64,64,67,.98);
+    border-color: rgba(255,255,255,.28);
 }
 body.nightMode .resource-status { color: #cdd6dc; }
 body.nightMode .stat small { color: #65d7aa; }
@@ -3850,10 +4102,16 @@ let collapsedToolGroups = JSON.parse(localStorage.getItem('hexLandCollapsedGroup
 let toolFlipped = localStorage.getItem('hexLandToolFlipped') === 'true';
 let sideCollapsed = localStorage.getItem('hexLandSideCollapsed') === 'true';
 let topCollapsed = localStorage.getItem('hexLandTopCollapsed') === 'true';
+let redeemOpen = __REDEEM_OPEN__;
+let redeemBusy = false;
+let redeemFeedback = '';
+let redeemSucceeded = false;
+let redeemCode = '';
 const hasSavedView = localStorage.getItem('hexLandZoom') !== null;
 
 let audioCtx = null;
 let layoutCache = null;
+let sideTransitionTimer = null;
 
 function softSound(freq = 420, dur = 0.055, gain = 0.018) {
     try {
@@ -3941,8 +4199,13 @@ function costText(cost) {
 }
 
 function command(action, payload) {
+    haptic();
     softSound(action === 'clear_tile' ? 260 : 520);
     pycmd('hex_land:' + action + ':' + encodeURIComponent(JSON.stringify(payload || {})));
+}
+
+function haptic(pattern = 1) {
+    pycmd('hex_land_haptic:' + pattern);
 }
 
 function coords() {
@@ -3975,7 +4238,8 @@ function sideInsetX() {
 function sideInsetY() {
     if (sideCollapsed || window.innerWidth > SIDE_BREAKPOINT) return 0;
     const side = document.querySelector('.side');
-    const sheetH = side ? side.getBoundingClientRect().height : window.innerHeight * 0.46;
+    const measured = side ? side.getBoundingClientRect().height : 0;
+    const sheetH = measured > 0 ? measured : window.innerHeight * 0.46;
     return sheetH + SIDE_GAP * 2;
 }
 
@@ -4058,22 +4322,47 @@ function fitIsland(silent = false) {
 function toggleSide() {
     const wasX = sideInsetX();
     const wasY = sideInsetY();
+    const app = document.querySelector('.app');
+    if (app) app.classList.add('side-transitioning');
     sideCollapsed = !sideCollapsed;
     localStorage.setItem('hexLandSideCollapsed', sideCollapsed ? 'true' : 'false');
+    if (app) app.classList.toggle('side-collapsed', sideCollapsed);
     // Reclaiming (or giving up) the panel's footprint moves the free area's
     // centre; slide the island by half that so it stays put visually.
     panX += (wasX - sideInsetX()) / 2;
     panY += (wasY - sideInsetY()) / 2;
     localStorage.setItem('hexLandPanX', String(panX));
     localStorage.setItem('hexLandPanY', String(panY));
-    render();
+    const stage = document.querySelector('.stage');
+    if (stage) stage.style.transform = `translate(${panX}px, ${panY}px)`;
+    clearTimeout(sideTransitionTimer);
+    sideTransitionTimer = setTimeout(() => {
+        document.querySelector('.app')?.classList.remove('side-transitioning');
+    }, 320);
     softSound(sideCollapsed ? 300 : 460, 0.04, 0.012);
 }
 
 function toggleTopInfo() {
+    const oldInsetY = sideInsetY();
     topCollapsed = !topCollapsed;
     localStorage.setItem('hexLandTopCollapsed', topCollapsed ? 'true' : 'false');
-    render();
+    const panel = document.querySelector('.resources-panel');
+    const button = document.querySelector('[data-action="toggle-top-info"]');
+    if (panel) panel.classList.toggle('is-collapsed', topCollapsed);
+    if (button) {
+        const label = topCollapsed
+            ? "{tr('hexland_show_stats', 'Show island details')}"
+            : "{tr('hexland_hide_stats', 'Hide island details')}";
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
+        button.setAttribute('aria-expanded', topCollapsed ? 'false' : 'true');
+        const icon = button.querySelector('.ui-icon');
+        if (icon) icon.src = iconPath(topCollapsed ? 'down' : 'up');
+    }
+    panY += (oldInsetY - sideInsetY()) / 2;
+    localStorage.setItem('hexLandPanY', String(panY));
+    const stage = document.querySelector('.stage');
+    if (stage) stage.style.transform = `translate(${panX}px, ${panY}px)`;
     softSound(topCollapsed ? 320 : 440, 0.04, 0.012);
 }
 
@@ -4577,8 +4866,24 @@ function selectTool(category, item) {
     activeTab = category === 'buildingPart' ? 'building' : category === 'raise' ? 'terrain' : category;
     localStorage.setItem('hexLandSelected', JSON.stringify(selected));
     localStorage.setItem('hexLandTab', activeTab);
-    render();
+    renderCatalog();
+    const stageContent = document.querySelector('.stage-content');
+    if (stageContent) stageContent.innerHTML = renderStage();
     softSound(360, 0.04, 0.012);
+}
+
+function selectTab(tab) {
+    activeTab = tab;
+    localStorage.setItem('hexLandTab', activeTab);
+    renderCatalog();
+    softSound(390, 0.035, 0.01);
+}
+
+function renderCatalog() {
+    const tabRoot = document.querySelector('.tabs');
+    const toolRoot = document.querySelector('.tools');
+    if (tabRoot) tabRoot.innerHTML = tabs();
+    if (toolRoot) toolRoot.innerHTML = tools();
 }
 
 function tabs() {
@@ -4589,14 +4894,14 @@ function tabs() {
         ['inhabitant', 'People', 'people'],
         ['erase', 'Erase', 'trash']
     ];
-    return tabData.map(([id, label, iconName]) => `<button class="tab ${activeTab === id ? 'active' : ''}" aria-label="${esc(label)}" onclick="activeTab='${id}';localStorage.setItem('hexLandTab', activeTab);render();">${faIcon(iconName)}</button>`).join('');
+    return tabData.map(([id, label, iconName]) => `<button class="tab ${activeTab === id ? 'active' : ''}" aria-label="${esc(label)}" onclick="selectTab('${id}')">${faIcon(iconName)}</button>`).join('');
 }
 
 function toggleToolGroup(groupName) {
     const key = `${activeTab}:${groupName || 'all'}`;
     collapsedToolGroups[key] = !collapsedToolGroups[key];
     localStorage.setItem('hexLandCollapsedGroups', JSON.stringify(collapsedToolGroups));
-    render();
+    renderCatalog();
 }
 
 function tools() {
@@ -4748,6 +5053,85 @@ function compactStatusText(message) {
     return text || "{tr('hexland_default_status', 'Study to grow your island.')}";
 }
 
+function redeemModalHtml() {
+    if (!redeemOpen) return '';
+    const feedbackClass = redeemSucceeded ? 'redeem-feedback success' : 'redeem-feedback';
+    const submitText = redeemBusy
+        ? "{tr('redeeming_code', 'Redeeming…')}"
+        : "{tr('redeem_action', 'Redeem')}";
+    return `<div class="redeem-overlay" role="presentation" onclick="if(event.target===this) closeRedeem()">
+        <section class="redeem-card" role="dialog" aria-modal="true" aria-labelledby="hex-redeem-title">
+            <button class="redeem-close" type="button" aria-label="{tr('close', 'Close')}" onclick="closeRedeem()">${faIcon('cancel')}</button>
+            <div class="redeem-identity">
+                <img src="/_addons/__ADDON__/system_files/gamification_images/Hexagon_world.webp" alt="">
+                <div>
+                    <h2 id="hex-redeem-title">{tr('redeem_hex_coins', 'Redeem Hex Coins')}</h2>
+                    <p>{tr('redeem_hex_coins_desc', 'Enter a Hexagon Land code to add coins to your wallet.')}</p>
+                </div>
+            </div>
+            <div class="redeem-purchase">
+                <div>
+                    <strong>{tr('hexland_need_coins', 'Need more Hex Coins?')}</strong>
+                    <p>{tr('support_onigiri_coins', 'Support Onigiri to get special coin codes and unlock exclusive themes!')}</p>
+                </div>
+                <button class="redeem-purchase-btn" type="button" onclick="haptic(); pycmd('hex_land_purchase')">{tr('buy_coin_codes', 'Buy Coin Codes')}</button>
+            </div>
+            <div class="redeem-divider"><span>{tr('already_have_code', 'Already have a code?')}</span></div>
+            <form class="redeem-form" onsubmit="submitRedeem(event)">
+                <input class="redeem-input" data-bind="redeem-code" autocomplete="off" placeholder="{tr('paste_code_short', 'Paste code here')}" value="${esc(redeemCode)}" ${redeemBusy ? 'disabled' : ''}>
+                <p class="${feedbackClass}" role="status" aria-live="polite">${esc(redeemFeedback)}</p>
+                <button class="redeem-submit" type="submit" ${redeemBusy ? 'disabled' : ''}>${submitText}</button>
+            </form>
+        </section>
+    </div>`;
+}
+
+function openRedeem() {
+    redeemOpen = true;
+    redeemFeedback = '';
+    redeemSucceeded = false;
+    render();
+    requestAnimationFrame(() => document.querySelector('[data-bind="redeem-code"]')?.focus());
+}
+
+function closeRedeem() {
+    if (redeemBusy) return;
+    redeemOpen = false;
+    redeemFeedback = '';
+    redeemSucceeded = false;
+    redeemCode = '';
+    document.querySelector('.redeem-overlay')?.remove();
+}
+
+function submitRedeem(event) {
+    event.preventDefault();
+    if (redeemBusy) return;
+    const input = document.querySelector('[data-bind="redeem-code"]');
+    redeemCode = String(input?.value || '').trim();
+    if (!redeemCode) {
+        redeemFeedback = "{tr('err_invalid_code', 'Please enter a valid code.')}";
+        redeemSucceeded = false;
+        render();
+        requestAnimationFrame(() => document.querySelector('[data-bind="redeem-code"]')?.focus());
+        return;
+    }
+    redeemBusy = true;
+    redeemFeedback = "{tr('redeeming_code', 'Redeeming…')}";
+    redeemSucceeded = false;
+    render();
+    haptic();
+    pycmd('hex_land_redeem:' + encodeURIComponent(redeemCode));
+}
+
+function finishRedeem(ok, message) {
+    redeemBusy = false;
+    redeemSucceeded = Boolean(ok);
+    redeemFeedback = String(message || '');
+    if (ok) redeemCode = '';
+    render();
+    if (!ok) requestAnimationFrame(() => document.querySelector('[data-bind="redeem-code"]')?.focus());
+}
+
 function render() {
     const sideEl = document.querySelector('.side');
     const savedScrollTop = sideEl ? sideEl.scrollTop : 0;
@@ -4769,7 +5153,7 @@ function render() {
         <div class="app ${sideCollapsed ? 'side-collapsed' : ''}">
             <main class="world">
                 <div class="stage-wrap"><div class="stage" style="transform:translate(${panX}px, ${panY}px);"><div class="stage-content" style="transform:scale(${zoom});">${renderStage()}</div></div></div>
-                ${sideCollapsed ? `<button class="side-toggle" aria-label="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" title="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" onclick="toggleSide()">${faIcon('angle-left')}</button>` : ''}
+                <button class="side-toggle" aria-label="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" title="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" onclick="toggleSide()">${faIcon('angle-left')}</button>
                 <div class="zoom-controls">
                     <button aria-label="Zoom out" onclick="setZoom(zoom - 0.1)">${faIcon('minus', 'dark-icon')}</button>
                     <span>${Math.round(zoom * 100)}%</span>
@@ -4785,8 +5169,7 @@ function render() {
                             <h2>{tr('hexland_title', 'Hexagon Land')}</h2>
                             <div class="hl-head-actions">
                             <span class="hl-level-badge">{tr('hexland_level_short', 'Lv')} ${data.level}</span>
-                            <button class="hl-icon-btn" aria-label="{tr('hexland_open_guide', 'Open the Hexagon Land guide')}" title="{tr('hexland_open_guide', 'Open the Hexagon Land guide')}" onclick="pycmd('hex_land_guide'); softSound(560);">${faIcon('info-circle')}</button>
-                            <button class="hl-icon-btn" aria-label="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" title="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" aria-expanded="${topCollapsed ? 'false' : 'true'}" onclick="toggleTopInfo()">${faIcon(topCollapsed ? 'down' : 'up')}</button>
+                            <button class="hl-icon-btn" data-action="toggle-top-info" aria-label="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" title="${topCollapsed ? "{tr('hexland_show_stats', 'Show island details')}" : "{tr('hexland_hide_stats', 'Hide island details')}"}" aria-expanded="${topCollapsed ? 'false' : 'true'}" onclick="toggleTopInfo()">${faIcon(topCollapsed ? 'down' : 'up')}</button>
                             <button class="hl-icon-btn" aria-label="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" title="{tr('hexland_toggle_panel', 'Show or hide the tools panel')}" onclick="toggleSide()">${faIcon('right')}</button>
                             </div>
                         </div>
@@ -4797,7 +5180,7 @@ function render() {
                         <div class="hl-wallet">
                             <img class="hl-wallet-coin" src="/_addons/__ADDON__/system_files/gamification_images/hex_coin.webp" alt="">
                             <span class="hl-wallet-value" title="${esc(fullCoinText(s.hex_coins))}">${esc(formatCoins(s.hex_coins))}</span>
-                            <button class="hl-wallet-add" aria-label="Redeem {tr('hexland_hex_coins', 'Hex Coins')}" onclick="event.stopPropagation(); pycmd('hex_land_buy'); softSound(700);">{tr('hexland_get_more', 'Get more')}</button>
+                            <button class="hl-wallet-add" aria-label="Redeem {tr('hexland_hex_coins', 'Hex Coins')}" onclick="event.stopPropagation(); openRedeem(); softSound(700);">{tr('hexland_get_more', 'Get more')}</button>
                         </div>
                         <div class="resource-status">${esc(noticeText)}</div>
                         <div class="stats">
@@ -4814,6 +5197,7 @@ function render() {
                     <div class="tools">${tools()}</div>
                 </section>
             </aside>
+            ${redeemModalHtml()}
         </div>`;
     const newSideEl = document.querySelector('.side');
     if (newSideEl) newSideEl.scrollTop = savedScrollTop;
@@ -4886,6 +5270,10 @@ document.addEventListener('wheel', e => {
 }, {passive: false});
 
 document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && redeemOpen && !redeemBusy) {
+        closeRedeem();
+        return;
+    }
     if (e.key.toLowerCase() === 'r') {
         if (selected.category === 'buildingPart' && isDetailPart(selected.item)) {
             toolFlipped = !toolFlipped;
@@ -4952,7 +5340,9 @@ if (window.HEX_LAND_DATA.pendingCoins > 0 || Object.keys(window.HEX_LAND_DATA.pe
 </script>
 </body>
 </html>
-""".replace("__DATA__", data).replace("__ADDON__", _addon_package())
+""".replace("__DATA__", data).replace("__ADDON__", _addon_package()).replace(
+        "__REDEEM_OPEN__", "true" if open_redeem else "false"
+    )
     
     import re
     from ..translations import tr

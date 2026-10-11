@@ -58,6 +58,7 @@ KEYS_BY_FOLDER = {
         "modern_menu_profile_bg_image_dark",
     ],
     "main_bg": [
+        "modern_menu_title_background_image",
         "modern_menu_background_image",
         "modern_menu_background_image_light",
         "modern_menu_background_image_dark",
@@ -65,7 +66,6 @@ KEYS_BY_FOLDER = {
         "onigiri_overview_bg_image",
         "onigiri_overview_bg_image_light",
         "onigiri_overview_bg_image_dark",
-        "onigiri_overview_slideshow_images",
     ],
     "sidebar_bg": [
         "modern_menu_sidebar_bg_image",

@@ -9,13 +9,15 @@ import base64
 import copy
 import json
 import os
+import time
 
 from aqt import mw
 from aqt.theme import theme_manager
 
 from .. import config
+from ..theme_palette import chrome_palette
 from ..fonts import FONTS, get_all_fonts, poppins_font_face_css
-from ..translations import tr
+from ..translations import current_language, tr
 from . import gallery, schema, theme_store
 
 ADDON_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,52 +45,17 @@ def accent_color(conf=None):
     conf = conf if conf is not None else config.get_config_readonly()
     mode = "dark" if is_dark() else "light"
     try:
-        return conf["colors"][mode].get("--accent-color") or "#00A982"
+        return conf["colors"][mode].get("--accent-color") or config.DEFAULT_ACCENT_COLOR
     except Exception:
-        return "#00A982"
+        return config.DEFAULT_ACCENT_COLOR
 
 
 def palette(dark):
-    """Token set for the settings surface.
-
-    Three depths, not two: `outer` is the window itself, `panel` is the two
-    floating rounded cards (rail + content) that sit on it, and `surface` is a
-    field card inside a panel. Card-on-panel-on-window is what makes the rounded
-    layout read; a flat two-tone version loses the panel edges entirely.
-
-    Greys stay in the same family as ui_kit/picker_chrome.picker_palette() so
-    a native picker opened from here reads as part of the same window."""
-    if dark:
-        return {
-            "outer": "#232323",
-            "panel": "#1a1a1a",
-            "surface": "#242424",
-            "surface_alt": "#2a2a2a",
-            "inset": "#2e2e2e",
-            "inset_hover": "#383838",
-            "hairline": "#333333",
-            "hairline_soft": "#262626",
-            "fg": "#f4f4f5",
-            "fg_muted": "#a1a1a4",
-            "fg_faint": "#7c7c80",
-            "shadow": "rgba(0, 0, 0, 0.45)",
-            "danger": "#ef6461",
-        }
-    return {
-        "outer": "#ececeb",
-        "panel": "#f8f8f7",
-        "surface": "#ffffff",
-        "surface_alt": "#fbfbfa",
-        "inset": "#f0f0ef",
-        "inset_hover": "#e7e7e6",
-        "hairline": "#e3e4e7",
-        "hairline_soft": "#ededec",
-        "fg": "#202124",
-        "fg_muted": "#63666c",
-        "fg_faint": "#8f9299",
-        "shadow": "rgba(15, 23, 42, 0.12)",
-        "danger": "#d64545",
-    }
+    """Settings keeps neutral chrome; only its accent follows the theme."""
+    mode = "dark" if dark else "light"
+    return chrome_palette(
+        config.get_config_readonly().get("colors", {}).get(mode, {}), dark
+    )
 
 
 # ── assets ─────────────────────────────────────────────────────────────────────
@@ -111,6 +78,17 @@ def read_web_asset(name):
             return handle.read()
     except Exception as exc:  # noqa: BLE001 - surfaced in the dialog body
         print(f"[Onigiri] settings_web: could not read web/{name}: {exc}")
+        return ""
+
+
+def read_things_asset(name):
+    """Read a Kome production asset for its isolated Settings preview."""
+    path = os.path.join(ADDON_ROOT, "things_theme", "web", name)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except Exception as exc:  # noqa: BLE001 - the preview has a safe fallback
+        print(f"[Onigiri] settings_web: could not read Kome {name}: {exc}")
         return ""
 
 
@@ -201,17 +179,14 @@ def _strings():
     out["autosave_saved"] = tr("settings_web_autosave_saved", "Saved")
     out["autosave_error"] = tr("settings_web_autosave_error", "Could not save")
     out["done"] = tr("settings_web_done", "Done")
-    # Languages page. {n}/{total} are substituted in settings.js.
-    out["lang_coverage"] = tr("settings_web_lang_coverage", "{pct}% translated")
-    out["lang_counts"] = tr("settings_web_lang_counts", "{n} of {total} strings")
-    out["lang_complete"] = tr("settings_web_lang_complete", "Fully translated")
-    out["lang_missing"] = tr("settings_web_lang_missing", "{n} strings still show in English")
-    out["lang_missing_one"] = tr("settings_web_lang_missing_one", "1 string still shows in English")
-    # Shown in place of the "N strings missing" line so a complete language keeps
-    # the same footer row — the hero must not change height between languages.
-    out["lang_all_translated"] = tr("settings_web_lang_all_translated", "Every string is translated")
+    out["simple"] = tr("settings_simple", "Simple")
+    out["advanced"] = tr("settings_advanced", "Advanced")
+    out["simple_mode_notice"] = tr(
+        "settings_web_simple_mode_notice",
+        "Simple Mode hides some Onigiri customization options. Switch to Advanced to see them all.",
+    )
+    # Languages page.
     out["lang_preview"] = tr("settings_web_lang_preview", "Preview")
-    out["lang_help"] = tr("settings_web_lang_help", "Help translate on GitHub")
     out["lang_active"] = tr("settings_web_lang_active", "Active")
     # Modes page: the Focus/Flow/Zen ladder.
     out["immersion"] = tr("settings_web_immersion", "Immersion")
@@ -235,6 +210,19 @@ def _strings():
     # Preview-header controls.
     out["dynamic_mode"] = tr("dynamic_mode", "Dynamic mode")
     out["reset"] = tr("reset", "Reset")
+    out["widget_grid"] = tr("widget_grid_title", "Widget grid")
+    out["organize_grid_help_title"] = tr(
+        "organize_grid_help_title", "Arrange your widgets"
+    )
+    out["organize_grid_drag_help"] = tr(
+        "organize_grid_drag_help",
+        "Drag and drop widgets in the grid to arrange your Main Menu.",
+    )
+    out["organize_grid_multiselect_help"] = tr(
+        "organize_grid_multiselect_help",
+        "Shift+Click widgets to select several, then drag one to move "
+        "them together.",
+    )
     out["hold_to_confirm"] = tr("settings_web_hold_to_confirm", "Hold for 3 seconds to continue")
     out["games_action_failed"] = tr("settings_web_games_action_failed", "Could not complete that action.")
     # Duration field's unit chips (Slide Interval).
@@ -361,8 +349,20 @@ def _strings():
     out["onigimon_status_hygiene"] = tr("onigimon_status_hygiene", "Hygiene")
     out["onigimon_status_training"] = tr("onigimon_status_training", "Training")
     out["onigimon_status_hunger"] = tr("onigimon_status_hunger", "Hunger")
+    out["onigimon_bond"] = tr("onigimon_bond", "Bond")
+    out["onigimon_items"] = tr("onigimon_items", "Items")
+    out["onigimon_streak"] = tr("pomodoro_streak_short", "Streak")
+    out["onigimon_attack"] = tr("onigimon_attack", "Attack")
+    out["onigimon_defense"] = tr("onigimon_defense", "Defense")
+    out["onigimon_speed"] = tr("onigimon_speed", "Speed")
+    out["onigimon_menu_team_hint"] = tr(
+        "onigimon_menu_team_hint",
+        "Use the pin on each Pokémon to show it in the Pokémon Team widget on the Main Menu.",
+    )
+    out["onigimon_menu_team_pin"] = tr("onigimon_menu_team_pin", "Show on Main Menu")
     out["columns"] = tr("widget_menu_columns", "Columns")
     out["rows"] = tr("widget_menu_rows", "Rows")
+    out["menu_title"] = tr("menu_title", "Menu Title")
     out["hexagon_keys_owned"] = tr("hexagon_keys_owned", "owned")
     out["hexagon_keys_buy"] = tr("hexagon_keys_buy", "Buy Keys of the Island")
     out["hexagon_keys_cost"] = tr("hexagon_keys_cost", "{cost} Hex Coins")
@@ -383,6 +383,16 @@ def _strings():
     out["notif_preview_silent"] = tr("notif_preview_silent", "Silent mode: nothing is shown")
     out["settings"] = tr("settings", "Settings")
     out["open"] = tr("open", "Open")
+    # Pomodoro preview: these are the exact strings used by
+    # PomodoroIslandView.refresh(), including the placeholders in the session
+    # counter. Keeping them here makes both versions switch locale together.
+    out["pomodoro_focus"] = tr("pomodoro_focus", "Focus")
+    out["pomodoro_short_break"] = tr("pomodoro_short_break", "Short Break")
+    out["pomodoro_long_break"] = tr("pomodoro_long_break", "Long Break")
+    out["pomodoro_session_of"] = tr(
+        "pomodoro_session_of", "Session {n} of {total}"
+    )
+    out["pomodoro_next"] = tr("pomodoro_next", "Next:")
     # Games launcher cards: the state pill on each tile.
     out["on"] = tr("on", "On")
     out["off"] = tr("off", "Off")
@@ -414,6 +424,8 @@ CHROME_ICONS = {
     "themeImport": "import_file.svg",
     "themeExport": "export-deck.svg",
     "themeReset": "undo-2.svg",
+    "sun": "lucide-sun.svg",
+    "moon": "lucide-moon.svg",
 }
 
 
@@ -439,9 +451,11 @@ def sidebar_bg_context():
     image_dark = conf.get("modern_menu_sidebar_bg_image_dark", "") or conf.get("modern_menu_sidebar_bg_image", "")
     image_theme = conf.get("modern_menu_sidebar_bg_image_theme_mode", "separate")
     blur = int(conf.get("modern_menu_sidebar_bg_blur", 0) or 0)
-    opacity = int(conf.get("modern_menu_sidebar_bg_opacity", 100) or 100)
+    opacity_value = conf.get("modern_menu_sidebar_bg_opacity", 100)
+    opacity = int(100 if opacity_value is None else opacity_value)
 
     return {
+        "width": conf.get("modern_menu_sidebar_width", 600),
         "type": bg_type,
         "colorLight": color_light,
         "colorDark": color_dark if color_theme != "single" else color_light,
@@ -484,16 +498,62 @@ def profile_assets_context():
 
 def profile_level_context():
     try:
-        from . import onigiri_renderer
+        from .. import onigiri_renderer
         enabled, level, fraction, color = onigiri_renderer._profile_level_progress()
+        game = onigiri_renderer._selected_profile_level_game()
         return {
             "enabled": enabled,
-            "level": level if level is not None else 12,
-            "fraction": fraction if fraction is not None else 0.65,
+            "level": level if level is not None else 0,
+            "fraction": fraction if fraction is not None else 0.0,
             "color": color or "",
+            "game": game,
+            "sourceName": onigiri_renderer._profile_level_source_name(game),
         }
     except Exception:
-        return {"enabled": True, "level": 12, "fraction": 0.65, "color": ""}
+        return {"enabled": False, "level": 0, "fraction": 0.0, "color": ""}
+
+
+def profile_preview_context():
+    """Refreshable profile data from the same readers as the live sidebar."""
+    return {
+        "profileLevel": profile_level_context(),
+        "chipColors": restaurant_chip_colors_context(),
+        "chipDefaults": chip_defaults_context(),
+    }
+
+
+def pomodoro_state_context():
+    """Snapshot the same state rendered by the floating Pomodoro island.
+
+    The web preview advances a running snapshot from ``capturedAtMs`` so its
+    time, progress, cycle dots, and play/pause control match an already-open
+    timer instead of falling back to a hard-coded demonstration state.
+    """
+    try:
+        from .. import pomodoro
+
+        timer = pomodoro.get_timer()
+        return {
+            "phase": timer.session_type,
+            "remaining": timer.remaining_seconds,
+            "total": timer.phase_length_seconds(),
+            "focusCount": timer.focus_count,
+            "cycleTotal": max(
+                1, timer.settings.get("sessions_until_long_break", 4)
+            ),
+            "running": timer.running,
+            "capturedAtMs": round(time.time() * 1000),
+        }
+    except Exception:
+        return {
+            "phase": "focus",
+            "remaining": 25 * 60,
+            "total": 25 * 60,
+            "focusCount": 0,
+            "cycleTotal": 4,
+            "running": False,
+            "capturedAtMs": round(time.time() * 1000),
+        }
 
 
 def _css_color(value):
@@ -580,6 +640,15 @@ def games_context(pages):
             "sprite": "",
             "staticSprites": [],
             "animatedSprites": [],
+            "needs": {},
+            "bondLevel": 1,
+            "bondXp": 0,
+            "streak": 0,
+            "itemCount": 0,
+            "types": [],
+            "attack": 0,
+            "defense": 0,
+            "speed": 0,
         },
         "hexagon": {"owns_keys": False, "coins": 0, "cost": 0, "affordable": False},
         "bento": [],
@@ -649,16 +718,18 @@ ORGANIZE_ONIGIRI_CATALOGUE = [
     ("favorites", (1, 1), (1, 1), (3, 2), None),
     ("restaurant_level", (2, 2), (1, 1), (2, 2), None),
     ("onigimon", (2, 1), (1, 1), (4, 2), None),
+    ("ankimon_team", (2, 1), (1, 1), (4, 4), None),
     ("hexagon_land", (2, 2), (1, 1), (4, 4), None),
     ("deck_stats", (2, 1), (1, 1), (2, 2), None),
     ("prep_station", (2, 2), (2, 1), (2, 4), 2),
     ("hashi_notes", (2, 2), (1, 1), (4, 4), None),
+    ("ready_to_go", (2, 2), (1, 1), (3, 2), None),
 ]
 
 
 def _organize_onigiri_name(wid):
     names = {
-        "stats_title": tr("stats_title", "Stats Title"),
+        "stats_title": tr("menu_title", "Menu Title"),
         "studied": tr("widget_studied", "Studied"),
         "time": tr("widget_time", "Time"),
         "pace": tr("widget_pace", "Pace"),
@@ -667,10 +738,12 @@ def _organize_onigiri_name(wid):
         "favorites": tr("widget_favorites", "Favorites"),
         "restaurant_level": tr("widget_restaurant_level", "Nook Level"),
         "onigimon": "Onigimon",
+        "ankimon_team": tr("ankimon_team_widget_name", "Pokémon Team"),
         "hexagon_land": "Hexagon Land",
         "deck_stats": "Deck Stats",
         "prep_station": tr("widget_study_plans", "Study Plans"),
         "hashi_notes": tr("hashi_notes_title", "Hashi Notes"),
+        "ready_to_go": "Ready to go",
     }
     return names.get(wid, wid)
 
@@ -741,7 +814,11 @@ def organize_context():
         hooks = patcher._get_external_hooks()
         for h in hooks:
             hook_id = patcher._get_hook_name(h)
-            if "learner_stats_widget" in hook_id or hook_id in seen:
+            if (
+                "learner_stats_widget" in hook_id
+                or "overview_team" in hook_id.lower()
+                or hook_id in seen
+            ):
                 continue
             seen.add(hook_id)
 
@@ -905,7 +982,67 @@ def theme_gallery_context():
     }
 
 
-def build_context(store, pages):
+def things_preview_context():
+    """Production Kome assets plus current read-only dashboard data.
+
+    The WebUI mounts these inside an iframe, which lets the preview use the
+    unmodified :root/html/body rules from Kome without recolouring the
+    Settings dialog itself.  The real deck-list and sidebar JavaScript then
+    build the miniature from the same component paths used by Anki's deck
+    browser; only the amount of deck data is capped so the Settings payload
+    cannot balloon for very large collections.
+    """
+    css = "\n\n".join(
+        read_things_asset(name)
+        for name in (
+            "tokens.css",
+            "theme.css",
+            "heatmap.css",
+            "decklist.css",
+            "logo.css",
+            "sidebar.css",
+        )
+    )
+    out = {
+        "css": css,
+        "decklistJs": read_things_asset("decklist.js"),
+        "sidebarJs": read_things_asset("sidebar.js"),
+        "decks": [],
+        "standing": {},
+        "tasks": [],
+        "analyticsHtml": "",
+        "palettes": copy.deepcopy(config.get_config_readonly().get("colors", {})),
+        "deckIconBase": addon_uri(
+            "system_files/system_icons/unavailable_for_users"
+        ),
+    }
+    try:
+        from .. import things_theme
+
+        cfg = things_theme._config()
+        weeks = max(8, min(260, int(cfg.get("heatmap_weeks", 53) or 53)))
+        heatmap = things_theme.build_heatmap_html(weeks)
+        chart = things_theme.build_review_chart_html(weeks * 7)
+        out.update({
+            # Twelve rows reproduce the real viewport faithfully while keeping
+            # the charts close enough to reach by scrolling the miniature.
+            "decks": things_theme._full_deck_tree_payload()[:12],
+            "standing": things_theme._build_standing_payload(),
+            "tasks": things_theme._tasks_get()[:5],
+            "analyticsHtml": (
+                '<section class="ba-practice"><div class="ba-analytics">'
+                + chart
+                + '<section class="ba-heatmap-card">'
+                + heatmap
+                + "</section></div></section>"
+            ),
+        })
+    except Exception as exc:  # noqa: BLE001 - preview remains available
+        print(f"[Onigiri] settings_web: Kome preview data failed: {exc}")
+    return out
+
+
+def build_context(store, pages, initial_page=None):
     dark = is_dark()
     nav = []
     for group in schema.nav_groups():
@@ -914,6 +1051,8 @@ def build_context(store, pages):
                 "id": page["id"],
                 "title": page["title"],
                 "icon": icon_svg(page.get("icon")),
+                "simpleOnly": bool(page.get("simple_only")),
+                "showWhen": page.get("show_when"),
             }
             for page in pages
             if page.get("group") == group["id"]
@@ -930,6 +1069,11 @@ def build_context(store, pages):
             # Used by the page itself, not only by the nav: the Games group
             # fetches its live state the first time one of its pages is shown.
             "group": page.get("group", ""),
+            "simpleOnly": bool(page.get("simple_only")),
+            "showWhen": page.get("show_when"),
+            # Optional compact segmented control mounted at the right of the
+            # page title (Fonts uses it for Simple/Advanced typography).
+            "headerFieldId": page.get("header_field_id", ""),
             # Sub-menu navigation: sections become tabs and only the active one
             # is mounted (settings.js renderTabbedPage).
             "tabbed": bool(page.get("tabbed")),
@@ -947,6 +1091,28 @@ def build_context(store, pages):
                     # the default flat list of field rows.
                     "layout": section.get("layout", ""),
                     "role_key": section.get("role_key", ""),
+                    "fontRoles": section.get("font_roles", []),
+                    "fontMenuLabel": section.get("font_menu_label", ""),
+                    # Compact element-group picker used by dense palettes such
+                    # as the Reviewer bottom-bar button colors.
+                    "colorGroups": section.get("color_groups", []),
+                    "colorMenuLabel": section.get("color_menu_label", ""),
+                    # Organize Widgets mounts these ordinary fields in its
+                    # compact appearance panel above the widget grid.
+                    "compactFields": section.get("compact_fields", []),
+                    # Font-role previews use this when their selected font is
+                    # "sync", so the preview mirrors the inherited theme role.
+                    "fallback_role_key": section.get("fallback_role_key", ""),
+                    # Some whole cards only apply in a selected mode (for
+                    # example individual sidebar typography).
+                    "showWhen": section.get("show_when"),
+                    # Registers a field for the page header without leaving an
+                    # empty section behind in the scrolling content.
+                    "headerOnly": bool(section.get("header_only")),
+                    "advancedOnly": bool(section.get("advanced_only")),
+                    # A few self-contained cards intentionally retain the
+                    # same controls regardless of the global complexity mode.
+                    "modeParity": bool(section.get("mode_parity")),
                     # Which PREVIEW_PAINTERS entry a "designer_preview" section
                     # paints its stage with (background/widget_effect/... — see
                     # settings_web/schema.py's _designer_preview_section).
@@ -963,6 +1129,7 @@ def build_context(store, pages):
                     "full_width_color_grid": bool(section.get("full_width_color_grid")),
                     "subsections": section.get("subsections", []),
                     "dynamic_keys": section.get("dynamic_keys", []),
+                    "hide_deck_when": section.get("hide_deck_when", {}),
                     "sync_toggle_id": section.get("sync_toggle_id", ""),
                     "sync_hidden_fields": section.get("sync_hidden_fields", []),
                     # Pomodoro's compact setup surface: preset patches and the
@@ -991,19 +1158,27 @@ def build_context(store, pages):
         "strings": _strings(),
         "nav": nav,
         "pages": serialized_pages,
+        "initialPage": initial_page,
         "addonBase": addon_uri(""),
         "railCollapsed": rail_collapsed(),
+        "settingsComplexity": store.read("settings_complexity") or "advanced",
         "sidebarBg": sidebar_bg_context(),
         "profileAssets": profile_assets_context(),
         "profileLevel": profile_level_context(),
+        "pomodoroState": pomodoro_state_context(),
         "chipColors": restaurant_chip_colors_context(),
         "chipDefaults": chip_defaults_context(),
         "games": games_context(pages),
         "galleries": gallery_context(pages),
         "themeGallery": theme_gallery_context(),
+        "thingsPreview": things_preview_context(),
         "organizeCatalogue": organize_context(),
         "iconAssets": icon_assets_context(),
         "iconPicker": pickable_icons_context(),
+        # The production heatmap renderer formats month/day labels with
+        # Onigiri's selected language rather than Chromium's UI locale.  Its
+        # settings preview runs that same renderer, so give it the same input.
+        "heatmapLocale": current_language(),
         "chromeIcons": {key: icon_svg(name) for key, name in CHROME_ICONS.items()},
     }
 
@@ -1015,23 +1190,50 @@ def _serialize_field(store, field):
         "label": field.get("label", ""),
         "desc": field.get("desc", ""),
         "value": store.read(field["id"]),
+        # Page-wide reset controls must distinguish persisted settings from
+        # display-only notes; binding descriptors themselves stay Python-side.
+        "bound": bool(field.get("bind")),
     }
+    # Simple mode keeps decisions such as modes, toggles, pictures, fonts and
+    # text visible, while detailed paint/effect/ordering controls move behind
+    # Advanced.  A schema entry can always override this default explicitly.
+    if "advanced" in field:
+        out["advanced"] = bool(field["advanced"])
+    else:
+        out["advanced"] = field.get("type") in {
+            "button_order", "icon", "message_list", "notif_position", "slider",
+        }
     for key in (
-        "notes", "items", "options", "layout", "min", "max", "step", "suffix",
+        "notes", "items", "options", "color_fields", "color_dynamic_field", "layout", "min", "max", "step", "suffix",
         "default", "reset_to", "cascade", "toast_on", "hero", "desc_link", "placeholder",
-        "level", "level_name", "button_label", "multiline", "desc_alt",
+        "max_length", "max_graphemes",
+        # Action buttons need their command as well as their visible label.
+        # Without it, renderAction() returns before sending any bridge message.
+        "level", "level_name", "action", "button_label", "multiline", "desc_alt",
         # image + colour-pair fields
         "folder", "dynamic_field", "light_field", "dark_field", "empty_label",
-        "theme_mode_field",
+        "theme_mode_field", "mode_field", "mode_value", "empty_mode", "categories",
+        "blank_token",
         # designer cards: header-mounted choices and conditional rows
         "head", "head_label", "show_when", "control_style",
+        # Icon picker categories used to keep deck-list header, action-button,
+        # and Ready To Go icons visibly distinct in the designer card.
+        "icon_group", "icon_group_title",
+        # Declarative placement for a field that must stay near a related
+        # control instead of joining the generic type-based deck group.
+        "deck_placement", "deck_icon_tile",
         # Games pages
         "hero_image", "accent", "tone", "scale", "virtual", "alpha_of", "context_key",
         "single_field", "always_split", "static_fallback", "chip_role", "danger", "button_icon",
         "square", "neutral", "hold_to_confirm",
+        # Global Simple/Advanced mode hides only fields explicitly marked as
+        # advanced; those fields remain indexed by full-settings search.
+        "advanced", "simple_only",
         # a colour whose "unset" state means some other field's value (an icon
         # tint falling back to the shared icon colour)
-        "fallback_light", "fallback_dark",
+        "fallback_light", "fallback_dark", "inherit_main_background",
+        # Reorder-only button_order fields omit the archive bucket and eyes.
+        "allow_archive", "more_bucket",
     ):
         if key in field:
             out[_camel(key)] = field[key]
@@ -1069,7 +1271,8 @@ def real_widget_css():
     into the settings chrome."""
     css = read_web_asset("menu.css")
     blocks = []
-    for name in ("widget-head", "stats-widgets", "hashi-widget", "prep-widget"):
+    for name in ("widget-head", "stats-widgets", "hashi-widget", "prep-widget",
+                 "sidebar-count-bubbles"):
         head = f"@onigiri:{name}:start"
         tail = f"@onigiri:{name}:end"
         if head not in css or tail not in css:
@@ -1091,29 +1294,34 @@ def real_widget_css():
     heatmap_css = read_web_asset("heatmap.css")
     if heatmap_css:
         blocks.append(heatmap_css.strip())
-    # Notifications: the Games > Notifications preview draws the *real* toast
-    # (.onigiri-notification-card / .onigiri-mini-notification), so it needs the
-    # real stylesheet. Its `.onigiri-notification-stack` rule is `position:
-    # fixed`, which is why the preview stacks the card in its own
-    # `.osw-notifstage-stack` instead of borrowing that class.
+    # Notifications: both the global and Mochi previews draw the *real* toast
+    # (.onigiri-notification-card / .onigiri-mini-notification), so they need
+    # the live stylesheet. Its `.onigiri-notification-stack` is fixed, which is
+    # why previews substitute only their own stage-local positioner.
     notifications_css = read_web_asset("notifications.css")
     if notifications_css:
         blocks.append(notifications_css.strip())
     return "\n\n".join(blocks)
 
 
-def render(store, pages):
+def render(store, pages, initial_page=None):
     template = read_web_asset("settings.html")
     if not template:
         return "<html><body>Onigiri settings assets missing (web/settings.html).</body></html>"
     css = read_web_asset("settings.css")
     js = read_web_asset("settings.js")
-    context = build_context(store, pages)
+    heatmap_js = read_web_asset("Particles.js") + "\n" + read_web_asset("heatmap.js")
+    notifications_js = read_web_asset("notifications.js")
+    context = build_context(store, pages, initial_page=initial_page)
+    boot_background = palette(is_dark()).get("outer", "#ffffff")
     return (
         template
         .replace("/*__ONIGIRI_FONT_FACE__*/", font_face_css())
         .replace("/*__ONIGIRI_REAL_WIDGET_CSS__*/", real_widget_css())
         .replace("/*__ONIGIRI_SETTINGS_CSS__*/", css)
+        .replace("/*__ONIGIRI_HEATMAP_JS__*/", heatmap_js)
+        .replace("/*__ONIGIRI_NOTIFICATIONS_JS__*/", notifications_js)
         .replace("/*__ONIGIRI_SETTINGS_JS__*/", js)
         .replace("/*__ONIGIRI_SETTINGS_CONTEXT__*/null", safe_json(context))
+        .replace("/*__ONIGIRI_BOOT_BACKGROUND__*/", boot_background)
     )

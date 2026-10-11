@@ -535,7 +535,13 @@ def open_reward_redeem_dialog(parent=None, context: str = "reward") -> bool:
     return redeem_reward_code(code, parent=parent, context=context)
 
 
-def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
+def fetch_reward_code(code: str, context: str = "reward") -> Dict[str, Any]:
+    """Validate a reward code without touching Qt UI or local game state.
+
+    Keeping the network-only portion separate lets WebView surfaces run it via
+    Anki's background-operation API and report the result in their own inline
+    UI.  The legacy native dialogs continue to use ``redeem_reward_code()``.
+    """
     try:
         payload = {
             "code": code,
@@ -546,29 +552,39 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
             # replayed by the server instead of burning the code.
             "request_id": redeem_net.request_id_for_code(code),
         }
-        _start_redeem_progress()
-        try:
-            response = redeem_net.post_redeem(REWARD_API_URL, payload)
-        finally:
-            mw.progress.finish()
+        response = redeem_net.post_redeem(REWARD_API_URL, payload)
         data = response.json()
         redeem_net.clear_request_id(code)
     except requests.exceptions.ReadTimeout:
-        showInfo(tr("err_reward_timeout"))
-        return False
+        return {"ok": False, "message": tr("err_reward_timeout")}
     except requests.exceptions.Timeout:
-        showInfo(tr("err_reward_unreachable"))
-        return False
+        return {"ok": False, "message": tr("err_reward_unreachable")}
     except requests.exceptions.ConnectionError:
-        showInfo(tr("err_reward_connect"))
-        return False
+        return {"ok": False, "message": tr("err_reward_connect")}
     except Exception as exc:
-        showInfo(tr("err_redeem_code").format(exc))
-        return False
+        return {"ok": False, "message": tr("err_redeem_code").format(exc)}
 
     if data.get("result") != "success":
-        showInfo(tr("err_redemption_failed").format(data.get("message") or tr("err_invalid_code")))
+        message = data.get("message") or tr("err_invalid_code")
+        return {
+            "ok": False,
+            "message": tr("err_redemption_failed").format(message),
+        }
+    return {"ok": True, "data": data}
+
+
+def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
+    _start_redeem_progress()
+    try:
+        result = fetch_reward_code(code, context=context)
+    finally:
+        mw.progress.finish()
+
+    if not result.get("ok"):
+        showInfo(str(result.get("message") or tr("err_invalid_code")))
         return False
+
+    data = result.get("data") or {}
 
     try:
         message = apply_reward(data)
@@ -582,7 +598,7 @@ def redeem_reward_code(code: str, parent=None, context: str = "reward") -> bool:
 
 
 def apply_reward(data: Dict[str, Any]) -> str:
-    reward_type = str(data.get("reward_type") or "").strip().lower()
+    reward_type = str(data.get("reward_type") or "").strip().lower().replace("-", "_").replace(" ", "_")
     # Older code endpoints sent ``coins`` without a type; newer variants may
     # send ``amount``.  Both are Taiyaki rewards in the legacy store flow.
     if not reward_type and ("coins" in data or "amount" in data):
@@ -619,13 +635,25 @@ def apply_reward(data: Dict[str, Any]) -> str:
         manager.save(immediate=True)
         return f"Redeemed {amount} {label}."
 
-    if reward_type == "onigimon_item":
-        item_key = str(data.get("item_key") or data.get("item") or "").strip()
+    if reward_type in {"onigimon_item", "onigimon_items"}:
+        item_key = str(
+            data.get("item_key") or data.get("item") or data.get("item_id")
+            or data.get("key") or ""
+        ).strip().lower().replace("-", "_").replace(" ", "_")
         amount = int(data.get("amount", 1) or 1)
         if not item_key:
             raise ValueError("Missing Onigimon item key.")
         from .onigimon import ITEMS, manager
 
+        # Store payloads have used both item IDs and human-readable labels.
+        # Accept either format so a valid paid code never silently fails to
+        # reach the user's Onigimon backpack.
+        if item_key not in ITEMS:
+            labels = {
+                str(item.get("label") or "").lower().replace("-", "_").replace(" ", "_"): key
+                for key, item in ITEMS.items()
+            }
+            item_key = labels.get(item_key, item_key)
         if item_key not in ITEMS:
             raise ValueError(f"Unknown Onigimon item: {item_key}")
         state = manager.load()

@@ -179,6 +179,20 @@ class GamificationData:
                 data_path, default={}, label="Your Onigiri progress"
             ) or {}
 
+        # Preserve legacy nested metadata as well as top-level extension keys.
+        # The old shop stored its coin integrity token inside restaurant_level.
+        previous_restaurant = final_data.get('restaurant_level', {})
+        if isinstance(previous_restaurant, dict):
+            merged_restaurant = dict(previous_restaurant)
+            merged_restaurant.update(new_data['restaurant_level'])
+            if ('_security_token' in previous_restaurant
+                    and previous_restaurant.get('taiyaki_coins') != merged_restaurant['taiyaki_coins']):
+                import hashlib
+                merged_restaurant['_security_token'] = hashlib.sha256(
+                    f"{merged_restaurant['taiyaki_coins']}:onigiri_secret_salt_2024".encode()
+                ).hexdigest()
+            new_data['restaurant_level'] = merged_restaurant
+
         # Update with our managed data
         final_data.update(new_data)
 

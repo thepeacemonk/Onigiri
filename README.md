@@ -52,6 +52,7 @@ The following projects and resources informed the design and development of this
 - Hexagon tiles and buildings by [Kenney](https://www.kenney.nl) — licensed under [CC0](http://creativecommons.org/publicdomain/zero/1.0/).
 - Pokémon sprites © Nintendo / Game Freak / The Pokémon Company sourced from [PokéAPI sprites](https://github.com/PokeAPI/sprites) and [PokéSprite](https://github.com/msikma/pokesprite).
 - Onigimon Mini game adapted from [Ankimon](https://github.com/Unlucky-Life/ankimon) by Unlucky-Life and h0tp, licensed under [GPL-3.0](https://github.com/Unlucky-Life/ankimon/blob/main/LICENSE).
+- Deck-wide overview statistics inspired by [More Overview Stats 2.1](https://github.com/patrick-mahnkopf/Anki_More_Overview_Stats) by Patrick Nohira, licensed under GPL-3.0.
 
 ### Notices
 

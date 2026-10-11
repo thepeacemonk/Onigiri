@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from aqt import gui_hooks, mw
 
 from .. import config
+from .haptics import trigger as trigger_haptic
 
 MANTRA_HISTORY_LIMIT = 30
 
@@ -214,6 +215,7 @@ class MochiMessenger:
 
         try:
             web.eval(script)
+            trigger_haptic(1)
         except Exception:
             pass
 

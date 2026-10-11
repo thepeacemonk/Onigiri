@@ -101,6 +101,11 @@ _FALLBACK_JS = r"""
         img.src = iconSrc;
         img.alt = '';
         img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+        var fallbacks = Array.isArray(data.iconFallbacks) ? data.iconFallbacks.slice() : [];
+        img.onerror = function() {
+          if (fallbacks.length) img.src = fallbacks.shift();
+          else { img.onerror = null; img.style.display = 'none'; }
+        };
         icon.appendChild(img);
       } else {
         icon.textContent = data.icon;
@@ -382,6 +387,7 @@ def notification_script(
     variant: str = "onigiri",
     icon: str = "On",
     icon_image: str = "",
+    icon_fallbacks: Optional[Iterable[str]] = None,
     duration: Optional[int] = None,
     hide_icon: bool = False,
     hide_title: bool = False,
@@ -393,6 +399,7 @@ def notification_script(
         "variant": variant,
         "icon": icon,
         "iconImage": icon_image,
+        "iconFallbacks": list(icon_fallbacks or []),
         "duration": _configured_duration() if duration is None else duration,
         "hideIcon": hide_icon,
         "hideTitle": hide_title,
@@ -414,6 +421,7 @@ def notify(
     variant: str = "onigiri",
     icon: str = "On",
     icon_image: str = "",
+    icon_fallbacks: Optional[Iterable[str]] = None,
     duration: Optional[int] = None,
     hide_icon: bool = False,
     hide_title: bool = False,
@@ -437,6 +445,7 @@ def notify(
         variant=variant,
         icon=icon,
         icon_image=icon_image,
+        icon_fallbacks=icon_fallbacks,
         duration=duration,
         hide_icon=hide_icon,
         hide_title=hide_title,

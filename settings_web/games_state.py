@@ -270,8 +270,18 @@ def active_companion_preview():
                 "sprite": "",
                 "staticSprites": [],
                 "animatedSprites": [],
+                "needs": {},
+                "bondLevel": 1,
+                "bondXp": 0,
+                "streak": 0,
+                "itemCount": 0,
+                "types": [],
+                "attack": 0,
+                "defense": 0,
+                "speed": 0,
             }
         companion_data = asdict(companion)
+        state = manager.load()
         static_sprites = [
             sprite_url(url)
             for url in manager.sprite_urls_for_companion(companion_data, motion="static")
@@ -282,6 +292,12 @@ def active_companion_preview():
             for url in manager.sprite_urls_for_companion(companion_data, motion="gif")
             if url
         ]
+        item_count = 0
+        for amount in (getattr(state, "inventory", {}) or {}).values():
+            try:
+                item_count += max(0, int(amount or 0))
+            except (TypeError, ValueError):
+                continue
         return {
             "name": str(manager.companion_display_name(companion) or "Onigimon"),
             "level": int(getattr(companion, "level", 1) or 1),
@@ -293,6 +309,16 @@ def active_companion_preview():
             ),
             "staticSprites": static_sprites,
             "animatedSprites": animated_sprites,
+            "needs": manager.status_values(companion),
+            "hp": int(getattr(companion, "hp", 0) or 0),
+            "bondLevel": max(1, int(getattr(companion, "bond_level", 1) or 1)),
+            "bondXp": max(0, int(getattr(companion, "bond_xp", 0) or 0)),
+            "streak": max(0, int(getattr(state, "current_streak", 0) or 0)),
+            "itemCount": item_count,
+            "types": [str(value) for value in (getattr(companion, "types", []) or [])[:2]],
+            "attack": int(getattr(companion, "attack", 0) or 0),
+            "defense": int(getattr(companion, "defense", 0) or 0),
+            "speed": int(getattr(companion, "speed", 0) or 0),
         }
     except Exception:
         return {
@@ -301,6 +327,15 @@ def active_companion_preview():
             "sprite": "",
             "staticSprites": [],
             "animatedSprites": [],
+            "needs": {},
+            "bondLevel": 1,
+            "bondXp": 0,
+            "streak": 0,
+            "itemCount": 0,
+            "types": [],
+            "attack": 0,
+            "defense": 0,
+            "speed": 0,
         }
 
 
@@ -329,7 +364,6 @@ BENTO_GAME_STYLE = {
     "516325516": ("Focumon.png", "#F2B705"),
     "1799253175": ("lofi_town.png", "#9EAC32"),
     "585575504": ("Senchado.png", "#58A866"),
-    "Byte": ("byte.png", "#7A4A55"),
 }
 
 

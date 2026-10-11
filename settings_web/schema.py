@@ -32,6 +32,7 @@ import copy
 from aqt import mw
 
 from .. import config
+from ..pomodoro_tones import TONE_PAIRS
 from ..translations import LANGUAGES, tr
 from . import games
 
@@ -86,6 +87,50 @@ FONT_ROLES = (
     ("small_title", "small_titles", "Small titles", 15, "--font-small-title-color"),
 )
 
+# Component typography is distributed to the page it affects. Each tuple is
+# (key, label key, fallback label, legacy shared role); that last value supplies
+# a stable default for profiles created before the standalone Fonts page was
+# removed.
+ADVANCED_FONT_ROLES = (
+    ("sidebar_small", "sidebar_small_fonts", "Sidebar text", "main"),
+    ("deck_title", "deck_title", "Deck title", "subtle"),
+    ("deck_names", "deck_names", "Deck names", "main"),
+    ("action_buttons", "action_buttons", "Action buttons", "main"),
+    ("dashboard_title", "dashboard_titles", "Dashboard titles", "subtle"),
+    ("widget_title", "widget_titles", "Widget titles", "small_title"),
+    ("widget_small", "widget_small_fonts", "Widget text", "main"),
+    ("heatmap_title", "heatmap_title", "Heatmap title", "small_title"),
+    ("heatmap_labels", "heatmap_labels", "Heatmap labels", "main"),
+    ("stats_title", "stats_title", "Stats title", "small_title"),
+    ("stats_labels", "stats_titles", "Stats Titles", "main"),
+    ("stats_values", "stats_labels", "Stats Labels", "main"),
+    ("profile_name", "profile_name", "Profile name", "main"),
+    ("overview_title", "overview_title", "Overview title", "subtle"),
+    ("overview_text", "overview_text", "Overview text", "main"),
+    ("congrats_title", "congrats_title", "Congratulations title", "subtle"),
+    ("congrats_text", "congrats_text", "Congratulations text", "main"),
+    ("reviewer_controls", "reviewer_controls", "Reviewer controls", "main"),
+    ("notifications", "notifications", "Notifications", "main"),
+)
+
+SIMPLE_FONT_DEFAULTS = {role[0]: role[3] for role in FONT_ROLES}
+COMPONENT_FONT_SIZE_DEFAULTS = {
+    "deck_title": 13,
+}
+
+
+def _current_simple_font_size(role):
+    default = SIMPLE_FONT_DEFAULTS[role]
+    if mw is None or getattr(mw, "col", None) is None:
+        return default
+    try:
+        return max(
+            8,
+            min(72, int(mw.col.conf.get(f"onigiri_font_size_{role}", default))),
+        )
+    except (TypeError, ValueError):
+        return default
+
 
 # ── availability probes ────────────────────────────────────────────────────────
 
@@ -117,31 +162,6 @@ def _language_parts(lang_name):
     code = LANGUAGES.get(lang_name, "en").upper()
     subtitle = f"{code} · {note.upper()}" if note else code
     return title, subtitle
-
-
-def _language_coverage(code):
-    """How much of the add-on is actually translated into `code`.
-
-    Only keys that exist in English count, so a stale key left behind in a
-    translation cannot push a language over 100%."""
-    from ..translations import TRANSLATIONS
-
-    english = set(TRANSLATIONS.get("en", {}))
-    total = len(english)
-    if not total:
-        return {"translated": 0, "total": 0, "pct": 100, "complete": True}
-    translated = len(english & set(TRANSLATIONS.get(code, {})))
-    complete = translated >= total
-    # Floor, and cap an incomplete language at 99: a language one string short
-    # would otherwise round to 100% and claim "fully translated" while that
-    # string is still English. `complete` is the only thing allowed to say that.
-    pct = 100 if complete else min(99, int(100.0 * translated / total))
-    return {
-        "translated": translated,
-        "total": total,
-        "pct": pct,
-        "complete": complete,
-    }
 
 
 def _language_preview(code):
@@ -177,7 +197,6 @@ def _language_options():
             "code": code,
             "emoji": LANGUAGE_FLAGS.get(name, "🌐"),
             "greeting": LANGUAGE_GREETINGS.get(code, title),
-            "coverage": _language_coverage(code),
             "preview": _language_preview(code),
         })
     return options
@@ -194,7 +213,11 @@ def _font_options():
     options = []
     for key, info in fonts.items():
         label = str((info or {}).get("name") or (info or {}).get("family") or key)
-        options.append({"value": key, "label": label, "family": str((info or {}).get("family", "") or "")})
+        options.append({
+            "value": key,
+            "label": label,
+            "family": str((info or {}).get("family", "") or ""),
+        })
     options.sort(key=lambda o: (o["value"] != "system", o["label"].lower()))
     return options
 
@@ -203,62 +226,6 @@ def _addon_root():
     import os
 
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _fonts_sections():
-    sections = []
-    for key, label_key, fallback, default_size, colour_token in FONT_ROLES:
-        sections.append({
-            "id": f"font_{key}",
-            "title": tr(label_key, fallback),
-            "layout": "font_role",
-            "role_key": key,
-            "fields": [
-                {
-                    "id": f"onigiri_font_{key}",
-                    "type": "font",
-                    "label": tr("font", "Font"),
-                    "bind": {"kind": "col", "key": f"onigiri_font_{key}"},
-                    "default": "system",
-                    "options": _font_options(),
-                },
-                {
-                    "id": f"onigiri_font_size_{key}",
-                    "type": "number",
-                    "label": tr("font_size", "Size"),
-                    "bind": {"kind": "col", "key": f"onigiri_font_size_{key}"},
-                    "default": default_size,
-                    "min": 8,
-                    "max": 72,
-                    "step": 1,
-                    "suffix": "px",
-                    "reset_to": default_size,
-                },
-                _color_pair_field(
-                    f"font_color_{key}",
-                    tr("color", "Color"),
-                    f"font_color_light_{key}",
-                    f"font_color_dark_{key}",
-                    None,
-                ),
-                {
-                    "id": f"font_color_light_{key}",
-                    "type": "hidden",
-                    "label": "",
-                    "bind": {"kind": "config", "path": ["colors", "light", colour_token]},
-                    "default": "#1f2933",
-                },
-                {
-                    "id": f"font_color_dark_{key}",
-                    "type": "hidden",
-                    "label": "",
-                    "bind": {"kind": "config", "path": ["colors", "dark", colour_token]},
-                    "default": "#f4f4f5",
-                },
-                _hidden_field(f"font_color_{key}_theme_mode"),
-            ],
-        })
-    return sections
 
 
 # ── pages ──────────────────────────────────────────────────────────────────────
@@ -407,20 +374,12 @@ def _languages_page():
     }
 
 
-def _fonts_page():
-    return {
-        "id": "fonts",
-        "legacy_name": "Fonts",
-        "title": tr("fonts", "Fonts"),
-        "icon": "text.svg",
-        "group": "general",
-        "description": "",
-        "sections": _fonts_sections(),
-    }
-
-
 def _sync_page():
     made_by = tr("sync_made_by", "Made by h0tp")
+    custom_cascade = {
+        "on": {"ankiweb_sync_preset": "custom"},
+        "off": {"ankiweb_sync_preset": "custom"},
+    }
     return {
         "id": "sync",
         "legacy_name": "Sync",
@@ -444,6 +403,51 @@ def _sync_page():
                     "default": True,
                 },
                 {
+                    "id": "ankiweb_sync_preset",
+                    "type": "choice",
+                    "advanced": True,
+                    "label": tr("sync_what", "What should sync?"),
+                    "desc": tr(
+                        "sync_what_desc",
+                        "Choose a ready-made policy, or use Advanced settings "
+                        "to select each category.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_preset"},
+                    "default": "custom",
+                    "options": [
+                        {"value": "theme_only", "label": tr("sync_theme_only", "Theme only")},
+                        {"value": "games_only", "label": tr("sync_games_only", "Mini-games only")},
+                        {"value": "everything", "label": tr("sync_everything", "Everything")},
+                        {"value": "custom", "label": tr("custom", "Custom")},
+                    ],
+                    "cascade": {
+                        "theme_only": {
+                            "ankiweb_sync_theme": True,
+                            "ankiweb_sync_profile": False,
+                            "ankiweb_sync_games": False,
+                            "ankiweb_sync_study_tools": False,
+                            "ankiweb_sync_assets": True,
+                            "ankiweb_sync_layout": False,
+                        },
+                        "games_only": {
+                            "ankiweb_sync_theme": False,
+                            "ankiweb_sync_profile": False,
+                            "ankiweb_sync_games": True,
+                            "ankiweb_sync_study_tools": False,
+                            "ankiweb_sync_assets": False,
+                            "ankiweb_sync_layout": False,
+                        },
+                        "everything": {
+                            "ankiweb_sync_theme": True,
+                            "ankiweb_sync_profile": True,
+                            "ankiweb_sync_games": True,
+                            "ankiweb_sync_study_tools": True,
+                            "ankiweb_sync_assets": True,
+                            "ankiweb_sync_layout": True,
+                        },
+                    },
+                },
+                {
                     "id": "sync_state_note",
                     "type": "note",
                     "label": tr("sync_bullet_1", ""),
@@ -454,6 +458,80 @@ def _sync_page():
                     "type": "note",
                     "layout": "grid",
                     "items": [tr("sync_bullet_2", ""), tr("sync_bullet_3", "")],
+                },
+            ],
+        }, {
+            "id": "sync_categories",
+            "advanced_only": True,
+            "title": tr("sync_categories", "Sync categories"),
+            "description": tr(
+                "sync_categories_desc",
+                "These choices are local to this computer and are not copied to other devices.",
+            ),
+            "fields": [
+                {
+                    "id": "ankiweb_sync_theme", "type": "toggle", "advanced": True,
+                    "label": tr("sync_theme_settings", "Theme & appearance settings"),
+                    "desc": tr(
+                        "sync_theme_settings_desc",
+                        "Colors, backgrounds, fonts, modes, and visual behavior.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_theme"}, "default": True,
+                    "cascade": custom_cascade,
+                },
+                {
+                    "id": "ankiweb_sync_profile", "type": "toggle", "advanced": True,
+                    "label": tr("sync_profile", "Profile personalization"),
+                    "desc": tr(
+                        "sync_profile_desc",
+                        "Profile name, picture choices, bio, status, and "
+                        "profile presentation.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_profile"}, "default": True,
+                    "cascade": custom_cascade,
+                },
+                {
+                    "id": "ankiweb_sync_games", "type": "toggle", "advanced": True,
+                    "label": tr("sync_game_data", "Mini-game settings & progress"),
+                    "desc": tr(
+                        "sync_game_data_desc",
+                        "Onigimon, Nook Level, Mochi, achievements, and "
+                        "Hexagon Land data.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_games"}, "default": True,
+                    "cascade": custom_cascade,
+                },
+                {
+                    "id": "ankiweb_sync_study_tools", "type": "toggle", "advanced": True,
+                    "label": tr("sync_study_tools", "Study-tool data"),
+                    "desc": tr(
+                        "sync_study_tools_desc",
+                        "Prep Station plans, Hashi Notes, and Pomodoro settings.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_study_tools"}, "default": True,
+                    "cascade": custom_cascade,
+                },
+                {
+                    "id": "ankiweb_sync_assets", "type": "toggle", "advanced": True,
+                    "label": tr("sync_custom_assets", "Custom images, icons, fonts & themes"),
+                    "desc": tr(
+                        "sync_custom_assets_desc",
+                        "Copies the files used by your appearance settings.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_assets"}, "default": True,
+                    "cascade": custom_cascade,
+                },
+                {
+                    "id": "ankiweb_sync_layout", "type": "toggle", "advanced": True,
+                    "label": tr("sync_layout_settings", "Layout settings"),
+                    "desc": tr(
+                        "sync_layout_settings_desc",
+                        "Widget placement, font sizes, margins, scaling, and other "
+                        "screen-specific dimensions. Off keeps each computer's "
+                        "layout local.",
+                    ),
+                    "bind": {"kind": "config", "key": "ankiweb_sync_layout"}, "default": False,
+                    "cascade": custom_cascade,
                 },
             ],
         }],
@@ -486,6 +564,7 @@ def _designer_preview_section(
     sync_toggle_id=None, sync_hidden_fields=None, stage_side=False,
     icon_colors_inline=False, head_to_deck=False, subsections=None,
     hide_deck_when=None, preview_dynamic_field="", full_width_color_grid=False,
+    show_when=None,
 ):
     """One of Main menu's self-contained "designer" cards: a live preview stage
     (painted client-side by PREVIEW_PAINTERS[preview_kind] in settings.js) plus
@@ -500,11 +579,11 @@ def _designer_preview_section(
     theme-mode keys at once (e.g. Main Background's color AND image).
 
     `sync_toggle_id` + `sync_hidden_fields`: Stats Widgets and Deck Stats each
-    have a "Sync with Widget Color and Effect" toggle that, when on, takes its
-    blur/opacity/radius/stroke/box-colour values from Widget Color and Effect —
+    have a "Sync with widgets" toggle that, when on, takes its
+    blur/opacity/radius/stroke/box-colour values from Organize Widgets —
     so those rows collapse away entirely rather than sitting there greyed out,
     the same way a setting the current design cannot use disappears."""
-    return {
+    section = {
         "id": section_id,
         "title": title,
         # Sub-menu tab glyph, used when the labels no longer fit beside the
@@ -544,6 +623,9 @@ def _designer_preview_section(
         "sync_hidden_fields": sync_hidden_fields or [],
         "fields": fields,
     }
+    if show_when:
+        section["show_when"] = show_when
+    return section
 
 
 def _image_list_field(field_id, folder, label, **extra):
@@ -643,15 +725,9 @@ def _profile_page():
                         "placeholder": "YYYY-MM-DD",
                     },
                     {
-                        "id": "profile_status",
-                        "type": "text",
-                        "label": tr("profile_status", "Status"),
-                        "bind": {"kind": "config", "path": ["onigiriProfile", "status"]},
-                        "default": "",
-                    },
-                    {
                         "id": "profile_bio",
                         "type": "text",
+                        "advanced": True,
                         "label": tr("profile_bio", "Bio"),
                         "multiline": True,
                         "bind": {"kind": "config", "path": ["onigiriProfile", "bio"]},
@@ -660,6 +736,7 @@ def _profile_page():
                     {
                         "id": "profile_music",
                         "type": "text",
+                        "advanced": True,
                         "label": tr("profile_music", "Music Link"),
                         "placeholder": "https://open.spotify.com/... | https://music.apple.com/...",
                         "bind": {"kind": "config", "path": ["onigiriProfile", "spotifyLink"]},
@@ -669,8 +746,23 @@ def _profile_page():
             },
             {
                 "id": "profile_panel_toggles",
-                "title": tr("profile_panel_toggles_header", "Show in Profile Panel"),
+                "advanced_only": True,
+                "title": tr("profile_panel_toggles_header", "Show in Profile Sidebar"),
                 "fields": [
+                    {
+                        "id": "profile_sidebar_active_cards",
+                        "type": "toggle",
+                        "label": tr("profile_sidebar_active_cards", "Active Cards"),
+                        "bind": {"kind": "config", "path": ["onigiriProfilePanel", "show_active_cards"]},
+                        "default": True,
+                    },
+                    {
+                        "id": "profile_sidebar_today_stats",
+                        "type": "toggle",
+                        "label": tr("profile_sidebar_today_stats", "Today's Study Stats"),
+                        "bind": {"kind": "config", "path": ["onigiriProfilePanel", "show_today_stats"]},
+                        "default": True,
+                    },
                     {
                         "id": "profile_panel_weekly_chart",
                         "type": "toggle",
@@ -682,7 +774,7 @@ def _profile_page():
                         "id": "profile_panel_nook_level",
                         "type": "toggle",
                         "label": tr("profile_panel_nook_level", "Nook Level Progress"),
-                        "bind": {"kind": "config", "path": ["restaurant_level", "show_profile_page_progress"]},
+                        "bind": {"kind": "config", "path": ["onigiriProfilePanel", "show_nook_level"]},
                         "default": True,
                     },
                     {
@@ -699,22 +791,14 @@ def _profile_page():
                         "bind": {"kind": "config", "path": ["onigiriProfilePanel", "show_onigimon_hp"]},
                         "default": True,
                     },
-                    {
-                        "id": "profile_panel_mantras",
-                        "type": "toggle",
-                        "label": tr("profile_panel_mantras", "My Mantras"),
-                        "bind": {"kind": "config", "path": ["onigiriProfilePanel", "show_mantras"]},
-                        "default": True,
-                    },
                 ],
             },
             {
-                # The Gamification profile *page*'s own backdrop, not the
-                # profile bar's — patcher.generate_profile_page_background_css
-                # paints `body` from these six keys, either a flat colour or a
-                # 135° two-stop gradient (settings/_page_profile.py:1089-1102).
-                # Mounted inside the Profile Sidebar tab by settings.js.
+                # The Profile Sidebar panel's backdrop. These colours paint
+                # the panel itself; its cover image below is an independent
+                # image that stays at the top of that panel.
                 "id": "profile_page_background",
+                "advanced_only": True,
                 "title": tr("profile_page_background", "Profile Page Background"),
                 "fields": [
                     {
@@ -756,6 +840,18 @@ def _profile_page():
                     _hidden_field("onigiri_profile_page_bg_light_color2", "#E0E0E0"),
                     _hidden_field("onigiri_profile_page_bg_dark_color2", "#1A1A1A"),
                     _hidden_field("onigiri_profile_page_bg_color2_theme_mode"),
+                    _image_field(
+                        "onigiri_profile_sidebar_cover_image",
+                        "profile_bg",
+                        tr("profile_sidebar_cover", "Profile Sidebar Cover"),
+                        dynamic_field="onigiri_profile_page_bg_dynamic_mode",
+                        light_field="onigiri_profile_sidebar_cover_image_light",
+                        dark_field="onigiri_profile_sidebar_cover_image_dark",
+                        empty_label=tr("none_default", "Default"),
+                    ),
+                    _hidden_field("onigiri_profile_sidebar_cover_image_light"),
+                    _hidden_field("onigiri_profile_sidebar_cover_image_dark"),
+                    _hidden_field("onigiri_profile_sidebar_cover_image_theme_mode"),
                 ],
             },
             {
@@ -781,12 +877,52 @@ def _profile_page():
                 "title": tr("profile_name_appearance", "Profile Name Appearance"),
                 "fields": [
                     {
-                        "id": "modern_menu_profile_name_font",
+                        "id": "onigiri_font_profile_name",
                         "type": "font",
+                        "advanced": True,
                         "label": tr("profile_name_font", "Name Font"),
-                        "bind": {"kind": "col", "key": "modern_menu_profile_name_font"},
-                        "default": "system",
-                        "options": _font_options(),
+                        "bind": {"kind": "col", "key": "onigiri_font_profile_name"},
+                        "default": "sync",
+                        "options": [
+                            {"value": "sync", "label": tr("sync_with_theme", "Sync with theme")},
+                        ] + _font_options(),
+                    },
+                    {
+                        "id": "onigiri_font_size_profile_name",
+                        "type": "number",
+                        "advanced": True,
+                        "label": tr("font_size", "Size"),
+                        "bind": {"kind": "col", "key": "onigiri_font_size_profile_name"},
+                        "default": _current_simple_font_size("main"),
+                        "min": 8,
+                        "max": 72,
+                        "step": 1,
+                        "suffix": "px",
+                        "reset_to": _current_simple_font_size("main"),
+                    },
+                    {
+                        "id": "onigiri_font_profile_level",
+                        "type": "font",
+                        "advanced": True,
+                        "label": tr("profile_level_font", "Level Font"),
+                        "bind": {"kind": "col", "key": "onigiri_font_profile_level"},
+                        "default": "sync",
+                        "options": [
+                            {"value": "sync", "label": tr("sync_with_theme", "Sync with theme")},
+                        ] + _font_options(),
+                    },
+                    {
+                        "id": "onigiri_font_size_profile_level",
+                        "type": "number",
+                        "advanced": True,
+                        "label": tr("font_size", "Size"),
+                        "bind": {"kind": "col", "key": "onigiri_font_size_profile_level"},
+                        "default": 11,
+                        "min": 8,
+                        "max": 72,
+                        "step": 1,
+                        "suffix": "px",
+                        "reset_to": 11,
                     },
                     # One of the four legacy per-asset Dynamic mode flags. The
                     # WebUI shows a single Dynamic mode switch in the profile
@@ -797,7 +933,10 @@ def _profile_page():
                         "id": "modern_menu_profile_name_dynamic_mode",
                         "type": "toggle",
                         "label": tr("dynamic_mode", "Dynamic mode"),
-                        "desc": tr("profile_name_dynamic_desc", "Use separate colors for light and dark themes"),
+                        "desc": tr(
+                            "profile_name_dynamic_desc",
+                            "Use separate colors for light and dark themes",
+                        ),
                         "bind": {"kind": "col", "key": "modern_menu_profile_name_dynamic_mode"},
                         "default": True,
                     },
@@ -808,9 +947,31 @@ def _profile_page():
                         "modern_menu_profile_name_color_dark",
                         "modern_menu_profile_name_dynamic_mode",
                     ),
-                    _hidden_field("modern_menu_profile_name_color_light", "#111827"),
-                    _hidden_field("modern_menu_profile_name_color_dark", "#f9fafb"),
+                    _hidden_field(
+                        "modern_menu_profile_name_color_light",
+                        config.DEFAULTS["colors"]["light"]["--fg"],
+                    ),
+                    _hidden_field(
+                        "modern_menu_profile_name_color_dark",
+                        config.DEFAULTS["colors"]["dark"]["--fg"],
+                    ),
                     _hidden_field("modern_menu_profile_name_color_theme_mode"),
+                    _color_pair_field(
+                        "modern_menu_profile_level_color",
+                        tr("color", "Color"),
+                        "modern_menu_profile_level_color_light",
+                        "modern_menu_profile_level_color_dark",
+                        "modern_menu_profile_name_dynamic_mode",
+                    ),
+                    _hidden_field(
+                        "modern_menu_profile_level_color_light",
+                        config.DEFAULT_PROFILE_LEVEL_COLOR,
+                    ),
+                    _hidden_field(
+                        "modern_menu_profile_level_color_dark",
+                        config.DEFAULT_PROFILE_LEVEL_COLOR,
+                    ),
+                    _hidden_field("modern_menu_profile_level_color_theme_mode"),
                 ],
             },
             {
@@ -887,24 +1048,59 @@ def _profile_page():
                         "modern_menu_profile_picture_color_light",
                         "modern_menu_profile_picture_color_dark",
                         "modern_menu_profile_picture_dynamic_mode",
+                        # Color only has no per-colour link control. When the
+                        # shared Dynamic Mode is on, always show both theme
+                        # values even if they currently match.
+                        always_split=True,
                     ),
                     _hidden_field("modern_menu_profile_picture_color_light", "#8CACB4"),
                     _hidden_field("modern_menu_profile_picture_color_dark", "#B8BDC3"),
                     _hidden_field("modern_menu_profile_picture_color_theme_mode"),
                     {
-                        # The renderer blurs the picture from this key
-                        # (onigiri_renderer.py:351, patcher.py:917). The legacy
-                        # page had no control for it and hard-wrote 0 on every
-                        # save, next to an opacity slider that nothing outside
-                        # the dialog's own preview ever read — so the setting
-                        # that actually reaches the screen is the one exposed
-                        # here, and the one that never did is left alone.
-                        "id": "modern_menu_profile_picture_blur",
-                        "type": "slider",
-                        "label": tr("blur_intensity", "Blur Intensity"),
-                        "bind": {"kind": "col", "key": "modern_menu_profile_picture_blur"},
-                        "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
+                        "id": "modern_menu_profile_picture_content_type",
+                        "type": "choice",
+                        "label": tr("profile_avatar_content", "Avatar Content"),
+                        "bind": {"kind": "col", "key": "modern_menu_profile_picture_content_type"},
+                        "default": "letter",
+                        "options": [
+                            {"value": "letter", "label": tr("profile_avatar_letter", "Letter/Emoji")},
+                            {"value": "icon", "label": tr("profile_avatar_icon", "Icon")},
+                        ],
                     },
+                    {
+                        "id": "modern_menu_profile_picture_letter",
+                        "type": "text",
+                        "label": tr("profile_avatar_letter", "Letter/Emoji"),
+                        "desc": tr(
+                            "profile_avatar_letter_desc",
+                            "Leave blank to use your initial. Type ... to hide it.",
+                        ),
+                        "bind": {"kind": "col", "key": "modern_menu_profile_picture_letter"},
+                        "default": "",
+                        "max_graphemes": 1,
+                        "blank_token": "...",
+                    },
+                    {
+                        "id": "modern_menu_profile_picture_icon",
+                        "type": "icon",
+                        "label": tr("profile_avatar_icon", "Icon"),
+                        "bind": {"kind": "col", "key": "modern_menu_profile_picture_icon"},
+                        "default": "system:onigiri.svg",
+                    },
+                    _color_pair_field(
+                        "modern_menu_profile_picture_icon_color",
+                        tr("profile_avatar_icon_color", "Icon Color"),
+                        "modern_menu_profile_picture_icon_color_light",
+                        "modern_menu_profile_picture_icon_color_dark",
+                        "modern_menu_profile_picture_dynamic_mode",
+                        # Keep both theme slots visible even when their
+                        # current values match, so the icon picker can be
+                        # configured independently for light and dark mode.
+                        always_split=True,
+                    ),
+                    _hidden_field("modern_menu_profile_picture_icon_color_light", "#FFFFFF"),
+                    _hidden_field("modern_menu_profile_picture_icon_color_dark", "#FFFFFF"),
+                    _hidden_field("modern_menu_profile_picture_icon_color_theme_mode"),
                 ],
             },
             {
@@ -960,8 +1156,14 @@ def _profile_page():
                             "Sits behind the image — it blends through as opacity drops.",
                         ),
                     ),
-                    _hidden_field("modern_menu_profile_bg_color_light", "#EEEEEE"),
-                    _hidden_field("modern_menu_profile_bg_color_dark", "#3C3C3C"),
+                    _hidden_field(
+                        "modern_menu_profile_bg_color_light",
+                        config.DEFAULTS["colors"]["light"]["--profile-page-bg"],
+                    ),
+                    _hidden_field(
+                        "modern_menu_profile_bg_color_dark",
+                        config.DEFAULTS["colors"]["dark"]["--profile-page-bg"],
+                    ),
                     _hidden_field("modern_menu_profile_bg_color_theme_mode"),
                     {
                         "id": "modern_menu_profile_bg_blur",
@@ -1005,15 +1207,529 @@ def _themes_page():
         "group": "general",
         "description": tr(
             "themes_description",
-            "Apply a full color palette, save your own, or import one someone shared.",
+            "Choose the visual system for Onigiri, then tune its appearance.",
         ),
-        "sections": [{
-            "id": "theme_gallery",
-            "title": "",
-            "layout": "themes",
-            "fields": [],
-        }],
+        "sections": [
+            {
+                "id": "theme_style_selector",
+                "title": tr("theme_style", "Theme style"),
+                "layout": "theme_style",
+                "fields": [{
+                    "id": "onigiri_ui_theme",
+                    "type": "choice",
+                    "label": tr("theme_style", "Theme style"),
+                    "bind": {"kind": "config", "key": "onigiri_ui_theme"},
+                    "default": "classic",
+                    # Shima starts with quiet supporting UI: sidebar actions
+                    # use the compact icon strip and reviewer notifications use
+                    # their compact presentation. Notification size remains an
+                    # ordinary editable control after the theme is selected.
+                    "cascade": {
+                        "shima": {
+                            "sidebarActionsMode": "archived",
+                            "g_notification_mode": "mini",
+                        },
+                    },
+                    "options": [
+                        {
+                            "value": "classic",
+                            "label": tr("theme_classic", "Onigiri"),
+                            "sub": tr(
+                                "theme_classic_desc",
+                                "Onigiri's flexible widget dashboard",
+                            ),
+                        },
+                        {
+                            "value": "things3",
+                            "label": "Kome (米)",
+                            "sub": tr(
+                                "theme_things3_desc",
+                                "A calm, focused study ledger",
+                            ),
+                        },
+                        {
+                            "value": "shima",
+                            "label": "Shima (島)",
+                            "sub": tr(
+                                "theme_shima_desc",
+                                "A centered island for your decks",
+                            ),
+                        },
+                    ],
+                }],
+            },
+            {
+                "id": "theme_color_mode",
+                "title": tr("theme_mode", "Color mode"),
+                "fields": [{
+                    "id": "onigiri_theme_mode",
+                    "type": "choice",
+                    # The section heading already labels this control.
+                    "label": "",
+                    "desc": tr(
+                        "theme_mode_desc",
+                        "Follow Anki's light/dark mode or choose a fixed mode "
+                        "for Onigiri.",
+                    ),
+                    # One shared preference for every visual style. Keep the
+                    # existing config key so saved Kome preferences carry over.
+                    "bind": {"kind": "config", "key": "onigiriThemeMode"},
+                    "default": "system",
+                    "options": [
+                        {
+                            "value": "system",
+                            "label": tr("theme_mode_anki", "Sync with Anki"),
+                        },
+                        {
+                            "value": "light",
+                            "label": tr("theme_mode_light", "Force light mode"),
+                        },
+                        {
+                            "value": "dark",
+                            "label": tr("theme_mode_dark", "Force dark mode"),
+                        },
+                    ],
+                }],
+            },
+            {
+                "id": "theme_gallery",
+                "title": "",
+                "layout": "themes",
+                # Shared palette values used as live fallbacks by colour
+                # controls that intentionally store an empty value to mean
+                # "inherit". The Themes renderer does not draw these fields.
+                "fields": [
+                    _hidden_config_field(
+                        "theme_accent_light",
+                        ["colors", "light", "--accent-color"],
+                        config.DEFAULT_ACCENT_COLOR,
+                    ),
+                    _hidden_config_field(
+                        "theme_accent_dark",
+                        ["colors", "dark", "--accent-color"],
+                        config.DEFAULT_ACCENT_COLOR,
+                    ),
+                    _hidden_config_field(
+                        "theme_fg_light", ["colors", "light", "--fg"], "#212121"
+                    ),
+                    _hidden_config_field(
+                        "theme_fg_dark", ["colors", "dark", "--fg"], "#e0e0e0"
+                    ),
+                    _hidden_config_field(
+                        "theme_bg_light", ["colors", "light", "--bg"], "#f3f3f3"
+                    ),
+                    _hidden_config_field(
+                        "theme_bg_dark", ["colors", "dark", "--bg"], "#171717"
+                    ),
+                    _hidden_config_field(
+                        "theme_inset_light",
+                        ["colors", "light", "--canvas-inset"],
+                        "#ffffff",
+                    ),
+                    _hidden_config_field(
+                        "theme_inset_dark",
+                        ["colors", "dark", "--canvas-inset"],
+                        "#2c2c2c",
+                    ),
+                    _hidden_config_field(
+                        "theme_subtle_light",
+                        ["colors", "light", "--fg-subtle"],
+                        "#757575",
+                    ),
+                    _hidden_config_field(
+                        "theme_subtle_dark",
+                        ["colors", "dark", "--fg-subtle"],
+                        "#9e9e9e",
+                    ),
+                    _hidden_config_field(
+                        "theme_border_light",
+                        ["colors", "light", "--border"],
+                        "#e0e0e0",
+                    ),
+                    _hidden_config_field(
+                        "theme_border_dark",
+                        ["colors", "dark", "--border"],
+                        "#424242",
+                    ),
+                ],
+            },
+        ],
     }
+
+
+def _things_theme_section():
+    """Focused Kome controls: visibility, surfaces, and chart palette."""
+    def path(*parts):
+        return {
+            "kind": "config",
+            "path": ["things_theme", *parts],
+        }
+
+    return {
+        "id": "things3_appearance",
+        "title": "Kome",
+        "icon": "themes.svg",
+        "layout": "things_theme",
+        "show_when": {
+            "field": "onigiri_ui_theme",
+            "values": ["things3"],
+        },
+        "description": tr(
+            "things3_customization_desc",
+            "Choose what the focused dashboard shows and tune the "
+            "dashboard colors.",
+        ),
+        "fields": [
+            {
+                "id": "things_show_due",
+                "type": "toggle",
+                "label": tr("things_show_due", "Due today"),
+                "bind": path("sidebar_hero"),
+                "default": True,
+            },
+            {
+                "id": "things_show_tasks",
+                "type": "toggle",
+                "label": tr("things_show_tasks", "Tasks"),
+                "bind": path("sidebar_tasks"),
+                "default": True,
+            },
+            {
+                "id": "things_show_active_cards",
+                "type": "toggle",
+                "label": tr("things_show_active_cards", "Active Cards"),
+                "bind": path("sidebar_donut"),
+                "default": True,
+            },
+            {
+                "id": "things_show_progress",
+                "type": "toggle",
+                "label": tr("things_show_progress", "Recent progress"),
+                "bind": path("sidebar_progress"),
+                "default": True,
+            },
+            {
+                "id": "things_show_review_chart",
+                "type": "toggle",
+                "label": tr(
+                    "things_show_review_chart", "Cards reviewed chart"
+                ),
+                "bind": path("show_review_chart"),
+                "default": True,
+            },
+            {
+                "id": "things_show_heatmap",
+                "type": "toggle",
+                "label": tr(
+                    "things_show_heatmap", "Review activity heatmap"
+                ),
+                "bind": path("show_heatmap"),
+                "default": True,
+            },
+            {
+                "id": "things_show_advanced_stats",
+                "type": "toggle",
+                "label": tr(
+                    "things_show_advanced_stats", "Advanced statistics"
+                ),
+                "desc": tr(
+                    "things_show_advanced_stats_desc",
+                    "Show the expanded retention, consistency, efficiency, "
+                    "session, topic, and timing dashboard on the main menu.",
+                ),
+                "bind": path("advanced_stats"),
+                "default": False,
+            },
+            _color_pair_field(
+                "things_main_background",
+                tr("main_background", "Main background"),
+                "things_main_background_light",
+                "things_main_background_dark",
+                None,
+                theme_mode_field="things_main_background_theme_mode",
+                fallback_light="theme_bg_light",
+                fallback_dark="theme_bg_dark",
+            ),
+            _hidden_config_field(
+                "things_main_background_light",
+                ["things_theme", "background_light"],
+                "",
+            ),
+            _hidden_config_field(
+                "things_main_background_dark",
+                ["things_theme", "background_dark"],
+                "",
+            ),
+            _hidden_config_field(
+                "things_main_background_theme_mode",
+                ["things_theme", "background_theme_mode"],
+                "separate",
+            ),
+            _color_pair_field(
+                "things_sidebar_background",
+                tr("sidebar_background", "Sidebar background"),
+                "things_sidebar_background_light",
+                "things_sidebar_background_dark",
+                None,
+                theme_mode_field="things_sidebar_background_theme_mode",
+                inherit_main_background=True,
+            ),
+            _hidden_config_field(
+                "things_sidebar_background_light",
+                ["things_theme", "sidebar_background_light"],
+                "",
+            ),
+            _hidden_config_field(
+                "things_sidebar_background_dark",
+                ["things_theme", "sidebar_background_dark"],
+                "",
+            ),
+            _hidden_config_field(
+                "things_sidebar_background_theme_mode",
+                ["things_theme", "sidebar_background_theme_mode"],
+                "separate",
+            ),
+            _image_field(
+                "things_background_image",
+                "main_bg",
+                tr("select_bg_image", "Background Image"),
+                empty_label=tr("none_default", "Default"),
+                bind=path("background_image"),
+            ),
+            {
+                "id": "things_sidebar_opacity",
+                "type": "slider",
+                "label": tr("things_sidebar_opacity", "Sidebar opacity"),
+                "bind": path("surface_effects", "sidebar", "opacity"),
+                "default": 100,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_sidebar_blur",
+                "type": "slider",
+                "label": tr("things_sidebar_blur", "Sidebar blur"),
+                "bind": path("surface_effects", "sidebar", "blur"),
+                "default": 0,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_deck_opacity",
+                "type": "slider",
+                "label": tr("things_deck_opacity", "Deck opacity"),
+                "bind": path("surface_effects", "decks", "opacity"),
+                "default": 100,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_deck_blur",
+                "type": "slider",
+                "label": tr("things_deck_blur", "Deck blur"),
+                "bind": path("surface_effects", "decks", "blur"),
+                "default": 0,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_widgets_opacity",
+                "type": "slider",
+                "label": tr("things_widgets_opacity", "Widgets opacity"),
+                "bind": path("surface_effects", "widgets", "opacity"),
+                "default": 100,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_widgets_blur",
+                "type": "slider",
+                "label": tr("things_widgets_blur", "Widgets blur"),
+                "bind": path("surface_effects", "widgets", "blur"),
+                "default": 0,
+                "min": 0,
+                "max": 100,
+                "suffix": "%",
+            },
+            {
+                "id": "things_heatmap_color",
+                "type": "color_pair",
+                "label": tr("things_heatmap_color", "Heatmap"),
+                "bind": path("heatmap_color"),
+                "default": config.DEFAULT_ACCENT_COLOR,
+            },
+            {
+                "id": "things_weekly_reviews_color",
+                "type": "color_pair",
+                "label": tr(
+                    "things_weekly_reviews_color", "Weekly Reviews"
+                ),
+                "bind": path("weekly_reviews_color"),
+                "default": config.DEFAULT_ACCENT_COLOR,
+            },
+            {
+                "id": "things_progress_color",
+                "type": "color_pair",
+                "label": tr("things_progress_color", "Progress bar"),
+                "bind": path("progress_color"),
+                "default": config.DEFAULT_ACCENT_COLOR,
+            },
+            {
+                "id": "things_active_new_color",
+                "type": "color_pair",
+                "label": tr("new", "New"),
+                "bind": path("active_cards_colors", "new"),
+                "default": "#55a8ee",
+            },
+            {
+                "id": "things_active_learning_color",
+                "type": "color_pair",
+                "label": tr("learning", "Learning"),
+                "bind": path("active_cards_colors", "learning"),
+                "default": "#ffd33d",
+            },
+            {
+                "id": "things_active_relearning_color",
+                "type": "color_pair",
+                "label": tr("relearning", "Relearning"),
+                "bind": path("active_cards_colors", "relearning"),
+                "default": "#eb3f70",
+            },
+            {
+                "id": "things_active_young_color",
+                "type": "color_pair",
+                "label": tr("young", "Young"),
+                "bind": path("active_cards_colors", "young"),
+                "default": "#6fc66f",
+            },
+            {
+                "id": "things_active_mature_color",
+                "type": "color_pair",
+                "label": tr("mature", "Mature"),
+                "bind": path("active_cards_colors", "mature"),
+                "default": "#78b8b4",
+            },
+        ],
+    }
+
+
+def _things_sections_by_page():
+    """Split Kome controls between focused Main Menu and Sidebar tabs.
+
+    The field definitions remain centralized in `_things_theme_section()` so
+    bindings and defaults have one source of truth. This function only assigns
+    each control to the surface it actually changes.
+    """
+    source = _things_theme_section()
+    fields = {field["id"]: field for field in source["fields"]}
+    show_when = source["show_when"]
+
+    def section(section_id, title, icon, field_ids, *, preview=False, desc=""):
+        result = {
+            "id": section_id,
+            "title": title,
+            "icon": icon,
+            "show_when": show_when,
+            "fields": [fields[field_id] for field_id in field_ids],
+        }
+        if preview:
+            result["layout"] = "things_theme"
+        if desc:
+            result["description"] = desc
+        return result
+
+    main_menu = [
+        section(
+            "kome_dashboard",
+            tr("dashboard", "Dashboard"),
+            "main_menu.svg",
+            (
+                "things_show_review_chart",
+                "things_show_heatmap",
+                "things_show_advanced_stats",
+            ),
+            preview=True,
+            desc=tr(
+                "things3_customization_desc",
+                "Choose what the focused dashboard shows.",
+            ),
+        ),
+        section(
+            "kome_main_appearance",
+            tr("appearance", "Appearance"),
+            "themes.svg",
+            (
+                "things_main_background",
+                "things_main_background_light",
+                "things_main_background_dark",
+                "things_main_background_theme_mode",
+                "things_background_image",
+                "things_deck_opacity",
+                "things_deck_blur",
+                "things_widgets_opacity",
+                "things_widgets_blur",
+            ),
+            preview=True,
+        ),
+        section(
+            "kome_charts",
+            tr("charts", "Charts"),
+            "stats.svg",
+            (
+                "things_heatmap_color",
+                "things_weekly_reviews_color",
+            ),
+            preview=True,
+        ),
+    ]
+    sidebar = [
+        section(
+            "kome_sidebar_content",
+            tr("content", "Content"),
+            "sidebar.svg",
+            (
+                "things_show_due",
+                "things_show_tasks",
+                "things_show_active_cards",
+                "things_show_progress",
+            ),
+            preview=True,
+        ),
+        section(
+            "kome_sidebar_appearance",
+            tr("appearance", "Appearance"),
+            "themes.svg",
+            (
+                "things_sidebar_background",
+                "things_sidebar_background_light",
+                "things_sidebar_background_dark",
+                "things_sidebar_background_theme_mode",
+                "things_sidebar_opacity",
+                "things_sidebar_blur",
+            ),
+            preview=True,
+        ),
+        section(
+            "kome_sidebar_colors",
+            tr("colors", "Colors"),
+            "stats.svg",
+            (
+                "things_progress_color",
+                "things_active_new_color",
+                "things_active_learning_color",
+                "things_active_relearning_color",
+                "things_active_young_color",
+                "things_active_mature_color",
+            ),
+            preview=True,
+        ),
+    ]
+    return main_menu, sidebar
 
 
 def _legacy_page(page_id, legacy_name, title, icon, group):
@@ -1055,19 +1771,98 @@ def _tool_action(field_id, label, button_label, action, desc="", button_icon="")
 
 def _prep_station_page():
     col = lambda key, _default: {"kind": "col", "key": key}
+    path = lambda *parts: {"kind": "config", "path": ["prep_widget_style", *parts]}
+
+    def color(key, label, light, dark):
+        field_id = "prep_widget_color_" + key
+        return [
+            _color_pair_field(
+                field_id,
+                label,
+                field_id + "_light",
+                field_id + "_dark",
+                "prep_widget_dynamic",
+            ),
+            {
+                "id": field_id + "_light",
+                "type": "hidden",
+                "label": "",
+                "bind": path("colors", "light", key),
+                "default": light,
+            },
+            {
+                "id": field_id + "_dark",
+                "type": "hidden",
+                "label": "",
+                "bind": path("colors", "dark", key),
+                "default": dark,
+            },
+        ]
+
+    widget_fields = [
+        {
+            "id": "prep_widget_font_scale", "type": "number",
+            "label": tr("prep_widget_font_label", "Font Size"),
+            "head": True,
+            "head_label": tr("prep_widget_font_label", "Font Size"),
+            # Keep the persisted percentage for existing users, but expose the
+            # main 17px plan title as an editable absolute size in the UI.
+            "scale": 100 / 17,
+            "bind": col("onigiri_prep_station_widget_font_scale", 100), "default": 100,
+            "min": 10, "max": 27, "step": 1, "suffix": "px",
+        },
+        {
+            "id": "prep_widget_sync", "type": "toggle",
+            "head": True,
+            "head_label": tr("sync_with_widgets", "Sync with Widgets"),
+            "label": tr("sync_with_widgets", "Sync with Widgets"),
+            "bind": path("sync_box_effect"), "default": True,
+        },
+        {
+            "id": "prep_widget_dynamic", "type": "toggle",
+            "label": tr("dynamic_mode", "Dynamic mode"),
+            "bind": path("dynamic"), "default": True,
+        },
+        {
+            "id": "prep_widget_blur", "type": "slider",
+            "label": tr("blur", "Blur"), "bind": path("blur"),
+            "default": 0, "min": 0, "max": 100, "suffix": "%",
+        },
+        {
+            "id": "prep_widget_opacity", "type": "slider",
+            "label": tr("opacity", "Opacity"), "bind": path("opacity"),
+            "default": 100, "min": 0, "max": 100, "suffix": "%",
+        },
+        {
+            "id": "prep_widget_radius", "type": "slider",
+            "label": tr("border_radius", "Border Radius"), "bind": path("radius"),
+            "default": 20, "min": 0, "max": 60, "suffix": "px",
+        },
+        {
+            "id": "prep_widget_stroke", "type": "slider",
+            "label": tr("border_width", "Border Width"), "bind": path("stroke"),
+            "default": 1, "min": 0, "max": 10, "suffix": "px",
+        },
+    ]
+    widget_fields += color(
+        "box_bg", tr("box_background", "Box Background"), "#ffffff", "#2c2c2c"
+    )
+    widget_fields += color(
+        "box_border", tr("border_color", "Border Color"), "#e0e0e0", "#424242"
+    )
+
     return {
         "id": "prepstation",
         "legacy_name": "Prep Station",
         "title": tr("prep_station_title", "Prep Station"),
         "icon": "stats.svg",
         "group": "tools",
+        "show_when": {
+            "field": "onigiri_ui_theme",
+            "values": ["classic"],
+        },
         "description": tr("prep_station_intro", "Plan your exam preparation and tune the Study Plans widget."),
         "sections": [
-            {
-                "id": "prep_open", "title": "", "fields": [
-                    _tool_action("prep_open_action", "", tr("prep_station_open", "Open Prep Station"), "open_prep_station"),
-                ],
-            },
             {
                 "id": "prep_pace", "title": tr("prep_pace_section_title", "Pace & Statistics"),
                 "fields": [
@@ -1094,13 +1889,19 @@ def _prep_station_page():
                 "prep_widget",
                 title=tr("prep_widget_section_title", "Study Plans Widget"),
                 icon="square.svg",
-                fields=[{
-                    "id": "prep_widget_font_scale", "type": "slider",
-                    "label": tr("prep_widget_font_label", "Font Size"),
-                    "desc": tr("prep_widget_font_desc", "Font size of the Study Plans preview shown on the deck browser widget."),
-                    "bind": col("onigiri_prep_station_widget_font_scale", 100), "default": 100,
-                    "min": 60, "max": 160, "step": 1, "suffix": "%",
-                }],
+                preview_dynamic_field="prep_widget_dynamic",
+                sync_toggle_id="prep_widget_sync",
+                sync_hidden_fields=[
+                    "prep_widget_dynamic",
+                    "prep_widget_blur", "prep_widget_opacity",
+                    "prep_widget_radius", "prep_widget_stroke",
+                    "prep_widget_color_box_bg", "prep_widget_color_box_border",
+                ],
+                show_when={
+                    "field": "onigiri_ui_theme",
+                    "values": ["classic"],
+                },
+                fields=widget_fields,
             ),
         ],
     }
@@ -1128,10 +1929,42 @@ def _hashi_notes_page():
             {"id": "hashi_widget_color_" + key + "_dark", "type": "hidden", "label": "", "bind": path("colors", "dark", key), "default": dark},
         ]
     widget_fields = [
+        {
+            "id": "hashi_note_font_size",
+            "type": "number",
+            "label": tr("font_size", "Font Size"),
+            "desc": tr(
+                "hashi_note_font_size_desc",
+                "Text size in Hashi Notes and its dashboard preview.",
+            ),
+            "bind": {
+                "kind": "config",
+                "path": ["hashi_notes", "font_size"],
+            },
+            "default": 14,
+            "min": 12,
+            "max": 24,
+            "step": 1,
+            "suffix": "px",
+        },
         {"id": "hashi_widget_mode", "type": "choice", "head": True, "head_label": tr("hashi_widget_mode", "Layout"), "label": tr("hashi_widget_mode", "Layout"), "bind": path("mode"), "default": "gallery", "options": [{"value": "gallery", "label": tr("hashi_widget_mode_gallery", "Gallery")}, {"value": "single", "label": tr("hashi_widget_mode_single", "Single note")}]},
-        {"id": "hashi_widget_note_id", "type": "select", "label": tr("hashi_widget_pinned_note", "Pinned note"), "bind": path("note_id"), "default": "", "options": _hashi_note_options(), "show_when": {"field": "hashi_widget_mode", "values": ["single"]}},
+        {
+            "id": "hashi_widget_note_id",
+            "type": "select",
+            "label": tr("hashi_widget_pinned_note", "Pinned note"),
+            "control_style": "modern",
+            "bind": path("note_id"),
+            "default": "",
+            "options": _hashi_note_options(),
+            "show_when": {
+                "field": "hashi_widget_mode",
+                "values": ["single"],
+            },
+        },
+        {"id": "hashi_widget_direct_edit", "type": "toggle", "label": tr("hashi_widget_direct_edit", "Edit in widget"), "bind": path("direct_edit"), "default": False, "show_when": {"field": "hashi_widget_mode", "values": ["single"]}},
+        {"id": "hashi_widget_single_surface", "type": "toggle", "label": tr("hashi_widget_single_surface", "Match widget appearance"), "bind": path("single_use_widget_surface"), "default": False, "show_when": {"field": "hashi_widget_mode", "values": ["single"]}},
         {"id": "hashi_widget_limit", "type": "slider", "label": tr("hashi_widget_limit", "Notes shown"), "bind": path("limit"), "default": 4, "min": 1, "max": 4, "suffix": "", "show_when": {"field": "hashi_widget_mode", "values": ["gallery"]}},
-        {"id": "hashi_widget_sync", "type": "toggle", "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"), "bind": path("sync_box_effect"), "default": True},
+        {"id": "hashi_widget_sync", "type": "toggle", "label": tr("sync_with_widgets", "Sync with Widgets"), "bind": path("sync_box_effect"), "default": True},
         {"id": "hashi_widget_dynamic", "type": "toggle", "label": tr("dynamic_mode", "Dynamic mode"), "bind": path("dynamic"), "default": True},
         {"id": "hashi_widget_show_icon", "type": "toggle", "label": tr("hashi_widget_show_icon", "Show note icons"), "bind": path("show_icon"), "default": True},
         {"id": "hashi_widget_show_excerpt", "type": "toggle", "label": tr("hashi_widget_show_excerpt", "Show excerpt"), "bind": path("show_excerpt"), "default": True},
@@ -1144,14 +1977,17 @@ def _hashi_notes_page():
     widget_fields += color("box_bg", tr("box_background", "Box Background"), "#ffffff", "#2c2c2c")
     widget_fields += color("box_border", tr("border_color", "Border Color"), "#e0e0e0", "#424242")
     widget_fields += color("card_bg", tr("hashi_widget_card_color", "Note Card Color"), "#f5f5f5", "#363636")
-    widget_fields += color("accent", tr("hashi_widget_accent_color", "Accent"), "#0077C8", "#4da3e8")
+    widget_fields += color("accent", tr("hashi_widget_accent_color", "Accent"), config.DEFAULT_ACCENT_COLOR, "#4da3e8")
     widget_fields += color("title", tr("hashi_widget_title_color", "Title Color"), "#212121", "#f0f0f0")
     widget_fields += color("excerpt", tr("hashi_widget_excerpt_color", "Excerpt Color"), "#757575", "#9c9c9c")
     return {
         "id": "hashinotes", "legacy_name": "Hashi Notes", "title": tr("hashi_notes_title", "Hashi Notes"), "icon": "hashi_notes.svg", "group": "tools",
+        "show_when": {
+            "field": "onigiri_ui_theme",
+            "values": ["classic"],
+        },
         "description": tr("hashi_settings_intro", "Hashi Notes are quick, temporary study notes."),
         "sections": [
-            {"id": "hashi_open", "title": "", "fields": [_tool_action("hashi_open_action", "", tr("hashi_open_button", "Open Hashi Notes"), "open_hashi_notes")]},
             _designer_preview_section(
                 "hashi_widget",
                 "hashi_widget",
@@ -1165,6 +2001,10 @@ def _hashi_notes_page():
                     "hashi_widget_color_box_bg", "hashi_widget_color_box_border",
                 ],
                 full_width_color_grid=True,
+                show_when={
+                    "field": "onigiri_ui_theme",
+                    "values": ["classic"],
+                },
                 fields=widget_fields,
             ),
         ],
@@ -1174,6 +2014,19 @@ def _hashi_notes_page():
 def _pomodoro_page():
     path = lambda *parts: _col_path("onigiri_pomodoro_settings", *parts)
 
+    def tone_options(event):
+        """Matching numbers indicate a pair, not a linked selection."""
+        options = []
+        for number, (family, label, start_key, end_key) in enumerate(TONE_PAIRS, 1):
+            options.append({
+                "value": start_key if event == "start" else end_key,
+                "label": f"{number}. {tr('pomodoro_tone_pair_' + family, label)}",
+            })
+        if event == "end":
+            options.append({"value": "custom", "label": tr("custom", "Custom")})
+        options.append({"value": "none", "label": tr("none", "None")})
+        return options
+
     def color(key, label, light, dark, *, fallback=None, fallback_fields=None):
         pair = _color_pair_field(
             "pomodoro_color_" + key,
@@ -1181,6 +2034,11 @@ def _pomodoro_page():
             "pomodoro_color_" + key + "_light",
             "pomodoro_color_" + key + "_dark",
             "pomodoro_dynamic",
+            # Unlike background assets, Pomodoro's Dynamic Mode explicitly
+            # means independently editable light and dark appearance roles.
+            # Empty inherited values used to make the pair look "linked",
+            # hiding the two slots even while Dynamic Mode was on.
+            always_split=True,
         )
         # Empty remains "inherit" in storage. The picker still shows the
         # effective colour, so an inherited role never looks broken or blank.
@@ -1208,26 +2066,36 @@ def _pomodoro_page():
             ],
         },
         {"id": "pomodoro_icon", "type": "icon", "label": tr("pomodoro_icon", "Timer Icon"), "bind": path("icon"), "default": "system:pomodoro.svg"},
-        {"id": "pomodoro_font", "type": "font", "label": tr("pomodoro_font", "Timer Font"), "bind": path("font_key"), "default": "system", "options": _font_options()},
+        {
+            "id": "pomodoro_font",
+            "type": "font",
+            "advanced": True,
+            "label": tr("pomodoro_font", "Timer Font"),
+            "bind": path("font_key"),
+            "default": "system",
+            "options": _font_options(),
+        },
         {"id": "pomodoro_dynamic", "type": "toggle", "label": tr("pomodoro_dynamic_mode", "Dynamic Mode"), "bind": path("dynamic_mode"), "default": True},
         {"id": "pomodoro_opacity", "type": "slider", "label": tr("pomodoro_opacity", "Opacity"), "bind": path("shell_opacity"), "default": 100, "min": 0, "max": 100, "suffix": "%"},
         {"id": "pomodoro_blur", "type": "slider", "label": tr("pomodoro_blur", "Blur"), "bind": path("shell_blur"), "default": 0, "min": 0, "max": 100, "suffix": "%"},
     ]
     appearance += color(
         "shell", tr("pomodoro_color_shell", "Background"), "", "",
-        fallback=("#ffffff", "#1f1f1f"),
+        # Must stay in lockstep with theme_palette.chrome_palette(), which is
+        # also the source of the native Pomodoro chrome.
+        fallback=("#f7f7f6", "#202020"),
     )
     appearance += color(
         "accent", tr("pomodoro_color_accent", "Accent"), "", "",
-        fallback_fields=("gal_accent_light", "gal_accent_dark"),
+        fallback_fields=("theme_accent_light", "theme_accent_dark"),
     )
     appearance += color(
         "digits", tr("pomodoro_color_digits", "Timer Numbers"), "", "",
-        fallback=("#1f2933", "#f4f4f5"),
+        fallback=("#202124", "#f1f2f4"),
     )
     appearance += color(
         "icon", tr("pomodoro_color_icon", "Icon & Text"), "", "",
-        fallback=("#4b5563", "#b6b6b8"),
+        fallback=("#63666c", "#b0b3ba"),
     )
 
     choose_sound = _tool_action(
@@ -1246,16 +2114,6 @@ def _pomodoro_page():
         "description": tr("pomodoro_page_intro", "A minimal focus timer. Open the floating island with Shift+P, the Reviewer header button, or the Study Tools menu."),
         "post_save": ["pomodoro"],
         "sections": [
-            {"id": "pomodoro_open", "title": "", "fields": [
-                _tool_action(
-                    "pomodoro_open_action",
-                    tr("pomodoro_open_timer", "Open Timer"),
-                    tr("pomodoro_open_button", "Open Pomodoro"),
-                    "open_pomodoro",
-                    "Use Shift+P from anywhere in Anki.",
-                    button_icon="open",
-                ),
-            ]},
             {
                 "id": "pomodoro_setup",
                 "title": tr("pomodoro_quick_setup", "Quick Setup"),
@@ -1321,18 +2179,20 @@ def _pomodoro_page():
                 preview_dynamic_field="pomodoro_dynamic",
                 fields=appearance,
             ),
-            {"id": "pomodoro_sound", "title": tr("pomodoro_sound", "Sound"), "description": tr("pomodoro_sound_desc", "Choose the cues that open and close each phase."), "fields": [
+            {"id": "pomodoro_sound", "title": tr("pomodoro_sound", "Sound"), "description": tr("pomodoro_sound_pairs_desc", "Matching numbers share a sound family. Choose Start and End independently."), "fields": [
                 {"id": "pomodoro_sound_enabled", "type": "toggle", "label": tr("pomodoro_sound_enabled", "Play Sound"), "bind": path("sound_enabled"), "default": True},
-                {"id": "pomodoro_start_sound", "type": "choice", "label": tr("pomodoro_start_tone", "Start tone"), "bind": path("start_sound"), "default": "soft_start", "options": [
-                    {"value": "soft_start", "label": tr("pomodoro_tone_soft_start", "Soft Start")},
-                    {"value": "none", "label": tr("none", "None")},
-                ]},
-                {"id": "pomodoro_end_sound", "type": "choice", "label": tr("pomodoro_end_tone", "End tone"), "bind": path("end_sound"), "default": "soft_bell", "options": [
-                    {"value": "soft_bell", "label": tr("pomodoro_tone_soft_bell", "Gentle Bell")},
-                    {"value": "classic_chime", "label": tr("pomodoro_tone_classic", "Classic Chime")},
-                    {"value": "custom", "label": tr("custom", "Custom")},
-                    {"value": "none", "label": tr("none", "None")},
-                ]},
+                {
+                    "id": "pomodoro_start_sound", "type": "select",
+                    "label": tr("pomodoro_start_tone", "Start tone"),
+                    "control_style": "modern", "bind": path("start_sound"),
+                    "default": "soft_start", "options": tone_options("start"),
+                },
+                {
+                    "id": "pomodoro_end_sound", "type": "select",
+                    "label": tr("pomodoro_end_tone", "End tone"),
+                    "control_style": "modern", "bind": path("end_sound"),
+                    "default": "soft_bell", "options": tone_options("end"),
+                },
                 {"id": "pomodoro_sound_file", "type": "hidden", "label": "", "bind": path("sound_file"), "default": ""},
                 choose_sound,
                 _tool_action("pomodoro_test_start_sound_action", tr("pomodoro_start_tone", "Start tone"), tr("pomodoro_preview_tone", "Preview"), "pomodoro_test_start_sound", button_icon="play"),
@@ -1354,11 +2214,11 @@ def _mainmenu_background_section():
     fallback chain); `modern_menu_background_image_mode` is kept as a hidden
     mirror purely for old readers that only know that key, exactly as legacy's
     own save path writes both (`_page_mainmenu.py:2213-2214`)."""
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "mainmenu_background",
         "background",
         title=tr("main_background_section", "Main Background"),
-        icon="paintbrush.svg",
+        icon="lucide-image.svg",
         dynamic_keys=[
             "modern_menu_bg_color_theme_mode",
             "modern_menu_bg_image_theme_mode",
@@ -1389,8 +2249,14 @@ def _mainmenu_background_section():
                 None,
                 show_when={"field": "modern_menu_background_mode", "values": ["color", "image_color"]},
             ),
-            _hidden_field("modern_menu_bg_color_light", "#EEEEEE"),
-            _hidden_field("modern_menu_bg_color_dark", "#3C3C3C"),
+            _hidden_field(
+                "modern_menu_bg_color_light",
+                config.DEFAULTS["colors"]["light"]["--bg"],
+            ),
+            _hidden_field(
+                "modern_menu_bg_color_dark",
+                config.DEFAULTS["colors"]["dark"]["--bg"],
+            ),
             _hidden_field("modern_menu_bg_color_theme_mode", "separate"),
             _image_field(
                 "modern_menu_background_image",
@@ -1447,22 +2313,12 @@ def _mainmenu_background_section():
             },
         ],
     )
+    return section
 
 
 def _overview_background_section():
-    """Overviewer Background designer (settings/_page_overviews.py:15-44, built
-    from the same generic modern-background designer as Main Background —
-    settings/_page_backgrounds.py — but with `prefix="overview"` and, unlike
-    every other user of that designer, `storage="config"`: these keys live in
-    the addon config, not `mw.col.conf`.
-
-    Four modes, matching the legacy designer's `allow_main_sync=True` spec
-    (settings/_page_overviews.py:25-37): Image, Color only, Slideshow, and
-    "Match Main Menu", which borrows Main Background's own colour/image but
-    keeps its *own* blur/opacity pair (`main_sync_blur_key` /
-    `main_sync_opacity_key` — patcher.py:3421-3430 reads those two keys and no
-    others while the mode is "main")."""
-    return _designer_preview_section(
+    """Overview background; Match Main Menu inherits the complete source appearance."""
+    section = _designer_preview_section(
         "overview_background",
         "overview_background",
         title=tr("overviewer_background_section", "Overviewer Background"),
@@ -1483,7 +2339,6 @@ def _overview_background_section():
                 "options": [
                     {"value": "image_color", "label": tr("image", "Image")},
                     {"value": "color", "label": tr("color_only", "Color only")},
-                    {"value": "slideshow", "label": tr("slideshow", "Slideshow")},
                     {"value": "main", "label": tr("match_main_menu", "Match Main Menu")},
                 ],
             },
@@ -1516,21 +2371,6 @@ def _overview_background_section():
             _hidden_config_field("overview_background_image_dark", ["onigiri_overview_bg_image_dark"]),
             _hidden_config_field("overview_bg_image_theme_mode", ["onigiri_overview_bg_image_theme_mode"], "separate"),
             _hidden_config_field("overview_background_image_mode", ["onigiri_overview_bg_image_mode"], "separate"),
-            _image_list_field(
-                "overview_slideshow_images",
-                "main_bg",
-                tr("slideshow_images", "Slideshow Images"),
-                show_when={"field": "overview_background_mode", "values": ["slideshow"]},
-                bind={"kind": "config", "key": "onigiri_overview_slideshow_images"},
-            ),
-            {
-                "id": "overview_slideshow_interval",
-                "type": "duration",
-                "label": tr("slideshow_interval", "Slide Interval"),
-                "bind": {"kind": "config", "key": "onigiri_overview_slideshow_interval"},
-                "default": 5,
-                "show_when": {"field": "overview_background_mode", "values": ["slideshow"]},
-            },
             {
                 "id": "overview_background_blur",
                 "type": "slider",
@@ -1547,27 +2387,17 @@ def _overview_background_section():
                 "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
                 "show_when": {"not": {"field": "overview_background_mode", "values": ["main"]}},
             },
-            # Match Main Menu keeps its own blur/opacity so the same picture can
-            # sit quiet behind the overview and loud behind the deck browser.
-            {
-                "id": "overview_background_main_blur",
-                "type": "slider",
-                "label": tr("blur_intensity", "Blur Intensity"),
-                "bind": {"kind": "config", "key": "onigiri_overview_bg_main_blur"},
-                "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
-                "show_when": {"field": "overview_background_mode", "values": ["main"]},
-            },
-            {
-                "id": "overview_background_main_opacity",
-                "type": "slider",
-                "label": tr("opacity", "Opacity"),
-                "bind": {"kind": "config", "key": "onigiri_overview_bg_main_opacity"},
-                "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
-                "show_when": {"field": "overview_background_mode", "values": ["main"]},
-            },
+            # Keep legacy keys loadable without exposing independent Match effects.
+            _hidden_config_field("overview_background_main_blur", ["onigiri_overview_bg_main_blur"], 0),
+            _hidden_config_field("overview_background_main_opacity", ["onigiri_overview_bg_main_opacity"], 100),
         ],
         hide_deck_when={"field": "overview_background_mode", "values": ["main"]},
     )
+    # This page is shared verbatim by Simple and Advanced settings. Keep its
+    # controls and layout available in both modes, including any detailed
+    # controls added to this designer later.
+    section["mode_parity"] = True
+    return section
 
 
 def _overview_style_section():
@@ -1617,7 +2447,7 @@ def _overview_style_section():
             "id": "ovstyle_sync_box_effect", "type": "toggle",
             # Rendered below the preview alongside the other style controls.
             "head": False,
-            "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"),
+            "label": tr("sync_with_widgets", "Sync with widgets"),
             "bind": path("sync_box_effect"), "default": False,
         },
         {
@@ -1667,16 +2497,19 @@ def _overview_style_section():
          "bind": path("colors", "dark", "study_button_stroke"), "default": "#565656"},
         {
             "id": "ovstyle_study_button_dashed", "type": "toggle",
+            "advanced": True,
             "label": tr("dashed_stroke", "Dashed stroke"),
             "bind": path("study_button_dashed"), "default": False,
         },
         {
             "id": "ovstyle_study_button_animated", "type": "toggle",
+            "advanced": True,
             "label": tr("animated_hover_effect", "Animated (hover effect)"),
             "bind": path("study_button_animated"), "default": True,
         },
         {
             "id": "show_congrats_due_later_notice", "type": "toggle",
+            "advanced": True,
             "label": tr("show_congrats_due_later_notice", "Show next learning card notice on Congrats"),
             "desc": tr(
                 "show_overview_due_later_notice_desc",
@@ -1686,6 +2519,7 @@ def _overview_style_section():
         },
         {
             "id": "show_overview_due_later_notice", "type": "toggle",
+            "advanced": True,
             "label": tr("show_overview_due_later_notice", "Show next learning card notice on Overview"),
             "desc": tr(
                 "show_overview_due_later_notice_desc",
@@ -1695,11 +2529,13 @@ def _overview_style_section():
         },
         {
             "id": "overview_study_now_text", "type": "text",
+            "advanced": True,
             "label": tr("custom_stats_title_study_now", "Custom Stats Title (Study Now)"),
             "bind": {"kind": "col", "key": "modern_menu_studyNowText"}, "default": "Study Now",
         },
         {
             "id": "overview_congrats_message", "type": "text",
+            "advanced": True,
             "label": tr("congrats_message", "Congrats Message"),
             "multiline": True,
             "bind": {"kind": "config", "key": "congratsMessage"},
@@ -1713,7 +2549,7 @@ def _overview_style_section():
     # second swatch made it impossible to discover that each theme is editable.
     fields += color(
         "study_button", tr("study_button_color", "Study Button Color"),
-        "#0077C8", "#0077C8", always_split=True,
+        config.DEFAULT_ACCENT_COLOR, config.DEFAULT_ACCENT_COLOR, always_split=True,
     )
     fields += color(
         "options_button", tr("options_button_color", "Options Button Color"),
@@ -1727,18 +2563,14 @@ def _overview_style_section():
         "description_button", tr("description_button_color", "Description Button Color"),
         "#f5f5f5", "#2a2a2a", always_split=True,
     )
-    fields += color(
-        "reveal_button", tr("reveal_button_color", "Reveal Button Color"),
-        "#0077C8", "#0a84ff", always_split=True,
-    )
-    fields += color("new_bubble", tr("new_count_label", "New Count"), "#1e8cff", "#0077C8")
+    fields += color("new_bubble", tr("new_count_label", "New Count"), "#1e8cff", config.DEFAULT_ACCENT_COLOR)
     fields += color("new_text", tr("new_count_fg_label", "New Count Text"), "#ffffff", "#f7fbff")
     fields += color("learn_bubble", tr("learn_count_label", "Learning Count"), "#ff5757", "#ff453a")
     fields += color("learn_text", tr("learn_count_fg_label", "Learning Count Text"), "#ffffff", "#fff5f5")
     fields += color("review_bubble", tr("review_count_label", "Review Count"), "#19c96b", "#12b765")
     fields += color("review_text", tr("review_count_fg_label", "Review Count Text"), "#ffffff", "#f4fff8")
 
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "overview_style",
         "overview_style",
         title=tr("overview_style_section", "Overview Style"),
@@ -1779,11 +2611,13 @@ def _overview_style_section():
             {
                 "id": "notifications",
                 "title": tr("notifications", "Notifications"),
+                "column": "right",
                 "fields": ["show_congrats_due_later_notice", "show_overview_due_later_notice"],
             },
             {
                 "id": "text",
                 "title": tr("text", "Text"),
+                "column": "right",
                 "fields": ["overview_study_now_text", "overview_congrats_message"],
             },
             {
@@ -1793,7 +2627,7 @@ def _overview_style_section():
                     "ovstyle_color_box_bg", "ovstyle_color_box_border",
                     "ovstyle_color_study_button", "ovstyle_color_options_button",
                     "ovstyle_color_custom_study_button", "ovstyle_color_description_button",
-                    "ovstyle_color_reveal_button", "ovstyle_color_new_bubble",
+                    "ovstyle_color_new_bubble",
                     "ovstyle_color_new_text", "ovstyle_color_learn_bubble",
                     "ovstyle_color_learn_text", "ovstyle_color_review_bubble",
                     "ovstyle_color_review_text",
@@ -1802,20 +2636,91 @@ def _overview_style_section():
         ],
         fields=fields,
     )
+    # Keep the Overviewer palette scannable: select the element from a visual
+    # catalogue, then edit only the light/dark colour pairs that affect it.
+    # This is the same interaction used by Reviewer Colors and avoids making
+    # the main designer deck several screens tall.
+    section["color_menu_label"] = tr("overview_colors", "Overview Colors")
+    section["color_groups"] = [
+        {
+            "id": "ovstyle_colors_box",
+            "title": tr("overview_box", "Overview Box"),
+            "preview_label": tr("overview", "Overview"),
+            "preview_bg": "ovstyle_color_box_bg",
+            "preview_border": "ovstyle_color_box_border",
+            "show_when": {"field": "ovstyle_sync_box_effect", "values": [False]},
+            "field_ids": ["ovstyle_color_box_bg", "ovstyle_color_box_border"],
+        },
+        {
+            "id": "ovstyle_colors_study_button",
+            "title": tr("study_button", "Study Button"),
+            "preview_label": tr("study_now", "Study Now"),
+            "preview_bg": "ovstyle_color_study_button",
+            "field_ids": [
+                "ovstyle_color_study_button",
+                "ovstyle_color_study_button_stroke",
+            ],
+        },
+        {
+            "id": "ovstyle_colors_options_button",
+            "title": tr("options_button", "Options Button"),
+            "preview_label": tr("options", "Options"),
+            "preview_bg": "ovstyle_color_options_button",
+            "field_ids": ["ovstyle_color_options_button"],
+        },
+        {
+            "id": "ovstyle_colors_custom_study_button",
+            "title": tr("custom_study_button", "Custom Study Button"),
+            "preview_label": tr("custom_study", "Custom Study"),
+            "preview_bg": "ovstyle_color_custom_study_button",
+            "field_ids": ["ovstyle_color_custom_study_button"],
+        },
+        {
+            "id": "ovstyle_colors_description_button",
+            "title": tr("description_button", "Description Button"),
+            "preview_label": tr("description", "Description"),
+            "preview_bg": "ovstyle_color_description_button",
+            "field_ids": ["ovstyle_color_description_button"],
+        },
+        {
+            "id": "ovstyle_colors_new_count",
+            "title": tr("new_count_label", "New Cards Bubble"),
+            "preview_label": tr("lstats_new", "New"),
+            "preview_bg": "ovstyle_color_new_bubble",
+            "preview_text": "ovstyle_color_new_text",
+            "field_ids": ["ovstyle_color_new_bubble", "ovstyle_color_new_text"],
+        },
+        {
+            "id": "ovstyle_colors_learning_count",
+            "title": tr("learn_count_label", "Learning Cards Bubble"),
+            "preview_label": tr("learning", "Learning"),
+            "preview_bg": "ovstyle_color_learn_bubble",
+            "preview_text": "ovstyle_color_learn_text",
+            "field_ids": ["ovstyle_color_learn_bubble", "ovstyle_color_learn_text"],
+        },
+        {
+            "id": "ovstyle_colors_review_count",
+            "title": tr("review_count_label", "Review Cards Bubble"),
+            "preview_label": tr("to_review", "To Review"),
+            "preview_bg": "ovstyle_color_review_bubble",
+            "preview_text": "ovstyle_color_review_text",
+            "field_ids": ["ovstyle_color_review_bubble", "ovstyle_color_review_text"],
+        },
+    ]
+    return _attach_compact_font_roles(
+        section,
+        ("overview_title", "overview_text", "congrats_title", "congrats_text"),
+        tr("overview_fonts", "Overview Fonts"),
+    )
 
 
 def _reviewer_background_section():
-    """Reviewer Background designer (settings/_page_reviewer.py:2059-2088),
-    built from the same generic modern-background designer as Main/Overviewer
-    Background but with `prefix="reviewer"` and `storage="config"`. Like
-    Overviewer Background it carries a fourth "Match Main Menu" mode with its
-    own blur/opacity pair (`onigiri_reviewer_bg_main_blur` / `_main_opacity`,
-    the only two keys patcher.py:3264-3272 reads in that mode)."""
-    return _designer_preview_section(
+    """Reviewer background; Match Main Menu inherits the complete source appearance."""
+    section = _designer_preview_section(
         "reviewer_background",
         "reviewer_background",
         title=tr("reviewer_bg", "Reviewer Background"),
-        icon="paintbrush.svg",
+        icon="lucide-paintbrush.svg",
         dynamic_keys=[
             "reviewer_bg_color_theme_mode",
             "reviewer_bg_image_theme_mode",
@@ -1893,51 +2798,20 @@ def _reviewer_background_section():
                 "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
                 "show_when": {"not": {"field": "reviewer_background_mode", "values": ["main"]}},
             },
-            {
-                "id": "reviewer_background_main_blur",
-                "type": "slider",
-                "label": tr("blur_intensity", "Blur Intensity"),
-                "bind": {"kind": "config", "key": "onigiri_reviewer_bg_main_blur"},
-                "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
-                "show_when": {"field": "reviewer_background_mode", "values": ["main"]},
-            },
-            {
-                "id": "reviewer_background_main_opacity",
-                "type": "slider",
-                "label": tr("opacity", "Opacity"),
-                "bind": {"kind": "config", "key": "onigiri_reviewer_bg_main_opacity"},
-                "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
-                "show_when": {"field": "reviewer_background_mode", "values": ["main"]},
-            },
+            # Keep legacy keys loadable without exposing independent Match effects.
+            _hidden_config_field("reviewer_background_main_blur", ["onigiri_reviewer_bg_main_blur"], 0),
+            _hidden_config_field("reviewer_background_main_opacity", ["onigiri_reviewer_bg_main_opacity"], 100),
         ],
         hide_deck_when={"field": "reviewer_background_mode", "values": ["main"]},
     )
+    # Keep the full Reviewer Background designer available in both settings modes.
+    section["mode_parity"] = True
+    return section
 
 
 def _reviewer_bottom_bar_section():
-    """Bottom Bar Background and Buttons (settings/_page_reviewer.py:676-1652,
-    2504-2641 for the save contract). Ported against what patcher.py's
-    generate_reviewer_bottom_bar_background_css *actually reads*
-    (patcher.py:4186-4359), not against every control the legacy Qt page
-    happens to draw:
-
-    - "Match Main Menu" is the only match-mode with its own independent
-      blur/opacity (onigiri_reviewer_bottom_bar_match_main_blur/opacity —
-      patcher.py:4325-4326).
-    - "Match Overviewer"/"Match Reviewer Background" always inherit that
-      source's OWN blur/opacity (patcher.py:4332, 4339); the legacy dialog
-      draws an editable "Match Overview" slider pair that patcher.py never
-      reads (`onigiri_reviewer_bottom_bar_match_overview_bg_blur/opacity` is
-      written but silently ignored) — a latent dead control, not reproduced
-      here. Lighter and correct beats pixel-identical-but-broken.
-
-    Pre-Answer Count Colors edit the exact same `overview_style.colors` path
-    the Overview Style section (_overview_style_section) already owns — bound
-    directly to that config path rather than mirrored through a Qt-only
-    "_bottom_bar_pre_count_colors_dirty" style dirty-flag, since the web
-    store's single `values` namespace makes two surfaces editing one path
-    safe without any sync plumbing."""
-    path = lambda *parts: {"kind": "config", "path": list(parts)}
+    """Bottom bar background and buttons. Every Match mode follows its source,
+    including effects and sources that themselves match Main Menu."""
 
     def color(suffix, config_key, label, default_light, default_dark, show_when=None):
         return [
@@ -1955,17 +2829,6 @@ def _reviewer_bottom_bar_section():
              "bind": {"kind": "config", "key": f"{config_key}_light"}, "default": default_light},
             {"id": f"bbar_{suffix}_dark", "type": "hidden", "label": "",
              "bind": {"kind": "config", "key": f"{config_key}_dark"}, "default": default_dark},
-        ]
-
-    def overview_color(suffix, key, label, default_light, default_dark):
-        return [
-            _color_pair_field(f"bbar_{suffix}", label, f"bbar_{suffix}_light", f"bbar_{suffix}_dark", None),
-            {"id": f"bbar_{suffix}_theme_mode", "type": "hidden", "label": "",
-             "bind": {"kind": "config", "key": f"onigiri_web_bbar_{suffix}_theme_mode"}, "default": "separate"},
-            {"id": f"bbar_{suffix}_light", "type": "hidden", "label": "",
-             "bind": path("overview_style", "colors", "light", key), "default": default_light},
-            {"id": f"bbar_{suffix}_dark", "type": "hidden", "label": "",
-             "bind": path("overview_style", "colors", "dark", key), "default": default_dark},
         ]
 
     CUSTOM_ONLY = {"field": "bbar_bg_mode", "values": ["color", "image_color"]}
@@ -2014,18 +2877,8 @@ def _reviewer_bottom_bar_section():
             "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
             "show_when": CUSTOM_ONLY,
         },
-        {
-            "id": "bbar_match_main_blur", "type": "slider", "label": tr("blur_intensity", "Blur Intensity"),
-            "bind": {"kind": "config", "key": "onigiri_reviewer_bottom_bar_match_main_blur"},
-            "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
-            "show_when": {"field": "bbar_bg_mode", "values": ["main"]},
-        },
-        {
-            "id": "bbar_match_main_opacity", "type": "slider", "label": tr("opacity", "Opacity"),
-            "bind": {"kind": "config", "key": "onigiri_reviewer_bottom_bar_match_main_opacity"},
-            "default": 100, "min": 0, "max": 100, "step": 1, "suffix": "%",
-            "show_when": {"field": "bbar_bg_mode", "values": ["main"]},
-        },
+        _hidden_config_field("bbar_match_main_blur", ["onigiri_reviewer_bottom_bar_match_main_blur"], 0),
+        _hidden_config_field("bbar_match_main_opacity", ["onigiri_reviewer_bottom_bar_match_main_opacity"], 100),
         {
             "id": "bbar_match_overview_note", "type": "note", "label": "",
             "desc": tr("bbar_inherits_overview", "Blur and opacity are inherited from the Overviewer Background."),
@@ -2090,6 +2943,22 @@ def _reviewer_bottom_bar_section():
     fields += color("timer_bg", "onigiri_reviewer_timer_bg", tr("bbar_timer_bg", "Timer Background"), "#e5e5e5", "#3a3a3a")
     fields += color("timer_text", "onigiri_reviewer_timer_text", tr("bbar_timer_text", "Timer Text"), "#2c2c2c", "#e0e0e0")
     fields += color("interval_text", "onigiri_reviewer_stattxt_color", tr("bbar_interval_text", "Interval Text"), "#666666", "#aaaaaa")
+    fields += color(
+        "show_answer_bg", "onigiri_reviewer_show_answer_btn_bg",
+        tr("bbar_show_answer_button", "Button Background"), "#ffffff", "#3a3a3a",
+    )
+    fields += color(
+        "show_answer_text", "onigiri_reviewer_show_answer_btn_text",
+        tr("bbar_show_answer_text", "Button Text"), "#2c2c2c", "#e0e0e0",
+    )
+    fields += color(
+        "show_answer_hover_bg", "onigiri_reviewer_show_answer_btn_hover_bg",
+        tr("bbar_show_answer_hover_bg", "Active Background"), "#2c2c2c", "#e0e0e0",
+    )
+    fields += color(
+        "show_answer_hover_text", "onigiri_reviewer_show_answer_btn_hover_text",
+        tr("bbar_show_answer_hover_text", "Active Text"), "#f0f0f0", "#3a3a3a",
+    )
     fields += [
         {
             "id": "bbar_stats_sync", "type": "toggle",
@@ -2114,34 +2983,121 @@ def _reviewer_bottom_bar_section():
     fields += color("other_text", "onigiri_reviewer_other_btn_text", tr("bbar_other_text", "Other Text"), "#2c2c2c", "#e0e0e0")
     fields += color("other_hover_bg", "onigiri_reviewer_other_btn_hover_bg", tr("bbar_other_hover_bg", "Hover Background"), "#2c2c2c", "#e0e0e0")
     fields += color("other_hover_text", "onigiri_reviewer_other_btn_hover_text", tr("bbar_other_hover_text", "Hover Text"), "#f0f0f0", "#3a3a3a")
-    fields += overview_color("pre_new_bubble", "new_bubble", tr("new_count_label", "New Count"), "#1e8cff", "#0077C8")
-    fields += overview_color("pre_new_text", "new_text", tr("new_count_fg_label", "New Count Text"), "#ffffff", "#f7fbff")
-    fields += overview_color("pre_learn_bubble", "learn_bubble", tr("learn_count_label", "Learning Count"), "#ff5757", "#ff453a")
-    fields += overview_color("pre_learn_text", "learn_text", tr("learn_count_fg_label", "Learning Count Text"), "#ffffff", "#fff5f5")
-    fields += overview_color("pre_review_bubble", "review_bubble", tr("review_count_label", "Review Count"), "#19c96b", "#12b765")
-    fields += overview_color("pre_review_text", "review_text", tr("review_count_fg_label", "Review Count Text"), "#ffffff", "#f4fff8")
 
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "reviewer_bottom_bar",
         "reviewer_bottom_bar",
         title=tr("bottom_bar_background_and_buttons", "Bottom Bar Background and Buttons"),
-        icon="add-card.svg",
+        icon="lucide-file-pen-line.svg",
         dynamic_keys=[
             "bbar_bg_color_theme_mode", "bbar_timer_bg_theme_mode", "bbar_timer_text_theme_mode",
-            "bbar_interval_text_theme_mode", "bbar_stats_bar_bg_theme_mode",
+            "bbar_interval_text_theme_mode",
+            "bbar_show_answer_bg_theme_mode", "bbar_show_answer_text_theme_mode",
+            "bbar_show_answer_hover_bg_theme_mode", "bbar_show_answer_hover_text_theme_mode",
+            "bbar_stats_bar_bg_theme_mode",
             "bbar_again_bg_theme_mode", "bbar_again_text_theme_mode",
             "bbar_hard_bg_theme_mode", "bbar_hard_text_theme_mode",
             "bbar_good_bg_theme_mode", "bbar_good_text_theme_mode",
             "bbar_easy_bg_theme_mode", "bbar_easy_text_theme_mode",
             "bbar_other_bg_theme_mode", "bbar_other_text_theme_mode",
             "bbar_other_hover_bg_theme_mode", "bbar_other_hover_text_theme_mode",
-            "bbar_pre_new_bubble_theme_mode", "bbar_pre_new_text_theme_mode",
-            "bbar_pre_learn_bubble_theme_mode", "bbar_pre_learn_text_theme_mode",
-            "bbar_pre_review_bubble_theme_mode", "bbar_pre_review_text_theme_mode",
         ],
         head_to_deck=True,
         fields=fields,
     )
+    section = _attach_compact_font_roles(
+        section,
+        ("reviewer_controls",),
+        tr("reviewer_fonts", "Reviewer Fonts"),
+    )
+    section["color_menu_label"] = tr("reviewer_colors", "Reviewer Colors")
+    section["color_groups"] = [
+        {
+            "id": "bbar_colors_bar",
+            "title": tr("bottom_bar", "Bottom Bar"),
+            "description": tr(
+                "reviewer_bar_colors_desc",
+                "Bottom-bar background and answer interval colors.",
+            ),
+            "preview_label": tr("bottom_bar", "Bottom Bar"),
+            "preview_bg": "bbar_bg_color",
+            "field_ids": [
+                "bbar_bg_color", "bbar_interval_text",
+            ],
+        },
+        {
+            "id": "bbar_colors_timer",
+            "title": tr("timer_button_active", "Timer Button (When Active)"),
+            "description": tr(
+                "reviewer_timer_colors_desc",
+                "Colors for the visible timer, including its standalone button.",
+            ),
+            "preview_label": "0:07",
+            "preview_bg": "bbar_timer_bg",
+            "preview_text": "bbar_timer_text",
+            "field_ids": ["bbar_timer_bg", "bbar_timer_text"],
+        },
+        {
+            "id": "bbar_colors_show_answer",
+            "title": tr("show_answer_button", "Show Answer Button"),
+            "description": tr(
+                "reviewer_show_answer_colors_desc",
+                "Idle and active colors for Show Answer and its stats panel.",
+            ),
+            "preview_label": tr("show_answer", "Show Answer"),
+            "preview_bg": "bbar_show_answer_bg",
+            "preview_text": "bbar_show_answer_text",
+            "field_ids": [
+                "bbar_show_answer_bg", "bbar_show_answer_text",
+                "bbar_show_answer_hover_bg", "bbar_show_answer_hover_text",
+                "bbar_stats_bar_bg",
+            ],
+        },
+        {
+            "id": "bbar_colors_again",
+            "title": tr("again", "Again"),
+            "preview_label": tr("again", "Again"),
+            "preview_bg": "bbar_again_bg",
+            "preview_text": "bbar_again_text",
+            "field_ids": ["bbar_again_bg", "bbar_again_text"],
+        },
+        {
+            "id": "bbar_colors_hard",
+            "title": tr("hard", "Hard"),
+            "preview_label": tr("hard", "Hard"),
+            "preview_bg": "bbar_hard_bg",
+            "preview_text": "bbar_hard_text",
+            "field_ids": ["bbar_hard_bg", "bbar_hard_text"],
+        },
+        {
+            "id": "bbar_colors_good",
+            "title": tr("good", "Good"),
+            "preview_label": tr("good", "Good"),
+            "preview_bg": "bbar_good_bg",
+            "preview_text": "bbar_good_text",
+            "field_ids": ["bbar_good_bg", "bbar_good_text"],
+        },
+        {
+            "id": "bbar_colors_easy",
+            "title": tr("easy", "Easy"),
+            "preview_label": tr("easy", "Easy"),
+            "preview_bg": "bbar_easy_bg",
+            "preview_text": "bbar_easy_text",
+            "field_ids": ["bbar_easy_bg", "bbar_easy_text"],
+        },
+        {
+            "id": "bbar_colors_other",
+            "title": tr("other_buttons_more_edit", "Other Buttons (More / Edit)"),
+            "preview_label": tr("edit_more", "Edit / More"),
+            "preview_bg": "bbar_other_bg",
+            "preview_text": "bbar_other_text",
+            "field_ids": [
+                "bbar_other_bg", "bbar_other_text",
+                "bbar_other_hover_bg", "bbar_other_hover_text",
+            ],
+        },
+    ]
+    return section
 
 
 def _reviewer_progress_section():
@@ -2344,7 +3300,7 @@ def _reviewer_progress_section():
         "reviewer_progress",
         "reviewer_progress",
         title=tr("progress_bar_section_title", "Header Progress Bar"),
-        icon="stats.svg",
+        icon="lucide-chart-columns.svg",
         dynamic_keys=[
             "rprog_fill_theme_mode", "rprog_fill_end_theme_mode", "rprog_track_theme_mode",
             "rprog_text_theme_mode", "rprog_seg_new_theme_mode", "rprog_seg_learn_theme_mode",
@@ -2392,96 +3348,109 @@ def _overviewer_page():
         "group": "study",
         "description": "",
         "tabbed": True,
-        "sections": [_overview_background_section(), _overview_style_section()],
+        "sections": [
+            _overview_background_section(),
+            _overview_style_section(),
+        ],
     }
 
 
-def _mainmenu_widget_effect_section():
-    """Widget Color and Effect — the shared "glass card" styling for boxed
-    widgets app-wide (settings/_page_colors.py:168-410, settings/_infra.py:1378-1756).
-    Retention star colours are edited in the Stats Widgets section, alongside
-    the card they belong to."""
-    return _designer_preview_section(
-        "mainmenu_widget_effect",
-        "widget_effect",
-        title=tr("boxes_color_effect", "Widget Color and Effect"),
-        icon="square.svg",
-        dynamic_keys=["onigiri_canvas_inset_color_theme_mode"],
-        fields=[
-            _color_pair_field(
-                "widget_box_color",
-                tr("color", "Color"),
-                "widget_box_color_light",
-                "widget_box_color_dark",
-                None,
-                theme_mode_field="onigiri_canvas_inset_color_theme_mode",
-            ),
-            _hidden_config_field("widget_box_color_light", ["colors", "light", "--canvas-inset"], "#ffffff"),
-            _hidden_config_field("widget_box_color_dark", ["colors", "dark", "--canvas-inset"], "#2c2c2c"),
-            _color_pair_field(
-                "widget_border_color",
-                tr("border_color", "Border Color"),
-                "widget_border_color_light",
-                "widget_border_color_dark",
-                None,
-                theme_mode_field="onigiri_canvas_inset_color_theme_mode",
-            ),
-            _hidden_config_field("widget_border_color_light", ["colors", "light", "--border"], "#e0e0e0"),
-            _hidden_config_field("widget_border_color_dark", ["colors", "dark", "--border"], "#424242"),
-            _hidden_field("onigiri_canvas_inset_color_theme_mode", "separate"),
-            {
-                "id": "onigiri_canvas_inset_effect_blur",
-                "type": "slider",
-                "label": tr("blur", "Blur"),
-                # Blur behind a 0%-opacity box or a flat "Color only" main
-                # background has nothing to blur, so hide it in either case
-                # rather than leave a control that visibly does nothing.
-                "show_when": {"not": {"any": [
-                    {"field": "onigiri_canvas_inset_effect_opacity", "values": [0]},
-                    {"field": "modern_menu_background_mode", "values": ["color"]},
-                ]}},
-                "bind": {"kind": "col", "key": "onigiri_canvas_inset_effect_blur"},
-                "default": 0,
-                "min": 0,
-                "max": 100,
-                "step": 1,
-                "suffix": "%",
-            },
-            {
-                "id": "onigiri_canvas_inset_effect_opacity",
-                "type": "slider",
-                "label": tr("opacity", "Opacity"),
-                "bind": {"kind": "col", "key": "onigiri_canvas_inset_effect_opacity"},
-                "default": 100,
-                "min": 0,
-                "max": 100,
-                "step": 1,
-                "suffix": "%",
-            },
-            {
-                "id": "onigiri_canvas_inset_border_radius",
-                "type": "slider",
-                "label": tr("border_radius", "Border Radius"),
-                "bind": {"kind": "col", "key": "onigiri_canvas_inset_border_radius"},
-                "default": 20,
-                "min": 0,
-                "max": 60,
-                "step": 1,
-                "suffix": "px",
-            },
-            {
-                "id": "onigiri_canvas_inset_border_width",
-                "type": "slider",
-                "label": tr("border_width", "Border Width"),
-                "bind": {"kind": "col", "key": "onigiri_canvas_inset_border_width"},
-                "default": 1,
-                "min": 0,
-                "max": 10,
-                "step": 1,
-                "suffix": "px",
-            },
-        ],
-    )
+def _widget_effect_fields():
+    """Compact shared glass-card controls embedded in Organize Widgets.
+
+    The bindings deliberately remain unchanged so moving the controls does not
+    reset an existing theme. Both colour pairs stay permanently split into
+    light and dark slots; this compact surface has no extra mode switch.
+    """
+    return [
+        _color_pair_field(
+            "widget_box_color",
+            tr("color", "Color"),
+            "widget_box_color_light",
+            "widget_box_color_dark",
+            None,
+            theme_mode_field="onigiri_canvas_inset_color_theme_mode",
+            always_split=True,
+        ),
+        _hidden_config_field(
+            "widget_box_color_light",
+            ["colors", "light", "--canvas-inset"],
+            "#ffffff",
+        ),
+        _hidden_config_field(
+            "widget_box_color_dark",
+            ["colors", "dark", "--canvas-inset"],
+            "#2c2c2c",
+        ),
+        _color_pair_field(
+            "widget_border_color",
+            tr("border_color", "Border Color"),
+            "widget_border_color_light",
+            "widget_border_color_dark",
+            None,
+            theme_mode_field="onigiri_canvas_inset_color_theme_mode",
+            always_split=True,
+        ),
+        _hidden_config_field(
+            "widget_border_color_light",
+            ["colors", "light", "--border"],
+            "#e0e0e0",
+        ),
+        _hidden_config_field(
+            "widget_border_color_dark",
+            ["colors", "dark", "--border"],
+            "#424242",
+        ),
+        _hidden_field("onigiri_canvas_inset_color_theme_mode", "separate"),
+        {
+            "id": "onigiri_canvas_inset_effect_blur",
+            "type": "slider",
+            "advanced": False,
+            "label": tr("blur", "Blur"),
+            "bind": {"kind": "col", "key": "onigiri_canvas_inset_effect_blur"},
+            "default": 0,
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "suffix": "%",
+        },
+        {
+            "id": "onigiri_canvas_inset_effect_opacity",
+            "type": "slider",
+            "advanced": False,
+            "label": tr("opacity", "Opacity"),
+            "bind": {"kind": "col", "key": "onigiri_canvas_inset_effect_opacity"},
+            "default": 100,
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "suffix": "%",
+        },
+        {
+            "id": "onigiri_canvas_inset_border_radius",
+            "type": "slider",
+            "advanced": True,
+            "label": tr("border_radius", "Border Radius"),
+            "bind": {"kind": "col", "key": "onigiri_canvas_inset_border_radius"},
+            "default": 20,
+            "min": 0,
+            "max": 60,
+            "step": 1,
+            "suffix": "px",
+        },
+        {
+            "id": "onigiri_canvas_inset_border_width",
+            "type": "slider",
+            "advanced": True,
+            "label": tr("border_width", "Border Width"),
+            "bind": {"kind": "col", "key": "onigiri_canvas_inset_border_width"},
+            "default": 1,
+            "min": 0,
+            "max": 10,
+            "step": 1,
+            "suffix": "px",
+        },
+    ]
 
 
 # Which design a Stats Widgets setting belongs to. Shared by the field list
@@ -2497,24 +3466,26 @@ def _mainmenu_stats_widgets_section():
     path = lambda *parts: {"kind": "config", "path": ["stats_widgets_style", *parts]}
 
     def color(key, label, default_light, default_dark, show_when=None):
+        pair = _color_pair_field(
+            f"swidget_color_{key}", label,
+            f"swidget_color_{key}_light", f"swidget_color_{key}_dark", None,
+            **({"show_when": show_when} if show_when else {}),
+        )
+        if key == "label":
+            # Keep Label Color beneath the retention-star toggle in the right
+            # settings column, rather than separated on the left.
+            pair["deck_placement"] = "right"
         return [
-            _color_pair_field(
-                f"swidget_color_{key}", label,
-                f"swidget_color_{key}_light", f"swidget_color_{key}_dark", None,
-                **({"show_when": show_when} if show_when else {}),
-            ),
+            pair,
             {"id": f"swidget_color_{key}_light", "type": "hidden", "label": "",
              "bind": path("colors", "light", key), "default": default_light},
             {"id": f"swidget_color_{key}_dark", "type": "hidden", "label": "",
              "bind": path("colors", "dark", key), "default": default_dark},
         ]
 
-    # The deck's compact Font+Value Size row drops the "Font" caption and
-    # shows only this chip, so its label has to name a font on its own — the
-    # generic "Sync with theme" reads as a picker with nothing picked. This
-    # value still just means "sync", but the button now says what it's
-    # actually rendering with by default.
-    font_options = [{"value": "sync", "label": tr("system", "System")}] + _font_options()
+    font_options = [
+        {"value": "sync", "label": tr("sync_with_theme", "Sync with theme")},
+    ] + _font_options()
 
     fields = [
         {
@@ -2540,20 +3511,60 @@ def _mainmenu_stats_widgets_section():
             ],
         },
         {
-            "id": "swidget_font", "type": "font", "label": tr("font", "Font"),
-            "bind": path("font"), "default": "sync", "options": font_options,
+            "id": "swidget_label_font", "type": "font", "advanced": True,
+            "label": tr("font", "Font"),
+            "bind": path("label_font"), "default": "sync", "options": font_options,
         },
         {
-            # 100% is the widget's own full size, so it is the slider's own
-            # ceiling too — matches patcher.py's clamp on the same key. Sits
-            # right under Font, its own full-width row, not fused into one.
-            "id": "swidget_value_scale", "type": "slider", "label": tr("value_size", "Value Size"),
-            "bind": path("value_scale"), "default": 100, "min": 60, "max": 100, "step": 1, "suffix": "%",
+            "id": "swidget_label_size_sync", "type": "toggle", "advanced": True,
+            "label": tr("sync_with_widgets", "Sync with Widgets"),
+            "bind": path("label_size_sync"), "default": True,
+        },
+        {
+            "id": "swidget_label_size", "type": "number", "advanced": True,
+            "label": tr("font_size", "Font Size"),
+            "show_when": {"field": "swidget_label_size_sync", "values": [False]},
+            "bind": path("label_size"), "default": 15,
+            "min": 8, "max": 72, "step": 1, "suffix": "px", "reset_to": 15,
+        },
+        {
+            "id": "swidget_value_font", "type": "font", "advanced": True,
+            "label": tr("font", "Font"),
+            "bind": path("value_font"), "default": "sync", "options": font_options,
+        },
+        {
+            "id": "swidget_value_size_sync", "type": "toggle", "advanced": True,
+            "label": tr("sync_with_widgets", "Sync with Widgets"),
+            "bind": path("value_size_sync"), "default": True,
+        },
+        {
+            "id": "swidget_value_size", "type": "number", "advanced": True,
+            "label": tr("font_size", "Font Size"),
+            "show_when": {"field": "swidget_value_size_sync", "values": [False]},
+            "bind": path("value_size"), "default": 30,
+            "min": 8, "max": 72, "step": 1, "suffix": "px", "reset_to": 30,
+        },
+        {
+            "id": "swidget_number_font", "type": "font", "advanced": True,
+            "label": tr("font", "Font"),
+            "bind": path("number_font"), "default": "sync", "options": font_options,
+        },
+        {
+            "id": "swidget_number_size_sync", "type": "toggle", "advanced": True,
+            "label": tr("sync_with_widgets", "Sync with Widgets"),
+            "bind": path("number_size_sync"), "default": True,
+        },
+        {
+            "id": "swidget_number_size", "type": "number", "advanced": True,
+            "label": tr("font_size", "Font Size"),
+            "show_when": {"field": "swidget_number_size_sync", "values": [False]},
+            "bind": path("number_size"), "default": 30,
+            "min": 8, "max": 72, "step": 1, "suffix": "px", "reset_to": 30,
         },
         {
             "id": "swidget_sync_box_effect", "type": "toggle",
             "head": True, "head_label": tr("sync_with_widgets", "Sync with widgets"),
-            "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"),
+            "label": tr("sync_with_widgets", "Sync with widgets"),
             "bind": path("sync_box_effect"), "default": True,
         },
         {
@@ -2625,34 +3636,38 @@ def _mainmenu_stats_widgets_section():
     fields += color("retention", tr("retention_color", "Retention Color"), "#26a641", "#35b850", EXPRESSIVE_ONLY)
     fields += color("retention_star", tr("retention_star_color", "Retention Star Color"), "#FFD700", "#FFD700")
     fields += color("retention_star_empty", tr("retention_empty_star_color", "Empty Retention Star Color"), "#e0e0e0", "#4a4a4a")
-    # The Retention card's star glyph is a menu-wide icon (the same key the
-    # icon CSS generator masks .star with), not part of stats_widgets_style —
-    # declared here so the preview draws the user's own shape.
-    fields += [_hidden_field("modern_menu_icon_retention_star")]
     fields += [
         {
             "id": f"swidget_icon_{key}", "type": "icon", "label": label,
+            # Icon choice is a simple visual preference: keep these pickers
+            # available in Simple mode alongside the Show icons toggle.
+            "advanced": False,
             "show_when": {"all": [EXPRESSIVE_ONLY, {"field": "swidget_show_icons", "values": [True]}]},
             "bind": path("icons", key), "default": default,
         }
         for key, label, default in (
-            ("studied", tr("studied_icon", "Studied Icon"), "system:check.svg"),
-            ("time", tr("time_icon", "Time Icon"), "system:pomodoro.svg"),
-            ("pace", tr("pace_icon", "Pace Icon"), "system:bolt.svg"),
-            ("retention", tr("retention_icon", "Retention Icon"), "system:star.svg"),
+            ("studied", tr("studied_icon", "Studied Icon"), "system:stats-widget-studied.svg"),
+            ("time", tr("time_icon", "Time Icon"), "system:stats-widget-time.svg"),
+            ("pace", tr("pace_icon", "Pace Icon"), "system:stats-widget-pace.svg"),
+            ("retention", tr("retention_icon", "Retention Icon"), "system:stats-widget-retention.svg"),
         )
     ]
+    fields += [{
+        "id": "swidget_icon_retention_star", "type": "icon",
+        "label": tr("retention_stars_section", "Retention Stars"),
+        "advanced": False,
+        "show_when": {"field": "swidget_show_retention_stars", "values": [True]},
+        "bind": path("icons", "retention_star"), "default": "system:star.svg",
+    }]
 
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "mainmenu_stats_widgets",
         "stats_widgets",
         title=tr("stats_widgets_section", "Stats Widgets"),
-        icon="stats.svg",
-        # Each metric's accent is shown under its icon tile as well as inside the
-        # icon's popover: on this card the four accents are the main thing being
-        # tuned, and having to open a popover per colour to compare them made
-        # comparing them the one thing the card could not do.
-        icon_colors_inline=True,
+        icon="lucide-chart-columns.svg",
+        # Metric accents and retention-star colors stay in their respective
+        # icon pickers; the tile strip is reserved for the five icon selectors.
+        icon_colors_inline=False,
         sync_toggle_id="swidget_sync_box_effect",
         sync_hidden_fields=[
             "swidget_blur", "swidget_opacity", "swidget_radius", "swidget_stroke",
@@ -2660,6 +3675,34 @@ def _mainmenu_stats_widgets_section():
         ],
         fields=fields,
     )
+    section["font_menu_label"] = tr("stats_fonts", "Stats Fonts")
+    section["font_roles"] = [
+        {
+            "id": "swidget_font_labels",
+            "title": tr("stats_titles", "Stats Titles"),
+            "field_ids": [
+                "swidget_label_font", "swidget_label_size_sync",
+                "swidget_label_size",
+            ],
+        },
+        {
+            "id": "swidget_font_values",
+            "title": tr("stats_labels", "Stats Labels"),
+            "field_ids": [
+                "swidget_value_font", "swidget_value_size_sync",
+                "swidget_value_size",
+            ],
+        },
+        {
+            "id": "swidget_font_numbers",
+            "title": tr("stats_numbers", "Stats Numbers"),
+            "field_ids": [
+                "swidget_number_font", "swidget_number_size_sync",
+                "swidget_number_size",
+            ],
+        },
+    ]
+    return section
 
 
 DECK_STATS_CATEGORY_KEYS = (
@@ -2725,7 +3768,7 @@ def _mainmenu_deck_stats_section():
         {
             "id": "dstats_sync_box_effect", "type": "toggle",
             "head": True, "head_label": tr("sync_with_widgets", "Sync with widgets"),
-            "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"),
+            "label": tr("sync_with_widgets", "Sync with widgets"),
             "bind": path("sync_box_effect"), "default": True,
         },
         {
@@ -2763,17 +3806,22 @@ def _mainmenu_deck_stats_section():
     for key in DECK_STATS_CATEGORY_KEYS:
         fields += color(key, category_labels[key])
 
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "mainmenu_deck_stats",
         "deck_stats",
         title=tr("deck_stats_section", "Deck Stats"),
-        icon="deck.svg",
+        icon="lucide-chart-pie.svg",
         sync_toggle_id="dstats_sync_box_effect",
         sync_hidden_fields=[
             "dstats_blur", "dstats_opacity", "dstats_radius", "dstats_stroke",
             "dstats_color_box_bg", "dstats_color_box_border",
         ],
         fields=fields,
+    )
+    return _attach_compact_font_roles(
+        section,
+        ("stats_labels", "stats_values"),
+        tr("stats_fonts", "Stats Fonts"),
     )
 
 
@@ -2787,11 +3835,11 @@ def _mainmenu_heatmap_section():
     path = lambda *parts: {"kind": "config", "path": ["heatmap_style", *parts]}
     box_defaults = {"light": "#ffffff", "dark": "#2c2c2c"}
     border_defaults = {"light": "#e0e0e0", "dark": "#424242"}
-    return _designer_preview_section(
+    section = _designer_preview_section(
         "mainmenu_heatmap",
         "heatmap",
         title=tr("heatmap_section", "Heatmap"),
-        icon="calendar-check.svg",
+        icon="lucide-calendar-days.svg",
         sync_toggle_id="heatmap_sync_box_effect",
         sync_hidden_fields=[
             "heatmap_blur", "heatmap_opacity", "heatmap_radius", "heatmap_stroke",
@@ -2822,7 +3870,7 @@ def _mainmenu_heatmap_section():
             {
                 "id": "heatmap_sync_box_effect", "type": "toggle",
                 "head": True, "head_label": tr("sync_with_widgets", "Sync with widgets"),
-                "label": tr("sync_with_box_effect", "Sync with Widget Color and Effect"),
+                "label": tr("sync_with_widgets", "Sync with widgets"),
                 "bind": path("sync_box_effect"), "default": True,
             },
             {
@@ -2865,11 +3913,18 @@ def _mainmenu_heatmap_section():
                 "bind": {"kind": "config", "key": "heatmapShowWeekHeader"}, "default": True,
             },
             {
+                "id": "heatmapParticlesAnimation", "type": "toggle",
+                "label": "Particles Hetamap Animation",
+                "bind": {"kind": "config", "key": "heatmapParticlesAnimation"}, "default": False,
+            },
+            {
                 "id": "heatmapShape", "type": "icon", "label": tr("heatmap_shape_icon", "Heatmap Shape"),
+                "advanced": False,
                 "bind": {"kind": "config", "key": "heatmapShape"}, "default": "square.svg",
             },
             {
                 "id": "heatmapStreakIcon", "type": "icon", "label": tr("heatmap_streak_icon", "Streak Icon"),
+                "advanced": False,
                 "bind": {"kind": "config", "key": "heatmapStreakIcon"}, "default": "system:fire.svg",
             },
             {
@@ -2891,14 +3946,14 @@ def _mainmenu_heatmap_section():
                 "heatmap_color", tr("heatmap_shape_color", "Color"),
                 "heatmap_color_light", "heatmap_color_dark", "heatmap_color_dynamic_virtual",
             ),
-            _hidden_config_field("heatmap_color_light", ["colors", "light", "--heatmap-color"], "#0077C8"),
-            _hidden_config_field("heatmap_color_dark", ["colors", "dark", "--heatmap-color"], "#0077C8"),
+            _hidden_config_field("heatmap_color_light", ["colors", "light", "--heatmap-color"], config.DEFAULT_ACCENT_COLOR),
+            _hidden_config_field("heatmap_color_dark", ["colors", "dark", "--heatmap-color"], config.DEFAULT_ACCENT_COLOR),
             _color_pair_field(
                 "heatmap_color_zero", tr("heatmap_shape_zero_color", "Color (0 reviews)"),
                 "heatmap_color_zero_light", "heatmap_color_zero_dark", "heatmap_color_dynamic_virtual",
             ),
-            _hidden_config_field("heatmap_color_zero_light", ["colors", "light", "--heatmap-color-zero"], "#f0f0f0"),
-            _hidden_config_field("heatmap_color_zero_dark", ["colors", "dark", "--heatmap-color-zero"], "#3a3a3a"),
+            _hidden_config_field("heatmap_color_zero_light", ["colors", "light", "--heatmap-color-zero"], "#E6E6E6"),
+            _hidden_config_field("heatmap_color_zero_dark", ["colors", "dark", "--heatmap-color-zero"], "#2A2A2A"),
             _color_pair_field(
                 "heatmap_color_box_bg", tr("box_background", "Box Background"),
                 "heatmap_color_box_bg_light", "heatmap_color_box_bg_dark", None,
@@ -2917,25 +3972,44 @@ def _mainmenu_heatmap_section():
              "bind": path("colors", "dark", "box_border"), "default": border_defaults["dark"]},
         ],
     )
+    # The Heatmap card deliberately has identical controls in Simple and
+    # Advanced modes, including its compact typography menu.
+    section["mode_parity"] = True
+    return _attach_compact_font_roles(
+        section,
+        ("heatmap_title", "heatmap_labels"),
+        tr("heatmap_fonts", "Heatmap Fonts"),
+        advanced_only=False,
+        sync_label=tr("sync_with_widget_fonts", "Sync with Widget Fonts"),
+    )
 
 
 def _mainmenu_organize_section():
-    """Organize: the drag-and-drop widget grid editor
+    """Organize Widgets: the drag-and-drop grid editor
     (settings/_widget_grid_v2.py + _widget_grid_core.py). Layout state is 4
     whole-object config fields the `widget_grid` section (web/settings.js)
     reads/writes directly — there's no per-field control for grid contents,
     only for the global column/row/alignment/size settings below it.
 
-    The two Stats Title fields ride along here because the title *is* one of the
-    grid's widgets (`stats_title`): the legacy editor put them behind a
-    right-click "Edit Title" dialog on that tile
-    (settings/_widget_grid_v2.py:993), which is a place nobody finds. They are
-    ordinary visible fields, rendered as a row under the canvas."""
-    return {
+    The Menu Title fields ride along here because the title *is* one of the
+    grid's widgets (`stats_title`). Its own title/font/size stay in the tile's
+    compact context menu."""
+    section = {
         "id": "mainmenu_organize",
-        "title": tr("organize_section", "Organize"),
-        "icon": "organise.svg",
+        "title": tr("organize_widgets_section", "Organize Widgets"),
+        "icon": "lucide-layout-dashboard.svg",
         "layout": "widget_grid",
+        # Rendered as the compact appearance container between the grid toolbar
+        # and the widget grid. Hidden light/dark companion fields remain
+        # in this section so the regular settings store persists them.
+        "compact_fields": [
+            "onigiri_canvas_inset_effect_blur",
+            "onigiri_canvas_inset_effect_opacity",
+            "onigiri_canvas_inset_border_radius",
+            "onigiri_canvas_inset_border_width",
+            "widget_box_color",
+            "widget_border_color",
+        ],
         "fields": [
             {
                 # Saved verbatim, exactly as the legacy dialog did: the word cap
@@ -2944,25 +4018,186 @@ def _mainmenu_organize_section():
                 # (settings/_page_mainmenu.py:2149-2153).
                 "id": "modern_menu_statsTitle",
                 "type": "text",
-                "label": tr("custom_stats_title", "Stats Title"),
+                "label": tr("menu_title", "Menu Title"),
                 "bind": {"kind": "col", "key": "modern_menu_statsTitle"},
-                "default": "",
+                "default": config.DEFAULTS["statsTitle"],
             },
             {
-                # "sync" (STATS_TITLE_SYNC_KEY) means "whatever the Small Title
-                # font role is", which is what patcher.py:4962 falls back to.
-                "id": "modern_menu_statsTitleFont",
+                "id": "onigiri_font_dashboard_title",
                 "type": "font",
+                "advanced": True,
                 "label": tr("font", "Font"),
-                "bind": {"kind": "col", "key": "modern_menu_statsTitleFont"},
+                "bind": {"kind": "col", "key": "onigiri_font_dashboard_title"},
                 "default": "sync",
-                "options": [{"value": "sync", "label": tr("sync_with_theme", "Sync with theme")}] + _font_options(),
+                "options": [
+                    {"value": "sync", "label": tr("sync_with_theme", "Sync with theme")},
+                ] + _font_options(),
             },
+            {
+                "id": "onigiri_font_size_dashboard_title",
+                "type": "number",
+                "advanced": True,
+                "label": tr("font_size", "Size"),
+                "bind": {"kind": "col", "key": "onigiri_font_size_dashboard_title"},
+                "default": _current_simple_font_size("subtle"),
+                "min": 8,
+                "max": 72,
+                "step": 1,
+                "suffix": "px",
+            },
+            {
+                "id": "modern_menu_title_alignment", "type": "choice", "advanced": True,
+                "label": tr("text_alignment", "Text Alignment"),
+                "bind": {"kind": "col", "key": "modern_menu_title_alignment"},
+                "default": "left",
+                "options": [
+                    {"value": "left", "label": tr("align_left", "Left")},
+                    {"value": "center", "label": tr("align_center", "Center")},
+                    {"value": "right", "label": tr("align_right", "Right")},
+                ],
+            },
+            {
+                "id": "modern_menu_title_background_enabled", "type": "toggle", "advanced": True,
+                "label": tr("background", "Background"),
+                "bind": {"kind": "col", "key": "modern_menu_title_background_enabled"},
+                "default": False,
+            },
+            {
+                "id": "modern_menu_title_sync_widgets", "type": "toggle", "advanced": True,
+                "label": tr("menu_title_sync_widgets", "Sync appearance with widgets"),
+                "bind": {"kind": "col", "key": "modern_menu_title_sync_widgets"},
+                "default": False,
+                "show_when": {"field": "modern_menu_title_background_enabled", "values": [True]},
+            },
+            {
+                "id": "modern_menu_title_background_type", "type": "choice", "advanced": True,
+                "label": tr("background_type", "Background Type"),
+                "bind": {"kind": "col", "key": "modern_menu_title_background_type"},
+                "default": "color",
+                "show_when": {"all": [
+                    {"field": "modern_menu_title_background_enabled", "values": [True]},
+                    {"field": "modern_menu_title_sync_widgets", "values": [False]},
+                ]},
+                "options": [
+                    {"value": "color", "label": tr("color", "Color")},
+                    {"value": "image", "label": tr("image", "Image")},
+                ],
+            },
+            {
+                "id": "modern_menu_title_background_color", "type": "color", "advanced": True,
+                "label": tr("color", "Color"),
+                "bind": {"kind": "col", "key": "modern_menu_title_background_color"},
+                "default": "#FFFFFF",
+                "show_when": {"all": [
+                    {"field": "modern_menu_title_background_enabled", "values": [True]},
+                    {"field": "modern_menu_title_sync_widgets", "values": [False]},
+                    {"field": "modern_menu_title_background_type", "values": ["color"]},
+                ]},
+            },
+            _image_field(
+                "modern_menu_title_background_image", "main_bg", tr("image", "Image"),
+                advanced=True,
+                show_when={"all": [
+                    {"field": "modern_menu_title_background_enabled", "values": [True]},
+                    {"field": "modern_menu_title_sync_widgets", "values": [False]},
+                    {"field": "modern_menu_title_background_type", "values": ["image"]},
+                ]},
+            ),
+            *[
+                {
+                    "id": f"modern_menu_title_background_{effect}", "type": "slider", "advanced": True,
+                    "label": label,
+                    "bind": {"kind": "col", "key": f"modern_menu_title_background_{effect}"},
+                    "default": default, "min": 0, "max": maximum, "step": 1, "suffix": suffix,
+                    "show_when": {"all": [
+                        {"field": "modern_menu_title_background_enabled", "values": [True]},
+                        {"field": "modern_menu_title_sync_widgets", "values": [False]},
+                    ]},
+                }
+                for effect, label, default, maximum, suffix in (
+                    ("opacity", tr("opacity", "Opacity"), 100, 100, "%"),
+                    ("blur", tr("blur", "Blur"), 0, 40, "px"),
+                )
+            ],
+            {
+                # Presets make the common choices one click, while Custom
+                # exposes the four existing per-edge values below.  Keeping
+                # the old values means existing profiles and themes remain
+                # fully compatible with the renderer.
+                "id": "modern_menu_widget_layout",
+                "type": "choice",
+                "advanced": True,
+                "label": tr("layout_items", "Layout Items"),
+                "bind": {"kind": "col", "key": "modern_menu_widget_layout"},
+                "default": "compressed",
+                "options": [
+                    {"value": "compressed", "label": tr("compressed", "Compressed")},
+                    {"value": "spacious", "label": tr("spacious", "Spacious")},
+                    {"value": "custom", "label": tr("custom", "Custom")},
+                ],
+                "cascade": {
+                    "compressed": {
+                        "modern_menu_widget_margin_top": 0,
+                        "modern_menu_widget_margin_right": 0,
+                        "modern_menu_widget_margin_bottom": 0,
+                        "modern_menu_widget_margin_left": 0,
+                    },
+                    "spacious": {
+                        "modern_menu_widget_margin_top": 24,
+                        "modern_menu_widget_margin_right": 24,
+                        "modern_menu_widget_margin_bottom": 24,
+                        "modern_menu_widget_margin_left": 24,
+                    },
+                },
+            },
+            *[
+                {
+                    "id": f"modern_menu_widget_margin_{edge}",
+                    "type": "number",
+                    "advanced": True,
+                    "label": tr(edge, edge.title()),
+                    "bind": {"kind": "col", "key": f"modern_menu_widget_margin_{edge}"},
+                    "default": 0,
+                    "min": 0,
+                    "max": 240,
+                    "step": 1,
+                    "suffix": "px",
+                    "show_when": {
+                        "field": "modern_menu_widget_layout",
+                        "values": ["custom"],
+                    },
+                }
+                for edge in ("top", "right", "bottom", "left")
+            ],
+            {
+                # Unlike flexbox's `gap`, this is a signed offset.  Negative
+                # values can close unused space left by a wide sidebar; positive
+                # values deliberately add breathing room.
+                "id": "modern_menu_sidebar_widget_gap",
+                "type": "slider",
+                "advanced": True,
+                "label": tr("sidebar_gap", "Sidebar Gap"),
+                "desc": tr(
+                    "sidebar_gap_desc",
+                    "Move widgets nearer to or farther from the sidebar.",
+                ),
+                "bind": {"kind": "col", "key": "modern_menu_sidebar_widget_gap"},
+                "default": -40,
+                "min": -240,
+                "max": 240,
+                "step": 1,
+                "suffix": "px",
+                "show_when": {
+                    "field": "modern_menu_sidebar_position",
+                    "values": ["left", "right"],
+                },
+            },
+        ] + _widget_effect_fields() + [
             {
                 "id": "onigiriWidgetLayout", "type": "hidden", "label": "",
                 "bind": {"kind": "config", "key": "onigiriWidgetLayout"},
-                "default": {"grid": {}, "archive": {}, "column_count": 4, "grid_width": 260,
-                            "grid_alignment": "center", "widget_height": 180},
+                "default": {"grid": {}, "archive": {}, "column_count": 4, "grid_width": 250,
+                            "grid_alignment": "center", "widget_height": 150},
             },
             {
                 "id": "externalWidgetLayout", "type": "hidden", "label": "",
@@ -2981,6 +4216,12 @@ def _mainmenu_organize_section():
             },
         ],
     }
+    # Widget Fonts stays beside the grid it affects in both modes.
+    return _attach_compact_font_roles(
+        section,
+        ("widget_title", "widget_small"),
+        tr("widget_fonts", "Widget Fonts"),
+    )
 
 
 def _theme_color_pair(field_id, label, token, light_default, dark_default,
@@ -3067,14 +4308,26 @@ SIDEBAR_ACTION_BUTTONS = (
     ("more", "more", "More", "more.svg"),
 )
 
-# Entries of the "More" menu (settings/_legacy.py's ACTION_BUTTON_MORE_CHILDREN).
-# Their icons are editable, but they are NOT part of the sidebar's own order:
-# they live inside More, so offering to reorder or archive them there would be
-# offering something the sidebar cannot honour.
+# Entries that can live inside the "More" menu or directly on the sidebar
+# (settings/_legacy.py's ACTION_BUTTON_MORE_CHILDREN).
 SIDEBAR_MORE_BUTTONS = (
     ("get_shared", "get_shared", "Get Shared", "get_shared.svg"),
     ("create_deck", "create_deck", "Create Deck", "add-deck.svg"),
     ("import_file", "import_file", "Import File", "import_file.svg"),
+)
+
+READY_TO_GO_BUTTONS = (
+    ("inbox", "Inbox", "lucide-inbox.svg"),
+    ("warm_up", "Warm up", "lucide-flame.svg"),
+    ("today", "Today", "lucide-calendar-check.svg"),
+    ("cool_down", "Cool-Down", "lucide-droplet.svg"),
+)
+
+SIDEBAR_SECTIONS = (
+    ("profile", "Profile", "person.svg"),
+    ("actions", "Actions", "organise.svg"),
+    ("ready_to_go", "Ready to go", "bolt.svg"),
+    ("decks", "Decks", "folder.svg"),
 )
 
 # Deck-list glyphs the legacy page let the user swap (its
@@ -3113,6 +4366,24 @@ def _icon_field(field_id, label, default, **extra):
     return field
 
 
+def _icon_tint_fields(field_id, fallback_light, fallback_dark):
+    """Independent tint slots; the light slot keeps the legacy storage key."""
+    light = _hidden_field(field_id + "_light")
+    light["bind"]["key"] = field_id
+    light["bind"]["preserve_key"] = field_id + "_dark"
+    dark = _hidden_field(field_id + "_dark")
+    dark["bind"]["fallback_key"] = field_id
+    return [
+        _color_pair_field(
+            field_id, tr("icon_color", "Icon Color"),
+            light["id"], dark["id"], None, always_split=True,
+            fallback_light=fallback_light, fallback_dark=fallback_dark,
+        ),
+        light,
+        dark,
+    ]
+
+
 # The sidebar card is really two cards in one: a custom background (its own
 # colour/picture/effect) or the main menu's background seen through a tint. Every
 # row belongs to exactly one of them, so both conditions are named once here
@@ -3122,29 +4393,32 @@ _SIDEBAR_MAIN = {"field": "modern_menu_sidebar_bg_mode", "values": ["main"]}
 
 
 def _sidebar_background_section():
-    """The sidebar frame itself: fill, picture, effect and geometry. Config keys
-    match the legacy save path exactly (settings/_page_sidebar.py:1654-1721).
-
-    Background Source picks between the sidebar's own custom background and the
-    main menu's, the latter drawn through either a glassmorphism blur or a
-    tinted overlay (patcher.py:3017-3050). "Sync with Widget Color and Effect"
-    is the switch that hands the custom fill/effect over to the shared widget
-    styling, and it collapses the rows it takes over instead of leaving them
-    greyed out."""
-    return _designer_preview_section(
+    """Sidebar layout and appearance. The persisted "custom" source is labelled
+    Match Widgets and inherits its full surface; "main" is the Custom overlay.
+    Keep legacy keys dormant and hide their controls while matching."""
+    layout_fields = _sidebar_layout_fields()
+    section = _designer_preview_section(
         "sidebar_background",
         "sidebar_background",
-        title=tr("sidebar_background", "Sidebar Background"),
-        icon="paintbrush.svg",
+        title=tr("sidebar_customization", "Sidebar Customization"),
+        icon="lucide-panel-left.svg",
         dynamic_keys=[
             "modern_menu_sidebar_bg_color_theme_mode",
             "modern_menu_sidebar_bg_image_theme_mode",
+            # Deck colours use the Sidebar frame's light/dark policy. Keeping
+            # their mode here makes this the Sidebar page's single Dynamic
+            # mode control instead of surfacing a second switch in Decks.
+            "onigiri_sidebar_deck_colors_theme_mode",
         ],
         sync_toggle_id="modern_menu_sidebar_sync_box_effect",
         sync_hidden_fields=[
+            "modern_menu_sidebar_bg_type",
+            "modern_menu_sidebar_sync_box_effect",
             "modern_menu_sidebar_bg_color",
+            "modern_menu_sidebar_bg_image",
             "modern_menu_sidebar_bg_blur",
             "modern_menu_sidebar_bg_opacity",
+            "modern_menu_sidebar_border_custom",
             "modern_menu_sidebar_radius",
             "modern_menu_sidebar_stroke",
         ],
@@ -3166,6 +4440,73 @@ def _sidebar_background_section():
                 ],
             },
             {
+                "id": "modern_menu_sidebar_width_pinned",
+                "type": "toggle",
+                "label": tr("pin_sidebar_width", "Pin sidebar width"),
+                "desc": tr(
+                    "pin_sidebar_width_desc",
+                    "Keep the sidebar at a chosen width and disable edge resizing.",
+                ),
+                "bind": {"kind": "col", "key": "modern_menu_sidebar_width_pinned"},
+                "default": False,
+                # The width value is shared with the edge-resize handler. Do
+                # not leave a previously pinned width behind when pinning is
+                # disabled: restore the normal sidebar size in the same
+                # auto-save patch as the toggle change.
+                "cascade": {
+                    "off": {"modern_menu_sidebar_width": 600},
+                },
+            },
+            {
+                "id": "modern_menu_sidebar_width",
+                "type": "number",
+                "label": tr("sidebar_width", "Sidebar width"),
+                "desc": tr(
+                    "sidebar_width_desc",
+                    "Choose a width from 320 to 1,200 px.",
+                ),
+                "bind": {"kind": "col", "key": "modern_menu_sidebar_width"},
+                "default": 600,
+                "min": 320,
+                "max": 1200,
+                "step": 1,
+                "suffix": "px",
+                "show_when": {
+                    "field": "modern_menu_sidebar_width_pinned",
+                    "values": [True],
+                },
+            },
+            {
+                "id": "modern_menu_hide_profile_bar",
+                "type": "toggle",
+                "label": tr("hide_profile_sidebar", "Hide profile on sidebar"),
+                "bind": {"kind": "col", "key": "modern_menu_hide_profile_bar"},
+                "default": False,
+            },
+            {
+                "id": "modern_menu_sidebar_section_layout",
+                "type": "button_order",
+                "label": tr("sidebar_section_order", "Sidebar section order"),
+                "desc": tr(
+                    "sidebar_section_order_desc",
+                    "Drag the sections into their preferred top-to-bottom order.",
+                ),
+                "bind": {
+                    "kind": "col",
+                    "key": "modern_menu_sidebar_section_layout",
+                },
+                "default": {
+                    "visible": ["profile", "actions", "ready_to_go", "decks"],
+                    "archived": [],
+                },
+                "allow_archive": False,
+                "advanced": False,
+                "options": [
+                    {"value": key, "label": label, "icon": icon}
+                    for key, label, icon in SIDEBAR_SECTIONS
+                ],
+            },
+            {
                 # `modern_menu_sidebar_bg_mode` and `modern_menu_sidebar_bg_type`
                 # are two different keys in the collection config: the first
                 # decides *where* the sidebar's fill comes from (its own custom
@@ -3180,8 +4521,8 @@ def _sidebar_background_section():
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_bg_mode"},
                 "default": "custom",
                 "options": [
-                    {"value": "custom", "label": tr("custom", "Custom")},
-                    {"value": "main", "label": tr("match_main_menu", "Match Main Menu")},
+                    {"value": "custom", "label": tr("match_widgets", "Match Widgets")},
+                    {"value": "main", "label": tr("custom", "Custom")},
                 ],
             },
             {
@@ -3195,23 +4536,15 @@ def _sidebar_background_section():
                     {"value": "image_color", "label": tr("image", "Image")},
                     {"value": "color", "label": tr("color_only", "Color only")},
                     {"value": "accent", "label": tr("accent_color", "Accent")},
-                    {"value": "slideshow", "label": tr("slideshow", "Slideshow")},
                 ],
             },
             {
                 "id": "modern_menu_sidebar_sync_box_effect",
                 "type": "toggle",
-                "label": tr("sync_box_color_effect", "Sync with Widget Color and Effect"),
+                "label": tr("sync_with_widgets", "Sync with widgets"),
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_sync_box_effect"},
                 "default": True,
                 "show_when": _SIDEBAR_CUSTOM,
-            },
-            {
-                "id": "modern_menu_hide_profile_bar",
-                "type": "toggle",
-                "label": tr("hide_profile_sidebar", "Hide profile on sidebar"),
-                "bind": {"kind": "col", "key": "modern_menu_hide_profile_bar"},
-                "default": False,
             },
             _color_pair_field(
                 "modern_menu_sidebar_bg_color",
@@ -3224,8 +4557,14 @@ def _sidebar_background_section():
                                    {"field": "modern_menu_sidebar_bg_type",
                                     "values": ["color", "image_color"]}]},
             ),
-            _hidden_field("modern_menu_sidebar_bg_color_light", "#F3F3F3"),
-            _hidden_field("modern_menu_sidebar_bg_color_dark", "#2C2C2C"),
+            _hidden_field(
+                "modern_menu_sidebar_bg_color_light",
+                config.DEFAULTS["colors"]["light"]["--profile-page-bg"],
+            ),
+            _hidden_field(
+                "modern_menu_sidebar_bg_color_dark",
+                config.DEFAULTS["colors"]["dark"]["--profile-page-bg"],
+            ),
             _hidden_field("modern_menu_sidebar_bg_color_theme_mode", "separate"),
             _image_field(
                 "modern_menu_sidebar_bg_image",
@@ -3242,24 +4581,6 @@ def _sidebar_background_section():
             _hidden_field("modern_menu_sidebar_bg_image_light"),
             _hidden_field("modern_menu_sidebar_bg_image_dark"),
             _hidden_field("modern_menu_sidebar_bg_image_theme_mode", "separate"),
-            _image_list_field(
-                "modern_menu_sidebar_slideshow_images",
-                "sidebar_bg",
-                tr("slideshow_images", "Slideshow Images"),
-                show_when={"all": [_SIDEBAR_CUSTOM,
-                                   {"field": "modern_menu_sidebar_bg_type",
-                                    "values": ["slideshow"]}]},
-            ),
-            {
-                "id": "modern_menu_sidebar_slideshow_interval",
-                "type": "duration",
-                "label": tr("slideshow_interval", "Slide Interval"),
-                "bind": {"kind": "col", "key": "modern_menu_sidebar_slideshow_interval"},
-                "default": 10,
-                "show_when": {"all": [_SIDEBAR_CUSTOM,
-                                      {"field": "modern_menu_sidebar_bg_type",
-                                       "values": ["slideshow"]}]},
-            },
             # ── Match Main Menu ───────────────────────────────────────────────
             # The main menu's own background shows through the sidebar; these
             # decide what is laid over it. patcher.py reads them only while
@@ -3323,7 +4644,7 @@ def _sidebar_background_section():
                 # of these only inside its `sidebar_mode == 'custom'` branch.
                 "show_when": {"all": [_SIDEBAR_CUSTOM,
                                       {"field": "modern_menu_sidebar_bg_type",
-                                       "values": ["image_color", "slideshow"]}]},
+                                       "values": ["image_color"]}]},
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_bg_blur"},
                 "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
             },
@@ -3336,16 +4657,35 @@ def _sidebar_background_section():
                 "show_when": _SIDEBAR_CUSTOM,
             },
             {
+                "id": "modern_menu_sidebar_border_custom",
+                "type": "toggle",
+                "label": tr("sidebar_border_custom", "Customize sidebar border"),
+                "bind": {"kind": "col", "key": "modern_menu_sidebar_border_custom"},
+                "default": False,
+                "description": tr(
+                    "sidebar_border_custom_desc",
+                    "Set the sidebar border independently of synced widget styling.",
+                ),
+            },
+            {
                 "id": "modern_menu_sidebar_radius",
-                "type": "slider",
-                "label": tr("radius", "Radius"),
+                "type": "number",
+                "show_when": {"any": [
+                    {"field": "modern_menu_sidebar_border_custom", "values": [True]},
+                    {"field": "modern_menu_sidebar_sync_box_effect", "values": [False]},
+                ]},
+                "label": tr("border_radius", "Border Radius"),
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_radius"},
                 "default": 15, "min": 0, "max": 60, "step": 1, "suffix": "px",
             },
             {
                 "id": "modern_menu_sidebar_stroke",
-                "type": "slider",
-                "label": tr("stroke", "Stroke"),
+                "type": "number",
+                "show_when": {"any": [
+                    {"field": "modern_menu_sidebar_border_custom", "values": [True]},
+                    {"field": "modern_menu_sidebar_sync_box_effect", "values": [False]},
+                ]},
+                "label": tr("border_width", "Border Width"),
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_stroke"},
                 "default": 1, "min": 0, "max": 10, "step": 1, "suffix": "px",
             },
@@ -3356,8 +4696,172 @@ def _sidebar_background_section():
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_margin"},
                 "default": 10, "min": 0, "max": 48, "step": 1, "suffix": "px",
             },
+        ] + layout_fields,
+        subsections=[
+            {
+                "id": "sidebar_border",
+                "title": tr("sidebar_border", "Sidebar Border"),
+                "fields": [
+                    "modern_menu_sidebar_border_custom",
+                    "modern_menu_sidebar_radius",
+                    "modern_menu_sidebar_stroke",
+                ],
+            },
+            {
+                "id": "sidebar_item_layout",
+                "title": tr("layout_sidebar_items", "Layout · Sidebar Items"),
+                "fields": ["modern_menu_sidebar_item_layout"] + [
+                    f"modern_menu_sidebar_item_margin_{edge}"
+                    for edge in ("top", "right", "bottom", "left")
+                ],
+            },
         ],
     )
+    return _attach_compact_font_roles(
+        section,
+        ("profile_name", "sidebar_small"),
+        tr("sidebar_fonts", "Sidebar Fonts"),
+        field_roles=("sidebar_small",),
+    )
+
+
+def _sidebar_layout_fields():
+    """Sidebar-item spacing presets and their custom per-edge fallback."""
+    fields = [{
+        "id": "modern_menu_sidebar_item_layout",
+        "type": "choice",
+        "label": tr("layout_items", "Layout Items"),
+        "bind": {"kind": "col", "key": "modern_menu_sidebar_item_layout"},
+        "default": "compressed",
+        "options": [
+            {"value": "compressed", "label": tr("compressed", "Compressed")},
+            {"value": "spacious", "label": tr("spacious", "Spacious")},
+            {"value": "custom", "label": tr("custom", "Custom")},
+        ],
+        "cascade": {
+            "compressed": {
+                "modern_menu_sidebar_item_margin_top": 0,
+                "modern_menu_sidebar_item_margin_right": 0,
+                "modern_menu_sidebar_item_margin_bottom": 0,
+                "modern_menu_sidebar_item_margin_left": 0,
+            },
+            "spacious": {
+                "modern_menu_sidebar_item_margin_top": 12,
+                "modern_menu_sidebar_item_margin_right": 12,
+                "modern_menu_sidebar_item_margin_bottom": 12,
+                "modern_menu_sidebar_item_margin_left": 12,
+            },
+        },
+    }]
+
+    def edge_fields(prefix, defaults):
+        for edge, default in zip(("top", "right", "bottom", "left"), defaults):
+            fields.append({
+                "id": f"{prefix}_{edge}",
+                "type": "number",
+                "label": tr(edge, edge.title()),
+                "bind": {"kind": "col", "key": f"{prefix}_{edge}"},
+                "default": default,
+                "min": 0,
+                "max": 96,
+                "step": 1,
+                "suffix": "px",
+                "show_when": {
+                    "field": "modern_menu_sidebar_item_layout",
+                    "values": ["custom"],
+                },
+            })
+
+    edge_fields(
+        "modern_menu_sidebar_item_margin",
+        (0, 0, 5, 0),
+    )
+    return fields
+
+
+def _advanced_font_role(role, sync_label=None):
+    """Build one component font card, inheriting its Simple role defaults."""
+    spec = next(item for item in ADVANCED_FONT_ROLES if item[0] == role)
+    role, label_key, fallback, fallback_role = spec
+    sync_option = [{
+        "value": "sync",
+        "label": sync_label or tr("sync_with_theme", "Sync with theme"),
+    }]
+    size = COMPONENT_FONT_SIZE_DEFAULTS.get(
+        role,
+        _current_simple_font_size(fallback_role),
+    )
+    return {
+        "id": f"font_{role}",
+        "title": tr(label_key, fallback),
+        "role_key": role,
+        "fallback_role_key": fallback_role,
+        "fields": [{
+            "id": f"onigiri_font_{role}",
+            "type": "font",
+            "advanced": True,
+            "label": tr("font", "Font"),
+            "bind": {"kind": "col", "key": f"onigiri_font_{role}"},
+            "default": "sync",
+            "options": sync_option + _font_options(),
+        }, {
+            "id": f"onigiri_font_size_{role}",
+            "type": "number",
+            "advanced": True,
+            "label": tr("font_size", "Size"),
+            "bind": {"kind": "col", "key": f"onigiri_font_size_{role}"},
+            "default": size,
+            "min": 8,
+            "max": 72,
+            "step": 1,
+            "suffix": "px",
+            "reset_to": size,
+        }],
+    }
+
+
+def _advanced_typography_section(section_id, roles, title=None, icon="text.svg"):
+    """Group component font cards into one Advanced-only page tab."""
+    cards = [_advanced_font_role(role) for role in roles]
+    return {
+        "id": section_id,
+        "title": title or tr("typography", "Typography"),
+        "icon": icon,
+        "layout": "font_roles",
+        "advanced_only": True,
+        "font_roles": [{
+            "id": card["id"],
+            "title": card["title"],
+            "role_key": card["role_key"],
+            "fallback_role_key": card["fallback_role_key"],
+            "field_ids": [field["id"] for field in card["fields"]],
+        } for card in cards],
+        "fields": [field for card in cards for field in card["fields"]],
+    }
+
+
+def _attach_compact_font_roles(section, roles, label, advanced_only=True,
+                               sync_label=None, field_roles=None):
+    """Attach font-role data to a designer card's compact typography menu."""
+    cards = [_advanced_font_role(role, sync_label=sync_label) for role in roles]
+    field_roles = set(roles if field_roles is None else field_roles)
+    if not advanced_only:
+        for card in cards:
+            for field in card["fields"]:
+                field.pop("advanced", None)
+    section["font_menu_label"] = label
+    section["font_roles"] = [{
+        "id": card["id"],
+        "title": card["title"],
+        "role_key": card["role_key"],
+        "fallback_role_key": card["fallback_role_key"],
+        "field_ids": [field["id"] for field in card["fields"]],
+    } for card in cards]
+    section.setdefault("fields", []).extend(
+        field for card in cards if card["role_key"] in field_roles
+        for field in card["fields"]
+    )
+    return section
 
 
 def _sidebar_actions_section():
@@ -3386,12 +4890,37 @@ def _sidebar_actions_section():
             "bind": {"kind": "col", "key": "modern_menu_icon_size_action_button"},
             "default": 14, "min": 8, "max": 40, "step": 1, "suffix": "px",
         },
+        _icon_field(
+            "modern_menu_icon_header_search",
+            tr("search_icon", "Search icon"),
+            "system:search.svg",
+            icon_group="deck_header",
+            icon_group_title=tr("deck_header_icons", "Deck-list header icons"),
+            show_when={"field": "sidebarActionsMode", "values": ["archived"]},
+        ),
+        _icon_field(
+            "modern_menu_icon_header_sort",
+            tr("sort_icon", "Sort icon"),
+            "system:sort_default.svg",
+            icon_group="deck_header",
+            icon_group_title=tr("deck_header_icons", "Deck-list header icons"),
+            show_when={"field": "sidebarActionsMode", "values": ["archived"]},
+        ),
+        _icon_field(
+            "modern_menu_icon_header_home",
+            tr("home_icon", "Home icon"),
+            "system:home.svg",
+            icon_group="deck_header",
+            icon_group_title=tr("deck_header_icons", "Deck-list header icons"),
+            show_when={"field": "sidebarActionsMode", "values": ["archived"]},
+        ),
         {
             "id": "sidebarAddDashed",
             "type": "toggle",
             "label": tr("add_button_dashed_label", "Dashed outline on Add"),
             "bind": {"kind": "config", "key": "sidebarAddDashed"},
             "default": False,
+            "show_when": {"field": "sidebarActionsMode", "values": ["list", "collapsed"]},
         },
         {
             # The whole layout object, edited as one control: drag to reorder,
@@ -3406,17 +4935,23 @@ def _sidebar_actions_section():
             # menu this editor does not have.
             "desc": tr(
                 "settings_web_button_order_help",
-                "Drag to reorder. Use the eye to archive a button.",
+                "Drag buttons between Outside More, More, and Archived.",
             ),
             "bind": {"kind": "config", "key": "sidebarButtonLayout"},
             "default": {
                 "visible": ["profile", "add", "browse", "stats", "sync", "settings",
                             "gamification", "more"],
+                "more": ["get_shared", "create_deck", "import_file"],
                 "archived": [],
             },
+            # The generic order editor grows a third drop bucket for actions
+            # that should remain under the More disclosure.
+            "more_bucket": True,
             "options": [
                 {"value": key, "label": tr(string_key, fallback), "icon": icon}
-                for key, string_key, fallback, icon in SIDEBAR_ACTION_BUTTONS
+                for key, string_key, fallback, icon in (
+                    SIDEBAR_ACTION_BUTTONS + SIDEBAR_MORE_BUTTONS
+                )
             ],
             "show_when": {"field": "sidebarActionsMode", "values": ["list", "collapsed"]},
         },
@@ -3429,41 +4964,210 @@ def _sidebar_actions_section():
     for key, string_key, fallback, icon in all_buttons:
         fields.append(_icon_field(
             f"modern_menu_icon_{key}", tr(string_key, fallback), f"system:{icon}",
+            icon_group="action_buttons",
+            icon_group_title=tr("action_button_icon_group", "Action Button icons"),
         ))
     for key, _string_key, _fallback, _icon in all_buttons:
-        fields.append({
-            "id": f"modern_menu_icon_color_{key}",
-            "type": "color",
-            "label": tr("icon_color", "Icon Color"),
-            "bind": {"kind": "col", "key": f"modern_menu_icon_color_{key}"},
-            "default": "",
-            # Unset means the shared icon colour, which is what the real sidebar
-            # falls back to (onigiri_renderer.py:297) — the picker shows it
-            # rather than an empty swatch.
-            "fallback_light": "sb_icon_color_light",
-            "fallback_dark": "sb_icon_color_dark",
-        })
-    return _designer_preview_section(
+        fields.extend(_icon_tint_fields(
+            f"modern_menu_icon_color_{key}",
+            "sb_icon_color_light", "sb_icon_color_dark",
+        ))
+    section = _designer_preview_section(
         "sidebar_actions",
         "sidebar_actions",
         title=tr("settings_web_tab_action_buttons", "Action Buttons"),
-        icon="organise.svg",
+        icon="lucide-mouse-pointer-2.svg",
         stage_side=True,
         fields=fields,
+    )
+    section = _attach_compact_font_roles(
+        section,
+        ("action_buttons",),
+        tr("action_button_fonts", "Action Button Fonts"),
+    )
+    # This page, including its compact typography controls, is shared by both modes.
+    section["mode_parity"] = True
+    return section
+
+
+def _sidebar_ready_section():
+    """Appearance controls for Classic's collection-wide study shortcuts."""
+    fields = [
+        {
+            "id": "modern_menu_ready_layout_mode",
+            "type": "choice",
+            "label": tr("ready_layout", "Ready to Go Layout"),
+            "desc": tr(
+                "ready_layout_desc",
+                "Show labeled actions, four compact icons, or hide the sidebar section.",
+            ),
+            "bind": {
+                "kind": "col",
+                "key": "modern_menu_ready_layout_mode",
+            },
+            "default": "list",
+            "options": [
+                {"value": "list", "label": tr("list_default_short", "List")},
+                {
+                    "value": "collapsed",
+                    "label": tr("collapsed_toolbar_short", "Collapsed"),
+                },
+                {"value": "hidden", "label": tr("hidden", "Hidden")},
+            ],
+        },
+        _icon_field(
+            "modern_menu_icon_ready_section",
+            tr("ready_section_icon", "Ready To Go section icon"),
+            "system:lucide-zap.svg",
+            icon_group="ready_header",
+            icon_group_title=tr("ready_header_icon_group", "Ready To Go header icon"),
+            show_when={"field": "modern_menu_ready_layout_mode", "values": ["hidden"]},
+        ),
+        {
+            "id": "modern_menu_ready_show_title",
+            "type": "toggle",
+            "label": tr("show_ready_title", "Show Ready to Go title"),
+            "desc": tr(
+                "show_ready_title_desc",
+                "Show or hide the heading above the Ready to Go actions.",
+            ),
+            "bind": {"kind": "col", "key": "modern_menu_ready_show_title"},
+            "default": True,
+            "advanced": False,
+        },
+        {
+            "id": "modern_menu_ready_title",
+            "type": "text",
+            "label": tr("section_title", "Section title"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_title"},
+            "default": "Ready to go",
+            "show_when": {
+                "field": "modern_menu_ready_show_title",
+                "values": [True],
+            },
+        },
+        {
+            "id": "modern_menu_ready_icon_size",
+            "type": "slider",
+            "label": tr("icon_size", "Icon size"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_icon_size"},
+            "default": 16, "min": 8, "max": 40, "step": 1, "suffix": "px",
+        },
+        {
+            "id": "modern_menu_ready_gap",
+            "type": "slider",
+            "label": tr("button_gap", "Button gap"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_gap"},
+            "default": 6, "min": 0, "max": 24, "step": 1, "suffix": "px",
+        },
+        {
+            "id": "modern_menu_ready_radius",
+            "type": "number",
+            "label": tr("button_radius", "Button radius"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_radius"},
+            "default": 9, "min": 0, "max": 30, "step": 1, "suffix": "px",
+        },
+        {
+            "id": "modern_menu_ready_show_border",
+            "type": "toggle",
+            "label": tr("button_border", "Button border"),
+            "desc": tr(
+                "button_border_desc",
+                "Show or remove the outline around each Ready to Go action.",
+            ),
+            "bind": {
+                "kind": "col",
+                "key": "modern_menu_ready_show_border",
+            },
+            "default": True,
+        },
+        {
+            "id": "modern_menu_ready_text_color",
+            "type": "color",
+            "label": tr("text_color", "Text color"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_text_color"},
+            "default": "",
+            "fallback_light": "theme_subtle_light",
+            "fallback_dark": "theme_subtle_dark",
+            "control_style": "designer_color_slot",
+        },
+        {
+            "id": "modern_menu_ready_border_color",
+            "type": "color",
+            "label": tr("border_color", "Border color"),
+            "bind": {"kind": "col", "key": "modern_menu_ready_border_color"},
+            "default": "",
+            "fallback_light": "theme_border_light",
+            "fallback_dark": "theme_border_dark",
+            "show_when": {
+                "field": "modern_menu_ready_show_border",
+                "values": [True],
+            },
+        },
+        {
+            "id": "modern_menu_ready_button_background",
+            "type": "color",
+            "label": tr("button_background", "Button background"),
+            "bind": {
+                "kind": "col",
+                "key": "modern_menu_ready_button_background",
+            },
+            "default": "",
+            "control_style": "designer_color_slot",
+        },
+    ]
+    for key, label, icon in READY_TO_GO_BUTTONS:
+        fields.append(_icon_field(
+            f"modern_menu_icon_ready_{key}", label, f"system:{icon}",
+            icon_group="ready_actions",
+            icon_group_title=tr("ready_action_icon_group", "Ready To Go action icons"),
+        ))
+    for key, _label, _icon in READY_TO_GO_BUTTONS:
+        fields.extend(_icon_tint_fields(
+            f"modern_menu_icon_color_ready_{key}",
+            "sb_icon_color_light", "sb_icon_color_dark",
+        ))
+    section = _designer_preview_section(
+        "sidebar_ready",
+        "sidebar_ready",
+        title="Ready to go",
+        icon="lucide-zap.svg",
+        stage_side=True,
+        fields=fields,
+    )
+    return _attach_compact_font_roles(
+        section,
+        ("action_buttons",),
+        tr("action_button_fonts", "Action Button Fonts"),
     )
 
 
 def _sidebar_decks_section():
     """Deck Icons / Deck Customization (settings/_infra.py:1844-2123): the deck
-    list's own glyphs, sizes, indentation, count badges and palette. All five
-    colour pairs share one theme-mode key so the card's Dynamic-mode switch
-    splits or links the whole palette at once, exactly like the legacy page's
-    single light/dark palette toggle."""
+    list's own glyphs, sizes, indentation, count bubbles and palette. All five
+    colour pairs follow Sidebar Customization's single Dynamic-mode switch,
+    so the deck palette never gets an independent light/dark policy."""
     fields = [
+        {
+            "id": "sidebarContentMode",
+            "type": "choice",
+            "label": tr("sidebar_content", "Sidebar content"),
+            "desc": tr(
+                "sidebar_content_desc",
+                "Show the deck tree or start study sessions by tag.",
+            ),
+            "bind": {"kind": "config", "key": "sidebarContentMode"},
+            "default": "decks",
+            "options": [
+                {"value": "decks", "label": tr("decks", "Decks")},
+                {"value": "tags", "label": tr("tags", "Tags")},
+            ],
+        },
         {
             "id": "deck_indentation_mode",
             "type": "choice",
             "label": tr("decks_indentation", "Deck indentation"),
+            "advanced": True,
             "bind": {"kind": "config", "key": "deck_indentation_mode"},
             "default": "default",
             "options": [
@@ -3477,6 +5181,7 @@ def _sidebar_decks_section():
             "id": "deck_indentation_custom_px",
             "type": "number",
             "label": tr("custom_indentation_px", "Custom indentation"),
+            "advanced": True,
             "bind": {"kind": "config", "key": "deck_indentation_custom_px"},
             "default": 20, "min": 0, "max": 100, "step": 1, "suffix": "px",
             "show_when": {"field": "deck_indentation_mode", "values": ["custom"]},
@@ -3484,7 +5189,7 @@ def _sidebar_decks_section():
         {
             "id": "modern_menu_count_badge_size",
             "type": "choice",
-            "label": tr("count_badge_size", "Count Badge Size"),
+            "label": tr("count_badge_size", "Bubble Size"),
             "bind": {"kind": "col", "key": "modern_menu_count_badge_size"},
             "default": "small",
             "options": [
@@ -3497,7 +5202,7 @@ def _sidebar_decks_section():
         {
             "id": "modern_menu_count_badge_size_custom_px",
             "type": "number",
-            "label": tr("custom_badge_size_px", "Custom badge size"),
+            "label": tr("custom_badge_size_px", "Custom bubble size"),
             "bind": {"kind": "col", "key": "modern_menu_count_badge_size_custom_px"},
             "default": 16, "min": 8, "max": 40, "step": 1, "suffix": "px",
             "show_when": {"field": "modern_menu_count_badge_size", "values": ["custom"]},
@@ -3520,6 +5225,7 @@ def _sidebar_decks_section():
             "id": "hideDeckCounts",
             "type": "toggle",
             "label": tr("hide_zero_counts", "Hide zero counts"),
+            "advanced": True,
             "bind": {"kind": "config", "key": "hideDeckCounts"},
             "default": True,
         },
@@ -3527,6 +5233,7 @@ def _sidebar_decks_section():
             "id": "hideAllDeckCounts",
             "type": "toggle",
             "label": tr("hide_all_counts", "Hide all counts"),
+            "advanced": True,
             "bind": {"kind": "config", "key": "hideAllDeckCounts"},
             "default": False,
         },
@@ -3534,6 +5241,7 @@ def _sidebar_decks_section():
             "id": "modern_menu_hide_folder_icon",
             "type": "toggle",
             "label": tr("hide_folder_icon", "Hide folder icon"),
+            "advanced": True,
             "bind": {"kind": "col", "key": "modern_menu_hide_folder_icon"},
             "default": False,
         },
@@ -3541,6 +5249,7 @@ def _sidebar_decks_section():
             "id": "modern_menu_hide_subdeck_icon",
             "type": "toggle",
             "label": tr("hide_subdeck_icon", "Hide subdeck icon"),
+            "advanced": True,
             "bind": {"kind": "col", "key": "modern_menu_hide_subdeck_icon"},
             "default": False,
         },
@@ -3548,6 +5257,7 @@ def _sidebar_decks_section():
             "id": "modern_menu_hide_deck_icon",
             "type": "toggle",
             "label": tr("hide_deck_icon", "Hide deck icon"),
+            "advanced": True,
             "bind": {"kind": "col", "key": "modern_menu_hide_deck_icon"},
             "default": False,
         },
@@ -3555,6 +5265,7 @@ def _sidebar_decks_section():
             "id": "modern_menu_hide_filtered_deck_icon",
             "type": "toggle",
             "label": tr("hide_filtered_deck_icon", "Hide filtered deck icon"),
+            "advanced": True,
             "bind": {"kind": "col", "key": "modern_menu_hide_filtered_deck_icon"},
             "default": False,
         },
@@ -3562,6 +5273,7 @@ def _sidebar_decks_section():
             "id": "modern_menu_hide_default_icons",
             "type": "toggle",
             "label": tr("hide_default_show_custom", "Hide default icons, keep custom ones"),
+            "advanced": True,
             "desc": tr(
                 "hide_default_show_custom_desc",
                 "Default icons disappear; a deck's own custom icon still shows.",
@@ -3571,6 +5283,50 @@ def _sidebar_decks_section():
         },
     ]
     palette_mode = "onigiri_sidebar_deck_colors_theme_mode"
+    # Keep the theme palette values available to the JS preview painter as
+    # fallbacks. The visible bubble controls below alias the Overview Style
+    # values that the live sidebar uses when explicit colors are set.
+    for role, token, light, dark in (
+        ("new", "--new-count-bubble", "#a3c5e8", "#68a0d9"),
+        ("learn", "--learn-count-bubble", "#e8a3a3", "#d96868"),
+        ("review", "--review-count-bubble", "#a3e8b8", "#68d98a"),
+    ):
+        bg_id = f"sb_count_{role}_bg"
+        fg_id = f"sb_count_{role}_fg"
+        role_label = {
+            "new": tr("new_count_label", "New Cards Bubble"),
+            "learn": tr("learn_count_label", "Learning Cards Bubble"),
+            "review": tr("review_count_label", "Review Cards Bubble"),
+        }[role]
+        fg_label = {
+            "new": tr("new_count_fg_label", "New Bubble Text"),
+            "learn": tr("learn_count_fg_label", "Learning Bubble Text"),
+            "review": tr("review_count_fg_label", "Review Bubble Text"),
+        }[role]
+        # The live Sidebar follows Overview Style when its bubble colors are
+        # explicitly set. Bind this second entry point to those same values so
+        # controls opened from either section stay in sync.
+        bg_control = f"sidebar_{role}_bubble"
+        fg_control = f"sidebar_{role}_bubble_text"
+        for control_id, label, key, default, mode_field in (
+            (bg_control, role_label, f"{role}_bubble", light,
+             f"ovstyle_color_{role}_bubble_theme_mode"),
+            (fg_control, fg_label, f"{role}_text",
+             {"new": "#13375b", "learn": "#731717", "review": "#1b7a38"}[role],
+             f"ovstyle_color_{role}_text_theme_mode"),
+        ):
+            fields.append(_color_pair_field(
+                control_id, label, f"{control_id}_light", f"{control_id}_dark", None,
+                theme_mode_field=mode_field,
+            ))
+            fields.extend([
+                _hidden_config_field(
+                    f"{control_id}_light", ["overview_style", "colors", "light", key], default,
+                ),
+                _hidden_config_field(
+                    f"{control_id}_dark", ["overview_style", "colors", "dark", key], default,
+                ),
+            ])
     # `--deck-list-bg` and `--highlight-fg` are stored empty by default, meaning
     # "inherit": the deck list lets the sidebar's own background through, and a
     # highlighted row keeps the normal text colour. `fallback_*` names where that
@@ -3582,7 +5338,7 @@ def _sidebar_decks_section():
         ("sb_highlight_bg", "--highlight-bg", tr("highlight_bg_label", "Row highlight"),
          "#eeeeee", "#3c3c3c", None),
         ("sb_highlight_fg", "--highlight-fg", tr("highlight_fg_label", "Row highlight text"),
-         "", "", ("gal_fg_light", "gal_fg_dark")),
+         "", "", ("theme_fg_light", "theme_fg_dark")),
     ):
         extra = {}
         if fallback:
@@ -3598,12 +5354,13 @@ def _sidebar_decks_section():
     fields.extend([
         _hidden_config_field("sb_icon_color_light", ["colors", "light", "--icon-color"], "#333333"),
         _hidden_config_field("sb_icon_color_dark", ["colors", "dark", "--icon-color"], "#E0E0E0"),
-        _hidden_config_field("sb_icon_color_filtered_light", ["colors", "light", "--icon-color-filtered"], "#0077C8"),
-        _hidden_config_field("sb_icon_color_filtered_dark", ["colors", "dark", "--icon-color-filtered"], "#0077C8"),
+        _hidden_config_field("sb_icon_color_filtered_light", ["colors", "light", "--icon-color-filtered"], config.DEFAULT_ACCENT_COLOR),
+        _hidden_config_field("sb_icon_color_filtered_dark", ["colors", "dark", "--icon-color-filtered"], config.DEFAULT_ACCENT_COLOR),
     ])
     for key, string_key, fallback, icon in SIDEBAR_DECK_ICONS:
         fields.append(_icon_field(
-            f"modern_menu_icon_{key}", tr(string_key, fallback), f"system:{icon}",
+            f"modern_menu_icon_{key}", tr(string_key, fallback).removesuffix(" Icon"), f"system:{icon}",
+            advanced=False,
         ))
     # Each glyph's own tint, shown inside that glyph's picker (the colour and the
     # icon are one decision). Left empty it falls through to the palette keys
@@ -3612,23 +5369,39 @@ def _sidebar_decks_section():
     # patcher.generate_icon_css paints with when the tint is unset.
     for key, _string_key, _fallback, _icon in SIDEBAR_DECK_ICONS:
         filtered = key == "filtered_deck"
-        fields.append({
-            "id": f"modern_menu_icon_color_{key}",
-            "type": "color",
-            "label": tr("icon_color", "Icon Color"),
-            "bind": {"kind": "col", "key": f"modern_menu_icon_color_{key}"},
-            "default": "",
-            "fallback_light": "sb_icon_color_filtered_light" if filtered else "sb_icon_color_light",
-            "fallback_dark": "sb_icon_color_filtered_dark" if filtered else "sb_icon_color_dark",
-        })
-    return _designer_preview_section(
+        fields.extend(_icon_tint_fields(
+            f"modern_menu_icon_color_{key}",
+            "sb_icon_color_filtered_light" if filtered else "sb_icon_color_light",
+            "sb_icon_color_filtered_dark" if filtered else "sb_icon_color_dark",
+        ))
+    section = _designer_preview_section(
         "sidebar_decks",
         "deck_list",
-        title=tr("settings_web_tab_decks", "Decks"),
-        icon="folder.svg",
-        dynamic_keys=[palette_mode],
+        title=tr("sidebar_decks_and_tags", "Decks & Tags"),
+        icon="lucide-folder.svg",
         stage_side=True,
         fields=fields,
+    )
+    section["color_menu_label"] = tr("sidebar_bubble_colors", "Bubble Colors")
+    section["color_groups"] = [
+        {
+            "id": f"sidebar_bubble_colors_{role}",
+            "title": title,
+            "preview_label": preview,
+            "preview_bg": f"sidebar_{role}_bubble",
+            "preview_text": f"sidebar_{role}_bubble_text",
+            "field_ids": [f"sidebar_{role}_bubble", f"sidebar_{role}_bubble_text"],
+        }
+        for role, title, preview in (
+            ("new", tr("new_count_label", "New Cards Bubble"), tr("lstats_new", "New")),
+            ("learn", tr("learn_count_label", "Learning Cards Bubble"), tr("learning", "Learning")),
+            ("review", tr("review_count_label", "Review Cards Bubble"), tr("to_review", "To Review")),
+        )
+    ]
+    return _attach_compact_font_roles(
+        section,
+        ("deck_title", "deck_names"),
+        tr("deck_fonts", "Deck Fonts"),
     )
 
 
@@ -3668,10 +5441,10 @@ def _sidebar_markers_section():
             "bind": {"kind": "config", "path": ["markerNames", key]},
             "default": "",
         })
-    return {
+    section = {
         "id": "sidebar_markers",
         "title": tr("markers", "Markers"),
-        "icon": "star.svg",
+        "icon": "lucide-tags.svg",
         "layout": "markers",
         "preview_kind": "sidebar_markers",
         "markers": [
@@ -3686,9 +5459,44 @@ def _sidebar_markers_section():
         ],
         "fields": fields,
     }
+    # Marker controls remain the same in Simple and Advanced settings.
+    section["mode_parity"] = True
+    return section
 
 
 def _sidebar_page():
+    classic_sections = [
+        _sidebar_background_section(),
+        _sidebar_actions_section(),
+        _sidebar_ready_section(),
+        _sidebar_decks_section(),
+        _sidebar_markers_section(),
+    ]
+    for section in classic_sections:
+        section["show_when"] = {
+            "field": "onigiri_ui_theme",
+            "values": ["classic"],
+        }
+    # Shima reuses both the deck appearance and the island surface controls,
+    # while keeping profile, Ready to Go, markers, and the rest of the sidebar
+    # content out of the theme.
+    background_section = next(
+        section for section in classic_sections
+        if section.get("id") == "sidebar_background"
+    )
+    background_section["show_when"]["values"] = ["classic", "shima"]
+    deck_section = next(
+        section for section in classic_sections
+        if section.get("id") == "sidebar_decks"
+    )
+    deck_section["show_when"]["values"] = ["classic", "shima"]
+    for field in deck_section.get("fields", []):
+        if field.get("id") == "sidebarContentMode":
+            field["show_when"] = {
+                "field": "onigiri_ui_theme",
+                "values": ["classic"],
+            }
+    _kome_main, kome_sidebar = _things_sections_by_page()
     return {
         "id": "sidebar",
         "legacy_name": "Sidebar",
@@ -3697,12 +5505,7 @@ def _sidebar_page():
         "group": "menu",
         "description": "",
         "tabbed": True,
-        "sections": [
-            _sidebar_background_section(),
-            _sidebar_actions_section(),
-            _sidebar_decks_section(),
-            _sidebar_markers_section(),
-        ],
+        "sections": classic_sections + kome_sidebar,
         "post_save": ["sidebar"],
     }
 
@@ -3717,9 +5520,8 @@ def _sidebar_page():
 # commands the picture popover already uses.
 #
 # Do not maintain a second hand-written list of colours here. The Gallery is
-# derived from the actual editable colour controls, then supplemented by colour
-# defaults that have no dedicated WebUI control. That makes a colour added to a
-# settings page automatically available from the Gallery too.
+# derived from the actual editable colour controls. That makes a colour added to
+# a settings page automatically available from the Gallery too.
 
 GALLERY_ASSET_FOLDERS = (
     ("profile", "profile_pictures", "Profile Pictures"),
@@ -3750,28 +5552,16 @@ def _config_bind_path(field):
 def _color_bindings(field, fields_by_id):
     """Every stored value used by an editable colour control."""
     bindings = []
-    for candidate in (field, *(fields_by_id.get(field.get(key)) for key in (
-            "light_field", "dark_field", "single_field"))):
+    candidates = [field]
+    for key in ("light_field", "dark_field", "single_field"):
+        candidate = fields_by_id.get(field.get(key))
         if candidate:
-            path = _config_bind_path(candidate)
-            if path:
-                bindings.append(path)
+            candidates.append(candidate)
+    for candidate in candidates:
+        path = _config_bind_path(candidate)
+        if path:
+            bindings.append(path)
     return tuple(sorted(set(bindings)))
-
-
-def _is_color_value(value):
-    """Whether a config default can be opened in the native colour picker."""
-    value = str(value or "").strip().lower()
-    return value.startswith("#") or value.startswith("rgb(") or value.startswith("rgba(")
-
-
-def _iter_default_colors(value, path=()):
-    """Yield colour-valued leaves from the add-on's config defaults."""
-    if isinstance(value, dict):
-        for key, child in value.items():
-            yield from _iter_default_colors(child, path + (key,))
-    elif _is_color_value(value):
-        yield path, value
 
 
 def _gallery_color_sections(source_pages):
@@ -3787,7 +5577,6 @@ def _gallery_color_sections(source_pages):
         for _page, _section, field in iter_fields(source_pages)
     }
     seen_bindings = set()
-    configured_paths = set()
     sections = []
 
     for page in source_pages:
@@ -3804,7 +5593,6 @@ def _gallery_color_sections(source_pages):
             if identity in seen_bindings:
                 continue
             seen_bindings.add(identity)
-            configured_paths.update(bindings)
 
             gallery_field = copy.deepcopy(field)
             gallery_field["id"] = f"gallery_{page['id']}_{field['id']}"
@@ -3814,10 +5602,20 @@ def _gallery_color_sections(source_pages):
             gallery_field.pop("head", None)
             gallery_field.pop("head_label", None)
             if section.get("title"):
-                source = section["title"]
-                gallery_field["desc"] = (
-                    f"{source} — {field.get('desc', '')}".rstrip(" —")
-                )
+                context = [section["title"]]
+                field_id = field["id"]
+                if field_id.startswith("modern_menu_icon_color_"):
+                    icon_id = field_id.replace("modern_menu_icon_color_", "modern_menu_icon_", 1)
+                    icon_field = all_fields.get(icon_id) or {}
+                    icon_label = icon_field.get("label")
+                    if icon_label:
+                        context.append(icon_label)
+                elif field_id.startswith("marker_color_"):
+                    marker = field_id.removeprefix("marker_color_")
+                    context.append(tr(f"marker_{marker}", marker.title()))
+                if field.get("desc"):
+                    context.append(field["desc"])
+                gallery_field["desc"] = " — ".join(context)
             page_fields.append(gallery_field)
 
         if page_fields:
@@ -3825,35 +5623,10 @@ def _gallery_color_sections(source_pages):
                 "id": f"gallery_{page['id']}_colors",
                 "title": page["title"],
                 "icon": page.get("icon", "themes.svg"),
-                "layout": "",
+                "layout": "color_gallery",
                 "fields": page_fields,
             })
 
-    # A few theme tokens have no dedicated control elsewhere. They are still
-    # editable add-on colours, so expose them here instead of silently omitting
-    # them from the claimed complete Gallery.
-    remaining = []
-    for path, default in _iter_default_colors(config.DEFAULTS):
-        if path in configured_paths:
-            continue
-        field_id = "gallery_config_" + "_".join(
-            str(part).replace("-", "_").lstrip("_") for part in path
-        )
-        remaining.append({
-            "id": field_id,
-            "type": "color",
-            "label": " / ".join(str(part).replace("--", "") for part in path),
-            "bind": {"kind": "config", "path": list(path)},
-            "default": default,
-        })
-    if remaining:
-        sections.append({
-            "id": "gallery_additional_colors",
-            "title": tr("other", "Other"),
-            "icon": "themes.svg",
-            "layout": "",
-            "fields": remaining,
-        })
     return sections
 
 
@@ -3890,10 +5663,31 @@ def _gallery_page(source_pages):
 
 
 def _mainmenu_page():
-    """Main menu: Organize (widget grid), Background, Widget Color and Effect,
-    Stats Widgets, Deck Stats, Heatmap — built up section by section as each
+    """Main menu: Organize Widgets, Background, Stats Widgets, Deck Stats and
+    Heatmap — built up section by section as each
     is ported; not wired into `build_pages()` until every section lands (see
     the plan's "removing the legacy stub" step)."""
+    classic_sections = [
+        _mainmenu_organize_section(),
+        _mainmenu_background_section(),
+        _mainmenu_stats_widgets_section(),
+        _mainmenu_deck_stats_section(),
+        _mainmenu_heatmap_section(),
+    ]
+    for section in classic_sections:
+        section["show_when"] = {
+            "field": "onigiri_ui_theme",
+            "values": ["classic"],
+        }
+    # The surrounding canvas is Shima's only non-deck surface, so the existing
+    # image/color/slideshow designer is the one appearance panel it exposes.
+    background_section = next(
+        section for section in classic_sections
+        if section.get("id") == "mainmenu_background"
+    )
+    background_section["show_when"]["values"] = ["classic", "shima"]
+
+    kome_main_menu, _kome_sidebar = _things_sections_by_page()
     return {
         "id": "mainmenu",
         "legacy_name": "Main menu",
@@ -3907,26 +5701,58 @@ def _mainmenu_page():
         # Mirrors the Stats Widgets retention-star toggle into the older
         # `hideRetentionStars` key the renderer still gives priority to.
         "post_save": ["stats_widgets"],
-        "sections": [
-            _mainmenu_organize_section(),
-            _mainmenu_background_section(),
-            _mainmenu_widget_effect_section(),
-            _mainmenu_stats_widgets_section(),
-            _mainmenu_deck_stats_section(),
-            _mainmenu_heatmap_section(),
-        ],
+        "sections": classic_sections + kome_main_menu,
     }
+
+
+def _attach_font_colors(pages):
+    """Every font picker edits its own text color, preserving inherited ink."""
+    for _page, section, field in list(iter_fields(pages)):
+        if field.get("type") != "font":
+            continue
+        if not field.get("options"):
+            field["options"] = _font_options()
+        font_id = field["id"]
+        if font_id == "g_mochi_font":
+            field["color_fields"] = [{"id": "g_mochi_text_color", "label": tr("color", "Color")}]
+            continue
+        if font_id == "pomodoro_font":
+            prefix = "pomodoro_color_digits"
+            field["color_dynamic_field"] = "pomodoro_dynamic"
+        elif font_id in ("onigiri_font_profile_name", "onigiri_font_profile_level"):
+            prefix = "modern_menu_" + font_id.removeprefix("onigiri_font_") + "_color"
+            field["color_dynamic_field"] = "modern_menu_profile_name_dynamic_mode"
+        else:
+            prefix = font_id + "_color"
+            for mode in ("light", "dark"):
+                section["fields"].append(_hidden_field(prefix + "_" + mode, ""))
+        field["color_fields"] = [
+            {"id": prefix + "_" + mode, "label": tr(mode + "_mode", mode.title())}
+            for mode in ("light", "dark")
+        ]
 
 
 def build_pages():
     """Every nav entry, in order. Called fresh on each dialog open so
     translations, font lists and platform probes are current."""
+    game_pages = games.build_pages()
+    gamification = next(
+        (page for page in game_pages if page.get("id") == "gamification"),
+        None,
+    )
+    if gamification is not None:
+        gamification.setdefault("sections", []).append(
+            _advanced_typography_section(
+                "notification_typography",
+                ("notifications",),
+            )
+        )
+
     source_pages = [
         _profile_page(),
         _sync_page(),
         _modes_page(),
         _languages_page(),
-        _fonts_page(),
         _themes_page(),
         _mainmenu_page(),
         _sidebar_page(),
@@ -3935,9 +5761,10 @@ def build_pages():
         _prep_station_page(),
         _hashi_notes_page(),
         _pomodoro_page(),
-    ] + games.build_pages()
+    ] + game_pages
+    _attach_font_colors(source_pages)
     gallery = _gallery_page(source_pages)
-    return source_pages[:6] + [gallery] + source_pages[6:]
+    return source_pages[:5] + [gallery] + source_pages[5:]
 
 
 NAV_GROUPS = [

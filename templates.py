@@ -7,7 +7,10 @@ custom_body_template = """
         justify-content: space-between;
         align-items: center;
         gap: 8px;
-        padding-right: 10px;
+        /* The sidebar already supplies the outer gutter. Adding another
+           header-only inset left the toolbar visibly short of the deck rows
+           in the live Deck Browser. */
+        padding-right: 0;
         margin-top: 0;
         margin-bottom: 15px;
         min-height: 24px;
@@ -18,9 +21,9 @@ custom_body_template = """
         margin: 0;
         line-height: 24px;
         flex: 0 0 auto;
-        font-size: 14px;
+        font-size: 13px;
         text-transform: uppercase;
-        color: var(--fg-subtle);
+        color: var(--icon-color, var(--fg-subtle));
     }
 
     .deck-header-actions {
@@ -118,7 +121,7 @@ custom_body_template = """
     }
 
     .deck-table tr:not(.drag-hover) a.deck:hover {
-         background-color: rgba(128, 128, 128, 0.1);
+         background-color: transparent !important;
     }
     /* --- Deck List Scrolling Fix --- */
     .sidebar-expanded-content {
@@ -134,39 +137,178 @@ custom_body_template = """
         overflow-y: auto;
         min-height: 0; 
     }
+
+    .onigiri-tag-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .onigiri-tag-row .decktd {
+        padding: 0 !important;
+    }
+
+    .onigiri-tag-entry {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+        min-height: 32px;
+        margin-inline-start: calc(var(--tag-depth, 0) * 16px);
+        padding: 3px 5px;
+        border-radius: 6px;
+        box-sizing: border-box;
+    }
+
+    .onigiri-tag-entry:hover {
+        background-color: rgba(128, 128, 128, 0.1);
+    }
+
+    .onigiri-tag-toggle,
+    .onigiri-tag-toggle-placeholder {
+        flex: 0 0 20px;
+        width: 20px;
+        height: 24px;
+    }
+
+    .onigiri-tag-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+        border: 0 !important;
+        border-radius: 4px !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: var(--icon-color, var(--fg-subtle));
+        cursor: pointer;
+    }
+
+    .onigiri-tag-toggle:hover {
+        color: var(--accent-color);
+    }
+
+    .onigiri-tag-toggle svg {
+        width: 12px;
+        height: 12px;
+        transition: transform 120ms ease;
+    }
+
+    .onigiri-tag-toggle[aria-expanded="true"] svg {
+        transform: rotate(90deg);
+    }
+
+    .onigiri-tag-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 4px 6px;
+        border: 0 !important;
+        border-radius: 4px !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        text-align: start;
+    }
+
+    .onigiri-tag-icon {
+        flex: 0 0 16px;
+        width: 16px;
+        height: 16px;
+        color: var(--icon-color, var(--fg-subtle));
+    }
+
+    .onigiri-tag-icon-mask {
+        display: inline-block;
+        background-color: var(--onigiri-tag-icon-light, var(--icon-color));
+        -webkit-mask: var(--onigiri-tag-icon) center / contain no-repeat;
+        mask: var(--onigiri-tag-icon) center / contain no-repeat;
+    }
+
+    .night-mode .onigiri-tag-icon-mask,
+    .nightMode .onigiri-tag-icon-mask {
+        background-color: var(--onigiri-tag-icon-dark, var(--icon-color));
+    }
+
+    .onigiri-tag-icon-image {
+        display: block;
+        object-fit: contain;
+    }
+
+    .onigiri-tag-icon-emoji {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    .onigiri-tag-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        unicode-bidi: plaintext;
+        text-align: start;
+    }
+
+    .onigiri-tag-empty {
+        padding: 12px 10px;
+        color: var(--fg-subtle);
+        font-size: 12px;
+        text-align: center;
+    }
+
+    .onigiri-sidebar-decks-section.is-tags-mode #onigiri-sort-toolbar-btn {
+        display: none;
+    }
 </style>
 <div class="container modern-main-menu {container_extra_class}">
     <div class="sidebar-left skeleton-loading {sidebar_initial_class}" style="{sidebar_style}">
         
         <div class="sidebar-expanded-content">
-            {sidebar_buttons}
+            <section class="onigiri-sidebar-section onigiri-sidebar-profile-section">
+                {profile_bar}
+            </section>
+            <section class="onigiri-sidebar-section onigiri-sidebar-actions-section">
+                {sidebar_buttons}
+            </section>
+            {ready_to_go}
             {profile_sidebar}
-            
-            <div id="deck-list-header">
-                <h2>{tr_decks}</h2>
-                <div id="onigiri-deck-search-bar">
-                    <span class="onigiri-search-icon" aria-hidden="true"></span>
-                    <input type="text" id="onigiri-deck-search-input" placeholder="Search decks..." autocomplete="off" spellcheck="false" />
-                    <button id="onigiri-deck-search-close" aria-label="Close" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                    </button>
+            <section class="onigiri-sidebar-section onigiri-sidebar-decks-section
+                            {sidebar_list_class}">
+                <div id="deck-list-header">
+                    <h2>{sidebar_content_title}</h2>
+                    <div id="onigiri-deck-search-bar">
+                        <span class="onigiri-search-icon" aria-hidden="true"></span>
+                        <input type="text" id="onigiri-deck-search-input" placeholder="{sidebar_search_placeholder}" autocomplete="off" spellcheck="false" />
+                        <button id="onigiri-deck-search-close" aria-label="Close" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                    </div>
+                    <div class="deck-header-actions">
+                        <button id="onigiri-search-toolbar-btn" class="deck-header-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="{sidebar_search_title}" type="button">
+                            {search_header_icon}
+                        </button>
+                        <button id="onigiri-sort-toolbar-btn" class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
+                            {sort_header_icon}
+                        </button>
+                        {ready_marker}
+                        {home_button}
+                    </div>
                 </div>
-                <div class="deck-header-actions">
-                    <button id="onigiri-search-toolbar-btn" class="deck-header-btn" onclick="OnigiriEngine.toggleDeckSearch()" title="Search decks" type="button">
-                        <i class="search-btn-icon"></i>
-                    </button>
-                    <button id="onigiri-sort-toolbar-btn" class="deck-header-btn" type="button" title="Sort decks" onclick="OnigiriEngine.showSortMenu(this, event)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"><path d="M8 5.5h12M8 12h12M8 18.5h12"/><path stroke-linejoin="round" d="M4.375 5.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0m-.125 6.5H4.25m.25 0a.25.25 0 1 1-.5 0a.25.25 0 0 1 .5 0"/></svg>
-                    </button>
+                <div id="deck-list-container">
+                    <table class="deck-table {sidebar_table_class}" id="decktree">
+                        <tbody>
+                           {tree}
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-            <div id="deck-list-container">
-                <table class="deck-table" id="decktree">
-                    <tbody>
-                       {tree}
-                    </tbody>
-                </table>
-            </div>
+            </section>
         </div>
 
         <div class="collapsed-content-wrapper">

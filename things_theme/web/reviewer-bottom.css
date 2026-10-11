@@ -1,0 +1,352 @@
+/* Anki Design — reviewer bottom bar.
+
+   Anki 25.x DOM (aqt/reviewer.py):
+     <center id=outer>
+       <table id=innertable>
+         <tr>
+           <td.stat>      <button>Edit</button>            ← E
+           <td#middle>    {show-answer | ease buttons}
+           <td.stat>      <button>More ▾<span#time></span></button>  ← M
+
+   Question state injects in #middle:
+     <table><tr><td.stat2>
+       <button#ansbut>Show Answer <span.stattxt>{counts}</span></button>
+
+   Answer state injects 2–4 plain <button>s in #middle (one is #defease).
+     Anki's templates put the interval inside a child `<small>` (or empty
+     if the deck shows seconds), and the label as the button's textContent.
+
+   We rebuild this surface from scratch as a 3-column flex row:
+       [edit-cluster]   [primary-cluster]   [more-cluster]
+   In the primary cluster:
+     - question: a big "Show Answer" CTA with a keyboard hint chip
+     - answer  : a row of 4 ease "keys" (large key + label + interval),
+                 each color-coded; "Good" is highlighted as default.
+
+   We never touch card content; this is bottom-bar webview only. */
+
+:root {
+  --rf-paper: var(--rf-light-bg, #eeeeee);
+  --rf-paper-2: var(--rf-light-inset, #ffffff);
+  --rf-ink: var(--rf-light-fg, #212121);
+  --rf-ink-dim: var(--rf-light-subtle, #757575);
+  --rf-ink-faint: var(--rf-light-subtle, #757575);
+  --rf-line: color-mix(in srgb, var(--rf-light-fg, #212121) 10%, transparent);
+  --rf-line-2: color-mix(in srgb, var(--rf-light-fg, #212121) 22%, transparent);
+  --rf-row-hover: color-mix(in srgb, var(--rf-light-fg, #212121) 5%, transparent);
+  --rf-accent: var(--accent, #0077c8);
+  --rf-again: #c95a4b;
+  --rf-hard:  #c69142;
+  --rf-good:  #4a8f6b;
+  --rf-easy:  #3f7fb2;
+  --rf-sans: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --rf-serif: ui-serif, "New York", "Hoefler Text", "Iowan Old Style", Charter, Georgia, serif;
+}
+:root[data-rf-theme="dark"],
+:root.night-mode {
+  --rf-paper: var(--rf-dark-bg, #171717);
+  --rf-paper-2: var(--rf-dark-inset, #2c2c2c);
+  --rf-ink: var(--rf-dark-fg, #e0e0e0);
+  --rf-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+  --rf-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+  --rf-line: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 10%, transparent);
+  --rf-line-2: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 20%, transparent);
+  --rf-row-hover: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 5%, transparent);
+  --rf-again: #e07466;
+  --rf-hard:  #d4a35d;
+  --rf-good:  #79b69b;
+  --rf-easy:  #6fa9d8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-rf-theme="light"]) {
+    --rf-paper: var(--rf-dark-bg, #171717);
+    --rf-paper-2: var(--rf-dark-inset, #2c2c2c);
+    --rf-ink: var(--rf-dark-fg, #e0e0e0);
+    --rf-ink-dim: var(--rf-dark-subtle, #9e9e9e);
+    --rf-ink-faint: var(--rf-dark-subtle, #9e9e9e);
+    --rf-line: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 10%, transparent);
+    --rf-line-2: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 20%, transparent);
+    --rf-row-hover: color-mix(in srgb, var(--rf-dark-fg, #e0e0e0) 5%, transparent);
+    --rf-again: #e07466;
+    --rf-hard:  #d4a35d;
+    --rf-good:  #79b69b;
+    --rf-easy:  #6fa9d8;
+  }
+}
+
+html, body {
+  background: var(--rf-paper) !important;
+  color: var(--rf-ink) !important;
+  font-family: var(--rf-sans) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Outer container — a slim row. The center carries either the keyboard
+   prompt (question state) or the ease shortcuts (answer state). Edit
+   and More are consolidated into one right-side cluster. */
+#outer {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 22px 14px !important;
+  box-sizing: border-box;
+  gap: 14px;
+}
+
+/* Anki gives us a single-row table — make it disappear into flex.
+   We want Edit and More side-by-side on the right (the user wants them
+   "next to each other"), so we reorder via flex order. */
+#innertable,
+#innertable tbody,
+#innertable tr {
+  display: contents !important;
+}
+#innertable td {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+/* Edit is the first .stat cell, More is the last. Place both on the
+   right side with Edit just before More. */
+#innertable td.stat:first-of-type { order: 3; }
+#innertable td.stat:last-of-type  { order: 4; }
+#middle { order: 2; flex: 1 1 auto; justify-content: center !important; }
+/* A spacer on the left mirrors the right cluster's width so the middle
+   stays optically centered. */
+#outer::before {
+  content: "";
+  order: 1;
+  flex: 0 0 96px;  /* roughly matches Edit + More width */
+}
+/* The ease state nests `#middle > center > table > tbody > tr > td > button`.
+   Flatten everything to display: contents so the buttons live on the same
+   flex line. The td.stat2 special-case (show-answer single-cell wrapper)
+   needs to remain a flex item, so we re-set it after. */
+#middle center,
+#middle table,
+#middle tbody,
+#middle tr,
+#middle td {
+  display: contents !important;
+}
+#middle td.stat2 { display: inline-flex !important; }
+
+/* Reset all native button chrome — we draw our own. */
+button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  margin: 0 !important;
+  color: var(--rf-ink-dim) !important;
+  font: 500 11.5px/1 var(--rf-sans) !important;
+  font-size: calc(11.5px * var(--rf-chrome-scale, 1)) !important;
+  letter-spacing: 0.06em !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: color 160ms ease, background 160ms ease, transform 80ms ease !important;
+}
+button:active { transform: translateY(1px) !important; }
+
+/* Edit + More — icon-only, fixed-dimension hit targets, side-by-side on
+   the right. Hover changes opacity only; no background swap (which felt
+   like a "popping" hover before). Anki's button text is hidden via
+   font-size: 0 on the parent. */
+button[onclick*="'edit'"],
+button[onclick*="'more'"] {
+  width: calc(28px * var(--rf-chrome-scale, 1)) !important;
+  height: calc(28px * var(--rf-chrome-scale, 1)) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: var(--rf-ink-faint) !important;
+  font-size: 0 !important;  /* hide Anki's label text */
+  opacity: 0.55;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+button[onclick*="'edit'"]:hover,
+button[onclick*="'more'"]:hover {
+  color: var(--rf-ink) !important;
+  opacity: 1;
+  background: transparent !important;
+}
+button[onclick*="'edit'"]::before {
+  content: "";
+  width: calc(16px * var(--rf-chrome-scale, 1));
+  height: calc(16px * var(--rf-chrome-scale, 1));
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9'/><path d='M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z'/></svg>") no-repeat center / contain;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9'/><path d='M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z'/></svg>") no-repeat center / contain;
+}
+
+button[onclick*="'more'"]::before {
+  content: "";
+  width: calc(16px * var(--rf-chrome-scale, 1));
+  height: calc(16px * var(--rf-chrome-scale, 1));
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='5' cy='12' r='1.6'/><circle cx='12' cy='12' r='1.6'/><circle cx='19' cy='12' r='1.6'/></svg>") no-repeat center / contain;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='5' cy='12' r='1.6'/><circle cx='12' cy='12' r='1.6'/><circle cx='19' cy='12' r='1.6'/></svg>") no-repeat center / contain;
+}
+button[onclick*="'more'"] #time { display: none !important; }
+
+/* ===== QUESTION STATE — Show Answer =====
+   No big button. Replace the label with a single quiet line:
+   "Press space · or click the card".
+   The original button is still clickable (Anki keys "Space" off this
+   button's onclick) but we shrink it so it disappears into a typographic
+   prompt, not a CTA. */
+#ansbut {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--rf-ink-faint) !important;
+  font: 500 11.5px/1 var(--rf-sans) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  font-size: 0 !important;  /* hide Anki's "Show Answer" text */
+  opacity: 0.7;
+  transition: opacity 160ms ease, color 160ms ease;
+}
+#ansbut::before {
+  content: "Press";
+  font-size: 11.5px;
+  letter-spacing: 0;
+  color: var(--rf-ink-faint);
+}
+#ansbut::after {
+  content: "Space";
+  display: inline-flex;
+  align-items: center;
+  font: 500 10.5px/1 var(--rf-sans);
+  letter-spacing: 0.04em;
+  padding: 4px 8px 3px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--rf-line-2);
+  color: var(--rf-ink-dim);
+}
+#ansbut:hover { opacity: 1; color: var(--rf-ink) !important; background: transparent !important; }
+#ansbut .stattxt { display: none !important; }
+
+/* The counts under SHOW ANSWER are redundant — the header in the main
+   webview already carries the new/learn/due breakdown + the position. */
+#ansbut .stattxt { display: none !important; }
+
+/* ===== ANSWER STATE — ease keys =====
+   No labels (AGAIN/HARD/GOOD/EASY), no big blocks. Each ease button is a
+   small inline "key · interval" pair, color-coded. The default (Good)
+   has slightly higher weight.
+
+   Counter-reset goes on #outer (always rendered) since #middle's
+   descendants are flattened with `display: contents` and CSS counters
+   don't reliably increment on contents'd elements in WebKit. The
+   show-answer state has a single ansbut button which would also
+   increment the counter to 1 — that's fine, it's unused there. */
+#outer { counter-reset: ba-ease 0; }
+#middle button[data-ease] { counter-increment: ba-ease; }
+#middle table { border-spacing: 0 !important; }
+/* Inline-block button. The button's font-size is 0 (to hide the "Again"
+   text node Anki injects); ::before and .nobold each declare their own
+   font + line-height, and vertical-align: middle on the children keeps
+   them aligned against the button's explicit 24px line-height baseline. */
+#middle table tr td:not(.stat2) button {
+  display: inline-block !important;
+  text-align: center !important;
+  padding: 4px 10px !important;
+  margin: 0 4px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--rf-ink-dim) !important;
+  font: 500 0/24px var(--rf-sans) !important;  /* font-size 0 hides Anki's label */
+  line-height: calc(24px * var(--rf-chrome-scale, 1)) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  position: relative;
+  --ba-key: var(--rf-ink-faint);
+  opacity: 0.85;
+  transition: opacity 160ms ease;
+  vertical-align: middle !important;
+}
+/* The colored key square — inline-block, vertically aligned with the
+   interval text after it. */
+#middle table tr td:not(.stat2) button::before {
+  content: counter(ba-ease);
+  display: inline-block;
+  vertical-align: middle;
+  width: calc(20px * var(--rf-chrome-scale, 1));
+  height: calc(20px * var(--rf-chrome-scale, 1));
+  margin-right: 8px;
+  border-radius: 5px;
+  font: 700 13px/20px var(--rf-sans);
+  font-size: calc(13px * var(--rf-chrome-scale, 1));
+  line-height: calc(20px * var(--rf-chrome-scale, 1));
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--rf-paper);
+  background: var(--ba-key);
+}
+/* Color each ease key by its data-ease attribute — robust against
+   DOM structure changes (and works through `display: contents`).
+   We match the long selector's specificity above so these wins. */
+#middle table tr td:not(.stat2) button[data-ease="1"] { --ba-key: var(--rf-again); }
+#middle table tr td:not(.stat2) button[data-ease="2"] { --ba-key: var(--rf-hard); }
+#middle table tr td:not(.stat2) button[data-ease="3"] { --ba-key: var(--rf-good); }
+#middle table tr td:not(.stat2) button[data-ease="4"] { --ba-key: var(--rf-easy); }
+
+/* Interval label sits next to the key, color-matched, quiet.
+   Anki's stock reviewer-bottom.css positions .nobold absolutely above the
+   button (`top: -3px; transform: translate(-50%, -100%)`) — we override
+   to static flow so it sits inline next to the colored key. */
+#middle table tr td:not(.stat2) button .nobold,
+#middle table tr td:not(.stat2) button .stattxt,
+#middle table tr td:not(.stat2) button small {
+  position: static !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  font: 500 12px/18px var(--rf-sans) !important;
+  font-size: calc(12px * var(--rf-chrome-scale, 1)) !important;
+  line-height: calc(18px * var(--rf-chrome-scale, 1)) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: var(--ba-key) !important;
+  opacity: 0.95;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+#middle table tr td:not(.stat2) button:hover { opacity: 1; background: transparent !important; }
+
+/* Default ease (Good) — the only one that gets extra weight. A quiet
+   ↵ follows the interval, signaling Enter triggers it. */
+#middle table tr td:not(.stat2) button#defease { opacity: 1; }
+#middle table tr td:not(.stat2) button#defease::before { box-shadow: 0 0 0 3px color-mix(in oklab, var(--rf-good) 12%, transparent); }
+#middle table tr td:not(.stat2) button#defease .nobold,
+#middle table tr td:not(.stat2) button#defease small,
+#middle table tr td:not(.stat2) button#defease .stattxt { font-weight: 600 !important; }

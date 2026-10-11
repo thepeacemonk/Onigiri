@@ -34,40 +34,16 @@ GRID_PANEL_RADIUS = 14
 
 
 def picker_palette(dark, accent="#00A982"):
-    """Flat token set for a picker surface. `dark` is the picker's own
-    light/dark state, which can differ from Anki's (Hashi Notes forces it).
+    """Native pickers keep neutral Settings chrome with the supplied accent."""
+    from .. import config
+    from ..theme_palette import chrome_palette
 
-    Values mirror `PageColorsMixin._settings_palette()` so a picker opened from
-    the settings window reads as the same surface: same greys, fully opaque (a
-    translucent panel let the settings page bleed through and shifted every
-    tone), inset tiles on `--highlight-bg` instead of white-on-white alpha."""
-    if dark:
-        return {
-            "dark": True,
-            "accent": accent,
-            "surface": "#242424",
-            "surface_solid": "#242424",
-            "fg": "#f4f4f5",
-            "muted": "#8a8a8a",
-            "inset": "#303030",
-            "inset_hover": "#3a3a3a",
-            "hairline": "#454545",
-            "surface_alt": "#2a2a2a",
-            "fg_muted": "#a1a1a4",
-        }
-    return {
-        "dark": False,
-        "accent": accent,
-        "surface": "#ffffff",
-        "surface_solid": "#ffffff",
-        "fg": "#202124",
-        "muted": "#8f9299",
-        "inset": "#f2f2f2",
-        "inset_hover": "#e9e9e9",
-        "hairline": "#dcdde1",
-        "surface_alt": "#fbfbfa",
-        "fg_muted": "#63666c",
-    }
+    mode = "dark" if dark else "light"
+    result = chrome_palette(
+        config.get_config_readonly().get("colors", {}).get(mode, {}), dark
+    )
+    result["accent"] = accent
+    return result
 
 
 def container_qss(pal, name="IconPickerContainer"):

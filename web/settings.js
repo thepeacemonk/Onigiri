@@ -30,9 +30,28 @@
   });
 
   const values = {};       // field id -> current value
-  Object.keys(fieldById).forEach(function (id) { values[id] = fieldById[id].value; });
+  Object.keys(fieldById).forEach(function (id) {
+    const field = fieldById[id];
+    let value = field.value;
+    // Old Sidebar Typography builds allowed values below today's 8px floor.
+    // Normalize any persisted numeric value before both the input and preview
+    // read it, so a legacy 2px value cannot make a working control look inert.
+    if ((field.type === "number" || field.type === "slider") && Number.isFinite(Number(value))) {
+      const scale = field.scale > 0 ? field.scale : 1;
+      value = Number(value);
+      if (field.min != null) value = Math.max(Number(field.min) * scale, value);
+      if (field.max != null) value = Math.min(Number(field.max) * scale, value);
+    }
+    values[id] = value;
+  });
 
-  let currentPage = PAGES.length ? PAGES[0].id : null;
+  let currentPage = (CTX.initialPage && pageById[CTX.initialPage])
+    ? CTX.initialPage
+    : (PAGES.length ? PAGES[0].id : null);
+  // Restore the saved presentation; Advanced remains the default for new or
+  // invalid preferences. Simple uses the existing schema's reduced controls.
+  let settingsComplexity = CTX.settingsComplexity === "simple" ? "simple" : "advanced";
+  const SETTINGS_MODE_PARITY = false;
   let toastTimer = null;
 
   // Auto-save state. `pending` is what has changed but not yet reached Python.
@@ -40,6 +59,11 @@
   let flushTimer = null;
   let inFlight = false;
   let statusTimer = null;
+  let profileContextRevision = 0;
+  // Theme application updates a large group of bound values at once. Hold the
+  // dependent preview painters until that group is complete so a card never
+  // briefly mixes values from two themes.
+  let deferringPreviewRefresh = false;
   const FLUSH_DELAY = 300;
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -141,6 +165,7 @@
     const opts = options || {};
     if (values[id] === value) return;
     values[id] = value;
+    profileContextRevision += 1;
 
     const field = fieldById[id];
     // A virtual field has no binding in Python — it is a second way of editing
@@ -148,22 +173,17 @@
     // chip's colour). Staging it would come back as a save error.
     if (!field || !field.virtual) pending[id] = value;
     if (field && !opts.silent) {
-      if (field.cascade) applyCascade(field, value);
+      if (field.cascade && !opts.skipCascade) applyCascade(field, value);
       if (value && field.toastOn) toast(field.toastOn);
     }
     if (!opts.keepDom) {
       syncField(id);
     } else {
-      refreshFontPreviews();
-      refreshImageFields();
-      refreshIconChips();
-      refreshPairFields();
-      refreshGameCards();
-      refreshConditionalBlocks();
-      updateProfilePreview();
-      updateDesignerPreviews();
+      refreshSettingsPreviews();
     }
     refreshProfileLevelLinks();
+    refreshPageVisibility();
+    if (document.getElementById("oswProfilePreviewCard")) updateProfileVisibility();
 
     // A zero delay still coalesces: a cascade's synchronous setValue calls all
     // land in `pending` before the timer fires, so they travel as one patch.
@@ -171,10 +191,11 @@
   }
 
   function applyCascade(field, value) {
-    const rules = field.cascade[value ? "on" : "off"];
+    const exact = Object.prototype.hasOwnProperty.call(field.cascade || {}, String(value));
+    const rules = exact ? field.cascade[String(value)] : field.cascade[value ? "on" : "off"];
     if (!rules) return;
     Object.keys(rules).forEach(function (otherId) {
-      if (fieldById[otherId]) setValue(otherId, rules[otherId]);
+      if (fieldById[otherId]) setValue(otherId, rules[otherId], { skipCascade: true });
     });
   }
 
@@ -209,6 +230,18 @@
         });
         setStatus("error", (res && res.error) || null);
         return;
+      }
+      // Python resolves Sync with Anki from Anki's current mode. Repaint
+      // the open settings window after the preference has been persisted.
+      if (res.appearance && !("onigiri_theme_mode" in pending)) {
+        CTX.dark = res.appearance.dark;
+        CTX.palette = res.appearance.palette;
+        CTX.accent = res.appearance.accent;
+        applyTheme();
+        refreshSettingsPreviews();
+      }
+      if (res.profilePreview && !Object.keys(pending).length) {
+        applyProfileContext(res.profilePreview);
       }
       if (Object.keys(pending).length) scheduleFlush(FLUSH_DELAY);
       else setStatus("saved");
@@ -269,10 +302,13 @@
         if (sel && sel.value !== String(value)) sel.value = value;
         const trigger = node.querySelector(".osw-select-menu-trigger");
         if (trigger) {
-          const option = node.querySelector('.osw-select-menu-option[data-value="' + String(value).replace(/"/g, '\\"') + '"]');
+          // Floating menus live outside the control while open, but patches
+          // must still update their selected label and checkmark.
+          const optionHost = node.__selectList || node;
+          const option = optionHost.querySelector('.osw-select-menu-option[data-value="' + String(value).replace(/"/g, '\\"') + '"]');
           if (option) {
             trigger.querySelector(".osw-select-menu-value").textContent = option.getAttribute("data-label") || option.textContent;
-            Array.prototype.forEach.call(node.querySelectorAll(".osw-select-menu-option"), function (item) {
+            Array.prototype.forEach.call(optionHost.querySelectorAll(".osw-select-menu-option"), function (item) {
               const active = item === option;
               item.classList.toggle("is-active", active);
               item.setAttribute("aria-selected", active ? "true" : "false");
@@ -302,12 +338,17 @@
         }
       }
     });
+    if (!deferringPreviewRefresh) refreshSettingsPreviews();
+  }
+
+  function refreshSettingsPreviews() {
     // Immersion fields have no bound switch node anymore (the slider drives
     // them), so the ladder head/slider is always resynced here rather than
-    // inside the loop above.
+    // inside the field-control loop above.
     refreshLadders();
     refreshFontPreviews();
     refreshImageFields();
+    refreshScenarioPickers();
     refreshIconChips();
     refreshPairFields();
     refreshGamesFields();
@@ -316,6 +357,8 @@
     refreshPomodoroSetups();
     updateProfilePreview();
     updateDesignerPreviews();
+    refreshThemeStyleCards();
+    refreshThingsPreviews();
     refreshProfileLevelLinks();
   }
 
@@ -503,6 +546,14 @@
       if (field.max != null) next = Math.min(field.max, next);
       setValue(field.id, next * scale, { keepDom: true, debounce: true });
     });
+    input.addEventListener("change", function () {
+      const raw = parseFloat(input.value);
+      let next = isNaN(raw) ? Number(values[field.id] || 0) / scale : raw;
+      if (field.min != null) next = Math.max(field.min, next);
+      if (field.max != null) next = Math.min(field.max, next);
+      input.value = next;
+      setValue(field.id, next * scale, { keepDom: true });
+    });
     box.appendChild(input);
     if (field.suffix) box.appendChild(el("span", "osw-number-suffix", field.suffix));
 
@@ -539,7 +590,9 @@
       reset.type = "button";
       reset.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
         ' stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
-      reset.addEventListener("click", function () { setValue(field.id, field.resetTo); });
+      installResetHold(reset, function () { setValue(field.id, field.resetTo); }, {
+        title: str("reset_to_default", "Reset to Default")
+      });
       box.appendChild(reset);
     }
 
@@ -563,8 +616,33 @@
     input.className = field.multiline ? "osw-textarea-input" : "osw-text-input";
     input.value = values[field.id] == null ? "" : values[field.id];
     if (field.placeholder) input.placeholder = field.placeholder;
+    if (field.maxLength != null) input.maxLength = field.maxLength;
     input.addEventListener("input", function () {
-      setValue(field.id, input.value, { keepDom: true, debounce: true });
+      let next = input.value;
+      const blankToken = String(field.blankToken || "");
+      // The avatar's explicit blank marker needs all three dots to reach the
+      // stored value. Let its partial input through rather than clipping the
+      // second dot under the usual one-grapheme limit.
+      if (blankToken && blankToken.indexOf(next) === 0) {
+        if (next === blankToken) {
+          toast(str("profile_avatar_blank_notice", "Avatar content hidden"));
+        }
+        setValue(field.id, next, { keepDom: true, debounce: true });
+        return;
+      }
+      if (field.maxGraphemes != null) {
+        const limit = Math.max(0, Number(field.maxGraphemes) || 0);
+        if (typeof Intl !== "undefined" && Intl.Segmenter) {
+          next = Array.from(new Intl.Segmenter().segment(next))
+            .slice(0, limit)
+            .map(function (segment) { return segment.segment; })
+            .join("");
+        } else {
+          next = Array.from(next).slice(0, limit).join("");
+        }
+        if (input.value !== next) input.value = next;
+      }
+      setValue(field.id, next, { keepDom: true, debounce: true });
     });
     control.appendChild(input);
     row.appendChild(control);
@@ -593,19 +671,89 @@
       trigger.appendChild(el("span", "osw-select-menu-chevron"));
       const list = el("div", "osw-select-menu-list");
       list.setAttribute("role", "listbox");
+      control.__selectList = list;
+      const floating = field.id === "pomodoro_start_sound" || field.id === "pomodoro_end_sound";
+      let detachObserver = null;
+
+      function positionList() {
+        if (!trigger.isConnected) { close(); return; }
+        const rect = trigger.getBoundingClientRect();
+        const margin = 10;
+        const gap = 6;
+        const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
+        const above = Math.max(0, rect.top - gap - margin);
+        // Prefer the usual downward menu unless it would crop the options.
+        // Unlike the scrolling page, this body-level popup is not masked by
+        // its bottom fade or clipped by the page's overflow boundary.
+        list.style.maxHeight = "none";
+        const width = Math.min(rect.width, window.innerWidth - 2 * margin);
+        list.style.width = Math.max(0, width) + "px";
+        const naturalHeight = list.scrollHeight + 2;
+        const upward = below < naturalHeight && above > below;
+        list.style.maxHeight = (upward ? above : below) + "px";
+        const height = list.getBoundingClientRect().height;
+        list.style.left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)) + "px";
+        list.style.top = Math.max(margin, upward ? rect.top - gap - height : rect.bottom + gap) + "px";
+      }
+
+      function onScroll(event) {
+        // The menu itself can scroll in very short windows. Scrolling the
+        // underlying page closes it so it cannot float away from its trigger.
+        if (!list.contains(event.target)) close();
+      }
+
+      function onKeydown(event) {
+        if (event.key === "Escape") {
+          close();
+          trigger.focus();
+        }
+      }
+
       // Designer-deck rows normally clip their contents so conditional rows
       // can collapse cleanly. A custom select's list is intentionally outside
       // the row, though; let this one row escape while its menu is open.
       function setOpen(open) {
+        if (floating && open) {
+          document.querySelectorAll(".osw-select-menu-list.is-floating").forEach(function (other) {
+            if (other !== list && other.__closePicker) other.__closePicker();
+          });
+        }
         picker.classList.toggle("is-open", open);
         trigger.setAttribute("aria-expanded", open ? "true" : "false");
         const fieldHost = control.closest("[data-field-host]");
         if (fieldHost) fieldHost.classList.toggle("has-open-select", open);
+        if (floating) {
+          if (open) {
+            list.classList.add("is-floating");
+            document.body.appendChild(list);
+            positionList();
+            window.addEventListener("resize", positionList);
+            window.addEventListener("scroll", onScroll, true);
+            document.addEventListener("keydown", onKeydown);
+            // Page rebuilds can remove a picker without a click or scroll.
+            detachObserver = new MutationObserver(function () {
+              if (!trigger.isConnected) close();
+            });
+            detachObserver.observe(document.body, { childList: true, subtree: true });
+            const active = list.querySelector(".is-active");
+            if (active) list.scrollTop = Math.max(0, active.offsetTop - list.clientHeight / 2);
+          } else {
+            if (detachObserver) detachObserver.disconnect();
+            detachObserver = null;
+            window.removeEventListener("resize", positionList);
+            window.removeEventListener("scroll", onScroll, true);
+            document.removeEventListener("keydown", onKeydown);
+            list.classList.remove("is-floating");
+            list.removeAttribute("style");
+            picker.appendChild(list);
+          }
+        }
       }
 
       function close() {
         setOpen(false);
       }
+      list.__closePicker = close;
       trigger.addEventListener("click", function (event) {
         event.stopPropagation();
         setOpen(!picker.classList.contains("is-open"));
@@ -619,8 +767,8 @@
         option.setAttribute("aria-selected", opt.value === values[field.id] ? "true" : "false");
         option.addEventListener("click", function () {
           bridge("osw:haptic:1");
-          setValue(field.id, opt.value);
           close();
+          setValue(field.id, opt.value);
         });
         list.appendChild(option);
       });
@@ -649,8 +797,8 @@
     return row;
   }
 
-  /* Contrast text colour for a hex swatch (coolors.co draws the hex code
-     directly on the colour itself, so it needs to flip light/dark). */
+  /* Contrast text colour for values drawn on a colour surface elsewhere in
+     Settings previews. */
   function readableTextColor(hex) {
     const h = String(hex || "").replace("#", "");
     const full = h.length === 3 ? h.split("").map(function (c) { return c + c; }).join("") : h;
@@ -672,14 +820,40 @@
     const control = el("div", "osw-row-control");
     control.setAttribute("data-field", field.id);
     control.setAttribute("data-field-type", "color");
-    const value = values[field.id] || "";
-    const chip = el("button", "osw-chip osw-chip-color osw-chip-swatch");
+    if (field.controlStyle === "designer_color_slot") {
+      const fallback = (CTX.dark ? values[field.fallbackDark] : values[field.fallbackLight]) ||
+        values[field.fallbackLight] || values[field.fallbackDark] || "";
+      const value = values[field.id] || field.default || "";
+      const shown = value || fallback;
+      const isDefault = !value && !!fallback;
+      const slot = el("button", "osw-imgslot osw-colorslot osw-ready-color-slot" +
+        (isDefault ? " is-default" : ""));
+      slot.type = "button";
+      slot.setAttribute("aria-label", field.label || str("color", "Color"));
+      const swatch = el("span", "osw-imgslot-thumb is-swatch");
+      swatch.style.background = shown || "transparent";
+      slot.appendChild(swatch);
+      const meta = el("span", "osw-imgslot-meta");
+      meta.appendChild(el("span", "osw-imgslot-name",
+        shown ? String(shown).toUpperCase() : "Transparent"));
+      slot.appendChild(meta);
+      slot.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        openColorPicker(field, shown, field.default);
+      });
+      control.appendChild(slot);
+      row.appendChild(control);
+      return row;
+    }
+    const chip = el("button", "osw-chip osw-chip-color");
     chip.type = "button";
-    chip.style.background = value || "transparent";
-    chip.style.color = readableTextColor(value);
-    chip.appendChild(el("span", "osw-chip-hex", String(value).toUpperCase()));
+    const swatch = el("span", "osw-chip-swatch");
+    swatch.style.background = values[field.id] || field.default || "transparent";
+    chip.appendChild(swatch);
+    chip.appendChild(el("span", "osw-chip-hex", String(values[field.id] || field.default || "").toUpperCase()));
     chip.addEventListener("click", function () {
-      bridge("osw:color:" + field.id + ":" + (values[field.id] || ""));
+      bridge("osw:haptic:1");
+      openColorPicker(field, values[field.id] || field.default || "", field.default);
     });
     control.appendChild(chip);
     row.appendChild(control);
@@ -703,7 +877,7 @@
     if (option && option.family) label.style.fontFamily = option.family;
     chip.appendChild(label);
     chip.addEventListener("click", function () {
-      bridge("osw:font:" + field.id + ":" + (values[field.id] || "system"));
+      openFontPicker(field);
     });
     control.appendChild(chip);
     row.appendChild(control);
@@ -765,9 +939,8 @@
   /* Languages gets its own renderer rather than reusing the generic choice grid.
      A language is picked by recognising its script, so each card leads with a
      greeting in that script, and the hero panel shows what the UI will actually
-     read like — including how much of it is translated, which is real data from
-     translations.py, not decoration. Hovering a card previews it in the hero;
-     leaving snaps back to the selected one.
+     read like. Hovering a card previews it in the hero; leaving snaps back to
+     the selected one.
 
      Two rules keep the hover preview from flickering, and both matter:
 
@@ -811,19 +984,6 @@
     top.appendChild(ref.badge);
     hero.appendChild(top);
 
-    const meter = el("div", "osw-lang-meter");
-    const track = el("div", "osw-lang-meter-track");
-    ref.fill = el("div", "osw-lang-meter-fill");
-    track.appendChild(ref.fill);
-    meter.appendChild(track);
-    const legend = el("div", "osw-lang-meter-legend");
-    ref.pct = el("span", "osw-lang-meter-pct");
-    ref.count = el("span", "osw-lang-meter-count");
-    legend.appendChild(ref.pct);
-    legend.appendChild(ref.count);
-    meter.appendChild(legend);
-    hero.appendChild(meter);
-
     ref.slots = [];
     if (slotCount) {
       const preview = el("div", "osw-lang-preview");
@@ -843,20 +1003,6 @@
       hero.appendChild(preview);
     }
 
-    // Always present, for every language: a complete one says so instead of
-    // removing the row.
-    const foot = el("div", "osw-lang-hero-foot");
-    ref.foot = el("span", "osw-lang-foot-text");
-    foot.appendChild(ref.foot);
-    const help = el("a", "osw-lang-help", str("lang_help", "Help translate on GitHub"));
-    help.href = "#";
-    help.addEventListener("click", function (event) {
-      event.preventDefault();
-      bridge("osw:bugs:");
-    });
-    foot.appendChild(help);
-    hero.appendChild(foot);
-
     host.appendChild(hero);
 
     function paintHero(option) {
@@ -871,15 +1017,6 @@
         ? str("lang_active", "Active")
         : (option.code || "").toUpperCase();
       ref.badge.classList.toggle("is-active", isActive);
-
-      const cov = option.coverage || { pct: 100, translated: 0, total: 0, complete: true };
-      ref.fill.style.width = Math.max(2, Math.min(100, cov.pct)) + "%";
-      ref.fill.classList.toggle("is-complete", !!cov.complete);
-      ref.pct.textContent = fmt(str("lang_coverage", "{pct}% translated"), { pct: cov.pct });
-      ref.count.textContent = cov.complete
-        ? str("lang_complete", "Fully translated")
-        : fmt(str("lang_counts", "{n} of {total} strings"),
-              { n: num(cov.translated), total: num(cov.total) });
 
       const pairs = option.preview || [];
       ref.slots.forEach(function (slot, index) {
@@ -896,17 +1033,6 @@
         slot.to.textContent = pair.to;
         slot.row.classList.toggle("is-missing", !!pair.missing);
       });
-
-      if (cov.complete) {
-        ref.foot.textContent = str("lang_all_translated", "Every string is translated");
-      } else {
-        const missing = cov.total - cov.translated;
-        // pt-BR is a single string short, so the plural form is reachable in
-        // practice, not a hypothetical.
-        ref.foot.textContent = missing === 1
-          ? str("lang_missing_one", "1 string still shows in English")
-          : fmt(str("lang_missing", "{n} strings still show in English"), { n: num(missing) });
-      }
     }
 
     const grid = el("div", "osw-lang-grid");
@@ -922,15 +1048,6 @@
 
       card.appendChild(el("div", "osw-lang-card-greeting", option.greeting || option.label));
       card.appendChild(el("div", "osw-lang-card-name", option.label));
-
-      const cov = option.coverage || { pct: 100, complete: true };
-      const bar = el("div", "osw-lang-card-bar");
-      const barFill = el("div", "osw-lang-card-bar-fill");
-      barFill.style.width = Math.max(2, Math.min(100, cov.pct)) + "%";
-      if (cov.complete) barFill.classList.add("is-complete");
-      bar.appendChild(barFill);
-      card.appendChild(bar);
-      card.appendChild(el("div", "osw-lang-card-pct", cov.pct + "%"));
 
       card.addEventListener("click", function () { setValue(field.id, option.value); });
       card.addEventListener("mouseenter", function () { paintHero(option); });
@@ -1031,7 +1148,7 @@
 
     const control = el("div", "osw-row-control");
     const button = el("button", "osw-action-btn" + (field.danger ? " is-danger" : "") +
-      (field.neutral ? " is-neutral" : "") + (field.holdToConfirm ? " is-hold-action" : ""));
+      (field.neutral ? " is-neutral" : ""));
     button.type = "button";
 
     const iconSpan = el("span", "osw-action-btn-icon");
@@ -1048,7 +1165,18 @@
       button.classList.add("is-busy");
       // Answered rather than fired blind: a Games action can hand back fresh
       // state (the island balance after buying the Keys) that the page shows.
-      call("osw:" + field.action).then(function (reply) {
+      let command = "osw:" + field.action;
+      // Tone previews must use the visible selection even before the
+      // debounced auto-save has reached Python. This does not save any edits.
+      if (field.action === "pomodoro_test_start_sound" ||
+          field.action === "pomodoro_test_end_sound") {
+        command += ":" + JSON.stringify({
+          start_sound: values.pomodoro_start_sound,
+          end_sound: values.pomodoro_end_sound,
+          sound_file: values.pomodoro_sound_file
+        });
+      }
+      call(command).then(function (reply) {
         button.classList.remove("is-busy", "is-ready");
         applyActionReply(reply);
         if (reply && reply.reload) {
@@ -1061,63 +1189,9 @@
     }
 
     if (field.holdToConfirm) {
-      let holdTimer = null;
-      let holding = false;
-      let completed = false;
-
-      function cancelHold() {
-        if (holdTimer) clearTimeout(holdTimer);
-        holdTimer = null;
-        holding = false;
-        if (!completed && !button.classList.contains("is-busy")) {
-          button.classList.remove("is-holding", "is-ready");
-        }
-      }
-
-      function completeHold() {
-        if (!holding || completed) return;
-        completed = true;
-        holding = false;
-        if (holdTimer) clearTimeout(holdTimer);
-        holdTimer = null;
-        button.classList.remove("is-holding");
-        button.classList.add("is-ready");
-        invokeAction();
-      }
-
-      function startHold(event) {
-        if (button.classList.contains("is-busy")) return;
-        if (event) event.preventDefault();
-        completed = false;
-        holding = true;
-        button.classList.remove("is-ready");
-        button.classList.add("is-holding");
-        if (event && event.pointerId != null && button.setPointerCapture) {
-          try { button.setPointerCapture(event.pointerId); } catch (_) {}
-        }
-        holdTimer = setTimeout(completeHold, 3000);
-      }
-
-      button.title = str("hold_to_confirm", "Hold for 3 seconds to continue");
-      button.addEventListener("pointerdown", startHold);
-      button.addEventListener("pointerup", function (event) {
-        if (!completed) cancelHold();
-        if (event) event.preventDefault();
+      installResetHold(button, invokeAction, {
+        title: str("hold_to_confirm", "Hold for 3 seconds to continue")
       });
-      button.addEventListener("pointercancel", cancelHold);
-      button.addEventListener("pointerleave", function () {
-        if (!completed) cancelHold();
-      });
-      button.addEventListener("keydown", function (event) {
-        if ((event.key === " " || event.key === "Enter") && !holding) startHold(event);
-      });
-      button.addEventListener("keyup", function (event) {
-        if (event.key === " " || event.key === "Enter") {
-          if (!completed) cancelHold();
-          event.preventDefault();
-        }
-      });
-      button.addEventListener("click", function (event) { event.preventDefault(); });
     } else {
       button.addEventListener("click", invokeAction);
     }
@@ -1344,6 +1418,34 @@
 
   let currentProfilePreviewMode = CTX.dark ? "dark" : "light";
   let activeProfileTab = "picture";
+  let profileContextInFlight = false;
+
+  function applyProfileContext(snapshot) {
+    if (!snapshot || !snapshot.profileLevel) return;
+    const changed = ["profileLevel", "chipColors", "chipDefaults"].some(function (key) {
+      return JSON.stringify(CTX[key]) !== JSON.stringify(snapshot[key]);
+    });
+    if (!changed) return;
+    profileContextRevision += 1;
+    CTX.profileLevel = snapshot.profileLevel;
+    CTX.chipColors = snapshot.chipColors;
+    CTX.chipDefaults = snapshot.chipDefaults;
+    updateProfilePreview();
+    updateDesignerPreviews();
+  }
+
+  function refreshLiveProfileContext() {
+    // Only open profile previews need a fresh progress snapshot. Polling is
+    // read-only and never rebuilds Anki or replaces an edit still being saved.
+    if (document.hidden || !document.querySelector(".osw-profile-preview-item") ||
+        profileContextInFlight || inFlight || Object.keys(pending).length) return;
+    profileContextInFlight = true;
+    const revision = profileContextRevision;
+    call("osw:profile_context:").then(function (snapshot) {
+      profileContextInFlight = false;
+      if (revision === profileContextRevision && !inFlight && !Object.keys(pending).length) applyProfileContext(snapshot);
+    }, function () { profileContextInFlight = false; });
+  }
 
   // The profile used to expose one "Dynamic mode" toggle per asset. The UI now
   // shows a single one; these stay as the storage so existing readers of each
@@ -1355,8 +1457,103 @@
     "modern_menu_profile_fill_dynamic_mode",
   ];
 
+  /* Simple mode intentionally keeps the profile to one calm, reliable
+     presentation. Advanced retains the full set of layout, avatar and
+     light/dark controls. These are applied when entering Simple mode so the
+     sidebar itself always agrees with the simplified settings surface. */
+  const SIMPLE_PROFILE_VALUES = {
+    modern_menu_profile_type: "ring",
+    modern_menu_profile_picture_mode: "custom",
+  };
+
+  function simpleProfileModeActive() {
+    return settingsComplexity === "simple";
+  }
+
+  function syncSimpleProfileControls() {
+    const simple = simpleProfileModeActive();
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll(
+        "[data-simple-profile-dynamic], " +
+        "[data-simple-profile-style], " +
+        "[data-simple-profile-advanced], " +
+        '[data-field-host="modern_menu_profile_picture_mode"]'
+      ),
+      function (control) {
+        control.classList.toggle("osw-simple-profile-hidden", simple);
+        control.setAttribute("aria-hidden", simple ? "true" : "false");
+      }
+    );
+  }
+
+  function applySimpleProfileDefaults() {
+    if (!simpleProfileModeActive()) {
+      syncSimpleProfileControls();
+      return;
+    }
+
+    Object.keys(SIMPLE_PROFILE_VALUES).forEach(function (id) {
+      setValue(id, SIMPLE_PROFILE_VALUES[id], { silent: true, keepDom: true });
+    });
+    PROFILE_DYNAMIC_KEYS.forEach(function (id) {
+      setValue(id, true, { silent: true, keepDom: true });
+    });
+    syncProfileLevelDynamicMode(true);
+    Array.prototype.forEach.call(
+      document.querySelectorAll(".osw-profile-page-wrap"),
+      function (profileWrap) {
+        if (profileWrap.__syncProfileTabs) profileWrap.__syncProfileTabs("ring");
+      }
+    );
+    syncSimpleProfileControls();
+  }
+
+  /* Simple Sync has one policy: copy every supported category. Keep the
+     concrete flags aligned with the preset because the sync backend reads the
+     categories themselves when it builds an archive. */
+  const SIMPLE_SYNC_VALUES = {
+    ankiweb_sync_preset: "everything",
+    ankiweb_sync_theme: true,
+    ankiweb_sync_profile: true,
+    ankiweb_sync_games: true,
+    ankiweb_sync_study_tools: true,
+    ankiweb_sync_assets: true,
+    ankiweb_sync_layout: true,
+  };
+
+  function applySimpleSyncDefaults() {
+    if (settingsComplexity !== "simple") return;
+    Object.keys(SIMPLE_SYNC_VALUES).forEach(function (id) {
+      setValue(id, SIMPLE_SYNC_VALUES[id], { silent: true });
+    });
+  }
+
   function profileDynamicOn() {
     return PROFILE_DYNAMIC_KEYS.every(function (key) { return values[key] !== false; });
+  }
+
+  function profileAccentColor(isDark) {
+    const key = isDark ? "theme_accent_dark" : "theme_accent_light";
+    return values[key] || CTX.accent || "#00A982";
+  }
+
+  let syncingProfilePictureAccent = false;
+
+  function syncProfilePictureAccentColors() {
+    if (syncingProfilePictureAccent) return;
+    syncingProfilePictureAccent = true;
+    setValue(
+      "modern_menu_profile_picture_color_light",
+      profileAccentColor(false),
+      { silent: true, keepDom: true }
+    );
+    setValue(
+      "modern_menu_profile_picture_color_dark",
+      profileAccentColor(true),
+      { silent: true, keepDom: true }
+    );
+    syncingProfilePictureAccent = false;
   }
 
   function syncProfileLevelDynamicMode(next) {
@@ -1371,14 +1568,100 @@
     return !!(values.g_nook_enabled || values.g_onigimon_enabled || values.g_hexagon_enabled);
   }
 
+  /* Ring Color is only a fallback. An active Profile Level source uses the
+     shared Profile Level progress color. */
+  function selectedProfileLevelGameEnabled() {
+    const game = values.g_profile_level_game || "nook";
+    if (game === "onigimon") return values.g_onigimon_enabled === true;
+    if (game === "hexagon") return values.g_hexagon_enabled === true;
+    return values.g_nook_enabled === true && values.g_nook_profile_bar !== false;
+  }
+
   function refreshProfileLevelLinks() {
     Array.prototype.forEach.call(document.querySelectorAll(".osw-profile-level-link-wrap"), function (node) {
       if (node.__syncProfileLevelLink) node.__syncProfileLevelLink();
     });
   }
 
-  const OSW_MOON_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
-  const OSW_SUN_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  const OSW_MOON_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>';
+  const OSW_SUN_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+  const OSW_RESET_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9a9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+
+  // Every reset uses the same deliberate hold as "Reset to default" in the
+  // Themes panel. The progress wash is CSS-driven by .is-holding; the
+  // action is allowed only when the user releases after the full 3 seconds.
+  function installResetHold(button, action, options) {
+    const opts = options || {};
+    const title = opts.title || str("reset_to_default", "Reset to Default");
+    button.classList.add("osw-profile-reset-btn");
+    button.title = title;
+    if (!button.getAttribute("aria-label")) button.setAttribute("aria-label", title);
+
+    let holdTimer = null;
+    let isReady = false;
+    let isHolding = false;
+
+    function stopEvent(event) {
+      if (event) {
+        event.preventDefault();
+        if (opts.stopPropagation !== false) event.stopPropagation();
+      }
+    }
+
+    function cancelHold() {
+      if (holdTimer) clearTimeout(holdTimer);
+      holdTimer = null;
+      isHolding = false;
+      isReady = false;
+      button.classList.remove("is-holding", "is-ready");
+    }
+
+    function startHold(event) {
+      if (event && event.button !== undefined && event.button !== 0) return;
+      if (button.disabled || isHolding) return;
+      stopEvent(event);
+      isHolding = true;
+      isReady = false;
+      button.classList.remove("is-ready");
+      button.classList.add("is-holding");
+      holdTimer = setTimeout(function () {
+        holdTimer = null;
+        if (!isHolding) return;
+        isReady = true;
+        button.classList.add("is-ready");
+        bridge("osw:haptic:1");
+      }, 3000);
+    }
+
+    function endHold(event) {
+      if (event && event.button !== undefined && event.button !== 0) return;
+      if (!isHolding) return;
+      stopEvent(event);
+      const shouldReset = isReady;
+      cancelHold();
+      if (!shouldReset) return;
+      bridge("osw:haptic:2");
+      action(event);
+    }
+
+    // Prevent the browser's synthetic click after mouseup/touchend from
+    // bypassing the release gate. Keyboard activation follows the same rule.
+    button.addEventListener("click", stopEvent);
+    button.addEventListener("mousedown", startHold);
+    button.addEventListener("mouseup", endHold);
+    button.addEventListener("mouseleave", cancelHold);
+    button.addEventListener("touchstart", startHold, { passive: false });
+    button.addEventListener("touchend", endHold);
+    button.addEventListener("touchcancel", cancelHold);
+    button.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      startHold(event);
+    });
+    button.addEventListener("keyup", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      endHold(event);
+    });
+  }
 
   function renderProfilePreview(section, page) {
     // Outer wrapper carries no chrome of its own: the preview is the only
@@ -1399,12 +1682,43 @@
     // control below has to call it before that point in source order.
     let syncProfileTabs = function () {};
 
+    function resetProfileSettings() {
+      const profileSecIds = [
+        "profile_picture_appearance", "profile_bg_appearance",
+        "profile_name_appearance", "profile_fill_appearance",
+        "profile_info", "profile_panel_toggles", "profile_type_section",
+        "profile_page_background"
+      ];
+      (page.sections || []).forEach(function (section) {
+        if (profileSecIds.indexOf(section.id) === -1) return;
+        (section.fields || []).forEach(function (field) {
+          if (!field.bound || field.virtual || field.default === undefined) return;
+          const defaultValue = field.default && typeof field.default === "object"
+            ? JSON.parse(JSON.stringify(field.default))
+            : field.default;
+          setValue(field.id, defaultValue, { silent: true, skipCascade: true });
+        });
+      });
+      applySimpleProfileDefaults();
+      syncProfileTabs();
+      refreshFontPreviews();
+      refreshImageFields();
+      refreshIconChips();
+      refreshPairFields();
+      updateProfilePreview();
+      updateProfileVisibility();
+    }
+
     const headControls = el("div", "osw-preview-head-controls");
 
     // One Dynamic mode switch replaces the four per-asset flags that used to
     // sit in the Picture / Background / Colors tabs. It still writes all four
     // keys, so every renderer reading them keeps working unchanged.
-    const dynCtl = el("div", "osw-preview-ctl");
+    const dynCtl = el(
+      "div",
+      "osw-preview-ctl" + (simpleProfileModeActive() ? " osw-simple-profile-hidden" : "")
+    );
+    dynCtl.setAttribute("data-simple-profile-dynamic", "true");
     dynCtl.appendChild(el("span", "osw-preview-ctl-label", str("dynamic_mode", "Dynamic mode")));
     const dynBtn = el("button", "osw-sq-switch-btn");
     dynBtn.type = "button";
@@ -1430,7 +1744,11 @@
 
     // Profile Style moved up here: it drives both the preview and which tabs
     // are relevant, so it belongs beside the preview rather than inside one.
-    const styleCtl = el("div", "osw-preview-ctl");
+    const styleCtl = el(
+      "div",
+      "osw-preview-ctl" + (simpleProfileModeActive() ? " osw-simple-profile-hidden" : "")
+    );
+    styleCtl.setAttribute("data-simple-profile-style", "true");
     styleCtl.appendChild(el("span", "osw-preview-ctl-label", str("profile_type", "Profile Style")));
     const styleField = fieldById["modern_menu_profile_type"];
     const styleSeg = el("div", "osw-segmented-control osw-preview-style-seg");
@@ -1490,8 +1808,6 @@
     styleCtl.appendChild(styleSeg);
     headControls.appendChild(styleCtl);
 
-    head.appendChild(headControls);
-
     const toggleBtn = el("button", "osw-profile-preview-toggle-btn");
     toggleBtn.id = "oswProfilePreviewToggle";
     toggleBtn.setAttribute("type", "button");
@@ -1512,7 +1828,25 @@
     }
     syncPreviewModeToggle();
 
-    head.appendChild(toggleBtn);
+    // Match the Sidebar's header utilities: one theme button and one hold-to-
+    // reset action, rather than a second reset control in the profile tab row.
+    const resetLabel = str("reset", "Reset");
+    const resetBtn = el("button", "osw-btn osw-designer-reset");
+    resetBtn.type = "button";
+    resetBtn.setAttribute("aria-label", resetLabel);
+    resetBtn.title = resetLabel;
+    resetBtn.appendChild(el("span", "osw-designer-reset-label", resetLabel));
+    const resetIcon = el("span", "osw-designer-reset-icon");
+    resetIcon.innerHTML = OSW_RESET_ICON;
+    resetBtn.appendChild(resetIcon);
+    installResetHold(resetBtn, resetProfileSettings, {
+      title: resetLabel
+    });
+    const utilityCtl = el("div", "osw-preview-utility-ctl");
+    utilityCtl.appendChild(toggleBtn);
+    utilityCtl.appendChild(resetBtn);
+    headControls.appendChild(utilityCtl);
+    head.appendChild(headControls);
     container.appendChild(head);
 
     // 2. Stage
@@ -1527,19 +1861,20 @@
     stage.appendChild(backdrop);
     container.appendChild(stage);
 
-    // 3. Embedded Tabs & Controls Area
+    // 3. Profile tabs use the shared page-header slot, matching tabbed pages
+    // such as Main Menu. The settings controls themselves remain below the
+    // preview, so changing tabs never shifts the header or preview card.
     if (page && page.sections) {
       const controlsWrap = el("div", "osw-profile-embedded-controls");
 
-      const tabsWrap = el("div", "osw-segmented-wrap osw-profile-tabs-wrap");
-      const tabsHeader = el("div", "osw-segmented-control osw-profile-segmented-tabs");
+      const tabsWrap = el("div", "osw-subtabs-strip osw-profile-tabs-wrap");
+      const pageTabs = document.getElementById("oswPageTabs");
       // "Profile Page" gathers everything that describes the panel itself
-      // (layout, the user's info, which modules show). The three customisation
+      // (layout, the user's info, which modules show). The customisation
       // tabs stay separate because each carries its own mode/colour cascade.
       const tabDefs = [
-        { id: "picture", label: str("profile_tab_picture", "Profile Picture"), secIds: ["profile_picture_appearance"] },
+        { id: "picture", label: str("profile_tab_picture", "Profile Picture"), secIds: ["profile_picture_appearance", "profile_name_appearance", "profile_fill_appearance"] },
         { id: "background", label: str("profile_tab_background", "Background"), secIds: ["profile_bg_appearance"] },
-        { id: "colors_font", label: str("profile_tab_colors_font", "Colors & Font"), secIds: ["profile_name_appearance", "profile_fill_appearance"] },
         { id: "page", label: str("profile_tab_page", "Profile Sidebar"), secIds: ["profile_info", "profile_panel_toggles", "profile_page_background"] },
       ];
 
@@ -1547,7 +1882,7 @@
 
       function activateProfileTab(tabId) {
         activeProfileTab = tabId;
-        Array.prototype.forEach.call(tabsHeader.querySelectorAll(".osw-segment-btn"), function (b) {
+        Array.prototype.forEach.call(tabsWrap.querySelectorAll(".osw-segment-btn"), function (b) {
           b.classList.toggle("is-active", b.getAttribute("data-tab-id") === tabId);
         });
         Array.prototype.forEach.call(controlsWrap.querySelectorAll(".osw-profile-tab-content"), function (contentNode) {
@@ -1557,7 +1892,11 @@
       }
 
       tabDefs.forEach(function (tDef) {
-        const tBtn = el("div", "osw-segment-btn" + (activeProfileTab === tDef.id ? " is-active" : ""), tDef.label);
+        const tBtn = el(
+          "div",
+          "osw-segment-btn osw-subtab" + (activeProfileTab === tDef.id ? " is-active" : ""),
+          tDef.label
+        );
         tBtn.setAttribute("role", "button");
         tBtn.setAttribute("tabindex", "0");
         tBtn.setAttribute("data-tab-id", tDef.id);
@@ -1566,7 +1905,7 @@
           activateProfileTab(tDef.id);
         });
         tabBtnById[tDef.id] = tBtn;
-        tabsHeader.appendChild(tBtn);
+        tabsWrap.appendChild(tBtn);
         if (tDef.id === "background") tBtn.style.maxWidth = "160px";
       });
 
@@ -1595,95 +1934,15 @@
         if (!showBg && activeProfileTab === "background") activateProfileTab("picture");
       };
 
-      tabsWrap.appendChild(tabsHeader);
-
-      const resetWrap = el("div", "osw-segmented-control osw-profile-segmented-tabs osw-profile-reset-wrap");
-      const resetBtn = el("div", "osw-segment-btn osw-profile-reset-btn");
-      resetBtn.innerHTML = '<span class="osw-profile-reset-btn-text">' + str("profile_reset_default", "Reset to Default") + '</span>';
-      resetBtn.setAttribute("role", "button");
-      resetBtn.setAttribute("tabindex", "0");
-      
-      let holdTimer = null;
-      let isReady = false;
-
-      function startHold(e) {
-        if (e && e.button !== undefined && e.button !== 0) return; // Only left click
-        isReady = false;
-        resetBtn.classList.add("is-holding");
-        holdTimer = setTimeout(function() {
-          isReady = true;
-          resetBtn.classList.add("is-ready");
-          bridge("osw:haptic:1");
-        }, 3000);
-      }
-
-      function endHold(e) {
-        if (e && e.button !== undefined && e.button !== 0) return;
-        resetBtn.classList.remove("is-holding");
-        resetBtn.classList.remove("is-ready");
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-        if (isReady) {
-          isReady = false;
-          bridge("osw:haptic:2");
-          resetProfileSettings();
-        }
-      }
-
-      function cancelHold() {
-        resetBtn.classList.remove("is-holding");
-        resetBtn.classList.remove("is-ready");
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-        isReady = false;
-      }
-
-      resetBtn.addEventListener("mousedown", startHold);
-      resetBtn.addEventListener("mouseup", endHold);
-      resetBtn.addEventListener("mouseleave", cancelHold);
-      resetBtn.addEventListener("touchstart", function(e) { startHold(e); }, { passive: true });
-      resetBtn.addEventListener("touchend", endHold);
-      resetBtn.addEventListener("touchcancel", cancelHold);
-
-      function resetProfileSettings() {
-        const profileSecIds = [
-          "profile_picture_appearance", "profile_bg_appearance",
-          "profile_name_appearance", "profile_fill_appearance",
-          "profile_info", "profile_panel_toggles", "profile_type_section",
-          "profile_page_background"
-        ];
-        (page.sections || []).forEach(function (sec) {
-          if (profileSecIds.indexOf(sec.id) !== -1) {
-            (sec.fields || []).forEach(function (field) {
-              const defVal = field.default !== undefined ? field.default : field.resetTo;
-              if (defVal !== undefined) {
-                setValue(field.id, defVal);
-              }
-            });
-          }
-        });
-        refreshFontPreviews();
-        refreshImageFields();
-        refreshPairFields();
-        updateProfilePreview();
-      }
-
-      resetWrap.appendChild(resetBtn);
-      tabsWrap.appendChild(resetWrap);
-
       // Profile Level is a separate destination from the Profile tabs. Show
       // this shortcut only while at least one level-bearing game is enabled.
       const profileLevelLinkWrap = el(
         "div",
-        "osw-segmented-control osw-profile-segmented-tabs osw-profile-level-link-wrap"
+        "osw-profile-level-link-wrap"
       );
       const profileLevelLinkBtn = el(
         "button",
-        "osw-segment-btn osw-profile-level-link-btn",
+        "osw-segment-btn osw-subtab osw-profile-level-link-btn",
         str("profile_level_title", "Profile Level")
       );
       profileLevelLinkBtn.type = "button";
@@ -1698,7 +1957,8 @@
       };
       tabsWrap.appendChild(profileLevelLinkWrap);
       profileLevelLinkWrap.__syncProfileLevelLink();
-      controlsWrap.appendChild(tabsWrap);
+      if (pageTabs) pageTabs.appendChild(tabsWrap);
+      else controlsWrap.appendChild(tabsWrap);
 
       const tabContents = el("div", "osw-profile-tab-contents");
       tabDefs.forEach(function (tDef) {
@@ -1708,6 +1968,7 @@
       controlsWrap.appendChild(tabContents);
       wrap.appendChild(controlsWrap);
       syncProfileTabs();
+      wrap.__syncProfileTabs = syncProfileTabs;
     }
 
     function renderProfileTabContent(tDef, page) {
@@ -1736,6 +1997,57 @@
         return sec.fields.filter(function (f) { return f.id === fieldId; })[0] || null;
       }
 
+      function profileFontMenuButton(fontField, sizeField, nameColorField, levelFontField, levelSizeField, levelColorField) {
+        if (!fontField) return null;
+        const label = str("profile_fonts", "Profile Fonts");
+        const button = el(
+          "button",
+          "osw-organize-reset-btn osw-organize-fonts-btn osw-profile-font-menu-btn"
+        );
+        button.type = "button";
+        button.setAttribute("aria-haspopup", "dialog");
+        button.setAttribute("aria-expanded", "false");
+        const icon = el("span", "osw-organize-fonts-icon");
+        icon.innerHTML = ICON_TYPE;
+        button.appendChild(icon);
+        button.appendChild(el("span", null, label));
+        button.addEventListener("click", function () {
+          if (compactFontMenuEl && compactFontMenuEl.__anchor === button) {
+            closeCompactFontMenu();
+            return;
+          }
+          const roles = [{
+            id: "profile_name_font",
+            title: str("profile_name_font", "Name Font"),
+            description: str(
+              "profile_name_font_desc",
+              "Changes the profile name's font, size, and light/dark colors."
+            ),
+            field_ids: [fontField.id]
+              .concat(sizeField ? [sizeField.id] : [])
+              .concat(nameColorField ? [nameColorField.id] : [])
+          }];
+          // The level line exists only when Profile Level is sourcing progress
+          // from the selected mini-game, so keep its typography out of this
+          // compact picker until it can affect the profile.
+          if (selectedProfileLevelGameEnabled() && levelFontField) {
+            roles.push({
+              id: "profile_level_font",
+              title: str("profile_level_font", "Level Font"),
+              description: str(
+                "profile_level_font_desc",
+                "Changes the Profile Level text and chip font, size, and light/dark colors."
+              ),
+              field_ids: [levelFontField.id]
+                .concat(levelSizeField ? [levelSizeField.id] : [])
+                .concat(levelColorField ? [levelColorField.id] : [])
+            });
+          }
+          openCompactFontMenu(button, roles, label);
+        });
+        return button;
+      }
+
       if (tDef.id === "page") {
         // Profile Style is rendered in the preview header, not here.
         const secInfo = secMap["profile_info"];
@@ -1744,26 +2056,19 @@
           secBlock.setAttribute("data-section-id", secInfo.id);
           if (secInfo.title) secBlock.appendChild(el("div", "osw-section-title", secInfo.title));
 
-          const grid1 = el("div", "osw-profile-grid-2col");
-          const fName = getField("profile_info", "userName");
-          const fBday = getField("profile_info", "userBirthday");
-          if (fName) grid1.appendChild(renderFieldNode(fName, "is-field-vertical"));
-          if (fBday) grid1.appendChild(renderFieldNode(fBday, "is-field-vertical"));
-
-          const grid2 = el("div", "osw-profile-grid-2col");
-          const fStatus = getField("profile_info", "profile_status");
-          const fMusic = getField("profile_info", "profile_music");
-          if (fStatus) grid2.appendChild(renderFieldNode(fStatus, "is-field-vertical"));
-          if (fMusic) grid2.appendChild(renderFieldNode(fMusic, "is-field-vertical"));
-
-          const fBio = getField("profile_info", "profile_bio");
-
-          secBlock.appendChild(grid1);
-          secBlock.appendChild(grid2);
-          if (fBio) {
-            const bioNode = renderFieldNode(fBio, "is-field-vertical");
-            if (bioNode) secBlock.appendChild(bioNode);
-          }
+          ["userName", "userBirthday", "profile_music", "profile_bio"]
+            .forEach(function (fieldId) {
+              const field = getField("profile_info", fieldId);
+              const node = renderFieldNode(field);
+              if (node) {
+                if (field.advanced) {
+                  node.setAttribute("data-simple-profile-advanced", "true");
+                  node.classList.toggle("osw-simple-profile-hidden", simpleProfileModeActive());
+                  node.setAttribute("aria-hidden", simpleProfileModeActive() ? "true" : "false");
+                }
+                secBlock.appendChild(node);
+              }
+            });
           contentNode.appendChild(secBlock);
         }
 
@@ -1771,6 +2076,9 @@
         if (secMod) {
           const secBlock = el("div", "osw-profile-sec-block");
           secBlock.setAttribute("data-section-id", secMod.id);
+          secBlock.setAttribute("data-simple-profile-advanced", "true");
+          secBlock.classList.toggle("osw-simple-profile-hidden", simpleProfileModeActive());
+          secBlock.setAttribute("aria-hidden", simpleProfileModeActive() ? "true" : "false");
           if (secMod.title) secBlock.appendChild(el("div", "osw-section-title", secMod.title));
 
           const gridModules = el("div", "osw-profile-modules-grid");
@@ -1782,17 +2090,40 @@
           contentNode.appendChild(secBlock);
         }
 
-        // The Gamification profile page's own backdrop. Plain rows — nothing
-        // here needs the paired/gridded treatment the blocks above get.
+        // The Gamification profile page's own backdrop. Its two background
+        // color pairs share the available row; the second pair is conditional
+        // on Gradient mode, so the first can take the full row on its own.
         const secPageBg = secMap["profile_page_background"];
         if (secPageBg) {
           const secBlock = el("div", "osw-profile-sec-block");
           secBlock.setAttribute("data-section-id", secPageBg.id);
+          secBlock.__section = secPageBg;
+          secBlock.setAttribute("data-simple-profile-advanced", "true");
+          secBlock.classList.toggle("osw-simple-profile-hidden", simpleProfileModeActive());
+          secBlock.setAttribute("aria-hidden", simpleProfileModeActive() ? "true" : "false");
           if (secPageBg.title) secBlock.appendChild(el("div", "osw-section-title", secPageBg.title));
+          const colorIds = {
+            onigiri_profile_page_bg_color1: true,
+            onigiri_profile_page_bg_color2: true
+          };
+          const colorFields = el("div", "osw-profile-page-bg-colors");
+          let hasColorFields = false;
           (secPageBg.fields || []).forEach(function (f) {
             const node = renderFieldNode(f);
-            if (node) secBlock.appendChild(node);
+            if (!node) return;
+            if (colorIds[f.id]) {
+              if (!hasColorFields) secBlock.appendChild(colorFields);
+              colorFields.appendChild(node);
+              hasColorFields = true;
+            } else {
+              secBlock.appendChild(node);
+            }
           });
+          // Keep show_when behavior in sync with regular sections, including
+          // hiding Second Color when Color only is selected.
+          secBlock.__fieldsHost = secBlock;
+          applyPlainVisibility(secBlock);
+          conditionalBlocks.push(secBlock);
           contentNode.appendChild(secBlock);
         }
 
@@ -1806,15 +2137,65 @@
           const fMode = getField("profile_picture_appearance", "modern_menu_profile_picture_mode");
           const fPic = getField("profile_picture_appearance", "modern_menu_profile_picture");
           const fColor = getField("profile_picture_appearance", "modern_menu_profile_picture_color");
-          const fBlur = getField("profile_picture_appearance", "modern_menu_profile_picture_blur");
+          const fContentType = getField("profile_picture_appearance", "modern_menu_profile_picture_content_type");
+          const fLetter = getField("profile_picture_appearance", "modern_menu_profile_picture_letter");
+          const fIcon = getField("profile_picture_appearance", "modern_menu_profile_picture_icon");
 
-          if (fMode) secBlock.appendChild(renderFieldNode(fMode));
+          if (fMode) {
+            const modeNode = renderFieldNode(fMode);
+            if (simpleProfileModeActive()) {
+              modeNode.classList.add("osw-simple-profile-hidden");
+              modeNode.setAttribute("aria-hidden", "true");
+            }
+            secBlock.appendChild(modeNode);
+          }
           // One picture slot (or two, when split per theme) instead of the old
           // Import button + file-name dropdown pair; same for the colours.
           if (fPic) secBlock.appendChild(renderFieldNode(fPic));
-          if (fColor) secBlock.appendChild(renderFieldNode(fColor));
-          if (fBlur) secBlock.appendChild(renderFieldNode(fBlur));
+          if (fContentType) secBlock.appendChild(renderFieldNode(fContentType));
 
+          // Typography and its paired light/dark colours belong with the
+          // picture they describe. Keeping them in the compact popup makes
+          // the name and level options easy to distinguish without a tab of
+          // permanently expanded controls.
+          const fFont = getField("profile_name_appearance", "onigiri_font_profile_name");
+          const fSize = getField("profile_name_appearance", "onigiri_font_size_profile_name");
+          const fNameColor = getField("profile_name_appearance", "modern_menu_profile_name_color");
+          const fLevelFont = getField("profile_name_appearance", "onigiri_font_profile_level");
+          const fLevelSize = getField("profile_name_appearance", "onigiri_font_size_profile_level");
+          const fLevelColor = getField("profile_name_appearance", "modern_menu_profile_level_color");
+          const fontButton = profileFontMenuButton(
+            fFont, fSize, fNameColor, fLevelFont, fLevelSize, fLevelColor
+          );
+          // Avatar content and typography are supporting profile controls.
+          // Keep them together in the same two-column row instead of giving
+          // each a full-width card.
+          if (fLetter || fIcon || fontButton || fColor) {
+            const avatarOptionsGrid = el("div", "osw-profile-grid-2col osw-profile-avatar-options");
+            if (fLetter) avatarOptionsGrid.appendChild(renderFieldNode(fLetter));
+            if (fIcon) avatarOptionsGrid.appendChild(renderFieldNode(fIcon));
+            if (fontButton || fColor) {
+              const fontAndColors = el("div", "osw-profile-fonts-and-colors");
+              if (fontButton) fontAndColors.appendChild(fontButton);
+              if (fColor) fontAndColors.appendChild(renderFieldNode(fColor));
+              avatarOptionsGrid.appendChild(fontAndColors);
+            }
+            secBlock.appendChild(avatarOptionsGrid);
+          }
+
+          contentNode.appendChild(secBlock);
+        }
+
+        const secFill = secMap["profile_fill_appearance"];
+        if (secFill) {
+          const secBlock = el("div", "osw-profile-sec-block");
+          secBlock.setAttribute("data-section-id", secFill.id);
+          if (secFill.title) secBlock.appendChild(el("div", "osw-section-title", secFill.title));
+
+          const fHint = getField("profile_fill_appearance", "profile_fill_hint");
+          const fColor = getField("profile_fill_appearance", "modern_menu_profile_fill_color");
+          if (fHint) secBlock.appendChild(renderFieldNode(fHint, "osw-profile-hint-compact"));
+          if (fColor) secBlock.appendChild(renderFieldNode(fColor));
           contentNode.appendChild(secBlock);
         }
 
@@ -1843,37 +2224,6 @@
           contentNode.appendChild(secBlock);
         }
 
-      } else if (tDef.id === "colors_font") {
-        const secName = secMap["profile_name_appearance"];
-        if (secName) {
-          const secBlock = el("div", "osw-profile-sec-block");
-          secBlock.setAttribute("data-section-id", secName.id);
-          if (secName.title) secBlock.appendChild(el("div", "osw-section-title", secName.title));
-
-          const grid = el("div", "osw-profile-grid-2col osw-namefont-row");
-          const fFont = getField("profile_name_appearance", "modern_menu_profile_name_font");
-          const fColor = getField("profile_name_appearance", "modern_menu_profile_name_color");
-          if (fFont) grid.appendChild(renderFieldNode(fFont, "is-field-vertical"));
-          if (fColor) grid.appendChild(renderFieldNode(fColor));
-
-          secBlock.appendChild(grid);
-          contentNode.appendChild(secBlock);
-        }
-
-        const secFill = secMap["profile_fill_appearance"];
-        if (secFill) {
-          const secBlock = el("div", "osw-profile-sec-block");
-          secBlock.setAttribute("data-section-id", secFill.id);
-          if (secFill.title) secBlock.appendChild(el("div", "osw-section-title", secFill.title));
-
-          const fHint = getField("profile_fill_appearance", "profile_fill_hint");
-          const fColor = getField("profile_fill_appearance", "modern_menu_profile_fill_color");
-
-          if (fHint) secBlock.appendChild(renderFieldNode(fHint, "osw-profile-hint-compact"));
-          if (fColor) secBlock.appendChild(renderFieldNode(fColor));
-
-          contentNode.appendChild(secBlock);
-        }
       }
 
       return contentNode;
@@ -1882,6 +2232,7 @@
     setTimeout(function () {
       updateProfilePreview();
       updateProfileVisibility();
+      syncSimpleProfileControls();
     }, 10);
     return wrap;
   }
@@ -1941,15 +2292,29 @@
 
     // 1. Section Level
     setSectionVisible("profile_bg_appearance", pType === "bar");
-    // Ring Color only makes sense when there's no real Nook Level progress to
-    // show in its place — i.e. Ring is selected and the minigame is off.
-    setSectionVisible("profile_fill_appearance", pType === "ring" && !values["restaurant_level_nook_enabled_ro"]);
+    // Ring Color only makes sense when no enabled mini-game is supplying the
+    // selected Profile Level progress for the ring.
+    setSectionVisible("profile_fill_appearance", pType === "ring" && !selectedProfileLevelGameEnabled());
 
     // 2. Picture Fields
     // The picture and colour controls handle the light/dark split themselves,
     // so each is one row whether or not Dynamic mode is on.
+    const pictureUsesGeneratedAvatar = picMode === "custom" || picMode === "accent";
+    if (picMode === "accent") syncProfilePictureAccentColors();
     setVisible("modern_menu_profile_picture", picMode === "image");
-    setVisible("modern_menu_profile_picture_color", picMode === "custom");
+    setVisible("modern_menu_profile_picture_color", pictureUsesGeneratedAvatar);
+    setVisible("modern_menu_profile_picture_content_type", pictureUsesGeneratedAvatar);
+    const pictureContentType = values["modern_menu_profile_picture_content_type"] || "letter";
+    setVisible("modern_menu_profile_picture_letter", pictureUsesGeneratedAvatar && pictureContentType === "letter");
+    setVisible("modern_menu_profile_picture_icon", pictureUsesGeneratedAvatar && pictureContentType === "icon");
+    // When avatar content is unavailable, let Profile Fonts reclaim the
+    // complete row instead of leaving an empty half-width column behind.
+    const showAvatarContent = pictureUsesGeneratedAvatar
+      && (pictureContentType === "letter" || pictureContentType === "icon");
+    const avatarOptionGrids = document.querySelectorAll(".osw-profile-avatar-options");
+    Array.prototype.forEach.call(avatarOptionGrids, function (grid) {
+      grid.style.gridTemplateColumns = showAvatarContent ? "" : "1fr";
+    });
 
     // 3. Background Fields
     setVisible("modern_menu_profile_bg_image", bgMode === "image" && pType === "bar");
@@ -1967,6 +2332,8 @@
 
     // 5. Fill Colors
     // (Handled by color_pair internally)
+
+    syncSimpleProfileControls();
   }
 
   /* The page-side twin of config.themed_asset: an empty per-theme key falls
@@ -1985,36 +2352,86 @@
     const profileItem = document.getElementById("oswPreviewProfileItem");
     if (!backdrop || !profileItem) return;
 
-    // Without Dynamic mode there is only the light set of colours to show.
-    const isDark = profileDynamicOn() && currentProfilePreviewMode === "dark";
+    // Profile colours resolve their own Dynamic flags. The sidebar backdrop
+    // still follows Anki's appearance when those colours use one palette.
+    const isDark = profileDynamicOn() ? currentProfilePreviewMode === "dark" : !!CTX.dark;
     paintProfileBackdrop(backdrop, isDark);
 
     // 2. Profile Item
     paintProfileItem(profileItem, isDark);
   }
 
-  // Keep every profile-shaped preview on the same backdrop as the Profile
-  // page. The Profile Level card uses this directly instead of approximating
-  // the sidebar with a flat grey plate.
+  // Keep every profile-shaped preview on the live sidebar backdrop. The old
+  // version read CTX.sidebarBg, which is only a snapshot from when Settings
+  // opened. As a result, changing the Sidebar's colour, source, or image left
+  // the Profile preview stale. Resolve the same live values as the Sidebar
+  // preview instead.
   function paintProfileBackdrop(backdrop, isDark) {
-    const sidebarBg = CTX.sidebarBg || {};
-    const sbColor = isDark ? (sidebarBg.colorDark || "#2C2C2C") : (sidebarBg.colorLight || "#F3F3F3");
-    const sbImage = isDark ? sidebarBg.imageDark : sidebarBg.imageLight;
-    const sbBlur = sidebarBg.blur || 0;
-    const sbOpacity = (sidebarBg.opacity != null ? sidebarBg.opacity : 100) / 100;
+    const existing = backdrop.querySelector(".osw-profile-preview-sidebar-layers");
+    if (existing) existing.remove();
 
-    backdrop.style.backgroundColor = sbColor;
-    if (sbImage && sidebarBg.type === "image_color") {
-      backdrop.style.backgroundImage = 'url("' + sbImage + '")';
-      backdrop.style.backgroundSize = 'cover';
-      backdrop.style.backgroundPosition = 'center';
-      backdrop.style.filter = 'blur(' + sbBlur + 'px)';
-      backdrop.style.opacity = sbOpacity;
-    } else {
-      backdrop.style.backgroundImage = 'none';
-      backdrop.style.filter = 'none';
-      backdrop.style.opacity = '1';
+    // Keep effects on dedicated layers: filtering the backdrop itself also
+    // filtered the profile contents, which is not how the real sidebar works.
+    backdrop.style.background = "transparent";
+    backdrop.style.filter = "none";
+    backdrop.style.opacity = "1";
+    backdrop.style.overflow = "hidden";
+
+    const layers = el("div", "osw-profile-preview-sidebar-layers");
+    layers.style.position = "absolute";
+    layers.style.inset = "0";
+    layers.style.overflow = "hidden";
+    layers.style.pointerEvents = "none";
+    backdrop.insertBefore(layers, backdrop.firstChild);
+
+    const spec = designerSidebarSpec(values, isDark);
+    if (spec.bgMode === "main") {
+      // Match Main Menu means the sidebar shows the main backdrop through its
+      // overlay, including a main-menu image or slideshow.
+      designerPaintBackdrop(layers, values, isDark);
+      const overlay = el("div", "osw-bg-preview-layer");
+      overlay.style.position = "absolute";
+      overlay.style.inset = "0";
+      overlay.style.background = spec.color;
+      if (spec.backdropBlur) {
+        overlay.style.backdropFilter = "blur(" + spec.backdropBlur.toFixed(1) + "px)";
+        overlay.style.webkitBackdropFilter = overlay.style.backdropFilter;
+      }
+      layers.appendChild(overlay);
+      return;
     }
+
+    const opacity = Math.max(0, Math.min(100, spec.opacity)) / 100;
+    const fill = el("div", "osw-bg-preview-layer");
+    fill.style.position = "absolute";
+    fill.style.inset = "0";
+    fill.style.background = rgba(spec.color, opacity);
+    if (spec.backdropBlur) {
+      fill.style.backdropFilter = "blur(" + spec.backdropBlur.toFixed(1) + "px)";
+      fill.style.webkitBackdropFilter = fill.style.backdropFilter;
+    }
+    layers.appendChild(fill);
+
+    // Widget-synced custom sidebars intentionally fall back to a colour in
+    // patcher.py, so their old image selection must not leak into this preview.
+    const usesImage = spec.bgMode !== "custom" && !values["modern_menu_sidebar_sync_box_effect"] &&
+      (spec.type === "image_color" || spec.type === "slideshow");
+    const url = usesImage && spec.image ? imageUrl("sidebar_bg", spec.image) : "";
+    if (!url) return;
+
+    const blurPx = Math.max(0, spec.blur) * 0.2;
+    const image = el("div", "osw-bg-preview-image");
+    image.style.position = "absolute";
+    image.style.inset = "0";
+    image.style.backgroundImage = "url(\"" + url.replace(/\"/g, "") + "\")";
+    image.style.backgroundSize = "cover";
+    image.style.backgroundPosition = "center";
+    image.style.opacity = String(opacity);
+    if (blurPx) {
+      image.style.filter = "blur(" + blurPx.toFixed(1) + "px)";
+      image.style.transform = "scale(" + (1 + blurPx / 50).toFixed(3) + ")";
+    }
+    layers.appendChild(image);
   }
 
   /* The profile exactly as a sidebar draws it — Bar / Ring / Minimal, with the
@@ -2028,14 +2445,39 @@
     const profileAssets = CTX.profileAssets || {};
     const pType = values["modern_menu_profile_type"] || "bar";
     const userName = values["userName"] || "USER";
-    const fontKey = values["modern_menu_profile_name_font"] || "system";
-    const fontOption = (fieldById["modern_menu_profile_name_font"] && fieldById["modern_menu_profile_name_font"].options || [])
+    const advancedProfileFont = SETTINGS_MODE_PARITY || settingsComplexity === "advanced";
+    const fontKey = advancedProfileFont
+      ? (values["onigiri_font_profile_name"] || "sync")
+      : (values["onigiri_font_main"] || "system");
+    const profileFontField = advancedProfileFont
+      ? fieldById["onigiri_font_profile_name"]
+      : fieldById["onigiri_font_main"];
+    const fontOption = (profileFontField && profileFontField.options || [])
       .filter(function (o) { return o.value === fontKey; })[0];
     const fontFamily = fontOption && fontOption.family ? fontOption.family : "inherit";
+    const profileFontSize = advancedProfileFont
+      ? (values["onigiri_font_size_profile_name"] || 14)
+      : (values["onigiri_font_size_main"] || 14);
+    const levelFontKey = advancedProfileFont
+      ? (values["onigiri_font_profile_level"] || "sync")
+      : fontKey;
+    const levelFontField = advancedProfileFont
+      ? fieldById["onigiri_font_profile_level"]
+      : profileFontField;
+    const levelFontOption = (levelFontField && levelFontField.options || [])
+      .filter(function (o) { return o.value === levelFontKey; })[0];
+    const levelFontFamily = levelFontKey === "sync"
+      ? fontFamily
+      : (levelFontOption && levelFontOption.family ? levelFontOption.family : fontFamily);
+    const levelFontSize = advancedProfileFont
+      ? (values["onigiri_font_size_profile_level"] || 11)
+      : profileFontSize;
 
     const dynName = values["modern_menu_profile_name_dynamic_mode"] !== false;
     const nameColor = isDark ? (dynName ? (values["modern_menu_profile_name_color_dark"] || "#f9fafb") : (values["modern_menu_profile_name_color_light"] || "#111827"))
                              : (values["modern_menu_profile_name_color_light"] || "#111827");
+    const levelColor = isDark ? (dynName ? (values["modern_menu_profile_level_color_dark"] || "#95D5E0") : (values["modern_menu_profile_level_color_light"] || "#95D5E0"))
+                              : (values["modern_menu_profile_level_color_light"] || "#95D5E0");
 
     const dynFill = values["modern_menu_profile_fill_dynamic_mode"] !== false;
     const fillColor = isDark ? (dynFill ? (values["modern_menu_profile_fill_color_dark"] || "#4f7cff") : (values["modern_menu_profile_fill_color_light"] || "#4f7cff"))
@@ -2043,8 +2485,12 @@
 
     // Bar-mode chip colors, straight from the same source the real sidebar
     // chip renders with, so the preview always matches what's on screen.
-    const chipColors = options.chipColors || (CTX.chipColors && CTX.chipColors[isDark ? "dark" : "light"]) || {};
-    const levelData = options.levelData || CTX.profileLevel || { enabled: true, level: 12, fraction: 0.65, color: "" };
+    const chipColors = options.chipColors || nookChipColors(values, isDark);
+    const emptyLevel = { enabled: false, level: 0, fraction: 0, color: "" };
+    let levelData = options.levelData || CTX.profileLevel || emptyLevel;
+    // A newly selected source must not borrow the previous game's progress
+    // while its save and fresh snapshot are on the bridge.
+    if (levelData.game && levelData.game !== (values.g_profile_level_game || "nook")) levelData = emptyLevel;
     // The selected mini game supplies the level and fraction, never the
     // progress color. That color belongs to the shared Profile Level setting.
     // Do not fall back to levelData.color: Hexagon Land and Onigimon expose
@@ -2059,7 +2505,10 @@
     const picColor = isDark ? (dynPic ? (values["modern_menu_profile_picture_color_dark"] || "#B8BDC3") : (values["modern_menu_profile_picture_color_light"] || "#8CACB4"))
                             : (values["modern_menu_profile_picture_color_light"] || "#8CACB4");
     const picOpacity = (values["modern_menu_profile_picture_opacity"] != null ? values["modern_menu_profile_picture_opacity"] : 100) / 100;
-    const picBlur = values["modern_menu_profile_picture_blur"] || 0;
+    const picContentType = values["modern_menu_profile_picture_content_type"] || "letter";
+    const picIconColor = isDark
+      ? (dynPic ? (values["modern_menu_profile_picture_icon_color_dark"] || "#FFFFFF") : (values["modern_menu_profile_picture_icon_color_light"] || "#FFFFFF"))
+      : (values["modern_menu_profile_picture_icon_color_light"] || "#FFFFFF");
 
     const picFileName = picMode === "image"
       ? themedAsset("modern_menu_profile_picture", isDark, dynPic)
@@ -2086,20 +2535,42 @@
     profileItem.innerHTML = "";
     profileItem.className = "osw-profile-preview-item is-type-" + pType;
 
-    function applyAvatarStyle(av) {
-      av.style.backgroundColor = picMode === "accent" ? CTX.accent : picColor;
-      av.style.opacity = picOpacity;
-      if (picBlur) {
-        av.style.filter = "blur(" + (picBlur * 0.2) + "px)";
-      } else {
-        av.style.filter = "none";
+    function avatarLetter() {
+      const configured = String(values["modern_menu_profile_picture_letter"] || "").trim();
+      if (configured === "...") return "";
+      return configured ? configured.toUpperCase() : (userName || "U").slice(0, 1).toUpperCase();
+    }
+
+    function paintAvatarContent(av) {
+      const icon = String(iconValue("modern_menu_profile_picture_icon") || "");
+      if ((picMode === "custom" || picMode === "accent") && picContentType === "icon") {
+        if (icon.indexOf("emoji:") === 0 && icon.slice(6)) {
+          av.textContent = icon.slice(6);
+          av.classList.add("is-avatar-emoji");
+          return;
+        }
+        const iconUrl = resolveIconAssetUrl(icon);
+        if (iconUrl) {
+          const glyph = el("span", "osw-profile-avatar-icon");
+          glyph.style.backgroundColor = picIconColor;
+          glyph.style.webkitMaskImage = "url('" + iconUrl + "')";
+          glyph.style.maskImage = "url('" + iconUrl + "')";
+          av.appendChild(glyph);
+          return;
+        }
       }
+      av.textContent = avatarLetter();
+    }
+
+    function applyAvatarStyle(av) {
+      av.style.backgroundColor = picMode === "accent" ? profileAccentColor(isDark) : picColor;
+      av.style.opacity = picOpacity;
       if (picUrl && picMode === "image") {
         av.style.backgroundImage = 'url("' + picUrl + '")';
         av.style.backgroundSize = 'cover';
         av.style.backgroundPosition = 'center';
       } else {
-        av.textContent = (userName[0] || "U").toUpperCase();
+        paintAvatarContent(av);
         av.style.color = "#ffffff";
         av.style.fontWeight = "bold";
         if (bgMode === "image" && pType === "bar") {
@@ -2125,10 +2596,11 @@
 
       const nameNode = el("div", "osw-preview-name", userName);
       nameNode.style.fontFamily = fontFamily;
+      nameNode.style.fontSize = profileFontSize + "px";
       
       const isDynDefaultBg = (bgMode === "image" && dynBg && !bgFileName);
       if (bgUrl && bgMode === "image" && !isDynDefaultBg) {
-        nameNode.style.color = "#ffffff";
+        nameNode.style.color = nameColor;
         nameNode.style.textShadow = "1px 1px 3px rgba(0,0,0,0.5)";
       } else {
         nameNode.style.color = nameColor;
@@ -2140,8 +2612,10 @@
       if (levelData.enabled !== false) {
         const chip = el("div", "restaurant-level-chip");
         if (chipColors.bg) chip.style.backgroundColor = chipColors.bg;
-        const chipLevel = el("span", "rl-chip-level", str("level_prefix", "Level") + " " + (levelData.level != null ? levelData.level : 12));
-        if (chipColors.text) chipLevel.style.color = chipColors.text;
+        const chipLevel = el("span", "rl-chip-level", str("level_prefix", "Level") + " " + (levelData.level != null ? levelData.level : 0));
+        chipLevel.style.color = levelColor;
+        chipLevel.style.fontFamily = levelFontFamily;
+        chipLevel.style.fontSize = levelFontSize + "px";
         const chipProgress = el("div", "rl-chip-progress");
         const chipFillColor = chipColors.progress || effectiveFillColor;
         if (chipFillColor && chipFillColor.length === 7 && chipFillColor.startsWith('#')) {
@@ -2152,7 +2626,7 @@
           chipProgress.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
         }
         const chipFill = el("div", "rl-chip-progress-fill");
-        const frac = levelData.fraction != null ? levelData.fraction : 0.65;
+        const frac = levelData.fraction != null ? levelData.fraction : 0;
         chipFill.style.width = (frac * 100).toFixed(2) + "%";
         if (chipFillColor) chipFill.style.backgroundColor = chipFillColor;
         chipProgress.appendChild(chipFill);
@@ -2177,7 +2651,7 @@
 
       const r = 21;
       const circ = 2 * Math.PI * r;
-      const frac = levelData.enabled !== false ? (levelData.fraction != null ? levelData.fraction : 0.65) : 0.65;
+      const frac = levelData.enabled !== false ? (levelData.fraction != null ? levelData.fraction : 0) : 0;
       const offset = circ * (1 - frac);
 
       const circleFill = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -2195,12 +2669,16 @@
       const infoCol = el("div", "osw-preview-ring-info");
       const nameNode = el("div", "osw-preview-name", userName);
       nameNode.style.fontFamily = fontFamily;
-      nameNode.style.color = isDark ? "#ffffff" : nameColor;
-      const subNode = el("div", "osw-preview-sub-text", str("level_prefix", "Level") + " " + (levelData.level != null ? levelData.level : 12) + " · Onigiri");
-      subNode.style.color = isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)";
-
+      nameNode.style.fontSize = profileFontSize + "px";
+      nameNode.style.color = nameColor;
       infoCol.appendChild(nameNode);
-      infoCol.appendChild(subNode);
+      if (levelData.enabled !== false) {
+        const subNode = el("div", "osw-preview-sub-text", str("level_prefix", "Level") + " " + (levelData.level != null ? levelData.level : 0) + " · " + (levelData.sourceName || ""));
+        subNode.style.color = levelColor;
+        subNode.style.fontFamily = levelFontFamily;
+        subNode.style.fontSize = levelFontSize + "px";
+        infoCol.appendChild(subNode);
+      }
 
       profileItem.appendChild(ringWrap);
       profileItem.appendChild(infoCol);
@@ -2211,12 +2689,13 @@
       const infoCol = el("div", "osw-preview-minimal-info");
       const nameNode = el("div", "osw-preview-name", userName);
       nameNode.style.fontFamily = fontFamily;
-      nameNode.style.color = isDark ? "#ffffff" : nameColor;
+      nameNode.style.fontSize = profileFontSize + "px";
+      nameNode.style.color = nameColor;
 
       const track = el("div", "osw-preview-minimal-track");
       const fill = el("div", "osw-preview-minimal-fill");
       fill.style.backgroundColor = effectiveFillColor;
-      const frac = levelData.enabled !== false ? (levelData.fraction != null ? levelData.fraction : 0.65) : 0.65;
+      const frac = levelData.enabled !== false ? (levelData.fraction != null ? levelData.fraction : 0) : 0;
       fill.style.width = (frac * 100).toFixed(1) + "%";
       track.appendChild(fill);
 
@@ -2311,15 +2790,21 @@
     if (fieldById[field.themeModeField]) {
       setValue(field.themeModeField, linked ? "single" : "separate");
     }
+    // Main Background renamed this key during the settings rewrite. Keep the
+    // legacy mirror coherent for older runtime surfaces and synced profiles.
+    if (field.themeModeField === "modern_menu_bg_image_theme_mode" &&
+        fieldById.modern_menu_background_image_mode) {
+      setValue("modern_menu_background_image_mode", linked ? "single" : "separate");
+    }
     if (field.type === "color_pair") {
       // Linking adopts the light colour for both; unlinking leaves them equal
       // so nothing changes on screen until the user actually picks a second one.
       if (linked) setValue(field.darkField, values[field.lightField]);
     } else if (linked) {
       // Collapse onto the base key, which is what both themes then read.
-      setValue(field.id, values[field.lightField] || values[field.id] || "");
-      setValue(field.lightField, "");
-      setValue(field.darkField, "");
+      // Keep the themed slots intact: turning Dynamic mode back on should
+      // restore the user's two choices instead of silently deleting them.
+      setValue(field.id, values[field.lightField] || values[field.darkField] || values[field.id] || "");
     } else {
       // Seed both from whatever was shared, so splitting is a no-op until one
       // of the two is changed.
@@ -2340,20 +2825,42 @@
   function imageTargets(field) {
     if (pairAvailable(field) && !pairLinked(field)) {
       return [
-        { id: field.lightField, role: "light", label: str("theme_light_mode", "Light mode"), key: "L" },
-        { id: field.darkField, role: "dark", label: str("theme_dark_mode", "Dark mode"), key: "D" }
+        {
+          id: field.lightField,
+          role: "light",
+          label: String(str("light_mode", "Light")).replace(/\s+mode$/i, ""),
+          key: "L"
+        },
+        {
+          id: field.darkField,
+          role: "dark",
+          label: String(str("dark_mode", "Dark")).replace(/\s+mode$/i, ""),
+          key: "D"
+        }
       ];
     }
-    // Dynamic mode off: one picture for both themes, so the slot says what it
-    // is rather than naming a theme it does not belong to.
-    return [{ id: field.id, role: "single", label: str("theme_static_mode", "Static Mode"), key: "" }];
+    // Dynamic mode off: one value serves both themes, so use the neutral
+    // "Color" role instead of suggesting separate light/dark values.
+    // A visible color_pair is a presentation field, not storage: its actual
+    // value lives in the light companion (and mirrors to dark while linked).
+    // Writing to `field.id` made the single Dynamic-off slot appear editable
+    // but left the real Pomodoro value unchanged.
+    const singleId = field.type === "color_pair" && field.lightField
+      ? (field.singleField || field.lightField)
+      : field.id;
+    return [{ id: singleId, role: "single", label: "", key: "" }];
   }
 
   /* Light/dark keys fall back to the plain one when unset — the same rule every
      renderer applies (`conf[..._dark] or conf[...]`), so the slot shows the
      picture that will actually be drawn, not an empty box. */
   function imageValue(field, target) {
-    return values[target.id] || (target.role === "single" ? "" : values[field.id]) || "";
+    if (target.role === "single") {
+      const preferred = CTX.dark ? field.darkField : field.lightField;
+      const alternate = CTX.dark ? field.lightField : field.darkField;
+      return values[target.id] || values[preferred] || values[alternate] || "";
+    }
+    return values[target.id] || values[field.id] || "";
   }
 
   /* Label, optional description, and — when Dynamic mode makes it meaningful —
@@ -2385,6 +2892,7 @@
       host.appendChild(slots);
       slots.innerHTML = "";
       slots.classList.toggle("is-split", targets.length > 1);
+      slots.classList.add("has-color-slots");
       targets.forEach(function (target) {
         const name = imageValue(field, target);
         const url = imageUrl(field.folder, name);
@@ -2394,16 +2902,7 @@
         slot.setAttribute("data-slot", target.role);
 
         const thumb = el("span", "osw-imgslot-thumb");
-        if (url) {
-          const img = document.createElement("img");
-          img.src = url;
-          img.alt = "";
-          img.loading = "lazy";
-          img.decoding = "async";
-          thumb.appendChild(img);
-        } else {
-          thumb.innerHTML = ICON_IMAGE;
-        }
+        appendImageWithFallback(thumb, url);
         slot.appendChild(thumb);
 
         const meta = el("span", "osw-imgslot-meta");
@@ -2448,10 +2947,99 @@
     return host;
   }
 
-  /* The colour twin of renderImage: same slot markup, a swatch instead of a
-     thumbnail. Keeping them visually identical is the point — "the light one
-     and the dark one" is then one idea the user learns once, whether the thing
-     being chosen is a picture or a colour. */
+  /* Bundled Onigimon scenes are intentionally separate from the user's image
+     library: presets remain available after the user tidies their own uploads,
+     and each category can be browsed without an import step. */
+  function renderScenarioPicker(field) {
+    const host = el("div", "osw-scenarios");
+    host.setAttribute("data-field", field.id);
+    host.setAttribute("data-field-type", "scenario_picker");
+
+    const categoryList = field.categories || [];
+    let activeCategory = "";
+    const selectedAtOpen = values[field.id] || field.default || "";
+    categoryList.forEach(function (category) {
+      if (selectedAtOpen.indexOf("/" + category.id + "/") !== -1) {
+        activeCategory = category.id;
+      }
+    });
+    if (!activeCategory && categoryList.length) activeCategory = categoryList[0].id;
+
+    // Keep category selection visually parallel with Background Type: a
+    // labelled, full-width segmented control rather than a detached tab bar.
+    const categoryTabsRow = el("div", "osw-scenario-tabs-row osw-segmented-wrap");
+    categoryTabsRow.appendChild(el(
+      "div", "osw-scenario-tabs-title osw-segmented-title",
+      str("onigimon_scenario_type", "Scenario type")
+    ));
+    const categoryTabs = el("div", "osw-scenario-tabs osw-segmented-control");
+    categoryTabsRow.appendChild(categoryTabs);
+    const categories = el("div", "osw-scenario-categories");
+    function showCategory(categoryId) {
+      activeCategory = categoryId;
+      Array.prototype.forEach.call(categoryTabs.querySelectorAll("[data-scenario-category-tab]"), function (tab) {
+        const active = tab.getAttribute("data-scenario-category-tab") === activeCategory;
+        tab.classList.toggle("is-active", active);
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      Array.prototype.forEach.call(categories.querySelectorAll("[data-scenario-category]"), function (panel) {
+        panel.hidden = panel.getAttribute("data-scenario-category") !== activeCategory;
+      });
+    }
+    categoryList.forEach(function (category) {
+      const tab = el("button", "osw-scenario-tab osw-segment-btn", category.title || "");
+      tab.type = "button";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("data-scenario-category-tab", category.id || "");
+      tab.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        showCategory(category.id || "");
+      });
+      categoryTabs.appendChild(tab);
+
+      const group = el("section", "osw-scenario-category");
+      group.setAttribute("data-scenario-category", category.id || "");
+      const grid = el("div", "osw-scenario-grid");
+      (category.items || []).forEach(function (item) {
+        const tile = el("button", "osw-scenario-tile");
+        tile.type = "button";
+        tile.setAttribute("data-scenario-path", item.path || "");
+        tile.setAttribute("aria-label", item.label || "Scenario");
+        const image = document.createElement("img");
+        image.src = item.image || "";
+        image.alt = "";
+        image.loading = "lazy";
+        image.decoding = "async";
+        tile.appendChild(image);
+        tile.addEventListener("click", function () {
+          bridge("osw:haptic:1");
+          setValue(field.id, item.path || field.default || "");
+          setValue(field.modeField, "preset");
+        });
+        grid.appendChild(tile);
+      });
+      group.appendChild(grid);
+      categories.appendChild(group);
+    });
+    host.appendChild(categoryTabsRow);
+    host.appendChild(categories);
+    showCategory(activeCategory);
+
+    host.__syncScenarioPicker = function () {
+      const selectedPath = values[field.id] || field.default || "";
+      Array.prototype.forEach.call(host.querySelectorAll("[data-scenario-path]"), function (tile) {
+        const selected = tile.getAttribute("data-scenario-path") === selectedPath;
+        tile.classList.toggle("is-selected", selected);
+        tile.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+    };
+    host.__syncScenarioPicker();
+    return host;
+  }
+
+  /* A color's swatch carries its value; the visible role name carries its
+     context in both split and linked theme modes. */
+
   function renderColorPair(field) {
     const host = el("div", "osw-imagefield osw-pairfield");
     host.setAttribute("data-field", field.id);
@@ -2466,11 +3054,9 @@
       host.appendChild(slots);
       slots.innerHTML = "";
       slots.classList.toggle("is-split", targets.length > 1);
-
       // A colour that is genuinely one value for both themes (a marker, the
       // heatmap streak icon) declares no light/dark companions at all and is
-      // bound straight to its own key. It renders as this same slot rather than
-      // as the smaller `color` chip, so a page of colours reads as one set.
+      // bound straight to its own key.
       const single = !field.lightField && !field.darkField;
 
       targets.forEach(function (target) {
@@ -2490,65 +3076,31 @@
         // opacity. Everything shown or handed to the picker is converted.
         const displayed = field.chipRole ? qtColorToCss(shown) : shown;
 
-        const slot = el("button", "osw-imgslot osw-colorslot is-set" + (isDefault ? " is-default" : ""));
+        const slot = el("button", "osw-imgslot osw-colorslot" + (isDefault ? " is-default" : ""));
         slot.type = "button";
         slot.setAttribute("data-slot", target.role);
-
+        slot.setAttribute(
+          "aria-label",
+          target.role === "light" ? "Light color" : target.role === "dark" ? "Dark color" : (field.label || str("color", "Color"))
+        );
         const swatch = el("span", "osw-imgslot-thumb is-swatch");
         swatch.style.background = displayed || "transparent";
         slot.appendChild(swatch);
 
         const meta = el("span", "osw-imgslot-meta");
-        // No theme caption for a single-value colour: "Static Mode" would name a
-        // light/dark distinction this setting does not have.
-        if (target.label && !single) {
-          const role = el("span", "osw-imgslot-role");
-          const kbd = el("span", "osw-imgslot-kbd");
-          if (target.role === "light") {
-            kbd.innerHTML = OSW_SUN_ICON;
-          } else if (target.role === "dark") {
-            kbd.innerHTML = OSW_MOON_ICON;
-          } else {
-            kbd.textContent = target.key;
-          }
-          role.appendChild(kbd);
-          role.appendChild(el("span", "osw-imgslot-role-label", target.label));
-          meta.appendChild(role);
+        const role = el("span", "osw-imgslot-role");
+        if (target.role === "light") {
+          role.innerHTML = OSW_SUN_ICON;
+        } else if (target.role === "dark") {
+          role.innerHTML = OSW_MOON_ICON;
         }
-        meta.appendChild(el(
-          "span", "osw-imgslot-name osw-colorslot-hex",
-          String(field.chipRole ? cssColorToHex(displayed) : shown).toUpperCase()
-        ));
+        if (target.role === "light" || target.role === "dark") meta.appendChild(role);
+        meta.appendChild(el("span", "osw-imgslot-name", String(displayed || "").toUpperCase()));
         slot.appendChild(meta);
-        const action = el("span", "osw-imgslot-action");
-        const actionIcon = el("span", "osw-imgslot-action-icon");
-        actionIcon.innerHTML = ICON_SWAP;
-        action.appendChild(actionIcon);
-        action.appendChild(el("span", "osw-imgslot-action-label", str("gallery_change", "Change")));
-        slot.appendChild(action);
-
         slot.addEventListener("click", function () {
           bridge("osw:haptic:1");
-          // Opens on what the slot is showing, so an inherited colour is the
-          // starting point rather than black. The picker takes an opaque hex;
-          // any alpha is put back when the value returns (chipPreserveAlpha).
-          bridge("osw:color:" + key + ":" + (field.chipRole ? cssColorToHex(displayed) : shown));
+          openColorPickerById(key, field.chipRole ? cssColorToHex(displayed) : shown);
         });
-
-        // Back to inheriting. Only offered once the colour is the slot's own —
-        // otherwise it would reset something that is already inherited.
-        if (value && fallback) {
-          const undo = el("button", "osw-colorslot-reset");
-          undo.type = "button";
-          undo.title = str("reset_to_default", "Reset to Default");
-          undo.innerHTML = ICON_UNDO;
-          undo.addEventListener("click", function (event) {
-            event.stopPropagation();
-            bridge("osw:haptic:1");
-            setValue(key, "");
-          });
-          slot.appendChild(undo);
-        }
         slots.appendChild(slot);
       });
     }
@@ -2587,6 +3139,21 @@
     if (field.chipRole) {
       const defaults = (CTX.chipDefaults || {})[chipFallbackDark(target) ? "dark" : "light"] || {};
       return qtColorToCss(defaults[field.chipRole] || "");
+    }
+    if (field.inheritMainBackground) {
+      const useDark = target && target.role === "dark"
+        ? true
+        : target && target.role === "light"
+          ? false
+          : !!CTX.dark;
+      const configured = useDark
+        ? values.things_main_background_dark
+        : values.things_main_background_light;
+      const legacy = useDark ? "#0b0c0f" : "#f6f3ec";
+      const clean = String(configured || "").toLowerCase() === legacy
+        ? ""
+        : configured;
+      return clean || (useDark ? "#171717" : "#eeeeee");
     }
     if (field.staticFallback) {
       const dark = target && target.role === "dark";
@@ -2631,7 +3198,8 @@
         const key = field.type === "color_pair"
           ? (target.role === "single" ? field.lightField : target.id)
           : field.id;
-        const value = values[key] || iconColorFallback(field) || "";
+        const value = values[key] || (field.type === "color_pair"
+          ? pairColorFallback(field, target) : iconColorFallback(field)) || "";
         const chip = el("button", "osw-icontile-swatch");
         chip.type = "button";
         chip.title = (field.label || "") + " " +
@@ -2649,7 +3217,7 @@
         chip.addEventListener("click", function (event) {
           event.stopPropagation();
           bridge("osw:haptic:1");
-          bridge("osw:color:" + key + ":" + value);
+          openColorPickerById(key, value);
         });
         host.appendChild(chip);
       });
@@ -2675,12 +3243,17 @@
         // An unset tint is not "no colour": it means the glyph is painted with
         // the shared icon colour. Show that, so the swatch always answers "what
         // colour is this icon right now" instead of going blank.
-        const fallback = iconColorFallback(field);
+        const fallback = field.type === "color_pair"
+          ? pairColorFallback(field, target) : iconColorFallback(field);
         const shown = value || fallback;
         const isDefault = !value && !!fallback;
 
         const slot = el("button", "onigiri-icon-color-slot" + (isDefault ? " is-default" : ""));
         slot.type = "button";
+        slot.setAttribute(
+          "aria-label",
+          target.role === "light" ? "Light color" : target.role === "dark" ? "Dark color" : (field.label || str("icon_color", "Icon Color"))
+        );
         const swatch = el("span", "onigiri-icon-color-swatch");
         swatch.style.background = shown || "transparent";
         slot.appendChild(swatch);
@@ -2689,44 +3262,20 @@
         const roleRow = el("span", "onigiri-icon-color-role");
         if (target.role === "light") {
           roleRow.innerHTML = OSW_SUN_ICON;
-          roleRow.appendChild(document.createTextNode(str("theme_light_mode", "Light mode")));
         } else if (target.role === "dark") {
           roleRow.innerHTML = OSW_MOON_ICON;
-          roleRow.appendChild(document.createTextNode(str("theme_dark_mode", "Dark mode")));
-        } else {
-          roleRow.appendChild(document.createTextNode(
-            isDefault
-              ? (field.label || str("icon_color", "Icon Color")) + " · " + str("default", "Default")
-              : (field.label || str("icon_color", "Icon Color"))
-          ));
         }
-        meta.appendChild(roleRow);
+        if (target.role === "light" || target.role === "dark") {
+          roleRow.appendChild(document.createTextNode(target.label));
+        }
+        if (target.role === "light" || target.role === "dark") meta.appendChild(roleRow);
         meta.appendChild(el("span", "onigiri-icon-color-hex", String(shown || "").toUpperCase()));
         slot.appendChild(meta);
-
         slot.addEventListener("click", function () {
           bridge("osw:haptic:1");
-          // The picker opens on the colour the icon actually has, so "change it
-          // slightly" starts from what is on screen rather than from black.
-          bridge("osw:color:" + target.id + ":" + shown);
+          openColorPickerById(target.id, shown, "", !!value && !!fallback);
         });
         slotsRow.appendChild(slot);
-
-        // A colour of its own can be given back: there is no other way out of a
-        // custom tint once set, and "the same colour as everything else" is not
-        // something the user should have to re-pick by eye.
-        if (value && fallback) {
-          const undo = el("button", "onigiri-icon-color-reset");
-          undo.type = "button";
-          undo.title = str("reset_to_default", "Reset to Default");
-          undo.innerHTML = ICON_UNDO;
-          undo.addEventListener("click", function (event) {
-            event.stopPropagation();
-            bridge("osw:haptic:1");
-            setValue(target.id, "");
-          });
-          slot.appendChild(undo);
-        }
       });
     }
 
@@ -2754,9 +3303,21 @@
     });
   }
 
+  function refreshScenarioPickers() {
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-scenarios"), function (node) {
+      if (node.__syncScenarioPicker) node.__syncScenarioPicker();
+    });
+  }
+
   function refreshPairFields() {
     Array.prototype.forEach.call(document.querySelectorAll(".osw-pairfield"), function (node) {
       if (node.__syncPairField) node.__syncPairField();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-color-gallery"), function (node) {
+      if (node.__syncColorGallery) node.__syncColorGallery();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-reviewer-color-gallery"), function (node) {
+      if (node.__syncColorGallery) node.__syncColorGallery();
     });
   }
 
@@ -2783,8 +3344,410 @@
     ' stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
   const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
     ' stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  const ICON_MINUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round"><path d="M5 12h14"/></svg>';
+  const ICON_TYPE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/>' +
+    '<path d="M9 20h6M12 4v16"/></svg>';
+  const ICON_PALETTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>' +
+    '<circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>' +
+    '<circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 4-4 4h-1.8a2.2 2.2 0 0 0-2.2 2.2c0 .5.2 1 .5 1.4.4.5 0 1.4-.7 1.8-.6.4-1.2.6-1.8.6Z"/></svg>';
+  const ICON_INFO = '<svg class="lucide lucide-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/>' +
+    '<path d="M12 16v-4M12 8h.01"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"' +
     ' stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+
+  /* WebView shows its own broken-image glyph when a stored filename no longer
+     resolves. That glyph is especially distracting in the compact Light/Dark
+     image slots, where it gets rendered as a tiny shaped fallback. Keep image
+     failures inside our visual language: remove the failed <img> and use the
+     same deliberate placeholder as an empty slot. */
+  function appendImageWithFallback(container, url) {
+    if (!url) {
+      container.insertAdjacentHTML("beforeend", ICON_IMAGE);
+      return null;
+    }
+    const img = document.createElement("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    // Keep the browser's native broken-image marker from flashing while the
+    // request is in flight. A successful image becomes visible on load; a
+    // failed one is removed by the error handler below.
+    img.style.visibility = "hidden";
+    img.addEventListener("load", function () { img.style.visibility = "visible"; });
+    img.addEventListener("error", function () {
+      img.remove();
+      if (!container.querySelector("svg")) container.insertAdjacentHTML("beforeend", ICON_IMAGE);
+    });
+    img.src = url;
+    container.appendChild(img);
+    return img;
+  }
+
+  // One compact typography editor shared by Widget Color and Effect and the
+  // stats designer. It edits the existing role fields without mounting the
+  // former full preview cards.
+  let compactFontMenuEl = null;
+  let compactFontMenuOutsideHandler = null;
+  let compactFontMenuResizeHandler = null;
+  let activeCompactFontRole = "";
+
+  function closeCompactFontMenu() {
+    if (compactFontMenuOutsideHandler) {
+      document.removeEventListener("pointerdown", compactFontMenuOutsideHandler, true);
+      compactFontMenuOutsideHandler = null;
+    }
+    if (compactFontMenuResizeHandler) {
+      window.removeEventListener("resize", compactFontMenuResizeHandler);
+      compactFontMenuResizeHandler = null;
+    }
+    if (compactFontMenuEl && compactFontMenuEl.parentNode) {
+      const anchor = compactFontMenuEl.__anchor;
+      const floatingRoleList = compactFontMenuEl.__floatingRoleList;
+      if (floatingRoleList && floatingRoleList.parentNode) {
+        floatingRoleList.parentNode.removeChild(floatingRoleList);
+      }
+      if (anchor) anchor.setAttribute("aria-expanded", "false");
+      compactFontMenuEl.parentNode.removeChild(compactFontMenuEl);
+    }
+    compactFontMenuEl = null;
+  }
+
+  function openCompactFontMenu(anchor, roles, labelText) {
+    closeCompactFontMenu();
+    roles = (roles || []).filter(function (role) {
+      return !role.show_when || showWhenMatches(role.show_when);
+    });
+    if (!roles || !roles.length) return;
+    const hasRolePicker = roles.length > 1;
+
+    const menu = el("div", "osw-organize-menu is-widget-fonts");
+    const isColorMenu = anchor.classList.contains("osw-organize-colors-btn");
+    if (isColorMenu) {
+      menu.classList.add("is-widget-colors");
+    }
+    menu.__anchor = anchor;
+
+    const head = el("div", "osw-organize-font-head");
+    head.appendChild(el("span", "osw-organize-font-title", labelText));
+    const headActions = el("div", "osw-organize-font-actions");
+    const syncSlot = el("div", "osw-organize-font-sync-slot");
+    const infoBtn = el("button", "osw-organize-font-info");
+    infoBtn.type = "button";
+    infoBtn.setAttribute("aria-label", str("font_role_info", "What does this control change?"));
+    infoBtn.setAttribute("aria-expanded", "false");
+    infoBtn.innerHTML = ICON_INFO;
+    const closeBtn = el("button", "osw-organize-font-close");
+    closeBtn.type = "button";
+    closeBtn.innerHTML = ICON_CLOSE;
+    closeBtn.addEventListener("click", closeCompactFontMenu);
+    headActions.appendChild(syncSlot);
+    headActions.appendChild(infoBtn);
+    headActions.appendChild(closeBtn);
+    head.appendChild(headActions);
+    menu.appendChild(head);
+
+    const infoText = el("div", "osw-organize-font-info-text");
+    infoText.hidden = true;
+    menu.appendChild(infoText);
+
+    if (!roles.some(function (role) { return role.id === activeCompactFontRole; })) {
+      activeCompactFontRole = roles[0].id;
+    }
+    const rolePicker = el("div", "osw-organize-font-role-picker");
+    const roleButton = el("button", "osw-organize-font-role");
+    roleButton.type = "button";
+    roleButton.setAttribute("aria-haspopup", "listbox");
+    roleButton.setAttribute("aria-expanded", "false");
+    const roleLabel = el("span", "osw-organize-font-role-label");
+    const roleChevron = el("span", "osw-organize-font-role-chevron");
+    roleChevron.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+    roleButton.appendChild(roleLabel);
+    roleButton.appendChild(roleChevron);
+    const roleList = el("div", "osw-organize-font-role-list");
+    roleList.setAttribute("role", "listbox");
+    roleList.hidden = true;
+    if (isColorMenu) {
+      rolePicker.classList.add("is-color-gallery");
+      roleList.classList.add("osw-reviewer-color-gallery");
+      roleList.setAttribute("role", "tablist");
+      roleList.hidden = false;
+      rolePicker.appendChild(roleList);
+    } else {
+      rolePicker.appendChild(roleButton);
+      rolePicker.appendChild(roleList);
+    }
+    menu.appendChild(rolePicker);
+    rolePicker.hidden = !hasRolePicker;
+
+    const fieldsHost = el("div", "osw-organize-font-fields");
+    menu.appendChild(fieldsHost);
+
+    // The menu itself scrolls when its contents are taller than the viewport.
+    // Keep the role list above that scrolling/clipping boundary while it is
+    // open, otherwise the lower options disappear below the popup edge.
+    const positionRoleList = function () {
+      if (!roleList.classList.contains("is-floating") || roleList.hidden) return;
+      const buttonRect = roleButton.getBoundingClientRect();
+      const listRect = roleList.getBoundingClientRect();
+      const width = buttonRect.width;
+      let left = buttonRect.left;
+      let top = buttonRect.bottom + 6;
+      left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+      if (top + listRect.height > window.innerHeight - 12) {
+        top = buttonRect.top - listRect.height - 6;
+      }
+      top = Math.max(12, Math.min(top, window.innerHeight - listRect.height - 12));
+      roleList.style.left = left + "px";
+      roleList.style.top = top + "px";
+      roleList.style.width = width + "px";
+    };
+
+    const setRoleListOpen = function (open) {
+      if (open) {
+        document.body.appendChild(roleList);
+        roleList.classList.add("is-floating");
+        roleList.hidden = false;
+        positionRoleList();
+      } else {
+        roleList.hidden = true;
+        roleList.classList.remove("is-floating");
+        roleList.style.left = "";
+        roleList.style.top = "";
+        roleList.style.width = "";
+        rolePicker.appendChild(roleList);
+      }
+    };
+    menu.__floatingRoleList = roleList;
+    menu.__positionRoleList = positionRoleList;
+
+    const roleDescription = function (role) {
+      if (role.description) return role.description;
+      if (menu.classList.contains("is-widget-colors")) {
+        return str(
+          "color_group_desc",
+          "Changes the light and dark colors for this interface element."
+        );
+      }
+      const descriptions = {
+        font_widget_title: str("widget_titles_font_desc", "Changes the headings shown at the top of regular dashboard widgets."),
+        font_widget_small: str("widget_text_font_desc", "Changes the supporting text inside regular dashboard widgets."),
+        font_heatmap_title: str("heatmap_title_font_desc", "Changes the Activity heading in the Heatmap widget."),
+        font_heatmap_labels: str("heatmap_labels_font_desc", "Changes the Heatmap navigation, streak, and calendar labels."),
+        swidget_font_labels: str("stats_titles_font_desc", "Changes the Studied, Time, Pace, and Retention labels."),
+        swidget_font_values: str("stats_labels_font_desc", "Changes the units and supporting labels in the four Stats Widgets."),
+        swidget_font_numbers: str("stats_numbers_font_desc", "Changes the numeric figures in the four Stats Widgets."),
+        font_profile_name: str("profile_name_font_desc", "Changes the profile name shown in the sidebar."),
+        font_sidebar_small: str("profile_text_font_desc", "Changes supporting text within the sidebar profile."),
+        font_action_buttons: str("action_buttons_font_desc", "Changes the labels of sidebar action buttons."),
+        font_deck_title: str("deck_title_font_desc", "Changes the Decks heading in the sidebar."),
+        font_deck_names: str("deck_names_font_desc", "Changes deck names in the sidebar list."),
+        font_reviewer_controls: str("reviewer_controls_font_desc", "Changes the labels and supporting text inside the Reviewer bottom-bar buttons."),
+        font_stats_labels: str("stats_titles_font_desc", "Changes the headings in the Deck Stats widget."),
+        font_stats_values: str("stats_labels_font_desc", "Changes the values and supporting labels in the Deck Stats widget.")
+      };
+      return descriptions[role.id] || str("font_role_info_default", "Changes the font family and size for this part of the interface.");
+    };
+
+    const isStatsSizeSyncField = function (field) {
+      return field && (
+        field.id === "swidget_label_size_sync" ||
+        field.id === "swidget_value_size_sync" ||
+        field.id === "swidget_number_size_sync"
+      );
+    };
+
+    function mountSizeSync(field) {
+      syncSlot.innerHTML = "";
+      syncSlot.hidden = !field;
+      if (!field) return;
+      const label = el("span", "osw-organize-font-sync-label", field.label);
+      const button = el(
+        "button",
+        "osw-organize-font-sync-switch" + (values[field.id] ? " is-on" : "")
+      );
+      button.type = "button";
+      button.setAttribute("role", "switch");
+      button.setAttribute("aria-checked", values[field.id] ? "true" : "false");
+      button.setAttribute("aria-label", field.label);
+      button.addEventListener("click", function () {
+        setValue(field.id, !values[field.id]);
+        mountRole(activeCompactFontRole);
+      });
+      syncSlot.appendChild(label);
+      syncSlot.appendChild(button);
+    }
+
+    function mountRole(roleId) {
+      activeCompactFontRole = roleId;
+      const role = roles.filter(function (item) { return item.id === roleId; })[0] || roles[0];
+      roleLabel.textContent = role.title || "";
+      roleButton.setAttribute("aria-expanded", "false");
+      if (!isColorMenu) setRoleListOpen(false);
+      Array.prototype.forEach.call(roleList.querySelectorAll("button"), function (item) {
+        const selected = item.getAttribute("data-role-id") === role.id;
+        item.classList.toggle("is-selected", selected);
+        item.setAttribute("aria-selected", selected ? "true" : "false");
+      });
+      fieldsHost.innerHTML = "";
+      infoText.textContent = roleDescription(role);
+      infoText.hidden = infoBtn.getAttribute("aria-expanded") !== "true";
+      const syncField = (role.field_ids || []).map(function (fieldId) {
+        return fieldById[fieldId];
+      }).filter(isStatsSizeSyncField)[0];
+      mountSizeSync(syncField);
+      (role.field_ids || []).forEach(function (fieldId) {
+        const field = fieldById[fieldId];
+        const renderer = field && FIELD_RENDERERS[field.type];
+        if (
+          !renderer || isStatsSizeSyncField(field) ||
+          (field.showWhen && !showWhenMatches(field.showWhen))
+        ) return;
+        const node = renderer(field);
+        node.classList.add("osw-organize-menu-field");
+        node.setAttribute("data-field-host", field.id);
+        fieldsHost.appendChild(node);
+      });
+      if (menu.__positionWithinViewport) {
+        requestAnimationFrame(menu.__positionWithinViewport);
+      }
+    }
+    roles.forEach(function (role) {
+      const option = el(
+        "button",
+        "osw-organize-font-role-option" + (isColorMenu ? " osw-reviewer-color-card" : ""),
+        isColorMenu ? "" : (role.title || "")
+      );
+      option.type = "button";
+      option.setAttribute("role", isColorMenu ? "tab" : "option");
+      option.setAttribute("data-role-id", role.id);
+      if (isColorMenu) option.setAttribute("aria-label", role.title || "");
+      if (isColorMenu) {
+        const sample = el("span", "osw-reviewer-color-sample", role.preview_label || role.title || "");
+        const caption = el("span", "osw-reviewer-color-caption", role.title || "");
+        option.appendChild(sample);
+        option.appendChild(caption);
+        option.__paintColorGroupPreview = function () {
+          const suffix = CTX.dark ? "dark" : "light";
+          const bgKey = role.preview_bg ? role.preview_bg + "_" + suffix : "";
+          const textKey = role.preview_text ? role.preview_text + "_" + suffix : "";
+          const borderKey = role.preview_border ? role.preview_border + "_" + suffix : "";
+          sample.style.background = (bgKey && values[bgKey]) || (CTX.dark ? "#3a3a3a" : "#f0f0f0");
+          sample.style.color = (textKey && values[textKey]) || (CTX.dark ? "#f0f0f0" : "#2c2c2c");
+          sample.style.borderColor = (borderKey && values[borderKey]) || "";
+        };
+        option.__paintColorGroupPreview();
+      }
+      option.addEventListener("click", function () { mountRole(role.id); });
+      roleList.appendChild(option);
+    });
+    if (isColorMenu) {
+      roleList.__syncColorGallery = function () {
+        Array.prototype.forEach.call(roleList.querySelectorAll(".osw-reviewer-color-card"), function (item) {
+          if (item.__paintColorGroupPreview) item.__paintColorGroupPreview();
+        });
+      };
+    } else {
+      roleButton.addEventListener("click", function () {
+        const opened = roleButton.getAttribute("aria-expanded") === "true";
+        roleButton.setAttribute("aria-expanded", opened ? "false" : "true");
+        setRoleListOpen(!opened);
+      });
+    }
+    infoBtn.addEventListener("click", function () {
+      const opened = infoBtn.getAttribute("aria-expanded") === "true";
+      infoBtn.setAttribute("aria-expanded", opened ? "false" : "true");
+      infoText.hidden = opened;
+      if (menu.__positionWithinViewport) {
+        requestAnimationFrame(function () {
+          menu.__positionWithinViewport();
+          menu.__positionRoleList();
+        });
+      }
+    });
+    mountRole(activeCompactFontRole);
+
+    document.body.appendChild(menu);
+    compactFontMenuEl = menu;
+    anchor.setAttribute("aria-expanded", "true");
+
+    menu.__positionWithinViewport = function () {
+      if (!menu.isConnected) return;
+      const anchorRect = anchor.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      let left = anchorRect.right - menuRect.width;
+      let top = anchorRect.bottom + 8;
+      left = Math.max(12, Math.min(left, window.innerWidth - menuRect.width - 12));
+      if (top + menuRect.height > window.innerHeight - 12) {
+        top = anchorRect.top - menuRect.height - 8;
+      }
+      top = Math.max(12, Math.min(top, window.innerHeight - menuRect.height - 12));
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+    };
+    menu.__positionWithinViewport();
+    compactFontMenuResizeHandler = function () {
+      menu.__positionWithinViewport();
+      menu.__positionRoleList();
+    };
+    window.addEventListener("resize", compactFontMenuResizeHandler);
+
+    setTimeout(function () {
+      compactFontMenuOutsideHandler = function (event) {
+        const inFloatingRoleList = menu.__floatingRoleList &&
+          menu.__floatingRoleList.contains(event.target);
+        if (!menu.contains(event.target) && event.target !== anchor && !inFloatingRoleList) {
+          closeCompactFontMenu();
+        }
+      };
+      document.addEventListener("pointerdown", compactFontMenuOutsideHandler, true);
+    }, 0);
+  }
+
+  function compactFontMenuButton(section) {
+    const button = el("button", "osw-organize-reset-btn osw-organize-fonts-btn");
+    button.type = "button";
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+    const icon = el("span", "osw-organize-fonts-icon");
+    icon.innerHTML = ICON_TYPE;
+    button.appendChild(icon);
+    button.appendChild(el("span", null, section.fontMenuLabel || str("stats_fonts", "Stats Fonts")));
+    button.addEventListener("click", function () {
+      if (compactFontMenuEl && compactFontMenuEl.__anchor === button) {
+        closeCompactFontMenu();
+      } else {
+        openCompactFontMenu(button, section.fontRoles || [], section.fontMenuLabel || str("stats_fonts", "Stats Fonts"));
+      }
+    });
+    return button;
+  }
+
+  function compactColorMenuButton(section) {
+    const button = el("button", "osw-organize-reset-btn osw-organize-fonts-btn osw-organize-colors-btn");
+    button.type = "button";
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+    const icon = el("span", "osw-organize-fonts-icon");
+    icon.innerHTML = ICON_PALETTE;
+    button.appendChild(icon);
+    button.appendChild(el("span", null, section.colorMenuLabel || str("colors", "Colors")));
+    button.addEventListener("click", function () {
+      if (compactFontMenuEl && compactFontMenuEl.__anchor === button) {
+        closeCompactFontMenu();
+      } else {
+        openCompactFontMenu(
+          button,
+          section.colorGroups || [],
+          section.colorMenuLabel || str("colors", "Colors")
+        );
+      }
+    });
+    return button;
+  }
   // Kept separate from the chrome icons above: Gallery's delete confirmation
   // explicitly uses Lucide's named check and X glyphs as its two choices.
   const LUCIDE_CHECK = '<svg class="lucide lucide-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
@@ -2819,6 +3782,7 @@
   function galleryOpen() { return gallery !== null; }
 
   function openGallery(field, startRole) {
+    if (settingsPicker) closeSettingsPicker();
     if (gallery) closeGallery();
 
     const targets = imageTargets(field);
@@ -2920,6 +3884,9 @@
     function assign(name) {
       const target = targets[gallery.active] || targets[0];
       setValue(target.id, name || "");
+      if (field.modeField) {
+        setValue(field.modeField, name ? (field.modeValue || "custom") : (field.emptyMode || "color"));
+      }
       // setValue -> syncField already repainted the preview; this only makes
       // sure it is showing the theme the picture was just assigned to.
       if (target.role === "light" || target.role === "dark") {
@@ -2938,6 +3905,9 @@
       if (index === -1) return false;
       gallery.active = index;
       setValue(targets[index].id, name || "");
+      if (field.modeField) {
+        setValue(field.modeField, name ? (field.modeValue || "custom") : (field.emptyMode || "color"));
+      }
       setProfilePreviewMode(role);
       paintTargets();
       paintSelection();
@@ -2976,6 +3946,7 @@
     function paintGrid() {
       const images = galleryList(field.folder);
       grid.innerHTML = "";
+      grid.classList.toggle("is-empty", !images.length);
       gallery.confirming = null;
 
       count.textContent = images.length === 1
@@ -3005,12 +3976,7 @@
         tile.setAttribute("data-name", image.name);
 
         const thumb = el("span", "osw-gal-thumb");
-        const img = document.createElement("img");
-        img.src = image.url;
-        img.alt = "";
-        img.loading = "lazy";
-        img.decoding = "async";
-        thumb.appendChild(img);
+        appendImageWithFallback(thumb, image.url);
         tile.appendChild(thumb);
         tile.appendChild(el("span", "osw-gal-name", image.name));
         tile.appendChild(el("span", "osw-gal-badges"));
@@ -3062,14 +4028,6 @@
         empty.appendChild(el("div", "osw-gal-empty-title", str("gallery_empty_title", "No images yet")));
         empty.appendChild(el("div", "osw-gal-empty-desc",
           str("gallery_empty_desc", "Import a picture to start your gallery.")));
-        const cta = el("button", "osw-gal-import is-cta");
-        cta.type = "button";
-        const ctaIcon = el("span", "osw-gal-import-icon");
-        ctaIcon.innerHTML = ICON_PLUS;
-        cta.appendChild(ctaIcon);
-        cta.appendChild(el("span", null, str("gallery_import", "Import image")));
-        cta.addEventListener("click", runImport);
-        empty.appendChild(cta);
         grid.appendChild(empty);
       }
 
@@ -3150,8 +4108,8 @@
           // A reply carrying no list is not an empty folder: adopting it
           // would blank a grid that is currently showing the right thing.
           if (!res || !res.ok || !gallery || !Array.isArray(res.images)) return;
-          const before = galleryList(field.folder).map(function (i) { return i.name; }).join(" ");
-          const after = (res.images || []).map(function (i) { return i.name; }).join(" ");
+          const before = JSON.stringify(galleryList(field.folder).map(function (i) { return i.name; }));
+          const after = JSON.stringify((res.images || []).map(function (i) { return i.name; }));
           setGalleryList(field.folder, res.images);
           // Only rebuild when the folder actually differs, so the usual case
           // (nothing changed since the page loaded) never flickers.
@@ -3205,6 +4163,423 @@
     }, 150);
   }
 
+  // ── font and colour pickers ───────────────────────────────────────────────
+  //
+  // Keep these choices inside the WebView, alongside the Icon Picker. The old
+  // bridge commands opened separate Qt windows, which meant the three related
+  // settings controls each had a different visual language and focus model.
+  let settingsPicker = null;
+  let activeTileMenuClose = null;
+
+  function closeSettingsPicker() {
+    if (!settingsPicker) return;
+    const root = settingsPicker.root;
+    document.removeEventListener("keydown", settingsPicker.onKey, true);
+    settingsPicker = null;
+    root.classList.add("is-closing");
+    root.style.pointerEvents = "none";
+    setTimeout(function () {
+      if (root.parentNode) root.parentNode.removeChild(root);
+    }, 150);
+  }
+
+  function openPickerShell(title) {
+    closeSettingsPicker();
+    // A font field can be launched from Widget Fonts' compact editor. That
+    // editor is an anchored popover, not a modal, so leaving it open would
+    // place it over the new full-screen picker (and create two simultaneous
+    // editing surfaces). Every full picker owns focus exclusively.
+    closeCompactFontMenu();
+    if (activeTileMenuClose) activeTileMenuClose();
+    if (iconPicker) closeIconPicker();
+    if (gallery) closeGallery();
+
+    const root = el("div", "osw-gal");
+    const modal = el("section", "onigiri-icon-modal osw-iconpick-modal osw-settings-picker");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", title);
+    root.appendChild(modal);
+
+    const header = el("div", "onigiri-icon-modal-header");
+    header.appendChild(el("div", "onigiri-icon-modal-title", title));
+    const close = el("button", "onigiri-icon-modal-close");
+    close.type = "button";
+    close.setAttribute("aria-label", str("cancel", "Cancel"));
+    close.innerHTML = ICON_CLOSE;
+    close.addEventListener("click", closeSettingsPicker);
+    header.appendChild(close);
+    modal.appendChild(header);
+
+    const body = el("div", "osw-settings-picker-body");
+    modal.appendChild(body);
+    document.body.appendChild(root);
+    root.addEventListener("mousedown", function (event) {
+      if (event.target === root) closeSettingsPicker();
+    });
+    return { root: root, modal: modal, body: body };
+  }
+
+  function rgbToHsv(red, green, blue) {
+    const r = red / 255;
+    const g = green / 255;
+    const b = blue / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    let hue = 0;
+    if (delta) {
+      if (max === r) hue = 60 * (((g - b) / delta) % 6);
+      else if (max === g) hue = 60 * (((b - r) / delta) + 2);
+      else hue = 60 * (((r - g) / delta) + 4);
+    }
+    if (hue < 0) hue += 360;
+    return [hue, max ? delta / max : 0, max];
+  }
+
+  function hsvToHex(hue, saturation, value) {
+    const chroma = value * saturation;
+    const segment = (hue / 60) % 6;
+    const x = chroma * (1 - Math.abs((segment % 2) - 1));
+    const m = value - chroma;
+    const channels = segment < 1 ? [chroma, x, 0] : segment < 2 ? [x, chroma, 0] :
+      segment < 3 ? [0, chroma, x] : segment < 4 ? [0, x, chroma] :
+      segment < 5 ? [x, 0, chroma] : [chroma, 0, x];
+    return rgbToHex(
+      Math.round((channels[0] + m) * 255),
+      Math.round((channels[1] + m) * 255),
+      Math.round((channels[2] + m) * 255)
+    );
+  }
+
+  function preserveColorAlpha(original, hex) {
+    const value = String(original || "").trim();
+    const rgbaMatch = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([^)]+)\)$/i.exec(value);
+    if (rgbaMatch) {
+      const rgb = hexToRgb(hex);
+      return "rgba(" + rgb[0] + ", " + rgb[1] + ", " + rgb[2] + ", " + rgbaMatch[1].trim() + ")";
+    }
+    // Qt's #AARRGGBB format is used by a few chip colour fields. Retain its
+    // alpha byte while changing the RGB portion, exactly as the native picker
+    // did before this modal replaced it.
+    if (/^#[0-9a-f]{8}$/i.test(value)) return value.slice(0, 3) + hex.slice(1);
+    return hex;
+  }
+
+  function openColorPickerById(fieldId, current, restoreTo, canRestore) {
+    const field = fieldById[fieldId];
+    if (field) openColorPicker(field, current == null ? values[fieldId] : current, restoreTo, canRestore);
+  }
+
+  function mountColorEditor(host, initial, onChange) {
+    let hex = cssColorToHex(initial);
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) hex = "#00A982";
+    let rgb = hexToRgb(hex);
+    let hsv = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+    const canvas = el("div", "osw-colorpick-sv");
+    const cursor = el("span", "osw-colorpick-cursor");
+    canvas.appendChild(cursor);
+    const hue = document.createElement("input");
+    hue.type = "range";
+    hue.min = "0";
+    hue.max = "360";
+    hue.className = "osw-colorpick-hue";
+    hue.setAttribute("aria-label", "Hue");
+    const valueSlider = document.createElement("input");
+    valueSlider.type = "range";
+    valueSlider.min = "0";
+    valueSlider.max = "100";
+    valueSlider.className = "osw-colorpick-value";
+    valueSlider.setAttribute("aria-label", str("color_clarity", "Color clarity"));
+    const entry = el("label", "osw-colorpick-entry");
+    const preview = el("span", "osw-colorpick-preview");
+    const hexInput = document.createElement("input");
+    hexInput.type = "text";
+    hexInput.maxLength = 7;
+    hexInput.spellcheck = false;
+    hexInput.setAttribute("aria-label", "Hex color");
+    entry.appendChild(preview);
+    entry.appendChild(hexInput);
+    host.appendChild(canvas);
+    host.appendChild(valueSlider);
+    host.appendChild(hue);
+    host.appendChild(entry);
+
+    function paint() {
+      hex = hsvToHex(hsv[0], hsv[1], hsv[2]);
+      canvas.style.setProperty("--osw-picker-hue", hsv[0]);
+      cursor.style.left = (hsv[1] * 100) + "%";
+      cursor.style.top = ((1 - hsv[2]) * 100) + "%";
+      hue.value = String(Math.round(hsv[0]));
+      valueSlider.value = String(Math.round(hsv[2] * 100));
+      preview.style.background = hex;
+      hexInput.value = hex.toUpperCase();
+      if (onChange) onChange(hex);
+    }
+    function updateFromPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      hsv[1] = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      hsv[2] = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+      paint();
+    }
+    canvas.addEventListener("pointerdown", function (event) {
+      canvas.setPointerCapture(event.pointerId);
+      updateFromPoint(event);
+    });
+    canvas.addEventListener("pointermove", function (event) {
+      if (canvas.hasPointerCapture(event.pointerId)) updateFromPoint(event);
+    });
+    hue.addEventListener("input", function () { hsv[0] = Number(hue.value); paint(); });
+    valueSlider.addEventListener("input", function () {
+      hsv[2] = Number(valueSlider.value) / 100;
+      paint();
+    });
+    hexInput.addEventListener("change", function () {
+      const typed = String(hexInput.value || "").trim();
+      const next = /^#?[0-9a-f]{6}$/i.test(typed)
+        ? (typed[0] === "#" ? typed : "#" + typed) : "";
+      if (!next) { paint(); return; }
+      rgb = hexToRgb(next);
+      hsv = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+      paint();
+    });
+    paint();
+    return { value: function () { return hex; }, input: hexInput };
+  }
+
+  function openColorPicker(field, initial, restoreTo, canRestore) {
+    const shell = openPickerShell(field.label || str("color", "Color"));
+    shell.modal.classList.add("osw-colorpick-modal");
+    const original = String(initial || "");
+    const editor = mountColorEditor(shell.body, original);
+    const footer = el("div", "osw-settings-picker-footer");
+    const defaultColor = restoreTo === undefined ? field.default : restoreTo;
+    const restoreAvailable = canRestore === undefined
+      ? defaultColor != null && String(values[field.id] || "") !== String(defaultColor)
+      : canRestore;
+    let restore = null;
+    if (restoreAvailable) {
+      restore = el("button", "osw-settings-picker-btn osw-colorpick-restore", str("restore_default", "Restore default"));
+      restore.type = "button";
+      installResetHold(restore, function () {
+        setValue(field.id, defaultColor == null ? "" : defaultColor);
+        closeSettingsPicker();
+      });
+      footer.appendChild(restore);
+    }
+    const save = el("button", "osw-settings-picker-btn is-primary", str("save", "Save"));
+    const cancel = el("button", "osw-settings-picker-btn", str("cancel", "Cancel"));
+    save.type = cancel.type = "button";
+    footer.appendChild(save);
+    footer.appendChild(cancel);
+    shell.modal.appendChild(footer);
+
+    save.addEventListener("click", function () {
+      setValue(field.id, preserveColorAlpha(original, editor.value()));
+      closeSettingsPicker();
+    });
+    cancel.addEventListener("click", closeSettingsPicker);
+
+    const onKey = function (event) {
+      if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); closeSettingsPicker(); }
+    };
+    settingsPicker = { root: shell.root, onKey: onKey };
+    document.addEventListener("keydown", onKey, true);
+    editor.input.focus();
+  }
+
+  function fontFieldColor(vals, fieldId, isDark) {
+    const field = fieldById[fieldId];
+    const colors = field && field.colorFields || [];
+    const target = colors.length > 1 ? colors[isDark ? 1 : 0] : colors[0];
+    return target ? vals[target.id] || "" : "";
+  }
+
+  function openFontPicker(field) {
+    const shell = openPickerShell(field.label || str("fonts", "Fonts"));
+    shell.modal.classList.add("osw-fontpick-modal");
+    let selected = values[field.id] || field.default || "system";
+    const colors = field.colorFields || [];
+    const drafts = {};
+    colors.forEach(function (target) { drafts[target.id] = values[target.id] || ""; });
+    let colorIndex = colors.length > 1 && CTX.dark ? 1 : 0;
+    let colorPopover = null;
+    const search = document.createElement("input");
+    search.className = "onigiri-icon-search osw-fontpick-search";
+    search.placeholder = str("search", "Search fonts");
+    search.setAttribute("aria-label", str("search", "Search fonts"));
+    const grid = el("div", "osw-fontpick-grid");
+    shell.body.appendChild(search);
+    shell.body.appendChild(grid);
+
+    // The same always-visible swatch row as the icon picker, below the list.
+    // Its editor stays inside this picker, retaining the font/color drafts.
+    const colorStack = el("div", "onigiri-icon-color-stack osw-fontpick-color-stack");
+    const slotsRow = el("div", "onigiri-icon-color-slots");
+    colorStack.appendChild(slotsRow);
+    if (colors.length) shell.modal.appendChild(colorStack);
+
+    function effectiveColor(index) {
+      const target = colors[index];
+      const isDark = colors.length > 1 ? index === 1 : !!CTX.dark;
+      const fallback = isDark ? "#f1f2f4" : "#202124";
+      if (!target) return fallback;
+      const colorField = fieldById[target.id];
+      return drafts[target.id] || (colorField && colorField.default) ||
+        values[isDark ? "theme_fg_dark" : "theme_fg_light"] || fallback;
+    }
+    function paint() {
+      const filter = String(search.value || "").trim().toLowerCase();
+      grid.innerHTML = "";
+      (field.options || []).filter(function (option) {
+        return !filter || String(option.label || "").toLowerCase().indexOf(filter) !== -1;
+      }).forEach(function (option) {
+        const cell = el("button", "osw-fontpick-cell" + (option.value === selected ? " selected" : ""));
+        cell.type = "button";
+        cell.setAttribute("aria-pressed", option.value === selected ? "true" : "false");
+        const name = el("span", "osw-fontpick-name", option.label || option.value);
+        const sample = el("span", "osw-fontpick-sample", "Onigiri");
+        if (option.family) sample.style.fontFamily = option.family;
+        const ink = drafts[(colors[CTX.dark && colors.length > 1 ? 1 : 0] || {}).id];
+        if (ink) sample.style.color = cssColorToHex(ink);
+        cell.appendChild(name);
+        cell.appendChild(sample);
+        if (option.value === selected) {
+          const check = el("span", "osw-fontpick-check");
+          check.innerHTML = ICON_CHECK;
+          cell.appendChild(check);
+        }
+        cell.addEventListener("click", function () { selected = option.value; paint(); });
+        grid.appendChild(cell);
+      });
+    }
+    function paintColorSlots() {
+      slotsRow.innerHTML = "";
+      colors.forEach(function (target, index) {
+        const shown = effectiveColor(index);
+        const slot = el("button", "onigiri-icon-color-slot" + (!drafts[target.id] ? " is-default" : ""));
+        slot.type = "button";
+        slot.setAttribute("aria-label", target.label + " " + str("color", "Color"));
+        slot.setAttribute("aria-expanded", colorPopover && index === colorIndex ? "true" : "false");
+        const swatch = el("span", "onigiri-icon-color-swatch");
+        swatch.style.background = cssColorToHex(shown);
+        slot.appendChild(swatch);
+        const meta = el("span", "onigiri-icon-color-meta");
+        const role = el("span", "onigiri-icon-color-role");
+        if (colors.length > 1) role.innerHTML = index === 1 ? OSW_MOON_ICON : OSW_SUN_ICON;
+        role.appendChild(document.createTextNode(target.label));
+        meta.appendChild(role);
+        meta.appendChild(el("span", "onigiri-icon-color-hex", String(cssColorToHex(shown)).toUpperCase()));
+        slot.appendChild(meta);
+        slot.addEventListener("click", function () {
+          if (colorPopover && colorIndex === index) { closeColorEditor(); return; }
+          colorIndex = index;
+          openColorEditor();
+        });
+        slotsRow.appendChild(slot);
+      });
+    }
+    function closeColorEditor(restoreFocus) {
+      if (colorPopover) colorPopover.remove();
+      colorPopover = null;
+      paintColorSlots();
+      if (restoreFocus && slotsRow.children[colorIndex]) slotsRow.children[colorIndex].focus();
+    }
+    function openColorEditor() {
+      closeColorEditor();
+      const target = colors[colorIndex];
+      const original = drafts[target.id];
+      colorPopover = el("div", "osw-fontpick-color-popover");
+      colorPopover.setAttribute("role", "group");
+      colorPopover.setAttribute("aria-label", target.label + " " + str("color", "Color"));
+      const head = el("div", "osw-fontpick-color-head");
+      const sample = el("span", "osw-fontpick-color-sample", "Onigiri");
+      sample.style.background = (colors.length > 1 ? colorIndex === 1 : CTX.dark) ? "#202020" : "#f7f7f6";
+      sample.style.color = cssColorToHex(effectiveColor(colorIndex));
+      sample.style.fontFamily = designerFieldFontFamily(Object.assign({}, values, { [field.id]: selected }), field.id);
+      head.appendChild(sample);
+      const close = el("button", "onigiri-icon-modal-close");
+      close.type = "button";
+      close.setAttribute("aria-label", str("close", "Close"));
+      close.innerHTML = ICON_CLOSE;
+      close.addEventListener("click", function () { closeColorEditor(true); });
+      head.appendChild(close);
+      colorPopover.appendChild(head);
+      const editorHost = el("div", "osw-fontpick-color-editor");
+      colorPopover.appendChild(editorHost);
+      let ready = false;
+      const editor = mountColorEditor(editorHost, effectiveColor(colorIndex), function (hex) {
+        if (!ready) return;
+        drafts[target.id] = preserveColorAlpha(original, hex);
+        sample.style.color = hex;
+        paintColorSlots();
+        paint();
+      });
+      ready = true;
+      const restore = el("button", "osw-settings-picker-btn", str("restore_default", "Restore default"));
+      restore.type = "button";
+      restore.addEventListener("click", function () {
+        drafts[target.id] = fieldById[target.id].default || "";
+        paint();
+        openColorEditor();
+      });
+      colorPopover.appendChild(restore);
+      colorStack.appendChild(colorPopover);
+      paintColorSlots();
+      editor.input.focus();
+    }
+    shell.modal.addEventListener("mousedown", function (event) {
+      if (colorPopover && !colorPopover.contains(event.target) && !slotsRow.contains(event.target)) closeColorEditor();
+    });
+    const footer = el("div", "osw-settings-picker-footer");
+    const save = el("button", "osw-settings-picker-btn is-primary", str("save", "Save"));
+    const cancel = el("button", "osw-settings-picker-btn", str("cancel", "Cancel"));
+    const reset = el("button", "osw-settings-picker-btn", str("use_default", "Use Default"));
+    save.type = cancel.type = reset.type = "button";
+    footer.appendChild(save);
+    footer.appendChild(cancel);
+    footer.appendChild(reset);
+    shell.modal.appendChild(footer);
+    search.addEventListener("input", paint);
+    function commit(font, colorValues) {
+      deferringPreviewRefresh = true;
+      try {
+        setValue(field.id, font);
+        if (field.colorDynamicField && colors.length > 1 &&
+            colorValues[colors[1].id] && colorValues[colors[1].id] !== values[colors[1].id]) {
+          setValue(field.colorDynamicField, true);
+        }
+        colors.forEach(function (target) {
+          if (String(values[target.id] || "") !== String(colorValues[target.id] || "")) {
+            setValue(target.id, colorValues[target.id]);
+          }
+        });
+      } finally { deferringPreviewRefresh = false; }
+      refreshSettingsPreviews();
+      closeSettingsPicker();
+    }
+    save.addEventListener("click", function () { commit(selected, drafts); });
+    installResetHold(reset, function () {
+      const defaults = {};
+      colors.forEach(function (target) { defaults[target.id] = fieldById[target.id].default || ""; });
+      commit(field.default || "system", defaults);
+    }, { title: str("use_default", "Use Default") });
+    cancel.addEventListener("click", closeSettingsPicker);
+    const onKey = function (event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (colorPopover) closeColorEditor(true);
+        else closeSettingsPicker();
+      }
+    };
+    settingsPicker = { root: shell.root, onKey: onKey };
+    document.addEventListener("keydown", onKey, true);
+    paintColorSlots();
+    paint();
+    search.focus();
+  }
+
   // ── icon popover ───────────────────────────────────────────────────────────
   //
   // The old chip opened a native Qt IconPickerDialog over the bridge
@@ -3219,12 +4594,14 @@
   // instead of as separate rows in the deck — the icon and the colours that
   // paint it are one decision, not two.
   const ICON_POPUP_COMPANIONS = {
+    modern_menu_profile_picture_icon: ["modern_menu_profile_picture_icon_color"],
     heatmapShape: ["heatmap_color", "heatmap_color_zero"],
     heatmapStreakIcon: ["heatmapStreakIconColor", "heatmapStreakIconZeroColor"],
     swidget_icon_studied: ["swidget_color_studied"],
     swidget_icon_time: ["swidget_color_time"],
     swidget_icon_pace: ["swidget_color_pace"],
-    swidget_icon_retention: ["swidget_color_retention"]
+    swidget_icon_retention: ["swidget_color_retention"],
+    swidget_icon_retention_star: ["swidget_color_retention_star", "swidget_color_retention_star_empty"]
   };
 
   // Sidebar: an action button's tint belongs to the glyph it paints, so it
@@ -3240,6 +4617,15 @@
     ICON_POPUP_COMPANIONS["modern_menu_icon_" + key] = ["modern_menu_icon_color_" + key];
   });
 
+  // Ready-to-Go follows the same model: every shortcut owns its glyph and
+  // its tint in one picker, instead of separating the two decisions in the
+  // settings deck.
+  ["inbox", "warm_up", "today", "cool_down"].forEach(function (key) {
+    ICON_POPUP_COMPANIONS["modern_menu_icon_ready_" + key] = [
+      "modern_menu_icon_color_ready_" + key
+    ];
+  });
+
   let iconPicker = null; // null when closed
   let userIcons = (CTX.iconPicker || []).filter(function (i) { return !i.system; });
   const systemIcons = (CTX.iconPicker || []).filter(function (i) { return i.system; });
@@ -3252,6 +4638,7 @@
   }
 
   function openIconPicker(field) {
+    if (settingsPicker) closeSettingsPicker();
     if (iconPicker) closeIconPicker();
     if (galleryOpen()) closeGallery();
 
@@ -3327,7 +4714,11 @@
       const primary = fieldById[companionIds[0]];
       if (!primary) return "";
       if (primary.type === "color_pair") {
-        return values[primary.lightField] || values[primary.id] || "";
+        const targets = imageTargets(primary);
+        const target = targets.find(function (item) {
+          return item.role === (CTX.dark ? "dark" : "light");
+        }) || targets[0];
+        return imageValue(primary, target) || pairColorFallback(primary, target);
       }
       return values[primary.id] || iconColorFallback(primary);
     }
@@ -3506,6 +4897,7 @@
      fit assign()/imageTargets() without bending both around a case they were
      never written for). */
   function openImageListPicker(field) {
+    if (settingsPicker) closeSettingsPicker();
     if (gallery) closeGallery();
 
     const root = el("div", "osw-gal");
@@ -3564,6 +4956,7 @@
     function paintGrid() {
       const images = galleryList(field.folder);
       grid.innerHTML = "";
+      grid.classList.toggle("is-empty", !images.length);
       count.textContent = images.length === 1
         ? str("gallery_count_one", "1 image")
         : fmt(str("gallery_count", "{n} images"), { n: images.length });
@@ -3586,11 +4979,7 @@
       tile.type = "button";
         tile.setAttribute("data-name", image.name);
         const thumb = el("span", "osw-gal-thumb");
-        const img = document.createElement("img");
-        img.src = image.url;
-        img.alt = "";
-        img.loading = "lazy";
-        thumb.appendChild(img);
+        appendImageWithFallback(thumb, image.url);
         tile.appendChild(thumb);
         tile.appendChild(el("span", "osw-gal-name", image.name));
         const badges = el("span", "osw-gal-badges");
@@ -3661,10 +5050,7 @@
       strip.innerHTML = "";
       list.forEach(function (name) {
         const thumb = el("div", "osw-imagelist-thumb");
-        const img = document.createElement("img");
-        img.src = imageUrl(field.folder, name);
-        img.alt = "";
-        thumb.appendChild(img);
+        appendImageWithFallback(thumb, imageUrl(field.folder, name));
         const remove = el("button", "osw-imagelist-remove");
         remove.type = "button";
         remove.innerHTML = ICON_CLOSE;
@@ -3710,7 +5096,7 @@
   /* Resolves a light/dark pair the same way pairLinked()/imageTargets() do —
      used by preview painters, which read straight from `values` rather than
      going through a rendered field's own imageTargets() call. */
-  function designerPairValue(values, lightKey, darkKey, themeModeKey, isDark) {
+  function designerPairValue(values, lightKey, darkKey, themeModeKey, isDark, baseKey) {
     let linked = true;
     if (themeModeKey) {
       const explicit = values[themeModeKey];
@@ -3718,8 +5104,8 @@
       else if (explicit === "single") linked = true;
       else linked = values[lightKey] === values[darkKey];
     }
-    if (linked) return values[lightKey] || values[darkKey] || "";
-    return (isDark ? values[darkKey] : values[lightKey]) || "";
+    if (linked) return (baseKey && values[baseKey]) || values[lightKey] || values[darkKey] || "";
+    return (isDark ? values[darkKey] : values[lightKey]) || (baseKey && values[baseKey]) || "";
   }
 
   /* Group dynamic-mode switch: "on" (separate) only when every key in the
@@ -3728,9 +5114,50 @@
     return keys.length > 0 && keys.every(function (key) { return values[key] === "separate"; });
   }
 
+  /* Change a whole designer between shared and light/dark storage without
+     losing pictures. Older code changed only the mode keys, leaving a blank
+     base slot when Dynamic mode was disabled; renderers then appeared to lose
+     the selected background. The themed slots remain as a reversible backup. */
+  function setDesignerDynamicMode(section, enabled, previewMode) {
+    const dynamicKeys = section.dynamic_keys || [];
+    (section.fields || []).forEach(function (field) {
+      if (field.type !== "image" || !field.lightField || !field.darkField) return;
+      if (dynamicKeys.indexOf(field.themeModeField) === -1) return;
+      const base = values[field.id] || "";
+      if (enabled) {
+        if (!values[field.lightField] && base) setValue(field.lightField, base);
+        if (!values[field.darkField] && base) setValue(field.darkField, base);
+        return;
+      }
+      const preferred = previewMode === "dark" ? field.darkField : field.lightField;
+      const alternate = previewMode === "dark" ? field.lightField : field.darkField;
+      const shared = values[preferred] || values[alternate] || base;
+      if (shared) setValue(field.id, shared);
+    });
+    dynamicKeys.forEach(function (key) {
+      setValue(key, enabled ? "separate" : "single");
+    });
+  }
+
   // Cards currently on screen, so a drag/toggle repaints only what's visible —
   // rebuilt every showPage().
   let activeDesignerPreviews = [];
+  // The Organize page is not a designer card, but its grid is now a live
+  // rendition of the Main Menu. Keep its painter alongside the designer
+  // painters so sliders, colour slots and background picks update it as soon
+  // as their ordinary fields write to `values`.
+  let activeWidgetGridPreviews = [];
+  let activeWidgetGridBackgroundReceiver = null;
+  let widgetGridBackgroundTimer = null;
+  let widgetGridTileRadiusObserver = null;
+
+  function stopWidgetGridBackgroundSync() {
+    if (widgetGridBackgroundTimer) clearInterval(widgetGridBackgroundTimer);
+    widgetGridBackgroundTimer = null;
+    activeWidgetGridBackgroundReceiver = null;
+    if (widgetGridTileRadiusObserver) widgetGridTileRadiusObserver.disconnect();
+    widgetGridTileRadiusObserver = null;
+  }
 
   function registerDesignerPreview(card) {
     activeDesignerPreviews.push(card);
@@ -3742,7 +5169,8 @@
     const section = card.__section;
     const toggleId = section.sync_toggle_id;
     if (!toggleId) return;
-    const on = !!values[toggleId];
+    const on = section.id === "sidebar_background"
+      ? values["modern_menu_sidebar_bg_mode"] === "custom" : !!values[toggleId];
     (section.sync_hidden_fields || []).forEach(function (id) {
       const host = card.__fieldsHost && card.__fieldsHost.querySelector('[data-field-host="' + id + '"]');
       if (!host) return;
@@ -3757,7 +5185,9 @@
     const host = card.__fieldsHost;
     if (!host) return;
     const condition = (card.__section || {}).hide_deck_when;
-    host.classList.toggle("is-hidden", !!condition && !showWhenMatches(condition));
+    const matching = !!condition && Object.keys(condition).length > 0 && showWhenMatches(condition);
+    host.classList.toggle("is-hidden", matching);
+    if (card.__dynamicControl) card.__dynamicControl.classList.toggle("is-hidden", matching);
   }
 
   function paintDesignerPreview(card) {
@@ -3776,6 +5206,9 @@
 
   function updateDesignerPreviews() {
     activeDesignerPreviews.forEach(paintDesignerPreview);
+    activeWidgetGridPreviews = activeWidgetGridPreviews.filter(function (paint) {
+      return paint();
+    });
   }
 
   /* A choice flagged `head` in the schema: the card's own subject, rendered as
@@ -3891,6 +5324,50 @@
     return ctl;
   }
 
+  // A number marked `head` stays directly editable in the preview toolbar.
+  // Keep the normal autosave path so the preview and the stored value respond
+  // exactly like the number field did in the deck below the stage.
+  function renderHeadNumber(field) {
+    const ctl = el("div", "osw-preview-ctl osw-preview-number-ctl osw-organize-ctl");
+    ctl.setAttribute("data-field-host", field.id);
+    const label = field.headLabel || field.label || "";
+    if (label) ctl.appendChild(el("span", "osw-organize-ctl-label", label));
+
+    const control = el("div", "osw-organize-ctl-box osw-preview-number");
+    control.setAttribute("data-field", field.id);
+    control.setAttribute("data-field-type", "number");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.inputMode = "numeric";
+    input.className = "osw-organize-ctl-input";
+    input.setAttribute("aria-label", label);
+    const scale = field.scale > 0 ? field.scale : 1;
+    input.value = Math.round((Number(values[field.id] == null ? field.default : values[field.id]) || 0) / scale);
+    if (field.min != null) input.min = field.min;
+    if (field.max != null) input.max = field.max;
+    input.step = field.step != null ? field.step : 1;
+    input.addEventListener("input", function () {
+      const raw = parseFloat(input.value);
+      if (isNaN(raw)) return;
+      let next = raw;
+      if (field.min != null) next = Math.max(Number(field.min), next);
+      if (field.max != null) next = Math.min(Number(field.max), next);
+      setValue(field.id, next * scale, { keepDom: true, debounce: true });
+    });
+    input.addEventListener("change", function () {
+      const raw = parseFloat(input.value);
+      let next = isNaN(raw) ? Number(values[field.id] || 0) / scale : raw;
+      if (field.min != null) next = Math.max(Number(field.min), next);
+      if (field.max != null) next = Math.min(Number(field.max), next);
+      input.value = next;
+      setValue(field.id, next * scale, { keepDom: true });
+    });
+    control.appendChild(input);
+    if (field.suffix) control.appendChild(el("span", "osw-organize-ctl-suffix", field.suffix));
+    ctl.appendChild(control);
+    return ctl;
+  }
+
   /* Rows that only make sense for some values of another field (the slideshow
      list under Slideshow, the per-metric accents only in Expressive, …).
 
@@ -3919,7 +5396,9 @@
      show_when pass has to ask about the sync one instead of overwriting it. */
   function isSyncHidden(card, fieldId) {
     const section = card.__section || {};
-    if (!section.sync_toggle_id || !values[section.sync_toggle_id]) return false;
+    const on = section.id === "sidebar_background"
+      ? values["modern_menu_sidebar_bg_mode"] === "custom" : !!values[section.sync_toggle_id];
+    if (!section.sync_toggle_id || !on) return false;
     return (section.sync_hidden_fields || []).indexOf(fieldId) !== -1;
   }
 
@@ -3930,10 +5409,24 @@
       if (!field.showWhen) return;
       const node = host.querySelector('[data-field-host="' + field.id + '"]');
       if (!node) return;
+      const hidden = !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id);
       node.classList.toggle(
-        "is-hidden", !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id)
+        "is-hidden", hidden
       );
+      // Action Buttons is a compact, single-column card. Its inactive
+      // controls must leave the layout altogether; collapsing their visual
+      // contents alone leaves empty flex/grid tracks before the icon groups.
+      if ((card.__section || {}).id === "sidebar_actions") {
+        node.style.display = hidden ? "none" : "";
+      }
     });
+    // Background Color is the base beneath both a bundled scene and a custom
+    // image, so it remains useful at every opacity. Keep it visible even for
+    // an already-open settings window whose schema predates that rule.
+    if ((card.__section || {}).id === "onigimon_scene") {
+      const sceneColor = host.querySelector('[data-field-host="g_onigimon_scene_color"]');
+      if (sceneColor) sceneColor.classList.remove("is-hidden");
+    }
     // Header-mounted controls (STYLE/CHART/… segments, Sync/Dynamic switches)
     // live outside __fieldsHost, in the card's own head row.
     ((card.__section || {}).fields || []).forEach(function (field) {
@@ -4009,10 +5502,17 @@
   const DECK_ROW_HEIGHT_ESTIMATE = { color_pair: 40, color: 40, image: 44, image_list: 44 };
   // Two tiles per row at ~64px each, not one row per icon at ~46px.
   const DECK_ICON_TILE_HEIGHT = 64;
+  const ICON_GROUP_TITLES = {
+    modern_menu_icon_header_search: "Deck-list header icons",
+    modern_menu_icon_search: "Action Button icons",
+    modern_menu_icon_ready_section: "Ready To Go header icon",
+    modern_menu_icon_ready_inbox: "Ready To Go action icons",
+  };
 
-  function deckFieldGroup(type) {
-    if (type === "color_pair" || type === "color") return "colors";
-    if (type === "icon") return "icons";
+  function deckFieldGroup(field) {
+    if (field.deckPlacement) return "pinned-" + field.deckPlacement;
+    if (field.type === "color_pair" || field.type === "color") return "colors";
+    if (field.type === "icon") return "icons";
     return "controls";
   }
 
@@ -4043,8 +5543,14 @@
     if ((card.__section || {}).id === "mainmenu_background" ||
         (card.__section || {}).id === "mainmenu_widget_effect" ||
         (card.__section || {}).id === "mainmenu_deck_stats" ||
+        // Sidebar Customization has fixed compact Layout subsections beside
+        // its preview; moving rows for height balancing would unwrap them.
+        (card.__section || {}).id === "sidebar_background" ||
         (card.__section || {}).id === "overview_background" ||
         (card.__section || {}).id === "reviewer_background" ||
+        // Onigimon has two deliberate full-width rows: background type first,
+        // then the scenario catalogue beneath the compact effect controls.
+        (card.__section || {}).id === "onigimon_scene" ||
         // Overview Style deliberately has a fixed split: all sliders and
         // actions stay together in the left column, while colour pairs stay
         // together in the right. Rebalancing it by estimated height moves
@@ -4074,7 +5580,7 @@
     // Split into runs of consecutive same-group fields, in schema order.
     const blocks = [];
     fields.forEach(function (field) {
-      const group = deckFieldGroup(field.type);
+      const group = deckFieldGroup(field);
       const last = blocks[blocks.length - 1];
       if (last && last.group === group) last.fields.push(field);
       else blocks.push({ group: group, fields: [field] });
@@ -4102,13 +5608,66 @@
 
     let leftH = 0;
     let rightH = 0;
+    const pinnedNodes = [];
     blocks.forEach(function (block) {
-      // An icon block moves as one 2-up tile grid, not as N stacked full-width
+      // A deliberately positioned item stays next to its related control.
+      if (block.group === "pinned-right" || block.group === "pinned-left") {
+        const target = singleColumn || block.group === "pinned-left" ? controlsCol : slotsCol;
+        let blockH = 0;
+        block.fields.forEach(function (field) {
+          const node = host.querySelector('[data-field-host="' + field.id + '"]');
+          if (node) pinnedNodes.push({ node: node, target: target });
+          if (node && !node.classList.contains("is-hidden")) {
+            blockH += field.deckIconTile ? DECK_ICON_TILE_HEIGHT : (DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46);
+          }
+        });
+        if (target === controlsCol) leftH += blockH; else rightH += blockH;
+        return;
+      }
+      // An icon block moves as one tile grid, not as N stacked full-width
       // rows: half the height for the same fields, and the tiles read as one
       // picker cluster instead of a run of identical-looking list rows.
       if (block.group === "icons") {
-        const wrap = card.__iconGridEl || el("div", "osw-deck-icon-grid");
-        card.__iconGridEl = wrap;
+        // Each contiguous icon category gets its own grid. Reusing one wrapper
+        // here merged deck-header icons with the actual Action Button icons,
+        // making the settings cards look like one undifferentiated catalogue.
+        const groupKey = block.fields[0] && block.fields[0].id || "icons";
+        card.__iconGridEls = card.__iconGridEls || {};
+        const wrap = card.__iconGridEls[groupKey] || el("div", "osw-deck-icon-grid");
+        card.__iconGridEls[groupKey] = wrap;
+        wrap.classList.toggle("osw-sidebar-action-icons", (card.__section || {}).id === "sidebar_actions");
+        const groupTitle = block.fields[0] && (
+          block.fields[0].icon_group_title ||
+          ICON_GROUP_TITLES[groupKey] ||
+          (groupKey.indexOf("modern_menu_icon_ready_") === 0
+            ? "Ready To Go action icons"
+            : "Action Button icons")
+        );
+        if (groupTitle) {
+          wrap.setAttribute("data-icon-group-title", groupTitle);
+          wrap.setAttribute("data-icon-group", block.fields[0].icon_group || "");
+          let title = wrap.querySelector(".osw-deck-icon-group-title");
+          if (!title) {
+            title = el("div", "osw-deck-icon-group-title", groupTitle);
+            title.setAttribute("role", "heading");
+            title.setAttribute("aria-label", groupTitle);
+            wrap.insertBefore(title, wrap.firstChild);
+          } else {
+            title.textContent = groupTitle;
+          }
+        }
+        wrap.classList.toggle(
+          "is-header-group",
+          groupKey === "modern_menu_icon_header_search" || groupKey === "modern_menu_icon_ready_section"
+        );
+        wrap.classList.toggle("is-ready-header-group", groupKey === "modern_menu_icon_ready_section");
+        wrap.classList.toggle(
+          "is-action-group",
+          groupKey === "modern_menu_icon_search" || groupKey.indexOf("modern_menu_icon_ready_") === 0
+        );
+        if ((card.__section || {}).id === "mainmenu_stats_widgets") {
+          wrap.classList.add("osw-stats-widget-icon-line");
+        }
         // Look in `wrap` as well as in `host`: the tiles are moved into it
         // right here, and on the very first pass `wrap` is still detached — so
         // counting them back out of `host` afterwards found none of them and
@@ -4127,6 +5686,7 @@
           // slots split (a third row spanning both columns), taking no part
           // in the leftH/rightH balance below.
           wrap.classList.remove("is-inline", "is-single");
+          wrap.classList.remove("is-empty");
           host.appendChild(wrap);
         } else {
           // Two tiles or fewer (e.g. Heatmap Shape/Streak Icon) fit a single
@@ -4134,6 +5694,7 @@
           // leaving a half-empty full-width row.
           wrap.classList.add("is-inline");
           wrap.classList.toggle("is-single", visibleCount === 1);
+          wrap.classList.toggle("is-empty", visibleCount === 0);
           const target = singleColumn || leftH <= rightH ? controlsCol : slotsCol;
           if (wrap.parentElement !== target) target.appendChild(wrap);
           const blockH = DECK_ICON_TILE_HEIGHT;
@@ -4198,19 +5759,28 @@
       if (target === controlsCol) leftH += blockH; else rightH += blockH;
     });
 
+    // Other blocks may append controls to the same column after the pinned
+    // block is encountered. Move pinned controls last so their visual order
+    // matches their requested bottom placement on every rebalance.
+    pinnedNodes.forEach(function (item) { item.target.appendChild(item.node); });
+
     // Attach/detach both columns based on final content rather than trusting
     // renderDesignerPreview's one-time initial placement: a column that ends
     // up empty (every field in it hidden, or this section just collapsed to
     // one column) must not sit in the grid as a blank second track, and one
     // that gained content after starting empty must not stay invisible.
-    const iconWrap = card.__iconGridEl;
+    const iconWraps = blocks
+        .filter(function (block) { return block.group === "icons" && block.fields[0] && card.__iconGridEls && card.__iconGridEls[block.fields[0].id]; })
+        .map(function (block) { return card.__iconGridEls[block.fields[0].id]; });
     const colorGrid = card.__fullWidthColorGrid;
     if (controlsCol.parentElement === host) host.removeChild(controlsCol);
     if (slotsCol.parentElement === host) host.removeChild(slotsCol);
     if (controlsCol.childNodes.length) host.appendChild(controlsCol);
     if (!singleColumn && slotsCol.childNodes.length) host.appendChild(slotsCol);
     if (colorGrid && colorGrid.parentElement === host) host.appendChild(colorGrid);
-    if (iconWrap && iconWrap.parentElement === host) host.appendChild(iconWrap);
+    iconWraps.forEach(function (wrap) {
+      if (wrap.parentElement === host) host.appendChild(wrap);
+    });
     host.style.gridTemplateColumns = (singleColumn || !slotsCol.childNodes.length) ? "1fr" : "";
   }
 
@@ -4233,7 +5803,11 @@
     // description line.
     hideDeckCounts: "hideAllDeckCounts",
     modern_menu_hide_folder_icon: "modern_menu_hide_subdeck_icon",
-    modern_menu_hide_deck_icon: "modern_menu_hide_filtered_deck_icon"
+    modern_menu_hide_deck_icon: "modern_menu_hide_filtered_deck_icon",
+    // Sidebar Customization keeps its item layout as a compact 2x2 edge grid
+    // beside the preview. Widget layout now lives with Organize Widgets.
+    modern_menu_sidebar_item_margin_top: "modern_menu_sidebar_item_margin_right",
+    modern_menu_sidebar_item_margin_bottom: "modern_menu_sidebar_item_margin_left"
   };
   const DECK_PAIRED_AWAY = {};
   Object.keys(DECK_PAIR_WITH).forEach(function (id) { DECK_PAIRED_AWAY[DECK_PAIR_WITH[id]] = id; });
@@ -4279,12 +5853,13 @@
 
     const card = el("div", "osw-designer-preview-card");
     if (section.preview_kind) card.classList.add("osw-preview-kind-" + section.preview_kind);
+    if (section.id) card.classList.add("osw-preview-section-" + section.id);
     wrap.appendChild(card);
 
     const previewDynamicField = section.preview_dynamic_field || "";
     if (previewDynamicField === "profile") syncProfileLevelDynamicMode();
-    let previewMode = (previewDynamicField && !values[previewDynamicField])
-      ? (previewDynamicField === "profile" && profileDynamicOn() ? (CTX.dark ? "dark" : "light") : "light")
+    let previewMode = (previewDynamicField && previewDynamicField !== "profile" && !values[previewDynamicField])
+      ? "light"
       : (CTX.dark ? "dark" : "light");
     card.classList.toggle("is-dark", previewMode === "dark");
 
@@ -4297,6 +5872,7 @@
       if (!field.head || section.head_to_deck) return;
       if (field.type === "choice") headControls.appendChild(renderHeadChoice(field, card));
       else if (field.type === "toggle") headControls.appendChild(renderHeadToggle(field, card));
+      else if (field.type === "number") headControls.appendChild(renderHeadNumber(field));
     });
 
     if (section.preview_kind === "reviewer_bottom_bar") {
@@ -4352,13 +5928,14 @@
       dynCtl.appendChild(el("span", "osw-preview-ctl-label", str("dynamic_mode", "Dynamic mode")));
       const dynBtn = el("button", "osw-sq-switch-btn");
       dynBtn.type = "button";
+      dynBtn.setAttribute("aria-label", str("dynamic_mode", "Dynamic mode"));
       dynBtn.setAttribute("aria-pressed", designerDynamicOn(dynamicKeys) ? "true" : "false");
       const dynTrack = el("div", "osw-sq-switch" + (designerDynamicOn(dynamicKeys) ? " is-on" : ""));
       dynBtn.appendChild(dynTrack);
       dynBtn.addEventListener("click", function () {
         bridge("osw:haptic:1");
         const next = !designerDynamicOn(dynamicKeys);
-        dynamicKeys.forEach(function (key) { setValue(key, next ? "separate" : "single"); });
+        setDesignerDynamicMode(section, next, previewMode);
         dynTrack.classList.toggle("is-on", next);
         dynBtn.setAttribute("aria-pressed", next ? "true" : "false");
         refreshImageFields();
@@ -4367,6 +5944,7 @@
       });
       dynCtl.appendChild(dynBtn);
       headControls.appendChild(dynCtl);
+      card.__dynamicControl = dynCtl;
     }
 
     const toggleBtn = el("button", "osw-profile-preview-toggle-btn osw-designer-preview-toggle-btn");
@@ -4377,15 +5955,13 @@
     }
     paintToggleIcon();
 
-    // A single palette has no meaningful light/dark preview state. Keep the
-    // Profile Level card on light mode when Dynamic mode is off and remove the
-    // theme button entirely; turning Dynamic mode back on makes the button
-    // available again without changing the selected theme unexpectedly.
+    // A shared Profile palette still sits on Anki's current sidebar backdrop.
+    // Other single-palette previews retain their light-only presentation.
     function syncPreviewTheme() {
       const dynamicOn = previewDynamicField === "profile"
         ? profileDynamicOn()
         : (!previewDynamicField || !!values[previewDynamicField]);
-      if (!dynamicOn) previewMode = "light";
+      if (!dynamicOn) previewMode = previewDynamicField === "profile" && CTX.dark ? "dark" : "light";
       card.classList.toggle("is-dark", previewMode === "dark");
       toggleBtn.classList.toggle("is-hidden", !dynamicOn);
       paintToggleIcon();
@@ -4400,16 +5976,22 @@
     // Section-scoped reset: every field this card owns goes back to the
     // schema default, hidden companions included, so a half-reset can't leave
     // a colour pair pointing at a theme mode that no longer matches.
-    const resetBtn = el("button", "osw-btn osw-designer-reset", str("reset", "Reset"));
+    const resetLabel = str("reset", "Reset");
+    const resetBtn = el("button", "osw-btn osw-designer-reset");
     resetBtn.type = "button";
-    resetBtn.addEventListener("click", function () {
-      bridge("osw:haptic:1");
+    resetBtn.setAttribute("aria-label", resetLabel);
+    resetBtn.title = resetLabel;
+    resetBtn.appendChild(el("span", "osw-designer-reset-label", resetLabel));
+    const resetIcon = el("span", "osw-designer-reset-icon");
+    resetIcon.innerHTML = OSW_RESET_ICON;
+    resetBtn.appendChild(resetIcon);
+    installResetHold(resetBtn, function () {
       (section.fields || []).forEach(function (field) {
         if (field.default === undefined) return;
         setValue(field.id, field.default, { silent: true, keepDom: true });
       });
       showPage(currentPage);
-    });
+    }, { title: resetLabel });
 
     // Theme toggle + Reset are one utility pair, not two separate groups —
     // a tighter gap between just these two than the 26px headControls uses
@@ -4434,8 +6016,43 @@
        on the right — the designs' two-column deck. Head-mounted choices are
        skipped here; they already live in the card header. */
     const fields = el("div", "osw-designer-deck osw-designer-preview-fields");
+    if (section.id) fields.classList.add("osw-preview-section-" + section.id);
     const controlsCol = el("div", "osw-deck-col osw-deck-controls");
     const slotsCol = el("div", "osw-deck-col osw-deck-slots");
+    const onigimonModeCol = section.id === "onigimon_scene"
+      ? el("div", "osw-onigimon-mode-row osw-deck-full-width")
+      : null;
+    const onigimonScenarioCol = section.id === "onigimon_scene"
+      ? el("div", "osw-onigimon-scenario-row osw-deck-full-width")
+      : null;
+    const compactFontFieldIds = {};
+    (section.fontRoles || []).forEach(function (role) {
+      (role.field_ids || []).forEach(function (fieldId) {
+        compactFontFieldIds[fieldId] = true;
+      });
+    });
+    const compactColorFieldIds = {};
+    (section.colorGroups || []).forEach(function (group) {
+      (group.field_ids || []).forEach(function (fieldId) {
+        compactColorFieldIds[fieldId] = true;
+      });
+    });
+    // A section with a compact color catalogue uses one full-width action
+    // strip for both Fonts and Colors. The dense editor stays out of the two
+    // balancing columns and the entry points remain immediately scannable.
+    const compactMenuCol = (section.colorGroups || []).length
+      ? el("div", "osw-designer-compact-menus osw-deck-full-width")
+      : null;
+    if ((section.modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
+      const fontMenuRow = el("div", "osw-designer-font-menu-row");
+      fontMenuRow.appendChild(compactFontMenuButton(section));
+      (compactMenuCol || controlsCol).appendChild(fontMenuRow);
+    }
+    if ((section.colorGroups || []).length) {
+      const colorMenuRow = el("div", "osw-designer-font-menu-row osw-designer-color-menu-row");
+      colorMenuRow.appendChild(compactColorMenuButton(section));
+      compactMenuCol.appendChild(colorMenuRow);
+    }
     const subsectionByField = {};
     (section.subsections || []).forEach(function (subsection) {
       (subsection.fields || []).forEach(function (fieldId) {
@@ -4444,6 +6061,14 @@
     });
     function appendDeckNode(target, field, node) {
       const subsection = subsectionByField[field.id];
+      // A designer can pin a whole labelled group to a column. Overview Style
+      // uses this after its colors move into the compact gallery, placing
+      // Notifications and Body in the newly available right-hand space.
+      if (!section.stage_side && subsection && subsection.column === "left") {
+        target = controlsCol;
+      } else if (!section.stage_side && subsection && subsection.column === "right") {
+        target = slotsCol;
+      }
       if (!subsection) {
         target.appendChild(node);
         return;
@@ -4467,16 +6092,27 @@
     const colorGridCol = useFullWidthColorGrid ? el("div", "osw-deck-color-grid") : null;
     (section.fields || []).forEach(function (field) {
       if (field.head && !section.head_to_deck) return;
+      if (compactFontFieldIds[field.id]) return;
+      if (compactColorFieldIds[field.id]) return;
       if (deckSkipField(field.id)) return; // rendered below, next to its pair anchor
       const partnerId = DECK_PAIR_WITH[field.id];
-      const placed = partnerId
+      let placed = partnerId
         ? buildSideBySideRow(field, fieldById[partnerId])
         : renderDeckField(field);
       if (!placed) return;
+      if (onigimonModeCol && field.id === "g_onigimon_scene_mode") {
+        onigimonModeCol.appendChild(placed);
+        return;
+      }
+      if (onigimonScenarioCol && field.id === "g_onigimon_scene_preset") {
+        onigimonScenarioCol.appendChild(placed);
+        return;
+      }
       if (section.icon_colors_inline && field.type === "icon") {
+        const colorsRow = placed;
         (ICON_POPUP_COMPANIONS[field.id] || []).forEach(function (id) {
           const companion = fieldById[id];
-          if (companion) placed.appendChild(renderIconTileColors(companion));
+          if (companion) colorsRow.appendChild(renderIconTileColors(companion));
         });
       }
       if (colorGridCol && (field.type === "color_pair" || field.type === "color")) {
@@ -4489,16 +6125,40 @@
         appendDeckNode(controlsCol, field, placed);
         return;
       }
+      if (field.deckPlacement === "right") {
+        appendDeckNode(slotsCol, field, placed);
+        return;
+      }
+      if (field.deckPlacement === "left") {
+        appendDeckNode(controlsCol, field, placed);
+        return;
+      }
       appendDeckNode(DECK_SLOT_TYPES[field.type] ? slotsCol : controlsCol, field, placed);
     });
+    // The scene's color fills behind either image type. Keep the visible right
+    // column in a stable, intentional order even when an existing dialog was
+    // built from an older field ordering: image, backdrop color, stats panel.
+    if (section.id === "onigimon_scene") {
+      [
+        "g_onigimon_scene_image",
+        "g_onigimon_scene_color",
+        "g_onigimon_bottom_color"
+      ].forEach(function (fieldId) {
+        const node = slotsCol.querySelector('[data-field-host="' + fieldId + '"]');
+        if (node) slotsCol.appendChild(node);
+      });
+    }
     // Deck Stats never populates slotsCol (every colour_pair went to
     // colorGridCol above), so controlsCol would otherwise sit alone in the
     // deck's 0.9fr column, cropped to under half width with a blank 1.1fr
     // column beside it — the two sliders in each fused row would only get a
     // quarter of the container each. Span it full width like colorGridCol.
     if (isDeckStats) controlsCol.classList.add("osw-deck-full-width");
+    if (onigimonModeCol && onigimonModeCol.childNodes.length) fields.appendChild(onigimonModeCol);
+    if (compactMenuCol && compactMenuCol.childNodes.length) fields.appendChild(compactMenuCol);
     if (controlsCol.childNodes.length) fields.appendChild(controlsCol);
     if (slotsCol.childNodes.length) fields.appendChild(slotsCol);
+    if (onigimonScenarioCol && onigimonScenarioCol.childNodes.length) fields.appendChild(onigimonScenarioCol);
     if (colorGridCol && colorGridCol.childNodes.length) fields.appendChild(colorGridCol);
     wrap.appendChild(fields);
     card.__fieldsHost = fields;
@@ -4536,6 +6196,7 @@
     slideshowImages: "modern_menu_slideshow_images",
     imageLight: "modern_menu_background_image_light",
     imageDark: "modern_menu_background_image_dark",
+    imageBase: "modern_menu_background_image",
     imageThemeMode: "modern_menu_bg_image_theme_mode",
     blur: "modern_menu_background_blur",
     opacity: "modern_menu_background_opacity",
@@ -4547,16 +6208,12 @@
     colorLight: "overview_bg_color_light",
     colorDark: "overview_bg_color_dark",
     colorThemeMode: "overview_bg_color_theme_mode",
-    slideshowImages: "overview_slideshow_images",
     imageLight: "overview_background_image_light",
     imageDark: "overview_background_image_dark",
+    imageBase: "overview_background_image",
     imageThemeMode: "overview_bg_image_theme_mode",
     blur: "overview_background_blur",
     opacity: "overview_background_opacity",
-    // "Match Main Menu" borrows Main Background's colour/image but keeps its
-    // own blur/opacity pair — the only two keys patcher.py reads in that mode.
-    mainBlur: "overview_background_main_blur",
-    mainOpacity: "overview_background_main_opacity",
     // Same shared folder as Main Background, not a separate "overview_bg" one
     // — see the folder comment on the overview_background_image field.
     imageFolder: "main_bg",
@@ -4570,11 +6227,10 @@
     slideshowImages: "reviewer_slideshow_images",
     imageLight: "reviewer_background_image_light",
     imageDark: "reviewer_background_image_dark",
+    imageBase: "reviewer_background_image",
     imageThemeMode: "reviewer_bg_image_theme_mode",
     blur: "reviewer_background_blur",
     opacity: "reviewer_background_opacity",
-    mainBlur: "reviewer_background_main_blur",
-    mainOpacity: "reviewer_background_main_opacity",
     // Its own folder (not shared with Main/Overviewer) — matches the "reviewer_bg"
     // FOLDERS entry in settings_web/gallery.py.
     imageFolder: "reviewer_bg",
@@ -4584,15 +6240,9 @@
     keys = keys || MAIN_BG_KEYS;
     const mode = vals[keys.mode] || "image_color";
 
-    // "Match Main Menu": the picture and the colour are Main Background's, but
-    // the blur/opacity are this surface's own, so the same wallpaper can sit
-    // quiet here and loud on the deck browser. Repainting through MAIN_BG_KEYS
-    // with those two swapped is exactly what patcher.py does server-side.
+    // Matching reads the live source, so subsequent source edits propagate too.
     if (mode === "main" && keys !== MAIN_BG_KEYS) {
-      return designerPaintBackdrop(stage, vals, isDark, Object.assign({}, MAIN_BG_KEYS, {
-        blur: keys.mainBlur || MAIN_BG_KEYS.blur,
-        opacity: keys.mainOpacity || MAIN_BG_KEYS.opacity,
-      }));
+      return designerPaintBackdrop(stage, vals, isDark, MAIN_BG_KEYS);
     }
 
     const colorLayer = el("div", "osw-bg-preview-layer");
@@ -4612,7 +6262,7 @@
       imgName = list[0] || "";
     } else {
       imgName = designerPairValue(
-        vals, keys.imageLight, keys.imageDark, keys.imageThemeMode, isDark
+        vals, keys.imageLight, keys.imageDark, keys.imageThemeMode, isDark, keys.imageBase
       );
     }
     if (!imgName) return null;
@@ -4635,23 +6285,43 @@
     return imgLayer;
   }
 
-  /* Font family + size + colour of one of the three font roles, read from the
-     Fonts page's own fields so a preview letter is the letter the menu draws. */
-  function designerFontRole(vals, roleKey, isDark) {
-    const fontKey = vals["onigiri_font_" + roleKey] || "system";
-    const field = fieldById["onigiri_font_" + roleKey];
+  function designerFieldFontFamily(vals, fieldId, fallbackRoleKey) {
+    const selectedFontKey = vals[fieldId] || (fallbackRoleKey ? "sync" : "system");
+    const fontKey = selectedFontKey === "sync" && fallbackRoleKey
+      ? (vals["onigiri_font_" + fallbackRoleKey] || "system")
+      : selectedFontKey;
+    const field = fieldById[fieldId];
     let family = "";
     if (field && field.options) {
       const opt = field.options.filter(function (o) { return o.value === fontKey; })[0];
       if (opt && opt.family) family = opt.family;
     }
     if (!family && fontKey !== "system") family = fontKey;
+    return family || "inherit";
+  }
+
+  /* Font family + size + colour of a font role. In Advanced mode, Sync with
+     theme applies to the family only; the component's px size stays locally
+     adjustable. Simple mode still uses only its three shared scales. */
+  function designerFontRole(vals, roleKey, isDark, fallbackRoleKey, modeParity) {
+    const selectedFontKey = vals["onigiri_font_" + roleKey] || "sync";
+    const componentMode = modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced";
+    const useFallbackFamily = fallbackRoleKey && (
+      !componentMode || selectedFontKey === "sync"
+    );
+    const sizeRoleKey = componentMode || !fallbackRoleKey
+      ? roleKey
+      : fallbackRoleKey;
     return {
-      family: family || "inherit",
-      size: Number(vals["onigiri_font_size_" + roleKey]) || 14,
-      color: designerPairValue(
-        vals, "font_color_light_" + roleKey, "font_color_dark_" + roleKey,
-        "font_color_" + roleKey + "_theme_mode", isDark
+      family: useFallbackFamily
+        ? designerFieldFontFamily(vals, "onigiri_font_" + fallbackRoleKey)
+        : designerFieldFontFamily(vals, "onigiri_font_" + roleKey, fallbackRoleKey),
+      size: Number(vals["onigiri_font_size_" + sizeRoleKey]) || 14,
+      customColor: fontFieldColor(vals, "onigiri_font_" + roleKey, isDark),
+      color: fontFieldColor(vals, "onigiri_font_" + roleKey, isDark) || designerPairValue(
+        vals, "font_color_light_" + (fallbackRoleKey || roleKey),
+        "font_color_dark_" + (fallbackRoleKey || roleKey),
+        "font_color_" + (fallbackRoleKey || roleKey) + "_theme_mode", isDark
       ) || (isDark ? "#f4f4f5" : "#1f2933")
     };
   }
@@ -4740,6 +6410,7 @@
     return {
       background: rgba(boxColor || "#ffffff", alpha),
       borderRadius: radius + "px",
+      clipPath: "inset(0 round " + radius + "px)",
       border: stroke + "px solid " + (borderColor || "rgba(0,0,0,0.12)"),
       backdropFilter: blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : "",
       WebkitBackdropFilter: blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : ""
@@ -4762,18 +6433,18 @@
     );
     Object.keys(style).forEach(function (key) { card.style[key] = style[key]; });
 
-    // The three font roles as the menu draws them: Titles, Small titles, Text.
+    // Representative theme typography; this page now focuses only on the
+    // shared widget surface and effects.
     [
-      ["subtle", str("titles", "Title")],
-      ["small_title", str("small_titles", "Small titles")],
-      ["main", str("information", "Information")]
+      ["small_title", str("widget_titles", "Widget title")],
+      ["main", str("widget_small_fonts", "Widget text")]
     ].forEach(function (entry) {
       const role = designerFontRole(vals, entry[0], isDark);
       const line = el("div", "osw-preview-glass-line", entry[1]);
       line.style.fontFamily = role.family;
       line.style.fontSize = role.size + "px";
       line.style.color = role.color;
-      if (entry[0] === "subtle") line.style.fontWeight = "700";
+      if (entry[0] === "small_title") line.style.fontWeight = "700";
       card.appendChild(line);
     });
 
@@ -4822,6 +6493,7 @@
     // alpha at .62, then the real menu CSS consumes the resulting variables.
     const boxAlpha = Math.min(opacity / 100, blur > 0 ? 0.62 : 1);
     const smallTitle = designerFontRole(vals, "small_title", isDark);
+    const noteFontSize = Math.max(12, Math.min(24, Number(vals["hashi_note_font_size"]) || 14));
 
     const holder = el("div", "osw-preview-stage-center");
     const widget = el("div", "hashi-notes-widget");
@@ -4843,6 +6515,8 @@
     widget.style.setProperty("--font-small-title-color", smallTitle.color);
     widget.style.setProperty("--fg", titleColor);
     widget.style.setProperty("--fg-subtle", excerptColor);
+    widget.style.setProperty("--hashiw-card-excerpt-size", noteFontSize + "px");
+    widget.style.setProperty("--hashiw-single-text-size", noteFontSize + "px");
     const single = (vals["hashi_widget_mode"] || "gallery") === "single";
     widget.classList.add(single ? "is-single" : "is-gallery");
 
@@ -4906,24 +6580,39 @@
   };
 
   // Prep Station uses the same Main Menu classes and marked menu.css block as
-  // the live widget. Only the plan data is representative, so its Font Size
-  // control can be assessed in the exact dashboard layout.
+  // the live widget. Only the plan data is representative; every appearance
+  // control follows the same sync/local choice as the runtime widget.
   PREVIEW_PAINTERS.prep_widget = function (stage, vals, isDark) {
     stage.innerHTML = "";
     stage.style.padding = "0";
     designerPaintBackdrop(stage, vals, isDark);
-    const boxColor = designerPairValue(
-      vals, "widget_box_color_light", "widget_box_color_dark",
-      "onigiri_canvas_inset_color_theme_mode", isDark
-    ) || (isDark ? "#2c2c2c" : "#ffffff");
-    const borderColor = designerPairValue(
-      vals, "widget_border_color_light", "widget_border_color_dark",
-      "onigiri_canvas_inset_color_theme_mode", isDark
-    ) || (isDark ? "#424242" : "#e0e0e0");
-    const blur = Math.max(0, Math.min(100, Number(vals["onigiri_canvas_inset_effect_blur"] || 0)));
-    const opacity = Math.max(0, Math.min(100, Number(vals["onigiri_canvas_inset_effect_opacity"] == null ? 100 : vals["onigiri_canvas_inset_effect_opacity"])));
-    const radius = Math.max(0, Math.min(60, Number(vals["onigiri_canvas_inset_border_radius"] || 20)));
-    const stroke = Math.max(0, Math.min(10, Number(vals["onigiri_canvas_inset_border_width"] || 1)));
+    const dynamic = vals["prep_widget_dynamic"] !== false;
+    const themedDark = dynamic && isDark;
+    const synced = vals["prep_widget_sync"] !== false;
+    function prepColor(key, fallbackLight, fallbackDark) {
+      return vals["prep_widget_color_" + key + (themedDark ? "_dark" : "_light")]
+        || (themedDark ? fallbackDark : fallbackLight);
+    }
+    const boxColor = synced
+      ? designerPairValue(
+          vals, "widget_box_color_light", "widget_box_color_dark",
+          "onigiri_canvas_inset_color_theme_mode", isDark
+        ) || (isDark ? "#2c2c2c" : "#ffffff")
+      : prepColor("box_bg", "#ffffff", "#2c2c2c");
+    const borderColor = synced
+      ? designerPairValue(
+          vals, "widget_border_color_light", "widget_border_color_dark",
+          "onigiri_canvas_inset_color_theme_mode", isDark
+        ) || (isDark ? "#424242" : "#e0e0e0")
+      : prepColor("box_border", "#e0e0e0", "#424242");
+    const opacityKey = synced ? "onigiri_canvas_inset_effect_opacity" : "prep_widget_opacity";
+    const blurKey = synced ? "onigiri_canvas_inset_effect_blur" : "prep_widget_blur";
+    const radiusKey = synced ? "onigiri_canvas_inset_border_radius" : "prep_widget_radius";
+    const strokeKey = synced ? "onigiri_canvas_inset_border_width" : "prep_widget_stroke";
+    const blur = Math.max(0, Math.min(100, Number(vals[blurKey] || 0)));
+    const opacity = Math.max(0, Math.min(100, Number(vals[opacityKey] == null ? 100 : vals[opacityKey])));
+    const radius = Math.max(0, Math.min(60, Number(vals[radiusKey] == null ? 20 : vals[radiusKey])));
+    const stroke = Math.max(0, Math.min(10, Number(vals[strokeKey] == null ? 1 : vals[strokeKey])));
     const alpha = Math.min(opacity / 100, blur > 0 ? 0.62 : 1);
     const holder = el("div", "osw-preview-stage-center");
     const widget = el("div", "prep-station-widget");
@@ -4932,12 +6621,11 @@
     widget.style.minHeight = "0";
     widget.style.setProperty("--onigiri-widget-pad", "19.6px");
     widget.style.setProperty("--prep-fs", String(Math.max(60, Math.min(160, Number(vals["prep_widget_font_scale"] || 100))) / 100));
-    widget.style.setProperty("--canvas-inset", rgba(boxColor, alpha));
-    widget.style.setProperty("--border", borderColor);
-    widget.style.borderRadius = radius + "px";
-    widget.style.borderWidth = stroke + "px";
-    widget.style.backdropFilter = blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : "";
-    widget.style.WebkitBackdropFilter = widget.style.backdropFilter;
+    widget.style.setProperty("--prepw-box-bg", rgba(boxColor, alpha));
+    widget.style.setProperty("--prepw-box-border", borderColor);
+    widget.style.setProperty("--prepw-box-radius", radius + "px");
+    widget.style.setProperty("--prepw-box-stroke", stroke + "px");
+    widget.style.setProperty("--prepw-box-blur", ((blur / 100) * 20).toFixed(1) + "px");
     const head = el("div", "onigiri-widget-head");
     head.appendChild(el("h3", "", str("prep_widget_title", "Study Plans")));
     widget.appendChild(head);
@@ -4989,20 +6677,66 @@
     designerPaintBackdrop(stage, vals, isDark);
     const dynamic = vals["pomodoro_dynamic"] !== false;
     const mode = dynamic && isDark ? "dark" : "light";
-    const fallback = mode === "dark"
-      ? { shell: "#1f1f1f", accent: CTX.accent || "#00A982", digits: "#f4f4f5", icon: "#b6b6b8", border: "#343434" }
-      : { shell: "#ffffff", accent: CTX.accent || "#00A982", digits: "#1f2933", icon: "#4b5563", border: "#e5e7eb" };
+    // Chrome follows the displayed theme; Dynamic Mode only selects explicit
+    // appearance overrides, matching the native timer's palette resolution.
+    const fallback = isDark
+      ? { shell: "#2b2c30", accent: CTX.accent || "#00A982", digits: "#f1f2f4", icon: "#b0b3ba", border: "#45464b" }
+      : { shell: "#f8f8f7", accent: CTX.accent || "#00A982", digits: "#202124", icon: "#63666c", border: "#e3e4e7" };
     function color(role) { return vals["pomodoro_color_" + role + "_" + mode] || fallback[role]; }
     const style = vals["pomodoro_style"] === "dashboard" ? "dashboard" : "minimal";
     const preset = {
-      minimal: { width: 230, height: 200, pad: 14, time: 40, phase: 11, play: 38, button: 30 },
-      dashboard: { width: 270, height: 264, pad: 16, time: 48, phase: 11, play: 42, button: 32 },
-    }[style] || { width: 230, height: 200, pad: 14, time: 40, phase: 11, play: 38, button: 30 };
+      minimal: {
+        width: 230, height: 200, pad: [14, 10, 14, 14], spacing: 8,
+        radius: 18, topbar: 26, icon: 16, chip: 22, time: 40,
+        phase: 11, dot: 13, play: 38, button: 30
+      },
+      dashboard: {
+        width: 270, height: 264, pad: [16, 12, 16, 16], spacing: 9,
+        radius: 20, topbar: 28, icon: 17, chip: 24, time: 48,
+        phase: 11, dot: 14, play: 42, button: 32
+      },
+    }[style];
     const opacity = Math.max(0, Math.min(100, Number(vals["pomodoro_opacity"] == null ? 100 : vals["pomodoro_opacity"])));
     const blur = Math.max(0, Math.min(100, Number(vals["pomodoro_blur"] || 0)));
     const fontField = fieldById["pomodoro_font"] || {};
     const font = (fontField.options || []).filter(function (option) { return option.value === vals["pomodoro_font"]; })[0];
+
+    // Use the floating timer's real state. When it is running, advance the
+    // captured remainder locally so the preview stays in lockstep without a
+    // bridge round-trip every second.
+    const source = CTX.pomodoroState || {};
+    const phase = ["focus", "short_break", "long_break"].indexOf(source.phase) >= 0
+      ? source.phase : "focus";
+    const total = Math.max(1, Number(source.total) || 1);
+    const elapsed = source.running
+      ? Math.max(0, Math.floor((Date.now() - Number(source.capturedAtMs || Date.now())) / 1000))
+      : 0;
+    // A timer cannot persist at exactly zero (PomodoroTimer immediately moves
+    // to the next phase). Treat a zero captured during that transition as the
+    // freshly prepared phase, matching the native view on its next paint.
+    const capturedRemaining = Number(source.remaining);
+    const baselineRemaining = capturedRemaining > 0 ? capturedRemaining : total;
+    const remaining = Math.max(0, Math.min(total, baselineRemaining - elapsed));
+    const cycleTotal = Math.max(1, Number(source.cycleTotal) || 4);
+    const focusCount = Math.max(0, Number(source.focusCount) || 0);
+    function phaseName(value) {
+      return {
+        focus: str("pomodoro_focus", "Focus"),
+        short_break: str("pomodoro_short_break", "Short Break"),
+        long_break: str("pomodoro_long_break", "Long Break")
+      }[value] || value;
+    }
+    function nextPhase() {
+      if (phase !== "focus") return "focus";
+      return focusCount + 1 >= cycleTotal ? "long_break" : "short_break";
+    }
+    function formatTime(seconds) {
+      const minutes = Math.floor(seconds / 60);
+      return String(minutes).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    }
+
     const holder = el("div", "osw-preview-stage-center osw-pomo-preview-holder");
+    const windowFrame = el("div", "osw-pomo-window is-" + style);
     const island = el("div", "osw-pomo-island is-" + style);
     island.style.setProperty("--pomo-shell", rgba(color("shell"), opacity / 100));
     island.style.setProperty("--pomo-accent", color("accent"));
@@ -5012,7 +6746,18 @@
     island.style.setProperty("--pomo-track", rgba(color("icon"), 0.22));
     island.style.setProperty("--pomo-tile", rgba(color("icon"), 0.10));
     island.style.setProperty("--pomo-tile-border", rgba(color("icon"), 0.18));
-    island.style.setProperty("--pomo-pad", preset.pad + "px");
+    windowFrame.style.setProperty("--pomo-window-width", preset.width + "px");
+    windowFrame.style.setProperty("--pomo-window-height", preset.height + "px");
+    island.style.setProperty("--pomo-pad-left", preset.pad[0] + "px");
+    island.style.setProperty("--pomo-pad-top", preset.pad[1] + "px");
+    island.style.setProperty("--pomo-pad-right", preset.pad[2] + "px");
+    island.style.setProperty("--pomo-pad-bottom", preset.pad[3] + "px");
+    island.style.setProperty("--pomo-spacing", preset.spacing + "px");
+    island.style.setProperty("--pomo-radius", preset.radius + "px");
+    island.style.setProperty("--pomo-topbar", preset.topbar + "px");
+    island.style.setProperty("--pomo-icon-size", preset.icon + "px");
+    island.style.setProperty("--pomo-chip", preset.chip + "px");
+    island.style.setProperty("--pomo-dot", preset.dot + "px");
     island.style.setProperty("--pomo-time", preset.time + "px");
     island.style.setProperty("--pomo-phase", preset.phase + "px");
     island.style.setProperty("--pomo-play", preset.play + "px");
@@ -5021,35 +6766,81 @@
     island.style.backdropFilter = blur > 0 ? "blur(" + ((blur / 100) * 20).toFixed(1) + "px)" : "";
     island.style.WebkitBackdropFilter = island.style.backdropFilter;
     const top = el("div", "osw-pomo-top");
-    top.appendChild(el("span", "osw-pomo-icon", "◉"));
-    top.appendChild(el("span", "osw-pomo-phase", str("pomodoro_focus", "Focus")));
-    top.appendChild(el("span", "osw-pomo-top-actions", "⋯  ×"));
+    const timerIcon = designerIconGlyph(iconValue("pomodoro_icon"), color("accent"), preset.icon);
+    timerIcon.classList.add("osw-pomo-icon");
+    top.appendChild(timerIcon);
+    top.appendChild(el("span", "osw-pomo-phase", phaseName(phase)));
+    const topActions = el("span", "osw-pomo-top-actions");
+    const statsButton = el("button", "osw-pomo-top-button");
+    statsButton.type = "button";
+    statsButton.tabIndex = -1;
+    statsButton.appendChild(designerIconGlyph("system:stats.svg", color("icon"), preset.icon - 2));
+    const closeButton = el("button", "osw-pomo-top-button osw-pomo-close", "✕");
+    closeButton.type = "button";
+    closeButton.tabIndex = -1;
+    topActions.appendChild(statsButton);
+    topActions.appendChild(closeButton);
+    top.appendChild(topActions);
     island.appendChild(top);
-    island.appendChild(el("div", "osw-pomo-time", "25:00"));
+    island.appendChild(el("div", "osw-pomo-time", formatTime(remaining)));
     if (style !== "minimal") {
       const progress = el("div", "osw-pomo-progress");
-      progress.appendChild(el("i", "", ""));
+      const fill = el("i", "", "");
+      fill.style.width = ((1 - remaining / total) * 100).toFixed(3) + "%";
+      if (remaining < total) fill.style.minWidth = "6px";
+      progress.appendChild(fill);
       island.appendChild(progress);
-      island.appendChild(el("div", "osw-pomo-meta", "Session 1 of 4  ·  Next: Short Break"));
+    }
+    const dots = el("div", "osw-pomo-dots");
+    for (let index = 0; index < cycleTotal; index += 1) {
+      const filled = index < Math.min(focusCount, cycleTotal);
+      const dot = designerIconGlyph(
+        iconValue("pomodoro_icon"), filled ? color("accent") : color("icon"), preset.dot
+      );
+      if (!filled) dot.style.opacity = ".35";
+      dots.appendChild(dot);
+    }
+    island.appendChild(dots);
+    if (style !== "minimal") {
+      const session = str("pomodoro_session_of", "Session {n} of {total}")
+        .replace("{n}", String(Math.min(focusCount + 1, cycleTotal)))
+        .replace("{total}", String(cycleTotal));
+      island.appendChild(el(
+        "div", "osw-pomo-meta",
+        session + "  ·  " + str("pomodoro_next", "Next:") + " " + phaseName(nextPhase())
+      ));
     }
     const controls = el("div", "osw-pomo-controls");
     controls.appendChild(el("button", "", "⟲"));
-    controls.appendChild(el("button", "osw-pomo-play", "▶"));
+    controls.appendChild(el("button", "osw-pomo-play", source.running ? "⏸" : "▶"));
     controls.appendChild(el("button", "", "⏭"));
     island.appendChild(controls);
-    holder.appendChild(island);
+    windowFrame.appendChild(island);
+    holder.appendChild(windowFrame);
     stage.appendChild(holder);
+
+    stage.__pomoTickDark = isDark;
+    if (!stage.__pomoTickTimer) {
+      stage.__pomoTickTimer = setInterval(function () {
+        if (!document.body.contains(stage)) {
+          clearInterval(stage.__pomoTickTimer);
+          stage.__pomoTickTimer = null;
+          return;
+        }
+        if (source.running) {
+          PREVIEW_PAINTERS.pomodoro(stage, values, stage.__pomoTickDark);
+        }
+      }, 1000);
+    }
   };
 
   // ── Games > Notifications preview ─────────────────────────────────────────
   //
-  // The real toast, not a lookalike: web/notifications.css is shipped inside the
-  // dialog (render.py real_widget_css) and the stage builds the same DOM
-  // web/notifications.js builds — `.onigiri-notification-card` for Classic,
-  // `.onigiri-mini-notification` for Mini. Only the positioner is ours, because
-  // the real `.onigiri-notification-stack` is `position: fixed` and would
-  // escape the stage; `.osw-notifstage-stack` reproduces the six placements
-  // generate_notification_position_css_text() writes server-side.
+  // The real toast, not a lookalike: render.py embeds web/notifications.css and
+  // web/notifications.js, and both the preview and reviewer call that script's
+  // element factory. Only the positioner is local because the live stack is
+  // fixed to the window; `.osw-notifstage-stack` maps the same six anchors into
+  // the bounded preview screen.
 
   /* The reviewer header's button chips as patcher.py draws them: the
      --onigiri-box-effect-* vars, which are the Widget Color and Effect fields
@@ -5075,65 +6866,60 @@
     return style;
   }
 
-  /* The generic toast's own icon: the Onigiri logo web/notifications.js falls
-     back to when a caller names no icon of its own — not a stand-in glyph. */
-  function notifPreviewIcon(className) {
-    const icon = el("div", className);
-    const img = document.createElement("img");
-    img.src = (CTX.addonBase || "") + "system_files/onigiri_mini_logo.svg";
-    img.alt = "";
-    icon.appendChild(img);
-    return icon;
+  function createLiveNotificationElement(payload, mini) {
+    const notifications = window.OnigiriNotifications;
+    if (!notifications || typeof notifications.createElement !== "function") return null;
+    const card = notifications.createElement(payload, mini ? "mini" : "classic");
+    card.classList.add("is-visible");
+    return card;
   }
 
-  PREVIEW_PAINTERS.notification = function (stage, vals, isDark) {
+  function buildNotificationHeader(vals, isDark) {
+    const header = el("div", "osw-notifstage-header");
+    const btnStyle = notifHeaderButtonStyle(vals, isDark);
+    const buttons = el("div", "osw-notifstage-buttons");
+    ["Decks", "Add", "Browse", "Stats", "Sync"].forEach(function (label) {
+      const chip = el("span", "osw-notifstage-btn", label);
+      Object.keys(btnStyle).forEach(function (key) { chip.style[key] = btnStyle[key]; });
+      buttons.appendChild(chip);
+    });
+    buttons.style.setProperty(
+      "--onigiri-box-effect-radius", btnStyle.borderRadius || "8px"
+    );
+    header.appendChild(buttons);
+    return { header: header, buttons: buttons };
+  }
+
+  /* Paints a review-screen notification with the live runtime's own DOM
+     factory and stylesheet. The stage only substitutes absolute positioning
+     for the reviewer's fixed viewport positioning. */
+  function paintLiveNotification(stage, vals, isDark, payload) {
     stage.innerHTML = "";
     stage.style.padding = "0";
-    // The toast is judged against the screen it appears on, so the stage is the
-    // reviewer's own background — same painter the Reviewer page uses.
     designerPaintBackdrop(stage, vals, isDark, REVIEWER_BG_KEYS);
 
-    // notifications.css keys its dark rules off an ancestor `.night-mode`; the
-    // stage's own light/dark toggle is independent of the dialog's theme, so
-    // the class goes on this wrapper rather than being inherited from <html>.
     const surface = el("div", "osw-notifstage" + (isDark ? " night-mode" : ""));
+    // A preview reflects the notification-style setting itself. It supplies
+    // Mini's required header mount locally, so unrelated reviewer-layout
+    // settings can never make a selected Mini preview look like Classic.
     const mini = (vals.g_notification_mode || "classic") === "mini";
     const silent = !!vals.g_silent_mode;
-    const title = str("notif_preview_title", "Onigiri");
-    const description = str("notif_preview_desc", "Level 4 reached — nice work!");
+    let headerButtons = null;
 
     if (mini) {
-      // Mini replaces the reviewer header's buttons in place (it is absolutely
-      // positioned over `.onigiri-reviewer-header-buttons`), so the preview
-      // draws that row and lets the card cover it exactly as it does there.
-      const header = el("div", "osw-notifstage-header");
-      const btnStyle = notifHeaderButtonStyle(vals, isDark);
-      header.style.borderRadius = "12px";
-      const buttons = el("div", "osw-notifstage-buttons");
-      ["Decks", "Add", "Browse", "Stats", "Sync"].forEach(function (label) {
-        const chip = el("span", "osw-notifstage-btn", label);
-        Object.keys(btnStyle).forEach(function (key) { chip.style[key] = btnStyle[key]; });
-        buttons.appendChild(chip);
-      });
+      const headerParts = buildNotificationHeader(vals, isDark);
+      headerButtons = headerParts.buttons;
+      surface.appendChild(headerParts.header);
+    }
 
-      const card = el("div", "onigiri-mini-notification is-visible");
-      card.appendChild(notifPreviewIcon("onigiri-mini-notification-icon"));
-      card.appendChild(el("div", "onigiri-mini-notification-content", description));
-      buttons.appendChild(card);
-      header.appendChild(buttons);
-      surface.appendChild(header);
-    } else {
+    const card = createLiveNotificationElement(payload, mini);
+    const notificationInk = fontFieldColor(vals, "onigiri_font_notifications", isDark);
+    if (card && notificationInk) card.style.setProperty("color", notificationInk, "important");
+    if (card && mini && headerButtons) {
+      headerButtons.appendChild(card);
+    } else if (card) {
       const position = vals.g_notification_position || "top-center";
       const stack = el("div", "osw-notifstage-stack is-" + position);
-      const card = document.createElement("article");
-      card.className = "onigiri-notification-card is-visible";
-      card.appendChild(notifPreviewIcon("onigiri-notification-icon"));
-      const content = el("div", "onigiri-notification-content");
-      const titleNode = el("p", "onigiri-notification-title", title);
-      const descNode = el("p", "onigiri-notification-description", description);
-      content.appendChild(titleNode);
-      content.appendChild(descNode);
-      card.appendChild(content);
       stack.appendChild(card);
       surface.appendChild(stack);
     }
@@ -5147,6 +6933,14 @@
     }
 
     stage.appendChild(surface);
+  }
+
+  PREVIEW_PAINTERS.notification = function (stage, vals, isDark) {
+    paintLiveNotification(stage, vals, isDark, {
+      name: str("notif_preview_title", "Onigiri"),
+      description: str("notif_preview_desc", "Level 4 reached — nice work!"),
+      icon: "On"
+    });
   };
 
   // ── Phase 3: Stats Widgets preview ────────────────────────────────────────
@@ -5193,7 +6987,13 @@
   function iconAssetUrl(value) {
     const key = String(value || "");
     if (!key || key.indexOf("emoji:") === 0) return "";
-    return (CTX.iconAssets || {})[key] || "";
+    const bundled = (CTX.iconAssets || {})[key];
+    if (bundled) return bundled;
+    // Icons imported while Settings is already open are returned by the
+    // picker bridge and live in userIcons, but are not part of the immutable
+    // boot context. Preview painters must be able to use them immediately.
+    const imported = userIcons.filter(function (item) { return item.name === key; })[0];
+    return imported ? imported.url : "";
   }
 
   // Some icon fields' schema default is a bare filename (e.g. heatmapShape's
@@ -5269,6 +7069,28 @@
       if (blur > 0) alpha = Math.min(alpha, 0.62);
       if (alpha < 1) boxBg = rgba(boxBg, alpha);
     }
+    const widgetRoleSize = function (role, fallback) {
+      if (!SETTINGS_MODE_PARITY && settingsComplexity !== "advanced") {
+        const baseRole = role === "widget_title" ? "small_title" : "main";
+        return Math.max(8, Math.min(72, Number(vals["onigiri_font_size_" + baseRole]) || fallback));
+      }
+      return Math.max(8, Math.min(72, Number(vals["onigiri_font_size_" + role]) || fallback));
+    };
+    const labelSize = (SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && vals["swidget_label_size_sync"] === false
+      ? Math.max(8, Math.min(72, Number(vals["swidget_label_size"]) || 15))
+      : widgetRoleSize("widget_title", 15);
+    const valueSize = (SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && vals["swidget_value_size_sync"] === false
+      ? Math.max(8, Math.min(72, Number(vals["swidget_value_size"]) || 30))
+      : widgetRoleSize("widget_small", 14);
+    const numberSize = (SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && vals["swidget_number_size_sync"] === false
+      ? Math.max(8, Math.min(72, Number(vals["swidget_number_size"]) || 30))
+      : widgetRoleSize("widget_small", 14);
+    const statsRoleFont = function (fieldId, widgetRole, simpleRole) {
+      if ((SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (vals[fieldId] || "sync") !== "sync") {
+        return designerFieldFontFamily(vals, fieldId);
+      }
+      return designerFontRole(vals, widgetRole, isDark, simpleRole).family;
+    };
     const out = {
       "--swidget-box-bg": boxBg,
       "--swidget-box-border": vals["swidget_sync_box_effect"]
@@ -5277,9 +7099,14 @@
       "--swidget-box-radius": Math.max(0, Number(eff.radius || 0)) + "px",
       "--swidget-box-stroke": Math.max(0, Number(eff.stroke || 0)) + "px",
       "--swidget-box-blur": ((blur / 100) * 20).toFixed(2) + "px",
-      "--swidget-label-color": swidgetColor(vals, "label", isDark, "#757575", "#9c9c9c"),
-      "--swidget-value-color": swidgetColor(vals, "value", isDark, "#212121", "#f0f0f0"),
-      "--swidget-value-scale": (Math.max(60, Math.min(160, Number(vals["swidget_value_scale"] || 100))) / 100).toFixed(2),
+      "--swidget-label-font": statsRoleFont("swidget_label_font", "widget_title", "small_title"),
+      "--swidget-value-font": statsRoleFont("swidget_value_font", "widget_small", "main"),
+      "--swidget-number-font": statsRoleFont("swidget_number_font", "widget_small", "main"),
+      "--swidget-label-size": labelSize.toFixed(2) + "px",
+      "--swidget-label-color": fontFieldColor(vals, "swidget_label_font", isDark) || swidgetColor(vals, "label", isDark, "#757575", "#9c9c9c"),
+      "--swidget-value-color": fontFieldColor(vals, "swidget_value_font", isDark) || swidgetColor(vals, "value", isDark, "#212121", "#f0f0f0"),
+      "--swidget-value-size": valueSize.toFixed(2) + "px",
+      "--swidget-number-size": numberSize.toFixed(2) + "px",
       // Same base gutter as menu.css's --onigiri-widget-pad (before the user's
       // pad scale, which the dialog does not expose).
       "--onigiri-widget-pad": "14px",
@@ -5347,18 +7174,17 @@
       fill + '<path class="stat-spark-line" d="' + line + '"></path></svg>';
   }
 
-  /* The star row uses the user's own retention-star icon and colours, exactly
-     like the generated icon CSS does (patcher.generate_icon_css maps
-     modern_menu_icon_retention_star onto `.star`), emoji values included. */
+  /* The star row owns its own Stats Widgets picker and colours. It deliberately
+     avoids the menu-wide `.star` class, whose icon belongs to legacy cards. */
   function swidgetStarsHtml(vals, filled) {
-    const raw = String(vals["modern_menu_icon_retention_star"] || "");
+    const raw = String(vals["swidget_icon_retention_star"] || "system:star.svg");
     const emoji = raw.indexOf("emoji:") === 0
       ? raw.slice(6)
       : (raw && raw.length <= 8 && raw.indexOf(".") === -1 && raw.indexOf("system:") !== 0 ? raw : "");
     const url = emoji ? "" : (iconAssetUrl(raw) || iconAssetUrl("system:star.svg"));
     let out = '<div class="star-rating">';
     for (let i = 0; i < 5; i += 1) {
-      const cls = "star" + (i < filled ? "" : " empty");
+      const cls = "stats-widget-star" + (i < filled ? "" : " empty");
       if (emoji) {
         out += '<span class="' + cls + ' is-emoji">' + emoji + "</span>";
       } else {
@@ -5424,6 +7250,11 @@
       card.innerHTML = head +
         '<div class="stat-body"><p class="stat-value">' + demo.value + unit + "</p>" + extra + "</div>" +
         spark;
+      const numberInk = fontFieldColor(vals, "swidget_number_font", isDark);
+      if (numberInk) card.querySelector(".stat-value").style.color = numberInk;
+      const unitInk = fontFieldColor(vals, "swidget_value_font", isDark) ||
+        (numberInk ? vars["--swidget-value-color"] : "");
+      if (unitInk) card.querySelectorAll(".stat-unit, .stat-sub").forEach(function (node) { node.style.color = unitInk; });
       row.appendChild(card);
     });
 
@@ -5730,6 +7561,32 @@
           grouped_view_html + dstatsBuildBarsView(vals, isDark) + dstatsBuildDonutView(vals, isDark, isFull) +
         "</div>" +
       "</div>";
+
+    // Match the exact label/value split used by patcher.py so the typography
+    // menu on this page previews the same elements it changes in Main Menu.
+    const labelRole = designerFontRole(vals, "stats_labels", isDark, "main");
+    const valueRole = designerFontRole(vals, "stats_values", isDark, "main");
+    wrap.querySelectorAll([
+      ".learner-stats-deck-trigger", ".learner-stat-label",
+      ".learner-stats-compact-total span", ".learner-stats-mini-ring-cap",
+      ".learner-stats-mini-row-label", ".learner-stats-group-title",
+      ".learner-stats-bar-label", ".learner-stats-footer-item",
+      ".learner-stats-donut-num span", ".learner-stats-donut-legend-item"
+    ].join(",")).forEach(function (node) {
+      node.style.fontFamily = labelRole.family;
+      node.style.fontSize = labelRole.size + "px";
+      if (labelRole.customColor) node.style.color = labelRole.customColor;
+    });
+    wrap.querySelectorAll([
+      ".learner-stat-val", ".learner-stats-compact-total",
+      ".learner-stats-mini-ring-num", ".learner-stats-mini-row-value",
+      ".learner-stats-bar-value", ".learner-stats-footer-item b",
+      ".learner-stats-donut-num"
+    ].join(",")).forEach(function (node) {
+      node.style.fontFamily = valueRole.family;
+      node.style.fontSize = valueRole.size + "px";
+      if (valueRole.customColor) node.style.color = valueRole.customColor;
+    });
     wrap.querySelectorAll(".osw-preview-dstats-switch-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
         dstatsActiveView = btn.getAttribute("data-view");
@@ -5742,13 +7599,10 @@
 
   // ── Phase 5: Heatmap preview ──────────────────────────────────────────────
   //
-  // Real markup (web/heatmap.js's drawYearView/drawMonthView/drawWeekView),
-  // styled by the real, wholesale-included web/heatmap.css. Cell shape is
-  // always a plain square regardless of the chosen icon: the mask needs the
-  // icon's raw SVG text, which isn't available client-side here, only its
-  // filename — same tradeoff the chip preview already documents. Same for the
-  // streak icon: always the built-in flame path, recoloured via the picked
-  // colour fields, rather than the user's chosen icon file.
+  // The illustrative 90-day activity is intentionally synthetic, but it is
+  // fed through web/heatmap.js itself. Markup, intensity classification,
+  // locale-aware labels, navigation, responsive fitting, tooltips and icon
+  // handling therefore cannot drift from the deck-browser widget.
 
   function hexToHsl(hex) {
     const rgb = hexToRgb(hex || "#007aff");
@@ -5817,35 +7671,37 @@
     return vars;
   }
 
-  function heatmapWeekStartOffset(date, weekStart) {
-    return weekStart === "sunday" ? date.getDay() : (date.getDay() + 6) % 7;
-  }
-
-  function heatmapOrderedWeekdayLabels(weekStart, long) {
-    // Hardcoded English, matching orderedWeekdayLabels in heatmap.js verbatim
-    // (the real widget doesn't translate these either).
-    const labels = long
-      ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-      : ["S", "M", "T", "W", "T", "F", "S"];
-    return weekStart === "sunday" ? labels : labels.slice(1).concat(labels[0]);
-  }
-
-  // Demo streak window: the last 90 days always have a review count, so the
-  // grid reads as a real collection instead of placeholder zeros; the future
-  // side of "today" stays blank, same as the real widget with no due cards.
+  // Keep the established example: every day in the last 90 has activity and
+  // the current streak reads 12. Counts are chosen to exercise all eight
+  // production intensity bands when heatmap.js classifies them.
   const HEATMAP_DEMO_WINDOW_DAYS = 90;
   const HEATMAP_DEMO_STREAK = 12;
+  const HEATMAP_DEMO_COUNTS = [1, 2, 4, 6, 8, 10, 12, 13];
 
-  // Local, ephemeral: the widget's own Year/Month/Week switcher overrides the
-  // View head field for this session only, same relationship as Deck Stats'
-  // dstatsActiveView vs. its Chart Type head field.
-  let heatmapActiveView = null;
-  let heatmapLastDefaultView = null;
-
-  function heatmapDemoLevel(daysAgo) {
-    if (daysAgo < 0 || daysAgo >= HEATMAP_DEMO_WINDOW_DAYS) return 0;
-    return (daysAgo % 8) + 1;
+  function heatmapDateKey(date) {
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" +
+      String(date.getDate()).padStart(2, "0");
   }
+
+  function heatmapDemoData() {
+    const today = new Date();
+    const calendar = {};
+    for (let daysAgo = 0; daysAgo < HEATMAP_DEMO_WINDOW_DAYS; daysAgo += 1) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - daysAgo);
+      calendar[heatmapDateKey(date)] = HEATMAP_DEMO_COUNTS[daysAgo % HEATMAP_DEMO_COUNTS.length];
+    }
+    return {
+      calendar: calendar,
+      due_calendar: {},
+      today_date_key: heatmapDateKey(today),
+      daily_average: 5,
+      streak: HEATMAP_DEMO_STREAK,
+      longest_streak: HEATMAP_DEMO_STREAK,
+      firstYear: today.getFullYear()
+    };
+  }
+  const HEATMAP_PREVIEW_DATA = heatmapDemoData();
 
   // heatmap.py's own shape_file_path() accepts a bare "square.svg" too (it
   // falls back to the system dir when there's no "system:" prefix); the icon
@@ -5861,114 +7717,96 @@
     return resolveIconAssetUrl(raw) || iconAssetUrl("system:square.svg");
   }
 
-  function heatmapDayCell(today, date) {
-    const cell = el("div", "heatmap-day-cell");
-    const shape = el("div", "day-shape");
-    cell.appendChild(shape);
-    const daysAgo = Math.round((today - date) / 86400000);
-    if (date > today) {
-      cell.classList.add("future-day");
-      cell.setAttribute("data-due-level", "0");
-    } else {
-      cell.setAttribute("data-level", String(heatmapDemoLevel(daysAgo)));
-    }
-    return cell;
-  }
-
-  const HEATMAP_NAV_PREV_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg>';
-  const HEATMAP_NAV_NEXT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg>';
-  const HEATMAP_DEFAULT_STREAK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7.5 7.5 0 0 0 7.5-7.5c0-1 0-3-2-5.5c0 0-.1 2.854-2.074 2.44c-3.193-.667.93-6.937-4.926-9.44c0 5-6 6.5-6 12.5A7.5 7.5 0 0 0 12 22Z"/></svg>';
-
-  // Decorative chrome only (prev/next, year picker, month/week nav title):
-  // there's no real date-scrubbable data behind a settings-page demo, same
-  // "shows correctly but isn't wired up" tradeoff as Deck Stats' All Decks
-  // pill.
-  function heatmapNavHtml(view, today) {
-    if (view === "month") {
-      const title = today.toLocaleString("default", { month: "short", year: "numeric" });
-      return '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_PREV_ICON + "</button>" +
-        '<span class="nav-title">' + title + "</span>" +
-        '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_NEXT_ICON + "</button>";
-    }
-    if (view === "week") {
-      const start = new Date(today); start.setDate(start.getDate() - (start.getDay() + 6) % 7);
-      const end = new Date(start); end.setDate(start.getDate() + 6);
-      const title = start.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " - " +
-        end.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      return '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_PREV_ICON + "</button>" +
-        '<span class="nav-title">' + title + "</span>" +
-        '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_NEXT_ICON + "</button>";
-    }
-    return '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_PREV_ICON + "</button>" +
-      '<div class="year-select-wrapper"><button type="button" class="nav-btn year-select-btn" disabled>' +
-      '<span class="year-select-label">' + today.getFullYear() + "</span></button></div>" +
-      '<button type="button" class="nav-btn" disabled>' + HEATMAP_NAV_NEXT_ICON + "</button>";
-  }
-
-  function heatmapBuildYearGrid(container, today, weekStart, showMonths, showWeekdays) {
-    container.className = "heatmap-grid year-view";
-    container.dataset.monthsHidden = String(!showMonths);
-    container.dataset.weekdaysHidden = String(!showWeekdays);
-    const year = today.getFullYear();
-    const firstDayOfYear = new Date(year, 0, 1);
-    container.innerHTML =
-      '<div class="heatmap-months"></div>' +
-      '<div class="heatmap-weekdays">' + heatmapOrderedWeekdayLabels(weekStart, false).map(function (l) { return "<div>" + l + "</div>"; }).join("") + "</div>" +
-      '<div class="heatmap-cells"></div>';
-    const cellsEl = container.querySelector(".heatmap-cells");
-    const monthsEl = container.querySelector(".heatmap-months");
-    let currentMonth = -1;
-    for (let i = 0; i < 371; i += 1) {
-      const dow = heatmapWeekStartOffset(firstDayOfYear, weekStart);
-      const date = new Date(firstDayOfYear);
-      date.setDate(firstDayOfYear.getDate() - dow + i);
-      if (date.getFullYear() !== year) {
-        cellsEl.appendChild(el("div", "heatmap-day-cell empty"));
-        continue;
+  function heatmapSvgFromAsset(value, fallbackValue, allowEmoji) {
+    let raw = String(value || "");
+    if (raw.indexOf("emoji:") === 0) {
+      if (allowEmoji) {
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><text x="16" y="24" text-anchor="middle" font-size="24">' +
+          raw.slice(6) + "</text></svg>";
       }
-      if (date.getDate() === 1 && date.getMonth() !== currentMonth) {
-        currentMonth = date.getMonth();
-        const label = el("div", "month-label", date.toLocaleString("default", { month: "short" }));
-        label.style.gridColumn = (Math.floor(i / 7) + 1) + " / span 4";
-        monthsEl.appendChild(label);
+      raw = fallbackValue;
+    }
+    const url = resolveIconAssetUrl(raw) || resolveIconAssetUrl(fallbackValue);
+    if (!url) return "";
+    if (/^data:image\/svg\+xml;base64,/i.test(url)) {
+      try {
+        const binary = atob(url.slice(url.indexOf(",") + 1));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+      } catch (_) { return ""; }
+    }
+    if (/^data:image\/svg\+xml,/i.test(url)) {
+      try { return decodeURIComponent(url.slice(url.indexOf(",") + 1)); }
+      catch (_) { return ""; }
+    }
+    const safeUrl = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><image href="' + safeUrl +
+      '" width="32" height="32" preserveAspectRatio="xMidYMid meet"/></svg>';
+  }
+
+  function heatmapPreviewConfig(vals) {
+    return {
+      heatmapShapeMaskUrl: heatmapShapeMaskUrl(vals),
+      heatmapStreakIconSvgContent: heatmapSvgFromAsset(
+        vals["heatmapStreakIcon"] || "system:fire.svg", "system:fire.svg", false
+      ),
+      heatmapStreakIconColor: vals["heatmapStreakIconColor"] || "#ff6b35",
+      heatmapStreakIconZeroColor: vals["heatmapStreakIconZeroColor"] || "#8f8f8f",
+      heatmapShowStreak: vals["heatmapShowStreak"] !== false,
+      heatmapShowMonths: vals["heatmapShowMonths"] !== false,
+      heatmapShowWeekdays: vals["heatmapShowWeekdays"] !== false,
+      heatmapShowWeekHeader: vals["heatmapShowWeekHeader"] !== false,
+      heatmapParticlesAnimation: vals["heatmapParticlesAnimation"] === true,
+      heatmapDefaultView: vals["heatmapDefaultView"] || "year",
+      heatmapWeekStart: vals["heatmapWeekStart"] || "monday",
+      locale: CTX.heatmapLocale || undefined,
+      i18n: {
+        activity: str("heatmap_activity_label", "Activity"),
+        year: str("view_year", "Year"),
+        month: str("view_month", "Month"),
+        week: str("view_week", "Week"),
+        day_streak: str("heatmap_day_streak", "day streak"),
+        browse: str("browse", "Browse")
       }
-      cellsEl.appendChild(heatmapDayCell(today, date, null));
-    }
+    };
   }
 
-  function heatmapBuildMonthGrid(container, today, weekStart, showWeekdays) {
-    container.className = "heatmap-grid month-view";
-    container.dataset.weekdaysHidden = String(!showWeekdays);
-    const year = today.getFullYear(), month = today.getMonth();
-    const firstOfMonth = new Date(year, month, 1);
-    container.innerHTML =
-      '<div class="month-weekdays-header">' + heatmapOrderedWeekdayLabels(weekStart, true).map(function (l) { return "<div>" + l + "</div>"; }).join("") + "</div>" +
-      '<div class="month-cells-grid"></div>';
-    const cellsEl = container.querySelector(".month-cells-grid");
-    const leading = heatmapWeekStartOffset(firstOfMonth, weekStart);
-    for (let i = 0; i < leading; i += 1) cellsEl.appendChild(el("div", "heatmap-day-cell empty"));
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    for (let d = 1; d <= lastDay; d += 1) {
-      cellsEl.appendChild(heatmapDayCell(today, new Date(year, month, d), null));
-    }
+  function sizeHeatmapPreview(wrap, vals) {
+    const layout = vals["onigiriWidgetLayout"] || {};
+    const placed = (layout.grid || {}).heatmap || {};
+    const columnWidth = Math.max(200, Math.min(340, Number(layout.grid_width) || 250));
+    const rowHeight = Math.max(120, Math.min(320, Number(layout.widget_height) || 150));
+    const columnSpan = Math.max(2, Math.min(4, Number(placed.col) || 4));
+    const rowSpan = 2;
+    const gridGap = 15;
+    wrap.style.maxWidth = (columnWidth * columnSpan + gridGap * (columnSpan - 1)) + "px";
+    wrap.style.height = (rowHeight * rowSpan + gridGap * (rowSpan - 1)) + "px";
   }
 
-  function heatmapBuildWeekGrid(container, today, weekStart, showHeader) {
-    container.className = "heatmap-grid week-view";
-    container.dataset.headerHidden = String(!showHeader);
-    const start = new Date(today);
-    start.setDate(start.getDate() - heatmapWeekStartOffset(today, weekStart));
-    container.innerHTML = '<div class="week-days-header"></div><div class="week-cells-grid"></div>';
-    const headerEl = container.querySelector(".week-days-header");
-    const cellsEl = container.querySelector(".week-cells-grid");
-    for (let i = 0; i < 7; i += 1) {
-      const date = new Date(start); date.setDate(start.getDate() + i);
-      const head = document.createElement("div");
-      head.innerHTML = '<div class="weekday-label">' + date.toLocaleString("default", { weekday: "short" }) +
-        '</div><div class="day-label">' + date.getDate() + "</div>";
-      headerEl.appendChild(head);
-      cellsEl.appendChild(heatmapDayCell(today, date, null));
+  // Python modules stay resident until Anki restarts, while web/settings.* is
+  // read fresh whenever this dialog opens. During add-on development that can
+  // produce a mixed generation: new settings.js calls the shared renderer,
+  // but the old in-memory render.py did not yet inline heatmap.js. Load the
+  // same production asset client-side in that case so the preview never turns
+  // into an empty box and a Python restart is not required for web-only edits.
+  let heatmapRendererPromise = null;
+  function ensureHeatmapRenderer() {
+    if (window.OnigiriHeatmap && typeof window.OnigiriHeatmap.render === "function") {
+      return Promise.resolve();
     }
+    if (heatmapRendererPromise) return heatmapRendererPromise;
+    heatmapRendererPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = (CTX.addonBase || "") + "web/heatmap.js?settings-preview=1";
+      script.onload = function () {
+        if (window.OnigiriHeatmap && typeof window.OnigiriHeatmap.render === "function") resolve();
+        else reject(new Error("Heatmap renderer did not initialize"));
+      };
+      script.onerror = function () { reject(new Error("Heatmap renderer could not be loaded")); };
+      document.head.appendChild(script);
+    });
+    return heatmapRendererPromise;
   }
 
   // Sync on (default): follows Widget Color and Effect, same as legacy. Off:
@@ -5990,6 +7828,22 @@
     };
   }
 
+  // The production heatmap inherits these tokens from Anki's active Onigiri
+  // palette. The settings dialog has a separate chrome palette, so publish
+  // the saved theme values explicitly instead of approximating them with
+  // preview-only colours. This keeps header-right (streak, navigation, and
+  // view controls) visually identical to the live widget.
+  function heatmapThemeVars(vals, isDark) {
+    const suffix = isDark ? "_dark" : "_light";
+    return {
+      fg: vals["theme_fg" + suffix] || (isDark ? "#e0e0e0" : "#212121"),
+      fgSubtle: vals["theme_subtle" + suffix] || (isDark ? "#9e9e9e" : "#757575"),
+      highlightBg: vals["sb_highlight_bg" + suffix] || (isDark ? "#3c3c3c" : "#eeeeee"),
+      border: vals["theme_border" + suffix] || (isDark ? "#424242" : "#e0e0e0"),
+      accent: vals["theme_accent" + suffix] || CTX.accent || "#0077C8"
+    };
+  }
+
   // Every value that can change without touching the DOM's *shape* (view,
   // week start, which optional rows exist, the theme toggle) — repainting
   // these just updates CSS custom properties on the existing container
@@ -5997,155 +7851,150 @@
   // what made toggling Dynamic Mode (a colour-only change) visibly lag.
   function heatmapPaintCosmetics(container, vals, isDark) {
     const eff = heatmapEffectValues(vals, isDark);
+    const themeVars = heatmapThemeVars(vals, isDark);
     const opacity = Math.max(0, Math.min(100, Number(eff.opacity)));
     const blurPx = Math.max(0, Number(eff.blur || 0));
     const boxBg = rgba(eff.boxBg || "#ffffff", Math.min((isNaN(opacity) ? 100 : opacity) / 100, blurPx > 0 ? 0.62 : 1));
     const backdrop = blurPx > 0 ? "blur(" + ((blurPx / 100) * 20).toFixed(1) + "px)" : "none";
     container.style.background = boxBg;
     container.style.borderRadius = Math.max(0, Number(eff.radius || 0)) + "px";
+    container.style.clipPath = "inset(0 round " + container.style.borderRadius + ")";
     container.style.border = Math.max(0, Number(eff.stroke || 0)) + "px solid " + (eff.boxBorder || "rgba(0,0,0,0.12)");
     container.style.backdropFilter = backdrop;
     container.style.webkitBackdropFilter = backdrop;
+    // heatmap.css uses the same menu-theme variables for the year dropdown,
+    // active accents and tooltips. Publish them on the preview container so
+    // nested UI is identical too, including after a live colour edit.
+    container.style.setProperty("--fg", themeVars.fg);
+    container.style.setProperty("--fg-subtle", themeVars.fgSubtle);
+    container.style.setProperty("--heatmap-title-color",
+      vals["heatmap_sync_box_effect"] !== false
+        ? swidgetColor(vals, "label", isDark, "#757575", "#9c9c9c")
+        : themeVars.fg);
+    container.style.setProperty("--highlight-bg", themeVars.highlightBg);
+    container.style.setProperty("--border", themeVars.border);
+    container.style.setProperty("--canvas-inset", eff.boxBg || (isDark ? "#2c2c2c" : "#ffffff"));
+    container.style.setProperty("--accent-color", themeVars.accent);
+    container.style.setProperty("--onigiri-tooltip-bg",
+      mixColors(isDark ? "#000000" : "#ffffff", eff.boxBg || (isDark ? "#2c2c2c" : "#ffffff"), 0.20));
+    container.style.setProperty("--onigiri-tooltip-fg", themeVars.fg);
+    container.style.setProperty("--onigiri-tooltip-border", themeVars.border);
 
     // Dynamic Mode off: the light entry stands in for both themes, same rule
     // patcher.py's _generate_heatmap_colors applies for the real widget.
     const heatmapColorDark = (vals["heatmap_dynamic"] !== false) && isDark;
-    const colorZero = designerPairValue(vals, "heatmap_color_zero_light", "heatmap_color_zero_dark", null, heatmapColorDark) || (isDark ? "#3a3a3a" : "#f0f0f0");
-    const colorFull = designerPairValue(vals, "heatmap_color_light", "heatmap_color_dark", null, heatmapColorDark) || "#0077C8";
+    const heatmapColorMode = heatmapColorDark ? "dark" : "light";
+    // Level zero follows the same source mode as the active-color ramp, so a
+    // separate dark-mode empty-cell color is reflected in this preview.
+    const colorZero = vals["heatmap_color_zero_" + heatmapColorMode]
+      || (isDark ? "#2A2A2A" : "#E6E6E6");
+    const colorFull = vals["heatmap_color_" + heatmapColorMode] || "#0077C8";
     const levelVars = heatmapLevelVars(colorFull, colorZero, isDark);
     Object.keys(levelVars).forEach(function (k) { container.style.setProperty(k, levelVars[k]); });
 
     const shapeMask = heatmapShapeMaskUrl(vals);
-    if (shapeMask) container.style.setProperty("--heatmap-shape-mask", "url('" + shapeMask + "')");
+    if (shapeMask) {
+      const safeMask = String(shapeMask).replace(/"/g, "%22");
+      container.style.setProperty("--heatmap-shape-mask", 'url("' + safeMask + '")');
+    }
 
     const hasStreak = HEATMAP_DEMO_STREAK > 0;
     const streakColor = hasStreak ? (vals["heatmapStreakIconColor"] || "#ff6b35") : (vals["heatmapStreakIconZeroColor"] || "#8f8f8f");
     const streakIcon = container.querySelector(".streak-icon");
     if (streakIcon) streakIcon.setAttribute("style", "color:" + streakColor + ";fill:currentColor;");
+
+    // Heatmap's compact Fonts menu has a title role and a role for the
+    // calendar controls. Apply them inline so the preview matches the live
+    // widget's explicitly-sized labels.
+    const componentRole = function (roleKey, fallbackRoleKey, fallbackSize) {
+      const role = designerFontRole(vals, roleKey, isDark, fallbackRoleKey, true);
+      const sizeRoleKey = roleKey;
+      role.size = Math.max(
+        8,
+        Math.min(
+          72,
+          Number(vals["onigiri_font_size_" + sizeRoleKey]) || fallbackSize
+        )
+      );
+      return role;
+    };
+    const applyRole = function (selector, role) {
+      container.querySelectorAll(selector).forEach(function (node) {
+        node.style.setProperty("font-family", role.family, "important");
+        node.style.setProperty("font-size", role.size + "px", "important");
+        if (role.customColor) node.style.setProperty("color", role.customColor, "important");
+      });
+    };
+    const titleRole = componentRole("heatmap_title", "small_title", 15);
+    const labelsRole = componentRole("heatmap_labels", "main", 14);
+    applyRole(".heatmap-title", titleRole);
+    applyRole([
+      ".streak-counter", ".heatmap-nav .nav-title",
+      ".heatmap-nav .year-select-btn", ".year-dropdown-item",
+      ".heatmap-filters .filter-btn", ".heatmap-months", ".heatmap-months .month-label",
+      ".heatmap-weekdays", ".heatmap-weekdays .weekday-label",
+      ".month-weekdays-header", ".month-weekdays-header .weekday-label",
+      ".week-days-header", ".week-days-header .weekday-label", ".week-days-header .day-label"
+    ].join(", "), labelsRole);
   }
 
   PREVIEW_PAINTERS.heatmap = function (stage, vals, isDark) {
-    if (vals["heatmapDefaultView"] !== heatmapLastDefaultView) {
-      heatmapLastDefaultView = vals["heatmapDefaultView"];
-      heatmapActiveView = null;
+    if (!window.OnigiriHeatmap || typeof window.OnigiriHeatmap.render !== "function") {
+      stage.innerHTML = "";
+      const loading = el("div", "osw-preview-stage-center");
+      loading.appendChild(el("div", "osw-preview-heatmap-loading", str("loading", "Loading…")));
+      stage.appendChild(loading);
+      ensureHeatmapRenderer().then(function () {
+        if (stage.isConnected) PREVIEW_PAINTERS.heatmap(stage, vals, isDark);
+      }).catch(function (error) {
+        if (!stage.isConnected) return;
+        loading.innerHTML = "";
+        loading.appendChild(el("div", "osw-preview-heatmap-loading is-error", error.message));
+      });
+      return;
     }
-    const view = heatmapActiveView || heatmapLastDefaultView || "year";
-    const weekStart = vals["heatmapWeekStart"] || "monday";
-
+    const previewConfig = heatmapPreviewConfig(vals);
     const structKey = [
-      view, weekStart, vals["heatmapShowMonths"] !== false, vals["heatmapShowWeekdays"] !== false,
-      vals["heatmapShowWeekHeader"] !== false, vals["heatmapShowStreak"] !== false, isDark
+      previewConfig.heatmapDefaultView, previewConfig.heatmapWeekStart,
+      previewConfig.heatmapShowMonths, previewConfig.heatmapShowWeekdays,
+      previewConfig.heatmapShowWeekHeader, previewConfig.heatmapShowStreak,
+      previewConfig.heatmapParticlesAnimation,
+      vals["heatmapStreakIcon"] || "system:fire.svg", isDark
     ].join("|");
 
     if (stage.__heatmapContainer && stage.__heatmapStructKey === structKey) {
       heatmapPaintCosmetics(stage.__heatmapContainer, vals, isDark);
+      if (stage.__heatmapContainer.__particles) stage.__heatmapContainer.__particles.refresh();
       return;
     }
     stage.__heatmapStructKey = structKey;
+    if (stage.__heatmapContainer && stage.__heatmapContainer.__particles) {
+      stage.__heatmapContainer.__particles.destroy();
+    }
 
     stage.innerHTML = "";
     stage.style.padding = "0";
     designerPaintBackdrop(stage, vals, isDark);
 
-    const eff = heatmapEffectValues(vals, isDark);
-    const opacity = Math.max(0, Math.min(100, Number(eff.opacity)));
-    const blurPx = Math.max(0, Number(eff.blur || 0));
-    const boxBg = rgba(eff.boxBg || "#ffffff", Math.min((isNaN(opacity) ? 100 : opacity) / 100, blurPx > 0 ? 0.62 : 1));
-    const backdrop = blurPx > 0 ? "blur(" + ((blurPx / 100) * 20).toFixed(1) + "px)" : "none";
-
-    // Dynamic Mode off: the light entry stands in for both themes, same rule
-    // patcher.py's _generate_heatmap_colors applies for the real widget.
-    const heatmapColorDark = (vals["heatmap_dynamic"] !== false) && isDark;
-    const colorZero = designerPairValue(vals, "heatmap_color_zero_light", "heatmap_color_zero_dark", null, heatmapColorDark) || (isDark ? "#3a3a3a" : "#f0f0f0");
-    const colorFull = designerPairValue(vals, "heatmap_color_light", "heatmap_color_dark", null, heatmapColorDark) || "#0077C8";
-    const levelVars = heatmapLevelVars(colorFull, colorZero, isDark);
-
-    const today = new Date();
-
-    const hasStreak = HEATMAP_DEMO_STREAK > 0;
-    const streakColor = hasStreak ? (vals["heatmapStreakIconColor"] || "#ff6b35") : (vals["heatmapStreakIconZeroColor"] || "#8f8f8f");
-    const streakSvg = HEATMAP_DEFAULT_STREAK_SVG.replace(/<svg\b/i,
-      '<svg class="streak-icon' + (hasStreak ? " active" : "") + '" style="color:' + streakColor + ";fill:currentColor;\"");
-    const streakHtml = vals["heatmapShowStreak"] !== false
-      ? '<div class="streak-counter">' + streakSvg + '<span class="streak-count">' + HEATMAP_DEMO_STREAK +
-        '</span><span class="streak-label">' + str("heatmap_day_streak", "day streak") + "</span></div>"
-      : "";
-
     const holder = el("div", "osw-preview-stage-center");
     const wrap = el("div", "osw-preview-heatmap-wrap");
+    sizeHeatmapPreview(wrap, vals);
     wrap.classList.add(isDark ? "night-mode" : "light-mode");
-    // heatmap.css reads Anki's own --fg/--highlight-bg/etc, which this dialog
-    // never defines (it has its own fixed --osw-* chrome theme, set once at
-    // dialog-open time — independent of this card's own light/dark preview
-    // toggle). Map to literal values per the toggle's isDark, not to --osw-*,
-    // or the widget stays in the dialog's theme regardless of the toggle.
-    const themeVars = isDark
-      ? { fg: "#f4f4f5", fgSubtle: "#a1a1a4", highlightBg: "#2e2e2e", border: "#333333" }
-      : { fg: "#202124", fgSubtle: "#63666c", highlightBg: "#f0f0ef", border: "#e3e4e7" };
-    wrap.style.setProperty("--fg", themeVars.fg);
-    wrap.style.setProperty("--fg-subtle", themeVars.fgSubtle);
-    wrap.style.setProperty("--highlight-bg", themeVars.highlightBg);
-    wrap.style.setProperty("--border", themeVars.border);
 
     const container = document.createElement("div");
     container.id = "onigiri-heatmap-container";
-    container.style.background = boxBg;
-    container.style.borderRadius = Math.max(0, Number(eff.radius || 0)) + "px";
-    container.style.border = Math.max(0, Number(eff.stroke || 0)) + "px solid " + (eff.boxBorder || "rgba(0,0,0,0.12)");
-    container.style.backdropFilter = backdrop;
-    container.style.webkitBackdropFilter = backdrop;
-    Object.keys(levelVars).forEach(function (k) { container.style.setProperty(k, levelVars[k]); });
-    const shapeMask = heatmapShapeMaskUrl(vals);
-    if (shapeMask) container.style.setProperty("--heatmap-shape-mask", "url('" + shapeMask + "')");
-
-    container.innerHTML =
-      '<div class="onigiri-heatmap-header">' +
-        '<div class="header-left"><h3 class="heatmap-title">' + str("heatmap_activity_label", "Activity").toUpperCase() + "</h3></div>" +
-        '<div class="header-right">' + streakHtml +
-          '<div class="heatmap-nav">' + heatmapNavHtml(view, today) + "</div>" +
-          '<div class="heatmap-filters">' +
-            '<span class="heatmap-filter-pill"></span>' +
-            '<button type="button" class="filter-btn' + (view === "year" ? " active" : "") + '" data-view="year">' + str("view_year", "Year") + "</button>" +
-            '<button type="button" class="filter-btn' + (view === "month" ? " active" : "") + '" data-view="month">' + str("view_month", "Month") + "</button>" +
-            '<button type="button" class="filter-btn' + (view === "week" ? " active" : "") + '" data-view="week">' + str("view_week", "Week") + "</button>" +
-          "</div>" +
-        "</div>" +
-      "</div>" +
-      '<div class="heatmap-grid"></div>';
-
-    const gridEl = container.querySelector(".heatmap-grid");
-    if (view === "month") {
-      heatmapBuildMonthGrid(gridEl, today, weekStart, vals["heatmapShowWeekdays"] !== false);
-    } else if (view === "week") {
-      heatmapBuildWeekGrid(gridEl, today, weekStart, vals["heatmapShowWeekHeader"] !== false);
-    } else {
-      heatmapBuildYearGrid(gridEl, today, weekStart, vals["heatmapShowMonths"] !== false, vals["heatmapShowWeekdays"] !== false);
-    }
-
-    container.querySelectorAll(".heatmap-filters .filter-btn").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        heatmapActiveView = btn.getAttribute("data-view");
-        PREVIEW_PAINTERS.heatmap(stage, vals, isDark);
-      });
-    });
-
     wrap.appendChild(container);
     holder.appendChild(wrap);
     stage.appendChild(holder);
     stage.__heatmapContainer = container;
 
-    const pill = container.querySelector(".heatmap-filter-pill");
-    const active = container.querySelector(".filter-btn.active");
-    const filters = container.querySelector(".heatmap-filters");
-    if (pill && active && filters) {
-      const filterRect = filters.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
-      pill.style.transition = "none";
-      pill.style.width = activeRect.width + "px";
-      pill.style.transform = "translateX(" + (activeRect.left - filterRect.left) + "px)";
-      void pill.offsetWidth;
-      pill.style.transition = "";
-    }
+    // renderDesignerPreview builds this card before its caller mounts it.
+    // Pass the node itself so the production renderer can populate it now;
+    // its requestAnimationFrame reflow measures the final mounted box.
+    window.OnigiriHeatmap.render(
+      container, HEATMAP_PREVIEW_DATA, previewConfig
+    );
+    heatmapPaintCosmetics(container, vals, isDark);
   };
 
   // ── Overview Style preview ─────────────────────────────────────────────────
@@ -6175,7 +8024,6 @@
   function ovstyleActionButtonColor(vals, key, isDark) {
     const raw = vals["ovstyle_color_" + key + (isDark ? "_dark" : "_light")];
     if (typeof raw === "string" && raw) return raw;
-    if (key === "reveal_button") return isDark ? "#0a84ff" : "#0077c8";
     return isDark ? "#2a2a2a" : "#f5f5f5";
   }
 
@@ -6295,7 +8143,6 @@
     const optionsButtonColor = ovstyleActionButtonColor(vals, "options_button", isDark);
     const customStudyButtonColor = ovstyleActionButtonColor(vals, "custom_study_button", isDark);
     const descriptionButtonColor = ovstyleActionButtonColor(vals, "description_button", isDark);
-    const revealButtonColor = ovstyleActionButtonColor(vals, "reveal_button", isDark);
 
     const textColor = designerPairValue(vals, "font_color_light_main", "font_color_dark_main", "font_color_main_theme_mode", isDark) ||
       (isDark ? "#f4f4f5" : "#202124");
@@ -6328,8 +8175,6 @@
       "--ovstyle-custom-study-btn-fg: " + readableTextColor(customStudyButtonColor),
       "--ovstyle-description-btn-bg: " + descriptionButtonColor,
       "--ovstyle-description-btn-fg: " + readableTextColor(descriptionButtonColor),
-      "--ovstyle-reveal-btn-bg: " + revealButtonColor,
-      "--ovstyle-reveal-btn-fg: " + readableTextColor(revealButtonColor),
       "--ovstyle-text: " + textColor,
       "--ovstyle-main-size: " + mainFontSize + "px",
       "--ovstyle-font-main: " + mainFont,
@@ -6373,14 +8218,27 @@
           learningNotice +
         "</div>" +
         '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-button' + (studyBtnAnimated ? " is-animated" : "") + '">' + studyText + "</button>" +
-        '<div class="osw-preview-ovstyle-actions">' +
-          '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-options">' + str("options", "Options") + "</button>" +
-          '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-custom-study">' + str("custom_study", "Custom Study") + "</button>" +
-          '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-description">' + str("description", "Description") + "</button>" +
-        "</div>" +
-        '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-reveal-button">' + str("click_to_reveal", "Click to reveal") + "</button>";
+        '<div class="osw-preview-ovstyle-actions-stack">' +
+          '<div class="osw-preview-ovstyle-actions">' +
+            '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-options">' + str("options", "Options") + "</button>" +
+            '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-custom-study">' + str("custom_study", "Custom Study") + "</button>" +
+            '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-description">' + str("description", "Description") + "</button>" +
+          "</div>" +
+          '<div class="osw-preview-ovstyle-actions osw-preview-ovstyle-reveal-action">' +
+            '<button type="button" tabindex="-1" data-preview-inert="true" class="osw-preview-ovstyle-action-button is-options osw-preview-ovstyle-reveal-button">' + str("click_to_reveal", "Click to reveal") + "</button>" +
+          "</div>" +
+        "</div>";
     }
 
+    [
+      ["overview_title", ".osw-preview-ovstyle-title"],
+      ["overview_text", ".osw-preview-ovstyle-button, .osw-preview-ovstyle-action-button, .osw-preview-ovstyle-learning-notice"],
+      ["congrats_title", ".osw-preview-ovstyle-congrats-title, .osw-preview-ovstyle-congrats-message"],
+      ["congrats_text", ".osw-preview-ovstyle-congrats .osw-preview-ovstyle-action-button"]
+    ].forEach(function (entry) {
+      const ink = fontFieldColor(vals, "onigiri_font_" + entry[0], isDark);
+      if (ink) wrap.querySelectorAll(entry[1]).forEach(function (node) { node.style.color = ink; });
+    });
     holder.appendChild(wrap);
     canvas.appendChild(holder);
     stage.appendChild(canvas);
@@ -6389,20 +8247,18 @@
 
   // ── Reviewer Bottom Bar preview ────────────────────────────────────────────
   //
-  // Ported against what patcher.py's generate_reviewer_bottom_bar_background_css
-  // actually reads (patcher.py:4186-4359): "Match Main Menu" gets its own
-  // independent blur/opacity (bbar_match_main_blur/opacity); "Match Overviewer"
-  // and "Match Reviewer Background" always inherit that source's OWN
-  // blur/opacity — there is no bbar_match_overview_blur/opacity field because
-  // patcher.py never reads the legacy dialog's equivalent control either.
+  // Every Match mode inherits its complete source, including chained matches.
 
   /* Resolves one of the five background sources into {color, imageName,
      imageFolder, blur, opacity} — the shared shape paintResolvedBackdropState
      paints, whether the source is this section's own fields or another
      section's (Main menu / Overviewer / Reviewer Background all live in the
      same global `values`, so no field duplication is needed to read them). */
-  function designerBgSourceState(vals, isDark, keys, blurOverride, opacityOverride) {
+  function designerBgSourceState(vals, isDark, keys) {
     const mode = vals[keys.mode] || "image_color";
+    if (mode === "main" && keys !== MAIN_BG_KEYS) {
+      return designerBgSourceState(vals, isDark, MAIN_BG_KEYS);
+    }
     const color = designerPairValue(vals, keys.colorLight, keys.colorDark, keys.colorThemeMode, isDark) ||
       (isDark ? "#2c2c2c" : "#f2f2f2");
     let imageName = "";
@@ -6410,21 +8266,23 @@
       const list = Array.isArray(vals[keys.slideshowImages]) ? vals[keys.slideshowImages] : [];
       imageName = list[0] || "";
     } else if (mode !== "color") {
-      imageName = designerPairValue(vals, keys.imageLight, keys.imageDark, keys.imageThemeMode, isDark);
+      imageName = designerPairValue(
+        vals, keys.imageLight, keys.imageDark, keys.imageThemeMode, isDark, keys.imageBase
+      );
     }
     return {
       color: color,
       imageName: imageName,
       imageFolder: keys.imageFolder,
-      blur: blurOverride != null ? Number(blurOverride || 0) : Number(vals[keys.blur] || 0),
-      opacity: opacityOverride != null ? Number(opacityOverride) : Number(vals[keys.opacity]),
+      blur: Number(vals[keys.blur] || 0),
+      opacity: Number(vals[keys.opacity]),
     };
   }
 
   function bbarBackgroundState(vals, isDark) {
     const mode = vals["bbar_bg_mode"] || "match_reviewer_bg";
     if (mode === "main") {
-      return designerBgSourceState(vals, isDark, MAIN_BG_KEYS, vals["bbar_match_main_blur"], vals["bbar_match_main_opacity"]);
+      return designerBgSourceState(vals, isDark, MAIN_BG_KEYS);
     }
     if (mode === "match_overview_bg") {
       return designerBgSourceState(vals, isDark, OVERVIEW_BG_KEYS);
@@ -6446,8 +8304,7 @@
 
   /* Same colour/image-layer treatment as designerPaintBackdrop, but from an
      already-resolved state object instead of a live `keys` mapping — bbar's
-     background source varies in shape (single image, per-mode blur/opacity
-     override) too much to fit designerPaintBackdrop's own signature. */
+     background source also supports a local single-image selection. */
   function paintResolvedBackdropState(stage, state) {
     const colorLayer = el("div", "osw-bg-preview-layer");
     colorLayer.style.position = "absolute";
@@ -6473,12 +8330,11 @@
     stage.appendChild(imgLayer);
   }
 
-  /* Synced (default): the counts row rides on the same colour the "Other"
-     button uses on hover (_bottom_bar_stats_bar_bg_color in the legacy page).
+  /* Synced (default): the counts row rides on the Show Answer active colour.
      Off: its own bbar_stats_bar_bg pair. */
   function bbarStatsBarBg(vals, isDark, suffix) {
     const synced = vals["bbar_stats_sync"] !== false;
-    if (synced) return vals["bbar_other_hover_bg_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c");
+    if (synced) return vals["bbar_show_answer_hover_bg_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c");
     return vals["bbar_stats_bar_bg_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c");
   }
 
@@ -6515,8 +8371,16 @@
     const more = bbarUtilityButton("More");
     more.style.background = otherBg; more.style.color = otherFg;
     more.style.borderRadius = radius + "px"; more.style.padding = padding + "px 10px"; more.style.minHeight = height + "px";
-    if (timerPos === "out" && timerPill) left.appendChild(timerPill);
     left.appendChild(edit);
+    // "Out" is the reviewer bar's right-side utility placement: keep the
+    // timer immediately before More rather than treating it as a left-side
+    // companion to Edit. It uses More's exact button geometry in the preview.
+    if (timerPos === "out" && timerPill) {
+      timerPill.style.borderRadius = radius + "px";
+      timerPill.style.padding = padding + "px 10px";
+      timerPill.style.minHeight = height + "px";
+      right.appendChild(timerPill);
+    }
     right.appendChild(more);
     bar.appendChild(left);
     return right;
@@ -6579,10 +8443,10 @@
       const otherBtn = el("button", "osw-preview-bbar-btn osw-preview-bbar-btn-other osw-preview-bbar-show is-" + stattxtMode);
       otherBtn.type = "button";
       otherBtn.style.background = customEnabled
-        ? (vals["bbar_other_bg_" + suffix] || (isDark ? "#3a3a3a" : "#ffffff"))
+        ? (vals["bbar_show_answer_bg_" + suffix] || (isDark ? "#3a3a3a" : "#ffffff"))
         : (isDark ? "#454545" : "#f0f0f0");
       otherBtn.style.color = customEnabled
-        ? (vals["bbar_other_text_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c"))
+        ? (vals["bbar_show_answer_text_" + suffix] || (isDark ? "#e0e0e0" : "#2c2c2c"))
         : (isDark ? "#eeeeee" : "#2c2c2c");
       otherBtn.style.borderRadius = radius + "px";
       otherBtn.style.padding = padding + "px 15px";
@@ -6590,15 +8454,15 @@
       otherBtn.style.setProperty("--osw-bbar-stats-bg", bbarStatsBarBg(vals, isDark, suffix));
       otherBtn.style.setProperty(
         "--osw-bbar-stats-fg",
-        vals["bbar_other_hover_text_" + suffix] || (isDark ? "#3a3a3a" : "#f0f0f0")
+        vals["bbar_show_answer_hover_text_" + suffix] || (isDark ? "#3a3a3a" : "#f0f0f0")
       );
 
       const counts = el("div", "osw-preview-bbar-counts");
-      [["pre_new_bubble", "pre_new_text", "12"], ["pre_learn_bubble", "pre_learn_text", "4"], ["pre_review_bubble", "pre_review_text", "23"]]
+      [["new_bubble", "new_text", "12"], ["learn_bubble", "learn_text", "4"], ["review_bubble", "review_text", "23"]]
         .forEach(function (spec) {
           const pill = el("span", "osw-preview-bbar-count-pill", spec[2]);
-          pill.style.background = vals["bbar_" + spec[0] + "_" + suffix] || "#888888";
-          pill.style.color = vals["bbar_" + spec[1] + "_" + suffix] || "#ffffff";
+          pill.style.background = vals["ovstyle_color_" + spec[0] + "_" + suffix] || "#888888";
+          pill.style.color = vals["ovstyle_color_" + spec[1] + "_" + suffix] || "#ffffff";
           counts.appendChild(pill);
         });
 
@@ -6608,11 +8472,27 @@
       if (customEnabled && stattxtMode !== "off") otherBtn.appendChild(counts);
       if (customEnabled && (stattxtMode === "fixed" || stattxtMode === "inverted")) {
         otherBtn.style.background = bbarStatsBarBg(vals, isDark, suffix);
-        otherBtn.style.color = vals["bbar_other_hover_text_" + suffix] || (isDark ? "#3a3a3a" : "#f0f0f0");
+        otherBtn.style.color = vals["bbar_show_answer_hover_text_" + suffix] || (isDark ? "#3a3a3a" : "#f0f0f0");
       }
       bar.appendChild(otherBtn);
       bar.appendChild(rightSide);
     }
+
+    // Reviewer Fonts is edited from this card, so the preview must use the
+    // same component role as the live bottom webview. Apply it to every piece
+    // of text inside the buttons, including intervals, counts, and the timer.
+    const reviewerFont = designerFontRole(vals, "reviewer_controls", isDark, "main");
+    bar.style.fontFamily = reviewerFont.family;
+    bar.querySelectorAll([
+      ".osw-preview-bbar-btn",
+      ".osw-preview-bbar-btn *",
+      ".osw-preview-bbar-timer",
+      ".osw-preview-bbar-count-pill"
+    ].join(",")).forEach(function (node) {
+      node.style.fontFamily = reviewerFont.family;
+      node.style.fontSize = reviewerFont.size + "px";
+      if (reviewerFont.customColor) node.style.color = reviewerFont.customColor;
+    });
     stage.appendChild(bar);
 
     if (!vals["bbar_custom_enabled"]) {
@@ -6671,8 +8551,9 @@
       return designerPairValue(vals, "rprog_seg_" + which + "_light", "rprog_seg_" + which + "_dark",
                                "rprog_seg_" + which + "_theme_mode", isDark) || (isDark ? fallback[1] : fallback[0]);
     }
-    const bubble = { new: "pre_new_bubble", learn: "pre_learn_bubble", review: "pre_review_bubble" }[which];
-    return vals["bbar_" + bubble + "_" + (isDark ? "dark" : "light")] || (isDark ? fallback[1] : fallback[0]);
+    const bubble = { new: "new_bubble", learn: "learn_bubble", review: "review_bubble" }[which];
+    return vals["ovstyle_color_" + bubble + "_" + (isDark ? "dark" : "light")] ||
+      (isDark ? fallback[1] : fallback[0]);
   }
 
   function rprogFillImage(vals, isDark) {
@@ -6806,6 +8687,13 @@
     "add", "browse", "stats", "sync", "settings", "gamification", "more"
   ];
 
+  const SIDEBAR_READY_ITEMS = [
+    { key: "inbox", label: "Inbox" },
+    { key: "warm_up", label: "Warm up" },
+    { key: "today", label: "Today" },
+    { key: "cool_down", label: "Cool-Down" }
+  ];
+
   /* A masked <span> for one icon value ("system:add-card.svg", a user filename,
      or "emoji:🔥"), tinted `color` — the same resolution renderIcon's chip does,
      so a preview glyph is the glyph the deck browser will draw. */
@@ -6841,7 +8729,8 @@
   function designerSidebarSpec(vals, isDark) {
     const type = vals["modern_menu_sidebar_bg_type"] || "color";
     const bgMode = vals["modern_menu_sidebar_bg_mode"] || "custom";
-    const sync = !!vals["modern_menu_sidebar_sync_box_effect"];
+    const matchesWidgets = bgMode === "custom";
+    const sync = matchesWidgets || !!vals["modern_menu_sidebar_sync_box_effect"];
     let color;
     let blur;
     let opacity;
@@ -6863,25 +8752,33 @@
       radius = designerNum(vals["modern_menu_sidebar_radius"], 15);
       stroke = designerNum(vals["modern_menu_sidebar_stroke"], 1);
     }
+    // The border can be customized while fill/effects remain widget-synced.
+    if (!matchesWidgets && vals["modern_menu_sidebar_border_custom"]) {
+      radius = designerNum(vals["modern_menu_sidebar_radius"], 15);
+      stroke = designerNum(vals["modern_menu_sidebar_stroke"], 1);
+    }
     if (!color) color = isDark ? "#2C2C2C" : "#F3F3F3";
-    if (type === "accent") color = CTX.accent || color;
+    if (!matchesWidgets && type === "accent") color = CTX.accent || color;
 
     let image = "";
     if (type === "image_color") {
       image = designerPairValue(vals, "modern_menu_sidebar_bg_image_light",
                                 "modern_menu_sidebar_bg_image_dark",
-                                "modern_menu_sidebar_bg_image_theme_mode", isDark);
+                                "modern_menu_sidebar_bg_image_theme_mode", isDark,
+                                "modern_menu_sidebar_bg_image");
     } else if (type === "slideshow") {
       const list = Array.isArray(vals["modern_menu_sidebar_slideshow_images"])
         ? vals["modern_menu_sidebar_slideshow_images"] : [];
       image = list[0] || "";
     }
 
-    // "Match Main Menu": the main background shows through the frame and only
+    if (matchesWidgets) image = "";
+
+    // Custom: the main background shows through the frame and only
     // an overlay sits on top of it — either a translucent white/black wash with
     // a backdrop blur (glassmorphism) or a flat tint at the chosen intensity.
     // Mirrors patcher.py:3017-3050, which is the only reader of these keys.
-    let backdropBlur = 0;
+    let backdropBlur = matchesWidgets ? blur * 0.2 : 0;
     if (bgMode === "main") {
       image = "";
       const effect = vals["onigiri_sidebar_main_bg_effect_mode"] || "opaque";
@@ -6928,33 +8825,81 @@
   function designerSidebarFrame(stage, vals, isDark) {
     stage.innerHTML = "";
     stage.style.padding = "0";
+    stage.style.minHeight = "";
     designerPaintBackdrop(stage, vals, isDark);
 
     const spec = designerSidebarSpec(vals, isDark);
     const frame = el("div", "osw-sbprev-frame");
-    frame.style.top = spec.margin + "px";
-    frame.style.bottom = spec.margin + "px";
     frame.style.borderRadius = spec.radius + "px";
     frame.style.border = spec.stroke + "px solid " + spec.borderColor;
-    // Wider than the sidebar's real share of a window: below ~220px the mock
-    // deck rows lose their names to ellipses and the preview stops showing what
-    // it is for.
-    if (spec.position === "center") {
-      frame.style.left = "50%";
-      frame.style.transform = "translateX(-50%)";
-      frame.style.width = "64%";
-    } else if (spec.position === "right") {
-      frame.style.right = spec.margin + "px";
-      frame.style.width = "54%";
-    } else {
-      frame.style.left = spec.margin + "px";
-      frame.style.width = "54%";
+    frame.style.setProperty("--osw-sbprev-inner-radius", Math.max(0, spec.radius - spec.stroke) + "px");
+    // Lay out at a useful sidebar width, then scale every dimension together:
+    // fonts, icons, profile, padding, radius and stroke. Very wide sidebars
+    // cannot be reduced literally inside this half-dialog stage — a 1,200 px
+    // sidebar made 13 px labels render at only a few pixels tall. The preview
+    // therefore keeps the configured width up to a representative wide
+    // sidebar and treats anything larger as the same readable detail view.
+    // An unpinned sidebar always returns to its standard width. Check the
+    // toggle here as well as resetting the stored value in the schema so the
+    // preview changes on the same click, before its autosave response returns.
+    const sidebarWidthPinned = !!vals["modern_menu_sidebar_width_pinned"];
+    const configuredWidth = sidebarWidthPinned
+      ? Math.max(320, designerNum(
+        vals["modern_menu_sidebar_width"],
+        designerNum((CTX.sidebarBg || {}).width, 345)
+      ))
+      : 345;
+    const nativeWidth = Math.min(configuredWidth, 520);
+    frame.style.width = nativeWidth + "px";
+    frame.dataset.configuredWidth = String(configuredWidth);
+    frame.style.transformOrigin = "top left";
+    function fitSidebar() {
+      const availableWidth = stage.clientWidth;
+      const availableHeight = stage.clientHeight;
+      if (!availableWidth || !availableHeight) return;
+      // Left/right previews use nearly the whole canvas. Center leaves a little
+      // more backdrop on both sides so its position is still unmistakable. The
+      // whole preview stays deliberately modest: it is a composition cue, not
+      // a life-size replica of the sidebar.
+      const isCentered = spec.position === "center";
+      const share = isCentered ? 0.84 : 0.92;
+      const scale = Math.min(
+        isCentered ? 0.9 : 1.08,
+        availableWidth * share / (nativeWidth + 2 * spec.margin)
+      );
+      const margin = spec.margin * scale;
+      // Centered is the dashboard composition: the sidebar sits at the top,
+      // leaving room below for the dashboard widgets represented in the
+      // preview by the compact tile grid added after this frame is created.
+      // Its full native content needs a generous, stable height; squeezing it
+      // to a percentage of the stage hides the lower deck rows.
+      const nativeHeight = isCentered
+        ? 430
+        : Math.max(0, availableHeight / scale - 2 * spec.margin);
+      frame.style.top = (isCentered ? 14 : margin) + "px";
+      frame.style.height = nativeHeight + "px";
+      frame.style.left = (spec.position === "center"
+        ? (availableWidth - nativeWidth * scale) / 2
+        : spec.position === "right"
+          ? availableWidth - nativeWidth * scale - margin : margin) + "px";
+      frame.style.transform = "scale(" + scale + ")";
+      frame.dataset.previewScale = String(scale);
+      frame.dataset.nativeHeight = String(nativeHeight);
+      if (frame.__fitWidgets) frame.__fitWidgets();
     }
+    if (stage.__sidebarPreviewResizeObserver) stage.__sidebarPreviewResizeObserver.disconnect();
+    if (typeof ResizeObserver !== "undefined") {
+      stage.__sidebarPreviewResizeObserver = new ResizeObserver(fitSidebar);
+      stage.__sidebarPreviewResizeObserver.observe(stage);
+    }
+    fitSidebar();
 
     const fill = el("div", "osw-sbprev-fill");
-    fill.style.background = spec.color;
-    if (spec.backdropBlur) {
-      fill.style.backdropFilter = "blur(" + spec.backdropBlur.toFixed(1) + "px)";
+    fill.style.background = spec.bgMode === "custom"
+      ? rgba(spec.color, Math.max(0, Math.min(100, spec.opacity)) / 100) : spec.color;
+    const fillBlur = spec.bgMode === "custom" ? spec.blur * 0.2 : spec.backdropBlur;
+    if (fillBlur) {
+      fill.style.backdropFilter = "blur(" + fillBlur.toFixed(1) + "px)";
       fill.style.webkitBackdropFilter = fill.style.backdropFilter;
     }
     frame.appendChild(fill);
@@ -6963,7 +8908,7 @@
     if (url) {
       const img = el("div", "osw-sbprev-fill osw-sbprev-image");
       img.style.backgroundImage = "url(\"" + url.replace(/"/g, "") + "\")";
-      img.style.filter = spec.blur > 0 ? "blur(" + (spec.blur * 0.18).toFixed(1) + "px)" : "";
+      img.style.filter = spec.blur > 0 ? "blur(" + spec.blur.toFixed(1) + "px)" : "";
       img.style.opacity = String(Math.max(0, Math.min(100, spec.opacity)) / 100);
       frame.appendChild(img);
     }
@@ -6972,6 +8917,34 @@
     frame.appendChild(content);
     stage.appendChild(frame);
     return { frame: frame, content: content, spec: spec };
+  }
+
+  /* Centered sidebar mode is a dashboard rather than a full-height rail. Give
+     its settings preview a quiet row of widget tiles so the composition reads
+     at a glance without pretending to render the user's actual dashboard. */
+  function designerCenteredWidgetPlaceholders(stage, built) {
+    if (built.spec.position !== "center") return;
+    const grid = el("div", "osw-sbprev-widget-placeholders");
+    function fitWidgets() {
+      const scale = Number(built.frame.dataset.previewScale) || 1;
+      const nativeHeight = Number(built.frame.dataset.nativeHeight) || 0;
+      grid.style.top = (14 + nativeHeight * scale + 18) + "px";
+      grid.style.width = Math.min(
+        stage.clientWidth * 0.76,
+        Number(built.frame.style.width.replace("px", "")) * scale
+      ) + "px";
+      grid.style.left = "50%";
+      grid.style.transform = "translateX(-50%)";
+    }
+    built.frame.__fitWidgets = fitWidgets;
+    fitWidgets();
+    for (let index = 0; index < 4; index += 1) {
+      const tile = el("span", "osw-sbprev-widget-placeholder");
+      tile.style.background = rgba(built.spec.fg, built.spec.isDark ? 0.13 : 0.09);
+      tile.style.borderColor = rgba(built.spec.fg, built.spec.isDark ? 0.19 : 0.14);
+      grid.appendChild(tile);
+    }
+    stage.appendChild(grid);
   }
 
   /* The profile, painted by the Profile page's own renderer (paintProfileItem)
@@ -6986,23 +8959,50 @@
     const item = el("div", null);
     slot.appendChild(item);
     paintProfileItem(item, spec.isDark);
+    const smallRole = designerFontRole(vals, "sidebar_small", spec.isDark, "main");
+    item.querySelectorAll(".osw-preview-sub-text, .rl-chip-level").forEach(function (node) {
+      node.style.fontFamily = smallRole.family;
+      node.style.fontSize = smallRole.size + "px";
+      if (smallRole.customColor) node.style.color = smallRole.customColor;
+    });
     host.appendChild(slot);
   }
 
   /* The deck list's own header row: the "DECKS" caption and the search / list /
      home controls above the tree (the real one is `#deck-list-header`). It is
      part of the sidebar, so a preview without it is short by one row. */
-  function designerDeckHeader(host, spec) {
+  function designerDeckHeader(host, vals, spec, isDark) {
     const head = el("div", "osw-sbprev-deckhead");
     const title = el("span", "osw-sbprev-deckhead-title", str("decks", "Decks"));
-    title.style.color = spec.fg;
+    const titleRole = designerFontRole(vals, "deck_title", isDark, "subtle");
+    title.style.color = spec.iconColor;
+    if (titleRole.customColor) title.style.color = titleRole.customColor;
+    title.style.fontFamily = titleRole.family;
+    title.style.fontSize = titleRole.size + "px";
     head.appendChild(title);
     const tools = el("span", "osw-sbprev-deckhead-tools");
-    // Search, sort, home — the three controls the real header carries
-    // (templates.py's #deck-list-header .deck-header-actions).
-    ["search.svg", "sort_default.svg", "home.svg"].forEach(function (name) {
-      tools.appendChild(designerIconGlyph("system:" + name, spec.iconColor, 13));
-    });
+    function appendTool(fieldId, label, size) {
+      const button = el("button", "osw-sbprev-deckhead-button");
+      button.type = "button";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.appendChild(designerIconGlyph(iconValue(fieldId), spec.iconColor, size || 13));
+      tools.appendChild(button);
+      return button;
+    }
+    // Home is the escape hatch for Hidden Action Buttons; search and sort are
+    // always present in the real deck header.
+    appendTool("modern_menu_icon_header_search", str("search", "Search"));
+    appendTool("modern_menu_icon_header_sort", str("sort", "Sort"));
+    if ((vals["modern_menu_ready_layout_mode"] || "list") === "hidden") {
+      appendTool(
+        "modern_menu_icon_ready_section",
+        vals["modern_menu_ready_title"] || str("ready_to_go", "Ready to go")
+      );
+    }
+    if ((vals["sidebarActionsMode"] || "list") === "archived") {
+      appendTool("modern_menu_icon_header_home", str("home", "Home"));
+    }
     head.appendChild(tools);
     host.appendChild(head);
   }
@@ -7022,17 +9022,23 @@
      List mode is plain icon+label rows with no chrome, except "Add", which
      becomes a full-width dashed call-to-action bar while that option is on.
      Collapsed mode is one justified row of icon-only tinted pills. */
+  function sidebarIconTint(vals, key, isDark) {
+    const light = vals[key + "_light"] == null ? vals[key] : vals[key + "_light"];
+    return (isDark && vals[key + "_dark"] != null ? vals[key + "_dark"] : light) || "";
+  }
+
   function designerSidebarActions(host, vals, spec, mode) {
     if (mode === "archived") return;
     const size = designerNum(vals["modern_menu_icon_size_action_button"], 14);
     const order = designerActionOrder(vals);
+    const textRole = designerFontRole(vals, "action_buttons", spec.isDark, "main");
     if (!order.length) return;
 
     const strip = el("div", "osw-sbprev-actions" + (mode === "collapsed" ? " is-collapsed" : ""));
     order.forEach(function (key) {
       const label = (fieldById["modern_menu_icon_" + key] || {}).label || key;
       const item = el("div", "osw-sbprev-action");
-      const tint = vals["modern_menu_icon_color_" + key] || spec.iconColor;
+      const tint = sidebarIconTint(vals, "modern_menu_icon_color_" + key, spec.isDark) || spec.iconColor;
       if (mode === "collapsed") {
         item.style.background = rgba(spec.fg, 0.1);
         item.title = label;
@@ -7046,11 +9052,88 @@
       }
       item.appendChild(designerIconGlyph(iconValue("modern_menu_icon_" + key), tint, size));
       const text = el("span", "osw-sbprev-action-label", label);
-      text.style.color = spec.fg;
+      text.style.color = textRole.customColor || spec.fg;
+      text.style.fontFamily = textRole.family;
+      text.style.fontSize = textRole.size + "px";
       item.appendChild(text);
       strip.appendChild(item);
     });
     host.appendChild(strip);
+  }
+
+  /* Ready to Go uses the real sidebar's vertical button geometry and reads
+     the same icon, tint, spacing, radius and surface fields as ready_to_go.py. */
+  function designerSidebarReady(host, vals, spec, isDark) {
+    const layoutMode = vals["modern_menu_ready_layout_mode"] || "list";
+    if (layoutMode === "hidden") return;
+    const collapsed = layoutMode === "collapsed";
+    const section = el("div", "osw-sbprev-ready" + (collapsed ? " is-collapsed" : ""));
+    const textColor = vals["modern_menu_ready_text_color"] ||
+      (isDark ? vals["theme_subtle_dark"] : vals["theme_subtle_light"]) ||
+      (isDark ? "#9e9e9e" : "#757575");
+    const borderColor = vals["modern_menu_ready_border_color"] ||
+      (isDark ? vals["theme_border_dark"] : vals["theme_border_light"]) ||
+      (isDark ? "#424242" : "#e0e0e0");
+    const buttonBackground = vals["modern_menu_ready_button_background"] || "transparent";
+    const iconSize = Math.max(8, Math.min(40,
+      designerNum(vals["modern_menu_ready_icon_size"], 16)));
+    const gap = Math.max(0, Math.min(24,
+      designerNum(vals["modern_menu_ready_gap"], 6)));
+    const radius = Math.max(0, Math.min(30,
+      designerNum(vals["modern_menu_ready_radius"], 9)));
+    const showBorder = vals["modern_menu_ready_show_border"] !== false;
+
+    if (vals["modern_menu_ready_show_title"] !== false) {
+      const title = el("div", "osw-sbprev-ready-title",
+        vals["modern_menu_ready_title"] || "Ready to go");
+      title.style.color = textColor;
+      title.style.fontFamily = designerFontRole(vals, "main", isDark).family;
+      section.appendChild(title);
+    }
+
+    const actions = el("div", "osw-sbprev-ready-actions" + (collapsed ? " is-collapsed" : ""));
+    actions.style.gap = (collapsed ? 5 : gap) + "px";
+    const textRole = designerFontRole(vals, "action_buttons", isDark, "main");
+    SIDEBAR_READY_ITEMS.forEach(function (item) {
+      const button = el("div", "osw-sbprev-ready-action");
+      if (collapsed) button.title = item.label;
+      button.style.borderColor = collapsed ? "transparent" : borderColor;
+      button.style.borderWidth = collapsed ? "1px" : (showBorder ? "1px" : "0");
+      button.style.borderRadius = (collapsed ? 9 : radius) + "px";
+      button.style.background = collapsed ? rgba(spec.fg, 0.1) : buttonBackground;
+      const tint = sidebarIconTint(vals, "modern_menu_icon_color_ready_" + item.key, isDark) || textColor;
+      button.appendChild(designerIconGlyph(
+        iconValue("modern_menu_icon_ready_" + item.key), tint, iconSize
+      ));
+      const label = el("span", "osw-sbprev-ready-label", item.label);
+      label.style.color = textColor;
+      label.style.fontFamily = textRole.family;
+      label.style.fontSize = textRole.size + "px";
+      button.appendChild(label);
+      actions.appendChild(button);
+    });
+    section.appendChild(actions);
+    host.appendChild(section);
+  }
+
+  function designerSidebarSectionOrder(vals) {
+    const known = ["profile", "actions", "ready_to_go", "decks"];
+    const raw = vals["modern_menu_sidebar_section_layout"] || {};
+    const saved = Array.isArray(raw) ? raw :
+      (Array.isArray(raw.visible) ? raw.visible : []);
+    const order = saved.filter(function (id, index) {
+      return known.indexOf(id) !== -1 && saved.indexOf(id) === index;
+    });
+    // Layouts saved before Profile became its own section should keep Profile
+    // immediately above Actions instead of unexpectedly moving it to the end.
+    if (order.indexOf("profile") === -1) {
+      const actionsIndex = order.indexOf("actions");
+      order.splice(actionsIndex === -1 ? 0 : actionsIndex, 0, "profile");
+    }
+    known.forEach(function (id) {
+      if (order.indexOf(id) === -1) order.push(id);
+    });
+    return order;
   }
 
   const SIDEBAR_PREVIEW_DECKS = [
@@ -7071,18 +9154,30 @@
     return 20;
   }
 
-  /* The real badge font-size is an em value against the deck list's own font
-     (patcher.py:4498); the preview's rows are smaller than the app's, so the
-     same absolute sizes read as oversized pills. Scaled to the preview, keeping
-     the four steps proportional to each other. */
-  const PREVIEW_BADGE_SCALE = 0.78;
-
-  function designerBadgeFontSize(vals) {
+  /* Keep the preview's badge font at the exact live value. The live size is
+     relative to the main sidebar font, except for the explicit custom-pixel
+     option (patcher.py's generated tr.deck rule). */
+  function designerBadgeFontSize(vals, mainFontSize) {
     const key = vals["modern_menu_count_badge_size"] || "small";
-    const px = key === "custom"
-      ? designerNum(vals["modern_menu_count_badge_size_custom_px"], 16)
-      : ({ small: 10.5, medium: 13.7, big: 16.8 }[key] || 10.5);
-    return px * PREVIEW_BADGE_SCALE;
+    if (key === "custom") {
+      return designerNum(vals["modern_menu_count_badge_size_custom_px"], 16);
+    }
+    const em = ({ small: 0.75, medium: 0.98, big: 1.2 }[key] || 0.75);
+    return em * mainFontSize;
+  }
+
+  function designerSidebarCountColors(vals, role, isDark) {
+    const mode = isDark ? "dark" : "light";
+    const defaults = {
+      new: { bg: ["#a3c5e8", "#68a0d9"], fg: "#13375b" },
+      learn: { bg: ["#e8a3a3", "#d96868"], fg: "#731717" },
+      review: { bg: ["#a3e8b8", "#68d98a"], fg: "#1b7a38" }
+    }[role];
+    const paletteBg = vals["sb_count_" + role + "_bg_" + mode] || defaults.bg[isDark ? 1 : 0];
+    const paletteFg = vals["sb_count_" + role + "_fg_" + mode] || defaults.fg;
+    const overviewBg = vals["ovstyle_color_" + role + "_bubble_" + mode];
+    const overviewFg = vals["ovstyle_color_" + role + "_text_" + mode];
+    return { bg: overviewBg || paletteBg, fg: overviewFg || paletteFg };
   }
 
   /* Whether a deck row draws its glyph at all: each row type has its own "hide"
@@ -7143,13 +9238,15 @@
     const iconSize = designerNum(vals["modern_menu_icon_size_deck_folder"], 20);
     const collapseSize = designerNum(vals["modern_menu_icon_size_collapse"], 12);
     const step = designerIndentStep(vals);
-    const badgeFont = designerBadgeFontSize(vals);
-    const hideZero = vals["hideDeckCounts"] !== false;
+    const mainRole = designerFontRole(vals, "main", isDark);
+    const badgeFont = designerBadgeFontSize(vals, mainRole.size);
+    const deckNameRole = designerFontRole(vals, "deck_names", isDark, "main");
+    const hideZero = !!vals["hideDeckCounts"];
     const hideAll = !!vals["hideAllDeckCounts"];
 
     const list = el("div", "osw-sbprev-decks");
     if (listBg) list.style.background = listBg;
-    designerDeckHeader(list, spec);
+    designerDeckHeader(list, vals, spec, isDark);
 
     SIDEBAR_PREVIEW_DECKS.forEach(function (deck, index) {
       const row = el("div", "osw-sbprev-deck");
@@ -7166,7 +9263,7 @@
       // filtered decks have their own palette colour. Mirrors the CSS cascade
       // patcher.generate_icon_css emits.
       function glyphColor(key) {
-        return vals["modern_menu_icon_color_" + key] ||
+        return sidebarIconTint(vals, "modern_menu_icon_color_" + key, isDark) ||
           (key === "filtered_deck" ? filteredColor : spec.iconColor);
       }
 
@@ -7185,7 +9282,9 @@
       }
 
       const name = el("span", "osw-sbprev-deck-name", deck.label);
-      name.style.color = (active && highlightFg) ? highlightFg : spec.fg;
+      name.style.color = deckNameRole.customColor || ((active && highlightFg) ? highlightFg : spec.fg);
+      name.style.fontFamily = deckNameRole.family;
+      name.style.fontSize = deckNameRole.size + "px";
       row.appendChild(name);
 
       const markerRow = markerList && SIDEBAR_MARKER_ROWS.indexOf(index);
@@ -7195,11 +9294,19 @@
 
       if (!hideAll) {
         const counts = el("span", "osw-sbprev-counts");
+        const countRoles = ["new", "learn", "review"];
         deck.counts.forEach(function (count, slot) {
           if (count === 0 && hideZero) return;
-          const badge = el("span", "osw-sbprev-badge", String(count));
+          const role = countRoles[slot];
+          const colors = designerSidebarCountColors(vals, role, isDark);
+          const badge = el("span", "osw-sbprev-badge " + role + "-count-bubble", String(count));
+          if (count === 0) badge.classList.add("zero");
           badge.style.fontSize = badgeFont + "px";
-          badge.style.background = count === 0 ? rgba(spec.fg, 0.18) : SIDEBAR_COUNT_COLORS[slot];
+          badge.style.fontFamily = mainRole.family;
+          badge.style.setProperty("--overview-" + role + "-bubble-bg", colors.bg);
+          badge.style.setProperty("--overview-" + role + "-count-fg", colors.fg);
+          badge.style.setProperty("--" + role + "-count-bubble-bg", colors.bg);
+          badge.style.setProperty("--" + role + "-count-bubble-fg", colors.fg);
           counts.appendChild(badge);
         });
         row.appendChild(counts);
@@ -7210,23 +9317,92 @@
     host.appendChild(list);
   }
 
-  /* Profile, then the action buttons, then the deck list — the real sidebar's
-     own order (settings/_page_sidebar.py:719-750), with the deck list taking
-     whatever height is left, as it does in the app. */
+  /* Build the same four reorderable blocks as the real Classic sidebar. The
+     whole native-width frame is scaled by designerSidebarFrame, so proportions
+     remain identical instead of being independently miniaturized. */
   function paintSidebarStack(stage, vals, isDark, markerList) {
     const built = designerSidebarFrame(stage, vals, isDark);
-    if (!vals["modern_menu_hide_profile_bar"]) designerSidebarProfile(built.content, vals, built.spec);
-    designerSidebarActions(built.content, vals, built.spec, vals["sidebarActionsMode"] || "list");
-    designerDeckRows(built.content, vals, built.spec, isDark, markerList);
+    designerSidebarSectionOrder(vals).forEach(function (sectionId) {
+      const section = el("div", "osw-sbprev-section osw-sbprev-section-" + sectionId);
+      if (sectionId === "profile") {
+        if (!vals["modern_menu_hide_profile_bar"]) {
+          designerSidebarProfile(section, vals, built.spec);
+        }
+      } else if (sectionId === "actions") {
+        designerSidebarActions(
+          section, vals, built.spec, vals["sidebarActionsMode"] || "list"
+        );
+      } else if (sectionId === "ready_to_go") {
+        designerSidebarReady(section, vals, built.spec, isDark);
+      } else if (sectionId === "decks") {
+        designerDeckRows(section, vals, built.spec, isDark, markerList);
+      }
+      if (section.childNodes.length) built.content.appendChild(section);
+    });
+    designerCenteredWidgetPlaceholders(stage, built);
     return built;
   }
 
-  PREVIEW_PAINTERS.sidebar_background = paintSidebarStack;
-  PREVIEW_PAINTERS.sidebar_actions = paintSidebarStack;
+  /* Shima's Sidebar tab previews the actual composition: the shared main-menu
+     backdrop with one compact island centered on it. The island keeps the
+     Sidebar surface controls, but no profile, action strip, Ready to Go block,
+     or other sidebar module. Hidden actions remain available from Home. */
+  function paintShimaDeckIsland(stage, vals, isDark) {
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    designerPaintBackdrop(stage, vals, isDark);
+
+    const spec = designerSidebarSpec(vals, isDark);
+    const island = el("div", "osw-sbprev-frame is-shima");
+    island.style.borderRadius = spec.radius + "px";
+    island.style.border = spec.stroke + "px solid " + spec.borderColor;
+    island.style.setProperty("--osw-sbprev-inner-radius", Math.max(0, spec.radius - spec.stroke) + "px");
+
+    const fill = el("div", "osw-sbprev-fill");
+    fill.style.background = spec.color;
+    if (spec.bgMode === "custom") {
+      fill.style.opacity = String(Math.max(0, Math.min(100, spec.opacity)) / 100);
+    }
+    if (spec.backdropBlur) {
+      fill.style.backdropFilter = "blur(" + spec.backdropBlur.toFixed(1) + "px)";
+      fill.style.webkitBackdropFilter = fill.style.backdropFilter;
+    }
+    island.appendChild(fill);
+
+    const url = spec.image ? imageUrl("sidebar_bg", spec.image) : "";
+    if (url) {
+      const img = el("div", "osw-sbprev-fill osw-sbprev-image");
+      img.style.backgroundImage = "url(\"" + url.replace(/\"/g, "") + "\")";
+      img.style.filter = spec.blur > 0 ? "blur(" + spec.blur.toFixed(1) + "px)" : "";
+      img.style.opacity = String(Math.max(0, Math.min(100, spec.opacity)) / 100);
+      island.appendChild(img);
+    }
+
+    const content = el("div", "osw-sbprev-content");
+    const decks = el("div", "osw-sbprev-section osw-sbprev-section-decks");
+    designerDeckRows(decks, vals, spec, isDark);
+    content.appendChild(decks);
+    island.appendChild(content);
+    stage.appendChild(island);
+  }
+
+  function paintThemeSidebar(stage, vals, isDark) {
+    if (vals.onigiri_ui_theme === "shima") {
+      paintShimaDeckIsland(stage, vals, isDark);
+      return;
+    }
+    paintSidebarStack(stage, vals, isDark);
+  }
+
+  PREVIEW_PAINTERS.sidebar_background = paintThemeSidebar;
+  PREVIEW_PAINTERS.sidebar_actions = paintThemeSidebar;
+  PREVIEW_PAINTERS.sidebar_ready = paintThemeSidebar;
 
   // One sidebar, one preview: all three cards show the whole thing, so switching
   // tabs never changes what is on the stage — only which controls sit beside it.
-  PREVIEW_PAINTERS.deck_list = paintSidebarStack;
+  PREVIEW_PAINTERS.deck_list = function (stage, vals, isDark) {
+    paintThemeSidebar(stage, vals, isDark);
+  };
 
   // ── Phase 6: Organize (widget grid editor) ────────────────────────────────
   //
@@ -7274,10 +9450,47 @@
 
   const ORGANIZE_DEFAULT_LAYOUT = ["stats_title", "studied", "time", "pace", "retention", "heatmap"];
 
+  function organizeTileInnerRadius(width, height, radius, border) {
+    // CSS scales uniform corner radii down to half the shortest tile side.
+    return Math.max(0, Math.min(radius, width / 2, height / 2) - border);
+  }
+
+  function organizeRemoveIconOffset(radius) {
+    const outer = Math.min(16, Math.max(0, radius - 4));
+    const inner = Math.min(6, outer, 18 - outer);
+    const bottomLeft = Math.min(6, outer);
+    // Find the centroid of the button's visible area: each rounded corner
+    // removes a square minus a quarter-circle. Equal top-left/bottom-right
+    // corners cancel, so the remaining correction is diagonal.
+    const cutout = 1 - Math.PI / 4;
+    const cutoutCenter = (5 / 6 - Math.PI / 4) / cutout;
+    const area = 18 * 18 - cutout *
+      (2 * inner * inner + outer * outer + bottomLeft * bottomLeft);
+    return cutout * (outer * outer * (9 - cutoutCenter * outer) -
+      bottomLeft * bottomLeft * (9 - cutoutCenter * bottomLeft)) / area;
+  }
+
   function renderWidgetGrid(section) {
     const F_ONI = "onigiriWidgetLayout";
     const F_EXT = "externalWidgetLayout";
     const F_ROWS = "unifiedGridRows";
+
+    function syncTileRemoveRadius(tile) {
+      if (!tile.isConnected || !tile.offsetWidth || !tile.offsetHeight) return;
+      const style = window.getComputedStyle(tile);
+      const radius = organizeTileInnerRadius(
+        tile.offsetWidth, tile.offsetHeight,
+        parseFloat(style.borderTopRightRadius) || 0,
+        parseFloat(style.borderTopWidth) || 0
+      );
+      tile.style.setProperty("--osw-organize-tile-inner-radius", radius + "px");
+      tile.style.setProperty("--osw-remove-icon-offset", organizeRemoveIconOffset(radius) + "px");
+    }
+    const tileRadiusObserver = window.ResizeObserver
+      ? new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) { syncTileRemoveRadius(entry.target); });
+      }) : null;
+    widgetGridTileRadiusObserver = tileRadiusObserver;
 
     const catalogue = CTX.organizeCatalogue || { onigiri: [], external: [] };
     const specsByWid = {};
@@ -7314,15 +9527,15 @@
       return "deck_stats_" + Date.now();
     }
 
-    const state = { cols: 4, minRows: 6, alignment: "center", gridWidth: 260, widgetHeight: 180, tiles: [] };
+    const state = { cols: 4, minRows: 6, alignment: "center", gridWidth: 250, widgetHeight: 150, tiles: [] };
 
     function loadFromValues() {
       const oni = values[F_ONI] || {};
       const ext = values[F_EXT] || {};
       state.cols = organizeClamp(Number(oni.column_count) || 4, 1, 60);
-      state.gridWidth = organizeClamp(Number(oni.grid_width) || 260, 200, 340);
+      state.gridWidth = organizeClamp(Number(oni.grid_width) || 250, 200, 340);
       state.alignment = oni.grid_alignment || "center";
-      state.widgetHeight = organizeClamp(Number(oni.widget_height) || 180, 120, 320);
+      state.widgetHeight = organizeClamp(Number(oni.widget_height) || 150, 120, 320);
       state.minRows = organizeClamp(Number(values[F_ROWS]) || 6, 1, 60);
       state.tiles = [];
       const oniGrid = oni.grid || {};
@@ -7334,7 +9547,9 @@
         state.tiles.push({
           wid: wid, row: Math.floor(pos / state.cols), col: pos % state.cols,
           rowSpan: organizeClampSpan(cfg.row, spec, true), colSpan: organizeClampSpan(cfg.col, spec, false),
-          displayName: cfg.display_name || spec.name, orientation: cfg.orientation || "horizontal"
+          displayName: wid === "stats_title" ? spec.name : (cfg.display_name || spec.name),
+          orientation: cfg.orientation || "horizontal",
+          design: cfg.design === "circles" ? "circles" : "squares"
         });
       });
       // Tolerates the legacy flat form (no {grid,archive} wrapper).
@@ -7363,6 +9578,7 @@
         if (spec.kind === "onigiri") {
           const entry = { pos: pos, row: t.rowSpan, col: t.colSpan, display_name: t.displayName };
           if (t.wid === "restaurant_level") entry.orientation = t.orientation || "horizontal";
+          if (t.wid === "ready_to_go") entry.design = t.design || "squares";
           oniGrid[t.wid] = entry;
         } else {
           extGrid[t.wid] = { grid_position: pos, row_span: Math.max(2, t.rowSpan), column_span: t.colSpan, display_name: t.displayName };
@@ -7401,6 +9617,313 @@
     }
 
     const wrap = el("div", "osw-organize-wrap");
+
+    // ── live Main Menu preview ────────────────────────────────────────────
+    // The editor still owns the layout; this skin only changes how its canvas
+    // is painted. That keeps placement, multi-select and resize interactions
+    // faithful while making the thing being arranged look like the menu it
+    // will become.
+    const WIDGET_DYNAMIC_KEY = "onigiri_canvas_inset_color_theme_mode";
+    let previewMode = CTX.dark ? "dark" : "light";
+    let canvas = null;
+    let displayedMenuBackground = null;
+
+    function widgetPreviewDynamicOn() {
+      return values[WIDGET_DYNAMIC_KEY] === "separate";
+    }
+
+    function widgetPreviewIsDark() {
+      return widgetPreviewDynamicOn() && previewMode === "dark";
+    }
+
+    function widgetPreviewValue(fieldId, fallback) {
+      const value = values[fieldId];
+      return value === undefined || value === null || value === "" ? fallback : value;
+    }
+
+    function paintWidgetGridPreview() {
+      // Paint during construction too: the initial canvas is still detached
+      // when renderCanvas runs, and must already have its background on mount.
+      if (!canvas) return false;
+      syncPreviewControls();
+      const isDark = widgetPreviewIsDark();
+      const boxColor = designerPairValue(
+        values, "widget_box_color_light", "widget_box_color_dark",
+        WIDGET_DYNAMIC_KEY, isDark
+      ) || (isDark ? "#2c2c2c" : "#ffffff");
+      const borderColor = designerPairValue(
+        values, "widget_border_color_light", "widget_border_color_dark",
+        WIDGET_DYNAMIC_KEY, isDark
+      ) || (isDark ? "#424242" : "#e0e0e0");
+      const glass = designerGlassCardStyle(
+        values, isDark, "onigiri_canvas_inset_effect_opacity",
+        "onigiri_canvas_inset_effect_blur", "onigiri_canvas_inset_border_radius",
+        "onigiri_canvas_inset_border_width", boxColor, borderColor
+      );
+      const textRole = designerFontRole(values, "widget_small", isDark, "main");
+      const previewText = textRole.color || (isDark ? "#f4f4f5" : "#202124");
+
+      canvas.classList.toggle("is-dark", isDark);
+      canvas.style.setProperty("--osw-organize-preview-card-bg", glass.background);
+      canvas.style.setProperty("--osw-organize-preview-card-border", glass.border);
+      canvas.style.setProperty("--osw-organize-preview-card-radius", glass.borderRadius);
+      canvas.querySelectorAll(".osw-organize-tile").forEach(syncTileRemoveRadius);
+      canvas.style.setProperty("--osw-organize-preview-card-blur", glass.backdropFilter || "none");
+      canvas.style.setProperty("--osw-organize-preview-text-font", textRole.family || "inherit");
+      canvas.style.setProperty("--osw-organize-preview-text", previewText);
+
+      const titleTile = canvas.querySelector('[data-wid="stats_title"]');
+      if (titleTile) {
+        const enabled = !!values.modern_menu_title_background_enabled;
+        titleTile.classList.add("is-menu-title-tile");
+        titleTile.classList.toggle("has-title-background", enabled);
+        titleTile.style.borderRadius = glass.borderRadius;
+        titleTile.style.border = enabled ? glass.border : "0 solid transparent";
+        syncTileRemoveRadius(titleTile);
+        titleTile.setAttribute("aria-label", str("menu_title", "Menu Title"));
+        let background = titleTile.querySelector(".osw-organize-title-background");
+        if (!background) {
+          background = el("div", "osw-organize-title-background");
+          titleTile.insertBefore(background, titleTile.firstChild);
+        }
+        background.hidden = !enabled;
+        const kind = values.modern_menu_title_background_type || "color";
+        const blur = organizeClamp(Number(values.modern_menu_title_background_blur) || 0, 0, 40);
+        const opacity = values.modern_menu_title_background_opacity;
+        const tintOpacity = organizeClamp(opacity == null ? 100 : Number(opacity), 0, 100);
+        // Keep backdrop blur visible through a translucent tint, rather than
+        // fading an opaque fill together with the already-covered backdrop.
+        background.style.opacity = kind === "color" ? 1 : tintOpacity / 100;
+        background.style.backgroundColor = kind === "color"
+          ? "color-mix(in srgb, " + (values.modern_menu_title_background_color || "#FFFFFF") + " " + tintOpacity + "%, transparent)"
+          : "transparent";
+        const url = kind === "image" ? imageUrl("main_bg", values.modern_menu_title_background_image) : "";
+        background.style.backgroundImage = url ? 'url("' + url + '")' : "none";
+        background.style.filter = kind === "image" ? "blur(" + blur + "px)" : "none";
+        background.style.backdropFilter = kind === "color" ? "blur(" + blur + "px)" : "none";
+        background.style.webkitBackdropFilter = background.style.backdropFilter;
+        if (values.modern_menu_title_sync_widgets) {
+          background.style.opacity = 1;
+          background.style.backgroundColor = glass.background;
+          background.style.backgroundImage = "none";
+          background.style.filter = "none";
+          background.style.backdropFilter = glass.backdropFilter || "none";
+          background.style.webkitBackdropFilter = background.style.backdropFilter;
+        }
+        const phrase = titleTile.querySelector(".osw-organize-tile-name");
+        const text = values.modern_menu_statsTitle;
+        phrase.textContent = text == null ? ((fieldById.modern_menu_statsTitle || {}).default || "") : String(text);
+        phrase.hidden = !phrase.textContent.trim();
+        const alignment = values.modern_menu_title_alignment || "left";
+        phrase.style.textAlign = ["left", "center", "right"].indexOf(alignment) >= 0 ? alignment : "left";
+        const titleFont = designerFontRole(values, "dashboard_title", isDark, "subtle");
+        phrase.style.fontFamily = titleFont.family || "inherit";
+        phrase.style.color = titleFont.color || previewText;
+        phrase.style.fontSize = Math.max(8, Math.min(72, Number(values.onigiri_font_size_dashboard_title) || 20)) * 0.6 + "px";
+      }
+
+      const backdrop = canvas.querySelector(".osw-organize-preview-backdrop");
+      if (!backdrop) return true;
+      // Resolve the background for the theme selected in the grid, so the
+      // theme button changes both the widgets and their surrounding canvas.
+      const backgroundIsDark = isDark;
+      const color = values[backgroundIsDark ? MAIN_BG_KEYS.colorDark : MAIN_BG_KEYS.colorLight]
+        || (backgroundIsDark ? "#2c2c2c" : "#eeeeee");
+      const colorLayer = backdrop.querySelector(".osw-organize-preview-color");
+      const imageLayer = backdrop.querySelector(".osw-organize-preview-image");
+      if (colorLayer) colorLayer.style.background = color;
+
+      const backgroundMode = values[MAIN_BG_KEYS.mode] || "color";
+      let imageName = "";
+      if (backgroundMode === "slideshow") {
+        const images = Array.isArray(values[MAIN_BG_KEYS.slideshowImages])
+          ? values[MAIN_BG_KEYS.slideshowImages] : [];
+        imageName = images[0] || "";
+      } else if (backgroundMode !== "color") {
+        // Match config.themed_asset: themed slot then shared slot in Dynamic
+        // Mode; shared, current theme, then opposite theme in single mode.
+        const rawMode = values[MAIN_BG_KEYS.imageThemeMode] !== undefined
+          ? values[MAIN_BG_KEYS.imageThemeMode] : values.modern_menu_background_image_mode;
+        const imageDynamic = rawMode === undefined || (
+          typeof rawMode === "string"
+            ? ["single", "shared", "linked", "false", "off", "0"].indexOf(rawMode.toLowerCase()) === -1
+            : !!rawMode
+        );
+        const shared = values[MAIN_BG_KEYS.imageBase] || "";
+        const current = values[backgroundIsDark ? MAIN_BG_KEYS.imageDark : MAIN_BG_KEYS.imageLight] || "";
+        const other = values[backgroundIsDark ? MAIN_BG_KEYS.imageLight : MAIN_BG_KEYS.imageDark] || "";
+        imageName = imageDynamic ? (current || shared) : (shared || current || other);
+      }
+      const image = imageName && imageUrl(MAIN_BG_KEYS.imageFolder, imageName);
+      if (imageLayer) {
+        imageLayer.style.backgroundImage = image ? 'url("' + image.replace(/"/g, "") + '")' : "none";
+        imageLayer.style.opacity = String(Math.max(0, Math.min(100,
+          Number(widgetPreviewValue(MAIN_BG_KEYS.opacity, 100)))) / 100);
+        const blur = Math.max(0, Number(widgetPreviewValue(MAIN_BG_KEYS.blur, 0)));
+        const blurPx = blur * 0.2;
+        imageLayer.style.filter = blurPx ? "blur(" + blurPx.toFixed(1) + "px)" : "none";
+        imageLayer.style.transform = "scale(" + (1 + blurPx / 50) + ")";
+      }
+      // Use the real menu's rendered colours/images only when its theme
+      // matches the selected grid theme. Slideshow frames are shared between
+      // themes, so keep their image/fade synchronized in either grid mode.
+      const nextLayer = backdrop.querySelector(".osw-organize-preview-next-image");
+      if (nextLayer) nextLayer.style.backgroundImage = "none";
+      if (displayedMenuBackground) {
+        const menuIsDark = typeof displayedMenuBackground.dark === "boolean"
+          ? displayedMenuBackground.dark : !!CTX.dark;
+        const matchesTheme = menuIsDark === backgroundIsDark;
+        if (matchesTheme && colorLayer) colorLayer.style.background = displayedMenuBackground.color;
+        function copyLayer(node, layer) {
+          if (!node || !layer) return;
+          node.style.backgroundImage = layer.image || "none";
+          node.style.backgroundPosition = layer.position || "center";
+          node.style.backgroundSize = layer.size || "cover";
+          node.style.opacity = layer.opacity;
+          node.style.filter = layer.filter || "none";
+          node.style.transform = "scale(" + (Number(layer.scale) || 1) + ")";
+        }
+        if (matchesTheme || backgroundMode === "slideshow") {
+          copyLayer(imageLayer, displayedMenuBackground.base);
+          copyLayer(nextLayer, displayedMenuBackground.next);
+        }
+      }
+      return true;
+    }
+
+    const previewCard = el("div", "osw-organize-preview-card");
+    const previewHead = el("div", "osw-designer-preview-head osw-organize-preview-head");
+    previewHead.appendChild(el("div", "osw-designer-preview-title",
+      str("widget_grid", "Widget grid")));
+    const previewControls = el("div", "osw-preview-head-controls");
+    const dynamicCtl = el("div", "osw-preview-ctl");
+    dynamicCtl.appendChild(el("span", "osw-preview-ctl-label", str("dynamic_mode", "Dynamic mode")));
+    const dynamicBtn = el("button", "osw-sq-switch-btn");
+    dynamicBtn.type = "button";
+    dynamicBtn.setAttribute("aria-label", str("dynamic_mode", "Dynamic mode"));
+    const dynamicTrack = el("div", "osw-sq-switch" + (widgetPreviewDynamicOn() ? " is-on" : ""));
+    dynamicBtn.appendChild(dynamicTrack);
+    dynamicBtn.addEventListener("click", function () {
+      bridge("osw:haptic:1");
+      const next = !widgetPreviewDynamicOn();
+      setValue(WIDGET_DYNAMIC_KEY, next ? "separate" : "single");
+      if (!next) previewMode = "light";
+      dynamicTrack.classList.toggle("is-on", next);
+      dynamicBtn.setAttribute("aria-pressed", next ? "true" : "false");
+      refreshPairFields();
+      paintWidgetGridPreview();
+      syncPreviewControls();
+    });
+    dynamicCtl.appendChild(dynamicBtn);
+    previewControls.appendChild(dynamicCtl);
+
+    const previewThemeBtn = el("button", "osw-profile-preview-toggle-btn osw-designer-preview-toggle-btn");
+    previewThemeBtn.type = "button";
+    function syncPreviewControls() {
+      const isDark = widgetPreviewIsDark();
+      previewThemeBtn.innerHTML = isDark ? OSW_SUN_ICON : OSW_MOON_ICON;
+      previewThemeBtn.title = isDark ? str("light_mode", "Light") : str("dark_mode", "Dark");
+      previewThemeBtn.disabled = !widgetPreviewDynamicOn();
+      dynamicTrack.classList.toggle("is-on", widgetPreviewDynamicOn());
+      dynamicBtn.setAttribute("aria-pressed", widgetPreviewDynamicOn() ? "true" : "false");
+    }
+    previewThemeBtn.addEventListener("click", function () {
+      if (!widgetPreviewDynamicOn()) return;
+      previewMode = previewMode === "dark" ? "light" : "dark";
+      syncPreviewControls();
+      paintWidgetGridPreview();
+    });
+
+    const resetLabel = str("reset", "Reset");
+    const previewResetBtn = el("button", "osw-btn osw-designer-reset");
+    previewResetBtn.type = "button";
+    previewResetBtn.title = str("reset_widget_appearance", "Reset widget appearance");
+    previewResetBtn.appendChild(el("span", "osw-designer-reset-label", resetLabel));
+    const resetIcon = el("span", "osw-designer-reset-icon");
+    resetIcon.innerHTML = OSW_RESET_ICON;
+    previewResetBtn.appendChild(resetIcon);
+    installResetHold(previewResetBtn, function () {
+      [
+        "onigiri_canvas_inset_effect_blur", "onigiri_canvas_inset_effect_opacity",
+        "onigiri_canvas_inset_border_radius", "onigiri_canvas_inset_border_width",
+        "widget_box_color_light", "widget_box_color_dark",
+        "widget_border_color_light", "widget_border_color_dark", WIDGET_DYNAMIC_KEY
+      ].forEach(function (fieldId) {
+        const field = fieldById[fieldId];
+        if (field && field.default !== undefined) {
+          setValue(fieldId, field.default, { silent: true, keepDom: true });
+        }
+      });
+      previewMode = "light";
+      refreshSettingsPreviews();
+      syncPreviewControls();
+    }, { title: str("reset_widget_appearance", "Reset widget appearance") });
+    const utility = el("div", "osw-preview-utility-ctl");
+    utility.appendChild(previewThemeBtn);
+    utility.appendChild(previewResetBtn);
+    const infoBtn = el("button", "osw-organize-font-info osw-organize-grid-info");
+    infoBtn.type = "button";
+    infoBtn.innerHTML = ICON_INFO;
+    infoBtn.title = str("organize_grid_help_title", "Arrange your widgets");
+    infoBtn.setAttribute("aria-label", infoBtn.title);
+    infoBtn.setAttribute("aria-haspopup", "dialog");
+    infoBtn.addEventListener("click", openWidgetGridHelp);
+    utility.appendChild(infoBtn);
+    previewControls.appendChild(utility);
+    previewHead.appendChild(previewControls);
+    previewCard.appendChild(previewHead);
+    syncPreviewControls();
+
+    function openWidgetGridHelp() {
+      bridge("osw:haptic:1");
+      const overlay = el("div", "osw-gal osw-organize-help");
+      const card = el("div", "osw-gal-card osw-organize-help-card");
+      card.setAttribute("role", "dialog");
+      card.setAttribute("aria-modal", "true");
+      card.setAttribute("aria-labelledby", "oswWidgetGridHelpTitle");
+      card.setAttribute("aria-describedby", "oswWidgetGridHelpBody");
+      const head = el("div", "osw-gal-head");
+      const title = el("div", "osw-gal-title", infoBtn.title);
+      title.id = "oswWidgetGridHelpTitle";
+      head.appendChild(title);
+      const closeBtn = el("button", "osw-gal-close");
+      closeBtn.type = "button";
+      closeBtn.setAttribute("aria-label", str("close", "Close"));
+      closeBtn.innerHTML = ICON_CLOSE;
+      closeBtn.addEventListener("click", close);
+      head.appendChild(closeBtn);
+      card.appendChild(head);
+      const body = el("div", "osw-organize-help-body");
+      body.id = "oswWidgetGridHelpBody";
+      body.appendChild(el("p", "", str("organize_grid_drag_help",
+        "Drag and drop widgets in the grid to arrange your Main Menu.")));
+      body.appendChild(el("p", "", str("organize_grid_multiselect_help",
+        "Shift+Click widgets to select several, then drag one to move them together.")));
+      card.appendChild(body);
+      overlay.appendChild(card);
+      overlay.addEventListener("click", function (event) {
+        if (event.target === overlay) close();
+      });
+      function close() {
+        document.removeEventListener("keydown", onKey, true);
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        if (infoBtn.isConnected) infoBtn.focus();
+      }
+      function onKey(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          close();
+        } else if (event.key === "Tab") {
+          // The close button is this informational dialog's only control.
+          event.preventDefault();
+          closeBtn.focus();
+        }
+      }
+      document.body.appendChild(overlay);
+      document.addEventListener("keydown", onKey, true);
+      closeBtn.focus();
+    }
 
     // ── global controls ──
     // Two clusters on one bar: the grid's own numbers/alignment on the left,
@@ -7447,6 +9970,7 @@
       commitLayout();
     }));
     const alignRow = el("div", "osw-organize-ctl");
+    alignRow.setAttribute("data-simple-organize-advanced", "true");
     alignRow.appendChild(el("span", "osw-organize-ctl-label", str("grid_alignment", "Grid Alignment")));
     const alignSeg = el("div", "osw-segmented-control osw-organize-seg");
     [["left", str("align_left", "Left")], ["center", str("align_center", "Center")], ["right", str("align_right", "Right")]].forEach(function (opt) {
@@ -7461,36 +9985,33 @@
     });
     alignRow.appendChild(alignSeg);
     controlBottom.appendChild(alignRow);
-    controlGroup.appendChild(numberControl(str("widget_height", "Widget Height"), state.widgetHeight, 120, 320, function (v) {
+    const widgetHeightControl = numberControl(str("widget_height", "Widget Height"), state.widgetHeight, 120, 320, function (v) {
       state.widgetHeight = v; commitLayout();
-    }, "px"));
-    controlGroup.appendChild(numberControl(str("grid_width", "Grid Width"), state.gridWidth, 200, 340, function (v) {
+    }, "px");
+    widgetHeightControl.setAttribute("data-simple-organize-advanced", "true");
+    controlGroup.appendChild(widgetHeightControl);
+    const gridWidthControl = numberControl(str("grid_width", "Grid Width"), state.gridWidth, 200, 340, function (v) {
       state.gridWidth = v; commitLayout();
-    }, "px"));
+    }, "px");
+    gridWidthControl.setAttribute("data-simple-organize-advanced", "true");
+    controlGroup.appendChild(gridWidthControl);
 
     // Hold-to-reset — reuses the exact hold-fill mechanic already built for
     // Profile's reset button (.osw-profile-reset-btn / is-holding / is-ready).
     const resetBtn = el("button", "osw-profile-reset-btn osw-organize-reset-btn");
     resetBtn.type = "button";
     resetBtn.appendChild(el("span", "osw-profile-reset-btn-text", str("restore_default", "Hold to Reset")));
-    let holdTimer = null;
-    function startHold() {
-      resetBtn.classList.add("is-holding");
-      holdTimer = setTimeout(function () {
-        resetBtn.classList.remove("is-holding");
-        resetBtn.classList.add("is-ready");
-        resetGrid();
-        setTimeout(function () { resetBtn.classList.remove("is-ready"); }, 400);
-      }, 3000);
-    }
-    function cancelHold() {
-      clearTimeout(holdTimer);
-      resetBtn.classList.remove("is-holding");
-    }
-    resetBtn.addEventListener("pointerdown", startHold);
-    resetBtn.addEventListener("pointerup", cancelHold);
-    resetBtn.addEventListener("pointerleave", cancelHold);
+    installResetHold(resetBtn, resetGrid, {
+      title: str("hold_to_reset_main_menu", "Hold for 3 seconds to reset Main Menu customizations")
+    });
     controlActions.appendChild(resetBtn);
+
+    // Widget Fonts uses the same small, focused popover as the former
+    // organizer control: titles and widget text can follow the shared font
+    // settings or be detached without opening a separate page.
+    if ((SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
+      controlActions.appendChild(compactFontMenuButton(section));
+    }
 
     const addBtn = el("button", "osw-action-btn osw-organize-add-btn");
     addBtn.type = "button";
@@ -7506,11 +10027,35 @@
     controls.appendChild(controlBottom);
     wrap.appendChild(controls);
 
+    // Widget placement belongs with the grid it changes.  The presets patch
+    // the legacy per-edge values through the schema cascade; Custom is the
+    // only mode that needs to show those precise controls.
+    const layoutControls = renderWidgetLayoutControls(section);
+    if (layoutControls) {
+      layoutControls.setAttribute("data-simple-organize-advanced", "true");
+      wrap.appendChild(layoutControls);
+    }
+
+    // Shared widget appearance belongs beside the grid it styles. Mount the
+    // compact two-row panel after the toolbar and before the selection hint,
+    // while its fields continue using the ordinary autosave renderers.
+    const compactFieldIds = section.compactFields || [];
+    if (compactFieldIds.length) {
+      const compactSet = {};
+      compactFieldIds.forEach(function (fieldId) { compactSet[fieldId] = true; });
+      wrap.appendChild(renderCompactWidgetEffect({
+        fields: (section.fields || []).filter(function (field) {
+          return !!compactSet[field.id];
+        })
+      }));
+    }
+
     const hint = el("div", "osw-organize-hint");
     wrap.appendChild(hint);
 
     function renderHint() {
       hint.innerHTML = "";
+      hint.hidden = selectedWids.size <= 1;
       if (selectedWids.size > 1) {
         hint.classList.add("has-selection");
         hint.appendChild(el("span", "osw-organize-hint-text", selectedWids.size + " " +
@@ -7521,16 +10066,16 @@
         hint.appendChild(clearBtn);
       } else {
         hint.classList.remove("has-selection");
-        hint.appendChild(el("span", "osw-organize-hint-text", str("organize_multiselect_hint",
-          "Tip: Shift+Click widgets to select several, then drag one to move them together.")));
       }
     }
 
-    const canvas = el("div", "osw-organize-canvas");
+    canvas = el("div", "osw-organize-canvas osw-organize-live-preview");
     canvas.addEventListener("pointerdown", function (event) {
-      if (event.target === canvas || event.target.classList.contains("osw-organize-slot")) clearSelection();
+      if (event.target === canvas || event.target.classList.contains("osw-organize-slot") ||
+          event.target.closest(".osw-organize-preview-backdrop")) clearSelection();
     });
-    wrap.appendChild(canvas);
+    previewCard.appendChild(canvas);
+    wrap.appendChild(previewCard);
 
     function resolveAllOverlaps() {
       const placed = [];
@@ -7550,15 +10095,33 @@
     }
 
     function renderCanvas() {
+      if (tileRadiusObserver) tileRadiusObserver.disconnect();
       canvas.innerHTML = "";
       const rows = effectiveRows();
       const rowHeightPx = Math.round(organizeClamp(state.widgetHeight * 0.42, 52, 96));
       canvas.style.gridTemplateColumns = "repeat(" + state.cols + ", 1fr)";
       canvas.style.gridTemplateRows = "repeat(" + rows + ", " + rowHeightPx + "px)";
 
+      // Two separate layers reproduce the Main Background's composition:
+      // the selected colour stays behind the image, and the image alone takes
+      // the configured blur/opacity. They are deliberately stage-local so
+      // dragging a widget never paints a second background over the controls.
+      const backdrop = el("div", "osw-organize-preview-backdrop");
+      backdrop.appendChild(el("div", "osw-organize-preview-color"));
+      backdrop.appendChild(el("div", "osw-organize-preview-image"));
+      backdrop.appendChild(el("div", "osw-organize-preview-image osw-organize-preview-next-image"));
+      canvas.appendChild(backdrop);
+
       // Render grid slot placeholders for every cell in cols x rows
       for (let r = 0; r < rows; r += 1) {
         for (let c = 0; c < state.cols; c += 1) {
+          // A transparent title still has one full widget footprint. Cell
+          // guides inside it would make that footprint look like empty slots.
+          const insideTitle = state.tiles.some(function (tile) {
+            return tile.wid === "stats_title" && r >= tile.row && r < tile.row + tile.rowSpan &&
+              c >= tile.col && c < tile.col + tile.colSpan;
+          });
+          if (insideTitle) continue;
           const slot = el("div", "osw-organize-slot");
           slot.style.gridColumn = (c + 1);
           slot.style.gridRow = (r + 1);
@@ -7588,6 +10151,26 @@
         });
         tile.appendChild(removeBtn);
 
+        const minSpan = (spec && spec.minSpan) || [1, 1];
+        const maxSpan = (spec && spec.maxSpan) || [4, 4];
+        const canGrowEast = t.colSpan < Math.min(maxSpan[1], state.cols) &&
+          organizeCellsFree(state.tiles, t.row, t.col, t.rowSpan, t.colSpan + 1, state.cols, t.wid);
+        const canGrowSouth = !spec.fixedRows && t.rowSpan < maxSpan[0] &&
+          organizeCellsFree(state.tiles, t.row, t.col, t.rowSpan + 1, t.colSpan, state.cols, t.wid);
+        const canResizeEast = t.colSpan > minSpan[1] || canGrowEast;
+        const canResizeSouth = !spec.fixedRows && (t.rowSpan > minSpan[0] || canGrowSouth);
+
+        function addResizeHandle(kind) {
+          const handle = el("button", "osw-organize-resize-handle is-" + kind);
+          handle.type = "button";
+          handle.title = str("drag_to_resize", "Drag to resize");
+          tile.appendChild(handle);
+          wireTileResize(handle, tile, t, spec, kind);
+        }
+        if (canResizeEast) addResizeHandle("east");
+        if (canResizeSouth) addResizeHandle("south");
+        if (canResizeEast && canResizeSouth) addResizeHandle("corner");
+
         wireTileDrag(tile, t);
         tile.addEventListener("contextmenu", function (event) {
           event.preventDefault();
@@ -7595,8 +10178,87 @@
         });
 
         canvas.appendChild(tile);
+        if (tileRadiusObserver) tileRadiusObserver.observe(tile);
       });
       renderHint();
+      paintWidgetGridPreview();
+    }
+
+    function wireTileResize(handle, tileEl, t, spec, kind) {
+      let active = false;
+      let startX = 0, startY = 0, cellW = 1, cellH = 1;
+      let nextRows = t.rowSpan, nextCols = t.colSpan;
+      const minSpan = (spec && spec.minSpan) || [1, 1];
+      const maxSpan = (spec && spec.maxSpan) || [4, 4];
+
+      handle.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        startX = event.clientX;
+        startY = event.clientY;
+        nextRows = t.rowSpan;
+        nextCols = t.colSpan;
+        const canvasRect = canvas.getBoundingClientRect();
+        const style = window.getComputedStyle(canvas);
+        const gapX = parseFloat(style.columnGap) || 0;
+        const gapY = parseFloat(style.rowGap) || 0;
+        const usableWidth = canvasRect.width - (parseFloat(style.paddingLeft) || 0) -
+          (parseFloat(style.paddingRight) || 0) - gapX * (state.cols - 1);
+        cellW = Math.max(1, usableWidth / state.cols + gapX);
+        const rows = effectiveRows();
+        const usableHeight = canvasRect.height - (parseFloat(style.paddingTop) || 0) -
+          (parseFloat(style.paddingBottom) || 0) - gapY * Math.max(0, rows - 1);
+        cellH = Math.max(1, usableHeight / rows + gapY);
+        active = true;
+        tileEl.classList.add("is-resizing");
+        handle.setPointerCapture(event.pointerId);
+      });
+
+      handle.addEventListener("pointermove", function (event) {
+        if (!active) return;
+        let candidateRows = t.rowSpan;
+        let candidateCols = t.colSpan;
+        if (kind === "east" || kind === "corner") {
+          candidateCols = organizeClamp(
+            t.colSpan + Math.round((event.clientX - startX) / cellW),
+            minSpan[1],
+            Math.min(maxSpan[1], state.cols - t.col)
+          );
+        }
+        if ((kind === "south" || kind === "corner") && !spec.fixedRows) {
+          candidateRows = organizeClamp(
+            t.rowSpan + Math.round((event.clientY - startY) / cellH),
+            minSpan[0],
+            maxSpan[0]
+          );
+        }
+        if (!organizeCellsFree(
+          state.tiles, t.row, t.col, candidateRows, candidateCols, state.cols, t.wid
+        )) return;
+        nextRows = candidateRows;
+        nextCols = candidateCols;
+        tileEl.style.gridColumn = (t.col + 1) + " / span " + nextCols;
+        tileEl.style.gridRow = (t.row + 1) + " / span " + nextRows;
+      });
+
+      function finishResize() {
+        if (!active) return;
+        active = false;
+        tileEl.classList.remove("is-resizing");
+        if (nextRows !== t.rowSpan || nextCols !== t.colSpan) {
+          t.rowSpan = nextRows;
+          t.colSpan = nextCols;
+          renderCanvas();
+          commitLayout();
+        } else {
+          tileEl.style.gridColumn = (t.col + 1) + " / span " + t.colSpan;
+          tileEl.style.gridRow = (t.row + 1) + " / span " + t.rowSpan;
+        }
+      }
+
+      handle.addEventListener("pointerup", finishResize);
+      handle.addEventListener("pointercancel", finishResize);
+      handle.addEventListener("lostpointercapture", finishResize);
     }
 
     // A tile drags alone unless it's part of an active multi-selection with
@@ -7630,7 +10292,7 @@
       }
 
       tileEl.addEventListener("pointerdown", function (event) {
-        if (event.target !== tileEl && event.target.closest(".osw-organize-tile-remove")) return;
+        if (event.target !== tileEl && event.target.closest(".osw-organize-tile-remove, .osw-organize-resize-handle")) return;
         event.preventDefault();
 
         // Shift+Click only ever toggles this tile's selection — it never
@@ -7753,8 +10415,12 @@
     }
 
     function resetGrid() {
-      state.cols = 4;
-      state.minRows = 6;
+      const layoutDefaults = (fieldById[F_ONI] || {}).default || {};
+      state.cols = organizeClamp(Number(layoutDefaults.column_count) || 4, 1, 60);
+      state.minRows = organizeClamp(Number((fieldById[F_ROWS] || {}).default) || 6, 1, 60);
+      state.gridWidth = organizeClamp(Number(layoutDefaults.grid_width) || 250, 200, 340);
+      state.alignment = layoutDefaults.grid_alignment || "center";
+      state.widgetHeight = organizeClamp(Number(layoutDefaults.widget_height) || 150, 120, 320);
       state.tiles = [];
       selectedWids.clear();
       let i = 0;
@@ -7769,19 +10435,30 @@
       });
       renderCanvas();
       commitLayout();
-      const rowsInput = controls.querySelectorAll(".osw-organize-ctl-input")[1];
-      if (rowsInput) rowsInput.value = state.minRows;
-      const colsInput = controls.querySelectorAll(".osw-organize-ctl-input")[0];
-      if (colsInput) colsInput.value = state.cols;
+      const inputs = controls.querySelectorAll(".osw-organize-ctl-input");
+      if (inputs[0]) inputs[0].value = state.cols;
+      if (inputs[1]) inputs[1].value = state.minRows;
+      if (inputs[2]) inputs[2].value = state.widgetHeight;
+      if (inputs[3]) inputs[3].value = state.gridWidth;
+      Array.prototype.forEach.call(alignSeg.querySelectorAll(".osw-segment-btn"), function (button) {
+        button.classList.toggle("is-active", button.textContent.toLowerCase() === state.alignment);
+      });
     }
 
     // ── context menu: resize (+/- span), rename, remove ──
     let openMenuEl = null;
+    let tileMenuOutsideHandler = null;
     function closeTileMenu() {
+      if (tileMenuOutsideHandler) {
+        document.removeEventListener("pointerdown", tileMenuOutsideHandler, true);
+        tileMenuOutsideHandler = null;
+      }
       if (openMenuEl && openMenuEl.parentNode) openMenuEl.parentNode.removeChild(openMenuEl);
       openMenuEl = null;
+      if (activeTileMenuClose === closeTileMenu) activeTileMenuClose = null;
     }
     function openTileMenu(t, spec, x, y) {
+      if (activeTileMenuClose) activeTileMenuClose();
       closeTileMenu();
       const menu = el("div", "osw-organize-menu");
       menu.style.left = x + "px";
@@ -7793,15 +10470,23 @@
 
         const stepper = el("div", "osw-organize-menu-stepper");
 
-        const minus = el("button", "osw-organize-menu-step-btn", "−");
+        const minus = el("button", "osw-organize-menu-step-btn");
         minus.type = "button";
+        minus.innerHTML = ICON_MINUS;
+        minus.setAttribute("aria-label", "Decrease " + labelText);
+        minus.firstElementChild.setAttribute("aria-hidden", "true");
+        minus.firstElementChild.setAttribute("focusable", "false");
         minus.disabled = current <= min;
         minus.addEventListener("click", onMinus);
 
         const valSpan = el("span", "osw-organize-menu-val", current);
 
-        const plus = el("button", "osw-organize-menu-step-btn", "+");
+        const plus = el("button", "osw-organize-menu-step-btn");
         plus.type = "button";
+        plus.innerHTML = ICON_PLUS;
+        plus.setAttribute("aria-label", "Increase " + labelText);
+        plus.firstElementChild.setAttribute("aria-hidden", "true");
+        plus.firstElementChild.setAttribute("focusable", "false");
         plus.disabled = current >= max;
         plus.addEventListener("click", onPlus);
 
@@ -7830,6 +10515,30 @@
         }));
       }
 
+      if (t.wid === "ready_to_go") {
+        const designRow = el("div", "osw-organize-menu-row");
+        designRow.appendChild(el("span", "osw-organize-menu-label", str("design", "Design")));
+        const designSeg = el("div", "osw-segmented-control");
+        [["squares", "Squares"], ["circles", "Circles"]].forEach(function (opt) {
+          const btn = el("button", "osw-segment-btn" + ((t.design || "squares") === opt[0] ? " is-active" : ""), opt[1]);
+          btn.type = "button";
+          btn.setAttribute("aria-pressed", String((t.design || "squares") === opt[0]));
+          btn.addEventListener("click", function () {
+            t.design = opt[0];
+            Array.prototype.forEach.call(designSeg.children, function (b) {
+              const active = b === btn;
+              b.classList.toggle("is-active", active);
+              b.setAttribute("aria-pressed", String(active));
+            });
+            renderCanvas();
+            commitLayout();
+          });
+          designSeg.appendChild(btn);
+        });
+        designRow.appendChild(designSeg);
+        menu.appendChild(designRow);
+      }
+
       if (t.wid === "restaurant_level") {
         const orientRow = el("div", "osw-organize-menu-row");
         orientRow.appendChild(el("span", "osw-organize-menu-label", str("widget_menu_orientation", "Orientation")));
@@ -7853,17 +10562,56 @@
         menu.appendChild(orientRow);
       }
 
-      const renameRow = el("div", "osw-organize-menu-row");
-      const renameInput = document.createElement("input");
-      renameInput.type = "text";
-      renameInput.className = "osw-organize-menu-input";
-      renameInput.value = t.displayName || spec.name;
-      renameInput.addEventListener("change", function () {
-        const text = renameInput.value.trim();
-        if (text) { t.displayName = text; renderCanvas(); commitLayout(); }
-      });
-      renameRow.appendChild(renameInput);
-      menu.appendChild(renameRow);
+      if (t.wid === "stats_title") {
+        menu.classList.add("is-menu-title");
+        // The grid tile is the Main Menu heading, so its context popup edits
+        // the heading itself rather than the organizer-only display name.
+        const menuTitleFields = SETTINGS_MODE_PARITY || settingsComplexity === "advanced"
+          ? [
+            "modern_menu_statsTitle",
+            "onigiri_font_dashboard_title",
+            "onigiri_font_size_dashboard_title",
+            "modern_menu_title_alignment",
+            "modern_menu_title_background_enabled",
+            "modern_menu_title_sync_widgets",
+            "modern_menu_title_background_type",
+            "modern_menu_title_background_color",
+            "modern_menu_title_background_image",
+            "modern_menu_title_background_opacity",
+            "modern_menu_title_background_blur"
+          ]
+          : ["modern_menu_statsTitle"];
+        menuTitleFields.forEach(function (fieldId) {
+          const field = fieldById[fieldId];
+          const renderer = field && FIELD_RENDERERS[field.type];
+          if (!renderer) return;
+          const node = renderer(field);
+          node.classList.add("osw-organize-menu-field");
+          node.setAttribute("data-field-host", field.id);
+          menu.appendChild(node);
+        });
+        menu.__section = { fields: menuTitleFields.map(function (id) { return fieldById[id]; }).filter(Boolean) };
+        menu.__fieldsHost = menu;
+        applyPlainVisibility(menu);
+        conditionalBlocks.push(menu);
+        menu.__afterVisibility = function () {
+          if (!menu.isConnected) return;
+          const height = menu.getBoundingClientRect().height;
+          menu.style.top = Math.max(12, Math.min(y, window.innerHeight - height - 12)) + "px";
+        };
+      } else {
+        const renameRow = el("div", "osw-organize-menu-row");
+        const renameInput = document.createElement("input");
+        renameInput.type = "text";
+        renameInput.className = "osw-organize-menu-input";
+        renameInput.value = t.displayName || spec.name;
+        renameInput.addEventListener("change", function () {
+          const text = renameInput.value.trim();
+          if (text) { t.displayName = text; renderCanvas(); commitLayout(); }
+        });
+        renameRow.appendChild(renameInput);
+        menu.appendChild(renameRow);
+      }
 
       const removeRow = el("div", "osw-organize-menu-row");
       const removeBtn = el("button", "osw-organize-menu-remove", str("remove", "Remove"));
@@ -7880,6 +10628,7 @@
 
       document.body.appendChild(menu);
       openMenuEl = menu;
+      activeTileMenuClose = closeTileMenu;
       const menuRect = menu.getBoundingClientRect();
       if (x + menuRect.width > window.innerWidth - 12) {
         menu.style.left = Math.max(12, window.innerWidth - menuRect.width - 12) + "px";
@@ -7888,9 +10637,14 @@
         menu.style.top = Math.max(12, window.innerHeight - menuRect.height - 12) + "px";
       }
       setTimeout(function () {
-        document.addEventListener("pointerdown", onOutside, { once: true, capture: true });
+        if (openMenuEl !== menu) return;
+        tileMenuOutsideHandler = onOutside;
+        document.addEventListener("pointerdown", onOutside, true);
       }, 0);
+      if (menu.__afterVisibility) menu.__afterVisibility();
+      // Gallery interactions should not dismiss the underlying editor.
       function onOutside(event) {
+        if (settingsPicker || gallery) return;
         if (!menu.contains(event.target)) closeTileMenu();
       }
     }
@@ -8025,23 +10779,40 @@
       document.body.appendChild(root);
     }
 
-    renderCanvas();
-
-    // Plain fields declared on this section (the Stats Title text and its
-    // font) render as an ordinary deck under the canvas. The grid itself is
-    // driven by the four `hidden` layout objects, which have no rows to draw.
-    const extraFields = (section.fields || []).filter(function (field) {
-      return field.type !== "hidden" && FIELD_RENDERERS[field.type];
+    activeWidgetGridPreviews.push(function () {
+      if (!canvas.isConnected) {
+        if (tileRadiusObserver) tileRadiusObserver.disconnect();
+        return false;
+      }
+      return paintWidgetGridPreview();
     });
-    if (extraFields.length) {
-      const deck = el("div", "osw-fields osw-organize-extra-fields");
-      extraFields.forEach(function (field) {
-        const node = FIELD_RENDERERS[field.type](field);
-        node.setAttribute("data-field-host", field.id);
-        deck.appendChild(node);
-      });
-      wrap.appendChild(deck);
-    }
+    activeWidgetGridBackgroundReceiver = function (background) {
+      if (!canvas.isConnected) return;
+      displayedMenuBackground = background;
+      paintWidgetGridPreview();
+    };
+    // Start after the grid has been mounted. Stop when switching away so a
+    // background-only read never runs for another Settings section.
+    requestAnimationFrame(function () {
+      if (!canvas.isConnected) return;
+      canvas.querySelectorAll(".osw-organize-tile").forEach(syncTileRemoveRadius);
+      function syncBackground() {
+        if (!canvas.isConnected) {
+          if (tileRadiusObserver) tileRadiusObserver.disconnect();
+          stopWidgetGridBackgroundSync();
+          return;
+        }
+        bridge("osw:grid_background:");
+      }
+      syncBackground();
+      widgetGridBackgroundTimer = setInterval(syncBackground, 500);
+    });
+    // Older integrations could register a Bento widget at cell zero, which
+    // collides with the title widget in a unified grid. Config normalisation
+    // repairs that for the main menu; resolve here as well so opening Organize
+    // is safe even when this dialog received a stale in-memory layout.
+    resolveAllOverlaps();
+    renderCanvas();
     return wrap;
   }
 
@@ -8067,19 +10838,42 @@
     host.setAttribute("data-field-type", "button_order");
 
     const known = {};
+    const allowArchive = field.allowArchive !== false;
+    const hasMoreBucket = field.moreBucket === true;
     (field.options || []).forEach(function (option) { known[option.value] = option; });
 
     function layout() {
       const raw = values[field.id] || {};
+      const visible = Array.isArray(raw.visible) ? raw.visible.slice() : [];
+      const more = hasMoreBucket && Array.isArray(raw.more) ? raw.more.slice() : [];
+      const archived = Array.isArray(raw.archived) ? raw.archived.slice() : [];
+      if (!allowArchive) {
+        // Insert newly introduced sections according to the schema's order.
+        // In particular, this migrates the old combined Profile & Actions row
+        // into two adjacent, independently draggable rows.
+        const optionIds = (field.options || []).map(function (option) {
+          return option.value;
+        });
+        optionIds.forEach(function (id, index) {
+          if (visible.indexOf(id) !== -1) return;
+          const nextExisting = optionIds.slice(index + 1).find(function (nextId) {
+            return visible.indexOf(nextId) !== -1;
+          });
+          const insertAt = nextExisting === undefined
+            ? visible.length : visible.indexOf(nextExisting);
+          visible.splice(insertAt, 0, id);
+        });
+      }
       return {
-        visible: Array.isArray(raw.visible) ? raw.visible.slice() : [],
-        archived: Array.isArray(raw.archived) ? raw.archived.slice() : []
+        visible: visible,
+        more: more,
+        archived: allowArchive ? archived : []
       };
     }
 
     /* Writes back a new arrangement of the ids this editor manages, with every
        foreign id restored to the bucket and relative position it came from. */
-    function commit(nextVisible, nextArchived) {
+    function commit(nextVisible, nextMore, nextArchived) {
       const before = layout();
       function merge(nextKnown, previous) {
         const out = [];
@@ -8088,7 +10882,8 @@
       }
       setValue(field.id, {
         visible: merge(nextVisible, before.visible),
-        archived: merge(nextArchived, before.archived)
+        ...(hasMoreBucket ? { more: merge(nextMore, before.more) } : {}),
+        archived: allowArchive ? merge(nextArchived, before.archived) : []
       }, { keepDom: true });
       paint();
       updateDesignerPreviews();
@@ -8098,7 +10893,8 @@
       return list.filter(function (id) { return !!known[id]; });
     }
 
-    function makeRow(id, archived) {
+    function makeRow(id, bucket) {
+      const archived = bucket === "archived";
       const option = known[id];
       const row = el("div", "osw-btnorder-row" + (archived ? " is-archived" : ""));
       row.setAttribute("data-id", id);
@@ -8112,59 +10908,98 @@
       row.appendChild(glyph);
       row.appendChild(el("span", "osw-btnorder-label", option.label || id));
 
-      const toggle = el("button", "osw-btnorder-eye");
-      toggle.type = "button";
-      toggle.title = archived
-        ? str("button_order_show", "Show this button")
-        : str("button_order_hide", "Move to archived");
-      toggle.innerHTML = archived ? OSW_EYE_OFF : OSW_EYE;
-      toggle.addEventListener("click", function (event) {
-        event.stopPropagation();
-        bridge("osw:haptic:1");
-        const now = layout();
-        const visible = managed(now.visible).filter(function (x) { return x !== id; });
-        const archivedIds = managed(now.archived).filter(function (x) { return x !== id; });
-        if (archived) visible.push(id); else archivedIds.push(id);
-        commit(visible, archivedIds);
-      });
-      row.appendChild(toggle);
+      if (allowArchive) {
+        const toggle = el("button", "osw-btnorder-eye");
+        toggle.type = "button";
+        toggle.title = archived
+          ? str("button_order_show", "Show this button")
+          : str("button_order_hide", "Move to archived");
+        toggle.innerHTML = archived ? OSW_EYE_OFF : OSW_EYE;
+        toggle.addEventListener("click", function (event) {
+          event.stopPropagation();
+          bridge("osw:haptic:1");
+          const now = layout();
+          const visible = managed(now.visible).filter(function (x) { return x !== id; });
+          const more = managed(now.more).filter(function (x) { return x !== id; });
+          const archivedIds = managed(now.archived).filter(function (x) { return x !== id; });
+          if (archived) visible.push(id); else archivedIds.push(id);
+          commit(visible, more, archivedIds);
+        });
+        row.appendChild(toggle);
+      }
 
       row.addEventListener("pointerdown", function (event) {
         // The eye is a button of its own; pressing it must not start a drag.
         if (event.target.closest(".osw-btnorder-eye")) return;
         if (event.button !== undefined && event.button !== 0) return;
+        // In WebKit's webview a pointer drag on label text otherwise begins a
+        // native selection before our pointer-move handler can rearrange it.
+        event.preventDefault();
         beginDrag(row, event);
       });
       return row;
     }
 
-    /* Pointer drag. The row itself is moved between/inside the two lists as the
-       pointer crosses each neighbour's midpoint; nothing is written until the
-       pointer is released, so a drag that ends where it started is a no-op. */
+    /* Pointer drag. A lifted row follows the pointer freely while a placeholder
+       marks its eventual position. Nothing is written until pointer release. */
     function beginDrag(row, event) {
       const startX = event.clientX;
       const startY = event.clientY;
+      const startRect = row.getBoundingClientRect();
+      const grabX = startX - startRect.left;
+      const grabY = startY - startRect.top;
+      const placeholder = el("div", "osw-btnorder-placeholder");
+      placeholder.style.height = startRect.height + "px";
       let moved = false;
+      let lifted = false;
+
+      function canEnter(list) {
+        return !!list && !(row.getAttribute("data-id") === "more" &&
+          list.getAttribute("data-bucket") === "more");
+      }
+
+      function lift() {
+        if (lifted) return;
+        lifted = true;
+        row.parentNode.insertBefore(placeholder, row);
+        document.body.appendChild(row);
+        row.classList.add("is-dragging");
+        host.classList.add("has-active-drag");
+        if (row.getAttribute("data-id") === "more") {
+          host.classList.add("is-dragging-more");
+        }
+        row.style.position = "fixed";
+        row.style.left = startRect.left + "px";
+        row.style.top = startRect.top + "px";
+        row.style.width = startRect.width + "px";
+        row.style.zIndex = "10000";
+        row.style.pointerEvents = "none";
+        row.style.margin = "0";
+      }
 
       function place(clientX, clientY) {
-        // The dragged row is under the pointer, so it has to be taken out of
-        // hit-testing for elementFromPoint to see what is beneath it.
-        row.style.pointerEvents = "none";
+        row.style.left = (clientX - grabX) + "px";
+        row.style.top = (clientY - grabY) + "px";
         const under = document.elementFromPoint(clientX, clientY);
-        row.style.pointerEvents = "";
         if (!under) return;
         const overRow = under.closest(".osw-btnorder-row");
         if (overRow && overRow !== row && host.contains(overRow)) {
+          const targetList = overRow.closest(".osw-btnorder-list");
+          if (!canEnter(targetList)) return;
           const rect = overRow.getBoundingClientRect();
           const after = clientY > rect.top + rect.height / 2;
-          overRow.parentNode.insertBefore(row, after ? overRow.nextSibling : overRow);
+          overRow.parentNode.insertBefore(
+            placeholder,
+            after ? overRow.nextSibling : overRow
+          );
           return;
         }
         // Empty space in a bucket (including an empty bucket, which is the only
         // way the last button out of one can be put back).
         const overList = under.closest(".osw-btnorder-list");
-        if (overList && host.contains(overList) && row.parentNode !== overList) {
-          overList.appendChild(row);
+        if (overList && host.contains(overList) && canEnter(overList) &&
+            placeholder.parentNode !== overList) {
+          overList.appendChild(placeholder);
         }
       }
 
@@ -8176,7 +11011,8 @@
             Math.abs(moveEvent.clientY - startY) < 3 &&
             Math.abs(moveEvent.clientX - startX) < 3) return;
         moved = true;
-        row.classList.add("is-dragging");
+        moveEvent.preventDefault();
+        lift();
         place(moveEvent.clientX, moveEvent.clientY);
       }
 
@@ -8184,8 +11020,19 @@
         window.removeEventListener("pointermove", onMove, true);
         window.removeEventListener("pointerup", onUp, true);
         window.removeEventListener("pointercancel", onUp, true);
-        row.classList.remove("is-dragging");
         if (!moved) return;
+        if (placeholder.parentNode) {
+          placeholder.parentNode.replaceChild(row, placeholder);
+        }
+        row.classList.remove("is-dragging");
+        host.classList.remove("has-active-drag", "is-dragging-more");
+        row.style.position = "";
+        row.style.left = "";
+        row.style.top = "";
+        row.style.width = "";
+        row.style.zIndex = "";
+        row.style.pointerEvents = "";
+        row.style.margin = "";
         commitFromDom();
       }
 
@@ -8208,14 +11055,19 @@
               function (node) { return node.getAttribute("data-id"); })
           : [];
       }
-      commit(idsOf(lists[0]), idsOf(lists[1]));
+      const visible = idsOf(lists[0]);
+      const more = hasMoreBucket ? idsOf(lists[1]) : [];
+      const archived = idsOf(lists[hasMoreBucket ? 2 : 1]);
+      commit(visible, more, archived);
     }
 
-    function makeBucket(title, ids, archived, emptyText) {
+    function makeBucket(title, ids, bucketName, emptyText) {
+      const archived = bucketName === "archived";
       const bucket = el("div", "osw-btnorder-bucket" + (archived ? " is-archived" : ""));
       bucket.appendChild(el("div", "osw-btnorder-bucket-title", title));
       const list = el("div", "osw-btnorder-list");
-      ids.forEach(function (id) { list.appendChild(makeRow(id, archived)); });
+      list.setAttribute("data-bucket", bucketName);
+      ids.forEach(function (id) { list.appendChild(makeRow(id, bucketName)); });
       // An empty bucket still has to be a drop target — otherwise the last
       // button out of it could never be put back. The placeholder is not a row,
       // so it never takes part in the ordering.
@@ -8229,24 +11081,38 @@
       host.appendChild(makeFieldHead(field, null));
       const now = layout();
       const visible = managed(now.visible);
+      const more = managed(now.more);
       const archived = managed(now.archived);
       // Anything the schema knows about that the stored layout mentions nowhere
       // (a button added by a later Onigiri version) is shown as archived rather
       // than vanishing from the editor.
       (field.options || []).forEach(function (option) {
-        if (visible.indexOf(option.value) === -1 && archived.indexOf(option.value) === -1) {
-          archived.push(option.value);
+        if (visible.indexOf(option.value) === -1 &&
+            more.indexOf(option.value) === -1 &&
+            archived.indexOf(option.value) === -1) {
+          (allowArchive ? archived : visible).push(option.value);
         }
       });
       const body = el("div", "osw-btnorder-buckets");
       body.appendChild(makeBucket(
-        str("button_order_visible", "On the sidebar"), visible, false,
+        hasMoreBucket
+          ? str("button_order_outside_more", "Outside More")
+          : (allowArchive ? str("button_order_visible", "On the sidebar") : str("top_to_bottom", "Top to bottom")),
+        visible, "visible",
         str("button_order_none_visible", "No buttons — drag one back here.")
       ));
-      body.appendChild(makeBucket(
-        str("button_order_archived", "Archived"), archived, true,
-        str("button_order_none_archived", "Nothing archived.")
-      ));
+      if (hasMoreBucket) {
+        body.appendChild(makeBucket(
+          str("more", "More"), more, "more",
+          str("button_order_none_more", "Nothing under More.")
+        ));
+      }
+      if (allowArchive) {
+        body.appendChild(makeBucket(
+          str("button_order_archived", "Archived"), archived, "archived",
+          str("button_order_none_archived", "Nothing archived.")
+        ));
+      }
       host.appendChild(body);
     }
 
@@ -8682,6 +11548,9 @@
     const nicknameField = (section.fields || []).filter(function (f) {
       return f.type === "text";
     })[0];
+    const menuPokemonField = (section.fields || []).filter(function (f) {
+      return f.id === "g_onigimon_menu_pokemon";
+    })[0];
     if (nicknameField) host.appendChild(renderText(nicknameField));
 
     const grid = el("div", "osw-companions-grid");
@@ -8706,15 +11575,31 @@
     const note = el("div", "osw-row-desc", str("onigimon_starter_note", ""));
     host.appendChild(note);
 
+    if (menuPokemonField) {
+      host.appendChild(el(
+        "div",
+        "osw-companions-menu-hint",
+        str("onigimon_menu_team_hint", "Use the pin on each Pokémon to show it in the Pokémon Team widget on the Main Menu.")
+      ));
+    }
+
     function paint() {
       const data = gamesCtx.companions || { companions: [], message: "", active: "" };
       status.textContent = data.message || "";
       grid.innerHTML = "";
+      const menuPokemonIds = Array.isArray(values.g_onigimon_menu_pokemon)
+        ? values.g_onigimon_menu_pokemon.map(String)
+        : [];
       (data.companions || []).forEach(function (pokemon) {
-        const tile = el("button", "osw-companion-tile");
-        tile.type = "button";
+        // A tile contains its own pin button, so it must not itself be a
+        // button (nested interactive controls are invalid HTML and QtWebEngine
+        // handles their clicks inconsistently).
+        const tile = el("div", "osw-companion-tile");
+        tile.tabIndex = 0;
+        tile.setAttribute("role", "button");
         tile.title = pokemon.name + " · " + str("onigimon_level_short", "Lv") + " " + pokemon.level;
         tile.classList.toggle("is-active", String(pokemon.id) === String(values.g_onigimon_companion || data.active));
+        tile.classList.toggle("is-on-menu", menuPokemonIds.indexOf(String(pokemon.id)) !== -1);
         if (pokemon.sprite) {
           const img = document.createElement("img");
           img.src = pokemon.sprite;
@@ -8734,6 +11619,31 @@
             updateDesignerPreviews();
           });
         });
+        tile.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            tile.click();
+          }
+        });
+        if (menuPokemonField) {
+          const pin = el("button", "osw-companion-menu-pin");
+          pin.type = "button";
+          pin.title = str("onigimon_menu_team_pin", "Show on Main Menu");
+          pin.setAttribute("aria-label", str("onigimon_menu_team_pin", "Show on Main Menu") + ": " + pokemon.name);
+          pin.setAttribute("aria-pressed", menuPokemonIds.indexOf(String(pokemon.id)) !== -1 ? "true" : "false");
+          pin.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h6m6 0h6"/><circle cx="12" cy="12" r="3"/></svg>';
+          pin.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            bridge("osw:haptic:1");
+            const id = String(pokemon.id);
+            const next = menuPokemonIds.filter(function (value) { return value !== id; });
+            if (menuPokemonIds.indexOf(id) === -1) next.push(id);
+            setValue(menuPokemonField.id, next);
+            paint();
+          });
+          tile.appendChild(pin);
+        }
         grid.appendChild(tile);
       });
       grid.classList.toggle("is-empty", !(data.companions || []).length);
@@ -8936,7 +11846,7 @@
      the shared keys while Dynamic is off, the per-theme ones while it is on,
      each falling back to the game's own default. */
   function nookChipColors(vals, isDark) {
-    const dynamic = profileDynamicOn();
+    const dynamic = vals.g_rl_dynamic_chip_colors === true;
     const defaults = (CTX.chipDefaults || {})[isDark ? "dark" : "light"] || {};
     function pick(role) {
       const base = "g_rl_chip_" + role;
@@ -9000,16 +11910,25 @@
     const columns = Math.max(1, Math.min(2, Number(onigimonPreviewColumns) || 1));
     const rows = Math.max(1, Math.min(4, Number(onigimonPreviewRows) || 2));
     const compact = rows === 1;
-    const wide = columns === 2 && rows === 2;
+    const wide = columns === 2 && rows >= 2;
+    const tall = rows >= 3;
+    const extraTall = rows >= 4;
 
     stage.innerHTML = "";
     stage.classList.add("osw-onistage");
     stage.setAttribute("data-onigimon-columns", String(columns));
     stage.setAttribute("data-onigimon-rows", String(rows));
+    // This stage sits on the deck browser's configured background just like
+    // the live widget. It deliberately reuses the Main Background painter so
+    // image/color, theme mode, blur, opacity and slideshow fallback stay in
+    // lockstep with the Main Menu preview.
+    designerPaintBackdrop(stage, vals, isDark);
 
     const card = el("div", "osw-onistage-card");
     card.classList.toggle("is-compact", compact);
     card.classList.toggle("is-wide", wide);
+    card.classList.toggle("is-tall", tall);
+    card.classList.toggle("is-extra-tall", extraTall);
     // Use the same grid footprint as the deck browser (230px columns, 120px
     // rows, 20px gaps), capped by the preview stage on narrow dialogs.
     card.style.width = (columns * 230 + (columns - 1) * 20) + "px";
@@ -9022,7 +11941,16 @@
       mix(color, "#ffffff", 0.92) + " 0%, " + color + " 70%, " +
       mix(color, "#000000", 0.90) + " 100%)";
 
-    const image = imageUrl("onigimon_bg", vals.g_onigimon_scene_image);
+    const sceneMode = vals.g_onigimon_scene_mode || "preset";
+    const scenePath = sceneMode === "custom"
+      ? vals.g_onigimon_scene_image
+      : (vals.g_onigimon_scene_preset
+        || "system_files/gamification_images/onigimon/scenarios/nature/default.png");
+    const image = sceneMode === "color"
+      ? ""
+      : (String(scenePath || "").indexOf("system_files/") === 0
+        ? (CTX.addonBase || "") + scenePath
+        : imageUrl("onigimon_bg", scenePath));
     if (image) {
       const backdrop = el("div", "osw-onistage-backdrop");
       backdrop.style.backgroundImage = "url('" + image + "')";
@@ -9059,18 +11987,16 @@
     const name = el("div", "osw-onistage-name", companion.name || "Onigimon");
     const level = el("div", "osw-onistage-level",
       str("onigimon_level", "Level") + " " + (companion.level || 1));
-    // Name and level sit on the coloured scene, so they take the widget's own
-    // fixed per-mode colours rather than the dialog's text colour.
-    name.style.color = isDark ? "#ffffff" : "#000000";
-    level.style.color = isDark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.68)";
     info.appendChild(name);
     info.appendChild(level);
-    top.appendChild(info);
     card.appendChild(top);
 
     // The real 1-row widget is its compact scene: 1 column shows only the
     // companion, while 2 columns has enough room for name and level.
     if (compact) {
+      name.style.color = isDark ? "#ffffff" : "#000000";
+      level.style.color = isDark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.68)";
+      top.appendChild(info);
       info.classList.toggle("is-hidden", columns === 1);
       stage.appendChild(card);
       return;
@@ -9079,12 +12005,22 @@
     const panel = el("div", "osw-onistage-bottom");
     panel.style.background = bottom;
     const meterFg = readableTextColor(bottom);
+    panel.style.color = meterFg;
+    name.style.color = meterFg;
+    level.style.color = rgba(meterFg, 0.68);
+    panel.appendChild(info);
+    const metersHost = el("div", "osw-onistage-meters");
+    const needs = companion.needs || {};
+    function previewNumber(value, fallback) {
+      const number = Number(value);
+      return isNaN(number) ? fallback : number;
+    }
     [
-      ["HP", 100, "#08c46b", "20"],
-      [str("onigimon_status_happiness", "Happiness"), 62, "#ffbd55", "31"],
-      [str("onigimon_status_hygiene", "Hygiene"), 80, "#21b7d6", "40"],
-      [str("onigimon_status_training", "Training"), 45, "#c866e5", "30"],
-      [str("onigimon_status_hunger", "Hunger"), 26, "#f45bb3", "26"],
+      ["HP", previewNumber(needs.health, 100), "#08c46b", previewNumber(companion.hp, 20)],
+      [str("onigimon_status_happiness", "Happiness"), previewNumber(needs.happiness, 62), "#ffbd55", previewNumber(needs.happiness, 31)],
+      [str("onigimon_status_hygiene", "Hygiene"), previewNumber(needs.hygiene, 80), "#21b7d6", previewNumber(needs.hygiene, 40)],
+      [str("onigimon_status_training", "Training"), previewNumber(needs.training, 45), "#c866e5", previewNumber(needs.training, 30)],
+      [str("onigimon_status_hunger", "Hunger"), previewNumber(needs.hunger, 26), "#f45bb3", previewNumber(needs.hunger, 26)],
     ].forEach(function (meter) {
       const row = el("div", "osw-onistage-meter");
       const meterName = el("span", "osw-onistage-meter-name", String(meter[0]).toUpperCase());
@@ -9100,60 +12036,83 @@
       row.appendChild(meterName);
       row.appendChild(meterValue);
       row.appendChild(meterTrack);
-      panel.appendChild(row);
+      metersHost.appendChild(row);
     });
+    panel.appendChild(metersHost);
+
+    function appendQuickStat(host, label, value) {
+      const item = el("div", "osw-onistage-quick-stat");
+      item.appendChild(el("span", null, label));
+      item.appendChild(el("b", null, String(previewNumber(value, 0))));
+      host.appendChild(item);
+    }
+
+    if (tall) {
+      const bondLevel = Math.max(1, previewNumber(companion.bondLevel, 1));
+      const bondXp = Math.max(0, previewNumber(companion.bondXp, 0));
+      const bondTarget = Math.max(1, bondLevel * 40);
+      const growth = el("div", "osw-onistage-growth");
+      const growthHead = el("div", "osw-onistage-growth-head");
+      growthHead.appendChild(el("span", null, str("onigimon_bond", "Bond")));
+      growthHead.appendChild(el("b", null,
+        str("onigimon_level_short", "Lv") + " " + bondLevel));
+      growthHead.appendChild(el("em", null, bondXp + "/" + bondTarget + " XP"));
+      growth.appendChild(growthHead);
+      const growthTrack = el("div", "osw-onistage-growth-track");
+      growthTrack.style.background = rgba(meterFg, 0.14);
+      const growthFill = el("i", null);
+      growthFill.style.width = Math.max(0, Math.min(100, (bondXp / bondTarget) * 100)) + "%";
+      growthTrack.appendChild(growthFill);
+      growth.appendChild(growthTrack);
+      panel.appendChild(growth);
+
+      const quickStats = el("div", "osw-onistage-quick-stats");
+      appendQuickStat(quickStats, str("onigimon_streak", "Streak"), companion.streak);
+      appendQuickStat(quickStats, str("onigimon_items", "Items"), companion.itemCount);
+      panel.appendChild(quickStats);
+    }
+
+    if (extraTall) {
+      const battleStats = el("div", "osw-onistage-battle-stats");
+      appendQuickStat(battleStats, str("onigimon_attack", "Attack"), companion.attack);
+      appendQuickStat(battleStats, str("onigimon_defense", "Defense"), companion.defense);
+      appendQuickStat(battleStats, str("onigimon_speed", "Speed"), companion.speed);
+      panel.appendChild(battleStats);
+    }
     card.appendChild(panel);
     stage.appendChild(card);
   };
 
-  /* Mochi's notification, drawn the way web/notifications.css draws it: the
-     messenger's icon, an optional title, and the message in the chosen font
-     and colour. */
+  /* Mochi uses the same payload shape as MochiMessenger._dispatch_notification
+     and the same factory as the live reviewer notification. */
   PREVIEW_PAINTERS.mochi_message = function (stage, vals, isDark) {
-    stage.innerHTML = "";
-    stage.classList.add("osw-mochistage");
-
-    const card = el("div", "osw-mochistage-card");
-    card.style.background = isDark ? "#2c2c2c" : "#ffffff";
-
-    const icon = el("div", "osw-mochistage-icon");
     const custom = vals.g_mochi_icon_choice === "custom" && vals.g_mochi_custom_icon;
     const customUrl = custom ? imageUrl("mochi_icon", vals.g_mochi_custom_icon) : "";
-    if (customUrl) {
-      const img = document.createElement("img");
-      img.src = customUrl;
-      img.alt = "";
-      icon.appendChild(img);
-    } else {
-      // What the real notification sends when no picture is set.
-      icon.textContent = "🍡";
-    }
-    card.appendChild(icon);
-
-    const content = el("div", "osw-mochistage-content");
     const textColor = vals.g_mochi_text_color || (isDark ? "#ffffff" : "#2c2c2c");
-    if (!vals.g_mochi_hide_title) {
-      const title = el("div", "osw-mochistage-title",
-        String(vals.g_mochi_title_name || "").trim() || str("mochi_title_placeholder", "Mochi says…"));
-      title.style.color = textColor;
-      content.appendChild(title);
-    }
-    const body = el("div", "osw-mochistage-desc", str("mochi_font_sample", "Keep going!"));
-    body.style.color = textColor;
     const fontOption = ((fieldById.g_mochi_font || {}).options || []).filter(function (option) {
       return option.value === vals.g_mochi_font;
     })[0];
-    if (fontOption && fontOption.family) body.style.fontFamily = fontOption.family;
-    content.appendChild(body);
-    card.appendChild(content);
+    const payload = {
+      id: "mochi_message",
+      name: String(vals.g_mochi_title_name || "").trim()
+        || str("mochi_title_placeholder", "Mochi says…"),
+      description: str("mochi_font_sample", "Keep going!"),
+      icon: "🍡",
+      hideTitle: !!vals.g_mochi_hide_title,
+      textColorLight: textColor,
+      textColorDark: textColor
+    };
+    if (customUrl) payload.iconImage = customUrl;
+    if (fontOption && fontOption.family) payload.fontFamily = fontOption.family;
 
-    stage.appendChild(card);
+    paintLiveNotification(stage, vals, isDark, payload);
   };
 
   const FIELD_RENDERERS = {
     toggle: renderToggle,
     notif_position: renderNotifPosition,
     game_choice: renderGameChoice,
+    scenario_picker: renderScenarioPicker,
     message_list: renderMessageList,
     button_order: renderButtonOrder,
     image: renderImage,
@@ -9334,6 +12293,7 @@
 
   function renderFontRole(section) {
     const roleKey = section.role_key || (section.id || "").replace("font_", "");
+    const fallbackRoleKey = section.fallback_role_key || "";
 
     const host = el("div", "osw-font-role-section");
     host.setAttribute("data-role-key", roleKey);
@@ -9383,21 +12343,30 @@
     host.appendChild(previewCol);
 
     function updatePreview() {
-      const fontKey = values["onigiri_font_" + roleKey] || "system";
-      const fontSize = values["onigiri_font_size_" + roleKey] || 14;
-      const lightColor = values["font_color_light_" + roleKey] || "#1f2933";
-      const darkColor = values["font_color_dark_" + roleKey] || "#f4f4f5";
+      const fontKey = values["onigiri_font_" + roleKey] || "sync";
+      const colorRoleKey = fallbackRoleKey || roleKey;
+      const lightColor = values["font_color_light_" + colorRoleKey] || "#1f2933";
+      const darkColor = values["font_color_dark_" + colorRoleKey] || "#f4f4f5";
 
       const fontField = fieldById["onigiri_font_" + roleKey];
+      const resolvedFontKey = fontKey === "sync" && fallbackRoleKey
+        ? (values["onigiri_font_" + fallbackRoleKey] || "system")
+        : fontKey;
+      // In Advanced mode family sync and component size are independent. The
+      // Simple UI never renders these component cards and continues to use
+      // the three shared typography scales.
+      const fontSize = SETTINGS_MODE_PARITY || settingsComplexity === "advanced"
+        ? (values["onigiri_font_size_" + roleKey] || 14)
+        : (values["onigiri_font_size_" + fallbackRoleKey] || 14);
       let family = "";
       if (fontField && fontField.options) {
-        const opt = fontField.options.filter(function (o) { return o.value === fontKey; })[0];
+        const opt = fontField.options.filter(function (o) { return o.value === resolvedFontKey; })[0];
         if (opt && opt.family) family = opt.family;
       }
-      if (!family && fontKey !== "system") family = fontKey;
+      if (!family && resolvedFontKey !== "system") family = resolvedFontKey;
 
       const isLight = currentPreviewMode === "light";
-      const color = isLight ? lightColor : darkColor;
+      const color = fontFieldColor(values, "onigiri_font_" + roleKey, !isLight) || (isLight ? lightColor : darkColor);
 
       card.setAttribute("data-preview-mode", currentPreviewMode);
 
@@ -9425,15 +12394,49 @@
     return host;
   }
 
+  function renderFontRoles(section) {
+    const stack = el("div", "osw-font-roles-stack");
+    (section.fontRoles || []).forEach(function (role) {
+      const card = el("div", "osw-font-role-group");
+      card.appendChild(el("div", "osw-section-title", role.title || ""));
+      const fieldIds = role.field_ids || [];
+      card.appendChild(renderFontRole({
+        id: role.id,
+        role_key: role.role_key,
+        fallback_role_key: role.fallback_role_key,
+        fields: (section.fields || []).filter(function (field) {
+          return fieldIds.indexOf(field.id) !== -1;
+        })
+      }));
+      stack.appendChild(card);
+    });
+    return stack;
+  }
+
   /* Themes page: two card grids (yours, official) over a split light/dark
      swatch, plus import/export/reset. Applying a theme touches config/col.conf
      keys most of which have no WebUI field at all yet (Colors, Backgrounds,
-     Sidebar are still legacy pages) — Python owns the whole theme, this only
-     asks it to apply one and repaints whatever registered fields it reports
-     back as touched (see dialog.py's _cmd_theme_apply `refresh`). */
-  function applyThemeRefresh(refresh) {
-    if (!refresh) return;
-    Object.keys(refresh).forEach(function (id) { applyExternalValue(id, refresh[id]); });
+     Sidebar are still legacy pages) — Python owns the whole theme and returns
+     a complete bound-value snapshot so every Settings preview repaints from
+     the same palette (see dialog.py's _cmd_theme_apply `preview`). */
+  function applyThemeRefresh(refresh, preview) {
+    const updates = Object.assign({}, refresh || {}, preview || {});
+    const ids = Object.keys(updates).filter(function (id) { return id in values; });
+    if (!ids.length) return;
+
+    deferringPreviewRefresh = true;
+    try {
+      ids.forEach(function (id) {
+        values[id] = updates[id];
+        // A pre-theme value waiting in the debounce queue must not overwrite
+        // the value Python just applied as part of the selected theme.
+        delete pending[id];
+        syncField(id);
+      });
+    } finally {
+      deferringPreviewRefresh = false;
+    }
+    refreshSettingsPreviews();
   }
 
   function promptThemeName(callback) {
@@ -9472,6 +12475,472 @@
     });
     cancelBtn.addEventListener("click", function () { close(null); });
     okBtn.addEventListener("click", function () { close(input.value.trim()); });
+  }
+
+  /* Gallery-only colour cards. The settings pages keep their compact row
+     controls, while Gallery presents the same bindings as a visual catalogue
+     modelled on the Themes grid. Every value is labelled as #RRGGBB even when
+     its stored form is rgba() or Qt's #AARRGGBB. */
+  function renderColorGallery(section, _page) {
+    const host = el("div", "osw-color-gallery");
+    const grid = el("div", "osw-color-gallery-grid");
+    host.appendChild(grid);
+
+    function displayHex(value) {
+      let hex = String(cssColorToHex(value) || "").trim();
+      const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(hex);
+      if (short) {
+        hex = "#" + short[1] + short[1] + short[2] + short[2] + short[3] + short[3];
+      }
+      return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toUpperCase() : "#000000";
+    }
+
+    function targetsFor(field) {
+      if (field.type === "color_pair") return imageTargets(field);
+      return [{ id: field.id, role: "single", label: "", key: "" }];
+    }
+
+    function fieldFallback(field, target) {
+      if (field.type === "color_pair") return pairColorFallback(field, target);
+      return iconColorFallback(field) || field.default || "#000000";
+    }
+
+    function paint() {
+      grid.innerHTML = "";
+      (section.fields || []).forEach(function (field) {
+        if (field.type !== "color" && field.type !== "color_pair") return;
+
+        const card = el("article", "osw-color-card");
+        card.setAttribute("data-color-field", field.id);
+
+        const targets = targetsFor(field);
+        const art = el(
+          "div",
+          "osw-color-card-art" + (targets.length > 1 ? " is-split" : "")
+        );
+
+        targets.forEach(function (target) {
+          const single = field.type === "color_pair" && !field.lightField && !field.darkField;
+          const key = field.type === "color"
+            ? field.id
+            : (single
+              ? field.id
+              : (target.role === "single" ? (field.singleField || field.lightField) : target.id));
+          const value = values[key] || "";
+          const fallback = fieldFallback(field, target);
+          const shown = value || fallback || "#000000";
+          const displayed = field.chipRole ? qtColorToCss(shown) : shown;
+          const hex = displayHex(displayed);
+
+          const swatch = el(
+            "button",
+            "osw-color-card-swatch" + (!value && fallback ? " is-default" : "")
+          );
+          swatch.type = "button";
+          swatch.style.background = displayed || hex;
+          swatch.style.color = readableTextColor(hex);
+          swatch.setAttribute("data-slot", target.role);
+
+          if (target.role === "light" || target.role === "dark") {
+            const role = el("span", "osw-color-card-role");
+            const chromeIcons = CTX.chromeIcons || {};
+            role.innerHTML = target.role === "light"
+              ? (chromeIcons.sun || OSW_SUN_ICON)
+              : (chromeIcons.moon || OSW_MOON_ICON);
+            role.title = target.role === "light"
+              ? str("theme_light_mode", "Light")
+              : str("theme_dark_mode", "Dark");
+            swatch.appendChild(role);
+          }
+          swatch.appendChild(el("span", "osw-color-card-hex", hex));
+          swatch.setAttribute(
+            "aria-label",
+            (field.label || str("color", "Color")) + " " +
+              (target.label ? target.label + " " : "") + hex
+          );
+          swatch.addEventListener("click", function () {
+            bridge("osw:haptic:1");
+            openColorPickerById(
+              key, value || (field.chipRole ? cssColorToHex(displayed) : shown)
+            );
+          });
+          art.appendChild(swatch);
+        });
+
+        card.appendChild(art);
+        const foot = el("div", "osw-color-card-foot");
+        const name = field.desc || field.label || str("color", "Color");
+        foot.appendChild(el("div", "osw-color-card-name", name));
+        if (field.desc && field.label && field.desc !== field.label) {
+          foot.appendChild(el("div", "osw-color-card-sub", field.label));
+        }
+        card.appendChild(foot);
+        grid.appendChild(card);
+      });
+    }
+
+    host.__syncColorGallery = paint;
+    paint();
+    return host;
+  }
+
+  function renderThemeStyle(section) {
+    const field = (section.fields || [])[0];
+    const host = el("div", "osw-theme-style-grid");
+    if (!field) return host;
+
+    (field.options || []).forEach(function (option) {
+      const card = el("button", "osw-theme-style-card");
+      card.type = "button";
+      card.setAttribute("data-theme-style", option.value);
+      card.setAttribute("data-field", field.id);
+      card.setAttribute("data-field-type", "choice");
+
+      const decoration = el("span", "osw-theme-style-decoration");
+      decoration.setAttribute("aria-hidden", "true");
+      if (option.value === "things3") {
+        decoration.textContent = "米";
+      } else if (option.value === "shima") {
+        decoration.classList.add("is-shima");
+        decoration.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true">' +
+          '<path d="M0 0h24v24H0z" fill="none"/>' +
+          '<rect width="12" height="20" x="6" y="2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" rx="2"/>' +
+          '</svg>';
+      } else if (option.value === "classic") {
+        const iconUrl = (CTX.iconAssets || {})["system:onigiri.svg"] || "";
+        decoration.classList.add("is-onigiri");
+        decoration.style.setProperty(
+          "--osw-theme-style-decoration-image", "url(" + iconUrl + ")"
+        );
+      }
+      card.appendChild(decoration);
+
+      const copy = el("span", "osw-theme-style-copy");
+      const title = el("span", "osw-theme-style-title");
+      title.appendChild(el("span", "osw-theme-style-name", option.label));
+      if (option.value === "things3") {
+        title.appendChild(el("span", "osw-theme-style-credit", "by Max"));
+      }
+      copy.appendChild(title);
+      copy.appendChild(el("span", "osw-theme-style-desc", option.sub || ""));
+      card.appendChild(copy);
+
+      card.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        setValue(field.id, option.value);
+      });
+      host.appendChild(card);
+    });
+
+    host.__refreshThemeStyle = function () {
+      Array.prototype.forEach.call(host.querySelectorAll("[data-theme-style]"), function (card) {
+        const selected = card.getAttribute("data-theme-style") === String(values[field.id]);
+        card.classList.toggle("is-selected", selected);
+        card.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+    };
+    host.__refreshThemeStyle();
+    return host;
+  }
+
+  function refreshThemeStyleCards() {
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-theme-style-grid"), function (host) {
+      if (host.__refreshThemeStyle) host.__refreshThemeStyle();
+    });
+  }
+
+  const THINGS_PREVIEW_WIDTH = 1440;
+  const THINGS_PREVIEW_HEIGHT = 900;
+
+  function thingsPreviewJson(value) {
+    return JSON.stringify(value == null ? null : value)
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e")
+      .replace(/&/g, "\\u0026");
+  }
+
+  function thingsPreviewCssValue(value, fallback) {
+    const clean = String(value || fallback || "").replace(/[<>{};]/g, "").trim();
+    return clean || fallback;
+  }
+
+  function buildThingsPreviewDocument(mode) {
+    const asset = CTX.thingsPreview || {};
+    const decks = Array.isArray(asset.decks) && asset.decks.length ? asset.decks : [
+      { did: 1, name: "Japanese", depth: 0, new: 38, learn: 0, review: 24, done: 18 },
+      { did: 2, name: "Biology", depth: 0, new: 17, learn: 0, review: 12, done: 4 },
+      { did: 3, name: "Design notes", depth: 0, new: 8, learn: 0, review: 0, done: 0 },
+    ];
+    const standing = Object.assign({
+      due: 57, new: 63, learn: 4, today: 42, total: 915, streak: 8,
+      last14: [2, 5, 4, 9, 7, 12, 8, 14, 11, 18, 16, 23, 20, 28],
+      states: { new: 25, learning: 4, relearning: 6, young: 54, mature: 2 },
+    }, asset.standing || {});
+    const configuredMainLight = String(
+      values.things_main_background_light || ""
+    ).toLowerCase() === "#f6f3ec" ? "" : values.things_main_background_light;
+    const configuredMainDark = String(
+      values.things_main_background_dark || ""
+    ).toLowerCase() === "#0b0c0f" ? "" : values.things_main_background_dark;
+    const palette = {
+      light: {
+        bg: thingsPreviewCssValue(
+          configuredMainLight,
+          values.theme_bg_light || "#eeeeee"
+        ),
+        inset: thingsPreviewCssValue(values.theme_inset_light, "#ffffff"),
+        fg: thingsPreviewCssValue(values.theme_fg_light, "#212121"),
+        subtle: thingsPreviewCssValue(values.theme_subtle_light, "#757575"),
+        border: thingsPreviewCssValue(values.theme_border_light, "#e0e0e0"),
+        accent: thingsPreviewCssValue(values.theme_accent_light, "#0077c8"),
+      },
+      dark: {
+        bg: thingsPreviewCssValue(
+          configuredMainDark,
+          values.theme_bg_dark || "#171717"
+        ),
+        inset: thingsPreviewCssValue(values.theme_inset_dark, "#2c2c2c"),
+        fg: thingsPreviewCssValue(values.theme_fg_dark, "#e0e0e0"),
+        subtle: thingsPreviewCssValue(values.theme_subtle_dark, "#9e9e9e"),
+        border: thingsPreviewCssValue(values.theme_border_dark, "#424242"),
+        accent: thingsPreviewCssValue(values.theme_accent_dark, "#0077c8"),
+      },
+    };
+    const variables = ["light", "dark"].map(function (key) {
+      return Object.keys(palette[key]).map(function (token) {
+        return "--rf-" + key + "-" + token + ":" + palette[key][token] + ";";
+      }).join("");
+    }).join("");
+    const sidebarVariables =
+      "--rf-sidebar-light-bg:" + thingsPreviewCssValue(
+        values.things_sidebar_background_light, palette.light.bg
+      ) + ";" +
+      "--rf-sidebar-dark-bg:" + thingsPreviewCssValue(
+        values.things_sidebar_background_dark, palette.dark.bg
+      ) + ";";
+    const currentPalette = palette[mode];
+    const countColors = {};
+    ["new", "learn", "review"].forEach(function (role) {
+      countColors[role] = ((asset.palettes || {})[mode] || {})["--" + role + "-count-bubble-bg"] || currentPalette.accent;
+    });
+    const activeColors = {
+      new: thingsPreviewCssValue(values.things_active_new_color, countColors.new),
+      learning: thingsPreviewCssValue(values.things_active_learning_color, countColors.learn),
+      relearning: thingsPreviewCssValue(values.things_active_relearning_color, countColors.learn),
+      young: thingsPreviewCssValue(values.things_active_young_color, countColors.review),
+      mature: thingsPreviewCssValue(values.things_active_mature_color, currentPalette.accent),
+    };
+    const activeVariables = Object.keys(activeColors).map(function (key) {
+      return "--rf-" + mode + "-active-" + key + ":" + activeColors[key] + ";";
+    }).join("");
+    const heatmapColor = thingsPreviewCssValue(
+      values.things_heatmap_color, currentPalette.accent
+    );
+    const dashboardVariables =
+      "--rf-heatmap-color:" + heatmapColor + ";" +
+      "--rf-weekly-reviews-color:" + thingsPreviewCssValue(
+        values.things_weekly_reviews_color, currentPalette.accent
+      ) + ";" +
+      "--rf-progress-color:" + thingsPreviewCssValue(
+        values.things_progress_color, currentPalette.accent
+      ) + ";" +
+      "--rf-hm-l1:color-mix(in srgb," + heatmapColor + " 22%,var(--rf-paper))!important;" +
+      "--rf-hm-l2:color-mix(in srgb," + heatmapColor + " 45%,var(--rf-paper))!important;" +
+      "--rf-hm-l3:color-mix(in srgb," + heatmapColor + " 72%,var(--rf-paper))!important;" +
+      "--rf-hm-l4:" + heatmapColor + "!important;";
+    const clampPercent = function (value, fallback) {
+      const number = Number(value);
+      return Math.max(0, Math.min(100, Number.isFinite(number) ? number : fallback));
+    };
+    const backgroundUrl = imageUrl("main_bg", values.things_background_image);
+    const safeBackgroundUrl = String(backgroundUrl || "")
+      .replace(/\\/g, "%5C").replace(/\"/g, "%22");
+    const surfaceVariables = ["sidebar", "decks", "widgets"].map(function (surface) {
+      const prefix = "things_" + (surface === "decks" ? "deck" : surface);
+      const opacity = clampPercent(values[prefix + "_opacity"], 100);
+      const blurIntensity = clampPercent(values[prefix + "_blur"], 0);
+      const visibleOpacity = Math.min(opacity, 100 - blurIntensity * 0.3);
+      const blur = blurIntensity * 0.24;
+      return "--rf-" + surface + "-opacity:" + visibleOpacity + "%;" +
+        "--rf-" + surface + "-blur:" + blur + "px;";
+    }).join("") + (safeBackgroundUrl
+      ? '--rf-background-image:url("' + safeBackgroundUrl + '");'
+      : "--rf-background-image:none;");
+    const showReviewChart = values.things_show_review_chart !== false;
+    const showHeatmap = values.things_show_heatmap !== false;
+    const previewClasses = [
+      showReviewChart ? "" : "preview-hide-review",
+      showHeatmap ? "" : "preview-hide-heatmap",
+    ].filter(Boolean).join(" ");
+    const scriptEnd = "</scr" + "ipt>";
+    const safeScript = function (source) {
+      return String(source || "").replace(/<\/script/gi, "<\\/script");
+    };
+    const seed =
+      "window.__baOpts={cmdk:false,deckList:{startup:'expanded',dragMove:false}," +
+        "sidebar:{hero:" + (values.things_show_due !== false) + ",heroStat:'due'," +
+        "donut:" + (values.things_show_active_cards !== false) + "," +
+        "tasks:" + (values.things_show_tasks !== false) + "," +
+        "progress:" + (values.things_show_progress !== false) + "}};" +
+      "window.__baDeckTree=" + thingsPreviewJson(decks) + ";" +
+      "window.__baStandingData=" + thingsPreviewJson(standing) + ";" +
+      "window.__baTasksData=" + thingsPreviewJson(asset.tasks || []) + ";" +
+      "window.__baDeckIconBase=" + thingsPreviewJson(asset.deckIconBase || "") + ";";
+    let analytics = asset.analyticsHtml || "";
+    if (!analytics) {
+      analytics = '<section class="ba-practice"><div class="ba-analytics">' +
+        '<section class="ba-review-chart"><div class="ba-analytics-head"><span>Weekly reviews</span><strong>915<small> total</small></strong></div>' +
+        '<svg class="ba-review-chart-svg" viewBox="0 0 640 150" preserveAspectRatio="none"><path d="M12,116 L90,104 L170,108 L250,80 L330,88 L410,58 L500,66 L628,24 L628,116 L12,116 Z" class="ba-chart-area"></path><path d="M12,116 L90,104 L170,108 L250,80 L330,88 L410,58 L500,66 L628,24" class="ba-chart-line"></path></svg></section>' +
+        '<section class="ba-heatmap-card"><div class="rf-heatmap"><div class="rf-hm-head"><span class="rf-hm-title">Review activity</span><span class="rf-hm-stats"><b>42</b> today · <b>8</b> day streak</span></div></div></section>' +
+      '</div></section>';
+    }
+    return '<!doctype html><html data-rf-theme="' + mode + '" data-rf-density="comfortable"' +
+      (safeBackgroundUrl ? ' data-rf-background="image"' : '') + '>' +
+      '<head><meta charset="utf-8"><style>' + String(asset.css || "") +
+      ':root{' + variables + sidebarVariables + activeVariables + dashboardVariables + surfaceVariables + '}' +
+      'html,body{width:' + THINGS_PREVIEW_WIDTH + 'px;min-height:' + THINGS_PREVIEW_HEIGHT + 'px;}' +
+      'body{overflow:auto!important}.ba-home{min-height:' + THINGS_PREVIEW_HEIGHT + 'px}' +
+      '.preview-hide-review .ba-review-chart,.preview-hide-heatmap .ba-heatmap-card{display:none!important}' +
+      '.preview-hide-review .ba-analytics,.preview-hide-heatmap .ba-analytics{grid-template-columns:minmax(0,1fr)}' +
+      '</style></head><body class="fancy ' + previewClasses + '">' +
+      '<center class="ba-home ba-multi"><div class="ad-list ad-list--home" id="thingsPreviewDecks"></div>' +
+      analytics + '</center>' +
+      '<script>' + seed + scriptEnd +
+      '<script>' + safeScript(asset.decklistJs) + scriptEnd +
+      '<script>if(window.__adDeckList){window.__adDeckList.render(document.getElementById("thingsPreviewDecks"),window.__baDeckTree,{dragMove:false});}' + scriptEnd +
+      '<script>' + safeScript(asset.sidebarJs) + scriptEnd +
+      '</body></html>';
+  }
+
+  function renderThingsTheme(section) {
+    const host = el("div", "osw-things3-config");
+    const card = el("div", "osw-designer-preview-card osw-things3-live-card");
+    const head = el("div", "osw-designer-preview-head");
+    head.appendChild(el("div", "osw-designer-preview-title", str("preview", "Preview")));
+    const headControls = el("div", "osw-preview-head-controls");
+    const dynamicCtl = el("div", "osw-preview-ctl");
+    dynamicCtl.appendChild(el("span", "osw-preview-ctl-label", str("dynamic_mode", "Dynamic mode")));
+    const dynamicBtn = el("button", "osw-sq-switch-btn");
+    dynamicBtn.type = "button";
+    const dynamicTrack = el("div", "osw-sq-switch");
+    dynamicBtn.appendChild(dynamicTrack);
+    dynamicCtl.appendChild(dynamicBtn);
+    headControls.appendChild(dynamicCtl);
+
+    let previewMode = values.onigiri_theme_mode === "dark" || values.onigiri_theme_mode === "light"
+      ? values.onigiri_theme_mode
+      : (CTX.dark ? "dark" : "light");
+    let lastThemeMode = values.onigiri_theme_mode;
+    let lastEffectiveDark = !!CTX.dark;
+    const modeBtn = el("button", "osw-profile-preview-toggle-btn osw-designer-preview-toggle-btn");
+    modeBtn.type = "button";
+    const utility = el("div", "osw-preview-utility-ctl");
+    utility.appendChild(modeBtn);
+    headControls.appendChild(utility);
+    head.appendChild(headControls);
+    card.appendChild(head);
+    observeHeaderCompact(head);
+
+    const stage = el("div", "osw-things3-live-stage");
+    const iframe = el("iframe", "osw-things3-live-frame");
+    iframe.title = "Kome Main Menu preview";
+    stage.appendChild(iframe);
+    card.appendChild(stage);
+    host.appendChild(card);
+    if (section.description) host.appendChild(el("div", "osw-things3-note", section.description));
+
+    const controls = el("div", "osw-things3-controls");
+    (section.fields || []).forEach(function (field) {
+      const renderer = FIELD_RENDERERS[field.type];
+      if (!renderer) return;
+      const node = renderer(field);
+      node.setAttribute("data-field-host", field.id);
+      controls.appendChild(node);
+    });
+    host.appendChild(controls);
+
+    let lastSignature = "";
+    function syncScale() {
+      const scale = stage.clientWidth / THINGS_PREVIEW_WIDTH;
+      iframe.style.transform = "scale(" + scale + ")";
+      stage.style.height = Math.round(THINGS_PREVIEW_HEIGHT * scale) + "px";
+    }
+    if (window.ResizeObserver) new ResizeObserver(syncScale).observe(stage);
+    requestAnimationFrame(syncScale);
+
+    function syncHeader() {
+      const dynamic = values.onigiri_theme_mode === "system";
+      dynamicTrack.classList.toggle("is-on", dynamic);
+      dynamicBtn.setAttribute("aria-pressed", dynamic ? "true" : "false");
+      modeBtn.innerHTML = previewMode === "dark" ? OSW_SUN_ICON : OSW_MOON_ICON;
+      modeBtn.title = previewMode === "dark" ? str("light_mode", "Light") : str("dark_mode", "Dark");
+    }
+
+    function paint(force) {
+      const signature = [previewMode,
+        values.things_show_due, values.things_show_tasks,
+        values.things_show_active_cards, values.things_show_progress,
+        values.things_show_review_chart, values.things_show_heatmap,
+        values.things_active_new_color, values.things_active_learning_color,
+        values.things_active_relearning_color, values.things_active_young_color,
+        values.things_active_mature_color,
+        values.things_heatmap_color, values.things_weekly_reviews_color,
+        values.things_progress_color,
+        values.things_main_background_light,
+        values.things_main_background_dark,
+        values.things_sidebar_background_light,
+        values.things_sidebar_background_dark,
+        values.things_background_image,
+        values.things_sidebar_opacity, values.things_sidebar_blur,
+        values.things_deck_opacity, values.things_deck_blur,
+        values.things_widgets_opacity, values.things_widgets_blur,
+        values.theme_bg_light, values.theme_bg_dark,
+        values.theme_inset_light, values.theme_inset_dark,
+        values.theme_fg_light, values.theme_fg_dark,
+        values.theme_subtle_light, values.theme_subtle_dark,
+        values.theme_border_light, values.theme_border_dark,
+        values.theme_accent_light, values.theme_accent_dark].join("|");
+      syncHeader();
+      if (!force && signature === lastSignature) return;
+      lastSignature = signature;
+      iframe.srcdoc = buildThingsPreviewDocument(previewMode);
+    }
+
+    dynamicBtn.addEventListener("click", function () {
+      bridge("osw:haptic:1");
+      setValue("onigiri_theme_mode", values.onigiri_theme_mode === "system" ? previewMode : "system");
+    });
+    modeBtn.addEventListener("click", function () {
+      bridge("osw:haptic:1");
+      previewMode = previewMode === "dark" ? "light" : "dark";
+      if (values.onigiri_theme_mode !== "system") {
+        setValue("onigiri_theme_mode", previewMode);
+      } else {
+        paint(true);
+      }
+    });
+
+    host.__refreshThingsPreview = function () {
+      if (values.onigiri_theme_mode === "light" || values.onigiri_theme_mode === "dark") {
+        previewMode = values.onigiri_theme_mode;
+      } else if (lastThemeMode !== values.onigiri_theme_mode || lastEffectiveDark !== !!CTX.dark) {
+        // Switching back to Sync with Anki resets the preview to Anki's mode.
+        // Manual preview toggles remain available while that mode is stable.
+        previewMode = CTX.dark ? "dark" : "light";
+      }
+      lastThemeMode = values.onigiri_theme_mode;
+      lastEffectiveDark = !!CTX.dark;
+      paint(false);
+    };
+    host.__refreshThingsPreview();
+    return host;
+  }
+
+  function refreshThingsPreviews() {
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-things3-config"), function (host) {
+      if (host.__refreshThingsPreview) host.__refreshThingsPreview();
+    });
   }
 
   function renderThemes(_section, _page) {
@@ -9651,7 +13120,13 @@
           call("osw:theme_apply:" + JSON.stringify({ kind: kind, name: theme.name })).then(function (res) {
             tile.classList.remove("is-busy");
             if (!res || !res.ok) { toast((res && res.error) || str("autosave_error", "Could not save")); return; }
-            applyThemeRefresh(res.refresh);
+            if (res.palettes) {
+              CTX.thingsPreview = CTX.thingsPreview || {};
+              CTX.thingsPreview.palettes = res.palettes;
+            }
+            if (res.accent) CTX.accent = res.accent;
+            applyTheme();
+            applyThemeRefresh(res.refresh, res.preview);
             toast(str("theme_applied_toast", "Theme applied:") + " " + theme.name);
           });
         } else {
@@ -9718,10 +13193,8 @@
     const userActions = el("div", "osw-themes-actions");
     const importBtn = makeActionButton("themeImport", str("import_theme", "Import"), runImport);
     const exportBtn = makeActionButton("themeExport", str("export_theme", "Export current"), runExport);
-    // Same hold-to-confirm control and 3-second logic as the Profile page's
-    // own Reset to Default (see renderProfilePreview's resetBtn) — reused
-    // verbatim rather than re-inventing a click-twice confirm for the same
-    // kind of destructive action.
+    // Theme reset remains deliberately hold-to-confirm because it can replace
+    // the entire active theme; every other reset follows the same interaction.
     const resetBtn = el("div", "osw-theme-chip-btn osw-profile-reset-btn");
     resetBtn.innerHTML = '<span class="osw-profile-reset-btn-text">' + str("reset_theme_to_default", "Reset to default") + "</span>";
     resetBtn.setAttribute("role", "button");
@@ -9736,45 +13209,19 @@
     userSection.appendChild(userGrid);
     host.appendChild(userSection);
 
-    let resetHoldTimer = null;
-    let resetIsReady = false;
-    function resetStartHold(e) {
-      if (e && e.button !== undefined && e.button !== 0) return;
-      resetIsReady = false;
-      resetBtn.classList.add("is-holding");
-      resetHoldTimer = setTimeout(function () {
-        resetIsReady = true;
-        resetBtn.classList.add("is-ready");
-        bridge("osw:haptic:1");
-      }, 3000);
-    }
-    function resetEndHold(e) {
-      if (e && e.button !== undefined && e.button !== 0) return;
-      resetBtn.classList.remove("is-holding");
-      resetBtn.classList.remove("is-ready");
-      if (resetHoldTimer) { clearTimeout(resetHoldTimer); resetHoldTimer = null; }
-      if (resetIsReady) {
-        resetIsReady = false;
-        bridge("osw:haptic:2");
-        call("osw:theme_reset:").then(function (res) {
-          if (!res || !res.ok) { toast(str("autosave_error", "Could not save")); return; }
-          applyThemeRefresh(res.refresh);
-          toast(str("default_theme", "Default theme"));
-        });
-      }
-    }
-    function resetCancelHold() {
-      resetBtn.classList.remove("is-holding");
-      resetBtn.classList.remove("is-ready");
-      if (resetHoldTimer) { clearTimeout(resetHoldTimer); resetHoldTimer = null; }
-      resetIsReady = false;
-    }
-    resetBtn.addEventListener("mousedown", resetStartHold);
-    resetBtn.addEventListener("mouseup", resetEndHold);
-    resetBtn.addEventListener("mouseleave", resetCancelHold);
-    resetBtn.addEventListener("touchstart", function (e) { resetStartHold(e); }, { passive: true });
-    resetBtn.addEventListener("touchend", resetEndHold);
-    resetBtn.addEventListener("touchcancel", resetCancelHold);
+    installResetHold(resetBtn, function () {
+      call("osw:theme_reset:").then(function (res) {
+        if (!res || !res.ok) { toast(str("autosave_error", "Could not save")); return; }
+        if (res.palettes) {
+          CTX.thingsPreview = CTX.thingsPreview || {};
+          CTX.thingsPreview.palettes = res.palettes;
+        }
+        if (res.accent) CTX.accent = res.accent;
+        applyTheme();
+        applyThemeRefresh(res.refresh, res.preview);
+        toast(str("default_theme", "Default theme"));
+      });
+    }, { title: str("reset_theme_to_default", "Reset to default") });
 
     let userThemes = ((CTX.themeGallery || {}).user || []).slice();
 
@@ -10129,8 +13576,7 @@
       reset.type = "button";
       reset.title = str("reset_to_default", "Reset to Default");
       reset.innerHTML = ICON_UNDO;
-      reset.addEventListener("click", function () {
-        bridge("osw:haptic:1");
+      installResetHold(reset, function () {
         setValue(marker.color_field, colorField.default, { keepDom: true });
         setValue(marker.icon_field, iconField.default, { keepDom: true });
         setValue(marker.name_field, "", { keepDom: true });
@@ -10152,7 +13598,7 @@
       colorBtn.appendChild(hex);
       colorBtn.addEventListener("click", function () {
         bridge("osw:haptic:1");
-        bridge("osw:color:" + marker.color_field + ":" + (values[marker.color_field] || ""));
+        openColorPickerById(marker.color_field, values[marker.color_field] || "");
       });
       controls.appendChild(colorBtn);
 
@@ -10293,14 +13739,94 @@
     return root;
   }
 
+  /* The widget appearance controls form one compact two-row container inside
+     Organize Widgets. Reusing the normal field renderers keeps color picking
+     and autosave on the same code path as every other appearance setting. */
+  function renderCompactWidgetEffect(section) {
+    const root = el("div", "osw-widget-effect-compact osw-designer-deck");
+    const effects = el("div", "osw-widget-effect-compact-effects");
+    const colors = el("div", "osw-widget-effect-compact-colors");
+
+    (section.fields || []).forEach(function (field) {
+      if (field.type !== "slider" && field.type !== "color_pair") return;
+      const node = renderDeckField(field);
+      if (!node) return;
+      if (field.advanced) {
+        node.setAttribute("data-simple-organize-advanced", "true");
+      }
+      if (field.type === "slider") effects.appendChild(node);
+      else colors.appendChild(node);
+    });
+
+    if (effects.childNodes.length) root.appendChild(effects);
+    if (colors.childNodes.length) root.appendChild(colors);
+    return root;
+  }
+
+  function renderWidgetLayoutControls(section) {
+    const layoutField = fieldById["modern_menu_widget_layout"];
+    const gapField = fieldById["modern_menu_sidebar_widget_gap"];
+    const edgeIds = [
+      "modern_menu_widget_margin_top",
+      "modern_menu_widget_margin_right",
+      "modern_menu_widget_margin_bottom",
+      "modern_menu_widget_margin_left"
+    ];
+    const edgeFields = edgeIds.map(function (id) { return fieldById[id]; });
+    if (!layoutField || !gapField || edgeFields.some(function (field) { return !field; })) return null;
+
+    const root = el("div", "osw-widget-layout-compact osw-designer-deck");
+    const layoutNode = renderDeckField(layoutField);
+    root.appendChild(layoutNode);
+
+    const customGrid = el("div", "osw-widget-layout-custom");
+    edgeFields.forEach(function (field) {
+      const node = renderDeckField(field);
+      if (node) customGrid.appendChild(node);
+    });
+    root.appendChild(customGrid);
+
+    const gapNode = renderDeckField(gapField);
+    if (gapNode) {
+      gapNode.classList.add("osw-widget-layout-gap");
+      root.appendChild(gapNode);
+    }
+
+    // Center stacks the widgets below the menu, so the horizontal sidebar
+    // offset is inactive. Keep its stored value for a return to Left/Right.
+    root.__section = { fields: [gapField] };
+    root.__fieldsHost = root;
+    applyPlainVisibility(root);
+    conditionalBlocks.push(root);
+
+    function syncCustomControls() {
+      const isCustom = values[layoutField.id] === "custom";
+      customGrid.hidden = !isCustom;
+      customGrid.classList.toggle("is-hidden", !isCustom);
+    }
+    Array.prototype.forEach.call(layoutNode.querySelectorAll(".osw-segment-btn"), function (button) {
+      button.addEventListener("click", function () {
+        // renderChoice writes its value first; queueing guarantees this reads
+        // the selected mode even if that implementation changes later.
+        setTimeout(syncCustomControls, 0);
+      });
+    });
+    syncCustomControls();
+    return root;
+  }
+
   const SECTION_RENDERERS = {
     ladder: renderLadder,
+    color_gallery: renderColorGallery,
     gallery_assets: renderGalleryAssets,
     markers: renderMarkers,
     font_role: renderFontRole,
+    font_roles: renderFontRoles,
     profile_preview: renderProfilePreview,
     designer_preview: renderDesignerPreview,
     widget_grid: renderWidgetGrid,
+    theme_style: renderThemeStyle,
+    things_theme: renderThingsTheme,
     themes: renderThemes,
     onigimon_companions: renderOnigimonCompanions,
     hexagon_keys: renderHexagonKeys,
@@ -10314,14 +13840,22 @@
   let conditionalBlocks = [];
 
   function applyPlainVisibility(block) {
+    const section = block.__section || {};
+    const sectionHidden = !!section.showWhen && !showWhenMatches(section.showWhen);
+    block.classList.toggle("is-hidden", sectionHidden);
+    // `hidden` is the functional guarantee; the class is retained for styling
+    // and inspection. Whole-section conditions must not depend on a CSS rule
+    // being present, as field-level conditions historically did.
+    block.hidden = sectionHidden;
     const host = block.__fieldsHost;
     if (!host) return;
-    ((block.__section || {}).fields || []).forEach(function (field) {
+    (section.fields || []).forEach(function (field) {
       if (!field.showWhen) return;
       const node = host.querySelector('[data-field-host="' + field.id + '"]');
       if (!node) return;
       node.classList.toggle("is-hidden", !showWhenMatches(field.showWhen));
     });
+    if (block.__afterVisibility) block.__afterVisibility();
   }
 
   function refreshConditionalBlocks() {
@@ -10341,6 +13875,41 @@
 
   // ── page rendering ─────────────────────────────────────────────────────────
 
+  function pageIsAvailable(page) {
+    if (!page) return false;
+    if ((page.id === "prepstation" || page.id === "hashinotes") &&
+        values.onigiri_ui_theme !== "classic") {
+      return false;
+    }
+    return !page.showWhen || showWhenMatches(page.showWhen);
+  }
+
+  function refreshPageVisibility() {
+    const search = document.getElementById("oswSearch");
+    const needle = String((search && search.value) || "").trim().toLowerCase();
+    let visible = 0;
+    Array.prototype.forEach.call(document.querySelectorAll("[data-nav-item]"), function (node) {
+      const id = node.getAttribute("data-nav-item");
+      const available = pageIsAvailable(pageById[id]);
+      const matchesSearch = !needle || (INDEX[id] || "").indexOf(needle) !== -1;
+      node.classList.toggle("is-hidden", !available || !matchesSearch);
+      if (available && matchesSearch) visible += 1;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-nav-group]"), function (group) {
+      const anyVisible = group.querySelector("[data-nav-item]:not(.is-hidden)");
+      group.style.display = anyVisible ? "" : "none";
+    });
+    const empty = document.getElementById("oswNavEmpty");
+    if (empty) empty.style.display = visible ? "none" : "";
+
+    if (currentPage && !pageIsAvailable(pageById[currentPage])) {
+      const fallback = pageIsAvailable(pageById.mainmenu)
+        ? pageById.mainmenu
+        : PAGES.filter(pageIsAvailable)[0];
+      if (fallback) showPage(fallback.id);
+    }
+  }
+
   function buildNav() {
     const nav = document.getElementById("oswNav");
     nav.innerHTML = "";
@@ -10352,6 +13921,7 @@
         const button = el("button", "osw-nav-item");
         button.type = "button";
         button.setAttribute("data-nav-item", item.id);
+        if (item.simpleOnly) button.setAttribute("data-simple-page", "true");
         const icon = el("span", "osw-nav-icon");
         icon.innerHTML = item.icon || "";
         button.appendChild(icon);
@@ -10360,7 +13930,19 @@
           const dot = el("span", "osw-nav-legacy");
           button.appendChild(dot);
         }
-        button.addEventListener("click", function () { showPage(item.id); });
+        button.addEventListener("click", function () {
+          // Replay even when the already-selected page is clicked: the small
+          // icon response confirms the press without making navigation move.
+          icon.classList.remove("is-activating");
+          void icon.offsetWidth;
+          icon.classList.add("is-activating");
+          const search = document.getElementById("oswSearch");
+          if (search && search.value) {
+            search.value = "";
+            applySearch("");
+          }
+          showPage(item.id);
+        });
         section.appendChild(button);
       });
       nav.appendChild(section);
@@ -10369,6 +13951,7 @@
     empty.id = "oswNavEmpty";
     empty.style.display = "none";
     nav.appendChild(empty);
+    refreshPageVisibility();
   }
 
   /* One section, rendered into its own card block. Shared by the plain stacked
@@ -10376,6 +13959,8 @@
   function renderSectionBlock(section, page, withTitle) {
     const block = el("section", "osw-section");
     block.setAttribute("data-section", section.id || "");
+    if (section.modeParity) block.setAttribute("data-mode-parity", "true");
+    block.__section = section;
     if (withTitle && section.title) block.appendChild(el("div", "osw-section-title", section.title || ""));
     if (withTitle && section.description && !SECTION_RENDERERS[section.layout]) {
       block.appendChild(el("div", "osw-section-desc", section.description));
@@ -10384,9 +13969,25 @@
     try {
       if (sectionRenderer) {
         block.appendChild(sectionRenderer(section, page));
+        if (section.showWhen) {
+          applyPlainVisibility(block);
+          conditionalBlocks.push(block);
+        }
       } else {
+        const compactFontFieldIds = {};
+        (section.fontRoles || []).forEach(function (role) {
+          (role.field_ids || []).forEach(function (fieldId) {
+            compactFontFieldIds[fieldId] = true;
+          });
+        });
+        if ((SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
+          const fontMenuRow = el("div", "osw-designer-font-menu-row");
+          fontMenuRow.appendChild(compactFontMenuButton(section));
+          block.appendChild(fontMenuRow);
+        }
         const fields = el("div", "osw-fields");
         (section.fields || []).forEach(function (field) {
+          if (compactFontFieldIds[field.id]) return;
           // A colour listed as an icon field's popover companion renders inside
           // that popover, not as a row of its own — same rule the designer deck
           // applies (deckSkipField).
@@ -10400,7 +14001,6 @@
         block.appendChild(fields);
         // A row that only applies in some states collapses away in the others,
         // the same rule designer decks already follow (applyDeckVisibility).
-        block.__section = section;
         block.__fieldsHost = fields;
         applyPlainVisibility(block);
         conditionalBlocks.push(block);
@@ -10423,14 +14023,114 @@
      the visible section is in the DOM — a page with five designer previews
      paints one stage instead of five on every value change. */
   function renderTabbedPage(page, host) {
-    const sections = (page.sections || []).filter(function (s) { return s.title; });
+    const sections = (page.sections || []).filter(function (s) {
+      return s.title && (!s.showWhen || showWhenMatches(s.showWhen)) &&
+        !(s.advancedOnly && !SETTINGS_MODE_PARITY && settingsComplexity !== "advanced");
+    });
     if (!sections.length) return false;
 
     // The strip lives on the page title's line, not above the content.
     const tabsWrap = document.getElementById("oswPageTabs");
     tabsWrap.innerHTML = "";
+    // Start with labels. `fitTabs()` will switch to the compact icon rail only
+    // when this particular header cannot accommodate every destination.
     tabsWrap.classList.remove("is-icons");
     const strip = el("div", "osw-subtabs-strip");
+
+    // Main Menu and Sidebar resets live beside their tab strips because each
+    // resets the complete page, not merely the currently selected section.
+    if (page.id === "mainmenu" || page.id === "sidebar") {
+      const isMainMenuReset = page.id === "mainmenu";
+      const resetWrap = el(
+        "div",
+        "osw-subtabs-strip osw-page-reset-wrap"
+      );
+      // Use the identical tab-strip/button classes as Organize Widgets. The
+      // profile reset class supplies only the shared hold-progress behavior.
+      const resetBtn = el("div", "osw-segment-btn osw-subtab osw-profile-reset-btn is-active");
+      resetBtn.title = isMainMenuReset
+        ? str("hold_to_reset_main_menu", "Hold for 3 seconds to reset Main Menu customizations")
+        : str("hold_to_reset_sidebar", "Hold for 3 seconds to reset Sidebar customizations");
+      resetBtn.setAttribute("aria-label", resetBtn.title);
+      resetBtn.setAttribute("role", "button");
+      resetBtn.setAttribute("tabindex", "0");
+      resetBtn.innerHTML = '<span class="osw-profile-reset-btn-text">' +
+        (isMainMenuReset
+          ? str("profile_reset_default", "Restore Default")
+          : str("reset_default", "Reset Default")) + '</span>';
+
+      function resetPageSettings() {
+        // Use each schema field's declared default rather than duplicating
+        // defaults here. Include compact font-role fields as well as the
+        // ordinary section fields so Sidebar Fonts resets with the page.
+        const resetFields = [];
+        const seenFields = {};
+        sections.forEach(function (section) {
+          (section.fields || []).forEach(function (field) {
+            if (seenFields[field.id]) return;
+            seenFields[field.id] = true;
+            resetFields.push(field);
+          });
+          (section.fontRoles || []).forEach(function (role) {
+            (role.field_ids || []).forEach(function (fieldId) {
+              if (seenFields[fieldId] || !fieldById[fieldId]) return;
+              seenFields[fieldId] = true;
+              resetFields.push(fieldById[fieldId]);
+            });
+          });
+        });
+        resetFields.forEach(function (field) {
+            if (!field.bound || field.virtual || field.default === undefined) return;
+            const defaultValue = field.default && typeof field.default === "object"
+              ? JSON.parse(JSON.stringify(field.default))
+              : field.default;
+            setValue(field.id, defaultValue, { silent: true, skipCascade: true });
+        });
+        // The layout field's schema default carries only its base structure,
+        // so build the real default widget arrangement here as well. This
+        // lives outside renderWidgetGrid because the header action can be
+        // used while any Main Menu tab is selected.
+        if (isMainMenuReset) {
+          const layoutField = fieldById.onigiriWidgetLayout || {};
+          const baseLayout = layoutField.default && typeof layoutField.default === "object"
+            ? JSON.parse(JSON.stringify(layoutField.default))
+            : {};
+          const catalogue = CTX.organizeCatalogue || { onigiri: [] };
+          const specsByWid = {};
+          catalogue.onigiri.forEach(function (spec) { specsByWid[spec.wid] = spec; });
+          const columns = Number(baseLayout.column_count) || 4;
+          const tiles = [];
+          const grid = {};
+          ORGANIZE_DEFAULT_LAYOUT.forEach(function (wid) {
+            const spec = specsByWid[wid];
+            if (!spec) return;
+            const rowSpan = organizeClampSpan(spec.defaultSpan[0], spec, true);
+            const colSpan = organizeClampSpan(spec.defaultSpan[1], spec, false);
+            const slot = organizeFindFreeSlot(tiles, rowSpan, colSpan, columns);
+            const tile = { wid: wid, row: slot.row, col: slot.col, rowSpan: rowSpan, colSpan: colSpan };
+            tiles.push(tile);
+            grid[wid] = {
+              pos: slot.row * columns + slot.col,
+              row: rowSpan,
+              col: colSpan,
+              display_name: spec.name,
+            };
+          });
+          const archive = {};
+          catalogue.onigiri.forEach(function (spec) {
+            if (!grid[spec.wid]) archive[spec.wid] = { display_name: spec.name };
+          });
+          baseLayout.grid = grid;
+          baseLayout.archive = archive;
+          setValue("onigiriWidgetLayout", baseLayout, { silent: true, skipCascade: true });
+        }
+        activeTabByPage[page.id] = sections[0].id;
+        mount(sections[0].id);
+      }
+      installResetHold(resetBtn, resetPageSettings, { title: resetBtn.title });
+      resetWrap.appendChild(resetBtn);
+      tabsWrap.appendChild(resetWrap);
+    }
     tabsWrap.appendChild(strip);
 
     const body = el("div", "osw-subtab-body");
@@ -10450,8 +14150,11 @@
       });
       body.innerHTML = "";
       activeDesignerPreviews = [];
+      activeWidgetGridPreviews = [];
+      stopWidgetGridBackgroundSync();
       const section = sections.filter(function (s) { return s.id === sectionId; })[0];
       if (section) body.appendChild(renderSectionBlock(section, page, false));
+      applySettingsComplexity(false);
       const scroller = document.getElementById("oswPageScroll");
       if (scroller) scroller.scrollTop = 0;
       refreshEdgeFades();
@@ -10481,8 +14184,22 @@
     function fitTabs() {
       const row = tabsWrap.parentNode;
       if (!row) return;
+      // Measure with labels visible. Main Menu and Sidebar share the same
+      // compact threshold: all destinations keep their Lucide glyphs, while
+      // the selected destination retains its label.
       tabsWrap.classList.remove("is-icons");
-      if (strip.scrollWidth > tabsWrap.clientWidth + 1) tabsWrap.classList.add("is-icons");
+      if (strip.scrollWidth > tabsWrap.clientWidth + 1) {
+        tabsWrap.classList.add("is-icons");
+      }
+      // These two five-destination pages benefit from compacting before the
+      // title itself begins to crowd out. Other tabbed pages compact only when
+      // their labels genuinely no longer fit.
+      const designerCompact = (page.id === "mainmenu" || page.id === "sidebar") && (
+        window.innerWidth <= 1100 || tabsWrap.clientWidth < 760
+      );
+      if (designerCompact || strip.scrollWidth > tabsWrap.clientWidth + 1) {
+        tabsWrap.classList.add("is-icons");
+      }
     }
     if (tabbedFitObserver) tabbedFitObserver.disconnect();
     if (window.ResizeObserver) {
@@ -10495,9 +14212,107 @@
     return true;
   }
 
+  /* A page can own one compact choice in the title row. It uses the same
+     field/value plumbing as an ordinary segmented choice, so autosave,
+     external refreshes and conditional sections all remain data-driven. */
+  function renderPageHeaderChoice(page) {
+    const fieldId = page.headerFieldId || "";
+    const field = fieldById[fieldId];
+    if (!field || field.type !== "choice") return;
+
+    const tabsWrap = document.getElementById("oswPageTabs");
+    const strip = el("div", "osw-subtabs-strip osw-page-mode-strip");
+    strip.setAttribute("data-field", field.id);
+    strip.setAttribute("data-field-type", "choice");
+    strip.setAttribute("role", "group");
+    strip.setAttribute("aria-label", field.label || page.title);
+
+    (field.options || []).forEach(function (option) {
+      const selected = option.value === values[field.id];
+      const button = el("button", "osw-segment-btn osw-subtab" + (selected ? " is-active" : ""));
+      button.type = "button";
+      button.setAttribute("data-value", option.value);
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.appendChild(el("span", "osw-subtab-label", option.label));
+      button.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        setValue(field.id, option.value);
+      });
+      strip.appendChild(button);
+    });
+    tabsWrap.appendChild(strip);
+  }
+
+  function applySettingsComplexity(persist) {
+    document.body.setAttribute("data-settings-complexity", settingsComplexity);
+    applySimpleProfileDefaults();
+    applySimpleSyncDefaults();
+    Object.keys(fieldById).forEach(function (id) {
+      const field = fieldById[id];
+      const selector = '[data-field-host="' + id + '"]';
+      let nodes = document.querySelectorAll(selector);
+      if (!nodes.length) nodes = document.querySelectorAll('[data-field="' + id + '"]');
+      Array.prototype.forEach.call(nodes, function (node) {
+        const sectionParity = node.closest('[data-mode-parity="true"]');
+        if (field.advanced && !SETTINGS_MODE_PARITY && !sectionParity) node.setAttribute("data-advanced-setting", "true");
+        else node.removeAttribute("data-advanced-setting");
+        if (field.simpleOnly && !SETTINGS_MODE_PARITY && !sectionParity) node.setAttribute("data-simple-setting", "true");
+        else node.removeAttribute("data-simple-setting");
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-complexity]"), function (button) {
+      const active = button.getAttribute("data-complexity") === settingsComplexity;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".osw-section"), function (section) {
+      // Count every field so a mixed section stays visible when its detailed
+      // controls are hidden but ordinary Simple controls remain available.
+      const hosts = section.querySelectorAll("[data-field-host], [data-field]");
+      if (!hosts.length) {
+        section.classList.remove("is-complexity-empty");
+        return;
+      }
+      const visible = Array.prototype.some.call(hosts, function (host) {
+        // Inputs nested inside a hidden field inherit that field's mode.
+        const hiddenField = host.closest(settingsComplexity === "simple"
+          ? '[data-advanced-setting="true"]'
+          : '[data-simple-setting="true"]');
+        return !hiddenField;
+      });
+      section.classList.toggle("is-complexity-empty", !visible);
+    });
+    refreshConditionalBlocks();
+    refreshEdgeFades();
+    if (persist) bridge("osw:complexity:" + settingsComplexity);
+    if (
+      !SETTINGS_MODE_PARITY && settingsComplexity === "advanced" &&
+      pageById[currentPage] &&
+      pageById[currentPage].simpleOnly
+    ) {
+      const fallbackPage = PAGES.filter(function (page) { return !page.simpleOnly; })[0];
+      if (fallbackPage) showPage(fallbackPage.id);
+    } else if (persist && pageById[currentPage]) {
+      showPage(currentPage);
+    }
+  }
+
   function showPage(pageId) {
-    const page = pageById[pageId];
+    closeCompactFontMenu();
+    let page = pageById[pageId];
     if (!page) return;
+    if (!pageIsAvailable(page)) {
+      page = pageIsAvailable(pageById.mainmenu)
+        ? pageById.mainmenu
+        : PAGES.filter(pageIsAvailable)[0];
+      if (!page) return;
+      pageId = page.id;
+    }
+    if (!SETTINGS_MODE_PARITY && settingsComplexity === "advanced" && page.simpleOnly) {
+      page = PAGES.filter(function (candidate) { return !candidate.simpleOnly; })[0];
+      if (!page) return;
+      pageId = page.id;
+    }
     currentPage = pageId;
     // Live game state is fetched on demand: everything below paints an empty
     // shape now and repaints when it lands.
@@ -10508,11 +14323,15 @@
     });
 
     document.getElementById("oswPageTitle").textContent = page.title;
-    document.getElementById("oswPageDesc").textContent = page.description || "";
+    // The page title is the complete header now; descriptions remain in the
+    // search index but no longer occupy a second line in Settings.
+    document.getElementById("oswPageDesc").textContent = "";
 
     const host = document.getElementById("oswPage");
     host.innerHTML = "";
     activeDesignerPreviews = [];
+    activeWidgetGridPreviews = [];
+    stopWidgetGridBackgroundSync();
     const headTabs = document.getElementById("oswPageTabs");
     headTabs.innerHTML = "";
     headTabs.classList.remove("is-icons");
@@ -10521,7 +14340,9 @@
     if (page.tabbed && renderTabbedPage(page, host)) {
       // renderTabbedPage mounted the active section itself.
     } else {
+      renderPageHeaderChoice(page);
       (page.sections || []).forEach(function (section) {
+        if (section.headerOnly) return;
         if (page.id === "profile" && section.layout !== "profile_preview") {
           return;
         }
@@ -10531,6 +14352,7 @@
     const pageScroller = document.getElementById("oswPageScroll");
     pageScroller.scrollTop = 0;
     measureDesc();
+    applySettingsComplexity(false);
     // New content means a new scrollHeight, so the bottom fade has to be
     // recomputed even though the scroll position went back to the top.
     refreshEdgeFades();
@@ -10538,29 +14360,105 @@
 
   // ── search ─────────────────────────────────────────────────────────────────
 
-  function searchIndex(pageId) {
-    const page = pageById[pageId];
-    if (!page) return "";
-    const parts = [page.title, page.description || ""];
-    (page.sections || []).forEach(function (section) {
-      parts.push(section.title || "");
-      (section.fields || []).forEach(function (field) {
-        parts.push(field.label || "", field.desc || "");
-        (field.options || []).forEach(function (option) { parts.push(option.label || ""); });
-      });
-    });
-    return parts.join(" ").toLowerCase();
+  function searchableText(parts) {
+    return parts.filter(function (part) { return part != null; }).join(" ").toLowerCase();
   }
 
   const INDEX = {};
-  Object.keys(pageById).forEach(function (id) { INDEX[id] = searchIndex(id); });
+  const SEARCH_RECORDS = [];
+  Object.keys(pageById).forEach(function (pageId) {
+    const page = pageById[pageId];
+    const pageParts = [page.title, page.description || "", page.id];
+    (page.sections || []).forEach(function (section) {
+      let sectionParts = [section.title || "", section.description || "", section.id || ""];
+      (section.fields || []).forEach(function (field) {
+        const fieldParts = [field.label || "", field.desc || "", field.id || ""];
+        (field.notes || []).forEach(function (item) { fieldParts.push(item); });
+        (field.items || []).forEach(function (item) { fieldParts.push(item); });
+        (field.options || []).forEach(function (option) {
+          fieldParts.push(option.label || "", option.sub || "");
+        });
+        SEARCH_RECORDS.push({
+          pageId: pageId,
+          sectionId: section.id || "",
+          fieldId: field.id,
+          pageTitle: page.title,
+          simpleOnly: !!page.simpleOnly,
+          sectionTitle: section.title || "",
+          title: field.label || section.title || page.title,
+          desc: field.desc || section.description || "",
+          advanced: !!field.advanced,
+          text: searchableText(pageParts.concat(sectionParts, fieldParts))
+        });
+        sectionParts = sectionParts.concat(fieldParts);
+      });
+      pageParts.push.apply(pageParts, sectionParts);
+    });
+    INDEX[pageId] = searchableText(pageParts);
+  });
+
+  function openSearchRecord(record) {
+    if (!SETTINGS_MODE_PARITY && record.advanced && settingsComplexity !== "advanced") {
+      settingsComplexity = "advanced";
+      applySettingsComplexity(true);
+    }
+    if (record.sectionId) activeTabByPage[record.pageId] = record.sectionId;
+    const input = document.getElementById("oswSearch");
+    input.value = "";
+    applySearch("");
+    showPage(record.pageId);
+    requestAnimationFrame(function () {
+      const target = document.querySelector('[data-field-host="' + record.fieldId + '"]') ||
+        document.querySelector('[data-field="' + record.fieldId + '"]');
+      if (!target) return;
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.classList.add("osw-search-hit");
+      setTimeout(function () { target.classList.remove("osw-search-hit"); }, 1800);
+    });
+  }
+
+  function renderSearchResults(needle) {
+    const matches = SEARCH_RECORDS.filter(function (record) {
+      if (!SETTINGS_MODE_PARITY && settingsComplexity === "advanced" && record.simpleOnly) return false;
+      if (!pageIsAvailable(pageById[record.pageId])) return false;
+      return record.text.indexOf(needle) !== -1;
+    }).slice(0, 120);
+    document.getElementById("oswPageTitle").textContent = str("search", "Search");
+    document.getElementById("oswPageDesc").textContent = matches.length +
+      (matches.length === 1 ? " setting found" : " settings found");
+    const tabs = document.getElementById("oswPageTabs");
+    tabs.innerHTML = "";
+    tabs.classList.remove("is-icons");
+    const host = document.getElementById("oswPage");
+    host.innerHTML = "";
+    const list = el("div", "osw-search-results");
+    matches.forEach(function (record) {
+      const button = el("button", "osw-search-result");
+      button.type = "button";
+      const trail = [record.pageTitle, record.sectionTitle].filter(Boolean).join(" › ");
+      button.appendChild(el("div", "osw-search-result-trail", trail));
+      const title = el("div", "osw-search-result-title", record.title || record.fieldId);
+      if (!SETTINGS_MODE_PARITY && record.advanced) title.appendChild(el("span", "osw-search-result-badge", str("advanced", "Advanced")));
+      button.appendChild(title);
+      if (record.desc) button.appendChild(el("div", "osw-search-result-desc", record.desc));
+      button.addEventListener("click", function () { openSearchRecord(record); });
+      list.appendChild(button);
+    });
+    if (!matches.length) list.appendChild(el("div", "osw-search-results-empty", "No settings match “" + needle + "”."));
+    host.appendChild(list);
+    const scroller = document.getElementById("oswPageScroll");
+    scroller.scrollTop = 0;
+    measureDesc();
+    refreshEdgeFades();
+  }
 
   function applySearch(query) {
     const needle = String(query || "").trim().toLowerCase();
     let visible = 0;
     Array.prototype.forEach.call(document.querySelectorAll("[data-nav-item]"), function (node) {
       const id = node.getAttribute("data-nav-item");
-      const hit = !needle || INDEX[id].indexOf(needle) !== -1;
+      const hit = pageIsAvailable(pageById[id]) &&
+        (!needle || INDEX[id].indexOf(needle) !== -1);
       node.classList.toggle("is-hidden", !hit);
       if (hit) visible += 1;
     });
@@ -10570,6 +14468,8 @@
     });
     const empty = document.getElementById("oswNavEmpty");
     if (empty) empty.style.display = visible ? "none" : "";
+    if (needle) renderSearchResults(needle);
+    else if (currentPage) showPage(currentPage);
     refreshEdgeFades();
   }
 
@@ -10650,13 +14550,25 @@
 
   // ── toast ──────────────────────────────────────────────────────────────────
 
-  function toast(message) {
+  function toast(message, options) {
     const node = document.getElementById("oswToast");
     if (!node || !message) return;
-    node.textContent = message;
+    const simpleNotice = options && options.simpleNotice;
+    node.classList.toggle("is-simple-notice", !!simpleNotice);
+    node.textContent = "";
+    if (simpleNotice) {
+      const logo = el("img", "osw-toast-logo");
+      logo.src = CTX.addonBase + "system_files/onigiri_mini_logo.svg";
+      logo.alt = "";
+      logo.setAttribute("aria-hidden", "true");
+      node.appendChild(logo);
+      node.appendChild(el("span", "osw-toast-message", message));
+    } else {
+      node.textContent = message;
+    }
     node.classList.add("is-visible");
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { node.classList.remove("is-visible"); }, 3200);
+    toastTimer = setTimeout(function () { node.classList.remove("is-visible"); }, simpleNotice ? 5500 : 3200);
   }
 
   // ── boot ───────────────────────────────────────────────────────────────────
@@ -10698,6 +14610,25 @@
       str("report_bugs", "Report bugs");
     document.querySelector("#oswDone .osw-btn-label").textContent = str("done", "Done");
     document.getElementById("oswSearch").placeholder = str("search", "Search");
+    const complexityButtons = document.querySelectorAll("[data-complexity]");
+    Array.prototype.forEach.call(complexityButtons, function (button) {
+      const mode = button.getAttribute("data-complexity");
+      button.textContent = mode === "advanced" ? str("advanced", "Advanced") : str("simple", "Simple");
+      button.addEventListener("click", function () {
+        if (settingsComplexity === mode) return;
+        settingsComplexity = mode;
+        applySettingsComplexity(true);
+        if (mode === "simple") {
+          toast(str("simple_mode_notice", "Simple Mode hides some Onigiri customization options. Switch to Advanced to see them all."), { simpleNotice: true });
+        } else {
+          const notice = document.getElementById("oswToast");
+          if (notice && notice.classList.contains("is-simple-notice")) {
+            notice.classList.remove("is-visible");
+            if (toastTimer) clearTimeout(toastTimer);
+          }
+        }
+      });
+    });
 
     document.getElementById("oswRailToggle").addEventListener("click", function () {
       railCollapsed = !railCollapsed;
@@ -10760,12 +14691,20 @@
     refreshEdgeFades();
   });
   applyRail(false);
+  applySettingsComplexity(false);
   setStatus("idle");
   if (currentPage) showPage(currentPage);
 
   window.onigiriSettings = {
     showPage: showPage,
     toast: toast,
+    setGridBackground: function (background) {
+      if (activeWidgetGridBackgroundReceiver) activeWidgetGridBackgroundReceiver(background);
+    },
+    afterNativeShow: function () {
+      measureDesc();
+      refreshEdgeFades();
+    },
     /* Called from Python after a native picker returns a value. */
     setFieldValue: function (id, value) {
       // Resolved before the write: a linked colour pair is recognised by its
@@ -10778,4 +14717,12 @@
       if (linked) setValue(linked.darkField, next);
     }
   };
+  setInterval(refreshLiveProfileContext, 1000);
+  window.addEventListener("focus", refreshLiveProfileContext);
+  // Qt checks this marker after loadFinished. Removing the HTML guard first
+  // means the dialog's first visible frame already has the final theme,
+  // populated navigation, active page, labels, and button styling. Do not use
+  // pycmd for this startup signal: Anki may install that bridge slightly later.
+  document.documentElement.classList.remove("osw-booting");
+  document.documentElement.classList.add("osw-ready");
 })();

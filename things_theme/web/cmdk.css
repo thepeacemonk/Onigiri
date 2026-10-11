@@ -1,0 +1,342 @@
+/* Anki Design — Cmd-K palette.
+   Self-contained floating modal injected into every themed webview. Pulls
+   colors from the addon's design tokens (--rf-paper, --rf-ink, --rf-line,
+   --rf-accent) so dark/light + accent recolor automatically. */
+
+.ba-cmdk-back {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  /* Backdrop animates from clear → dim with the blur intensifying in lock
+     step, so the page "settles" behind the palette rather than snapping
+     into a dim. Both states have their colour declared so the transition
+     interpolates cleanly between them in either light or dark mode. */
+  background: rgba(8, 8, 12, 0);
+  backdrop-filter: blur(0) saturate(1);
+  -webkit-backdrop-filter: blur(0) saturate(1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  font-family: var(--rf-sans, ui-sans-serif, -apple-system, system-ui, sans-serif);
+  pointer-events: none;
+  transition:
+    background 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    backdrop-filter 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    -webkit-backdrop-filter 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-rf-theme="light"] .ba-cmdk-back,
+:root:not([data-rf-theme="dark"]) .ba-cmdk-back {
+  background: rgba(36, 32, 22, 0);
+}
+.ba-cmdk-back[data-open="true"] {
+  pointer-events: auto;
+  background: rgba(8, 8, 12, 0.42);
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
+}
+:root[data-rf-theme="light"] .ba-cmdk-back[data-open="true"],
+:root:not([data-rf-theme="dark"]) .ba-cmdk-back[data-open="true"] {
+  background: rgba(36, 32, 22, 0.22);
+}
+
+.ba-cmdk {
+  /* Reset inherited text-align — reviewer's body centers text and we want
+     the palette's own left-aligned typography to win regardless of host. */
+  text-align: left;
+  width: min(640px, 92vw);
+  max-height: 64vh;
+  background: var(--rf-paper, #14161b);
+  color: var(--rf-ink, #e0e0e0);
+  border: 1px solid var(--rf-line-2, rgba(236, 234, 226, 0.18));
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 24px 64px -16px rgba(0, 0, 0, 0.55),
+    0 6px 18px -8px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Spring-like entrance: rises from below with a slight overshoot, fades
+     in concurrently. The cubic-bezier(0.34, 1.56, 0.64, 1) is a backOut
+     curve — it overshoots ~12% then settles, giving the modal a small
+     bounce that reads as "delightful but not bouncy." Opacity uses a
+     shorter, plainer ease so the modal becomes solid before the spring
+     finishes settling. */
+  transform: translateY(18px) scale(0.94);
+  opacity: 0;
+  transition:
+    transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ba-cmdk-back[data-open="true"] .ba-cmdk {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ba-cmdk-back,
+  .ba-cmdk {
+    transition-duration: 80ms;
+  }
+  .ba-cmdk {
+    transform: none;
+  }
+  .ba-cmdk-back[data-open="true"] .ba-cmdk {
+    transform: none;
+  }
+}
+
+/* ---------------------------- INPUT ROW ---------------------------- */
+.ba-cmdk-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rf-line, rgba(236, 234, 226, 0.09));
+  background: var(--rf-paper, #14161b);
+}
+.ba-cmdk-glyph {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--rf-ink-dim, #9e9e9e);
+  opacity: 0.85;
+}
+.ba-cmdk-glyph svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ba-cmdk-input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--rf-ink, #e0e0e0);
+  font: 500 16px/1.4 var(--rf-sans);
+  letter-spacing: 0.01em;
+  padding: 0;
+  min-width: 0;
+}
+.ba-cmdk-input::placeholder {
+  color: var(--rf-ink-faint, #9e9e9e);
+  font-weight: 500;
+}
+.ba-cmdk-hint {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 10.5px/1 var(--rf-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rf-ink-faint, #9e9e9e);
+}
+.ba-cmdk-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--rf-line-2, rgba(236, 234, 226, 0.18));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--rf-ink-dim, #9e9e9e);
+  font: 600 10.5px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-rf-theme="light"] .ba-cmdk-kbd,
+:root:not([data-rf-theme="dark"]) .ba-cmdk-kbd {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ---------------------------- RESULTS ---------------------------- */
+.ba-cmdk-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px 0 10px;
+  scrollbar-width: thin;
+}
+.ba-cmdk-list::-webkit-scrollbar {
+  width: 8px;
+}
+.ba-cmdk-list::-webkit-scrollbar-thumb {
+  background: var(--rf-line-2, rgba(236, 234, 226, 0.18));
+  border-radius: 4px;
+}
+
+.ba-cmdk-section {
+  padding: 10px 16px 4px;
+  font: 600 10px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-faint, #9e9e9e);
+}
+.ba-cmdk-section:first-child {
+  padding-top: 8px;
+}
+
+.ba-cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  margin: 0 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--rf-ink, #e0e0e0);
+  border: 1px solid transparent;
+}
+.ba-cmdk-item[data-active="true"] {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--rf-line-2, rgba(236, 234, 226, 0.18));
+  box-shadow: inset 2px 0 0 var(--rf-accent, #0077c8);
+}
+:root[data-rf-theme="light"] .ba-cmdk-item[data-active="true"],
+:root:not([data-rf-theme="dark"]) .ba-cmdk-item[data-active="true"] {
+  background: rgba(0, 0, 0, 0.04);
+}
+.ba-cmdk-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+:root[data-rf-theme="light"] .ba-cmdk-item:hover,
+:root:not([data-rf-theme="dark"]) .ba-cmdk-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ba-cmdk-ico {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rf-ink-dim, #9e9e9e);
+}
+.ba-cmdk-ico svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ba-cmdk-item[data-active="true"] .ba-cmdk-ico {
+  color: var(--rf-accent, #0077c8);
+}
+
+.ba-cmdk-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ba-cmdk-title {
+  font: 500 13.5px/1.3 var(--rf-sans);
+  color: var(--rf-ink, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ba-cmdk-title em {
+  font-style: normal;
+  color: var(--rf-accent, #0077c8);
+  font-weight: 700;
+}
+.ba-cmdk-sub {
+  font: 500 11.5px/1.3 var(--rf-sans);
+  color: var(--rf-ink-faint, #9e9e9e);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ba-cmdk-sub em {
+  font-style: normal;
+  color: var(--rf-ink-dim, #9e9e9e);
+  font-weight: 600;
+}
+
+.ba-cmdk-meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 10.5px/1 var(--rf-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--rf-ink-faint, #9e9e9e);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ba-cmdk-meta .ba-cmdk-kbd {
+  background: transparent;
+}
+
+/* Type chip on the right (e.g. "deck", "card", "tag"). */
+.ba-cmdk-chip {
+  flex: 0 0 auto;
+  font: 600 10px/1 var(--rf-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--rf-ink-faint, #9e9e9e);
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rf-line, rgba(236, 234, 226, 0.09));
+}
+
+/* Empty / loading states. */
+.ba-cmdk-empty,
+.ba-cmdk-loading {
+  padding: 24px 18px;
+  text-align: center;
+  font: 500 13px/1.5 var(--rf-sans);
+  color: var(--rf-ink-faint, #9e9e9e);
+}
+.ba-cmdk-empty strong {
+  color: var(--rf-ink-dim, #9e9e9e);
+  font-weight: 600;
+}
+
+/* ---------------------------- FOOTER ---------------------------- */
+.ba-cmdk-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--rf-line, rgba(236, 234, 226, 0.09));
+  font: 500 10.5px/1 var(--rf-sans);
+  color: var(--rf-ink-faint, #9e9e9e);
+  background: var(--rf-paper, #14161b);
+}
+.ba-cmdk-foot-l,
+.ba-cmdk-foot-r {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.ba-cmdk-foot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Trim chrome on small viewports (Anki reviewer can be tight). */
+@media (max-height: 600px) {
+  .ba-cmdk-back { padding-top: 8vh; }
+  .ba-cmdk { max-height: 78vh; }
+}
+@media (max-width: 540px) {
+  .ba-cmdk-hint { display: none; }
+}

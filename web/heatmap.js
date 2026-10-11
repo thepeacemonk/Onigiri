@@ -395,6 +395,16 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
     // --- MAIN RENDER FUNCTION ---
     function setShapeMaskVariable(container, config) {
+        // Settings can change the selected icon after this script has loaded.
+        // Its icon inventory is already exposed as data URLs, so accepting the
+        // resolved mask URL lets the preview use this same renderer without a
+        // second, lookalike cell implementation. The menu continues to pass
+        // raw SVG content, as before.
+        if (config.heatmapShapeMaskUrl) {
+            const safeUrl = String(config.heatmapShapeMaskUrl).replace(/"/g, '%22');
+            container.style.setProperty('--heatmap-shape-mask', `url("${safeUrl}")`);
+            return;
+        }
         // One mask resource for the whole grid instead of one per day cell.
         if (!config.heatmapSvgContent) {
             container.style.removeProperty('--heatmap-shape-mask');
@@ -425,10 +435,17 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         `;
     }
 
-    exports.render = function (containerId, data, config) {
-        const container = document.getElementById(containerId);
+    exports.render = function (containerTarget, data, config) {
+        // The live menu passes an element id. Settings builds preview cards
+        // off-DOM before mounting them, so it passes the element itself: a
+        // document lookup cannot see that detached node yet. Supporting both
+        // keeps one production renderer for the live widget and its preview.
+        const container = typeof containerTarget === 'string'
+            ? document.getElementById(containerTarget)
+            : containerTarget;
         if (!container) return;
 
+        container.dataset.particlesAnimation = String(!!config.heatmapParticlesAnimation);
         setShapeMaskVariable(container, config);
 
         const preparedData = prepareData(data);
@@ -443,6 +460,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
 
         function draw() {
+            if (container.__particles) {
+                container.__particles.destroy();
+                container.__particles = null;
+            }
             const i18n = config.i18n || {};
             const hasStreak = data.streak > 0;
             const streakIconColor = hasStreak
@@ -525,6 +546,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 drawWeekView(gridContainer, preparedData, config);
             }
             bindCellInteractions(gridContainer);
+            if (config.heatmapParticlesAnimation && window.OnigiriParticles) {
+                container.__particles = new window.OnigiriParticles.Particles(gridContainer);
+            }
             // Placed synchronously, before this frame paints — a deferred
             // placement leaves one frame with no pill under the active view.
             // When a pill was already on screen its geometry is carried across
@@ -659,6 +683,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
     // Self-initialize if data is already present in the DOM
     (function () {
+        // Settings embeds this production renderer but drives it with its own
+        // illustrative preview data. Do not start the menu's polling boot loop
+        // in that host; PREVIEW_PAINTERS.heatmap calls render() directly.
+        if (window.onigiriHeatmapDisableAutoRender) return;
         const tryAutoRender = () => {
             if (exports.autoRender()) {
                 return;

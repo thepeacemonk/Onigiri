@@ -120,6 +120,8 @@ class Store:
             if kind == "col":
                 if mw is None or mw.col is None:
                     return default
+                if bind.get("fallback_key"):
+                    default = _col_get(mw.col, bind["fallback_key"], default)
                 value = _col_get(mw.col, bind["key"], default)
                 return default if value is None else value
             if kind == "col_path":
@@ -204,6 +206,11 @@ class Store:
         elif kind == "config":
             self._write_config(bind, value)
         elif kind == "col":
+            # A legacy shared icon tint becomes the light tint. Freeze its old
+            # dark value before the first light edit so the two stay independent.
+            preserve_key = bind.get("preserve_key")
+            if preserve_key and _col_get(mw.col, preserve_key) is None:
+                _col_set(mw.col, preserve_key, _col_get(mw.col, bind["key"], ""))
             _col_set(mw.col, bind["key"], value)
         elif kind == "col_path":
             node = copy.deepcopy(_col_get(mw.col, bind["key"], {}))

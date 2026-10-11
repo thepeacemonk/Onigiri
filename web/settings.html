@@ -1,7 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html class="osw-booting">
 <head>
 <meta charset="utf-8">
+<style>
+  /* First-paint guard. Kept in the template rather than the large bundled
+     stylesheet so Chromium sees it before parsing any of the settings assets. */
+  html, body { background: /*__ONIGIRI_BOOT_BACKGROUND__*/; }
+  html.osw-booting .osw-shell,
+  html.osw-booting .osw-toast { visibility: hidden !important; }
+</style>
 <style>
   /*__ONIGIRI_FONT_FACE__*/
   /* The Main Menu's real widget rules, lifted from web/menu.css so previews
@@ -19,10 +26,15 @@
         <label class="osw-search" id="oswSearchWrap">
           <span class="osw-search-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </span>
           <input id="oswSearch" type="search" autocomplete="off" spellcheck="false">
         </label>
+      </div>
+      <!-- Presentation mode is remembered separately from individual settings. -->
+      <div class="osw-complexity" id="oswComplexity" role="group">
+        <button type="button" data-complexity="simple"></button>
+        <button type="button" data-complexity="advanced"></button>
       </div>
       <nav class="osw-nav" id="oswNav"></nav>
       <div class="osw-rail-bottom">
@@ -40,8 +52,10 @@
             <span class="osw-autosave-label"></span>
           </div>
           <button class="osw-btn osw-btn-primary" id="oswDone" type="button">
-            <span class="osw-btn-icon" aria-hidden="true"></span>
             <span class="osw-btn-label"></span>
+            <span class="osw-btn-action-icon" aria-hidden="true">
+              <span class="osw-btn-icon"></span>
+            </span>
           </button>
         </div>
       </div>
@@ -67,6 +81,13 @@
 
 <script>
   const ONIGIRI_SETTINGS_CONTEXT = /*__ONIGIRI_SETTINGS_CONTEXT__*/null;
+  /* Settings supplies its own illustrative data. The renderer itself is the
+     production menu renderer; only its menu auto-boot is disabled here. */
+  window.onigiriHeatmapDisableAutoRender = true;
+  /*__ONIGIRI_HEATMAP_JS__*/
+  /* The settings previews call the same element factory as live reviewer
+     notifications, so notification markup cannot drift into a lookalike. */
+  /*__ONIGIRI_NOTIFICATIONS_JS__*/
   /*__ONIGIRI_SETTINGS_JS__*/
 </script>
 </body>

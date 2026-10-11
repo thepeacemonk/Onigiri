@@ -41,8 +41,10 @@ from urllib.parse import urlparse, parse_qs, urlencode, unquote, quote_plus
 from typing import Optional, Dict, List, Tuple, Any, Callable, Union
 from . import config
 from . import onigiri_renderer
+from . import overview_stats
 from .decks import tree_updater as deck_tree_updater
 from . import heatmap
+from .theme_palette import readable_text
 from .translations import tr as tr_at
 from .constants import COLOR_LABELS
 from .emoji_sprites import asset_for_emoji
@@ -812,15 +814,23 @@ def _synapsepro_overview_background_priority_css(addon_path: str) -> str:
     """Keep SynapsePro's overview theme from taking over Onigiri's page background."""
     conf = config.get_config_readonly()
     overview_mode = conf.get("onigiri_overview_bg_mode", "main")
+    if overview_mode == "slideshow":
+        overview_mode = "image_color"
     main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
     has_image_layer = (
-        overview_mode in ("image_color", "slideshow")
+        overview_mode == "image_color"
         or (overview_mode == "main" and main_mode in ("image", "image_color", "slideshow"))
     )
 
     if overview_mode == "main":
-        light_color = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
-        dark_color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        light_color = mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
+        dark_color = mw.col.conf.get(
+            "modern_menu_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--bg"],
+        )
     else:
         light_color = conf.get("onigiri_overview_bg_light_color", "#FFFFFF")
         dark_color = conf.get("onigiri_overview_bg_dark_color", "#2C2C2C")
@@ -1104,16 +1114,52 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
     if mode == "accent":
         color = "var(--accent-color)"
     
-    blur = max(0, min(100, int(mw.col.conf.get("modern_menu_profile_picture_blur", 0) or 0)))
-    style_parts = []
-    if blur:
-        style_parts.append(f"filter: blur({blur * 0.2}px)")
-
     if mode in {"accent", "custom"}:
-        initial = html.escape((user_name[:1] or "U").upper(), quote=False)
-        style_parts.insert(0, f"background-color: {color}")
-        style_str = "; ".join(style_parts)
-        return f'<span class="{css_class} profile-pic-generated" style="{style_str}">{initial}</span>'
+        content = html.escape((user_name[:1] or "U").upper(), quote=False)
+        if mode in {"accent", "custom"}:
+            content_type = mw.col.conf.get("modern_menu_profile_picture_content_type", "letter")
+            letter = str(mw.col.conf.get("modern_menu_profile_picture_letter", "") or "").strip()
+            if content_type == "letter" and letter == "...":
+                content = ""
+            elif content_type == "letter" and letter:
+                content = html.escape(letter.upper(), quote=False)
+            elif content_type == "icon":
+                icon_value = str(mw.col.conf.get("modern_menu_profile_picture_icon", "system:onigiri.svg") or "")
+                if icon_value.startswith("emoji:") and icon_value[6:]:
+                    content = html.escape(icon_value[6:], quote=False)
+                else:
+                    icon_name = os.path.basename(
+                        icon_value[7:] if icon_value.startswith("system:") else icon_value
+                    )
+                    addon_dir = mw.addonManager.addonsFolder(addon_package)
+                    if icon_value.startswith("system:"):
+                        icon_path = os.path.join(
+                            addon_dir, "system_files", "system_icons",
+                            "available_for_users", icon_name,
+                        )
+                        icon_url = (
+                            f"/_addons/{addon_package}/system_files/system_icons/"
+                            f"available_for_users/{icon_name}"
+                        )
+                    else:
+                        icon_path = os.path.join(addon_dir, "user_files", "icons", icon_name)
+                        icon_url = f"/_addons/{addon_package}/user_files/icons/{icon_name}"
+                    if icon_name and os.path.isfile(icon_path):
+                        safe_url = html.escape(icon_url, quote=True)
+                        icon_color = (
+                            mw.col.conf.get(
+                                f"modern_menu_profile_picture_icon_color_{theme_key}",
+                                "#FFFFFF",
+                            )
+                            if dynamic
+                            else mw.col.conf.get("modern_menu_profile_picture_icon_color_light", "#FFFFFF")
+                        )
+                        content = (
+                            '<span class="profile-pic-generated-icon" '
+                            f'style="color: {icon_color}; -webkit-mask-image: url(\'{safe_url}\'); '
+                            f'mask-image: url(\'{safe_url}\')"></span>'
+                        )
+        return f'<span class="{css_class} profile-pic-generated" style="background-color: {color}">{content}</span>'
 
     if dynamic:
         profile_pic_filename = mw.col.conf.get(f"modern_menu_profile_picture_{theme_key}", "") or mw.col.conf.get("modern_menu_profile_picture", "")
@@ -1126,8 +1172,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
 
-    style_attr = f' style="{"; ".join(style_parts)}"' if style_parts else ""
-    return f'<img src="{pic_url}" class="{css_class}"{style_attr}>'
+    return f'<img src="{pic_url}" class="{css_class}">'
 
 
 def take_control_of_deck_browser_hook():
@@ -1148,6 +1193,8 @@ def take_control_of_deck_browser_hook():
 
     for hook in list(gui_hooks.deck_browser_will_render_content._hooks):
         hook_id = _get_hook_name(hook)
+        if hook_id.split(".")[0] == "Byte":
+            continue
         should_manage = onigiri_module_name not in hook_id or "learner_stats_widget" in hook_id
         if not should_manage:
             continue
@@ -1184,8 +1231,8 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 
 	elif mode == "image":
 		light_img_url = get_img_url(light_image_path)
-		dark_img_url = get_img_url(dark_image_path) if dark_image_path else light_img_url
-		if not light_img_url: return ""
+		dark_img_url = get_img_url(dark_image_path)
+		if not (light_img_url or dark_img_url): return ""
 
 		opacity_float = opacity_val / 100.0
 		# Scale factor to prevent white borders when blur is applied
@@ -1214,9 +1261,12 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 				opacity: {opacity_float}; z-index: 0;
 			"""
 
-		image_css = f"{selector}::before {{ {base_before_css} background-image: url('{light_img_url}'); }}"
-		if dark_img_url and dark_img_url != light_img_url:
-			image_css += f"\n.night-mode {selector}::before {{ background-image: url('{dark_img_url}'); }}"
+		# Paths already resolve shared/split mode; an empty theme stays image-free.
+		light_image_css = f"url('{light_img_url}')" if light_img_url else "none"
+		dark_image_css = f"url('{dark_img_url}')" if dark_img_url else "none"
+		image_css = f"{selector}::before {{ {base_before_css} background-image: {light_image_css}; }}"
+		if dark_img_url != light_img_url:
+			image_css += f"\n.night-mode {selector}::before {{ background-image: {dark_image_css}; }}"
 
 		container_css = ""
 		if "body" in selector:
@@ -1235,10 +1285,10 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 
 	elif mode == "image_color":
 		light_img_url = get_img_url(light_image_path)
-		dark_img_url = get_img_url(dark_image_path) if dark_image_path else light_img_url
+		dark_img_url = get_img_url(dark_image_path)
 
 		# If no image, fallback to solid color
-		if not light_img_url:
+		if not (light_img_url or dark_img_url):
 				return f"""<style id="{style_id}">
 					{selector} {{ background-color: {light_color} !important; }}
 					.night-mode {selector} {{ background-color: {dark_color} !important; }}
@@ -1277,9 +1327,12 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 				z-index: 0;
 			"""
 
-		image_css = f"{selector}::before {{ {base_before_css} background-image: url('{light_img_url}'); }}"
-		if dark_img_url and dark_img_url != light_img_url:
-			image_css += f"\n.night-mode {selector}::before {{ background-image: url('{dark_img_url}'); }}"
+		# Paths already resolve shared/split mode; an empty theme stays image-free.
+		light_image_css = f"url('{light_img_url}')" if light_img_url else "none"
+		dark_image_css = f"url('{dark_img_url}')" if dark_img_url else "none"
+		image_css = f"{selector}::before {{ {base_before_css} background-image: {light_image_css}; }}"
+		if dark_img_url != light_img_url:
+			image_css += f"\n.night-mode {selector}::before {{ background-image: {dark_image_css}; }}"
 
 		# The container gets the SOLID color and acts as a positioning context.
 		if "body" in selector:
@@ -1630,10 +1683,15 @@ def _get_backgrounds_html(addon_package):
     main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
 
     if main_mode == "image" or main_mode == "image_color":
-        if mw.col.conf.get("modern_menu_background_image_mode", "single") == "separate":
-            main_img_file = mw.col.conf.get("modern_menu_background_image_light", "")
-        else:
-            main_img_file = mw.col.conf.get("modern_menu_background_image", "")
+        main_img_file = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            config.effective_night_mode(),
+            dynamic_key=(
+                "modern_menu_bg_image_theme_mode",
+                "modern_menu_background_image_mode",
+            ),
+        )
             
         if main_img_file:
             main_img_path = f"/_addons/{addon_package}/user_files/main_bg/{main_img_file}"
@@ -1645,9 +1703,15 @@ def _get_backgrounds_html(addon_package):
     if main_mode == "color" or main_mode == "image_color":
         # Use the correct color for the current theme in the preview swatch
         if config.effective_night_mode():
-            color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+            color = mw.col.conf.get(
+                "modern_menu_bg_color_dark",
+                config.DEFAULTS["colors"]["dark"]["--bg"],
+            )
         else:
-            color = mw.col.conf.get("modern_menu_bg_color_light", "#FFFFFF")
+            color = mw.col.conf.get(
+                "modern_menu_bg_color_light",
+                config.DEFAULTS["colors"]["light"]["--bg"],
+            )
         # In combo mode, color is applied first, then image style.
         main_bg_style = f"background-color: {color}; {main_bg_style}"
 
@@ -1662,11 +1726,12 @@ def _get_backgrounds_html(addon_package):
     else: # custom
         sidebar_type = mw.col.conf.get("modern_menu_sidebar_bg_type", "color")
         if sidebar_type == "image" or sidebar_type == "image_color":
-            if mw.col.conf.get("modern_menu_sidebar_bg_image_theme_mode", "separate") == "separate":
-                image_key = "modern_menu_sidebar_bg_image_dark" if config.effective_night_mode() else "modern_menu_sidebar_bg_image_light"
-                sidebar_img_file = mw.col.conf.get(image_key, "")
-            else:
-                sidebar_img_file = mw.col.conf.get("modern_menu_sidebar_bg_image", "")
+            sidebar_img_file = config.themed_asset(
+                mw.col.conf.get,
+                "modern_menu_sidebar_bg_image",
+                config.effective_night_mode(),
+                dynamic_key="modern_menu_sidebar_bg_image_theme_mode",
+            )
             if sidebar_img_file:
                 sidebar_img_path = f"/_addons/{addon_package}/user_files/sidebar_bg/{sidebar_img_file}"
                 sidebar_bg_style = f"background-image: url('{sidebar_img_path}');"
@@ -1685,9 +1750,15 @@ def _get_backgrounds_html(addon_package):
         
         if sidebar_type == "color" or sidebar_type == "image_color" or sidebar_type == "slideshow":
             if config.effective_night_mode():
-                color = mw.col.conf.get("modern_menu_sidebar_bg_color_dark", "#3C3C3C")
+                color = mw.col.conf.get(
+                    "modern_menu_sidebar_bg_color_dark",
+                    config.DEFAULTS["colors"]["dark"]["--profile-page-bg"],
+                )
             else:
-                color = mw.col.conf.get("modern_menu_sidebar_bg_color_light", "#EEEEEE")
+                color = mw.col.conf.get(
+                    "modern_menu_sidebar_bg_color_light",
+                    config.DEFAULTS["colors"]["light"]["--profile-page-bg"],
+                )
             sidebar_bg_style = f"background-color: {color}; {sidebar_bg_style}"
 
         elif sidebar_type == "accent":
@@ -1853,7 +1924,10 @@ def _get_nook_level_profile_html() -> str:
 
     bar_mode = mw.col.conf.get("onigiri_profile_level_bar_mode", "theme")
     if bar_mode == "custom":
-        bar_color = mw.col.conf.get("onigiri_profile_level_bar_custom_color", "#4CAF50")
+        bar_color = mw.col.conf.get(
+            "onigiri_profile_level_bar_custom_color",
+            config.DEFAULT_PROFILE_LEVEL_COLOR,
+        )
     else:
         bar_color = nook_level.manager.get_current_theme_color()
 
@@ -2004,9 +2078,8 @@ def on_webview_js_message(handled, message, context):
             hexagon_land.open_buy_hex_coins()
             return (True, None)
         if cmd == "redeemReward:hex":
-            from .gamification.reward_redemption import open_reward_redeem_dialog
-
-            open_reward_redeem_dialog(context="hex")
+            hexagon_land = _hexagon_land()
+            hexagon_land.open_buy_hex_coins()
             return (True, None)
         if cmd == "showGamification":
             open_gamification_dialog()
@@ -2211,6 +2284,30 @@ def patch_overview():
 	overview_style = mw.col.conf.get("onigiri_overview_style", "pro")
 	style_class = "mini-overview" if overview_style == "mini" else ""
 
+	# Keep the Overview's component CSS coupled to the HTML patch. Recent Anki
+	# versions can hand webview_will_set_content a wrapper context instead of an
+	# Overview instance, which made the markup render as an unstyled text column.
+	# A body-level stylesheet link is valid HTML and survives that API variation.
+	addon_package = mw.addonManager.addonFromModule(__name__)
+	def overview_asset_link(filename):
+		path = os.path.join(os.path.dirname(__file__), "web", filename)
+		try:
+			version = os.stat(path).st_mtime_ns
+		except OSError:
+			version = 0
+		return (
+			f'<link rel="stylesheet" '
+			f'href="/_addons/{addon_package}/web/{filename}?v={version}">'
+		)
+
+	overview_component_css = (
+		overview_asset_link("overview.css")
+		+ overview_asset_link("overview_stats.css")
+		+ generate_dynamic_css(conf)
+		+ generate_box_effect_button_vars_css(conf)
+		+ generate_reviewer_top_bar_html_and_css()[1]
+	)
+
 	mini_css = ""
 	if overview_style == "mini":
 		mini_css = """
@@ -2307,6 +2404,9 @@ def patch_overview():
                 gap: 8px; 
                 text-align: center;
             }
+            .mini-overview .overview-actions-stack {
+                width: 100%;
+            }
             .mini-overview .overview-bottom-actions .overview-button { 
                 background: var(--overview-action-button-bg, var(--onigiri-box-effect-bg, var(--canvas-inset, #f5f5f5))) !important; 
                 color: var(--overview-action-button-fg, var(--onigiri-box-effect-fg, var(--fg, #333))) !important; 
@@ -2322,11 +2422,6 @@ def patch_overview():
                 box-shadow: none !important;
                 backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
                 -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
-            }
-            .mini-overview #onigiri-reveal-btn {
-                margin: 14px auto;
-                padding: 8px 16px;
-                font-size: 12px;
             }
             .mini-overview .overview-bottom-actions .overview-button:hover { 
                 background-color: var(--overview-action-button-bg, var(--onigiri-box-effect-bg, var(--button-hover-bg, #e6e6e6))) !important; 
@@ -2367,9 +2462,31 @@ def patch_overview():
 		{restaurant_chip_html}
 	</div>
 """
+
+	def ankimon_team_overview_html() -> str:
+		"""Render current selection at table-time, never at patch-time."""
+		# Ankimon's team hook normally prepends a fixed-size .poke-grid to the
+		# Overview table. Onigiri owns that table, so render the same selection as
+		# a compact native section instead. The hook check preserves Ankimon's own
+		# "Team Overview in Deck Overview" setting: if it is off, show nothing.
+		try:
+			ankimon_team_enabled = any(
+				"overview_team" in _get_hook_name(hook).lower()
+				for hook in gui_hooks.overview_will_render_content._hooks
+			)
+			if ankimon_team_enabled:
+				return onigiri_renderer.render_ankimon_team_widget_html(
+					row_span=2, col_span=3, surface="overview"
+				)
+		except Exception as exc:
+			print(f"Onigiri: could not render Ankimon overview team: {exc}")
+		return ""
     
 	def new_table(self) -> str:
 		counts = list(self.mw.col.sched.counts())
+		deck_progress_html = overview_stats.render_deck_overview_stats(
+			self.mw.col, surface="overview"
+		)
 		learning_notice_html = _learning_due_later_notice(
 			self.mw.col, _learning_notice_enabled(conf, "overview")
 		)
@@ -2427,18 +2544,27 @@ def patch_overview():
 				)
 
 		stats_container_class = "stats-container" if profile_bar_html else "stats-container no-profile"
+		actions_stack_class = "overview-actions-stack"
+		if not bottom_actions_html:
+			actions_stack_class += " no-bottom-actions"
 		return (
 			'<div class="overview-container">'
 				f'<div class="{stats_container_class}">'
 					f'{rows_html}'
+					f'{deck_progress_html}'
 					f'{learning_notice_html}'
 				'</div>'
 				f'<button id="study" class="add-button-dashed" onclick="pycmd(\'study\'); return false;" autofocus>'
 					f'{study_now_text}'
 				'</button>'
-				f'{bottom_actions_html}'
-				f'<button id="onigiri-reveal-btn" class="onigiri-overview-action-reveal">{tr_at("click_to_reveal")}</button>'
+				f'<div class="{actions_stack_class}">'
+					f'{bottom_actions_html}'
+					'<div class="overview-bottom-actions overview-reveal-action">'
+						f'<a href="#" id="onigiri-reveal-btn" class="overview-button overview-button-normal onigiri-overview-action-options onigiri-overview-action-reveal">{tr_at("click_to_reveal")}</a>'
+					'</div>'
+				'</div>'
 			'</div>'
+			f'{ankimon_team_overview_html()}'
 		)
 
 	Overview._table = new_table
@@ -2473,11 +2599,19 @@ def patch_overview():
             titleElement.textContent = shortTitle;
         }
         
-        if (!document.getElementById('onigiri-background-div')) {
+	        if (!document.getElementById('onigiri-background-div')) {
             const bgDiv = document.createElement('div');
             bgDiv.id = 'onigiri-background-div';
             document.body.prepend(bgDiv);
-        } 
+	        } 
+
+        // The legacy Ankimon hook can have populated content before this
+        // replacement table is installed. Its original grid carries global
+        // CSS and oversized base64 sprites, so remove only that old surface;
+        // the native Onigiri team section above is already in the card.
+        document.querySelectorAll('.poke-grid').forEach(function(grid) {
+            grid.remove();
+        });
 
         // NEW SCRIPT TO ADD CLASS TO BODY
         // This allows our CSS to target the body tag and override the alignment
@@ -2491,6 +2625,7 @@ def patch_overview():
         const onigiriTitle = document.querySelector('.overview-title');
         const onigiriContainer = document.querySelector('.overview-container');
         const revealBtn = document.getElementById('onigiri-reveal-btn');
+        const revealAction = revealBtn ? revealBtn.closest('.overview-reveal-action') : null;
         
         // Find all direct children of the container that are NOT Onigiri content
         const allExternalElements = [];
@@ -2525,19 +2660,34 @@ def patch_overview():
                 }
             });
         }
+
+        // External add-ons can prepend their widgets to Anki's overview body,
+        // which places them beside the deck title in our column layout. Keep
+        // them as full-width children of the center container, but move them
+        // after Onigiri's overview card. The reveal button is the card's final
+        // element, so revealed widgets now appear directly below it.
+        if (onigiriContainer && allExternalElements.length > 0) {
+            let externalInsertAnchor = onigiriContainer;
+            allExternalElements.forEach(function(el) {
+                externalInsertAnchor.insertAdjacentElement('afterend', el);
+                externalInsertAnchor = el;
+            });
+        }
+
         if (container) {
             container.classList.remove('onigiri-mask-external');
         }
         
         // Hide reveal button if there are no external elements with content
         if (revealBtn && allExternalElements.length === 0) {
-            revealBtn.style.display = 'none';
+            (revealAction || revealBtn).style.display = 'none';
         }
         
         // Handle reveal button functionality
         if (revealBtn && allExternalElements.length > 0) {
             let isRevealed = false;
-            revealBtn.addEventListener('click', function() {
+            revealBtn.addEventListener('click', function(event) {
+                event.preventDefault();
                 isRevealed = !isRevealed;
                 
                 if (isRevealed) {
@@ -2567,21 +2717,25 @@ def patch_overview():
     <style id="onigiri-reveal-button-style">
         #onigiri-reveal-btn {
             display: block;
-            margin: 20px auto;
-            padding: 10px 20px;
-            background: var(--overview-reveal-button-bg, var(--button-primary-bg));
-            color: var(--overview-reveal-button-fg, white) !important;
-            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 0;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
         }
-        #onigiri-reveal-btn:hover {
-            transform: scale(1.05);
+        .overview-reveal-action {
+            width: 100%;
+            box-sizing: border-box;
         }
-        .night-mode #onigiri-reveal-btn {
-            color: white !important;
+        .overview-actions-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            width: max-content;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        .overview-actions-stack.no-bottom-actions {
+            width: 100%;
         }
         .descfont.descmid.description.dyn {
             display: none !important;
@@ -2595,6 +2749,7 @@ def patch_overview():
 	late_background_css = generate_overview_background_css(os.path.dirname(__file__))
 
 	Overview._body = _escape_overview_body_percent_literals(f"""
+{overview_component_css}
 {mini_css}
 {reveal_button_css}
 <div class="overview-center-container {style_class} onigiri-mask-external">
@@ -2671,6 +2826,9 @@ def patch_congrats_page():
         learning_notice_html = _learning_due_later_notice(
             self.mw.col, _learning_notice_enabled(conf, "congrats")
         )
+        deck_progress_html = overview_stats.render_deck_overview_stats(
+            self.mw.col, surface="congrats"
+        )
 
         # 3. Build Bottom Actions HTML
         bottom_actions_html = ""
@@ -2711,6 +2869,7 @@ def patch_congrats_page():
             <div class="{congrats_card_class}">
                 <h1>{message}</h1>
                 {learning_notice_html}
+                {deck_progress_html}
             </div>
             {bottom_actions_html}
         </div>
@@ -2723,7 +2882,10 @@ def patch_congrats_page():
         # 6. Render the page
         self.web.stdHtml(
             body_html,
-            css=[f"/_addons/{addon_package}/web/congrats.css"],
+            css=[
+                f"/_addons/{addon_package}/web/congrats.css",
+                f"/_addons/{addon_package}/web/overview_stats.css",
+            ],
             js=[], # JS messages are handled by the hook, no need to inject a file
             head=head_html,
             context=self,
@@ -2751,9 +2913,14 @@ def generate_deck_browser_backgrounds(addon_path):
     conf = config.get_config_readonly()
     
     main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
-    main_image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
-    main_light_color = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
-    main_dark_color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+    main_light_color = mw.col.conf.get(
+        "modern_menu_bg_color_light",
+        config.DEFAULTS["colors"]["light"]["--bg"],
+    )
+    main_dark_color = mw.col.conf.get(
+        "modern_menu_bg_color_dark",
+        config.DEFAULTS["colors"]["dark"]["--bg"],
+    )
     main_blur = mw.col.conf.get("modern_menu_background_blur", 0)
     main_opacity = mw.col.conf.get("modern_menu_background_opacity", 100)
 
@@ -2889,12 +3056,22 @@ def generate_deck_browser_backgrounds(addon_path):
             main_container_css += "<style>.main-content { background: transparent !important; }</style>"
     else:
         # Original image mode handling
-        if main_image_mode == "separate":
-            main_light_img_filename = mw.col.conf.get("modern_menu_background_image_light", "")
-            main_dark_img_filename = mw.col.conf.get("modern_menu_background_image_dark", "")
-        else:
-            main_light_img_filename = mw.col.conf.get("modern_menu_background_image", "")
-            main_dark_img_filename = main_light_img_filename
+        main_dynamic_key = (
+            "modern_menu_bg_image_theme_mode",
+            "modern_menu_background_image_mode",
+        )
+        main_light_img_filename = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            False,
+            dynamic_key=main_dynamic_key,
+        )
+        main_dark_img_filename = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            True,
+            dynamic_key=main_dynamic_key,
+        )
 
         main_light_img = f"user_files/main_bg/{main_light_img_filename}" if main_light_img_filename else ""
         main_dark_img = f"user_files/main_bg/{main_dark_img_filename}" if main_dark_img_filename else ""
@@ -2909,8 +3086,14 @@ def generate_deck_browser_backgrounds(addon_path):
     sidebar_css = ""
     if sidebar_mode == 'custom':
         side_mode = mw.col.conf.get("modern_menu_sidebar_bg_type", "color")
-        side_light_color = mw.col.conf.get("modern_menu_sidebar_bg_color_light", "#F3F3F3")
-        side_dark_color = mw.col.conf.get("modern_menu_sidebar_bg_color_dark", "#2C2C2C")
+        side_light_color = mw.col.conf.get(
+            "modern_menu_sidebar_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--profile-page-bg"],
+        )
+        side_dark_color = mw.col.conf.get(
+            "modern_menu_sidebar_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--profile-page-bg"],
+        )
         try:
             side_blur = float(mw.col.conf.get("modern_menu_sidebar_bg_blur", 0) or 0)
         except (TypeError, ValueError):
@@ -2924,7 +3107,8 @@ def generate_deck_browser_backgrounds(addon_path):
         side_opacity_alpha = side_opacity_percent / 100.0
         addon_name = os.path.basename(addon_path)
 
-        if mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True):
+        # The source choice is labelled Match Widgets: always inherit its surface.
+        if sidebar_mode == "custom" or mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True):
             box_colors = conf.get("colors", {})
             side_light_color = box_colors.get("light", {}).get("--canvas-inset", side_light_color)
             side_dark_color = box_colors.get("dark", {}).get("--canvas-inset", side_dark_color)
@@ -2933,12 +3117,22 @@ def generate_deck_browser_backgrounds(addon_path):
             except (TypeError, ValueError):
                 pass
             try:
-                side_opacity_percent = max(0.0, min(100.0, float(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", side_opacity_percent) or 100)))
+                side_opacity_percent = max(
+                    0.0,
+                    min(
+                        100.0,
+                        float(
+                            mw.col.conf.get(
+                                "onigiri_canvas_inset_effect_opacity",
+                                side_opacity_percent,
+                            )
+                        ),
+                    ),
+                )
             except (TypeError, ValueError):
                 pass
             side_opacity_alpha = side_opacity_percent / 100.0
-            if side_mode not in ("color", "accent"):
-                side_mode = "color"
+            side_mode = "color"
 
         if side_mode == "color" or side_mode == "accent":
             alpha = side_opacity_alpha
@@ -3188,10 +3382,60 @@ def generate_deck_browser_backgrounds(addon_path):
         except (TypeError, ValueError):
             return default
 
+    def _sidebar_offset_setting(key, default=0):
+        """Read the signed sidebar/widget offset without accepting extremes."""
+        try:
+            return max(-240, min(240, int(float(mw.col.conf.get(key, default)))))
+        except (TypeError, ValueError):
+            return default
+
     sidebar_radius = _sidebar_int_setting("modern_menu_sidebar_radius", 15)
     sidebar_stroke = _sidebar_int_setting("modern_menu_sidebar_stroke", 1)
     sidebar_margin = _sidebar_int_setting("modern_menu_sidebar_margin", 10)
-    if mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True):
+    item_margin_keys = [
+        "modern_menu_sidebar_item_margin_top",
+        "modern_menu_sidebar_item_margin_right",
+        "modern_menu_sidebar_item_margin_bottom",
+        "modern_menu_sidebar_item_margin_left",
+    ]
+    widget_margin_keys = [
+        "modern_menu_widget_margin_top",
+        "modern_menu_widget_margin_right",
+        "modern_menu_widget_margin_bottom",
+        "modern_menu_widget_margin_left",
+    ]
+    item_margin_values = [
+        _sidebar_int_setting(key, default)
+        for key, default in zip(item_margin_keys, (0, 0, 5, 0))
+    ]
+    widget_margin_values = [
+        _sidebar_int_setting(key, 0) for key in widget_margin_keys
+    ]
+    sidebar_widget_gap = _sidebar_offset_setting(
+        "modern_menu_sidebar_widget_gap", -40
+    )
+    item_margin_css = ""
+    if any(mw.col.conf.get(key) is not None for key in item_margin_keys):
+        item_margin_css = """
+        .sidebar-left .menu-item,
+        .sidebar-left .deck-table a.deck {
+            margin: %dpx %dpx %dpx %dpx !important;
+        }
+        """ % tuple(item_margin_values)
+    widget_margin_css = ""
+    if any(mw.col.conf.get(key) is not None for key in widget_margin_keys):
+        top, right, bottom, left = widget_margin_values
+        widget_margin_css = f"""
+        .onigiri-widget-container,
+        .external-widget-container {{
+            margin: {top}px {right}px {bottom}px {left}px !important;
+            width: calc(100% - {left + right}px) !important;
+            height: calc(100% - {top + bottom}px) !important;
+        }}
+        """
+    if (sidebar_mode == "custom" or
+            (mw.col.conf.get("modern_menu_sidebar_sync_box_effect", True)
+             and not mw.col.conf.get("modern_menu_sidebar_border_custom", False))):
         sidebar_radius = _sidebar_int_setting("onigiri_canvas_inset_border_radius", sidebar_radius)
         sidebar_stroke = _sidebar_int_setting("onigiri_canvas_inset_border_width", sidebar_stroke)
     sidebar_frame_css = f"""
@@ -3209,6 +3453,24 @@ def generate_deck_browser_backgrounds(addon_path):
         .sidebar-left::after {{
             border-radius: inherit;
         }}
+        /* A signed margin, rather than flexbox's non-negative `gap`, lets
+           users reclaim the otherwise unused area after resizing the sidebar. */
+        .container.modern-main-menu:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) {{
+            gap: 0 !important;
+        }}
+        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .main-content {{
+            margin-left: {sidebar_widget_gap}px !important;
+        }}
+        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .main-content {{
+            margin-right: {sidebar_widget_gap}px !important;
+        }}
+        .container.modern-main-menu.onigiri-cycle-stacked .main-content,
+        .container.modern-main-menu.onigiri-sidebar-center .main-content {{
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }}
+        {item_margin_css}
+        {widget_margin_css}
     </style>
     """
 
@@ -3216,18 +3478,11 @@ def generate_deck_browser_backgrounds(addon_path):
 
 
 def _resolve_night_mode():
-    """Best-effort current night-mode state for the main window."""
+    """Current Onigiri mode, including its explicit light/dark override."""
     try:
-        from aqt.theme import theme_manager
-
-        return bool(theme_manager.night_mode)
+        return config.effective_night_mode()
     except Exception:
-        # Kept only for compatibility with Anki versions predating
-        # ``theme_manager.night_mode``.
-        try:
-            return config.effective_night_mode()
-        except Exception:
-            return False
+        return False
 
 
 def _reviewer_base_bg_color(conf):
@@ -3241,8 +3496,14 @@ def _reviewer_base_bg_color(conf):
     mode = conf.get("onigiri_reviewer_bg_mode", "main")
     if mode == "main":
         if night:
-            return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
-        return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+            return mw.col.conf.get(
+                "modern_menu_bg_color_dark",
+                config.DEFAULTS["colors"]["dark"]["--bg"],
+            )
+        return mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
     # "color", "image_color" and "slideshow" all paint the body with these keys.
     if night:
         return conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C")
@@ -3255,8 +3516,14 @@ def _overview_base_bg_color(conf):
     mode = conf.get("onigiri_overview_bg_mode", "main")
     if mode == "main":
         if night:
-            return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
-        return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+            return mw.col.conf.get(
+                "modern_menu_bg_color_dark",
+                config.DEFAULTS["colors"]["dark"]["--bg"],
+            )
+        return mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
     if night:
         return conf.get("onigiri_overview_bg_dark_color", "#2C2C2C")
     return conf.get("onigiri_overview_bg_light_color", "#FFFFFF")
@@ -3265,8 +3532,14 @@ def _overview_base_bg_color(conf):
 def _deckbrowser_base_bg_color():
     """The solid color painted behind the deck browser, for the current theme."""
     if _resolve_night_mode():
-        return mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
-    return mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
+        return mw.col.conf.get(
+            "modern_menu_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--bg"],
+        )
+    return mw.col.conf.get(
+        "modern_menu_bg_color_light",
+        config.DEFAULTS["colors"]["light"]["--bg"],
+    )
 
 
 def set_main_webview_background_color(color):
@@ -3293,6 +3566,83 @@ def set_main_webview_background_color(color):
             page.setBackgroundColor(qcolor)
     except Exception as e:
         print(f"Onigiri: could not set main webview background color: {e}")
+
+
+_main_webview_resize_repaint_filter = None
+_main_webview_resize_repaint_timer = None
+
+
+class _MainWebViewResizeRepaintFilter(QObject):
+    """Coalesce live resize events into Qt Quick render requests.
+
+    WebEngine's inner QQuickWidget owns the rendered texture. Updating only the
+    outer QWidget can composite that same texture again, including stale tiles.
+    The short timer requests actual scene-graph frames while dragging; the
+    second timer requests a final frame after geometry and safe-area updates.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.frame_timer = QTimer(self)
+        self.frame_timer.setSingleShot(True)
+        self.frame_timer.timeout.connect(_repaint_main_webview_after_resize)
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show,
+                            QEvent.Type.WindowStateChange):
+            # Do not restart this timer on each event: a continuous drag must
+            # still get fresh frames instead of postponing them indefinitely.
+            if not self.frame_timer.isActive():
+                self.frame_timer.start(16)
+            timer = _main_webview_resize_repaint_timer
+            if timer is not None:
+                timer.start(75)
+        return False
+
+
+def _repaint_main_webview_after_resize():
+    """Render WebEngine's Qt Quick surface, then composite the whole window."""
+    try:
+        web = getattr(mw, "web", None)
+        if web is None or not web.isVisible():
+            return
+        from PyQt6.QtQuickWidgets import QQuickWidget
+
+        for surface in web.findChildren(QQuickWidget):
+            if not surface.isVisible():
+                continue
+            # Never call winId() or show() on this off-screen window. It belongs
+            # to WebEngine and must remain a non-native QQuickWidget.
+            scene = surface.quickWindow()
+            if scene is not None:
+                scene.update()
+            surface.update()
+        web.update()
+        mw.update()
+    except Exception as exc:
+        print(f"Onigiri: could not repaint main webview after resize: {exc}")
+
+
+def install_main_webview_resize_repaint_guard():
+    """Install the lightweight resize repaint guard exactly once."""
+    global _main_webview_resize_repaint_filter, _main_webview_resize_repaint_timer
+    if _main_webview_resize_repaint_filter is not None:
+        return
+    try:
+        timer = QTimer(mw)
+        timer.setSingleShot(True)
+        timer.timeout.connect(_repaint_main_webview_after_resize)
+        resize_filter = _MainWebViewResizeRepaintFilter(mw)
+        mw.installEventFilter(resize_filter)
+        web = getattr(mw, "web", None)
+        if web is not None:
+            # Toolbars and safe-area changes can resize the view without
+            # changing the main window's dimensions.
+            web.installEventFilter(resize_filter)
+        _main_webview_resize_repaint_timer = timer
+        _main_webview_resize_repaint_filter = resize_filter
+    except Exception as exc:
+        print(f"Onigiri: could not install resize repaint guard: {exc}")
 
 
 def generate_reviewer_background_css(addon_path):
@@ -3365,10 +3715,16 @@ def generate_reviewer_background_css(addon_path):
     if reviewer_mode == "main":
         # Use main background settings (like overview does)
         mode = mw.col.conf.get("modern_menu_background_mode", "color")
-        light_color = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
-        dark_color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
-        blur_val = conf.get("onigiri_reviewer_bg_main_blur", 0)
-        opacity_val = conf.get("onigiri_reviewer_bg_main_opacity", 100)
+        light_color = mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
+        dark_color = mw.col.conf.get(
+            "modern_menu_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--bg"],
+        )
+        blur_val = mw.col.conf.get("modern_menu_background_blur", 0)
+        opacity_val = mw.col.conf.get("modern_menu_background_opacity", 100)
         
         if mode == "slideshow":
             images = config.get_collection_config("modern_menu_slideshow_images", []) or []
@@ -3406,13 +3762,22 @@ def generate_reviewer_background_css(addon_path):
                 {scrollbar_css}
             </style>"""
 
-        image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
-        if image_mode == "separate":
-            light_img_file = mw.col.conf.get("modern_menu_background_image_light", "")
-            dark_img_file = mw.col.conf.get("modern_menu_background_image_dark", "")
-        else:
-            light_img_file = mw.col.conf.get("modern_menu_background_image", "")
-            dark_img_file = light_img_file
+        main_dynamic_key = (
+            "modern_menu_bg_image_theme_mode",
+            "modern_menu_background_image_mode",
+        )
+        light_img_file = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            False,
+            dynamic_key=main_dynamic_key,
+        )
+        dark_img_file = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            True,
+            dynamic_key=main_dynamic_key,
+        )
 
         light_img_url = f"/_addons/{addon_name}/user_files/main_bg/{light_img_file}" if light_img_file else "none"
         dark_img_url = f"/_addons/{addon_name}/user_files/main_bg/{dark_img_file}" if dark_img_file else "none"
@@ -3437,13 +3802,9 @@ def generate_reviewer_background_css(addon_path):
         blur_val = conf.get("onigiri_reviewer_bg_blur", 0)
         opacity_val = conf.get("onigiri_reviewer_bg_opacity", 100)
         
-        image_mode = conf.get("onigiri_reviewer_bg_image_theme_mode", conf.get("onigiri_reviewer_bg_image_mode", "separate"))
-        if image_mode == "separate":
-            light_img_file = conf.get("onigiri_reviewer_bg_image_light", "")
-            dark_img_file = conf.get("onigiri_reviewer_bg_image_dark", "")
-        else:
-            light_img_file = conf.get("onigiri_reviewer_bg_image", "")
-            dark_img_file = light_img_file
+        dynamic_key = ("onigiri_reviewer_bg_image_theme_mode", "onigiri_reviewer_bg_image_mode")
+        light_img_file = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", False, dynamic_key=dynamic_key)
+        dark_img_file = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", True, dynamic_key=dynamic_key)
 
         light_img_url = f"/_addons/{addon_name}/user_files/reviewer_bg/{light_img_file}" if light_img_file else "none"
         dark_img_url = f"/_addons/{addon_name}/user_files/reviewer_bg/{dark_img_file}" if dark_img_file else "none"
@@ -3509,6 +3870,10 @@ def generate_overview_background_css(addon_path):
     """Generates CSS for the overview screen with instant background rendering using CSS pseudo-elements."""
     conf = config.get_config_readonly()
     overview_mode = conf.get("onigiri_overview_bg_mode", "main")
+    # The Overviewer no longer offers a slideshow. Treat profiles that saved
+    # the retired value as Image mode, retaining their colour/effect settings.
+    if overview_mode == "slideshow":
+        overview_mode = "image_color"
     
     # Defaults
     light_color = "#F5F5F5"
@@ -3522,22 +3887,37 @@ def generate_overview_background_css(addon_path):
     if overview_mode == "main":
         # Use main menu background settings
         main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
-        light_color = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
-        dark_color = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        light_color = mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
+        dark_color = mw.col.conf.get(
+            "modern_menu_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--bg"],
+        )
         
-        # Use overview-specific blur/opacity for main mode
-        blur_val = conf.get("onigiri_overview_bg_main_blur", 0)
-        opacity_val = conf.get("onigiri_overview_bg_main_opacity", 100)
+        # Match the full Main Background appearance, including its effects.
+        blur_val = mw.col.conf.get("modern_menu_background_blur", 0)
+        opacity_val = mw.col.conf.get("modern_menu_background_opacity", 100)
         
         if main_mode in ["image", "image_color"]:
             is_image_mode = True
-            image_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
-            if image_mode == "separate":
-                light_img_file = mw.col.conf.get("modern_menu_background_image_light", "")
-                dark_img_file = mw.col.conf.get("modern_menu_background_image_dark", "")
-            else:
-                light_img_file = mw.col.conf.get("modern_menu_background_image", "")
-                dark_img_file = light_img_file
+            main_dynamic_key = (
+                "modern_menu_bg_image_theme_mode",
+                "modern_menu_background_image_mode",
+            )
+            light_img_file = config.themed_asset(
+                mw.col.conf.get,
+                "modern_menu_background_image",
+                False,
+                dynamic_key=main_dynamic_key,
+            )
+            dark_img_file = config.themed_asset(
+                mw.col.conf.get,
+                "modern_menu_background_image",
+                True,
+                dynamic_key=main_dynamic_key,
+            )
                 
     elif overview_mode == "color":
         # Solid color only
@@ -3554,32 +3934,9 @@ def generate_overview_background_css(addon_path):
         opacity_val = conf.get("onigiri_overview_bg_opacity", 100)
         is_image_mode = True
         
-        image_mode = conf.get("onigiri_overview_bg_image_theme_mode", "separate")
-        if image_mode == "separate":
-            light_img_file = conf.get("onigiri_overview_bg_image_light", "")
-            dark_img_file = conf.get("onigiri_overview_bg_image_dark", "")
-        else:
-            light_img_file = conf.get("onigiri_overview_bg_image", "")
-            dark_img_file = light_img_file
-
-    elif overview_mode == "slideshow":
-        light_color = conf.get("onigiri_overview_bg_light_color", "#FFFFFF")
-        dark_color = conf.get("onigiri_overview_bg_dark_color", "#2C2C2C")
-        blur_val = conf.get("onigiri_overview_bg_blur", 0)
-        opacity_val = conf.get("onigiri_overview_bg_opacity", 100)
-        addon_name = os.path.basename(addon_path)
-        images = conf.get("onigiri_overview_slideshow_images", []) or []
-        image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in images]
-        return _render_body_slideshow_background_css(
-            "onigiri-overview-background-style",
-            image_urls,
-            conf.get("onigiri_overview_slideshow_interval", 10),
-            light_color,
-            dark_color,
-            blur_val,
-            opacity_val,
-            "#onigiri-background-div { display: none !important; }",
-        )
+        dynamic_key = ("onigiri_overview_bg_image_theme_mode", "onigiri_overview_bg_image_mode")
+        light_img_file = config.themed_asset(conf.get, "onigiri_overview_bg_image", False, dynamic_key=dynamic_key)
+        dark_img_file = config.themed_asset(conf.get, "onigiri_overview_bg_image", True, dynamic_key=dynamic_key)
 
     if overview_mode == "main" and mw.col.conf.get("modern_menu_background_mode", "color") == "slideshow":
         addon_name = os.path.basename(addon_path)
@@ -3739,8 +4096,14 @@ def generate_toolbar_background_css(addon_path):
 	if toolbar_mode == "main":
 		# Use main background settings
 		mode = mw.col.conf.get("modern_menu_background_mode", "color")
-		light = mw.col.conf.get("modern_menu_bg_color_light", "#F5F5F5")
-		dark = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+		light = mw.col.conf.get(
+		    "modern_menu_bg_color_light",
+		    config.DEFAULTS["colors"]["light"]["--bg"],
+		)
+		dark = mw.col.conf.get(
+		    "modern_menu_bg_color_dark",
+		    config.DEFAULTS["colors"]["dark"]["--bg"],
+		)
 		image = mw.col.conf.get("modern_menu_background_image", "")
 		blur = mw.col.conf.get("modern_menu_background_blur", 0)
 		opacity = 100 # Opacity not supported for toolbar custom bg yet
@@ -4783,9 +5146,13 @@ def apply_reviewer_bottom_bar_height(conf=None):
         pass
 
 
-def _generate_outer_background_css(mode, light_color, dark_color, light_img_path, dark_img_path, blur_val, opacity_val, addon_path, bg_position, match_viewport=False):
+def _generate_outer_background_css(mode, light_color, dark_color, light_img_path, dark_img_path, blur_val, opacity_val, addon_path, bg_position, match_viewport=False, slideshow_images=None, slideshow_interval=10):
     """Generate CSS for #outer element with ::before pseudo-element for background.
     This ensures buttons are not affected by opacity/blur."""
+    slideshow_images = slideshow_images or []
+    if mode == "slideshow":
+        mode = "image_color" if slideshow_images else "color"
+        light_img_path = dark_img_path = slideshow_images[0] if slideshow_images else ""
     addon_name = os.path.basename(addon_path)
     blur_px = blur_val * 0.2
     blur_bleed_px = math.ceil(blur_px * 3) if blur_px > 0 else 0
@@ -4861,7 +5228,7 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                 return f"/_addons/{addon_name}/user_files/{img_path}"
         
         light_img_url = get_img_url(light_img_path)
-        dark_img_url = get_img_url(dark_img_path) if dark_img_path else light_img_url
+        dark_img_url = get_img_url(dark_img_path)
         
         if mode == "image_color":
             # Solid color as base layer on #outer
@@ -4899,13 +5266,14 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                     background-size: cover;
                     background-position: {bg_position};
                 """.format(scale_factor=scale_factor, bg_position=bg_position)
-            base_img_url = light_img_url or "none"
+            light_image_css = f"url('{light_img_url}')" if light_img_url else "none"
+            dark_image_css = f"url('{dark_img_url}')" if dark_img_url else "none"
             base_css += f"""
-                #outer::before {{
+                {"#outer::before, #outer::after" if slideshow_images else "#outer::before"} {{
                     content: '';
                     position: absolute;
                     {position_css}
-                    background-image: url('{base_img_url}');
+                    background-image: {light_image_css};
                     background-repeat: no-repeat;
                     filter: blur({blur_px}px);
                     opacity: {opacity_float};
@@ -4920,14 +5288,48 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
                 }}
             """
 
-            if dark_img_url and dark_img_url != light_img_url:
+            if dark_img_url != light_img_url:
                 base_css += f"""
                     .night-mode #outer::before {{
-                        background-image: url('{dark_img_url}');
+                        background-image: {dark_image_css};
                     }}
                 """
 
+    if slideshow_images:
+        base_css += f"""
+            #outer::after {{ opacity: 0; transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1); }}
+            #outer.onigiri-bar-slideshow-transitioning::after {{ opacity: {opacity_float}; }}
+            #outer > * {{ z-index: 2; }}
+        """
     base_css += "</style>"
+    if len(slideshow_images) > 1:
+        image_urls = [get_img_url(img) for img in slideshow_images]
+        base_css += f"""<script>
+            (function() {{
+                const images = {json.dumps(image_urls)};
+                let nextIndex = 1;
+                setInterval(function() {{
+                    const outer = document.getElementById('outer');
+                    if (!outer) return;
+                    function imageStyle(id, selector) {{
+                        let style = document.getElementById(id);
+                        if (!style) {{
+                            style = document.createElement('style');
+                            style.id = id;
+                            document.head.appendChild(style);
+                        }}
+                        style.textContent = selector + " {{ background-image: url('" + images[nextIndex] + "') !important; }}";
+                    }}
+                    imageStyle('onigiri-bar-slideshow-after', '#outer::after');
+                    setTimeout(function() {{ outer.classList.add('onigiri-bar-slideshow-transitioning'); }}, 50);
+                    setTimeout(function() {{
+                        imageStyle('onigiri-bar-slideshow-before', '#outer::before');
+                        outer.classList.remove('onigiri-bar-slideshow-transitioning');
+                        nextIndex = (nextIndex + 1) % images.length;
+                    }}, 1250);
+                }}, {max(1, int(slideshow_interval or 10)) * 1000});
+            }})();
+        </script>"""
     return base_css
 
 def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
@@ -4946,24 +5348,32 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
     def get_main_bg_settings():
         # Main settings are in mw.col.conf
         main_mode = mw.col.conf.get("modern_menu_background_mode", "color")
-        light_c = mw.col.conf.get("modern_menu_bg_color_light", "#FFFFFF")
-        dark_c = mw.col.conf.get("modern_menu_bg_color_dark", "#2C2C2C")
+        light_c = mw.col.conf.get(
+            "modern_menu_bg_color_light",
+            config.DEFAULTS["colors"]["light"]["--bg"],
+        )
+        dark_c = mw.col.conf.get(
+            "modern_menu_bg_color_dark",
+            config.DEFAULTS["colors"]["dark"]["--bg"],
+        )
         
         # Image handling for main
-        img_mode = mw.col.conf.get("modern_menu_background_image_mode", "single")
-        if img_mode == "separate":
-            l_img = mw.col.conf.get("modern_menu_background_image_light", "")
-            # If separate mode but no light image, fallback might be needed or it's just empty
-            # But usually main bg logic handles this.
-            # For main bg, the key 'modern_menu_background_image' is used for single mode.
-        else:
-            l_img = mw.col.conf.get("modern_menu_background_image", "")
-        
-        # For dark image in separate mode
-        if img_mode == "separate":
-            d_img = mw.col.conf.get("modern_menu_background_image_dark", "")
-        else:
-            d_img = l_img
+        main_dynamic_key = (
+            "modern_menu_bg_image_theme_mode",
+            "modern_menu_background_image_mode",
+        )
+        l_img = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            False,
+            dynamic_key=main_dynamic_key,
+        )
+        d_img = config.themed_asset(
+            mw.col.conf.get,
+            "modern_menu_background_image",
+            True,
+            dynamic_key=main_dynamic_key,
+        )
 
         # Path adjustment for main images
         # Main images are in user_files/main_bg/
@@ -4983,18 +5393,9 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
         light_c = conf.get("onigiri_reviewer_bg_light_color", "#FFFFFF")
         dark_c = conf.get("onigiri_reviewer_bg_dark_color", "#2C2C2C")
         
-        img_mode = conf.get("onigiri_reviewer_bg_image_mode", "single")
-        if img_mode == "separate":
-            l_img = conf.get("onigiri_reviewer_bg_image_light", "")
-            d_img = conf.get("onigiri_reviewer_bg_image_dark", "")
-        else:
-            l_img = conf.get("onigiri_reviewer_bg_image", "") # Fallback or same key? Settings saves to 'image' and 'image_light'/'image_dark'
-            # Let's check settings.py saving logic. 
-            # It saves to 'onigiri_reviewer_bg_image' for single, and 'onigiri_reviewer_bg_image_light'/'dark' for separate.
-            # But let's be safe and check specific keys.
-            if not l_img:
-                 l_img = conf.get("onigiri_reviewer_bg_image_light", "")
-            d_img = l_img
+        dynamic_key = ("onigiri_reviewer_bg_image_theme_mode", "onigiri_reviewer_bg_image_mode")
+        l_img = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", False, dynamic_key=dynamic_key)
+        d_img = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", True, dynamic_key=dynamic_key)
 
         # Reviewer images are in user_files/reviewer_bg/
         l_img_path = f"user_files/reviewer_bg/{l_img}" if l_img else ""
@@ -5017,8 +5418,8 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
         rev_mode = conf.get("onigiri_reviewer_bg_mode", "main")
         if rev_mode == "main":
             return (
-                conf.get("onigiri_reviewer_bg_main_blur", 0),
-                conf.get("onigiri_reviewer_bg_main_opacity", 100),
+                mw.col.conf.get("modern_menu_background_blur", 0),
+                mw.col.conf.get("modern_menu_background_opacity", 100),
             )
         if rev_mode in {"image_color", "slideshow"}:
             return (
@@ -5029,18 +5430,16 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
 
     def get_overview_bg_settings():
         overview_mode = conf.get("onigiri_overview_bg_mode", "main")
+        if overview_mode == "slideshow":
+            overview_mode = "image_color"
         if overview_mode == "main":
             return get_main_bg_settings()
 
         light_c = conf.get("onigiri_overview_bg_light_color", "#FFFFFF")
         dark_c = conf.get("onigiri_overview_bg_dark_color", "#2C2C2C")
-        img_mode = conf.get("onigiri_overview_bg_image_theme_mode", conf.get("onigiri_overview_bg_image_mode", "separate"))
-        if img_mode == "separate":
-            l_img = conf.get("onigiri_overview_bg_image_light", "")
-            d_img = conf.get("onigiri_overview_bg_image_dark", "")
-        else:
-            l_img = conf.get("onigiri_overview_bg_image", "")
-            d_img = l_img
+        dynamic_key = ("onigiri_overview_bg_image_theme_mode", "onigiri_overview_bg_image_mode")
+        l_img = config.themed_asset(conf.get, "onigiri_overview_bg_image", False, dynamic_key=dynamic_key)
+        d_img = config.themed_asset(conf.get, "onigiri_overview_bg_image", True, dynamic_key=dynamic_key)
 
         l_img_path = f"user_files/main_bg/{l_img}" if l_img else ""
         d_img_path = f"user_files/main_bg/{d_img}" if d_img else ""
@@ -5051,12 +5450,14 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
 
     def get_overview_bg_effects():
         overview_mode = conf.get("onigiri_overview_bg_mode", "main")
+        if overview_mode == "slideshow":
+            overview_mode = "image_color"
         if overview_mode == "main":
             return (
-                conf.get("onigiri_overview_bg_main_blur", 0),
-                conf.get("onigiri_overview_bg_main_opacity", 100),
+                mw.col.conf.get("modern_menu_background_blur", 0),
+                mw.col.conf.get("modern_menu_background_opacity", 100),
             )
-        if overview_mode in {"image_color", "slideshow"}:
+        if overview_mode == "image_color":
             return (
                 conf.get("onigiri_overview_bg_blur", 0),
                 conf.get("onigiri_overview_bg_opacity", 100),
@@ -5064,28 +5465,48 @@ def generate_reviewer_bottom_bar_background_css(addon_path: str) -> str:
         return 0, 100
 
 
+    def render_matched_background(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val):
+        images = []
+        interval = 10
+        if mode == "slideshow":
+            if bar_mode == "match_reviewer_bg" and conf.get("onigiri_reviewer_bg_mode", "main") == "slideshow":
+                images = conf.get("onigiri_reviewer_slideshow_images", []) or []
+                interval = conf.get("onigiri_reviewer_slideshow_interval", 10)
+                folder = "reviewer_bg"
+            else:
+                images = config.get_collection_config("modern_menu_slideshow_images", []) or []
+                interval = mw.col.conf.get("modern_menu_slideshow_interval", 10)
+                folder = "main_bg"
+            images = [f"user_files/{folder}/{image}" for image in images]
+        return _generate_outer_background_css(
+            mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val,
+            addon_path, bg_position, match_viewport=True,
+            slideshow_images=images, slideshow_interval=interval,
+        )
+
+
     if bar_mode == "main":
         # Match Main Background DIRECTLY
         mode, light_color, dark_color, light_img, dark_img = get_main_bg_settings()
         
-        # Use bottom bar specific blur and opacity settings for "Match Main"
-        blur_val = conf.get("onigiri_reviewer_bottom_bar_match_main_blur", 5)
-        opacity_val = conf.get("onigiri_reviewer_bottom_bar_match_main_opacity", 90)
+        # Inherit effects directly; old per-match overrides stay dormant.
+        blur_val = mw.col.conf.get("modern_menu_background_blur", 0)
+        opacity_val = mw.col.conf.get("modern_menu_background_opacity", 100)
 
-        css += _generate_outer_background_css(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val, addon_path, bg_position, match_viewport=True)
+        css += render_matched_background(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val)
 
     elif bar_mode == "match_overview_bg":
         mode, light_color, dark_color, light_img, dark_img = get_overview_bg_settings()
         blur_val, opacity_val = get_overview_bg_effects()
 
-        css += _generate_outer_background_css(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val, addon_path, bg_position, match_viewport=True)
+        css += render_matched_background(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val)
 
     elif bar_mode == "match_reviewer_bg":
         # Match Reviewer Background (which might itself match Main)
         mode, light_color, dark_color, light_img, dark_img = get_reviewer_bg_settings()
         blur_val, opacity_val = get_reviewer_bg_effects()
 
-        css += _generate_outer_background_css(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val, addon_path, bg_position, match_viewport=True)
+        css += render_matched_background(mode, light_color, dark_color, light_img, dark_img, blur_val, opacity_val)
 
     else: # Custom settings for the bar
         mode = bar_mode # "color" or "image_color" (mapped from radio buttons)
@@ -5563,13 +5984,13 @@ def generate_icon_css(addon_package, conf):
     for key, selector in all_icon_selectors.items():
         if key == "retention_star":
             continue
-        color = mw.col.conf.get(f"modern_menu_icon_color_{key}", "")
+        color = config.themed_icon_color(f"modern_menu_icon_color_{key}")
         if color:
             per_icon_color_rules.append(
                 f"{selector} {{ background-color: {color} !important; }}"
             )
     for state, key in (("closed", "collapse_closed"), ("open", "collapse_open")):
-        color = mw.col.conf.get(f"modern_menu_icon_color_{key}", "")
+        color = config.themed_icon_color(f"modern_menu_icon_color_{key}")
         if color:
             per_icon_color_rules.append(
                 f"a.collapse.state-{state}::before {{ background-color: {color} !important; }}"
@@ -5718,25 +6139,287 @@ def generate_conditional_css(conf):
 
 def generate_font_css(addon_package):
     """Generates @font-face rules and CSS variables for selected fonts."""
-    main_font_key = mw.col.conf.get("onigiri_font_main", "system")
-    subtle_font_key = mw.col.conf.get("onigiri_font_subtle", "system")
-    small_title_font_key = mw.col.conf.get("onigiri_font_small_title", "system")
+    # Font settings are written through Collection.set_config() by the WebUI.
+    # Read them through the matching API as well; direct ``col.conf`` reads can
+    # remain stale on newer Anki builds until the collection is reloaded.
+    col_get = config.get_collection_config
+    main_font_key = col_get("onigiri_font_main", "system")
+    subtle_font_key = col_get("onigiri_font_subtle", "system")
+    small_title_font_key = col_get("onigiri_font_small_title", "system")
+    advanced_role_specs = {
+        "sidebar_small": {
+            "fallback": "main",
+            "selectors": (
+                ".sidebar-left .onigiri-sidebar-profile-bio",
+                ".sidebar-left .onigiri-sidebar-profile-music-link span",
+                ".sidebar-left .onigiri-sidebar-profile-music-link strong",
+                ".sidebar-left .onigiri-sidebar-profile-birthday-badge",
+                ".sidebar-left .onigiri-sidebar-profile-chart-head span",
+                ".sidebar-left .onigiri-sidebar-profile-chart-labels",
+                ".sidebar-left .onigiri-sidebar-profile-summary-label",
+                ".sidebar-left .onigiri-sidebar-profile-summary-detail",
+                ".sidebar-left .onigiri-sidebar-profile-summary-value",
+            ),
+        },
+        "deck_title": {
+            "fallback": "subtle",
+            "default_size": 13,
+            # The heading itself already receives an explicit font size from
+            # the shared Small Titles rule.  Targeting only its parent cannot
+            # override that value because font-size is then no longer
+            # inherited.
+            "selectors": (".sidebar-left #deck-list-header h2",),
+        },
+        "deck_names": {
+            "fallback": "main",
+            "selectors": (
+                ".sidebar-left .deck-table a.deck",
+                ".onigiri-widget-container .favorite-deck-link",
+            ),
+        },
+        "action_buttons": {
+            "fallback": "main",
+            "selectors": (
+                ".sidebar-left .menu-item",
+                ".sidebar-left .action-btn",
+                ".sidebar-left .add-button-dashed",
+                ".sidebar-left .onigiri-ready-action",
+            ),
+        },
+        "dashboard_title": {
+            "fallback": "subtle",
+            "selectors": (
+                ".onigiri-widget-title",
+                ".injected-stats-block .onigiri-widget-title",
+                ".onigiri-widget-container .onigiri-widget-title",
+            ),
+        },
+        "widget_title": {
+            "fallback": "small_title",
+            "selectors": (
+                ".onigiri-widget-container h3",
+                ".external-widget-container h3",
+                ".onigiri-widget-head h3",
+                ".stat-card h3",
+            ),
+        },
+        "widget_small": {
+            "fallback": "main",
+            "selectors": (
+                ".onigiri-widget-container",
+                ".external-widget-container",
+                ".onigiri-widget-container .stat-unit",
+                ".onigiri-widget-container .favorites-placeholder",
+                ".onigiri-widget-container .favorites-placeholder span",
+                # Hashi note text has its own size control. These descendants
+                # must retain menu.css's note sizes, rather than receiving this
+                # more-specific, !important dashboard typography rule.
+                ".onigiri-widget-container .learner-stats-deck-trigger",
+                ".onigiri-widget-container .learner-stat-label",
+                ".onigiri-widget-container .learner-stats-compact-total span",
+                ".onigiri-widget-container .learner-stats-mini-ring-cap",
+                ".onigiri-widget-container .learner-stats-mini-row-label",
+                ".onigiri-widget-container .learner-stats-group-title",
+                ".onigiri-widget-container .learner-stats-bar-label",
+                ".onigiri-widget-container .learner-stats-footer-item",
+                ".onigiri-widget-container .learner-stats-donut-num span",
+                ".onigiri-widget-container .learner-stats-donut-legend-item",
+                ".onigiri-widget-container .streak-counter",
+                ".onigiri-widget-container .heatmap-nav .nav-title",
+                ".onigiri-widget-container .heatmap-nav .year-select-btn",
+                ".onigiri-widget-container .year-dropdown-item",
+                ".onigiri-widget-container .heatmap-months",
+                ".onigiri-widget-container .heatmap-weekdays",
+                ".onigiri-widget-container .month-weekdays-header",
+                ".onigiri-widget-container .week-days-header",
+                ".external-widget-container .learner-stats-deck-trigger",
+                ".external-widget-container .learner-stat-label",
+                ".external-widget-container .learner-stats-group-title",
+                ".external-widget-container .learner-stats-bar-label",
+                ".external-widget-container .learner-stats-footer-item",
+                ".external-widget-container .learner-stats-donut-legend-item",
+            ),
+        },
+        "heatmap_title": {
+            "fallback": "small_title",
+            "selectors": (
+                "#onigiri-heatmap-container .heatmap-title",
+            ),
+        },
+        "heatmap_labels": {
+            "fallback": "main",
+            "selectors": (
+                "#onigiri-heatmap-container .streak-counter",
+                "#onigiri-heatmap-container .heatmap-nav .nav-title",
+                "#onigiri-heatmap-container .heatmap-nav .year-select-btn",
+                "#onigiri-heatmap-container .year-dropdown-item",
+                "#onigiri-heatmap-container .heatmap-filters .filter-btn",
+                "#onigiri-heatmap-container .heatmap-months",
+                "#onigiri-heatmap-container .heatmap-months .month-label",
+                "#onigiri-heatmap-container .heatmap-weekdays",
+                "#onigiri-heatmap-container .heatmap-weekdays .weekday-label",
+                "#onigiri-heatmap-container .month-weekdays-header",
+                "#onigiri-heatmap-container .month-weekdays-header .weekday-label",
+                "#onigiri-heatmap-container .week-days-header",
+                "#onigiri-heatmap-container .week-days-header .weekday-label",
+                "#onigiri-heatmap-container .week-days-header .day-label",
+            ),
+        },
+        "stats_title": {
+            "fallback": "small_title",
+            "selectors": (
+                ".learner-stats-widget .learner-stats-header h3",
+                ".onigiri-widget-container .learner-stats-header h3",
+            ),
+        },
+        "stats_labels": {
+            "fallback": "main",
+            "selectors": (
+                ".onigiri-widget-container .learner-stats-widget "
+                ".learner-stats-header-controls "
+                ".learner-stats-deck-trigger.learner-stats-deck-trigger",
+                ".onigiri-widget-container .learner-stat-label",
+                ".onigiri-widget-container .learner-stats-compact-total span",
+                ".onigiri-widget-container .learner-stats-mini-ring-cap",
+                ".onigiri-widget-container .learner-stats-mini-row-label",
+                ".onigiri-widget-container .learner-stats-group-title",
+                ".onigiri-widget-container .learner-stats-bar-label",
+                ".onigiri-widget-container .learner-stats-footer-item",
+                ".onigiri-widget-container .learner-stats-donut-num span",
+                ".onigiri-widget-container .learner-stats-donut-legend-item",
+            ),
+        },
+        "stats_values": {
+            "fallback": "main",
+            "selectors": (
+                ".onigiri-widget-container .learner-stat-val",
+                ".onigiri-widget-container .learner-stats-compact-total",
+                ".onigiri-widget-container .learner-stats-mini-ring-num",
+                ".onigiri-widget-container .learner-stats-mini-row-value",
+                ".onigiri-widget-container .learner-stats-bar-value",
+                ".onigiri-widget-container .learner-stats-footer-item b",
+                ".onigiri-widget-container .learner-stats-donut-num",
+            ),
+        },
+        "profile_name": {
+            "fallback": "main",
+            "selectors": (
+                ".profile-bar .profile-name",
+                ".onigiri-sidebar-profile-body h2",
+                ".onigiri-profile .opro-name",
+                ".onigiri-profile .opro-level",
+                ".onigiri-profile .opro-lv",
+                ".overview-profile-bar .profile-name",
+                ".congrats-profile-bar .profile-name",
+            ),
+        },
+        "overview_title": {
+            "fallback": "subtle",
+            "selectors": (".overview-title",),
+        },
+        "overview_text": {
+            "fallback": "main",
+            "selectors": (
+                ".overview-container",
+                ".overview-container .stats-row",
+                ".overview-container .overview-button",
+                ".overview-container .onigiri-learning-due-notice",
+                "#study",
+                "#onigiri-reveal-btn",
+            ),
+        },
+        "congrats_title": {
+            "fallback": "subtle",
+            "selectors": (".congrats-card h1",),
+        },
+        "congrats_text": {
+            "fallback": "main",
+            "selectors": (
+                ".congrats-card .onigiri-learning-due-notice",
+                ".congrats-card .overview-button",
+                ".congrats-card .onigiri-learning-browse-button",
+            ),
+        },
+        "reviewer_controls": {
+            "fallback": "main",
+            "selectors": (
+                "#outer",
+                "#outer button",
+            ),
+        },
+        "notifications": {
+            "fallback": "main",
+            "selectors": (
+                ".onigiri-notification-card",
+                ".onigiri-mini-notification",
+                ".onigiri-notification-card button",
+                ".onigiri-mini-notification button",
+            ),
+        },
+    }
     # Profile bar username font (set on the Profile settings page).
-    profile_name_font_key = mw.col.conf.get("modern_menu_profile_name_font", "system") or "system"
+    profile_name_font_key = col_get("modern_menu_profile_name_font", "system") or "system"
+    profile_level_font_key = col_get("onigiri_font_profile_level", "sync") or "sync"
+    profile_level_font_size = col_get("onigiri_font_size_profile_level", 11)
+    profile_colors_dynamic = col_get("modern_menu_profile_name_dynamic_mode", True)
+    profile_level_color_light = col_get("modern_menu_profile_level_color_light", config.DEFAULT_PROFILE_LEVEL_COLOR)
+    profile_level_color_dark = (
+        col_get("modern_menu_profile_level_color_dark", config.DEFAULT_PROFILE_LEVEL_COLOR)
+        if profile_colors_dynamic else profile_level_color_light
+    )
     # Stats Title widget font ("sync" == follow the Titles font above).
-    stats_title_font_key = mw.col.conf.get("modern_menu_statsTitleFont", "sync") or "sync"
-    # Today's Stats cards font ("sync" == inherit Small Titles like before).
+    stats_title_font_key = col_get("modern_menu_statsTitleFont", "sync") or "sync"
+    # Menu Title is an Advanced override. In Simple it follows Titles so every
+    # visible size belongs to one of the three shared typography scales.
+    menu_title_font_key = col_get(
+        "onigiri_font_dashboard_title", "sync"
+    ) or "sync"
+    # Today's Stats titles, supporting labels, and numbers choose fonts
+    # independently. The older shared `font` key remains a fallback for the
+    # two original roles; config.py migrates it once for the newer number role.
     try:
         from . import config as _onigiri_config
         _sw_style = _onigiri_config.get_config_readonly().get("stats_widgets_style", {})
-        stats_widget_font_key = (_sw_style or {}).get("font", "sync") or "sync"
+        _sw_legacy_font_key = (_sw_style or {}).get("font", "sync") or "sync"
+        stats_widget_label_font_key = (
+            (_sw_style or {}).get("label_font", _sw_legacy_font_key) or "sync"
+        )
+        stats_widget_value_font_key = (
+            (_sw_style or {}).get("value_font", _sw_legacy_font_key) or "sync"
+        )
+        stats_widget_number_font_key = (
+            (_sw_style or {}).get("number_font", "sync") or "sync"
+        )
     except Exception:
-        stats_widget_font_key = "sync"
+        stats_widget_label_font_key = "sync"
+        stats_widget_value_font_key = "sync"
+        stats_widget_number_font_key = "sync"
 
     # --- NEW: Font Sizes ---
-    main_font_size = mw.col.conf.get("onigiri_font_size_main", 14)
-    subtle_font_size = mw.col.conf.get("onigiri_font_size_subtle", 20)
-    small_title_font_size = mw.col.conf.get("onigiri_font_size_small_title", 15)
+    main_font_size = col_get("onigiri_font_size_main", 14)
+    subtle_font_size = col_get("onigiri_font_size_subtle", 20)
+    small_title_font_size = col_get("onigiri_font_size_small_title", 15)
+    menu_title_font_size = col_get(
+        "onigiri_font_size_dashboard_title", subtle_font_size
+    )
+    simple_font_sizes = {
+        "main": main_font_size,
+        "subtle": subtle_font_size,
+        "small_title": small_title_font_size,
+    }
+    role_font_keys = {
+        role: col_get(f"onigiri_font_{role}", "sync") or "sync"
+        for role in advanced_role_specs
+    }
+    role_font_sizes = {
+        role: col_get(
+            f"onigiri_font_size_{role}",
+            spec.get("default_size", simple_font_sizes[spec["fallback"]]),
+        )
+        for role, spec in advanced_role_specs.items()
+    }
+    # The distributed component roles are active in both Settings modes.
+    active_font_roles = set(advanced_role_specs)
     # -----------------------
 
     # Avoid scanning/loading user fonts unless a selected key actually needs it.
@@ -5744,10 +6427,24 @@ def generate_font_css(addon_package):
 
     # "sync" is a mode, not a font, so it never takes part in font lookups.
     extra_font_keys = {profile_name_font_key, "silkscreen"}
+    if profile_level_font_key != "sync":
+        extra_font_keys.add(profile_level_font_key)
     if stats_title_font_key != "sync":
         extra_font_keys.add(stats_title_font_key)
-    if stats_widget_font_key != "sync":
-        extra_font_keys.add(stats_widget_font_key)
+    if menu_title_font_key != "sync":
+        extra_font_keys.add(menu_title_font_key)
+    for stats_widget_font_key in (
+        stats_widget_label_font_key,
+        stats_widget_value_font_key,
+        stats_widget_number_font_key,
+    ):
+        if stats_widget_font_key != "sync":
+            extra_font_keys.add(stats_widget_font_key)
+    extra_font_keys.update(
+        role_font_keys[role]
+        for role in active_font_roles
+        if role_font_keys[role] != "sync"
+    )
 
     selected_font_keys = {main_font_key, subtle_font_key, small_title_font_key} | extra_font_keys
     if selected_font_keys.issubset(FONTS.keys()):
@@ -5761,6 +6458,108 @@ def generate_font_css(addon_package):
 
     if not main_font_info or not subtle_font_info or not small_title_font_info:
         return ""
+
+    simple_font_roles = {
+        "main": (main_font_key, main_font_info, main_font_size),
+        "subtle": (subtle_font_key, subtle_font_info, subtle_font_size),
+        "small_title": (
+            small_title_font_key,
+            small_title_font_info,
+            small_title_font_size,
+        ),
+    }
+    role_fallbacks = {}
+    for role, spec in advanced_role_specs.items():
+        fallback_key, fallback_info, fallback_size = simple_font_roles[
+            spec["fallback"]
+        ]
+        role_fallbacks[role] = (
+            fallback_key,
+            fallback_info,
+            spec.get("default_size", fallback_size),
+        )
+
+    def _role_font(role):
+        fallback_key, fallback_info, fallback_size = role_fallbacks[role]
+        role_is_active = role in active_font_roles
+        chosen_key = role_font_keys[role] if role_is_active else "sync"
+        # "Sync" controls the font family only.  In Advanced mode every
+        # component keeps its own size control, including Sidebar roles.  In
+        # Simple mode component roles are inactive and use the shared scale.
+        inherits_simple_role = chosen_key == "sync"
+        if inherits_simple_role:
+            chosen_key = fallback_key
+            chosen_info = fallback_info
+        else:
+            chosen_info = all_fonts.get(chosen_key)
+        if not chosen_info:
+            chosen_key, chosen_info = fallback_key, fallback_info
+        try:
+            size = (
+                int(role_font_sizes[role])
+                if role_is_active
+                else int(fallback_size)
+            )
+        except (TypeError, ValueError):
+            size = int(fallback_size)
+        family = chosen_info.get("family") or fallback_info.get("family")
+        if chosen_key == "system":
+            stack = family
+        else:
+            stack = (
+                f"'{family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
+                " Roboto, Helvetica, Arial, sans-serif"
+            )
+        return stack, max(8, min(72, size))
+
+    role_font_css = ""
+    if active_font_roles:
+        role_fonts = {role: _role_font(role) for role in active_font_roles}
+        role_rules = []
+        for role, spec in advanced_role_specs.items():
+            if role not in active_font_roles:
+                continue
+            stack, size = role_fonts[role]
+            selectors = ",\n        ".join(spec["selectors"])
+            extra_properties = (
+                "\n            color: var(--icon-color, var(--fg-subtle)) !important;"
+                if role == "deck_title"
+                else ""
+            )
+            role_rules.append(
+                f"""        {selectors} {{
+            font-family: {stack} !important;
+            font-size: {size}px !important;{extra_properties}
+        }}"""
+            )
+        role_font_css = "\n".join(role_rules)
+
+    resolved_menu_title_font_key = (
+        subtle_font_key if menu_title_font_key == "sync" else menu_title_font_key
+    )
+    menu_title_font_info = (
+        all_fonts.get(resolved_menu_title_font_key) or subtle_font_info
+    )
+    menu_title_family = menu_title_font_info.get("family") or subtle_font_info.get("family")
+    if resolved_menu_title_font_key == "system":
+        menu_title_stack = menu_title_family
+    else:
+        menu_title_stack = (
+            f"'{menu_title_family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
+            " Roboto, Helvetica, Arial, sans-serif"
+        )
+    try:
+        menu_title_size = max(8, min(72, int(menu_title_font_size)))
+    except (TypeError, ValueError):
+        try:
+            menu_title_size = max(8, min(72, int(subtle_font_size)))
+        except (TypeError, ValueError):
+            menu_title_size = 20
+    menu_title_font_css = (
+        ".onigiri-widget-title {"
+        f" font-family: {menu_title_stack} !important;"
+        f" font-size: {menu_title_size}px !important; }}"
+    )
 
     # Poppins is the add-on default (the "system" key resolves to it), so its
     # @font-face must always be present regardless of which keys are selected.
@@ -5792,7 +6591,11 @@ def generate_font_css(addon_package):
     # "sync" leaves it inheriting --font-subtle like every other title.
     stats_title_font_css = ""
     stats_title_font_info = all_fonts.get(stats_title_font_key)
-    if stats_title_font_key != "sync" and stats_title_font_info and stats_title_font_info.get("family"):
+    if (
+        stats_title_font_key != "sync"
+        and stats_title_font_info
+        and stats_title_font_info.get("family")
+    ):
         family = stats_title_font_info["family"]
         if stats_title_font_key == "system":
             # The system entry is already a full CSS stack, not a bare family name.
@@ -5804,28 +6607,53 @@ def generate_font_css(addon_package):
             )
         stats_title_font_css = f".onigiri-widget-title {{ font-family: {font_stack} !important; }}"
 
-    # Today's Stats cards — a dedicated font key overrides both the label and
-    # the value; "sync" leaves them on --font-small-title as before.
-    stats_widget_font_css = ""
-    stats_widget_font_info = all_fonts.get(stats_widget_font_key)
-    if stats_widget_font_key != "sync" and stats_widget_font_info and stats_widget_font_info.get("family"):
-        family = stats_widget_font_info["family"]
-        if stats_widget_font_key == "system":
-            sw_stack = family
+    # Today's Stats local typography deliberately outranks the broader Widget
+    # Fonts roles. Emit an explicit effective family even for "sync": the unit
+    # spans live inside .stat-value, so relying on inheritance would otherwise
+    # let a custom number font leak into labels when their own picker is synced.
+    def _stats_widget_font_rule(font_key, selectors, synced_role):
+        if font_key == "sync":
+            stack, _size = _role_font(synced_role)
+            return f"{selectors} {{ font-family: {stack} !important; }}"
+        font_info = all_fonts.get(font_key)
+        if not font_info or not font_info.get("family"):
+            return ""
+        family = font_info["family"]
+        if font_key == "system":
+            stack = family
         else:
-            sw_stack = (
+            stack = (
                 f"'{family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
                 " Roboto, Helvetica, Arial, sans-serif"
             )
-        stats_widget_font_css = (
-            ".stat-card, .stat-card h3, .stat-card .stat-value, "
-            ".stat-card .stat-unit, .stat-card .stat-sub "
-            f"{{ font-family: {sw_stack} !important; }}"
-        )
+        return f"{selectors} {{ font-family: {stack} !important; }}"
+
+    stats_widget_font_css = "\n".join(filter(None, (
+        _stats_widget_font_rule(
+            stats_widget_label_font_key,
+            ".stat-card.onigiri-stat-card h3",
+            "widget_title",
+        ),
+        _stats_widget_font_rule(
+            stats_widget_value_font_key,
+            ".stat-card.onigiri-stat-card .stat-unit, "
+            ".stat-card.onigiri-stat-card .stat-sub",
+            "widget_small",
+        ),
+        _stats_widget_font_rule(
+            stats_widget_number_font_key,
+            ".stat-card.onigiri-stat-card .stat-value",
+            "widget_small",
+        ),
+    )))
 
     profile_name_font_css = ""
     profile_name_font_info = all_fonts.get(profile_name_font_key)
-    if profile_name_font_key != "system" and profile_name_font_info and profile_name_font_info.get("family"):
+    if (
+        profile_name_font_key != "system"
+        and profile_name_font_info
+        and profile_name_font_info.get("family")
+    ):
         profile_name_font_css = (
             ".profile-bar .profile-name, .onigiri-sidebar-profile-body h2, "
             ".onigiri-profile .opro-name, .onigiri-profile .opro-level, "
@@ -5833,6 +6661,110 @@ def generate_font_css(addon_package):
             "{{ font-family: '{family}', "
             "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif !important; }}"
         ).format(family=profile_name_font_info["family"])
+
+    # Profile Level has its own typography control. Its ``sync`` option follows
+    # the main font, matching the Profile Name role's default behaviour.
+    level_font_key = main_font_key if profile_level_font_key == "sync" else profile_level_font_key
+    level_font_info = all_fonts.get(level_font_key) or main_font_info
+    level_font_family = level_font_info.get("family") or main_font_info["family"]
+    if level_font_key == "system":
+        level_font_stack = level_font_family
+    else:
+        level_font_stack = (
+            f"'{level_font_family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\","
+            " Roboto, Helvetica, Arial, sans-serif"
+        )
+    try:
+        level_font_size = max(8, min(72, int(profile_level_font_size)))
+    except (TypeError, ValueError):
+        level_font_size = 11
+    profile_level_font_css = f"""
+        .profile-bar .restaurant-level-chip .rl-chip-level,
+        .overview-profile-bar .restaurant-level-chip .rl-chip-level,
+        .congrats-profile-bar .restaurant-level-chip .rl-chip-level,
+        .onigiri-profile .opro-level {{
+            font-family: {level_font_stack} !important;
+            font-size: {level_font_size}px !important;
+        }}
+    """
+    profile_level_color_css = f"""
+        .profile-bar .restaurant-level-chip .rl-chip-level,
+        .overview-profile-bar .restaurant-level-chip .rl-chip-level,
+        .congrats-profile-bar .restaurant-level-chip .rl-chip-level,
+        .onigiri-profile .opro-level {{ color: {profile_level_color_light} !important; }}
+        .night-mode .profile-bar .restaurant-level-chip .rl-chip-level,
+        .nightMode .profile-bar .restaurant-level-chip .rl-chip-level,
+        .night-mode .overview-profile-bar .restaurant-level-chip .rl-chip-level,
+        .nightMode .overview-profile-bar .restaurant-level-chip .rl-chip-level,
+        .night-mode .congrats-profile-bar .restaurant-level-chip .rl-chip-level,
+        .nightMode .congrats-profile-bar .restaurant-level-chip .rl-chip-level,
+        .night-mode .onigiri-profile .opro-level,
+        .nightMode .onigiri-profile .opro-level {{ color: {profile_level_color_dark} !important; }}
+    """
+
+    # A font's ink is a component override, independent of its family sync.
+    # Mode-scoped rules avoid leaking a light override into an unset dark slot.
+    # Emit nothing for unset slots, retaining existing semantic/theme colors.
+    def _font_ink_rules(font_id, selectors, preserve_unit=False):
+        rules = []
+        for mode in ("light", "dark"):
+            color = str(col_get(font_id + "_color_" + mode, "") or "")
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+                continue
+            if mode == "light":
+                scoped = [
+                    "html:not(.night-mode):not(.nightMode) "
+                    "body:not(.night-mode):not(.nightMode) " + selector
+                    for selector in selectors
+                ]
+            else:
+                scoped = [
+                    night + " " + selector
+                    for selector in selectors
+                    for night in (".night-mode", ".nightMode")
+                ]
+            rules.append(",\n".join(scoped) + " { color: " + color + " !important; }")
+            if preserve_unit:
+                unit_selectors = [selector + " .stat-unit" for selector in scoped]
+                unit_color = str(col_get("swidget_value_font_color_" + mode, "") or "")
+                if not re.fullmatch(r"#[0-9a-fA-F]{6}", unit_color):
+                    unit_color = "var(--swidget-value-color, var(--fg))"
+                rules.append(",\n".join(unit_selectors) +
+                             " { color: " + unit_color + " !important; }")
+        return "\n".join(rules)
+
+    ink_descendants = {
+        "reviewer_controls": (
+            "#outer button .onigiri-answer-label",
+            "#outer button .onigiri-answer-hover-number",
+            "#outer button .onigiri-count-pill",
+            "#outer button .onigiri-timer-pill",
+            "#outer button .stattxt", "#outer button .nobold", "#outer button small",
+            "#outer #ansbut::before", "#outer #ansbut::after",
+            "#outer #middle button::before",
+        ),
+        "overview_text": (
+            ".overview-container .stats-row span:not(.new-count-bubble)"
+            ":not(.learn-count-bubble):not(.review-count-bubble)",
+        ),
+        "congrats_text": (".congrats-container .congrats-bottom-actions .overview-button",),
+    }
+    font_color_css = "\n".join(
+        _font_ink_rules("onigiri_font_" + role,
+                        spec["selectors"] + ink_descendants.get(role, ()))
+        for role, spec in advanced_role_specs.items()
+    )
+    font_color_css += "\n" + "\n".join(
+        _font_ink_rules(font_id, selectors, font_id == "swidget_number_font")
+        for font_id, selectors in (
+            ("swidget_label_font", (".stat-card.onigiri-stat-card h3",)),
+            ("swidget_value_font", (
+                ".stat-card.onigiri-stat-card .stat-unit",
+                ".stat-card.onigiri-stat-card .stat-sub",
+            )),
+            ("swidget_number_font", (".stat-card.onigiri-stat-card .stat-value",)),
+        )
+    )
 
     # Generate the final CSS block
     font_css = f"""
@@ -5851,7 +6783,6 @@ def generate_font_css(addon_package):
         #onigiri-reveal-btn {{
             font-family: var(--font-main) !important;
             box-shadow: none !important;
-            border: none !important;
         }}
         
         #study, .mini-overview #study {{
@@ -5901,16 +6832,22 @@ def generate_font_css(addon_package):
             color: var(--fg-subtle) !important;
         }}
 
-        {stats_title_font_css}
-
         /* Small Titles - Sidebar Headers and Widget Titles */
         .sidebar-left h2, .stat-card h3, .onigiri-widget-container h3 {{
             font-family: var(--font-small-title), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
             font-size: var(--font-size-small-title) !important;
             color: var(--font-small-title-color, var(--fg)) !important;
         }}
+        {stats_title_font_css}
+        {menu_title_font_css}
         {stats_widget_font_css}
         {profile_name_font_css}
+        /* Advanced component roles are last so the Fonts page remains the
+           final authority even when an older component setting is present. */
+        {role_font_css}
+        {profile_level_font_css}
+        {profile_level_color_css}
+        {font_color_css}
     </style>
     """
 
@@ -5958,14 +6895,16 @@ def _box_effect_values():
 	effect_intensity = mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
 	if "onigiri_canvas_inset_effect_blur" in mw.col.conf or "onigiri_canvas_inset_effect_opacity" in mw.col.conf:
 		blur = int(mw.col.conf.get("onigiri_canvas_inset_effect_blur", 0) or 0)
-		opacity = int(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100) or 100)
+		opacity = _onigiri_int_style_value(
+			mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100), 100
+		)
 	else:
 		if effect_mode == "glassmorphism":
 			blur = int(effect_intensity or 0)
 			opacity = max(0, min(100, 100 - int(effect_intensity or 0)))
 		elif effect_mode == "opacity":
 			blur = 0
-			opacity = int(effect_intensity or 100)
+			opacity = _onigiri_int_style_value(effect_intensity, 100)
 		else:
 			blur = 0
 			opacity = 100
@@ -6144,24 +7083,29 @@ def _mix_colors(c1, c2, ratio):
 
 	return f"rgba({int(r)}, {int(g)}, {int(b)}, {a:.2f})"
 
-def generate_dynamic_css(conf):
+def generate_dynamic_css(conf, include_font_css=True):
 	# ADDED to get the add-on's path for font files
 	addon_package = mw.addonManager.addonFromModule(__name__)
-	# ADDED to generate the font-specific CSS
-	font_css_block = generate_font_css(addon_package)
+	# Typography must follow component stylesheets to override their local
+	# defaults. The deck-browser injector emits it after those stylesheets.
+	font_css_block = (
+		generate_font_css(addon_package) if include_font_css else ""
+	)
 
 	effect_mode = mw.col.conf.get("onigiri_canvas_inset_effect_mode", "none")
 	effect_intensity = mw.col.conf.get("onigiri_canvas_inset_effect_intensity", 50)
 	if "onigiri_canvas_inset_effect_blur" in mw.col.conf or "onigiri_canvas_inset_effect_opacity" in mw.col.conf:
 		box_effect_blur = int(mw.col.conf.get("onigiri_canvas_inset_effect_blur", 0) or 0)
-		box_effect_opacity = int(mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100) or 100)
+		box_effect_opacity = _onigiri_int_style_value(
+			mw.col.conf.get("onigiri_canvas_inset_effect_opacity", 100), 100
+		)
 	else:
 		if effect_mode == "glassmorphism":
 			box_effect_blur = int(effect_intensity or 0)
 			box_effect_opacity = max(0, min(100, 100 - int(effect_intensity or 0)))
 		elif effect_mode == "opacity":
 			box_effect_blur = 0
-			box_effect_opacity = int(effect_intensity or 100)
+			box_effect_opacity = _onigiri_int_style_value(effect_intensity, 100)
 		else:
 			box_effect_blur = 0
 			box_effect_opacity = 100
@@ -6192,6 +7136,15 @@ def generate_dynamic_css(conf):
 	colors = conf.get("colors", {})
 	light_colors = colors.get("light", {}).copy()
 	dark_colors = colors.get("dark", {}).copy()
+	# Empty means "inherit the normal foreground" in Settings. Resolve that
+	# here so CSS var() never receives an explicitly empty custom property,
+	# which would invalidate the hover color declaration instead of falling back.
+	light_colors["--highlight-fg"] = (
+		light_colors.get("--highlight-fg") or light_colors.get("--fg", "#212121")
+	)
+	dark_colors["--highlight-fg"] = (
+		dark_colors.get("--highlight-fg") or dark_colors.get("--fg", "#e0e0e0")
+	)
 
 	# Captured before the opacity/blur effect so tooltips stay solid.
 	raw_box_light = light_colors.get("--canvas-inset", "#ffffff")
@@ -6205,7 +7158,7 @@ def generate_dynamic_css(conf):
 	overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
 	overview_sync = bool(overview_style.get("sync_box_effect", False))
 	overview_blur = box_effect_blur if overview_sync else max(0, min(100, int(overview_style.get("blur", mw.col.conf.get("onigiri_overview_effect_blur", 0)) or 0)))
-	overview_opacity = box_effect_opacity if overview_sync else max(0, min(100, int(overview_style.get("opacity", mw.col.conf.get("onigiri_overview_effect_opacity", 100)) or 100)))
+	overview_opacity = box_effect_opacity if overview_sync else max(0, min(100, _int_style_value(overview_style.get("opacity", mw.col.conf.get("onigiri_overview_effect_opacity", 100)), 100)))
 	overview_radius = box_effect_radius if overview_sync else max(0, min(60, _int_style_value(overview_style.get("radius", mw.col.conf.get("onigiri_overview_border_radius", 20)), 20)))
 	overview_stroke = box_effect_stroke if overview_sync else max(0, min(10, _int_style_value(overview_style.get("stroke", mw.col.conf.get("onigiri_overview_border_width", 1)), 1)))
 
@@ -6283,9 +7236,8 @@ def generate_dynamic_css(conf):
 			"options_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
 			"custom_study_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
 			"description_button": "#f5f5f5" if mode == "light" else "#2a2a2a",
-			"reveal_button": "#0077c8" if mode == "light" else "#0a84ff",
 		}
-		rules = []
+		rules = [f"    --overview-study-button-fg: {readable_text(_overview_color(mode, 'study_button', '--button-primary-bg', config.DEFAULT_ACCENT_COLOR))} !important;"]
 		for key, fallback in defaults.items():
 			color = _overview_color(mode, key, "", fallback)
 			name = key.replace("_button", "").replace("_", "-")
@@ -6346,7 +7298,7 @@ def generate_dynamic_css(conf):
 	deck_stats_sync = bool(deck_stats_style.get("sync_box_effect", True))
 	deck_stats_dynamic = bool(deck_stats_style.get("dynamic", True))
 	deck_stats_blur = box_effect_blur if deck_stats_sync else max(0, min(100, int(deck_stats_style.get("blur", 0) or 0)))
-	deck_stats_opacity = box_effect_opacity if deck_stats_sync else max(0, min(100, int(deck_stats_style.get("opacity", 100) or 100)))
+	deck_stats_opacity = box_effect_opacity if deck_stats_sync else max(0, min(100, _int_style_value(deck_stats_style.get("opacity", 100), 100)))
 	deck_stats_radius = box_effect_radius if deck_stats_sync else max(0, min(60, _int_style_value(deck_stats_style.get("radius", 20), 20)))
 	deck_stats_stroke = box_effect_stroke if deck_stats_sync else max(0, min(10, _int_style_value(deck_stats_style.get("stroke", 1), 1)))
 
@@ -6422,10 +7374,47 @@ def generate_dynamic_css(conf):
 	sw_sync = bool(stats_widgets_style.get("sync_box_effect", True))
 	sw_dynamic = bool(stats_widgets_style.get("dynamic", True))
 	sw_blur = box_effect_blur if sw_sync else max(0, min(100, int(stats_widgets_style.get("blur", 0) or 0)))
-	sw_opacity = box_effect_opacity if sw_sync else max(0, min(100, int(stats_widgets_style.get("opacity", 100) or 100)))
+	sw_opacity = box_effect_opacity if sw_sync else max(0, min(100, _int_style_value(stats_widgets_style.get("opacity", 100), 100)))
 	sw_radius = box_effect_radius if sw_sync else max(0, min(60, _int_style_value(stats_widgets_style.get("radius", 20), 20)))
 	sw_stroke = box_effect_stroke if sw_sync else max(0, min(10, _int_style_value(stats_widgets_style.get("stroke", 1), 1)))
-	sw_value_scale = max(60, min(100, _int_style_value(stats_widgets_style.get("value_scale", 100), 100)))
+	# Stats Widgets headings use the Widget Titles role when their local size is
+	# synced. Resolve that role itself (rather than only Small titles) so a
+	# customized Widget Fonts title, such as Prep Station's, stays identical.
+	sw_label_base_size = max(8, min(72, _int_style_value(
+		mw.col.conf.get(
+			"onigiri_font_size_widget_title",
+			mw.col.conf.get("onigiri_font_size_small_title", 15),
+		),
+		15,
+	)))
+	sw_value_base_size = max(8, min(72, _int_style_value(
+		mw.col.conf.get(
+			"onigiri_font_size_widget_small",
+			mw.col.conf.get("onigiri_font_size_main", 14),
+		),
+		14,
+	)))
+	sw_number_base_size = sw_value_base_size
+	sw_label_size_sync = bool(stats_widgets_style.get("label_size_sync", False))
+	sw_value_size_sync = bool(stats_widgets_style.get("value_size_sync", False))
+	sw_number_size_sync = bool(stats_widgets_style.get("number_size_sync", False))
+	# Keep a profile that has not yet saved the new px setting visually stable.
+	# Custom legacy percentages are migrated in config.py before this runs.
+	sw_label_size = max(8, min(72, _int_style_value(
+		stats_widgets_style.get("label_size", sw_label_base_size), sw_label_base_size,
+	)))
+	sw_value_size = max(8, min(72, _int_style_value(
+		stats_widgets_style.get("value_size", 30), 30,
+	)))
+	sw_number_size = max(8, min(72, _int_style_value(
+		stats_widgets_style.get("number_size", 30), 30,
+	)))
+	if sw_label_size_sync:
+		sw_label_size = sw_label_base_size
+	if sw_value_size_sync:
+		sw_value_size = sw_value_base_size
+	if sw_number_size_sync:
+		sw_number_size = sw_number_base_size
 
 	sw_fallback_colors = {
 		"light": {
@@ -6473,7 +7462,9 @@ def generate_dynamic_css(conf):
 			f"    --swidget-box-blur: {(sw_blur / 100.0) * 20:.2f}px !important;",
 			f"    --swidget-label-color: {_sw_color(mode, 'label')} !important;",
 			f"    --swidget-value-color: {_sw_color(mode, 'value')} !important;",
-			f"    --swidget-value-scale: {sw_value_scale / 100.0:.2f} !important;",
+			f"    --swidget-label-size: {sw_label_size}px !important;",
+			f"    --swidget-value-size: {sw_value_size}px !important;",
+			f"    --swidget-number-size: {sw_number_size}px !important;",
 		]
 		for key in ("studied", "time", "pace", "retention"):
 			accent = _sw_color(mode, key)
@@ -6493,13 +7484,80 @@ def generate_dynamic_css(conf):
 	overview_light_rules.extend(_sw_rules("light"))
 	overview_dark_rules.extend(_sw_rules("dark"))
 
+	# --- Prep Station Study Plans widget ---
+	prep_widget_style = (
+		conf.get("prep_widget_style", {})
+		if isinstance(conf.get("prep_widget_style", {}), dict)
+		else {}
+	)
+	pw_colors = (
+		prep_widget_style.get("colors", {})
+		if isinstance(prep_widget_style.get("colors", {}), dict)
+		else {}
+	)
+	pw_sync = bool(prep_widget_style.get("sync_box_effect", True))
+	pw_dynamic = bool(prep_widget_style.get("dynamic", True))
+	pw_blur = box_effect_blur if pw_sync else max(
+		0, min(100, _int_style_value(prep_widget_style.get("blur", 0), 0))
+	)
+	pw_opacity = box_effect_opacity if pw_sync else max(
+		0, min(100, _int_style_value(prep_widget_style.get("opacity", 100), 100))
+	)
+	pw_radius = box_effect_radius if pw_sync else max(
+		0, min(60, _int_style_value(prep_widget_style.get("radius", 20), 20))
+	)
+	pw_stroke = box_effect_stroke if pw_sync else max(
+		0, min(10, _int_style_value(prep_widget_style.get("stroke", 1), 1))
+	)
+
+	pw_fallback_colors = {
+		"light": {"box_bg": "#ffffff", "box_border": "#e0e0e0"},
+		"dark": {"box_bg": "#2c2c2c", "box_border": "#424242"},
+	}
+
+	def _pw_color(mode: str, key: str) -> str:
+		source_mode = mode if pw_dynamic else "light"
+		palette = pw_colors.get(source_mode, {})
+		value = palette.get(key) if isinstance(palette, dict) else None
+		if isinstance(value, str) and value:
+			return value
+		return pw_fallback_colors.get(source_mode, {}).get(key, "#808080")
+
+	def _pw_rules(mode: str) -> list:
+		if pw_sync:
+			theme = light_colors if mode == "light" else dark_colors
+			box_bg = theme.get("--canvas-inset", pw_fallback_colors[mode]["box_bg"])
+			box_border = theme.get("--border", pw_fallback_colors[mode]["box_border"])
+		else:
+			box_bg = _pw_color(mode, "box_bg")
+			alpha = pw_opacity / 100.0
+			if pw_blur > 0:
+				alpha = min(alpha, 0.62)
+			if alpha < 1.0:
+				box_bg = _onigiri_css_color_with_alpha(box_bg, alpha)
+			box_border = _pw_color(mode, "box_border")
+		return [
+			f"    --prepw-box-bg: {box_bg} !important;",
+			f"    --prepw-box-border: {box_border} !important;",
+			f"    --prepw-box-radius: {pw_radius}px !important;",
+			f"    --prepw-box-stroke: {pw_stroke}px !important;",
+			f"    --prepw-box-blur: {(pw_blur / 100.0) * 20:.2f}px !important;",
+		]
+
+	overview_light_rules.extend(_pw_rules("light"))
+	overview_dark_rules.extend(_pw_rules("dark"))
+
 	# --- Hashi Notes dashboard widget ---
 	hashi_widget_style = conf.get("hashi_widget_style", {}) if isinstance(conf.get("hashi_widget_style", {}), dict) else {}
 	hw_colors = hashi_widget_style.get("colors", {}) if isinstance(hashi_widget_style.get("colors", {}), dict) else {}
 	hw_sync = bool(hashi_widget_style.get("sync_box_effect", True))
 	hw_dynamic = bool(hashi_widget_style.get("dynamic", True))
-	hw_blur = box_effect_blur if hw_sync else max(0, min(100, int(hashi_widget_style.get("blur", 0) or 0)))
-	hw_opacity = box_effect_opacity if hw_sync else max(0, min(100, int(hashi_widget_style.get("opacity", 100) or 100)))
+	hw_blur = box_effect_blur if hw_sync else max(
+		0, min(100, _int_style_value(hashi_widget_style.get("blur", 0), 0))
+	)
+	hw_opacity = box_effect_opacity if hw_sync else max(
+		0, min(100, _int_style_value(hashi_widget_style.get("opacity", 100), 100))
+	)
 	hw_radius = box_effect_radius if hw_sync else max(0, min(60, _int_style_value(hashi_widget_style.get("radius", 20), 20)))
 	hw_stroke = box_effect_stroke if hw_sync else max(0, min(10, _int_style_value(hashi_widget_style.get("stroke", 1), 1)))
 
@@ -6553,14 +7611,26 @@ def generate_dynamic_css(conf):
 	# --- START: Calculate Heatmap Colors (to avoid CSS color-mix) ---
 	heatmap_style = conf.get("heatmap_style", {}) if isinstance(conf.get("heatmap_style", {}), dict) else {}
 	heatmap_dynamic = bool(heatmap_style.get("dynamic", True))
+	heatmap_sync = bool(heatmap_style.get("sync_box_effect", True))
 
 	def _generate_heatmap_colors(colors_dict, is_night_mode):
+		# Use the same title token as Studied / Time / Pace / Retention.
+		colors_dict["--heatmap-title-color"] = (
+			"var(--swidget-label-color, var(--fg-subtle))"
+			if heatmap_sync else "var(--fg)"
+		)
 		# Dynamic Mode off: both themes read the light entry, matching
 		# sw_dynamic/deck_stats_dynamic's "source_mode = mode if dynamic else
 		# light" rule above.
 		source_dict = colors_dict if heatmap_dynamic else light_colors
 		heatmap_color = source_dict.get("--heatmap-color", "#9be9a8")
-		heatmap_color_zero = source_dict.get("--heatmap-color-zero", "#f0f0f0" if not is_night_mode else "#3a3a3a")
+		# Level zero follows the same dynamic-mode source as the active-color
+		# ramp. This preserves a separate dark-mode empty-cell color when the
+		# user customizes the two themes independently.
+		heatmap_color_zero = (
+			source_dict.get("--heatmap-color-zero")
+			or ("#2A2A2A" if is_night_mode else "#E6E6E6")
+		)
 
 		colors_dict["--heatmap-level-0"] = heatmap_color_zero
 		colors_dict["--heatmap-future-0"] = heatmap_color_zero
@@ -6577,13 +7647,19 @@ def generate_dynamic_css(conf):
 				level_l = 0.90 - t * 0.53
 				level_s = s * (0.55 + t * 0.45)
 
-			colors_dict[f"--heatmap-level-{i}"] = _hsl_to_hex(h, level_s, level_l)
+			colors_dict[f"--heatmap-level-{i}"] = _hsl_to_hex(
+				h, level_s, level_l
+			)
 
 			future_ratio = 0.08 + t * 0.62
 			if is_night_mode:
-				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#ffffff", heatmap_color_zero, future_ratio)
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(
+					"#ffffff", heatmap_color_zero, future_ratio
+				)
 			else:
-				colors_dict[f"--heatmap-future-{i}"] = _mix_colors("#000000", heatmap_color_zero, future_ratio)
+				colors_dict[f"--heatmap-future-{i}"] = _mix_colors(
+					"#000000", heatmap_color_zero, future_ratio
+				)
 
 	_generate_heatmap_colors(light_colors, False)
 	_generate_heatmap_colors(dark_colors, True)
@@ -6675,7 +7751,7 @@ def generate_dynamic_css(conf):
 	if box_effect_blur > 0:
 		blur_px = (box_effect_blur / 100.0) * 20
 		# --- FIX: Added heatmap container IDs to the selectors ---
-		glass_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .prep-station-widget"
+		glass_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .onigiri-ready-widget"
 		glass_style_block = f"""
         <style id="onigiri-glass-effect">
         {glass_selectors} {{
@@ -6685,7 +7761,7 @@ def generate_dynamic_css(conf):
         </style>
         """
 
-	box_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .onigiri-favorites-widget, .onigimon-widget, .hex-land-widget, .prep-station-widget"
+	box_selectors = ".stat-card, #onigiri-heatmap-container, #onigiri-profile-heatmap-container, .onigiri-favorites-widget, .onigiri-ready-widget"
 	box_shape_style_block = f"""
         <style id="onigiri-box-shape-effect">
         {box_selectors} {{
@@ -6700,7 +7776,12 @@ def generate_dynamic_css(conf):
     {font_css_block}
     <style id="modern-menu-dynamic-styles">
     /* Global styles (non-text related) */
-    :root {{ {light_rules} }}
+    :root {{
+        {light_rules}
+        --onigiri-widget-border-radius: {box_effect_radius}px;
+        --onigiri-widget-border-width: {box_effect_stroke}px;
+        --onigiri-widget-blur: {(box_effect_blur / 100.0) * 20}px;
+    }}
     .night-mode, .nightMode {{ {dark_rules} }}
 
     :root {{
@@ -6748,6 +7829,9 @@ def _get_external_hooks():
     seen = set()
     for hook in _managed_hooks:
         hook_id = _get_hook_name(hook)
+        # Byte can add itself directly to this list after hook capture.
+        if hook_id.split(".")[0] == "Byte":
+            continue
         if hook_id not in seen:
             hooks.append(hook)
             seen.add(hook_id)
@@ -6765,7 +7849,10 @@ def _new_MainWebView_eventFilter(self: MainWebView, obj: QObject, evt: QEvent) -
 	# Runs for every Qt event on the main webview (including each mouse move),
 	# so it must never rebuild the config.
 	conf = config.get_config_readonly()
-	should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False)
+	should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False) or (
+		conf.get("onigiri_ui_theme", "classic") == "shima"
+		and mw.state == "deckBrowser"
+	)
 
 	screens_to_interfere = ["deckBrowser", "overview", "review"]
 	
@@ -6811,7 +7898,10 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
     if conf.get("hideSynapseProSidebar", False):
         QTimer.singleShot(0, lambda: apply_synapsepro_sidebar_visibility(config.get_config_readonly()))
         QTimer.singleShot(250, lambda: apply_synapsepro_sidebar_visibility(config.get_config_readonly()))
-    should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False)
+    should_hide_setting = conf.get("hideNativeHeaderAndBottomBar", False) or (
+        conf.get("onigiri_ui_theme", "classic") == "shima"
+        and new_state == "deckBrowser"
+    )
     pro_hide = conf.get("proHide", False)
     max_hide = conf.get("maxHide", False)
 
@@ -7154,7 +8244,7 @@ def _onigiri_render_deck_node(self, node, ctx) -> str:
         <div class="deck-info">
             {deck_prefix}
             <a class="deck {extraclass}" href=# onclick="return OnigiriEngine.openDeck(event, '{node.deck_id}');">
-                <span class="deck-name">{display_name}</span>{mark_dot_html}
+                <span class="deck-name" dir="auto">{display_name}</span>{mark_dot_html}
             </a>
         </div>
         {counts_html}
@@ -7237,6 +8327,96 @@ def apply_patches():
     mw._onigiri_restaurant_hook_registered = True
     mw.progress.single_shot(0, lambda: _update_toolbar_visibility(mw.state, "startup"))
 
+
+
+def generate_reviewer_font_css(addon_package):
+    """Return Reviewer-page typography for Anki's separate bottom webview."""
+    base_key = mw.col.conf.get("onigiri_font_main", "system") or "system"
+    base_size = mw.col.conf.get("onigiri_font_size_main", 14)
+    font_key = base_key
+    font_size = base_size
+    advanced_key = mw.col.conf.get(
+        "onigiri_font_reviewer_controls", "sync"
+    ) or "sync"
+    if advanced_key != "sync":
+        font_key = advanced_key
+    font_size = mw.col.conf.get(
+        "onigiri_font_size_reviewer_controls", base_size
+    )
+
+    from .fonts import FONTS, get_all_fonts, poppins_font_face_css
+
+    all_fonts = FONTS
+    if font_key not in all_fonts:
+        all_fonts = get_all_fonts(os.path.dirname(__file__))
+    font_info = (
+        all_fonts.get(font_key)
+        or all_fonts.get(base_key)
+        or FONTS["system"]
+    )
+    family = font_info.get("family") or FONTS["system"]["family"]
+    stack = family if font_key == "system" else (
+        f"'{family}', -apple-system, BlinkMacSystemFont, \"Segoe UI\", "
+        "Roboto, Helvetica, Arial, sans-serif"
+    )
+    try:
+        size = max(8, min(72, int(font_size)))
+    except (TypeError, ValueError):
+        size = 14
+
+    font_faces = poppins_font_face_css(addon_package)
+    if font_info.get("file"):
+        root = (
+            "user_files/fonts"
+            if font_info.get("user")
+            else "system_files/fonts/system_fonts"
+        )
+        font_faces += (
+            "@font-face {"
+            f"font-family: '{family}';"
+            f"src: url('/_addons/{addon_package}/{root}/{font_info['file']}');"
+            "}"
+        )
+
+    return f"""
+    <style id="onigiri-reviewer-font-style">
+        {font_faces}
+        #outer {{
+            font-family: {stack} !important;
+            font-size: {size}px !important;
+        }}
+
+        #outer button,
+        #outer button *,
+        #outer button::before,
+        #outer button::after {{
+            font-family: {stack} !important;
+        }}
+
+        #outer button {{
+            font-size: {size}px !important;
+        }}
+
+        /* Onigiri and Anki Design both render visible button copy in child
+           spans/pseudo-elements while hiding the native text node. Target the
+           visible pieces explicitly so Reviewer Fonts controls what the user
+           actually sees, regardless of which bottom-bar skin is active. */
+        #outer button .onigiri-show-answer-label,
+        #outer button .onigiri-answer-label,
+        #outer button .onigiri-answer-hover-number,
+        #outer button .onigiri-count-pill,
+        #outer button .onigiri-timer-pill,
+        #outer button .stattxt,
+        #outer button .nobold,
+        #outer button small,
+        #outer #ansbut::before,
+        #outer #ansbut::after,
+        #outer #middle button::before {{
+            font-family: {stack} !important;
+            font-size: {size}px !important;
+        }}
+    </style>
+    """
 
 
 def generate_reviewer_buttons_css(conf):
@@ -7328,21 +8508,30 @@ def generate_reviewer_buttons_css(conf):
     timer_bg_dark = conf.get("onigiri_reviewer_timer_bg_dark", "#3a3a3a")
     timer_text_dark = conf.get("onigiri_reviewer_timer_text_dark", "#e0e0e0")
 
+    show_answer_bg_light = conf.get("onigiri_reviewer_show_answer_btn_bg_light", "#ffffff")
+    show_answer_text_light = conf.get("onigiri_reviewer_show_answer_btn_text_light", "#2c2c2c")
+    show_answer_bg_dark = conf.get("onigiri_reviewer_show_answer_btn_bg_dark", "#3a3a3a")
+    show_answer_text_dark = conf.get("onigiri_reviewer_show_answer_btn_text_dark", "#e0e0e0")
+    show_answer_hover_bg_light = conf.get("onigiri_reviewer_show_answer_btn_hover_bg_light", "#2c2c2c")
+    show_answer_hover_text_light = conf.get("onigiri_reviewer_show_answer_btn_hover_text_light", "#f0f0f0")
+    show_answer_hover_bg_dark = conf.get("onigiri_reviewer_show_answer_btn_hover_bg_dark", "#e0e0e0")
+    show_answer_hover_text_dark = conf.get("onigiri_reviewer_show_answer_btn_hover_text_dark", "#3a3a3a")
+
     # Stats bar background: the Show Answer button's own background while the
     # timer + New/Learn/Review pills panel is visible. Defaults to mirroring the
-    # "Other" hover background so existing setups look unchanged; can be
+    # Show Answer active background; it can be
     # decoupled into its own color via onigiri_reviewer_show_answer_bar_bg_sync.
     if conf.get("onigiri_reviewer_show_answer_bar_bg_sync", True):
-        show_answer_bar_bg_light = conf.get("onigiri_reviewer_other_btn_hover_bg_light", "#2c2c2c")
-        show_answer_bar_bg_dark = conf.get("onigiri_reviewer_other_btn_hover_bg_dark", "#e0e0e0")
+        show_answer_bar_bg_light = show_answer_hover_bg_light
+        show_answer_bar_bg_dark = show_answer_hover_bg_dark
     else:
         show_answer_bar_bg_light = conf.get("onigiri_reviewer_show_answer_bar_bg_light", "#2c2c2c")
         show_answer_bar_bg_dark = conf.get("onigiri_reviewer_show_answer_bar_bg_dark", "#e0e0e0")
     # Text must ride along with the stats bar background (not the button's idle
     # text color) so the "Show Answer" label stays legible against it in "fixed"
     # mode, where the button is never actually in its native :hover state.
-    show_answer_bar_text_light = conf.get("onigiri_reviewer_other_btn_hover_text_light", "#f0f0f0")
-    show_answer_bar_text_dark = conf.get("onigiri_reviewer_other_btn_hover_text_dark", "#3a3a3a")
+    show_answer_bar_text_light = show_answer_hover_text_light
+    show_answer_bar_text_dark = show_answer_hover_text_dark
 
     overview_style = conf.get("overview_style", {}) if isinstance(conf.get("overview_style", {}), dict) else {}
     overview_colors = overview_style.get("colors", {}) if isinstance(overview_style.get("colors", {}), dict) else {}
@@ -7846,9 +9035,51 @@ def generate_reviewer_buttons_css(conf):
             box-shadow: none !important;
         }}
 
-        /* Stats bar background: overrides the generic "Other" hover background
-           above, specifically for the Show Answer button while its pre-answer
-           counts panel is present. */
+        /* Show Answer owns a separate palette from utility actions such as
+           More and Edit. The class is attached by the bottom-bar adapter. */
+        #outer button.onigiri-show-answer-btn:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+            background: {show_answer_bg_light} !important;
+            background-color: {show_answer_bg_light} !important;
+            color: {show_answer_text_light} !important;
+        }}
+
+        #outer button.onigiri-show-answer-btn:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+            background: {show_answer_hover_bg_light} !important;
+            background-color: {show_answer_hover_bg_light} !important;
+            color: {show_answer_hover_text_light} !important;
+        }}
+
+        .nightMode #outer button.onigiri-show-answer-btn:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]) {{
+            background: {show_answer_bg_dark} !important;
+            background-color: {show_answer_bg_dark} !important;
+            color: {show_answer_text_dark} !important;
+        }}
+
+        .nightMode #outer button.onigiri-show-answer-btn:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
+            background: {show_answer_hover_bg_dark} !important;
+            background-color: {show_answer_hover_bg_dark} !important;
+            color: {show_answer_hover_text_dark} !important;
+        }}
+
+        /* A standalone active timer is still a timer, not a More/Edit action. */
+        #outer button.onigiri-timer-out-btn,
+        #outer button.onigiri-timer-out-btn:hover {{
+            background: {timer_bg_light} !important;
+            background-color: {timer_bg_light} !important;
+            color: {timer_text_light} !important;
+            transform: none !important;
+        }}
+
+        .nightMode #outer button.onigiri-timer-out-btn,
+        .nightMode #outer button.onigiri-timer-out-btn:hover {{
+            background: {timer_bg_dark} !important;
+            background-color: {timer_bg_dark} !important;
+            color: {timer_text_dark} !important;
+            transform: none !important;
+        }}
+
+        /* Stats-panel background overrides the Show Answer active background
+           specifically while its pre-answer counts panel is present. */
         #outer button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not([onclick*="ease"]):not([data-cmd*="ease"]):not([data-onigiri-ease]):hover {{
             background: {show_answer_bar_bg_light} !important;
             background-color: {show_answer_bar_bg_light} !important;
@@ -8309,8 +9540,14 @@ def generate_reviewer_buttons_css(conf):
                 // Show Answer button (right/left mode, question state).
                 const hasInsideTimer = !!timerNode && timerEnabled && ONIGIRI_TIMER_POSITION !== 'out' && !answerButtonsPresent;
 
+                // Mark Show Answer independently of whether its optional
+                // counts/timer panel exists, so its dedicated palette also
+                // applies when Stats Numbers and Timer are both off.
+                if (showButton) showButton.classList.add('onigiri-show-answer-btn');
+
                 if (!showButton || (stats.length === 0 && !hasInsideTimer)) {
                     if (showButton) {
+                        showButton.classList.remove('onigiri-has-pre-answer-counts');
                         const counts = showButton.querySelector('.onigiri-pre-answer-counts');
                         if (counts && !showButton.querySelector('.onigiri-count-pill')) counts.remove();
                     }
@@ -8329,7 +9566,7 @@ def generate_reviewer_buttons_css(conf):
                 const structureKey = stats.join('|') + '::' + (hasInsideTimer ? '1' : '0');
                 const nativeLabel = cleanText(showButton.getAttribute('data-onigiri-show-answer-label') || buttonTextWithoutOnigiri(showButton));
                 const label = nativeLabel === 'Show Answer' ? ONIGIRI_SHOW_ANSWER_LABEL : nativeLabel;
-                showButton.classList.add('onigiri-show-answer-btn', 'onigiri-has-pre-answer-counts');
+                showButton.classList.add('onigiri-has-pre-answer-counts');
                 showButton.setAttribute('data-onigiri-show-answer-label', label || ONIGIRI_SHOW_ANSWER_LABEL);
                 if (showButton.getAttribute('data-onigiri-pre-answer-counts') === structureKey && showButton.querySelector('.onigiri-pre-answer-counts')) {
                     if (hasInsideTimer) {

@@ -18,6 +18,7 @@ if hasattr(signal, "SIGPIPE"):
 from aqt import mw, gui_hooks
 from aqt.deckbrowser import DeckBrowser
 from . import onigiri_renderer
+from . import shima_theme
 from aqt.reviewer import Reviewer
 from aqt.overview import Overview
 from aqt.toolbar import Toolbar, BottomBar
@@ -40,6 +41,41 @@ addon_path = os.path.dirname(__file__)
 addon_package = mw.addonManager.addonFromModule(__name__)
 user_files_root = f"/_addons/{addon_package}/user_files"
 web_assets_root = f"/_addons/{addon_package}/web"
+
+_things_theme_module = None
+_things_theme_load_failed = False
+
+
+def _load_things_theme():
+    """Load the optional renderer lazily so Classic stays version-safe."""
+    global _things_theme_module, _things_theme_load_failed
+    if _things_theme_module is not None:
+        return _things_theme_module
+    if _things_theme_load_failed:
+        return None
+    try:
+        from . import things_theme as module
+
+        _things_theme_module = module
+        return module
+    except Exception as exc:
+        _things_theme_load_failed = True
+        print(f"[Onigiri] Kome unavailable; using Classic: {exc}")
+        return None
+
+
+def _things_theme_selected(conf=None):
+    conf = conf if isinstance(conf, dict) else config.get_config_readonly()
+    return (
+        conf.get("onigiri_ui_theme", "classic") == "things3"
+        and _load_things_theme() is not None
+    )
+
+
+def _shima_theme_selected(conf=None):
+    """Whether the deck-only Shima main menu is active."""
+    conf = conf if isinstance(conf, dict) else config.get_config_readonly()
+    return conf.get("onigiri_ui_theme", "classic") == "shima"
 
 # Make addon_path available to other modules
 sys.modules[__name__].addon_path = addon_path
@@ -144,22 +180,83 @@ def stylesheet_link(filename: str) -> str:
 
 def inject_menu_files(web_content, context):
     conf = config.get_config_readonly()
-    should_hide = conf.get("hideNativeHeaderAndBottomBar", False)
+
+    def safe_fragment(label, generator):
+        """Let the deck browser render when one optional style fails."""
+        try:
+            return generator()
+        except Exception as exc:
+            print(f"Onigiri: could not generate {label}: {exc}")
+            return ""
+
     is_deck_browser = isinstance(context, DeckBrowser)
     is_reviewer = isinstance(context, Reviewer)
     is_overview = isinstance(context, Overview)
     is_top_toolbar = isinstance(context, Toolbar)
     is_bottom_toolbar = isinstance(context, BottomBar)
     is_reviewer_bottom_bar = type(context).__name__ == "ReviewerBottomBar"
+    is_shima = _shima_theme_selected(conf)
+    should_hide = conf.get("hideNativeHeaderAndBottomBar", False) or (
+        is_shima and mw.state == "deckBrowser"
+    )
+    if _things_theme_selected(conf) and is_deck_browser:
+        _load_things_theme().on_webview_will_set_content(web_content, context)
+        return
+    # Anki's styles select palettes by night-mode classes. Apply the shared
+    # override only to Onigiri's surfaces; the reviewer card retains its own
+    # Anki mode and card-template styling. System mode leaves Anki in control.
+    forced_mode = str(conf.get("onigiriThemeMode", "system")).lower()
+    if forced_mode in {"light", "dark"} and (
+        is_deck_browser or is_overview or is_top_toolbar
+        or is_bottom_toolbar or is_reviewer_bottom_bar
+    ):
+        forced_dark = json.dumps(config.effective_night_mode(conf))
+        web_content.head += f"""
+        <script>
+        (function () {{
+            const dark = {forced_dark};
+            const classes = ['night-mode', 'nightMode', 'night_mode'];
+            function applyMode() {{
+                [document.documentElement, document.body].forEach(function (el) {{
+                    if (!el) return;
+                    classes.forEach(function (name) {{
+                        if (el.classList.contains(name) !== dark) {{
+                            el.classList.toggle(name, dark);
+                        }}
+                    }});
+                }});
+            }}
+            applyMode();
+            document.addEventListener('DOMContentLoaded', function () {{
+                applyMode();
+                // Keep a forced mode when Anki updates its theme classes.
+                const observer = new MutationObserver(applyMode);
+                [document.documentElement, document.body].forEach(function (el) {{
+                    if (el) observer.observe(el, {{
+                        attributes: true, attributeFilter: ['class']
+                    }});
+                }});
+            }}, {{once: true}});
+        }})();
+        </script>
+        """
     # Inject global Onigiri CSS only for deck browser and overview.
     # The reviewer card webview owns Anki's question/answer element; Onigiri
     # must not inject CSS, JS, or DOM there so card templates remain untouched.
     if is_deck_browser or is_overview:
         web_content.head += quiet_state_change_css()
-        web_content.head += patcher.generate_dynamic_css(conf)
-        web_content.head += patcher.generate_box_effect_button_vars_css(conf)
+        web_content.head += safe_fragment(
+            "theme CSS",
+            lambda: patcher.generate_dynamic_css(
+                conf, include_font_css=False
+            ),
+        )
+        web_content.head += safe_fragment(
+            "button effect CSS",
+            lambda: patcher.generate_box_effect_button_vars_css(conf),
+        )
 
-        if conf.get("showWelcomePopup", True):
+        if conf.get("showWelcomePopup", True) and not is_shima:
             web_content.head += f"""
             <script>
             window.addEventListener("DOMContentLoaded", function() {{
@@ -270,20 +367,43 @@ def inject_menu_files(web_content, context):
         # WebGL script in the head by the time our hook runs.
         web_content.head = graphics_lifecycle_script + web_content.head
         web_content.head += stylesheet_link("menu.css")
-        web_content.head += stylesheet_link("heatmap.css")
-        web_content.head += stylesheet_link("learner_stats.css")
+        if is_shima:
+            web_content.head += stylesheet_link("shima.css")
+        else:
+            web_content.head += stylesheet_link("heatmap.css")
+            web_content.head += stylesheet_link("learner_stats.css")
+        # Keep component-specific typography last so its explicit font rules
+        # override each widget stylesheet's own label defaults.
+        web_content.head += safe_fragment(
+            "font CSS", lambda: patcher.generate_font_css(addon_package)
+        )
         patcher.set_main_webview_background_color(patcher._deckbrowser_base_bg_color())
-        web_content.head += patcher.generate_profile_bar_fix_css()
-        web_content.head += patcher.generate_deck_browser_backgrounds(addon_path)
-        web_content.head += patcher.generate_icon_css(addon_package, conf)
-        web_content.head += patcher.generate_conditional_css(conf)
-        web_content.head += patcher.generate_icon_size_css()
-        web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
-        web_content.head += notification_duration_script(conf)
+        if not is_shima:
+            web_content.head += safe_fragment(
+                "profile CSS", patcher.generate_profile_bar_fix_css
+            )
+        web_content.head += safe_fragment(
+            "deck-browser backgrounds",
+            lambda: patcher.generate_deck_browser_backgrounds(addon_path),
+        )
+        web_content.head += safe_fragment(
+            "icon CSS", lambda: patcher.generate_icon_css(addon_package, conf)
+        )
+        web_content.head += safe_fragment(
+            "visibility CSS", lambda: patcher.generate_conditional_css(conf)
+        )
+        web_content.head += safe_fragment(
+            "icon-size CSS", patcher.generate_icon_size_css
+        )
+        if not is_shima:
+            web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
+            web_content.head += notification_duration_script(conf)
         # Must precede the scripts below: they read window.ONIGIRI_STRINGS.
         web_content.head += webview_handlers.webview_strings_script()
-        web_content.head += f'<script src="{versioned_web_asset("injector.js")}"></script>'
+        if not is_shima:
+            web_content.head += f'<script src="{versioned_web_asset("injector.js")}"></script>'
         web_content.head += f'<script src="{versioned_web_asset("engine.js")}"></script>'
+        web_content.head += f'<script src="{versioned_web_asset("MagneticSelect.js")}"></script>'
         web_content.head += f'<script src="{web_assets_root}/rename_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/icon_modal.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/rename_dialog.js"></script>'
@@ -291,12 +411,14 @@ def inject_menu_files(web_content, context):
         web_content.head += f'<script src="{web_assets_root}/add_subdeck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/create_deck_dialog.js"></script>'
         web_content.head += f'<script src="{web_assets_root}/delete_deck_dialog.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
-        web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
+        if not is_shima:
+            web_content.head += f'<script src="{versioned_web_asset("Particles.js")}"></script>'
+            web_content.head += f'<script src="{web_assets_root}/heatmap.js"></script>'
+            web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         web_content.head += mac_titlebar.inset_css("deck_browser")
 
         # Inject heatmap data for robust rendering
-        if "heatmap" in conf.get("onigiriWidgetLayout", {}).get("grid", {}):
+        if not is_shima and "heatmap" in conf.get("onigiriWidgetLayout", {}).get("grid", {}):
             try:
                 h_data, h_conf = heatmap.get_heatmap_and_config()
                 web_content.head += f"""
@@ -497,12 +619,14 @@ def inject_menu_files(web_content, context):
         _top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
         web_content.head += top_bar_css
         web_content.head += stylesheet_link("overview.css")
+        web_content.head += stylesheet_link("overview_stats.css")
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         web_content.head += mac_titlebar.inset_css("page")
     if is_reviewer_bottom_bar:
         patcher.apply_reviewer_bottom_bar_height(conf)
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
         web_content.head += patcher.generate_reviewer_buttons_css(conf)
+        web_content.head += patcher.generate_reviewer_font_css(addon_package)
     elif (is_top_toolbar or is_bottom_toolbar):
         if not should_hide:
             web_content.head += patcher.generate_toolbar_background_css(addon_path)
@@ -657,6 +781,7 @@ def setup_global_hooks():
     # Move UI patching to initial_setup so it happens after mw.col is initialized.
     # We rely on using 'wrap' for compatibility, so it's safe to run this later.
     patcher.apply_patches()
+    patcher.install_main_webview_resize_repaint_guard()
     bento_api.register_api()
     bento_api.ensure_bento_shortcut()
     menu_buttons.setup_onigiri_menu(addon_path)
@@ -704,6 +829,47 @@ def migrate_nook_level_names():
         print(f"[Onigiri] Nook Level name migration skipped: {e}")
 
 
+def migrate_sidebar_slideshow_mode():
+    """Retire the Sidebar slideshow without discarding its first picture."""
+    try:
+        if config.get_collection_config("modern_menu_sidebar_bg_type", "color") != "slideshow":
+            return
+        images = config.get_collection_config("modern_menu_sidebar_slideshow_images", []) or []
+        first_image = next((str(name) for name in images if name), "")
+        if first_image and not config.get_collection_config("modern_menu_sidebar_bg_image", ""):
+            config.set_collection_config("modern_menu_sidebar_bg_image", first_image)
+        config.set_collection_config(
+            "modern_menu_sidebar_bg_type",
+            "image_color" if first_image else "color",
+        )
+    except Exception as exc:
+        print(f"[Onigiri] Sidebar slideshow migration skipped: {exc}")
+
+
+def migrate_profile_level_color_default():
+    """Replace the legacy Profile Level bar default once per collection.
+
+    Older releases stored the untouched custom bar default as ``#4C85AF`` in
+    collection config. Keep genuinely chosen colors intact while moving that
+    legacy default to the shared Profile Level color.
+    """
+    try:
+        marker = "_onigiri_profile_level_color_default_migrated"
+        if config.get_collection_config(marker, False):
+            return
+        current = config.get_collection_config(
+            "onigiri_profile_level_bar_custom_color", ""
+        )
+        if isinstance(current, str) and current.strip().lower() == "#4c85af":
+            config.set_collection_config(
+                "onigiri_profile_level_bar_custom_color",
+                config.DEFAULT_PROFILE_LEVEL_COLOR,
+            )
+        config.set_collection_config(marker, True)
+    except Exception as exc:
+        print(f"[Onigiri] Profile Level color migration skipped: {exc}")
+
+
 def on_profile_did_open():
     """
     Runs when a profile is successfully loaded.
@@ -718,6 +884,8 @@ def on_profile_did_open():
         print(f"[Onigiri] Could not register Poppins fonts: {e}")
 
     migrate_nook_level_names()
+    migrate_sidebar_slideshow_mode()
+    migrate_profile_level_color_default()
 
     # Now it is safe to patch overview since mw.col is available
     patcher.patch_overview()
@@ -744,6 +912,10 @@ def on_profile_did_open():
 
     # Register optional game hooks after startup, and only for enabled features.
     QTimer.singleShot(1000, initialize_enabled_gamification_hooks)
+    # Bento add-ons may register their widgets during profile initialization.
+    # Re-evaluate after that window: the menu stays absent when none exist and
+    # appears once there is something useful to open.
+    QTimer.singleShot(1200, bento_api.ensure_bento_shortcut)
 
     # Check for sync conflicts on startup
     if onigiri_sync.is_enabled():
@@ -783,16 +955,55 @@ def on_profile_did_open():
 # NOTE: patch_congrats_page is safe to run here as it doesn't access mw.col immediately.
 patcher.patch_congrats_page()
 
-# Initialize renderer immediately
-DeckBrowser._renderPage = onigiri_renderer.render_onigiri_deck_browser
+# Preserve Anki's native deck renderer for Kome, while keeping Classic's
+# established replacement as the default. Dispatching on every render makes a
+# theme change take effect immediately without a restart.
+_anki_render_page = DeckBrowser._renderPage
+_anki_render_deck_node = DeckBrowser._render_deck_node
 
-# Patch _render_deck_node at top-level to ensure it's applied before first render
-# This is critical - if done later (in apply_patches via main_window_did_init),
-# the initial deck browser render would use Anki's default, missing icons/counts
-DeckBrowser._render_deck_node = patcher._onigiri_render_deck_node
+
+def _render_selected_deck_browser(deck_browser, *args, **kwargs):
+    # Ready-to-go filtered decks are hidden from both deck lists. Restore any
+    # unfinished cards before either renderer calculates the visible counts.
+    try:
+        from . import ready_to_go
+
+        ready_to_go.restore_internal_cards(deck_browser.mw.col)
+    except Exception as exc:
+        print(f"Onigiri: could not restore Ready-to-go cards: {exc}")
+
+    conf = config.get_config_readonly()
+    if _things_theme_selected(conf):
+        return _anki_render_page(deck_browser, *args, **kwargs)
+    if _shima_theme_selected(conf):
+        return shima_theme.render_deck_browser(deck_browser, *args, **kwargs)
+    return onigiri_renderer.render_onigiri_deck_browser(
+        deck_browser, *args, **kwargs
+    )
+
+
+def _render_selected_deck_node(deck_browser, *args, **kwargs):
+    conf = config.get_config_readonly()
+    if _things_theme_selected(conf):
+        return _anki_render_deck_node(deck_browser, *args, **kwargs)
+    return patcher._onigiri_render_deck_node(deck_browser, *args, **kwargs)
+
+
+DeckBrowser._renderPage = _render_selected_deck_browser
+DeckBrowser._render_deck_node = _render_selected_deck_node
 
 def on_deck_browser_did_render(deck_browser: DeckBrowser):
     conf = config.get_config_readonly()
+    if _things_theme_selected(conf):
+        _load_things_theme().on_deck_browser_did_render(deck_browser)
+        return
+    # Kome hides native chrome after its render. Re-applying Classic's own
+    # visibility policy here makes switching back restore the exact Focus mode
+    # state immediately instead of waiting for another navigation event.
+    try:
+        patcher._update_toolbar_visibility(mw.state, mw.state)
+    except Exception:
+        pass
     grid_layout = conf.get("onigiriWidgetLayout", {}).get("grid", {})
     if "heatmap" in grid_layout:
         # Data is now injected via globals in inject_menu_files for reliability.
@@ -802,6 +1013,21 @@ def on_deck_browser_did_render(deck_browser: DeckBrowser):
     # Update sync status indicator
     update_sync_status_indicator()
     _update_card_editing_dim_state()
+
+
+def on_things_deck_browser_will_render_content(deck_browser, content):
+    """Add Kome's native-renderer content only while that theme is active."""
+    if _things_theme_selected():
+        _load_things_theme().on_deck_browser_will_render_content(
+            deck_browser, content
+        )
+
+
+def on_things_js_message(handled, message, context):
+    """Route Kome's deck/sidebar commands without installing a second add-on."""
+    if not _things_theme_selected() and not (isinstance(message, str) and message.startswith("ba:donut-open:")):
+        return handled
+    return _load_things_theme()._on_js_message(handled, message, context)
 
 def update_sync_status_indicator():
     """Updates the sync status indicator in the Onigiri menu."""
@@ -889,6 +1115,11 @@ def _storage_integrity_check():
     """
     try:
         profile_name = mw.pm.name if mw.pm else None
+        try:
+            shared_config = mw.addonManager.getConfig(addon_package)
+        except Exception:
+            shared_config = None
+        safe_storage.backup_before_upgrade(shared_config)
         messages = safe_storage.run_startup_check(profile_name)
         # Anything restored on disk predates the cached config, so drop it.
         config.invalidate_config_cache()
@@ -1054,6 +1285,9 @@ def _hashi_notes_purge():
         print(f"Hashi Notes: purge hook error: {e}")
 gui_hooks.profile_did_open.append(_hashi_notes_purge)
 gui_hooks.webview_will_set_content.append(inject_menu_files)
+gui_hooks.deck_browser_will_render_content.append(
+    on_things_deck_browser_will_render_content
+)
 gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
 def _invalidate_heatmap_cache_on_answer(*args):
     from . import heatmap
@@ -1062,6 +1296,7 @@ gui_hooks.reviewer_did_answer_card.append(_invalidate_heatmap_cache_on_answer)
 gui_hooks.webview_did_receive_js_message.append(patcher.on_webview_js_message)
 # MODIFICATION: Use the current, correct hook instead of the outdated one.
 gui_hooks.webview_did_receive_js_message.append(_on_webview_cmd)
+gui_hooks.webview_did_receive_js_message.append(on_things_js_message)
 # Update sync status when state changes
 gui_hooks.state_did_change.append(on_state_change)
 # Update sync status after sync completes
