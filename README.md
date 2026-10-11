@@ -1,9 +1,9 @@
 <p align="center">
-  <img src=".github/onigiri_header.png" alt="Onigiri header" width="100%">
+  <img src=".github/Header.svg" alt="Onigiri header" width="100%">
 </p>
 
 <h1 align="center">
-	Onigiri (Beta)
+	Onigiri
 </h1>
 
 Onigiri is an add-on that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, transforming how Anki looks completely, a way to keep you motivated to study your cards everyday. Onigiri also offers three different types of mini games that allow you to study your cards, level up, take care of your pet Pokémon and build entire islands made of hexagons. 
@@ -24,7 +24,7 @@ Since it's launched, Onigiri has helped over 80k people around the globe, transf
 - **Great design can motivate**: Motivation can bring more productivity and motivation for students to study, to visit the app more often and be drawn to it. Research has prooved that a well-structured and user-friendly design can, in fact, [cultivate motivation](https://www.mdpi.com/2414-4088/2/1/6).
 - **Calm defaults, powerful options**: The base experience stays simple. Advanced controls are discoverable, not overwhelming—letting users grow into complexity at their pace.
 - **Consistency with flexibility**: Users can change the look and feel without breaking core Anki paradigms—cards, reviews, intervals—so muscle memory still works.
-&nbsp;
+<br>
 
 ### Why Onigiri? 
 
@@ -62,26 +62,74 @@ Onigiri (this add-on) is an independent Anki add‑on that customizes the app’
 
 Second Notice: Onigiri does not have monetary intentions, it was born with a philantropic principle and it will continue to be that way. Any in-add-on purchases are to maintain the continuation of the project, being completely optional through coins and icons on the mini-games. 
 
-### Need help? 
-
-I'm currently producing **[Onigiri Guide](https://onigiri-addon-guide.notion.site/Onigiri-Guide-39a3d4f0321380ff86cee5121b443a60)** to help you guys navigate through this add-on. 
 
 ### Gratitude
 
-Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! A special thanks to @Ouranos for the special help identifying bugs.
+Thanks to the **Anki** and [**Ankimon**](https://github.com/h0tp-ftw/ankimon) community for teaching me the essentials on coding and add-on development! A special thanks to my small, but mighty, dev team on Discord and my dear friends at the Ankimon community.
 
 And thank you, the students and users, for using my add-on!
+If you want to be inside the next updates, see sneak peaks and share themes, join the Onigiri community!
+
+<a href="https://discord.gg/6kdG6tX5Mz">
+<p align="center">
+  <img src=".github/discord.svg" alt="Onigiri header" width="100%">
+</p>
+</a>
+
 
 ### Support my work
 
 I’m actively shipping updates and new features. If my add-ons helped your studies or workflow, consider supporting my work. Your contribution keeps the project maintained and free for everyone. Join up our [Discord](https://discord.gg/ZU9VZHMk3u)
 
 <a href="https://www.buymeacoffee.com/peacemonk">
-<img alt="Buy me an onigiri" src="https://github.com/thepeacemonk/Onigiri/blob/main/.github/BMAC.png" />
-<br>
-<br>
+<p align="center">
+  <img src=".github/donation_button.svg" alt="Onigiri donation button" width="100%">
+</p>
 </a>
 
-### Onigiri previews
+## Star History
 
-Coming soon!
+<a href="https://www.star-history.com/?repos=thepeacemonk%2Fonigiri&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=thepeacemonk/onigiri&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=thepeacemonk/onigiri&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=thepeacemonk/onigiri&type=date&legend=top-left" />
+ </picture>
+</a>
+
+## Onigiri previews
+
+<p align="center">
+  <img src=".github/slide_1.svg" alt="Slide 1" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_2.svg" alt="Slide 3" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_3.svg" alt="Slide 3" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_4.webp" alt="Slide 4" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_5.svg" alt="Slide 5" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_6.svg" alt="Slide 6" width="100%">
+</p>
+
+<p align="center">
+  <img src=".github/slide_7.svg" alt="Slide 7" width="100%">
+</p>
+
+<a href="https://github.com/thepeacemonk/Onigiri/issues">
+<p align="center">
+  <img src=".github/report_bugs.svg" alt="Onigiri header" width="100%">
+</p>
+
+
