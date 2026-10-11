@@ -16,7 +16,7 @@ I always heard of Anki as the solution to all of my problems, that it was awesom
 
 Then, during my pre-medical exam season, I decided to start coding Onigiri on my (rather limited) free time, doing tests, posting some reddit research to see what people liked and finally, after months of trial and error (aside from a gigantic fear of people not enjoying my work) I released Onigiri.
 
-Since it's launched, Onigiri has helped over 80k people around the globe, transforming how people study, making them more motivated to pursue their dreams and achieve academic excellence.
+Since it's launched, Onigiri has helped over 140k people around the globe, transforming how people study, making them more motivated to pursue their dreams and achieve academic excellence.
 
 ### Philosophy
 
