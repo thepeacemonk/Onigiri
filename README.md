@@ -1,9 +1,9 @@
 <p align="center">
-  <img src=".github/onigiri_header.png" alt="Onigiri header" width="100%">
+  <img src=".github/Header.svg" alt="Onigiri header" width="100%">
 </p>
 
 <h1 align="center">
-	Onigiri (Beta)
+	Onigiri
 </h1>
 
 Onigiri is an add-on that replaces the standard Anki interface with a modern, highly customizable, and personalized dashboard, transforming how Anki looks completely, a way to keep you motivated to study your cards everyday. Onigiri also offers three different types of mini games that allow you to study your cards, level up, take care of your pet Pokémon and build entire islands made of hexagons. 
@@ -90,4 +90,4 @@ I’m actively shipping updates and new features. If my add-ons helped your stud
 
 ### Onigiri previews
 
-Coming soon!
+
