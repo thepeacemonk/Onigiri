@@ -426,7 +426,6 @@ TRANSLATIONS = {
         'no_description_available': 'No description available.',
         'onigiri_menu': 'Onigiri',
         'onigiri_settings': 'Onigiri Settings',
-        'onigiri_guide': 'Onigiri Guide',
         'welcome_screen': 'Welcome Screen',
         'credits': 'Credits',
         'version_label': 'Version',
@@ -9155,7 +9154,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "marker_red": "Vermelho",
         "marker_yellow": "Amarelo",
         "onigimon_redeem": "Resgatar",
-        "onigiri_guide": "Guia do Onigiri",
         "retention_stars_section": "Estrelas de retenção",
         "sync_main_menu_background": "Sincronizar com o fundo do menu principal",
         "widget_height_label": "Altura do widget:",
@@ -9485,7 +9483,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "onigimon_word_tidy": "Ordenado",
         "onigimon_word_tired": "Cansado",
         "onigimon_word_trained": "Entrenado",
-        "onigiri_guide": "Guía de Onigiri",
         "orientation_image_top": "Imagen arriba",
         "orientation_side_by_side": "Lado a lado",
         "paws_whiskers_desc": "Una acogedora cafetería para mascotas que ofrece golosinas para ti y tus amigos más peludos.",
@@ -9840,7 +9837,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "onigimon_word_tidy": "整洁",
         "onigimon_word_tired": "疲惫",
         "onigimon_word_trained": "已训练",
-        "onigiri_guide": "Onigiri 指南",
         "orientation_image_top": "图片在上",
         "orientation_side_by_side": "并排",
         "paws_whiskers_desc": "一家温馨的宠物咖啡馆，为你和你最毛茸茸的朋友们提供美食。",
@@ -10205,7 +10201,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "onigimon_word_tidy": "きれい",
         "onigimon_word_tired": "疲れ",
         "onigimon_word_trained": "鍛えた",
-        "onigiri_guide": "Onigiri ガイド",
         "orientation_image_top": "画像を上に",
         "orientation_side_by_side": "横並び",
         "paws_whiskers_desc": "あなたと毛むくじゃらの友だちのためのおやつを出す、居心地のよいペットカフェ。",
@@ -10562,7 +10557,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "onigimon_word_tidy": "Soigné",
         "onigimon_word_tired": "Fatigué",
         "onigimon_word_trained": "Entraîné",
-        "onigiri_guide": "Guide Onigiri",
         "orientation_image_top": "Image en haut",
         "orientation_side_by_side": "Côte à côte",
         "paws_whiskers_desc": "Un café pour animaux chaleureux qui propose des friandises pour vous et vos amis les plus poilus.",
@@ -10936,7 +10930,6 @@ _GLOBAL_TRANSLATION_BACKFILL = {
         "onigimon_word_tidy": "단정함",
         "onigimon_word_tired": "피곤함",
         "onigimon_word_trained": "훈련됨",
-        "onigiri_guide": "Onigiri 가이드",
         "orientation_image_top": "이미지 위",
         "orientation_side_by_side": "나란히",
         "paws_whiskers_desc": "당신과 털복숭이 친구들을 위한 간식을 파는 아늑한 반려동물 카페.",
@@ -13146,7 +13139,6 @@ _GERMAN_TRANSLATIONS = {
         "no_description_available": "Keine Beschreibung verfügbar.",
         "onigiri_menu": "Onigiri",
         "onigiri_settings": "Onigiri-Einstellungen",
-        "onigiri_guide": "Onigiri-Anleitung",
         "welcome_screen": "Begrüßungsbildschirm",
         "credits": "Mitwirkende",
         "version_label": "Version",
@@ -21245,3 +21237,66 @@ for _entries in TRANSLATIONS.values():
 for _berry in ('Cheri', 'Chesto', 'Pecha', 'Rawst', 'Aspear', 'Leppa', 'Oran', 'Sitrus', 'Lum'):
     for _entries in TRANSLATIONS.values():
         _entries['onigimon_item_berry_' + _berry.lower()] = _entries['onigimon_berry_name'].format(name=_berry)
+
+
+# Study Tool visibility controls remain available even when a tool is hidden.
+_STUDY_TOOL_VISIBILITY_STRINGS = {
+    'en': {
+        'study_tool_visibility': 'Visibility',
+        'study_tool_show': 'Show {tool}',
+        'study_tool_visibility_desc': 'Turn off to hide this tool from menus, shortcuts, the reviewer and the dashboard. Your saved data and widget placement are kept. Show it again here.',
+        'study_tool_header_visibility_desc': 'Hide only the reviewer button while keeping the tool available elsewhere.',
+        'study_tool_timer_hidden': 'Hiding Pomodoro pauses the timer and closes its windows. Your progress and session history are kept.',
+    },
+    'pt-BR': {
+        'study_tool_visibility': 'Visibilidade',
+        'study_tool_show': 'Mostrar {tool}',
+        'study_tool_visibility_desc': 'Desative para ocultar esta ferramenta dos menus, atalhos, revisor e painel. Seus dados salvos e a posição do widget são mantidos. Você pode mostrá-la novamente aqui.',
+        'study_tool_header_visibility_desc': 'Oculte apenas o botão do revisor, mantendo a ferramenta disponível nos outros locais.',
+        'study_tool_timer_hidden': 'Ocultar o Pomodoro pausa o cronômetro e fecha suas janelas. Seu progresso e histórico de sessões são mantidos.',
+    },
+    'es-ES': {
+        'study_tool_visibility': 'Visibilidad',
+        'study_tool_show': 'Mostrar {tool}',
+        'study_tool_visibility_desc': 'Desactiva para ocultar esta herramienta de los menús, atajos, repaso y panel. Se conservan tus datos y la posición del widget. Puedes volver a mostrarla aquí.',
+        'study_tool_header_visibility_desc': 'Oculta solo el botón del repaso y mantén la herramienta disponible en los demás lugares.',
+        'study_tool_timer_hidden': 'Ocultar Pomodoro pausa el temporizador y cierra sus ventanas. Se conservan tu progreso y el historial de sesiones.',
+    },
+    'fr-FR': {
+        'study_tool_visibility': 'Visibilité',
+        'study_tool_show': 'Afficher {tool}',
+        'study_tool_visibility_desc': 'Désactivez pour masquer cet outil dans les menus, raccourcis, révisions et tableau de bord. Vos données et la position du widget sont conservées. Vous pouvez le réafficher ici.',
+        'study_tool_header_visibility_desc': 'Masquez uniquement le bouton de révision tout en gardant l’outil disponible ailleurs.',
+        'study_tool_timer_hidden': 'Masquer Pomodoro met le minuteur en pause et ferme ses fenêtres. Votre progression et l’historique des sessions sont conservés.',
+    },
+    'de-DE': {
+        'study_tool_visibility': 'Sichtbarkeit',
+        'study_tool_show': '{tool} anzeigen',
+        'study_tool_visibility_desc': 'Deaktivieren, um dieses Werkzeug in Menüs, Tastenkürzeln, der Wiederholung und dem Dashboard auszublenden. Deine Daten und die Widget-Position bleiben erhalten. Hier kannst du es wieder einblenden.',
+        'study_tool_header_visibility_desc': 'Nur die Schaltfläche in der Wiederholung ausblenden. Das Werkzeug bleibt an anderen Stellen verfügbar.',
+        'study_tool_timer_hidden': 'Beim Ausblenden von Pomodoro wird der Timer pausiert und seine Fenster werden geschlossen. Dein Fortschritt und Sitzungsverlauf bleiben erhalten.',
+    },
+    'ja-JP': {
+        'study_tool_visibility': '表示設定',
+        'study_tool_show': '{tool}を表示',
+        'study_tool_visibility_desc': 'オフにすると、メニュー、ショートカット、復習画面、ダッシュボードからこのツールを非表示にします。保存データとウィジェットの配置は保持されます。ここで再表示できます。',
+        'study_tool_header_visibility_desc': '復習画面のボタンだけを非表示にし、他の場所ではツールを利用できるようにします。',
+        'study_tool_timer_hidden': 'Pomodoroを非表示にすると、タイマーを一時停止し、ウィンドウを閉じます。進行状況とセッション履歴は保持されます。',
+    },
+    'ko-KR': {
+        'study_tool_visibility': '표시 설정',
+        'study_tool_show': '{tool} 표시',
+        'study_tool_visibility_desc': '끄면 메뉴, 단축키, 복습 화면 및 대시보드에서 이 도구를 숨깁니다. 저장된 데이터와 위젯 배치는 유지됩니다. 여기에서 다시 표시할 수 있습니다.',
+        'study_tool_header_visibility_desc': '복습 화면의 버튼만 숨기고 다른 곳에서는 도구를 계속 사용할 수 있습니다.',
+        'study_tool_timer_hidden': 'Pomodoro를 숨기면 타이머가 일시 정지되고 창이 닫힙니다. 진행 상황과 세션 기록은 유지됩니다.',
+    },
+    'zh-CN': {
+        'study_tool_visibility': '显示设置',
+        'study_tool_show': '显示{tool}',
+        'study_tool_visibility_desc': '关闭后将在菜单、快捷键、复习界面和仪表板中隐藏此工具。已保存的数据和小组件位置会保留。您可以在此重新显示。',
+        'study_tool_header_visibility_desc': '仅隐藏复习界面中的按钮，在其他位置仍可使用此工具。',
+        'study_tool_timer_hidden': '隐藏Pomodoro会暂停计时器并关闭其窗口。进度和学习记录会保留。',
+    },
+}
+for _language, _strings in _STUDY_TOOL_VISIBILITY_STRINGS.items():
+    TRANSLATIONS[_language].update(_strings)

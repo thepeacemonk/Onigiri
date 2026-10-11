@@ -84,3 +84,62 @@ with patch.object(notifications, 'OnigiriInfoDialog', side_effect=RuntimeError('
   notifications._native_show_info('Keep these technical details', title='Warning')
 assert seen == [('Onigiri · Warning', 'Keep these technical details', False)]
 print('PASS: fallback retains the Onigiri name, logo, and warning details.')
+
+# Demonstrate the startup ordering defect using Qt's real nested event loop.
+# No live Anki instance is involved; these are offscreen native dialogs.
+events=[]
+def dismiss_blocking_warning():
+ events.append('timer')
+ for widget in app.topLevelWidgets():
+  if isinstance(widget, notifications.OnigiriInfoDialog) and widget.isVisible(): widget.accept()
+QtCore.QTimer.singleShot(0, dismiss_blocking_warning)
+notifications.notify_warning('Recovered settings', title='Backup and recovery')
+events.append('remaining profile hook')
+assert events==['timer','remaining profile hook']
+print('REPRODUCED: blocking warning runs queued UI work before remaining profile hooks.')
+
+# Execute the installed profile hook with real Qt and stubbed persistence.
+import ast
+tree=ast.parse((ROOT/'__init__.py').read_text())
+hook=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='_storage_integrity_check')
+profile_col=object()
+profile_host=types.SimpleNamespace(col=profile_col,pm=types.SimpleNamespace(name='Audit'),addonManager=types.SimpleNamespace(getConfig=lambda _:{}))
+storage_stub=types.SimpleNamespace(backup_before_upgrade=lambda _:None,run_startup_check=lambda _:['Recovered settings from a dated snapshot.'],take_notices=lambda:[])
+namespace=dict(__package__='warning_audit',mw=profile_host,addon_package='onigiri',safe_storage=storage_stub,config=types.SimpleNamespace(invalidate_config_cache=lambda:None),tr=lambda _:'Backup and recovery',QTimer=QtCore.QTimer)
+exec(compile(ast.Module(body=[hook],type_ignores=[]),'__init__.py','exec'),namespace)
+with patch.object(notifications.OnigiriInfoDialog,'exec',side_effect=AssertionError('Startup must not call exec')):
+ with patch.object(notifications.QMessageBox,'exec',side_effect=AssertionError('Startup fallback must not call exec')):
+  namespace['_storage_integrity_check']()
+  assert not notifications._open_info_dialogs
+  events=['remaining profile hook']
+  QtCore.QTimer.singleShot(0,lambda:events.append('timer'))
+  app.processEvents()
+  assert events==['remaining profile hook','timer']
+  assert len(notifications._open_info_dialogs)==1
+  dialog=next(iter(notifications._open_info_dialogs))
+  assert dialog.isVisible() and dialog.windowTitle()=='Onigiri · Backup and recovery'
+  dialog.findChild(QtWidgets.QPushButton,'onigiriInfoOk').click()
+  assert not notifications._open_info_dialogs
+  assert dialog.result()==QtWidgets.QDialog.DialogCode.Accepted
+  QtCore.QCoreApplication.sendPostedEvents(None,QtCore.QEvent.Type.DeferredDelete)
+print('PASS: actual profile hook completes before warning; async warning persists until OK and then releases.')
+
+with patch.object(notifications,'OnigiriInfoDialog',side_effect=RuntimeError('dialog unavailable')):
+ with patch.object(notifications.QMessageBox,'exec',side_effect=AssertionError('Fallback must not call exec')):
+  notifications.notify_warning('Recovered settings',title='Backup and recovery',blocking=False)
+  assert len(notifications._open_info_dialogs)==1
+  box=next(iter(notifications._open_info_dialogs))
+  assert isinstance(box,QtWidgets.QMessageBox) and box.isVisible()
+  assert box.informativeText()=='Recovered settings'
+  box.accept()
+  assert not notifications._open_info_dialogs
+  QtCore.QCoreApplication.sendPostedEvents(None,QtCore.QEvent.Type.DeferredDelete)
+print('PASS: asynchronous branded fallback also avoids exec and releases on dismissal.')
+
+parent=QtWidgets.QWidget()
+notifications.notify_warning('Recovered settings',title='Backup and recovery',context=parent,blocking=False)
+assert len(notifications._open_info_dialogs)==1
+parent.deleteLater()
+QtCore.QCoreApplication.sendPostedEvents(None,QtCore.QEvent.Type.DeferredDelete)
+assert not notifications._open_info_dialogs
+print('PASS: parent destruction releases the asynchronous warning without retaining a deleted dialog.')

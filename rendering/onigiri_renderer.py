@@ -12,6 +12,7 @@ from ..integrations import fsrs_helper_integration
 from aqt.deckbrowser import DeckBrowser, RenderDeckNodeContext
 from anki.decks import DeckId
 from ..core import config
+from ..core.study_tool_visibility import TOOL_IDS, tool_visible
 from . import heatmap
 from ..api import sidebar as sidebar_api
 from ..decks import tree_updater as deck_tree_updater
@@ -2376,6 +2377,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
     
     if col_count > 0:
         for widget_id, widget_config in onigiri_layout.items():
+            if widget_id in TOOL_IDS and not tool_visible(widget_id, conf):
+                continue
             if widget_id in widget_generators or _is_deck_stats_widget_id(widget_id):
                 if not isinstance(widget_config, dict):
                     print(f"Onigiri: ignored invalid {widget_id} widget layout")
@@ -4715,6 +4718,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         copy.deepcopy(config.DEFAULTS["sidebarButtonLayout"]),
     )
     js_config = {
+        "studyToolsVisibility": {tool: tool_visible(tool, conf) for tool in TOOL_IDS},
         "sidebarActionsMode": conf.get("sidebarActionsMode", "list"),
         "sidebarButtonLayout": {
             "visible": sidebar_button_layout.get("visible", []),

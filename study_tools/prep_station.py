@@ -976,6 +976,10 @@ class PrepStationDialog(QDialog):
 
 
 def open_prep_station(parent=None) -> None:
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("prep_station"):
+        return None
     global _dialog
     try:
         if _dialog is not None:

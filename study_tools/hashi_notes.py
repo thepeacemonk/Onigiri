@@ -1210,6 +1210,10 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
 # ─── Entry points ─────────────────────────────────────────────────────────────
 
 def open_hashi_note_popup(context="reviewer", parent=None, note=None):
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("hashi_notes"):
+        return None
     global _popup
     try:
         if _popup is not None:
@@ -1225,6 +1229,10 @@ def open_hashi_note_popup(context="reviewer", parent=None, note=None):
 
 
 def open_hashi_gallery(parent=None):
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("hashi_notes"):
+        return None
     global _gallery
     try:
         if _gallery is not None:

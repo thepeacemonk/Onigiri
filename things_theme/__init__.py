@@ -730,10 +730,6 @@ def on_webview_will_set_content(web_content: WebContent, context: Optional[Any])
 
 
 def _standing() -> Dict[str, Any]:
-    from aqt.qt import QLocale
-    locale = current_locale()
-    months = [locale.monthName(month, QLocale.FormatType.ShortFormat) for month in range(1, 13)]
-    weekdays = [locale.dayName(day, QLocale.FormatType.ShortFormat) for day in (7, 1, 2, 3, 4, 5, 6)]
     counts = _counts_by_day()
     shift = _day_shift_seconds()
     today_idx = int((time.time() + shift) // 86400)
@@ -982,6 +978,10 @@ def build_heatmap_html(weeks: int = 53) -> str:
     if not col:
         return ""
 
+    from aqt.qt import QLocale
+    locale = current_locale()
+    months = [locale.monthName(month, QLocale.FormatType.ShortFormat) for month in range(1, 13)]
+    weekdays = [locale.dayName(day, QLocale.FormatType.ShortFormat) for day in (7, 1, 2, 3, 4, 5, 6)]
     weeks = max(8, min(260, int(weeks or 53)))
     counts = _counts_by_day()
     shift = _day_shift_seconds()

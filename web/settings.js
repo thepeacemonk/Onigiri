@@ -436,6 +436,7 @@
     button.type = "button";
     button.setAttribute("data-field", field.id);
     button.setAttribute("data-field-type", field.type);
+    button.setAttribute("aria-label", field.label || field.id);
     button.setAttribute("aria-pressed", values[field.id] ? "true" : "false");
     const track = el("div", (field.square ? "osw-sq-switch" : "osw-switch") + (values[field.id] ? " is-on" : ""));
     button.appendChild(track);
@@ -3451,7 +3452,7 @@
     compactFontMenuEl = null;
   }
 
-  function openCompactFontMenu(anchor, roles, labelText) {
+  function openCompactFontMenu(anchor, roles, labelText, previewKind) {
     closeCompactFontMenu();
     roles = (roles || []).filter(function (role) {
       return !role.show_when || showWhenMatches(role.show_when);
@@ -3673,7 +3674,7 @@
           sample.style.background = (bgKey && values[bgKey]) || (CTX.dark ? "#3a3a3a" : "#f0f0f0");
           sample.style.color = (textKey && values[textKey]) || (CTX.dark ? "#f0f0f0" : "#2c2c2c");
           sample.style.borderColor = (borderKey && values[borderKey]) || "";
-          if (section.preview_kind === "reviewer_bottom_bar") {
+          if (previewKind === "reviewer_bottom_bar") {
             bbarButtonBorder(sample, values, role.id.replace("bbar_colors_", ""), suffix, true);
           }
         };
@@ -3737,7 +3738,7 @@
       compactFontMenuOutsideHandler = function (event) {
         const inFloatingRoleList = menu.__floatingRoleList &&
           menu.__floatingRoleList.contains(event.target);
-        if (!menu.contains(event.target) && event.target !== anchor && !inFloatingRoleList) {
+        if (!menu.contains(event.target) && !anchor.contains(event.target) && !inFloatingRoleList) {
           closeCompactFontMenu();
         }
       };
@@ -3780,7 +3781,8 @@
         openCompactFontMenu(
           button,
           section.colorGroups || [],
-          section.colorMenuLabel || str("colors", "Colors")
+          section.colorMenuLabel || str("colors", "Colors"),
+          section.preview_kind
         );
       }
     });
@@ -13987,10 +13989,6 @@
 
   function pageIsAvailable(page) {
     if (!page) return false;
-    if ((page.id === "prepstation" || page.id === "hashinotes") &&
-        values.onigiri_ui_theme !== "classic") {
-      return false;
-    }
     return !page.showWhen || showWhenMatches(page.showWhen);
   }
 

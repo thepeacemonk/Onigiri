@@ -1509,6 +1509,10 @@ class PomodoroStatsDialog(QDialog):
 # ─── Entry points ─────────────────────────────────────────────────────────────
 
 def toggle_widget(parent=None):
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("pomodoro"):
+        return None
     global _widget
     if _widget is not None:
         try:
@@ -1535,6 +1539,10 @@ def reload_open_widget():
 
 
 def open_stats_dialog(parent=None):
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("pomodoro"):
+        return None
     global _stats_dialog
     try:
         if _stats_dialog is not None:

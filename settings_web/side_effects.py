@@ -87,8 +87,22 @@ def _stats_widgets(store):
         store.write_config()
 
 
+def _study_tool_visibility(store):
+    from ..core.study_tool_visibility import hide_open_tools
+    from ..ui_kit.menu_buttons import refresh_study_tool_visibility
+    from ..rendering.patcher import refresh_study_tool_reviewer_buttons
+
+    hide_open_tools(store.config)
+    refresh_study_tool_visibility()
+    refresh_study_tool_reviewer_buttons(store.config)
+
+
 def _pomodoro(_store):
     """Keep Pomodoro's disk mirror, live timer, and open island in sync."""
+    from ..core.study_tool_visibility import tool_visible
+
+    if not tool_visible("pomodoro", _store.config):
+        return
     from ..study_tools import pomodoro
 
     settings = pomodoro.get_settings()
@@ -187,6 +201,7 @@ HOOKS = {
     "sidebar": _sidebar,
     "stats_widgets": _stats_widgets,
     "pomodoro": _pomodoro,
+    "study_tool_visibility": _study_tool_visibility,
     "gamification": _gamification,
     "nook_level": _nook_level,
     "mochi_messages": _mochi_messages,

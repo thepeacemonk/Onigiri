@@ -257,6 +257,11 @@ DEFAULTS = {
         "silent_sync": False,
         "restyle_addcard": False,
     },
+    "study_tools_visibility": {
+        "prep_station": True,
+        "hashi_notes": True,
+        "pomodoro": True,
+    },
     "prep_station": {
         "plans": [],
     },
@@ -860,8 +865,8 @@ DEFAULTS = {
     },
     # -----------------------------------------
     # --- REMOVED: Top-level focusDango was here ---
-    # Default theme uses the Onigiri Guide's surface palette. Accent, status
-    # colors, and shadows retain their existing defaults.
+    # Default theme surface palette. Accent, status colors, and shadows
+    # retain their existing defaults.
     "colors": {
         "light": {
             "--accent-color": DEFAULT_ACCENT_COLOR,

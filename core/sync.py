@@ -36,6 +36,7 @@ PROFILE_CONFIG_KEYS = {
 }
 STUDY_TOOL_CONFIG_KEYS = {
     "hashi_notes", "onigiri_pomodoro_show_in_reviewer_header", "prep_station",
+    "study_tools_visibility",
 }
 LAYOUT_CONFIG_KEYS = {
     "externalWidgetIdentity", "externalWidgetLayout", "onigiriDecklineAutoEmbed",

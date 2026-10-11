@@ -420,20 +420,51 @@ class OnigiriInfoDialog(QDialog):
         layout.addLayout(buttons)
 
 
-def _native_show_info(message: str, title: str = "Onigiri", parent: Any = None) -> None:
+_open_info_dialogs = set()
+
+
+def _open_info_dialog(dialog) -> None:
+    """Keep asynchronous native dialogs alive until dismissal or parent close."""
+    _open_info_dialogs.add(dialog)
+
+    def finished(*_args):
+        _open_info_dialogs.discard(dialog)
+        dialog.deleteLater()
+
+    dialog.finished.connect(finished)
+    dialog.destroyed.connect(lambda *_args: _open_info_dialogs.discard(dialog))
+    try:
+        dialog.open()
+    except Exception:
+        finished()
+        raise
+
+
+def _native_show_info(message: str, title: str = "Onigiri", parent: Any = None,
+                      blocking: bool = True) -> None:
     title = _branded_title(title)
     try:
         parent = parent if parent is not None else mw
         dialog = OnigiriInfoDialog(str(message or ""), title=title, parent=parent)
-        dialog.exec()
+        if blocking:
+            dialog.exec()
+        else:
+            _open_info_dialog(dialog)
     except Exception:
         try:
             box = QMessageBox(parent)
             box.setInformativeText(str(message or ""))
             box.setStandardButtons(QMessageBox.StandardButton.Ok)
             brand_message_box(box, title)
-            box.exec()
+            if blocking:
+                box.exec()
+            else:
+                _open_info_dialog(box)
         except Exception:
+            if not blocking:
+                # Never reintroduce a nested event loop in the startup path.
+                print(f"[Onigiri] Could not display {title}: {message}")
+                return
             # Last-resort host dialog still identifies the add-on explicitly.
             from aqt.utils import showInfo
             showInfo(f"{title}\n\n{message or ''}", title=title)
@@ -526,9 +557,12 @@ def notify_info(message: str, *args: Any, context: Optional[Any] = None, title: 
 
 
 def notify_warning(message: str, *args: Any, context: Optional[Any] = None,
-                   title: Optional[str] = None, **kwargs: Any) -> None:
+                   title: Optional[str] = None, blocking: bool = True, **kwargs: Any) -> None:
     """Persistent Onigiri warnings always remain visible, including silent mode."""
     if title is None:
         from ..core.translations import tr
         title = tr("onigiri_warning")
-    _native_show_info(message, title=title, parent=context)
+    if blocking:
+        _native_show_info(message, title=title, parent=context)
+    else:
+        _native_show_info(message, title=title, parent=context, blocking=False)

@@ -25,6 +25,7 @@ Everything here is a no-op off macOS.
 
 import ctypes
 import ctypes.util
+import platform
 import sys
 
 from aqt import mw
@@ -89,8 +90,16 @@ def _send(obj, selector, *args, argtypes=None, restype=ctypes.c_void_p):
     objc = _runtime()
     if objc is None:
         return None
+    # NSRect is a 32-byte struct. Intel macOS returns it via a hidden output
+    # pointer, which objc_msgSend_stret accounts for before reading self/_cmd.
+    # Regular objc_msgSend instead treats that pointer as an Objective-C
+    # receiver and can crash the process before Python can catch anything.
+    # arm64 returns this rectangle in registers and has no *_stret symbol.
+    messenger = (objc.objc_msgSend_stret
+                 if restype is _NSRect and platform.machine() == "x86_64"
+                 else objc.objc_msgSend)
     proto = ctypes.CFUNCTYPE(restype, ctypes.c_void_p, ctypes.c_void_p, *(argtypes or []))
-    fn = proto(ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value)
+    fn = proto(ctypes.cast(messenger, ctypes.c_void_p).value)
     return fn(obj, objc.sel_registerName(selector.encode()), *args)
 
 

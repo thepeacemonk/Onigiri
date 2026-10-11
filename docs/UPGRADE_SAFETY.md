@@ -131,3 +131,55 @@ Post-fix verification:
 
 Restart Anki to load the corrected installed code. The release package has been
 rebuilt with this fix; it still excludes personal data and historical fixtures.
+
+## Startup crash investigation (2026-10-11)
+
+The new report describes a silent exit after dismissing a notice that settings
+were restored from a dated snapshot. That notice means JSON recovery found a
+readable copy; it does not by itself identify why the subsequent startup crashed.
+The reporter's operating system, Anki version, CPU architecture, crash report,
+and settings file were unavailable during this investigation.
+
+Two defects were found and corrected:
+
+- On macOS, profile startup calls `mac_titlebar.refresh()` after the recovery
+  notice returns, even when title-bar hiding is disabled. Its native bridge read
+  the 32-byte `NSRect` frame using `objc_msgSend` on every architecture. Intel
+  macOS requires `objc_msgSend_stret` for this return type. The wrong entry point
+  can terminate the process outside Python exception handling. Dispatch now
+  selects the Intel entry point for rectangle returns and keeps the regular
+  entry point on Apple Silicon. This is a plausible explanation if the affected
+  user runs Intel Anki; it is not a confirmed diagnosis of their machine.
+- The first profile hook displayed the recovery warning using `QDialog.exec()`.
+  A real offscreen Qt check demonstrated queued UI work executing while later
+  profile hooks had not run. Notices now open asynchronously after the hook
+  returns, including recovery notices produced by later loaders. The persistent
+  dialog remains alive until dismissal; its native fallback is also asynchronous.
+  A profile switch cancels presentation of the previous profile's notice.
+
+The native call conventions are documented in [Apple's runtime header](https://github.com/apple-oss-distributions/objc4/blob/main/runtime/message.h).
+Qt recommends asynchronous `open()` to avoid a nested event loop in its
+[QDialog documentation](https://doc.qt.io/qt-6/qdialog.html#exec).
+
+Verification:
+
+- Four startup regressions and four native-dispatch regressions pass. They
+  include the exact dated-snapshot recovery message, saved-value preservation,
+  later-loader notices, clean startup, and profile switching.
+- Existing upgrade checks still pass: 39 passed, 8 historical-fixture skips.
+- `tools/verify_anki_upgrade.py` verifies the installed profile hook with real
+  offscreen Qt, warning persistence, OK dismissal, parent destruction, and the
+  asynchronous branded fallback. Its real disposable Anki collection checks
+  also pass.
+- `tools/verify_mac_titlebar.py` checks an actual Objective-C rectangle round
+  trip on Apple Silicon without creating a window. Apple Clang's generated
+  assembly confirms different rectangle return dispatch for Intel and arm64.
+  Intel execution is unavailable on this host; compiler and dispatch tests do
+  not replace a live Intel Anki check.
+- File-organization and localization checks pass when excluding `__MACOSX`
+  AppleDouble metadata, as the release packager does. Running those scans
+  unfiltered encounters two existing UTF-8 decode errors in metadata files.
+
+No live Anki window was opened or restarted. Existing `user_files` are unchanged;
+the crash report's exact cause and the affected user's successful startup remain
+unverified. The candidate package is prepared for testing, not published.

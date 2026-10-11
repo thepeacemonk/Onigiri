@@ -7,9 +7,28 @@ from aqt import mw
 from aqt.qt import QAction, QKeySequence, QMenu, QShortcut
 
 from ..core.translations import tr
+from ..core.study_tool_visibility import tool_visible
 
 # A module-level variable to hold the addon path, set once on setup.
 _addon_path = None
+_study_tool_actions = []
+_study_tools_menu = None
+_pomodoro_shortcut = None
+
+
+def refresh_study_tool_visibility():
+    from ..core import config
+
+    conf = config.get_config_readonly()
+    for tool_id, action in _study_tool_actions:
+        action.setVisible(tool_visible(tool_id, conf))
+    if _study_tools_menu is not None:
+        _study_tools_menu.menuAction().setVisible(
+            any(tool_visible(tool, conf) for tool, _ in _study_tool_actions)
+        )
+    if _pomodoro_shortcut is not None:
+        _pomodoro_shortcut.setEnabled(tool_visible("pomodoro", conf))
+
 
 def get_onigiri_version():
     """Reads the version from manifest.json file."""
@@ -81,14 +100,6 @@ def _open_focus_dango_settings():
 def _open_mochi_messages_settings():
     """Open the dedicated Mochi Messages settings page."""
     open_settings("mochi_messages")
-
-
-def _open_onigiri_guide():
-    from aqt.utils import openLink
-
-    openLink(
-        "https://onigiri-addon-guide.notion.site/"
-    )
 
 
 def _show_donations_dialog():
@@ -203,7 +214,7 @@ def setup_onigiri_menu(addon_path):
     Creates and adds the 'Onigiri' top-level menu to Anki's main window.
     This menu will contain actions for general settings, profile settings, and viewing the profile.
     """
-    global _addon_path
+    global _addon_path, _study_tool_actions, _study_tools_menu, _pomodoro_shortcut
     _addon_path = addon_path
 
     # Create the top-level menu with the Onigiri icon
@@ -270,6 +281,17 @@ def setup_onigiri_menu(addon_path):
     pomodoro_shortcut = QShortcut(QKeySequence("Shift+P"), mw)
     pomodoro_shortcut.activated.connect(_toggle_pomodoro)
 
+    _study_tools_menu = study_tools_menu
+    _study_tool_actions = [
+        ("prep_station", prep_station_action),
+        ("hashi_notes", hashi_notes_action),
+        ("pomodoro", pomodoro_action),
+        ("pomodoro", pomodoro_stats_action),
+    ]
+    _pomodoro_shortcut = pomodoro_shortcut
+    onigiri_menu.aboutToShow.connect(refresh_study_tool_visibility)
+    refresh_study_tool_visibility()
+
     # Create the 'Settings' action (opens settings to General tab, index 0)
     settings_action = QAction(tr("onigiri_settings"), mw)
     settings_action.triggered.connect(lambda _: open_settings(0))
@@ -283,10 +305,6 @@ def setup_onigiri_menu(addon_path):
     announcements_action = QAction(tr("communications_title", "Announcements"), mw)
     announcements_action.triggered.connect(_open_communications)
     info_menu.addAction(announcements_action)
-
-    guide_action = QAction(tr("onigiri_guide", "Onigiri Guide"), mw)
-    guide_action.triggered.connect(_open_onigiri_guide)
-    info_menu.addAction(guide_action)
 
     welcome_action = QAction(tr("welcome_message"), mw)
     welcome_action.triggered.connect(_show_welcome_message)

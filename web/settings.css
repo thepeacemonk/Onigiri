@@ -3936,6 +3936,23 @@ html body .osw-dark .osw-segment-btn.is-active:hover,
 }
 .osw-imgslot.is-set .osw-imgslot-name { color: var(--osw-fg); }
 
+/* Color slots carry one short value, unlike an image's role and filename. */
+.osw-colorslot .osw-imgslot-meta {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.osw-colorslot .osw-imgslot-role {
+  flex: 0 0 auto;
+  color: var(--osw-fg-muted);
+}
+.osw-colorslot .osw-imgslot-role svg { width: 14px; height: 14px; }
+.osw-colorslot .osw-imgslot-name {
+  color: var(--osw-fg);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
 .osw-imgslot-action {
   flex: 0 0 auto;
   display: inline-flex;
@@ -7731,8 +7748,8 @@ html body .osw-organize-font-role-option.is-selected {
 }
 
 .osw-organize-menu.is-widget-colors .osw-organize-menu-field.osw-imagefield {
-  gap: 6px;
-  padding: 8px 0;
+  gap: 4px;
+  padding: 7px 0;
   border-bottom: 1px solid var(--osw-hairline);
 }
 
@@ -7765,14 +7782,26 @@ html body .osw-organize-font-role-option.is-selected {
 }
 
 .osw-organize-menu.is-widget-colors .osw-colorslot {
-  min-height: 34px;
-  padding: 4px 7px;
+  min-height: 36px;
+  padding: 6px 9px;
+  gap: 8px;
   border-radius: 10px;
 }
 
 .osw-organize-menu.is-widget-colors .osw-colorslot .osw-imgslot-thumb {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+}
+
+.osw-organize-menu.is-widget-colors .osw-imagefield-slots.is-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 340px) {
+  .osw-organize-menu.is-widget-colors .osw-imagefield-slots.is-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .osw-organize-menu.is-widget-fonts .osw-number {

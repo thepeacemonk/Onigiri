@@ -3412,7 +3412,7 @@ def generate_deck_browser_backgrounds(addon_path):
         _sidebar_int_setting(key, 0) for key in widget_margin_keys
     ]
     sidebar_widget_gap = _sidebar_offset_setting(
-        "modern_menu_sidebar_widget_gap", -40
+        "modern_menu_sidebar_widget_gap", 0
     )
     item_margin_css = ""
     if any(mw.col.conf.get(key) is not None for key in item_margin_keys):
@@ -4751,6 +4751,56 @@ def _on_reviewer_progress_show_question(card):
     update_reviewer_card_type(card)
 
 
+def _study_tool_header_buttons(conf):
+    from ..core.study_tool_visibility import reviewer_button_visible
+
+    show_hashi_notes_button = reviewer_button_visible("hashi_notes", conf)
+    show_pomodoro_button = reviewer_button_visible("pomodoro", conf)
+
+    hashi_notes_button_html = (
+        '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
+        f'class="onigiri-reviewer-button onigiri-hashi-notes-button">{tr_at("hashi_notes_title")}</a>'
+        if show_hashi_notes_button else ""
+    )
+    pomodoro_button_html = (
+        '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
+        f'class="onigiri-reviewer-button onigiri-pomodoro-button">{tr_at("pomodoro_title")}</a>'
+        if show_pomodoro_button else ""
+    )
+
+    return hashi_notes_button_html, pomodoro_button_html
+
+
+def refresh_study_tool_reviewer_buttons(conf=None):
+    """Update the live header without replacing the current review card."""
+    if conf is None:
+        conf = config.get_config_readonly()
+    buttons_html = "".join(_study_tool_header_buttons(conf))
+    script = """
+    (() => {
+        document.querySelectorAll('.onigiri-reviewer-header-buttons').forEach(header => {
+            const existing = header.querySelectorAll('.onigiri-hashi-notes-button, .onigiri-pomodoro-button');
+            const anchor = document.createComment('study-tools');
+            if (existing.length) existing[0].before(anchor);
+            else {
+                const sync = Array.from(header.querySelectorAll('a.onigiri-reviewer-button'))
+                    .find(button => (button.getAttribute('onclick') || '').includes("pycmd('sync')"));
+                if (sync) sync.after(anchor);
+                else header.append(anchor);
+            }
+            existing.forEach(button => button.remove());
+            const template = document.createElement('template');
+            template.innerHTML = BUTTONS_HTML;
+            anchor.replaceWith(template.content);
+        });
+    })();
+    """.replace("BUTTONS_HTML", json.dumps(buttons_html))
+    for surface in (getattr(mw, "reviewer", None), getattr(mw, "overview", None)):
+        web = getattr(surface, "web", None)
+        if web is not None:
+            web.eval(script)
+
+
 def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     """Generates the HTML and basic structural CSS for the new web-based reviewer top bar."""
 
@@ -4784,20 +4834,7 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             mw._onigiri_restaurant_hook_registered = True
 
     # Build the HTML with the restaurant chip if enabled
-    hashi_notes_conf = conf.get("hashi_notes", {}) or {}
-    show_hashi_notes_button = hashi_notes_conf.get("show_in_reviewer_header", True)
-    show_pomodoro_button = conf.get("onigiri_pomodoro_show_in_reviewer_header", True)
-
-    hashi_notes_button_html = (
-        '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-hashi-notes-button">{tr_at("hashi_notes_title")}</a>'
-        if show_hashi_notes_button else ""
-    )
-    pomodoro_button_html = (
-        '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-pomodoro-button">{tr_at("pomodoro_title")}</a>'
-        if show_pomodoro_button else ""
-    )
+    hashi_notes_button_html, pomodoro_button_html = _study_tool_header_buttons(conf)
 
     # The header gauge only makes sense over a live queue, so it is built for
     # the reviewer webview and left out of the overview's copy of this header.
@@ -8599,7 +8636,7 @@ def generate_reviewer_buttons_css(conf):
             --onigiri-answer-hover-number-color: {answer_hover_number_color_dark};
         }}
 
-        body .stattxt:not(.onigiri-count-pill),
+        body .stattxt:not(.onigiri-count-pill):not(#spdfTime),
         body .nobold:not(.onigiri-answer-hover-number) {{
             color: {interval_color_light} !important;
             opacity: 0.9 !important;
@@ -8608,9 +8645,9 @@ def generate_reviewer_buttons_css(conf):
             display: {native_number_display} !important;
         }}
 
-        .nightMode body .stattxt:not(.onigiri-count-pill),
+        .nightMode body .stattxt:not(.onigiri-count-pill):not(#spdfTime),
         .nightMode body .nobold:not(.onigiri-answer-hover-number),
-        .night-mode body .stattxt:not(.onigiri-count-pill),
+        .night-mode body .stattxt:not(.onigiri-count-pill):not(#spdfTime),
         .night-mode body .nobold:not(.onigiri-answer-hover-number) {{
             color: {interval_color_dark} !important;
         }}
@@ -9222,7 +9259,9 @@ def generate_reviewer_buttons_css(conf):
                 const onclick = btn.getAttribute('onclick') || '';
                 const cmd = btn.getAttribute('data-cmd') || '';
                 const id = btn.id || '';
-                const text = cleanText(btn.innerText).toLowerCase();
+                // Ignore nested stats: Speed Focus can show "Again 0:01"
+                // inside More time!, which is still a utility button.
+                const text = buttonTextWithoutOnigiri(btn).toLowerCase();
                 if (onclick.includes('ease1') || cmd === 'ease1' || id === 'ease1') return "1";
                 if (onclick.includes('ease2') || cmd === 'ease2' || id === 'ease2') return "2";
                 if (onclick.includes('ease3') || cmd === 'ease3' || id === 'ease3') return "3";
@@ -9491,19 +9530,23 @@ def generate_reviewer_buttons_css(conf):
                 // Rather than dropping a whole node when it merely contains the
                 // timer text, cut just that substring out before splitting, so real
                 // counts sharing a node with the timer still come through.
-                const nodes = Array.from(document.querySelectorAll('#outer .stattxt'))
+                // Other add-ons reuse .stattxt in sibling toolbar cells. Speed
+                // Focus's #spdfTime, for example, contains "Reveal 0:08" and
+                // must stay visible without overwriting our cached queue counts.
+                // Anki's remaining-counts HTML belongs to the middle cell.
+                const nodes = Array.from(document.querySelectorAll('#outer #middle .stattxt'))
                     .filter(node => !node.closest('.onigiri-pre-answer-counts'));
-                nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
                 let combined = nodes.map(node => cleanText(node.textContent)).filter(Boolean).join(' ');
                 if (timerNode && timerText) {
                     combined = combined.split(timerText).map(part => cleanText(part)).filter(Boolean).join(' ');
                 }
-                const scraped = combined.split('+').map(part => cleanText(part)).filter(Boolean).slice(0, 3);
-                if (scraped.length > 0) {
+                const scraped = combined.split('+').map(part => cleanText(part));
+                if (scraped.length === 3 && scraped.every(part => /^\\d+$/.test(part))) {
+                    nodes.forEach(node => forceHideNativeNumberElement(node, 'onigiri-stattxt-source'));
                     onigiriLastKnownStats = scraped;
                     return scraped;
                 }
-                // Empty scrape: almost always means our own earlier rebuild already
+                // Empty/invalid scrape: usually our own earlier rebuild already
                 // wiped the native counts node for this card, not that the counts
                 // themselves vanished. Fall back to the last real read instead of
                 // reporting "no counts" (which would blank the pills every tick).

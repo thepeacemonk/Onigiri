@@ -1769,6 +1769,40 @@ def _tool_action(field_id, label, button_label, action, desc="", button_icon="")
     return field
 
 
+def _tool_visibility_section(tool_id, title, header_field=None):
+    visible_id = tool_id + "_visible"
+    fields = [{
+        "id": visible_id, "type": "toggle",
+        "label": tr("study_tool_show", "Show {tool}").format(tool=title),
+        "desc": tr("study_tool_visibility_desc"),
+        "bind": {"kind": "config", "path": ["study_tools_visibility", tool_id]},
+        "default": True,
+    }]
+    if header_field:
+        fields.append({
+            "id": header_field,
+            "type": "toggle",
+            "label": tr("pomodoro_show_in_header", "Show in Reviewer header"),
+            "desc": tr("study_tool_header_visibility_desc"),
+            "bind": ({"kind": "config", "path": ["hashi_notes", "show_in_reviewer_header"]}
+                     if tool_id == "hashi_notes" else
+                     {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}),
+            "default": True,
+            "show_when": {"field": visible_id, "values": [True]},
+        })
+    if tool_id == "pomodoro":
+        fields.append({
+            "id": "pomodoro_hidden_note", "type": "note",
+            "label": tr("study_tool_timer_hidden"),
+            "show_when": {"field": visible_id, "values": [False]},
+        })
+    return {
+        "id": tool_id + "_visibility",
+        "title": tr("study_tool_visibility", "Visibility"),
+        "fields": fields,
+    }
+
+
 def _prep_station_page():
     col = lambda key, _default: {"kind": "col", "key": key}
     path = lambda *parts: {"kind": "config", "path": ["prep_widget_style", *parts]}
@@ -1857,12 +1891,10 @@ def _prep_station_page():
         "title": tr("prep_station_title", "Prep Station"),
         "icon": "stats.svg",
         "group": "tools",
-        "show_when": {
-            "field": "onigiri_ui_theme",
-            "values": ["classic"],
-        },
         "description": tr("prep_station_intro", "Plan your exam preparation and tune the Study Plans widget."),
+        "post_save": ["study_tool_visibility"],
         "sections": [
+            _tool_visibility_section("prep_station", tr("prep_station_title", "Prep Station")),
             {
                 "id": "prep_pace", "title": tr("prep_pace_section_title", "Pace & Statistics"),
                 "fields": [
@@ -1982,12 +2014,10 @@ def _hashi_notes_page():
     widget_fields += color("excerpt", tr("hashi_widget_excerpt_color", "Excerpt Color"), "#757575", "#9c9c9c")
     return {
         "id": "hashinotes", "legacy_name": "Hashi Notes", "title": tr("hashi_notes_title", "Hashi Notes"), "icon": "hashi_notes.svg", "group": "tools",
-        "show_when": {
-            "field": "onigiri_ui_theme",
-            "values": ["classic"],
-        },
         "description": tr("hashi_settings_intro", "Hashi Notes are quick, temporary study notes."),
+        "post_save": ["study_tool_visibility"],
         "sections": [
+            _tool_visibility_section("hashi_notes", tr("hashi_notes_title", "Hashi Notes"), "hashi_show_header"),
             _designer_preview_section(
                 "hashi_widget",
                 "hashi_widget",
@@ -2112,8 +2142,9 @@ def _pomodoro_page():
     return {
         "id": "pomodoro", "legacy_name": "Pomodoro", "title": tr("pomodoro_title", "Pomodoro"), "icon": "pomodoro.svg", "group": "tools",
         "description": tr("pomodoro_page_intro", "A minimal focus timer. Open the floating island with Shift+P, the Reviewer header button, or the Study Tools menu."),
-        "post_save": ["pomodoro"],
+        "post_save": ["study_tool_visibility", "pomodoro"],
         "sections": [
+            _tool_visibility_section("pomodoro", tr("pomodoro_title", "Pomodoro"), "pomodoro_show_header"),
             {
                 "id": "pomodoro_setup",
                 "title": tr("pomodoro_quick_setup", "Quick Setup"),
@@ -2168,7 +2199,6 @@ def _pomodoro_page():
                 ],
             },
             {"id": "pomodoro_options", "title": tr("pomodoro_options", "Options"), "description": "Choose how the timer fits into your study flow.", "fields": [
-                {"id": "pomodoro_show_header", "type": "toggle", "label": tr("pomodoro_show_in_header", "Show in Reviewer header"), "desc": tr("pomodoro_header_desc"), "bind": {"kind": "config", "key": "onigiri_pomodoro_show_in_reviewer_header"}, "default": True},
                 {"id": "pomodoro_auto_start", "type": "toggle", "label": tr("pomodoro_auto_start", "Auto-start next timer"), "desc": tr("pomodoro_auto_start_desc"), "bind": path("auto_start_next_phase"), "default": True},
             ]},
             _designer_preview_section(
@@ -4201,7 +4231,7 @@ def _mainmenu_organize_section():
                     "Move widgets nearer to or farther from the sidebar.",
                 ),
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_widget_gap"},
-                "default": -40,
+                "default": 0,
                 "min": -240,
                 "max": 240,
                 "step": 1,

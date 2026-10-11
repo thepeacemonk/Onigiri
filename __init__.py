@@ -36,10 +36,23 @@ def _storage_integrity_check():
         messages = safe_storage.run_startup_check(profile_name)
         # Anything restored on disk predates the cached config, so drop it.
         config.invalidate_config_cache()
-        if messages:
-            from .ui_kit.onigiri_notifications import notify_warning
+        collection = mw.col
 
-            notify_warning("\n\n".join(messages), title=tr("onigiri_storage_notice"))
+        def show_storage_notices():
+            # A queued callback must not show the previous profile's warning
+            # if the collection was closed or switched before it ran.
+            if collection is None or mw.col is not collection or not mw.pm or mw.pm.name != profile_name:
+                return
+            # Later profile loaders may recover settings/game files too.
+            notices = messages + safe_storage.take_notices()
+            if notices:
+                from .ui_kit.onigiri_notifications import notify_warning
+
+                notify_warning("\n\n".join(notices), title=tr("onigiri_storage_notice"), blocking=False)
+
+        # Finish Anki's profile hooks before presenting UI. The warning uses
+        # open(), so it cannot run a nested event loop during initialization.
+        QTimer.singleShot(0, show_storage_notices)
     except Exception as e:
         print(f"[Onigiri] storage integrity check failed: {e}")
 

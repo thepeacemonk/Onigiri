@@ -1459,7 +1459,9 @@ window.OnigiriEngine = {
             { label: ONIGIRI_T('stats', 'Stats'), icon: 'stats', command: 'stats' },
             { label: ONIGIRI_T('sync', 'Sync'), icon: 'sync', command: 'sync' },
             { label: ONIGIRI_T('settings', 'Settings'), icon: 'settings', command: 'openOnigiriSettings' },
-            { label: ONIGIRI_T('hashi_notes_title', 'Hashi Notes'), icon: 'hashi_notes', command: 'openHashiNotes:planner' },
+            ...(window.ONIGIRI_CONFIG?.studyToolsVisibility?.hashi_notes === false ? [] : [
+                { label: ONIGIRI_T('hashi_notes_title', 'Hashi Notes'), icon: 'hashi_notes', command: 'openHashiNotes:planner' },
+            ]),
             { label: ONIGIRI_T('onigiri_games', 'Onigiri Games'), icon: 'gamepad', command: 'openGamificationSettings' },
             { label: ONIGIRI_T('get_shared', 'Get Shared'), icon: 'get_shared', command: 'shared' },
             { label: ONIGIRI_T('create_deck', 'Create Deck'), icon: 'add-deck', command: 'onigiri_create_deck' },
