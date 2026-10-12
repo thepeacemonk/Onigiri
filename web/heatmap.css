@@ -80,6 +80,12 @@
     min-width: 0;
 }
 
+/* Keep the calendar and its title; hide all header pills together. */
+[data-minimalist="true"] .onigiri-heatmap-header .header-right,
+[data-minimalist="true"] .heatmap-header-skeleton .header-right-skeleton {
+    display: none;
+}
+
 /* --- Streak Counter (Matching learner-stats-deck-trigger structure & design) --- */
 .streak-counter {
     font-family: inherit;

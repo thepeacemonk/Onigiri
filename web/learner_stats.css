@@ -83,6 +83,9 @@
     .learner-stats-widget[data-grid-span="1x2"] .learner-stats-header-controls {
         gap: 4px !important;
     }
+    .learner-stats-widget[data-minimalist="true"] .learner-stats-header-controls {
+        display: none !important;
+    }
     .learner-stats-switcher {
         position: relative;
         display: flex;

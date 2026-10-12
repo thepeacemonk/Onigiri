@@ -183,6 +183,7 @@ def _reviewer_progress(_store):
 
     patcher.invalidate_reviewer_progress_settings()
     patcher.update_reviewer_progress()
+    patcher.refresh_reviewer_header_style(_store.config)
 
 
 def _hexagon_land(store):

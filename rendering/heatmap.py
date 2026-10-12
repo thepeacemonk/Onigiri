@@ -318,6 +318,7 @@ def get_heatmap_and_config():
         "heatmapStreakIconColor": conf.get("heatmapStreakIconColor", DEFAULTS.get("heatmapStreakIconColor", "#ff6b35")),
         "heatmapStreakIconZeroColor": conf.get("heatmapStreakIconZeroColor", DEFAULTS.get("heatmapStreakIconZeroColor", "#8f8f8f")),
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
+        "heatmapMinimalist": conf.get("heatmapMinimalist", DEFAULTS["heatmapMinimalist"]),
         "heatmapShowMonths": conf.get("heatmapShowMonths", DEFAULTS["heatmapShowMonths"]),
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),

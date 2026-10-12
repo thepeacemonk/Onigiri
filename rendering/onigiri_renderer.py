@@ -1973,8 +1973,9 @@ def _get_onigiri_retention_html(row_span: int = 1, col_span: int = 1) -> str:
 
 def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
+    minimalist = config.get_config_readonly().get("heatmapMinimalist", False) is True
     return f"""
-    <div id='onigiri-heatmap-container'>
+    <div id='onigiri-heatmap-container' data-minimalist='{str(minimalist).lower()}'>
         <div class="heatmap-header-skeleton"><div class="header-left-skeleton"><div class="skeleton-title"></div></div><div class="header-right-skeleton"><div class="skeleton-streak"></div><div class="skeleton-nav"></div><div class="skeleton-filters"></div></div></div>
         <div class="heatmap-grid-skeleton">{skeleton_cells}</div>
     </div>"""

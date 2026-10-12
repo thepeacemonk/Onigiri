@@ -3674,6 +3674,18 @@
           sample.style.background = (bgKey && values[bgKey]) || (CTX.dark ? "#3a3a3a" : "#f0f0f0");
           sample.style.color = (textKey && values[textKey]) || (CTX.dark ? "#f0f0f0" : "#2c2c2c");
           sample.style.borderColor = (borderKey && values[borderKey]) || "";
+          if (previewKind === "reviewer_progress") {
+            const holder = el("div", "osw-preview-rprog-header");
+            sample.classList.add("onigiri-reviewer-button");
+            sample.setAttribute("data-header-button", "");
+            holder.appendChild(sample);
+            reviewerHeaderStyle(holder, values, CTX.dark);
+            // Gallery swatches use the same variables and chrome as the stage.
+            ["background", "color", "borderColor"].forEach(function (key) { sample.style[key] = ""; });
+            option.insertBefore(sample, caption);
+            option.classList.add("osw-header-color-option", "onigiri-header-customization");
+            option.style.cssText = holder.style.cssText;
+          }
           if (previewKind === "reviewer_bottom_bar") {
             bbarButtonBorder(sample, values, role.id.replace("bbar_colors_", ""), suffix, true);
           }
@@ -3778,6 +3790,7 @@
       if (compactFontMenuEl && compactFontMenuEl.__anchor === button) {
         closeCompactFontMenu();
       } else {
+        if (section.headerCustomization && values.rheader_mode !== "custom") setValue("rheader_mode", "custom");
         openCompactFontMenu(
           button,
           section.colorGroups || [],
@@ -5348,6 +5361,7 @@
     const btn = el("button", "osw-sq-switch-btn");
     btn.type = "button";
     btn.setAttribute("data-field", field.id);
+    btn.setAttribute("aria-label", field.headLabel || field.label || "");
     btn.setAttribute("aria-pressed", values[field.id] ? "true" : "false");
     const track = el("div", "osw-sq-switch" + (values[field.id] ? " is-on" : ""));
     btn.appendChild(track);
@@ -5442,14 +5456,32 @@
     return (section.sync_hidden_fields || []).indexOf(fieldId) !== -1;
   }
 
+  function deckFieldNode(card, id) {
+    const selector = '[data-field-host="' + id + '"]';
+    // Rebalancing can temporarily detach an empty column. Its controls must
+    // still be found when their visibility changes back to Custom.
+    return (card.__fieldsHost && card.__fieldsHost.querySelector(selector)) ||
+      (card.__controlsCol && card.__controlsCol.querySelector(selector)) ||
+      (card.__slotsCol && card.__slotsCol.querySelector(selector));
+  }
+
   function applyDeckVisibility(card) {
     const host = card.__fieldsHost;
     if (!host) return;
-    ((card.__section || {}).fields || []).forEach(function (field) {
-      if (!field.showWhen) return;
-      const node = host.querySelector('[data-field-host="' + field.id + '"]');
+    const section = card.__section || {};
+    const headerCustom = settingsComplexity === "advanced" && values.rheader_mode === "custom";
+    if (section.headerCustomization) {
+      const menus = host.querySelector(".osw-designer-compact-menus");
+      if (menus) menus.classList.toggle("is-hidden", !headerCustom);
+      if (!headerCustom && compactFontMenuEl && host.contains(compactFontMenuEl.__anchor)) closeCompactFontMenu();
+    }
+    (section.fields || []).forEach(function (field) {
+      const headerField = section.headerCustomization && !field.id.startsWith("rprog_");
+      if (!headerField && !field.showWhen) return;
+      const node = deckFieldNode(card, field.id);
       if (!node) return;
-      const hidden = !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id);
+      const hidden = (headerField && field.id !== "rheader_mode" && !headerCustom) ||
+        !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id);
       node.classList.toggle(
         "is-hidden", hidden
       );
@@ -5610,7 +5642,7 @@
       });
     const visibleIds = [];
     fields.forEach(function (field) {
-      const node = host.querySelector('[data-field-host="' + field.id + '"]');
+      const node = deckFieldNode(card, field.id);
       if (node && !node.classList.contains("is-hidden")) visibleIds.push(field.id);
     });
     const signature = visibleIds.join(",");
@@ -5636,7 +5668,7 @@
       if (block.group === "icons") return;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return;
-        const node = host.querySelector('[data-field-host="' + field.id + '"]');
+        const node = deckFieldNode(card, field.id);
         if (node && !node.classList.contains("is-hidden")) totalNonIconH += DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
       });
     });
@@ -5655,7 +5687,7 @@
         const target = singleColumn || block.group === "pinned-left" ? controlsCol : slotsCol;
         let blockH = 0;
         block.fields.forEach(function (field) {
-          const node = host.querySelector('[data-field-host="' + field.id + '"]');
+          const node = deckFieldNode(card, field.id);
           if (node) pinnedNodes.push({ node: node, target: target });
           if (node && !node.classList.contains("is-hidden")) {
             blockH += field.deckIconTile ? DECK_ICON_TILE_HEIGHT : (DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46);
@@ -5755,7 +5787,7 @@
         // height, which is what actually shows up as a gap under one column.
         const heights = block.fields.map(function (field) {
           if (deckSkipField(field.id)) return 0;
-          const node = host.querySelector('[data-field-host="' + field.id + '"]');
+          const node = deckFieldNode(card, field.id);
           if (!node || node.classList.contains("is-hidden")) return 0;
           return DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
         });
@@ -5772,7 +5804,7 @@
         let secondH = 0;
         block.fields.forEach(function (field, index) {
           if (deckSkipField(field.id)) return;
-          const node = host.querySelector('[data-field-host="' + field.id + '"]');
+          const node = deckFieldNode(card, field.id);
           const target = index < mid ? firstCol : secondCol;
           if (node && node.parentElement !== target) target.appendChild(node);
           if (node && !node.classList.contains("is-hidden")) {
@@ -5787,13 +5819,13 @@
       let blockH = 0;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return; // counted via its pair anchor
-        const node = host.querySelector('[data-field-host="' + field.id + '"]');
+        const node = deckFieldNode(card, field.id);
         if (node && !node.classList.contains("is-hidden")) blockH += DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
       });
       const target = singleColumn || leftH <= rightH ? controlsCol : slotsCol;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return; // fused into its pair anchor's row, moves with it
-        const node = host.querySelector('[data-field-host="' + field.id + '"]');
+        const node = deckFieldNode(card, field.id);
         if (node && node.parentElement !== target) target.appendChild(node);
       });
       if (target === controlsCol) leftH += blockH; else rightH += blockH;
@@ -5915,7 +5947,15 @@
       else if (field.type === "number") headControls.appendChild(renderHeadNumber(field));
     });
 
-    if (section.preview_kind === "reviewer_bottom_bar") {
+    if (section.headerCustomization) {
+      headControls.appendChild(renderLocalHeadChoice(
+        str("customize", "Customize"),
+        [{value: "buttons", label: str("header_buttons", "Header Buttons")},
+         {value: "progress", label: str("progress_bar_section_title", "Header Progress Bar")}],
+        function () { return reviewerHeaderPane; },
+        function (value) { reviewerHeaderPane = value; showPage(currentPage); }
+      ));
+    } else if (section.preview_kind === "reviewer_bottom_bar") {
       headControls.appendChild(renderLocalHeadChoice(
         str("preview", "Preview"),
         [["answer", str("answer_buttons", "Answer Buttons")], ["pre_answer", str("show_answer", "Show Answer")]].map(function (pair) {
@@ -6049,7 +6089,11 @@
     card.appendChild(stage);
 
     card.__stage = stage;
-    card.__section = section;
+    const editButtons = !section.headerCustomization || reviewerHeaderPane === "buttons";
+    const visibleFields = (section.fields || []).filter(function (field) {
+      return !section.headerCustomization || field.id.startsWith("rprog_") !== editButtons;
+    });
+    card.__section = section.headerCustomization ? Object.assign({}, section, {fields: visibleFields}) : section;
     card.__getMode = function () { return previewMode; };
 
     /* Below the stage: sliders and switches on the left, picture/colour slots
@@ -6083,12 +6127,12 @@
     const compactMenuCol = (section.colorGroups || []).length
       ? el("div", "osw-designer-compact-menus osw-deck-full-width")
       : null;
-    if ((section.modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
+    if (editButtons && (section.headerCustomization || section.modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
       const fontMenuRow = el("div", "osw-designer-font-menu-row");
       fontMenuRow.appendChild(compactFontMenuButton(section));
       (compactMenuCol || controlsCol).appendChild(fontMenuRow);
     }
-    if ((section.colorGroups || []).length) {
+    if (editButtons && (section.colorGroups || []).length) {
       const colorMenuRow = el("div", "osw-designer-font-menu-row osw-designer-color-menu-row");
       colorMenuRow.appendChild(compactColorMenuButton(section));
       compactMenuCol.appendChild(colorMenuRow);
@@ -6130,7 +6174,7 @@
     const isDeckStats = section.id === "mainmenu_deck_stats";
     const useFullWidthColorGrid = isDeckStats || !!section.full_width_color_grid;
     const colorGridCol = useFullWidthColorGrid ? el("div", "osw-deck-color-grid") : null;
-    (section.fields || []).forEach(function (field) {
+    visibleFields.forEach(function (field) {
       if (field.head && !section.head_to_deck) return;
       if (compactFontFieldIds[field.id]) return;
       if (compactColorFieldIds[field.id]) return;
@@ -7587,7 +7631,7 @@
     const wrap = el("div", "osw-preview-dstats-wrap");
     if (isDark) wrap.classList.add("night-mode");
     wrap.innerHTML =
-      '<div class="learner-stats-widget" data-active-view="' + dstatsActiveView + '" data-chart-type="' + (isFull ? "full" : "minimal") + '" style="' + widgetStyle + '">' +
+      '<div class="learner-stats-widget" data-minimalist="' + (vals["dstats_minimalist"] === true) + '" data-active-view="' + dstatsActiveView + '" data-chart-type="' + (isFull ? "full" : "minimal") + '" style="' + widgetStyle + '">' +
         '<div class="learner-stats-header"><div class="learner-stats-header-row onigiri-widget-head">' +
           "<h3>" + str("lstats_title", "Stats") + "</h3>" +
           '<div class="learner-stats-header-controls">' + dstatsSwitcherHtml() +
@@ -7794,6 +7838,7 @@
       heatmapStreakIconColor: vals["heatmapStreakIconColor"] || "#ff6b35",
       heatmapStreakIconZeroColor: vals["heatmapStreakIconZeroColor"] || "#8f8f8f",
       heatmapShowStreak: vals["heatmapShowStreak"] !== false,
+      heatmapMinimalist: vals["heatmapMinimalist"] === true,
       heatmapShowMonths: vals["heatmapShowMonths"] !== false,
       heatmapShowWeekdays: vals["heatmapShowWeekdays"] !== false,
       heatmapShowWeekHeader: vals["heatmapShowWeekHeader"] !== false,
@@ -7998,6 +8043,7 @@
       previewConfig.heatmapDefaultView, previewConfig.heatmapWeekStart,
       previewConfig.heatmapShowMonths, previewConfig.heatmapShowWeekdays,
       previewConfig.heatmapShowWeekHeader, previewConfig.heatmapShowStreak,
+      previewConfig.heatmapMinimalist,
       previewConfig.heatmapParticlesAnimation,
       vals["heatmapStreakIcon"] || "system:fire.svg", isDark
     ].join("|");
@@ -8381,6 +8427,7 @@
   // Which of the bar's two states is showing — local UI state, not a
   // persisted setting, same as Deck Stats' Bars/Donut/Grouped switcher.
   let bbarActiveMode = "answer";
+  let reviewerHeaderPane = "buttons";
 
   function bbarStatTextMode(vals) {
     const mode = vals["bbar_stattxt_mode"] || "hover";
@@ -8687,7 +8734,7 @@
       (isDark ? "#e8e8e8" : "#2c2c2c");
     const fill = rprogFillImage(vals, isDark);
 
-    const chip = el("div", "osw-preview-rprog-chip is-" + style);
+    const chip = el("div", "osw-preview-rprog-chip onigiri-reviewer-progress is-" + style);
     if (vals["rprog_chrome"] === false) chip.classList.add("is-bare");
     chip.style.color = text;
 
@@ -8759,6 +8806,51 @@
     return chip;
   }
 
+  function reviewerHeaderBackground(color, opacity) {
+    if (color === "transparent") return color;
+    const parsed = String(color).match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+    return parsed ? "rgba(" + parsed[1] + ", " + parsed[2] + ", " + parsed[3] + ", " +
+      (opacity * (parsed[4] == null ? 1 : Number(parsed[4]))) + ")" : rgba(color, opacity);
+  }
+
+  function reviewerHeaderStyle(header, vals, isDark) {
+    header.classList.add("onigiri-header-customization");
+    const custom = vals.rheader_mode === "custom";
+    header.classList.toggle("is-custom-header", custom);
+    const font = designerFontRole(vals, "reviewer_header", isDark, "main", true);
+    header.style.setProperty("--rh-font-family", font.family);
+    header.style.setProperty("--rh-font-size", Math.max(8, Math.min(72, font.size)) + "px");
+    if (custom) {
+      const n = function (name, fallback, max) { return Math.max(0, Math.min(max, designerNum(vals["rheader_" + name], fallback))); };
+      [["radius", 12, 100], ["stroke", 0, 10], ["height", 0, 200], ["gap", 8, 40]].forEach(function (spec) {
+        const key = spec[0] === "stroke" ? "border_size" : spec[0];
+        header.style.setProperty("--rh-" + spec[0], n(key, spec[1], spec[2]) + "px");
+      });
+      header.style.setProperty("--rh-padding", n("padding", 5, 100) + "px");
+      header.style.setProperty("--rh-padding-x", (n("padding", 5, 100) + 7) + "px");
+      header.style.setProperty("--rh-blur", (n("blur", 0, 100) / 5) + "px");
+      const opacity = n("opacity", 100, 100) / 100;
+      ["bg", "text", "hover_bg", "hover_text", "border"].forEach(function (suffix) {
+        const prefix = "rheader_" + suffix;
+        const color = designerPairValue(vals, prefix + "_light", prefix + "_dark", prefix + "_theme_mode", isDark);
+        if (!color) return;
+        header.style.setProperty("--rh-" + suffix.replace(/_/g, "-"),
+          suffix === "bg" || suffix === "hover_bg" ? reviewerHeaderBackground(color, opacity) : color);
+      });
+    } else {
+      const box = designerPairValue(vals, "widget_box_color_light", "widget_box_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark) || (isDark ? "#2c2c2c" : "#ffffff");
+      const border = designerPairValue(vals, "widget_border_color_light", "widget_border_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark) || (isDark ? "#3a3a3a" : "#d9d9d9");
+      const glass = designerGlassCardStyle(vals, isDark, "onigiri_canvas_inset_effect_opacity", "onigiri_canvas_inset_effect_blur", "onigiri_canvas_inset_border_radius", "onigiri_canvas_inset_border_width", box, border);
+      header.style.setProperty("--onigiri-box-effect-bg", glass.background);
+      header.style.setProperty("--onigiri-box-effect-border", border);
+      header.style.setProperty("--onigiri-box-effect-fg", designerFontRole(vals, "main", isDark).color);
+      header.style.setProperty("--onigiri-box-effect-radius", (vals.onigiri_canvas_inset_border_radius == null ? 20 : vals.onigiri_canvas_inset_border_radius) + "px");
+      header.style.setProperty("--onigiri-box-effect-stroke", (vals.onigiri_canvas_inset_border_width == null ? 1 : vals.onigiri_canvas_inset_border_width) + "px");
+      header.style.setProperty("--onigiri-box-effect-blur", (designerNum(vals.onigiri_canvas_inset_effect_blur, 0) / 5) + "px");
+    }
+    if (font.customColor) header.style.setProperty("--rh-text", font.customColor);
+  }
+
   PREVIEW_PAINTERS.reviewer_progress = function (stage, vals, isDark) {
     stage.innerHTML = "";
     stage.style.padding = "0";
@@ -8772,13 +8864,28 @@
     const enabled = vals["rprog_enabled"] !== false;
     const chip = enabled ? rprogChip(vals, isDark, data) : null;
     if (chip && (vals["rprog_position"] || "right") === "left") header.appendChild(chip);
-    ["Decks", "Add", "Browse", "Stats", "Sync"].forEach(function (label) {
-      header.appendChild(el("span", "osw-preview-rprog-btn", label));
+    [["decks", "Decks"], ["add", "Add"], ["browse", "Browse"], ["stats", "Stats"], ["sync", "Sync"]].forEach(function (spec) {
+      const button = el("a", "osw-preview-rprog-btn onigiri-reviewer-button", str(spec[0], spec[1]));
+      button.setAttribute("data-header-button", spec[0]);
+      button.href = "#";
+      button.addEventListener("click", function (event) { event.preventDefault(); });
+      header.appendChild(button);
+    });
+    [["hashi", "hashi_show_header", "hashi_notes_title", "Hashi Notes"],
+     ["pomodoro", "pomodoro_show_header", "pomodoro_title", "Pomodoro"]].forEach(function (spec) {
+      if (!vals[spec[1]]) return;
+      if (vals[spec[0] === "hashi" ? "hashi_notes_visible" : "pomodoro_visible"] === false) return;
+      const button = el("a", "osw-preview-rprog-btn onigiri-reviewer-button", str(spec[2], spec[3]));
+      button.setAttribute("data-header-button", spec[0]);
+      button.href = "#";
+      button.addEventListener("click", function (event) { event.preventDefault(); });
+      header.appendChild(button);
     });
     if (chip && (vals["rprog_position"] || "right") !== "left") header.appendChild(chip);
 
+    reviewerHeaderStyle(header, vals, isDark);
     wrap.appendChild(header);
-    wrap.appendChild(el("div", "osw-preview-rprog-card", "Question"));
+    wrap.appendChild(el("div", "osw-preview-rprog-card", str("question", "Question")));
 
     stage.appendChild(wrap);
   };

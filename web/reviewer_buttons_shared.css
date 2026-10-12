@@ -40,7 +40,7 @@
   pointer-events: none !important;
 }
 :is(#outer, .osw-preview-bbar-bar).onigiri-bbar-fixed {
-  --onigiri-bbar-primary-width: min(max(540px, calc(var(--onigiri-bbar-font-size, 14px) * 22)), calc(100cqw - 280px));
+  --onigiri-bbar-primary-width: min(max(540px, calc(var(--onigiri-bbar-font-size, 14px) * 22)), calc(100cqw - var(--onigiri-bbar-side-space, 280px)));
 }
 :is(#outer, .osw-preview-bbar-bar) button.onigiri-show-answer-btn.is-fixed {
   display: flex !important;

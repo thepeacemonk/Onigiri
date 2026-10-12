@@ -1094,6 +1094,7 @@ def build_context(store, pages, initial_page=None):
                     "layout": section.get("layout", ""),
                     "role_key": section.get("role_key", ""),
                     "fontRoles": section.get("font_roles", []),
+                    "headerCustomization": bool(section.get("header_customization")),
                     "fontMenuLabel": section.get("font_menu_label", ""),
                     # Compact element-group picker used by dense palettes such
                     # as the Reviewer bottom-bar button colors.
@@ -1317,7 +1318,7 @@ def render(store, pages, initial_page=None):
     template = read_web_asset("settings.html")
     if not template:
         return "<html><body>" + tr("settings_assets_missing") + "</body></html>"
-    css = read_web_asset("settings.css") + "\n" + read_web_asset("reviewer_buttons_shared.css")
+    css = (read_web_asset("settings.css") + "\n" + read_web_asset("reviewer_header_shared.css")) + "\n" + read_web_asset("reviewer_buttons_shared.css")
     js = read_web_asset("settings.js")
     heatmap_js = read_web_asset("Particles.js") + "\n" + read_web_asset("heatmap.js")
     notifications_js = read_web_asset("notifications.js")

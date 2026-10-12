@@ -11394,3 +11394,17 @@ html body .osw-organize-menu :is(
 .osw-organize-font-role-list.is-floating {
   border-radius: var(--osw-widget-popup-radius, 11px);
 }
+
+/* Header previews use real link states without navigating away from Settings. */
+.osw-preview-rprog-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.osw-preview-section-reviewer_progress .osw-designer-compact-menus:empty {
+  display: none;
+}
+
+/* Header appearance menus follow the same visibility as their controls. */
+.osw-designer-compact-menus.is-hidden { display: none !important; }

@@ -421,6 +421,8 @@ def _render_widget(
     deck_browser: DeckBrowser, widget_id: str, row_span: int = None, col_span: int = None
 ) -> str:
     labels = get_translated_labels()
+    stats_style = config.get_config_readonly().get("deck_stats_style", {})
+    minimalist = isinstance(stats_style, dict) and stats_style.get("minimalist") is True
     if row_span is None:
         row_span = saved_row_span(widget_id)
     if col_span is None:
@@ -1034,7 +1036,7 @@ def _render_widget(
             {donut_view_html}"""
 
     html_widget = f"""
-    <div class="learner-stats-widget" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}" data-active-view="{active_view}" data-chart-type="{"full" if is_full_chart else "minimal"}" data-grid-span="{col_span}x{row_span}">
+    <div class="learner-stats-widget" data-minimalist="{str(minimalist).lower()}" data-widget-id="{escaped_widget_id}" data-selected-did="{html.escape(str(selected_did), quote=True)}" data-picker-payload="{picker_payload}" data-active-view="{active_view}" data-chart-type="{"full" if is_full_chart else "minimal"}" data-grid-span="{col_span}x{row_span}">
         <div class="learner-stats-header">
             <div class="learner-stats-header-row onigiri-widget-head">
                 <h3>{labels["title"]}</h3>

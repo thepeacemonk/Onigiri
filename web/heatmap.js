@@ -446,6 +446,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         if (!container) return;
 
         container.dataset.particlesAnimation = String(!!config.heatmapParticlesAnimation);
+        container.dataset.minimalist = String(config.heatmapMinimalist === true);
         setShapeMaskVariable(container, config);
 
         const preparedData = prepareData(data);

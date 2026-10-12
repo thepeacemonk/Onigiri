@@ -480,6 +480,11 @@ def inject_menu_files(web_content, context):
         patcher.set_main_webview_background_color(patcher._reviewer_base_bg_color(conf))
         web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
+        # Font faces must also live in the document stylesheet; shadow styles
+        # isolate header rules but do not register document font faces.
+        web_content.head += patcher.generate_scoped_main_font_css(
+            addon_package, "#onigiri-reviewer-header", role="reviewer_header"
+        )
         top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css(include_overview_class=False)
         reviewer_shadow_css = (
             patcher.generate_scoped_main_font_css(addon_package, "#onigiri-reviewer-header")

@@ -4759,12 +4759,12 @@ def _study_tool_header_buttons(conf):
 
     hashi_notes_button_html = (
         '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-hashi-notes-button">{tr_at("hashi_notes_title")}</a>'
+        f'class="onigiri-reviewer-button onigiri-hashi-notes-button" data-header-button="hashi">{tr_at("hashi_notes_title")}</a>'
         if show_hashi_notes_button else ""
     )
     pomodoro_button_html = (
         '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-pomodoro-button">{tr_at("pomodoro_title")}</a>'
+        f'class="onigiri-reviewer-button onigiri-pomodoro-button" data-header-button="pomodoro">{tr_at("pomodoro_title")}</a>'
         if show_pomodoro_button else ""
     )
 
@@ -4778,7 +4778,10 @@ def refresh_study_tool_reviewer_buttons(conf=None):
     buttons_html = "".join(_study_tool_header_buttons(conf))
     script = """
     (() => {
-        document.querySelectorAll('.onigiri-reviewer-header-buttons').forEach(header => {
+        const roots = [document];
+        const host = document.getElementById('onigiri-reviewer-ui-host');
+        if (host && host.shadowRoot) roots.push(host.shadowRoot);
+        roots.flatMap(root => Array.from(root.querySelectorAll('.onigiri-reviewer-header-buttons'))).forEach(header => {
             const existing = header.querySelectorAll('.onigiri-hashi-notes-button, .onigiri-pomodoro-button');
             const anchor = document.createComment('study-tools');
             if (existing.length) existing[0].before(anchor);
@@ -4799,6 +4802,103 @@ def refresh_study_tool_reviewer_buttons(conf=None):
         web = getattr(surface, "web", None)
         if web is not None:
             web.eval(script)
+
+
+def generate_reviewer_header_css(conf=None):
+    """Reviewer-only variables; overview headers continue to use widget chrome."""
+    if conf is None:
+        conf = config.get_config_readonly()
+    custom = conf.get("onigiri_reviewer_header_mode", "widgets") == "custom"
+    selector = "#onigiri-reviewer-header.onigiri-header-customization"
+    rules = []
+    def number(name, default, maximum):
+        return max(0, min(maximum, _onigiri_int_style_value(conf.get("onigiri_reviewer_header_" + name), default)))
+    opacity = number("opacity", 100, 100) / 100
+    def color(suffix, mode):
+        theme = conf.get("onigiri_web_rheader_" + suffix + "_theme_mode", "separate")
+        mode = "light" if theme == "single" else mode
+        defaults = {"bg": ("#ffffff", "#3a3a3a"), "text": ("#2c2c2c", "#e0e0e0"),
+                    "hover_bg": ("#2c2c2c", "#e0e0e0"), "hover_text": ("#f0f0f0", "#3a3a3a"),
+                    "border": ("#DBDBDB", "#444444")}
+        fallback = defaults[suffix][mode == "dark"]
+        value = str(conf.get("onigiri_reviewer_header_" + suffix + "_" + mode, fallback) or "").strip()
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}|rgba?\(\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)?\s*\)|transparent", value):
+            return ""
+        if suffix in ("bg", "hover_bg"):
+            if value.startswith("rgba"):
+                original_alpha = float(value[value.rfind(",") + 1:value.rfind(")")].strip())
+                return _onigiri_css_color_with_alpha(value, opacity * original_alpha)
+            return _onigiri_css_color_with_alpha(value, opacity)
+        return value
+    if custom:
+        padding = number("padding", 5, 100)
+        rules.append(f"{selector} {{ --rh-radius: {number('radius', 12, 100)}px; "
+                     f"--rh-stroke: {number('border_size', 0, 10)}px; --rh-padding: {padding}px; "
+                     f"--rh-padding-x: {padding + 7}px; --rh-height: {number('height', 0, 200)}px; "
+                     f"--rh-blur: {number('blur', 0, 100) / 5:.2f}px; }}")
+        rules.append(f"{selector} .onigiri-reviewer-header-buttons {{ gap: {number('gap', 8, 40)}px !important; }}")
+        for mode, scope in (("light", selector), ("dark", ".night_mode " + selector)):
+            variables = []
+            for suffix in ("bg", "text", "hover_bg", "hover_text", "border"):
+                value = color(suffix, mode)
+                if value:
+                    variables.append("--rh-" + suffix.replace("_", "-") + ": " + value + ";")
+            rules.append(scope + " { " + " ".join(variables) + " }")
+    for mode, scope in (("light", selector), ("dark", ".night_mode " + selector)):
+        ink = str(config.get_collection_config("onigiri_font_reviewer_header_color_" + mode, "") or "")
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", ink):
+            rules.append(scope + " { --rh-text: " + ink + "; }")
+    package = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
+    font_css = generate_scoped_main_font_css(package, selector, role="reviewer_header")
+    shared_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "reviewer_header_shared.css")
+    with open(shared_path, encoding="utf-8") as handle:
+        shared = handle.read()
+    return font_css + '<style id="onigiri-reviewer-header-customization">' + "\n".join(rules) + shared + '</style>'
+
+
+def refresh_reviewer_header_style(conf=None):
+    """Replace styling without reloading the active review card or progress counts."""
+    web = getattr(getattr(mw, "reviewer", None), "web", None)
+    if getattr(mw, "state", None) != "review" or web is None:
+        return
+    settings = _reviewer_progress_settings(conf, force=True)
+    css = (generate_reviewer_header_css(conf) + _reviewer_progress_css(settings)).replace(".night_mode #onigiri-reviewer-header", ":host(.night-mode) #onigiri-reviewer-header")
+    progress_html = _reviewer_progress_html(settings) if settings["enabled"] else ""
+    web.eval("""(() => {
+        const host = document.getElementById('onigiri-reviewer-ui-host');
+        const root = host && host.shadowRoot;
+        const header = root && root.getElementById('onigiri-reviewer-header');
+        if (!header) return;
+        header.classList.add('onigiri-header-customization');
+        header.classList.toggle('is-custom-header', HEADER_CUSTOM);
+        root.querySelectorAll('#onigiri-scoped-reviewer_header-font, #onigiri-reviewer-header-customization, #onigiri-reviewer-progress-style').forEach(node => node.remove());
+        const template = document.createElement('template');
+        template.innerHTML = CSS;
+        const fontSource = template.content.querySelector('#onigiri-scoped-reviewer_header-font');
+        if (fontSource) {
+            const previousFont = document.getElementById('onigiri-reviewer-header-font-document');
+            if (previousFont) previousFont.remove();
+            const fontStyle = fontSource.cloneNode(true);
+            fontStyle.id = 'onigiri-reviewer-header-font-document';
+            document.head.appendChild(fontStyle);
+        }
+        root.appendChild(template.content);
+        let chip = root.getElementById('onigiri-reviewer-progress');
+        const progressHtml = PROGRESS_HTML;
+        if (!progressHtml) { if (chip) chip.remove(); }
+        else {
+            const progress = document.createElement('template');
+            progress.innerHTML = progressHtml;
+            const fresh = progress.content.firstElementChild;
+            if (!chip) chip = fresh;
+            else { chip.className = fresh.className; chip.innerHTML = fresh.innerHTML; }
+            const buttons = header.querySelector('.onigiri-reviewer-header-buttons');
+            if (PROGRESS_LEFT) buttons.prepend(chip); else buttons.append(chip);
+        }
+        window.dispatchEvent(new Event('resize'));
+    })();""".replace("CSS", json.dumps(css)).replace("PROGRESS_HTML", json.dumps(progress_html))
+        .replace("PROGRESS_LEFT", json.dumps(settings["position"] == "left"))
+        .replace("HEADER_CUSTOM", json.dumps((conf or config.get_config_readonly()).get("onigiri_reviewer_header_mode") == "custom")))
 
 
 def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
@@ -4868,6 +4968,13 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         {header_buttons}
     </div>
     """
+
+    if not include_overview_class:
+        custom_class = ' is-custom-header' if conf.get('onigiri_reviewer_header_mode') == 'custom' else ''
+        html = html.replace('class="header"', f'class="header onigiri-header-customization{custom_class}"')
+        for action in ("decks", "add", "browse", "stats", "sync"):
+            html = html.replace(f"pycmd('{action}'); return false;\" class=\"onigiri-reviewer-button\"",
+                                f"pycmd('{action}'); return false;\" class=\"onigiri-reviewer-button\" data-header-button=\"{action}\"")
 
     css = """
     <style id="onigiri-reviewer-top-bar-structure">
@@ -5086,6 +5193,8 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     """
     
     css += progress_css
+    if not include_overview_class:
+        css += generate_reviewer_header_css(conf)
 
     return html, css
 
@@ -6499,6 +6608,9 @@ def generate_font_css(addon_package):
 
     # "sync" is a mode, not a font, so it never takes part in font lookups.
     extra_font_keys = {profile_name_font_key, "silkscreen"}
+    reviewer_header_font_key = col_get("onigiri_font_reviewer_header", "sync") or "sync"
+    if reviewer_header_font_key != "sync":
+        extra_font_keys.add(reviewer_header_font_key)
     if profile_level_font_key != "sync":
         extra_font_keys.add(profile_level_font_key)
     if stats_title_font_key != "sync":
@@ -7030,13 +7142,21 @@ def generate_box_effect_button_vars_css(conf=None, selector=":root", night_selec
     """
 
 
-def generate_scoped_main_font_css(addon_package, selector):
+def generate_scoped_main_font_css(addon_package, selector, role=None):
 	main_font_key = mw.col.conf.get("onigiri_font_main", "system")
 	main_font_size = mw.col.conf.get("onigiri_font_size_main", 14)
+	if role:
+		chosen = mw.col.conf.get("onigiri_font_" + role, "sync")
+		if chosen and chosen != "sync":
+			main_font_key = chosen
+		main_font_size = mw.col.conf.get("onigiri_font_size_" + role, main_font_size)
+	main_font_size = max(8, min(72, _onigiri_int_style_value(main_font_size, 14)))
 	from ..ui_kit.fonts import FONTS, get_all_fonts
 
 	all_fonts = FONTS if main_font_key in FONTS else get_all_fonts(os.path.dirname(os.path.dirname(__file__)))
 	main_font_info = all_fonts.get(main_font_key)
+	if not main_font_info and role:
+		main_font_info = all_fonts.get(mw.col.conf.get("onigiri_font_main", "system")) or FONTS.get("system")
 	if not main_font_info:
 		return ""
 
@@ -7057,11 +7177,12 @@ def generate_scoped_main_font_css(addon_package, selector):
         """
 
 	return f"""
-    <style id="onigiri-scoped-main-font">
+    <style id="onigiri-scoped-{role or 'main'}-font">
         {font_face}
         {selector} {{
             --font-main: {main_font_info['family']};
             --font-size-main: {int(main_font_size)}px;
+            {f"--rh-font-family: {main_font_info['family']}; --rh-font-size: {main_font_size}px;" if role else ""}
         }}
     </style>
     """
@@ -9689,6 +9810,34 @@ def generate_reviewer_buttons_css(conf):
             let lastPrimary = null;
             let renderDepth = 0;
 
+            function reserveSpeedFocusSpace() {
+                const outer = document.getElementById('outer');
+                if (!outer) return;
+                const control = outer.querySelector('#spdfControls');
+                const visible = !!control && !!control.getClientRects().length;
+                outer.classList.toggle('onigiri-bbar-speed-focus', visible);
+                if (!visible) {
+                    outer.style.removeProperty('--onigiri-bbar-side-space');
+                    return;
+                }
+                // Include utility margins and cell padding, plus the primary
+                // button's margins and nested cell's 10px side padding.
+                // Measure natural controls rather than the flexible cells,
+                // whose widths include spare space.
+                let space = 30;
+                outer.querySelectorAll(':scope > table > tbody > tr > td:not(#middle)').forEach(cell => {
+                    const style = getComputedStyle(cell);
+                    space += (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+                    cell.querySelectorAll('button').forEach(button => {
+                        if (!button.getClientRects().length) return;
+                        const buttonStyle = getComputedStyle(button);
+                        space += button.getBoundingClientRect().width
+                            + (parseFloat(buttonStyle.marginLeft) || 0) + (parseFloat(buttonStyle.marginRight) || 0);
+                    });
+                });
+                outer.style.setProperty('--onigiri-bbar-side-space', Math.max(280, Math.ceil(space)) + 'px');
+            }
+
             function classifyButtons() {
                 stripBottomBarTooltips(document);
                 renderOnigiriCardTypeIndicator();
@@ -9718,6 +9867,7 @@ def generate_reviewer_buttons_css(conf):
                 answerButtons.forEach((item, index) => prepareAnswerButton(item.btn, item.ease, nativeNumbers[index] || null));
                 collapseNativeNumberHosts();
                 prepareShowAnswerCounts(buttons);
+                reserveSpeedFocusSpace();
                 renderOnigiriCardTypeIndicator();
                 const primary = answerButtons.length
                     ? answerButtons[0].btn.closest('.onigiri-fixed-answer-row')
@@ -9816,6 +9966,53 @@ def generate_reviewer_buttons_css(conf):
             border: {border_size}px solid var(--onigiri-bbar-border, {conf.get('onigiri_reviewer_btn_border_color_light', '#DBDBDB')}) !important;
         }}
         #outer button.onigiri-show-answer-btn:hover {{ transform: none !important; }}
+        /* Speed Focus inherits Anki's absolute .stattxt position above its
+           button. Keep both lines inside the button and the clipped WebView;
+           leave its node, click handler and countdown updates intact. */
+        #outer #spdfControls {{
+            width: auto !important;
+        }}
+        #outer #spdfControls[style*="display: none"] {{
+            display: none !important;
+        }}
+        #outer #spdfControls button {{
+            --onigiri-speed-focus-height: {btn_height}px;
+            display: inline-flex !important;
+            flex: 0 0 auto !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 2px !important;
+            min-width: max-content !important;
+            padding-block: 4px !important;
+            line-height: 1.1 !important;
+            font-size: min(var(--onigiri-bbar-font-size), calc((var(--onigiri-speed-focus-height) - {2 * border_size + 10}px) / 1.925)) !important;
+            transform: none !important;
+        }}
+        #outer.onigiri-bbar-fixed-question #spdfControls button {{
+            --onigiri-speed-focus-height: var(--onigiri-bbar-fixed-height);
+        }}
+        #outer #spdfControls #spdfTime {{
+            position: static !important;
+            inset: auto !important;
+            transform: none !important;
+            display: block !important;
+            min-height: 1.1em !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: .75em !important;
+            line-height: 1.1 !important;
+            font-weight: normal !important;
+            font-variant-numeric: tabular-nums !important;
+            color: inherit !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            white-space: nowrap !important;
+        }}
+        #outer #spdfControls button > br {{ display: none !important; }}
+        #outer.onigiri-bbar-speed-focus button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not(.is-fixed) {{
+            width: min(360px, calc(100cqw - var(--onigiri-bbar-side-space))) !important;
+        }}
         """)
         border_selectors = {
             "show_answer": "#outer button.onigiri-show-answer-btn",

@@ -110,6 +110,7 @@ ADVANCED_FONT_ROLES = (
     ("congrats_title", "congrats_title", "Congratulations title", "subtle"),
     ("congrats_text", "congrats_text", "Congratulations text", "main"),
     ("reviewer_controls", "reviewer_controls", "Reviewer controls", "main"),
+    ("reviewer_header", "header_buttons", "Header Buttons", "main"),
     ("notifications", "notifications", "Notifications", "main"),
 )
 
@@ -3149,6 +3150,58 @@ def _reviewer_bottom_bar_section():
     return section
 
 
+def _reviewer_header_fields():
+    """Independent reviewer button styling, using the bottom-bar editing flow."""
+    custom = {"field": "rheader_mode", "values": ["custom"]}
+    fields = [{
+        "id": "rheader_mode", "type": "choice",
+        "label": tr("header_button_style", "Button Style"),
+        "bind": {"kind": "config", "key": "onigiri_reviewer_header_mode"},
+        "default": "widgets",
+        "options": [{"value": "widgets", "label": tr("header_match_widgets", "Match widgets")},
+                    {"value": "custom", "label": tr("custom", "Custom")}],
+    }]
+    for suffix, label, default, maximum in (
+        ("radius", tr("border_radius_label", "Border Radius"), 12, 100),
+        ("border_size", tr("button_border", "Button border"), 0, 10),
+        ("padding", tr("button_padding_label", "Button Padding"), 5, 100),
+        ("height", tr("min_height_label", "Min Height"), 0, 200),
+        ("gap", tr("header_button_gap", "Button Spacing"), 8, 40),
+        ("opacity", tr("header_background_opacity", "Background Opacity"), 100, 100),
+        ("blur", tr("blur_intensity", "Blur Intensity"), 0, 100),
+    ):
+        fields.append({"id": "rheader_" + suffix, "type": "slider", "label": label,
+                       "bind": {"kind": "config", "key": "onigiri_reviewer_header_" + suffix},
+                       "default": default, "min": 0, "max": maximum, "step": 1,
+                       "suffix": "%" if suffix in ("opacity", "blur") else "px",
+                       "show_when": custom})
+    dynamic = []
+    ids = []
+    for suffix, label, light, dark in (
+        ("bg", tr("bbar_show_answer_button", "Button Background"), "#ffffff", "#3a3a3a"),
+        ("text", tr("bbar_show_answer_text", "Button Text"), "#2c2c2c", "#e0e0e0"),
+        ("hover_bg", tr("bbar_other_hover_bg", "Hover Background"), "#2c2c2c", "#e0e0e0"),
+        ("hover_text", tr("bbar_other_hover_text", "Hover Text"), "#f0f0f0", "#3a3a3a"),
+        ("border", tr("border_color", "Border Color"), "#DBDBDB", "#444444"),
+    ):
+        id = "rheader_" + suffix
+        ids.append(id)
+        fields.append(_color_pair_field(id, label, id + "_light", id + "_dark", None,
+                                        show_when=custom))
+        fields.append(_hidden_config_field(id + "_theme_mode", ["onigiri_web_" + id + "_theme_mode"], "separate"))
+        dynamic.append(id + "_theme_mode")
+        for mode, default in (("light", light), ("dark", dark)):
+            fields.append(_hidden_config_field(id + "_" + mode,
+                ["onigiri_reviewer_header_" + suffix + "_" + mode], default))
+    title = tr("header_all_buttons", "All Buttons")
+    groups = [{"id": "rheader_colors_all", "title": title,
+               "description": tr("header_colors_desc", "The same colors apply to every header button. Opacity affects backgrounds only; text stays readable."),
+               "preview_label": title, "preview_bg": "rheader_bg",
+               "preview_text": "rheader_text", "preview_border": "rheader_border",
+               "field_ids": ids}]
+    return fields, groups, dynamic
+
+
 def _reviewer_progress_section():
     """The reviewer header's progress gauge (patcher.py's
     `_reviewer_progress_*` family).
@@ -3170,10 +3223,9 @@ def _reviewer_progress_section():
     fields = [
         {
             "id": "rprog_enabled", "type": "toggle",
-            # The one control that belongs in the preview header: everything
-            # else is meaningless while the gauge is off.
-            "head": True,
+            "head": False,
             "label": tr("progress_enable", "Show progress bar"),
+            "desc": tr("progress_enable_desc", "Show or hide the study progress indicator beside the header buttons."),
             "bind": {"kind": "config", "key": "onigiri_reviewer_progress_enabled"},
             "default": True,
         },
@@ -3345,18 +3397,36 @@ def _reviewer_progress_section():
     fields += color("seg_review", "onigiri_reviewer_progress_seg_review", tr("review_count_label", "Review Count"),
                     "#19c96b", "#12b765", show_when=SEG_CUSTOM)
 
-    return _designer_preview_section(
+    header_fields, header_colors, header_dynamic = _reviewer_header_fields()
+    for tool_id, title, field_id in (
+        ("hashi_notes", tr("hashi_notes_title", "Hashi Notes"), "hashi_show_header"),
+        ("pomodoro", tr("pomodoro_title", "Pomodoro"), "pomodoro_show_header"),
+    ):
+        # Both settings pages edit the same persisted visibility preference.
+        field = _tool_visibility_section(tool_id, title, field_id)["fields"][1]
+        field["label"] = tr("header_show_tool_button", "Show {tool} button").format(tool=title)
+        field["head"] = False
+        field.pop("show_when", None)
+        header_fields.append(field)
+    section = _designer_preview_section(
         "reviewer_progress",
         "reviewer_progress",
-        title=tr("progress_bar_section_title", "Header Progress Bar"),
+        title=tr("header_customization", "Header Customization"),
         icon="lucide-chart-columns.svg",
         dynamic_keys=[
             "rprog_fill_theme_mode", "rprog_fill_end_theme_mode", "rprog_track_theme_mode",
             "rprog_text_theme_mode", "rprog_seg_new_theme_mode", "rprog_seg_learn_theme_mode",
             "rprog_seg_review_theme_mode",
-        ],
+        ] + header_dynamic,
         head_to_deck=True,
-        fields=fields,
+        fields=header_fields + fields,
+    )
+    section["header_customization"] = True
+    section["mode_parity"] = True
+    section["color_menu_label"] = tr("header_button_colors", "Button Colors")
+    section["color_groups"] = header_colors
+    return _attach_compact_font_roles(
+        section, ("reviewer_header",), tr("header_fonts", "Header Fonts"), advanced_only=False,
     )
 
 
@@ -3379,7 +3449,7 @@ def _reviewer_page():
             _reviewer_bottom_bar_section(),
             _reviewer_progress_section(),
         ],
-        "post_save": ["reviewer_progress"],
+        "post_save": ["reviewer_progress", "study_tool_visibility"],
     }
 
 
@@ -3815,6 +3885,11 @@ def _mainmenu_deck_stats_section():
             ],
         },
         {
+            "id": "dstats_minimalist", "type": "toggle",
+            "label": tr("widget_minimalist", "Minimalist"),
+            "bind": path("minimalist"), "default": False,
+        },
+        {
             "id": "dstats_sync_box_effect", "type": "toggle",
             "head": True, "head_label": tr("sync_with_widgets", "Sync with widgets"),
             "label": tr("sync_with_widgets", "Sync with widgets"),
@@ -3915,6 +3990,11 @@ def _mainmenu_heatmap_section():
                     {"value": "month", "label": tr("view_month", "Month"), "short": tr("view_month_short", "M")},
                     {"value": "week", "label": tr("view_week", "Week"), "short": tr("view_week_short", "W")},
                 ],
+            },
+            {
+                "id": "heatmapMinimalist", "type": "toggle",
+                "label": tr("widget_minimalist", "Minimalist"),
+                "bind": {"kind": "config", "key": "heatmapMinimalist"}, "default": False,
             },
             {
                 "id": "heatmap_sync_box_effect", "type": "toggle",

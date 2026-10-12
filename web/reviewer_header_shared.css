@@ -1,0 +1,39 @@
+/* Shared by the real shadow header and its Settings preview. */
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization {
+  gap: var(--rh-gap, 8px);
+  --font-main: var(--rh-font-family, inherit);
+  --font-size-main: var(--rh-font-size, 14px);
+}
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-button[data-header-button],
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization.is-custom-header .restaurant-level-chip,
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-progress:not(.is-bare) {
+  box-sizing: border-box !important;
+  min-height: var(--rh-height, 0px) !important;
+  padding: var(--rh-padding, 5px) var(--rh-padding-x, 12px) !important;
+  border-radius: var(--rh-radius, var(--onigiri-box-effect-radius, 8px)) !important;
+  border: var(--rh-stroke, var(--onigiri-box-effect-stroke, 1px)) solid var(--rh-border, var(--onigiri-box-effect-border, rgba(128,128,128,.2))) !important;
+  background: var(--rh-bg, var(--onigiri-box-effect-bg, #fff)) !important;
+  backdrop-filter: blur(var(--rh-blur, var(--onigiri-box-effect-blur, 0px))) !important;
+  -webkit-backdrop-filter: blur(var(--rh-blur, var(--onigiri-box-effect-blur, 0px))) !important;
+  clip-path: inset(0 round var(--rh-radius, var(--onigiri-box-effect-radius, 8px)));
+}
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-button[data-header-button],
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .restaurant-level-chip {
+  color: var(--rh-text, var(--onigiri-box-effect-fg, #333)) !important;
+}
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-button[data-header-button]:is(:hover, :focus-visible),
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .restaurant-level-chip:is(:hover, :focus-visible) {
+  background: var(--rh-hover-bg, var(--rh-bg, var(--onigiri-box-effect-bg, #fff))) !important;
+  color: var(--rh-hover-text, var(--rh-text, var(--onigiri-box-effect-fg, #333))) !important;
+  border-color: var(--rh-border, var(--onigiri-box-effect-border-hover, rgba(128,128,128,.3))) !important;
+}
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-button[data-header-button],
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .restaurant-level-chip,
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-progress {
+  font-family: var(--rh-font-family, var(--font-main)) !important;
+  font-size: var(--rh-font-size, var(--font-size-main, 14px)) !important;
+}
+:is(#onigiri-reviewer-header, .osw-preview-rprog-header, .osw-header-color-option).onigiri-header-customization .onigiri-reviewer-button[data-header-button]:focus-visible {
+  outline: 2px solid currentColor !important;
+  outline-offset: 2px !important;
+}

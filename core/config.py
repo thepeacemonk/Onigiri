@@ -400,6 +400,7 @@ DEFAULTS = {
     "heatmapStreakIconColor": "#ff6b35",
     "heatmapStreakIconZeroColor": "#8f8f8f",
     "heatmapShowStreak": True,
+    "heatmapMinimalist": False,
     "heatmapShowMonths": True,
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
@@ -518,6 +519,25 @@ DEFAULTS = {
     "onigiri_reviewer_btn_height": 40, # px (button height)
     "onigiri_reviewer_bar_height": 60, # px (default height)
 
+    # Header buttons retain their shared widget appearance until customized.
+    "onigiri_reviewer_header_mode": "widgets",
+    "onigiri_reviewer_header_radius": 12,
+    "onigiri_reviewer_header_border_size": 0,
+    "onigiri_reviewer_header_padding": 5,
+    "onigiri_reviewer_header_height": 0,
+    "onigiri_reviewer_header_gap": 8,
+    "onigiri_reviewer_header_opacity": 100,
+    "onigiri_reviewer_header_blur": 0,
+    "onigiri_reviewer_header_bg_light": "#ffffff",
+    "onigiri_reviewer_header_bg_dark": "#3a3a3a",
+    "onigiri_reviewer_header_text_light": "#2c2c2c",
+    "onigiri_reviewer_header_text_dark": "#e0e0e0",
+    "onigiri_reviewer_header_hover_bg_light": "#2c2c2c",
+    "onigiri_reviewer_header_hover_bg_dark": "#e0e0e0",
+    "onigiri_reviewer_header_hover_text_light": "#f0f0f0",
+    "onigiri_reviewer_header_hover_text_dark": "#3a3a3a",
+    "onigiri_reviewer_header_border_light": "#DBDBDB",
+    "onigiri_reviewer_header_border_dark": "#444444",
     # --- Reviewer header progress bar ---
     # The "end of the tunnel" gauge in the reviewer header. `left` mirrors the
     # bottom bar's new/learning/review counts; `done` is either this session's
@@ -821,6 +841,7 @@ DEFAULTS = {
     # colors default to Anki's own Card Counts palette so an untouched install
     # matches the native graph.
     "deck_stats_style": {
+        "minimalist": False,
         # "minimal" keeps the In Progress / Mastered grouping; "full" drops it
         # and charts every card category on its own.
         "chart_type": "minimal",
