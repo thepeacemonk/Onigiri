@@ -604,7 +604,7 @@ html:not([data-rf-cardstyle="native"]) #qa hr {
 #reforge-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--rf-accent);
+  background: var(--rf-progress-color, var(--rf-accent));
   transition: width 280ms cubic-bezier(.2, .7, .2, 1);
 }
 #reforge-progress-label { display: none !important; }

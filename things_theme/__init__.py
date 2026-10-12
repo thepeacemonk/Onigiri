@@ -169,7 +169,7 @@ def _shared_palette_vars(cfg: Dict[str, Any]) -> str:
             ("weekly-reviews", "weekly_reviews_color", "--accent-color"),
             ("progress", "progress_color", "--accent-color"),
         ):
-            value = cfg.get(key) or palette.get(token) or accent
+            value = cfg.get(key) or palette.get(key) or palette.get(token) or accent
             declarations.append(f"--rf-{mode}-{name}-color:{value};")
     return "".join(declarations)
 
