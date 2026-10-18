@@ -1174,7 +1174,20 @@ def _is_card_editing_active() -> bool:
             if name in dialogs._dialogs:
                 inst = dialogs._dialogs[name][1]
                 if inst is not None:
-                    return True
+                    # Native Anki uses QMainWindow which is not modal by default.
+                    # AddCards and EditCurrent shouldn't block our UI
+                    # so we just let them pass.
+
+                    try:
+                        from aqt.qt import Qt
+                        if hasattr(inst, "isModal") and getattr(inst, "isModal")():
+                            return True
+                        if hasattr(inst, "windowModality") and getattr(inst, "windowModality")() != Qt.WindowModality.NonModal:
+                            return True
+                    except Exception:
+                        pass
+
+                    # If it's a non-modal separate window, don't lock the main UI
     except Exception:
         pass
 
@@ -1235,6 +1248,12 @@ def _register_card_editor_window(win):
     if not win or win in _active_card_editors:
         _schedule_dim_update()
         return
+    try:
+        from aqt.qt import Qt
+        if hasattr(win, "isModal") and not win.isModal() and hasattr(win, "windowModality") and win.windowModality() == Qt.WindowModality.NonModal:
+            return
+    except Exception:
+        pass
     _active_card_editors.add(win)
     _schedule_dim_update()
 
