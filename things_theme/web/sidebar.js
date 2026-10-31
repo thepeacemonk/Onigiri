@@ -235,7 +235,7 @@
 
   // ---- active-cards donut ----------------------------------------------- //
   var DONUT_STATES = [
-    { key: window.onigiriText("new"),        label: window.onigiriText("New"),        cls: window.onigiriText("new") },
+    { key: "new",        label: window.onigiriText("New"),        cls: "new" },
     { key: "learning",   label: window.onigiriText("Learning"),   cls: "learning" },
     { key: "relearning", label: window.onigiriText("Relearning"), cls: "relearning" },
     { key: "young",      label: window.onigiriText("Young"),      cls: "young" },
@@ -498,7 +498,7 @@
     aside.className = "ba-side";
     var sidebarOpts = (window.__baOpts && window.__baOpts.sidebar) || {};
     var heroStat = sidebarOpts.heroStat;
-    if (heroStat !== window.onigiriText("new") && heroStat !== "learn") heroStat = window.onigiriText("due");
+    if (heroStat !== "new" && heroStat !== "learn") heroStat = "due";
     var HERO_LABELS = { due: window.onigiriText("Due Today"), new: window.onigiriText("New Cards"), learn: window.onigiriText("In Learning") };
 
     aside.innerHTML = ''
@@ -592,7 +592,7 @@
 
   function applyStanding(d) {
     if (!d) return;
-    var keys = ["streak", window.onigiriText("due"), window.onigiriText("new"), "learn", window.onigiriText("today"), "todayMin", window.onigiriText("total"), "dueTotal"];
+    var keys = ["streak", "due", "new", "learn", "today", "todayMin", "total", "dueTotal"];
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       var els = document.querySelectorAll('[data-x="' + k + '"]');

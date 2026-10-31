@@ -15,7 +15,7 @@
   text-align: left;
   /* Learning needs room for its full label, not just a two-digit count.
      Share the count tracks so the header and all deck rows stay aligned. */
-  --ad-count-cols: 48px 88px 48px;
+  --ad-count-cols: 48px 88px 80px;
   --ad-cols: 24px minmax(0, 1fr) 112px var(--ad-count-cols) 28px;
   --ad-row-cols: minmax(0, 1fr) 112px var(--ad-count-cols) 28px;
 }
