@@ -2492,9 +2492,11 @@ def _finished_deck_stats(did: int) -> Dict[str, Any]:
 
 
 def _studied_today_by_deck() -> Dict[int, int]:
-    """{did: cards reviewed today}, own-deck cards only (not descendants —
-    the tree already lists each deck as its own row). Feeds the deck
-    list's per-row progress bar: done / (done + due)."""
+    """Return today's review count for each card's own deck.
+
+    The deck tree aggregates these counts for parent rows, alongside the
+    scheduler's aggregated remaining counts.
+    """
     out: Dict[int, int] = {}
     try:
         shift = _day_shift_seconds()
@@ -2662,7 +2664,12 @@ def _full_deck_tree_payload() -> list:
                 "new": n,
                 "learn": l,
                 "review": r,
-                "done": studied.get(did, 0),
+                # Direct children already include their descendants. Add only
+                # those rows so each review is counted once in the parent.
+                "done": studied.get(did, 0) + sum(
+                    child["done"] for child in kid_rows
+                    if child["depth"] == depth + 1
+                ),
                 "current": did == current_did,
                 "filtered": is_filtered(did),
                 # Anki's persisted collapse flag (the one its own deck list
