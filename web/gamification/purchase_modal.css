@@ -14,7 +14,7 @@
   padding: 24px;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 36, 52, .46);
+  background: var(--purchase-backdrop, rgba(6, 36, 52, .46));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -29,7 +29,7 @@
   border-radius: 22px;
   background: var(--purchase-paper);
   color: var(--purchase-ink);
-  box-shadow: 0 24px 70px rgba(7, 35, 50, .34);
+  box-shadow: 0 24px 70px var(--purchase-shadow, rgba(7, 35, 50, .34));
 }
 
 .purchase-card .purchase-close,
@@ -75,7 +75,7 @@
   object-fit: contain;
   padding: 8px;
   border-radius: 14px;
-  background: rgba(31, 182, 255, .12);
+  background: var(--purchase-accent-soft, rgba(31, 182, 255, .12));
 }
 
 .purchase-card h2 {
@@ -102,7 +102,7 @@
   margin-top: 20px;
   padding: 15px;
   border-radius: 15px;
-  background: var(--purchase-panel);
+  background: var(--purchase-accent-soft, var(--purchase-panel));
 }
 
 .purchase-panel strong { display: block; font-size: 12.5px; }
@@ -120,8 +120,8 @@
   padding: 9px 12px !important;
   border: 0 !important;
   border-radius: 10px !important;
-  background: #1597d1 !important;
-  color: #fff !important;
+  background: var(--purchase-accent, #1597d1) !important;
+  color: var(--purchase-accent-ink, #fff) !important;
   font-size: 11.5px !important;
   font-weight: 500;
   line-height: 1.5 !important;
@@ -133,7 +133,7 @@
 .purchase-card .purchase-code-btn:focus-visible,
 .purchase-card .purchase-submit:focus-visible,
 .purchase-card .purchase-close:focus-visible {
-  outline: 2px solid #1597d1;
+  outline: 2px solid var(--purchase-accent, #1597d1);
   outline-offset: 3px;
 }
 
@@ -172,8 +172,8 @@
 }
 
 .purchase-card .purchase-input:focus {
-  border-color: #1597d1;
-  box-shadow: 0 0 0 3px rgba(21, 151, 209, .12);
+  border-color: var(--purchase-accent, #1597d1);
+  box-shadow: 0 0 0 3px var(--purchase-accent-soft, rgba(21, 151, 209, .12));
 }
 
 .purchase-card .purchase-submit,
@@ -195,7 +195,7 @@
 }
 
 .purchase-card p.purchase-support-note a {
-  color: #1597d1;
+  color: var(--purchase-accent, #1597d1);
   font-weight: 500;
   text-decoration: none;
 }

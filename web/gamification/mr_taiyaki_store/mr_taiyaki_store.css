@@ -508,6 +508,15 @@ h3 {
   text-align: center;
 }
 
+/* Use the store's gold palette in its shared purchase dialog. */
+.store-app .purchase-modal {
+  --purchase-accent: var(--accent);
+  --purchase-accent-ink: var(--accent-ink);
+  --purchase-accent-soft: var(--accent-soft);
+  --purchase-backdrop: rgba(32, 25, 14, .46);
+  --purchase-shadow: rgba(24, 18, 10, .34);
+}
+
 /* Dialogs use bordered surfaces and the selected product's scene color. */
 .modal {
   position: fixed;

@@ -2862,4 +2862,3 @@ def register_hooks() -> None:
 
 
 register_hooks()
-

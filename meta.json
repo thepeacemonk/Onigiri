@@ -5,7 +5,7 @@
   "mod": 1791898120,
   "branch_index": 0,
   "disabled": false,
-  "update_enabled": false,
+  "update_enabled": true,
   "human_version": "2.0.3-Bento",
   "max_point_version": 260904,
   "min_point_version": 250705
