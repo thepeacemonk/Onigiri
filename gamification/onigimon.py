@@ -669,7 +669,10 @@ class AnkimonBridge:
         Falls back to computing max_hp from the DB formula when runtime is absent.
         """
         try:
-            singletons = sys.modules.get("Ankimon.singletons")
+            singletons = (
+                sys.modules.get(f"{self.addon_id}.singletons")
+                or sys.modules.get("Ankimon.singletons")
+            )
             if singletons is not None:
                 main = getattr(singletons, "main_pokemon", None)
                 if main is not None:
@@ -707,7 +710,10 @@ class AnkimonBridge:
         if not isinstance(pokemon_data, dict):
             return
         try:
-            ankimon_singletons = sys.modules.get("Ankimon.singletons")
+            ankimon_singletons = (
+                sys.modules.get(f"{self.addon_id}.singletons")
+                or sys.modules.get("Ankimon.singletons")
+            )
             if ankimon_singletons is None:
                 return
             main_pokemon = getattr(ankimon_singletons, "main_pokemon", None)
@@ -734,6 +740,27 @@ class AnkimonBridge:
             # Recompute max_hp from canonical base_stats (Ankimon’s own formula).
             if hasattr(main_pokemon, "calculate_max_hp"):
                 main_pokemon.max_hp = main_pokemon.calculate_max_hp()
+            if hasattr(main_pokemon, "_update_battle_stats"):
+                main_pokemon._update_battle_stats()
+
+            # An ongoing turn reuses poke-engine's cached state. Keep its user
+            # stats in sync too, or the next turn restores pre-care HP/stats.
+            battle_loop = (
+                sys.modules.get(f"{self.addon_id}.battle_loop")
+                or sys.modules.get("Ankimon.battle_loop")
+            )
+            battle_state = getattr(battle_loop, "_state", None)
+            engine_state = getattr(battle_state, "new_state", None)
+            if engine_state is not None and hasattr(main_pokemon, "to_poke_engine_Pokemon"):
+                engine_main = engine_state.user.active
+                fresh_main = main_pokemon.to_poke_engine_Pokemon()
+                if engine_main.id == fresh_main.id:
+                    # Preserve the current opponent, statuses, stat boosts and field.
+                    for attr in (
+                        "hp", "maxhp", "attack", "defense", "special_attack",
+                        "special_defense", "speed",
+                    ):
+                        setattr(engine_main, attr, getattr(fresh_main, attr))
 
             tracker = getattr(ankimon_singletons, "ankimon_tracker_obj", None)
             if tracker and hasattr(tracker, "update_gui"):
@@ -1949,7 +1976,7 @@ class OnigimonManager:
             "attack": "attack", "atk": "attack",
             "defense": "defense", "def": "defense",
             "speed": "speed", "spe": "speed",
-            "hp": "hp", "xp": "xp"
+            "hp": "hp", "xp": "xp", "exp": "xp", "experience": "xp"
         }
         for stat, val in updates.items():
             key = stat_aliases.get(str(stat).lower(), str(stat).lower())
@@ -2801,3 +2828,4 @@ def register_hooks() -> None:
 
 
 register_hooks()
+
