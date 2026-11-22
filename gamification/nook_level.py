@@ -39,6 +39,59 @@ def _difficulty_multiplier(value: Any) -> int:
     return 1
 
 
+def _curve_loss_recovery(current: Dict[str, Any], previous: Dict[str, Any], multiplier: int):
+    """Recognize an erroneous curve-change downgrade, with backup evidence.
+
+    Purchases must match, XP must not have gone backwards, and the coin balance
+    must differ from the backup by precisely the erroneous level deduction
+    (net of any level-up coins legitimately earned since the downgrade).
+    Any ambiguous history is not restored to the old level/balance.
+    """
+    import math
+
+    try:
+        total = int(current['total_xp'])
+        old_total = int(previous['total_xp'])
+        old_level = int(previous['level'])
+        level = int(current['level'])
+        coins = int(current['taiyaki_coins'])
+        old_coins = int(previous['taiyaki_coins'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    marker = current.get('xp_multiplier')
+    if marker is not None and not (coins < 0 and marker == multiplier):
+        return None
+    if total < 0 or old_total < 0 or total < old_total or old_coins < 0:
+        return None
+    if old_level <= level or level < 0:
+        return None
+    current_owned = current.get('owned_items') or ['default']
+    previous_owned = previous.get('owned_items') or ['default']
+    if not all(isinstance(items, list) and all(isinstance(item, str) for item in items)
+               for items in (current_owned, previous_owned)):
+        return None
+    if set(current_owned) != set(previous_owned):
+        return None
+    if not 50 * multiplier * level ** 2 <= total < 50 * multiplier * (level + 1) ** 2:
+        return None
+    deduction = 5 * (old_level * (old_level + 1) - level * (level + 1)) // 2
+    if old_coins - coins != deduction:
+        return None
+    delta_xp = total - old_total
+    for old_multiplier in (1, 2, 4):
+        if old_multiplier != multiplier and 50 * old_multiplier * old_level ** 2 <= old_total < 50 * old_multiplier * (old_level + 1) ** 2:
+            restored_total = (old_total * multiplier // old_multiplier) + delta_xp
+            restored_level = math.isqrt(restored_total // (50 * multiplier))
+            extra_coins = 5 * (restored_level * (restored_level + 1) - old_level * (old_level + 1)) // 2
+            return {
+                'level': restored_level,
+                'taiyaki_coins': old_coins + max(0, extra_coins),
+                'total_xp': restored_total,
+                'xp_multiplier': multiplier,
+            }
+    return None
+
+
 def get_motivational_phrases():
     return [
         tr("motivational_phrase_1"),
@@ -542,6 +595,8 @@ class NookLevelManager:
             # Refresh state
             game_state = self._get_gamification_state()
         
+        game_state = self._ensure_progression_curve(game_state)
+
         # Fallback to config if gamification.json is empty (rare now due to defaults)
         total_xp = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
         # level = int(game_state.get("level", restaurant_conf.get("level", 0)))
@@ -586,7 +641,7 @@ class NookLevelManager:
             "xpToNextLevel": xp_to_next,
             "xpRemaining": remaining,
             "progressFraction": percent,
-            "notificationsEnabled": progress.notifications_enabled and not bool(config.get_config().get("onigiri_reviewer_silent_notifications", False)),
+            "notificationsEnabled": progress.notifications_enabled and not bool(config.get_config_readonly().get("onigiri_reviewer_silent_notifications", False)),
             "showProfileBar": progress.show_profile_bar_progress,
             "showProfilePage": progress.show_profile_page_progress,
             "phrase": self._get_motivational_phrase(progress.level),
@@ -598,7 +653,7 @@ class NookLevelManager:
 
     def get_daily_special_status(self) -> Dict[str, Any]:
         """Get daily special data, resetting it if it's a new day."""
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         # Get settings from config
         daily_special_conf = conf.get("daily_special", {})
         
@@ -643,10 +698,14 @@ class NookLevelManager:
             delivery_cost_removed = True
         
         reset_occurred = self._check_and_reset_daily_special(daily_special)
+        if reset_occurred or delivery_cost_removed:
+            # Persist the new day's state before syncing today's revlog, because
+            # _sync_daily_progress_with_db -> _add_xp reads daily_special back
+            # from the manager and would otherwise see yesterday's date again.
+            self._update_gamification_daily_special(daily_special)
+
         sync_occurred = self._sync_daily_progress_with_db(daily_special)
-        
-        if reset_occurred or sync_occurred or delivery_cost_removed:
-            # Update state in gamification.json
+        if sync_occurred:
             self._update_gamification_daily_special(daily_special)
             
         return daily_special
@@ -986,9 +1045,45 @@ class NookLevelManager:
         level = max(0, int(level or 0))
         return sum(self._xp_for_next(lvl) for lvl in range(level))
 
+    def _was_day_completed_in_db(self, day_str: str, target: int) -> bool:
+        """Return True if Anki's revlog shows ``day_str`` met ``target`` reviews.
+
+        Prevents false missed-Rush penalties when reviews were completed on
+        mobile (AnkiMobile/AnkiDroid) and synced to desktop the next day.
+        """
+        if not day_str or target <= 0 or not mw or not mw.col or not getattr(mw.col, "db", None):
+            return False
+        try:
+            day_cutoff = int(mw.col.sched.day_cutoff)
+            today_date = datetime.fromtimestamp(day_cutoff - 1).date()
+            missed_date = datetime.strptime(str(day_str), "%Y-%m-%d").date()
+            days_ago = (today_date - missed_date).days
+            if days_ago < 1:
+                return False
+            today_start = day_cutoff - 86400
+            day_start = today_start - days_ago * 86400
+            day_end = day_start + 86400
+            reviews = mw.col.db.scalar(
+                "SELECT COUNT() FROM revlog WHERE type IN (0,1,2,3) AND id >= ? AND id < ?",
+                day_start * 1000,
+                day_end * 1000,
+            ) or 0
+            return int(reviews) >= int(target)
+        except Exception:
+            return False
+
     def _apply_recipe_rush_missed_penalty(self, daily_special: Dict[str, Any]) -> List[Dict[str, Any]]:
         missed_day = daily_special.get("last_updated")
         if not missed_day or daily_special.get("completed") or daily_special.get("penalty_applied_for") == missed_day:
+            return []
+
+        try:
+            target = int(daily_special.get("target", 0) or 0)
+        except (TypeError, ValueError):
+            target = 0
+        if self._was_day_completed_in_db(str(missed_day), target):
+            daily_special["completed"] = True
+            daily_special["penalty_applied_for"] = missed_day
             return []
 
         conf, restaurant_conf = self._config_bundle()
@@ -1008,18 +1103,19 @@ class NookLevelManager:
         current_coins = self._get_coins_from_json()
         new_level = max(0, progress.level - level_loss)
         new_total_xp = min(progress.total_xp, self._total_xp_for_level(new_level))
-        new_coins = current_coins - coins_lost
+        new_coins = max(0, current_coins - coins_lost)
 
+        daily_special["penalty_applied_for"] = missed_day
         self._update_gamification_data({
             "total_xp": new_total_xp,
             "level": new_level,
             "taiyaki_coins": new_coins,
-        })
+            "daily_special_update": {"penalty_applied_for": missed_day},
+        }, immediate=True)
 
         rush_name = daily_special.get("rush_name") or tr("recipe_rush_title", "Nook Rush")
         penalty_msg = f'{rush_name} {tr("recipe_rush_penalty_suffix", "missed")}'
 
-        daily_special["penalty_applied_for"] = missed_day
         return [{
             "id": f"recipe_rush_missed_{missed_day}",
             "name": penalty_msg,
@@ -1272,13 +1368,13 @@ class NookLevelManager:
         
         try:
             state = self._get_gamification_state()
-            coins = int(state.get('taiyaki_coins', 0))
-            owned = state.get('owned_items', ["default"])
-            current = state.get('current_theme_id', "default")
+            coins = int(state.get('taiyaki_coins') or 0)
+            owned = state.get('owned_items') or ["default"]
+            current = state.get('current_theme_id') or "default"
             
             # Fallback to config if state is empty (migration)
             if not state:
-                 conf = config.get_config()
+                 conf = config.get_config_readonly()
                  restaurant_conf = conf.get("restaurant_level", {})
                  if not restaurant_conf:
                     restaurant_conf = conf.get("achievements", {}).get("restaurant_level", {})
@@ -1298,7 +1394,7 @@ class NookLevelManager:
         # Focus Dango and Motivated Mochi are Settings rewards, never coin
         # purchases.  Keep their entitlement in the one store payload used by
         # both WebUI pages.
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         focus_enabled = bool(conf.get("achievements", {}).get("focusDango", {}).get("enabled", False))
         mochi_enabled = bool(conf.get("mochi_messages", {}).get("enabled", False))
         for item_id, enabled in (("focus_dango", focus_enabled), ("motivated_mochi", mochi_enabled)):
@@ -1344,7 +1440,7 @@ class NookLevelManager:
     def _get_coins_from_json(self) -> int:
         """Read current coins from gamification.json."""
         state = self._get_gamification_state()
-        return int(state.get('taiyaki_coins', 0))
+        return int(state.get('taiyaki_coins') or 0)
 
     def buy_item(self, item_id: str) -> Tuple[bool, str]:
         """Buy an item from the store."""
@@ -1380,7 +1476,7 @@ class NookLevelManager:
         if prerequisite and prerequisite not in owned:
             return False, "Buy the previous Sushi Evolution first."
 
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         difficulty = conf.get("restaurant_level", {}).get("difficulty", "Apprendice")
         multiplier = _difficulty_multiplier(difficulty)
         price = int(item["price"]) * multiplier
@@ -1449,21 +1545,8 @@ class NookLevelManager:
 
     def on_reviewer_did_answer(self, reviewer: Any, card: Any, ease: int) -> None:
         """Hook handler for review completion."""
-        # Map ease to XP
-        # 1: Again -> 1 XP
-        # 2: Hard -> 3 XP
-        # 3: Good -> 5 XP
-        # 4: Easy -> 10 XP
-        # xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
-        # xp = xp_map.get(ease, 5)
-        # notifications = self.add_review_xp(xp, count=1)
-        # self._dispatch_notifications(notifications)
-        # OPTIMIZATION: Debounce or batch this?
-        # Actually, for reviews, immediate feedback is good. 
-        # But let's remove the print at least.
         xp_map = {1: 1, 2: 3, 3: 5, 4: 10}
         xp = xp_map.get(ease, 5)
-        # print(f"Onigiri: Review completed. Ease: {ease}, XP to award: {xp}")
         self._xp_history.append(xp)
         notifications = self.add_review_xp(xp, count=1)
         self._dispatch_notifications(notifications)
@@ -1476,7 +1559,12 @@ class NookLevelManager:
         from aqt import mw
         if mw.state != "review":
             return
-            
+
+        # Ignore non-review undos (e.g. flags, marks, note edits) when Anki
+        # reports OpChanges without a study-queue change.
+        if changes is not None and hasattr(changes, "study_queues") and not changes.study_queues:
+            return
+
         if not self._xp_history:
             return
 
@@ -1850,10 +1938,13 @@ class NookLevelManager:
             return []
 
         # Read current state from gamification.json (source of truth for XP/level)
+        self.get_progress()
         game_state = self._get_gamification_state()
-        previous_level = int(game_state.get("level", restaurant_conf.get("level", 0)))
-        previous_total = int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0)))
-        new_total = previous_total + amount
+        previous_total = max(0, int(game_state.get("total_xp", restaurant_conf.get("total_xp", 0))))
+        # Coins follow a real XP boundary crossing. A stale stored level or
+        # a change of difficulty is never an undo.
+        previous_level, _, _ = self._collapse_xp(previous_total)
+        new_total = max(0, previous_total + amount)
 
         level, xp_into_level, xp_to_next = self._collapse_xp(new_total)
         
@@ -1888,19 +1979,19 @@ class NookLevelManager:
                 "textColorDark": "#ffffff",
                 "duration": 4000
             })
-        elif level < previous_level:
-            # Handle Level Down (Undo)
+        elif amount < 0 and level < previous_level:
+            # Handle Level Down (Undo) — never drive Taiyaki Coins negative.
             coins_lost = 0
             for lvl in range(previous_level, level, -1):
                 coins_lost += lvl * 5
             
-            new_coins = current_coins - coins_lost
-            # We allow negative coins as "debt" if they spent it already
+            new_coins = max(0, current_coins - coins_lost)
+            coins_removed = max(0, current_coins - new_coins)
             
             notifications.append({
                 "id": "taiyaki_coins_lost",
                 "name": "Level Lost",
-                "description": f"Undoing review... {coins_lost} coins removed.",
+                "description": f"Undoing review... {coins_removed} coins removed.",
                 "iconImage": f"{self._addon_prefix}/system_files/gamification_images/Tayaki_coin.webp",
                 "iconAlt": "Taiyaki Coins",
                 "textColorLight": "#2c2c2c",
@@ -1917,10 +2008,11 @@ class NookLevelManager:
             "level": level,
         }
         
-        if new_coins != current_coins:
+        coins_changed = new_coins != current_coins
+        if coins_changed:
             update_data["taiyaki_coins"] = new_coins
             
-        self._update_gamification_data(update_data)
+        self._update_gamification_data(update_data, immediate=coins_changed)
         # print(f"Onigiri: XP awarded. New Total: {new_total}, Level: {level}")
         
         # Handle daily special progress and notifications
@@ -2003,6 +2095,50 @@ class NookLevelManager:
     def _get_difficulty_multiplier(self) -> int:
         diff = self._restaurant_conf_readonly().get("difficulty", "Apprendice")
         return _difficulty_multiplier(diff)
+
+    def _ensure_progression_curve(self, game_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Preserve earned levels when an upgrade changes the XP multiplier.
+
+        Older files lack a curve marker. Infer it only when their saved level
+        exactly matches a known curve; never reconstruct a balance from XP.
+        """
+        multiplier = self._get_difficulty_multiplier()
+        current_coins = int(game_state.get("taiyaki_coins") or 0)
+        if game_state.get("xp_multiplier") is None or current_coins < 0:
+            for previous_state in self._gamification_manager.progression_backups():
+                recovery = _curve_loss_recovery(game_state, previous_state, multiplier)
+                if recovery:
+                    self._update_gamification_data(recovery, immediate=True)
+                    print("[Onigiri] Restored Nook level and coins from a verified progression snapshot")
+                    return self._get_gamification_state()
+        previous = game_state.get("xp_multiplier")
+        total = max(0, int(game_state.get("total_xp") or 0))
+        level = max(0, int(game_state.get("level") or 0))
+        if previous not in (1, 2, 4):
+            previous = multiplier
+            for candidate in (multiplier, 1, 2, 4):
+                if 50 * candidate * level * level <= total < 50 * candidate * (level + 1) ** 2:
+                    previous = candidate
+                    break
+        updates = {}
+        if previous != multiplier:
+            # Scale both the completed levels and the fraction into the next.
+            updates["total_xp"] = total * multiplier // previous
+        if game_state.get("xp_multiplier") != multiplier:
+            updates["xp_multiplier"] = multiplier
+        if current_coins < 0:
+            # Negative balances only came from past curve/penalty/undo bugs.
+            # After backup recovery fails, clamp to 0 instead of trapping the user in debt.
+            try:
+                from ..core import safe_storage
+                safe_storage.backup_before_upgrade()
+            except Exception:
+                pass
+            updates["taiyaki_coins"] = 0
+        if updates:
+            self._update_gamification_data(updates, immediate=True)
+            return self._get_gamification_state()
+        return game_state
 
     def _xp_for_next(self, level: int) -> int:
         return 50 * (2 * level + 1) * self._get_difficulty_multiplier()
@@ -2329,9 +2465,16 @@ def build_chip_style_attr(
 
 manager = NookLevelManager()
 
+def _on_profile_did_open(*args: Any) -> None:
+    manager._xp_history.clear()
+    manager.invalidate_daily_cache()
+
+
 def register_hooks() -> None:
     from aqt import gui_hooks
     gui_hooks.reviewer_did_answer_card.append(manager.on_reviewer_did_answer)
+    if hasattr(gui_hooks, "profile_did_open"):
+        gui_hooks.profile_did_open.append(_on_profile_did_open)
     
     # reviewer_did_undo_answer was removed/not present in v3 scheduler or modern anki
     # Use state_did_undo instead

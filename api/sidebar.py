@@ -117,10 +117,59 @@ def get_sidebar_entries() -> Dict[str, SidebarEntry]:
     return dict(_registry)
 
 
+def render_reviewer_toolbar_entries() -> str:
+    """Keep captured native add-on controls available in the Focus header."""
+    buttons = []
+    for entry_id, entry in _registry.items():
+        if entry_id not in _toolbar_entry_ids:
+            continue
+        command = html.escape(json.dumps(entry.command), quote=True)
+        label = html.escape(entry.label, quote=True)
+        icon = ""
+        if entry.icon_svg:
+            source = entry.icon_svg
+            if source.lstrip().startswith("<svg"):
+                # Inline HTML SVGs need an XML namespace when used as a
+                # standalone CSS mask image.
+                if not re.search(r'<svg\b[^>]*\bxmlns\s*=', source):
+                    source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"', 1)
+                source = "data:image/svg+xml," + urllib.parse.quote(source)
+            if source.startswith("data:image/"):
+                safe_source = html.escape(source, quote=True)
+                icon = (
+                    '<span aria-hidden="true" style="display:inline-block;width:16px;height:16px;'
+                    f'vertical-align:middle;background:currentColor;mask:url(\'{safe_source}\') center/contain no-repeat;'
+                    f'-webkit-mask:url(\'{safe_source}\') center/contain no-repeat"></span>'
+                )
+        buttons.append(
+            f'<a href="#" class="onigiri-reviewer-button onigiri-external-toolbar-button" '
+            f'title="{label}" aria-label="{label}" onclick="pycmd({command}); return false;">'
+            f'{icon or label}</a>'
+        )
+    return "".join(buttons)
+
+
+def _refresh_reviewer_toolbar_entries() -> None:
+    from aqt import mw
+    if getattr(mw, "state", None) != "review":
+        return
+    web = getattr(getattr(mw, "reviewer", None), "web", None)
+    if web is not None:
+        web.eval("""
+        (() => {
+            const host = document.getElementById('onigiri-reviewer-ui-host');
+            const root = host && host.shadowRoot;
+            const slot = root && root.getElementById('onigiri-reviewer-external-actions');
+            if (slot) slot.innerHTML = %s;
+            if (window.onigiriRefreshReviewerHeaderOffset) window.onigiriRefreshReviewerHeaderOffset();
+        })();
+        """ % json.dumps(render_reviewer_toolbar_entries()))
+
+
 def _get_label_overrides(conf: Optional[dict] = None) -> Dict[str, str]:
     try:
         if conf is None:
-            conf = config.get_config()
+            conf = config.get_config_readonly()
         layout = conf.get("sidebarButtonLayout", {}) if isinstance(conf, dict) else {}
         labels = layout.get("labels", {})
         return labels if isinstance(labels, dict) else {}
@@ -552,11 +601,14 @@ def _capture_toolbar_links(links, _toolbar) -> None:
             )
             _toolbar_entry_ids.add(entry_id)
             _toolbar_cmds.add(cmd)
+        _refresh_reviewer_toolbar_entries()
     except Exception as exc:
         print(f"Onigiri: Failed to capture toolbar links: {exc}")
 
 
 def _dispatch_toolbar_cmd(handled, message, context):
+    if handled[0]:
+        return handled
     if message not in _toolbar_cmds:
         return handled
     try:

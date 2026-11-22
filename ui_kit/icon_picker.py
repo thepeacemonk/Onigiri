@@ -23,6 +23,7 @@ from .picker_chrome import (
     title_qss,
 )
 from .emoji_sprites import EMOJI_SPRITES
+from .system_icons import pickable_system_icons
 from ..core.translations import tr_literal
 
 
@@ -356,10 +357,8 @@ class DeckIconPickerDialog(QDialog):
 
     def _system_icon_items(self):
         system_dir = os.path.join(self.addon_path, "system_files", "system_icons", "available_for_users")
-        if not os.path.isdir(system_dir):
-            return []
         priority = {name: index for index, name in enumerate(self.ICON_PRIORITY)}
-        files = [name for name in os.listdir(system_dir) if name.lower().endswith(".svg")]
+        files = pickable_system_icons(system_dir)
         return [
             {"name": f"system:{name}", "label": self._icon_label(name), "path": os.path.join(system_dir, name), "system": True}
             for name in sorted(files, key=lambda item: (priority.get(item, 999), item.lower()))
@@ -625,7 +624,7 @@ class DeckIconPickerDialog(QDialog):
         scroll.setWidget(content)
 
         # One flat grid, no section labels: the user's own icons first, then
-        # everything shipped in system_files/system_icons/available_for_users.
+        # the public bundled catalog.
         user_items = [{"is_add_button": True}] + self._custom_items((".svg",))
         system_items = self._system_icon_items()
         all_items = user_items + system_items

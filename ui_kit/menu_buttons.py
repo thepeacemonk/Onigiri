@@ -325,4 +325,7 @@ def setup_onigiri_menu(addon_path):
     onigiri_menu.addAction(version_action)
 
     # Add the newly created menu to the main window's menubar
+    # Retain Select version in this release's Onigiri menu.
+    from ..version_manager import add_menu_action
+    add_menu_action(onigiri_menu)
     mw.form.menubar.addMenu(onigiri_menu)

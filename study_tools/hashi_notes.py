@@ -40,6 +40,7 @@ from ..core import config
 from ..core import safe_storage
 from ..rendering.theme_palette import utility_chrome_palette
 from ..core.translations import tr
+from ..ui_kit.system_icons import pickable_system_icons
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -666,22 +667,19 @@ def _web_icon_catalog():
     the two known icon directories are sent to JavaScript, which keeps the
     picker fast and prevents arbitrary paths from reaching the webview.
     """
-    catalogs = []
-    for rel_dir, extensions in (
-        (("system_files", "system_icons", "available_for_users"), {".svg"}),
-        (("user_files", "custom_deck_icons"), {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}),
-    ):
-        path = os.path.join(_addon_root(), *rel_dir)
-        try:
-            names = sorted(
-                name for name in os.listdir(path)
-                if os.path.isfile(os.path.join(path, name))
-                and os.path.splitext(name)[1].lower() in extensions
-            )
-        except Exception:
-            names = []
-        catalogs.append(names)
-    return catalogs
+    root = _addon_root()
+    system_dir = os.path.join(root, "system_files", "system_icons", "available_for_users")
+    custom_dir = os.path.join(root, "user_files", "custom_deck_icons")
+    extensions = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
+    try:
+        custom_icons = sorted(
+            name for name in os.listdir(custom_dir)
+            if os.path.isfile(os.path.join(custom_dir, name))
+            and os.path.splitext(name)[1].lower() in extensions
+        )
+    except OSError:
+        custom_icons = []
+    return pickable_system_icons(system_dir), custom_icons
 
 
 # Every user-facing string the two webviews (hashi_notes.html / hashi_gallery.html)
@@ -1074,7 +1072,11 @@ class HashiGalleryDialog(QDialog, _HashiNoteEditorMixin):
         self.setWindowTitle(tr("hashi_notes_title", "Hashi Notes"))
         # The gallery is a conventional application window/page. Only the
         # compact quick-note editor uses custom floating web chrome.
-        self.setWindowFlags(Qt.WindowType.Window)
+        if parent is not None and parent.window().windowType() == Qt.WindowType.Tool:
+            # On macOS a dialog can inherit Settings' floating window level.
+            self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowMinMaxButtonsHint)
+        else:
+            self.setWindowFlags(Qt.WindowType.Window)
         self.setMinimumSize(720, 560)
         self.resize(960, 700)
 

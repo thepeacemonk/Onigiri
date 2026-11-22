@@ -318,11 +318,11 @@ def get_heatmap_and_config():
         "heatmapStreakIconColor": conf.get("heatmapStreakIconColor", DEFAULTS.get("heatmapStreakIconColor", "#ff6b35")),
         "heatmapStreakIconZeroColor": conf.get("heatmapStreakIconZeroColor", DEFAULTS.get("heatmapStreakIconZeroColor", "#8f8f8f")),
         "heatmapShowStreak": conf.get("heatmapShowStreak", DEFAULTS["heatmapShowStreak"]),
-        "heatmapMinimalist": conf.get("heatmapMinimalist", DEFAULTS["heatmapMinimalist"]),
         "heatmapShowMonths": conf.get("heatmapShowMonths", DEFAULTS["heatmapShowMonths"]),
         "heatmapShowWeekdays": conf.get("heatmapShowWeekdays", DEFAULTS["heatmapShowWeekdays"]),
         "heatmapShowWeekHeader": conf.get("heatmapShowWeekHeader", DEFAULTS["heatmapShowWeekHeader"]),
         "heatmapParticlesAnimation": conf.get("heatmapParticlesAnimation", DEFAULTS["heatmapParticlesAnimation"]),
+        "heatmapTerrainEnabled": conf.get("heatmapTerrainEnabled", DEFAULTS["heatmapTerrainEnabled"]),
         "heatmapDefaultView": conf.get("heatmapDefaultView", DEFAULTS["heatmapDefaultView"]),
         "heatmapWeekStart": conf.get("heatmapWeekStart", DEFAULTS.get("heatmapWeekStart", "monday")),
         # The browser's locale can differ from the language chosen for Onigiri.
@@ -332,6 +332,7 @@ def get_heatmap_and_config():
             "year": tr("view_year"),
             "month": tr("view_month"),
             "week": tr("view_week"),
+            "terrain_help": tr("heatmap_terrain_help"),
             "day_streak": tr("heatmap_day_streak"),
             "browse": tr("browse", "Browse"),
         }

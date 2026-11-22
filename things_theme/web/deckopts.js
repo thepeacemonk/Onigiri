@@ -50,6 +50,7 @@
     { cmd: "change-icon", label: window.onigiriText("Change icon…"), icon: "icon" },
     { cmd: "move",    label: window.onigiriText("Move to…"),         icon: "move" },
     { cmd: "options", label: window.onigiriText("Options…"),         icon: "options" },
+    { cmd: "addon-actions", label: window.onigiriText("Add-on actions") + "…", icon: "options" },
     { cmd: "export",  label: window.onigiriText("Export deck…"),     icon: "export" },
     { cmd: "rebuild", label: window.onigiriText("Rebuild"),           icon: "rebuild", filteredOnly: true },
     { cmd: "empty",   label: window.onigiriText("Empty"),             icon: "empty", filteredOnly: true },

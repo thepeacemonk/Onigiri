@@ -204,9 +204,19 @@
   }
   function start() {
     scan();
-    const observer = new MutationObserver(scan);
+    let scanRaf = 0;
+    const scheduleScan = () => {
+      if (scanRaf) return;
+      scanRaf = requestAnimationFrame(() => { scanRaf = 0; scan(); });
+    };
+    const observer = new MutationObserver(scheduleScan);
     observer.observe(document.body, {childList: true, subtree: true});
-    window.addEventListener("pagehide", () => { observer.disconnect(); mounted.forEach(dispose => dispose()); mounted.clear(); }, {once: true});
+    window.addEventListener("pagehide", () => {
+      if (scanRaf) cancelAnimationFrame(scanRaf);
+      observer.disconnect();
+      mounted.forEach(dispose => dispose());
+      mounted.clear();
+    }, {once: true});
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, {once: true});
   else start();

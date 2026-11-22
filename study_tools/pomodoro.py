@@ -187,13 +187,13 @@ def _is_dark_mode(conf=None):
     try:
         from ..core.config import effective_night_mode
 
-        return effective_night_mode(conf or config.get_config())
+        return effective_night_mode(conf or config.get_config_readonly())
     except Exception:
         return False
 
 
 def _accent_color(conf=None):
-    conf = conf or config.get_config()
+    conf = conf or config.get_config_readonly()
     mode = "dark" if _is_dark_mode(conf) else "light"
     return conf.get("colors", {}).get(mode, {}).get("--accent-color", config.DEFAULT_ACCENT_COLOR)
 
@@ -382,12 +382,42 @@ def import_sound_file(source_path):
 def _play_tone_fallback(path):
     """Use Anki's player if the native multimedia backend is unavailable."""
     try:
-        from anki.sound import SoundOrVideoTag
         from aqt.sound import av_player
 
-        av_player.append_tags([SoundOrVideoTag(filename=path)])
+        abs_path = os.path.abspath(path)
+        if hasattr(av_player, "play_file"):
+            av_player.play_file(abs_path)
+            return
+        from anki.sound import SoundOrVideoTag
+
+        av_player.append_tags([SoundOrVideoTag(filename=abs_path)])
     except Exception as exc:
         print(f"Pomodoro: sound playback error: {exc}")
+
+
+_macos_afplay_proc = None
+
+
+def _play_sound_macos(abs_path):
+    """Play a cue asynchronously with macOS's built-in afplay utility."""
+    global _macos_afplay_proc
+    import subprocess
+    import sys
+
+    if sys.platform != "darwin" or not os.path.isfile("/usr/bin/afplay"):
+        return False
+    try:
+        if _macos_afplay_proc is not None and _macos_afplay_proc.poll() is None:
+            _macos_afplay_proc.terminate()
+        _macos_afplay_proc = subprocess.Popen(
+            ["/usr/bin/afplay", abs_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception as exc:
+        print(f"Pomodoro: afplay playback error: {exc}")
+        return False
 
 
 def _tone_playback_error(_error, message):
@@ -410,6 +440,9 @@ def _play_sound(settings, event="end"):
     if not os.path.isfile(path):
         print(f"Pomodoro: sound file not found: {path}")
         return
+    abs_path = os.path.abspath(path)
+    if _play_sound_macos(abs_path):
+        return
     try:
         from PyQt6.QtCore import QUrl
         from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -424,12 +457,12 @@ def _play_sound(settings, event="end"):
             player.errorOccurred.connect(_tone_playback_error)
             _tone_player = player
         _tone_player.stop()
-        _tone_player.setSource(QUrl.fromLocalFile(os.path.abspath(path)))
+        _tone_player.setSource(QUrl.fromLocalFile(abs_path))
         _tone_player.setPosition(0)
         _tone_player.play()
     except Exception as exc:
         print(f"Pomodoro: native audio unavailable: {exc}")
-        _play_tone_fallback(path)
+        _play_tone_fallback(abs_path)
 
 
 def play_test_sound(event="end", sound_file=None, settings_override=None):
@@ -595,6 +628,13 @@ class PomodoroTimer(QObject):
             "long_break": self.settings["long_break_minutes"],
         }[self.session_type]
         return max(1, int(minutes)) * 60
+
+    def apply_settings(self, settings):
+        """Update timer configuration and refresh idle duration immediately."""
+        self.settings = settings
+        if not self.running and self._phase_started_at is None:
+            self.remaining_seconds = self.phase_length_seconds()
+        self.tick.emit()
 
     def start(self):
         if self.running:
@@ -1147,7 +1187,7 @@ class PomodoroWidget(QDialog):
     def reload_appearance(self):
         """Re-reads the saved settings into the open island (called after the
         Settings dialog saves, so size/colors apply without reopening)."""
-        self.timer.settings = get_settings()
+        self.timer.apply_settings(get_settings())
         self.pal = _palette(self.dark, self.timer.settings)
         self.setFixedSize(*get_preset(self.timer.settings)["window"])
         self.shell.apply_settings(self.timer.settings, self.dark)
@@ -1498,7 +1538,12 @@ class PomodoroStatsDialog(QDialog):
 
     def _history_row_text(self, entry):
         try:
-            dt = datetime.fromisoformat(entry.get("started_at", ""))
+            raw_ts = str(entry.get("started_at", "") or "").strip()
+            if raw_ts.endswith("Z"):
+                raw_ts = raw_ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(raw_ts)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone()
             when = dt.strftime("%b %d, %H:%M")
         except Exception:
             when = entry.get("date", "")

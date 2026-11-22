@@ -1,0 +1,36 @@
+/* Style every flag from first paint, including unset/reset icon choices. */
+#_flag {
+  position: fixed !important;
+  top: calc(var(--onigiri-reviewer-header-offset, 0px) + 12px) !important;
+  right: 12px !important;
+  left: auto !important;
+  box-sizing: border-box !important;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 8px !important;
+  margin: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  -webkit-text-stroke: 0 !important;
+  pointer-events: none;
+}
+
+[dir="rtl"] #_flag {
+  right: auto !important;
+  left: 12px !important;
+}
+
+#_flag[hidden] {
+  display: none !important;
+}
+
+#_flag::before {
+  content: "" !important;
+  display: block !important;
+  width: 24px !important;
+  height: 24px !important;
+  background: currentColor !important;
+  /* Bundled fallback also covers first paint and a failed/delayed script. */
+  -webkit-mask: var(--onigiri-flag-icon, url("../system_files/system_icons/available_for_users/flag.svg")) center / contain no-repeat !important;
+  mask: var(--onigiri-flag-icon, url("../system_files/system_icons/available_for_users/flag.svg")) center / contain no-repeat !important;
+}

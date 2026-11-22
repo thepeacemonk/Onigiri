@@ -16,6 +16,7 @@
      Anki while preserving Lucide's exact geometry and stroke attributes. */
   var LUCIDE = {
     "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    "award": '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
     "bluetooth": '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>',
     "bookmark-plus": '<path d="M12 7v6"/><path d="M15 10H9"/><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z"/>',
     "check": '<path d="m20 6-11 11-5-5"/>',
@@ -32,6 +33,7 @@
     "image": '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
     "layout-dashboard": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     "leaf": '<path d="M11 20a10 10 0 0 0 10-10 25.9 25.9 0 0 0-1.04-7.281 1 1 0 0 0-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0 0 11 20"/><path d="M2 21a5 5 0 0 1 2.911-4.544C7.613 15.212 8.351 15.24 11 13"/>',
+    "lock": '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     "monitor": '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
     "moon": '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>',
     "paintbrush": '<path d="m14.622 17.897-10.68-2.913"/><path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z"/><path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15"/>',
@@ -41,6 +43,7 @@
     "rotate-ccw": '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
     "settings-2": '<path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
     "sliders-horizontal": '<path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/>',
+    "sparkles": '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
     "star": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
     "sticky-note": '<path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/>',
     "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
@@ -52,8 +55,8 @@
   var PAGE_ICONS = {
     appearance: "paintbrush", bento: "layout-dashboard", forecast: "cloud-sun",
     clock: "clock-3", background: "image", profile: "user",
-    behavior: "sliders-horizontal", tea_room: "leaf", reviewer: "monitor",
-    favorites: "star", history: "history", note: "sticky-note",
+    behavior: "sliders-horizontal", tea_room: "leaf", garden: "award", tea_shelf: "award", level: "award",
+    reviewer: "monitor", favorites: "star", history: "history", note: "sticky-note",
     audio: "headphones", connections: "bluetooth"
   };
 
@@ -264,38 +267,92 @@
     var triggerLabel = node("span");
     var list = node("div", "bws-select-list");
     var options = (field.options || []).map(optionData);
+    var isRich = options.some(function (item) {
+      return Boolean(item.image || item.subtitle || item.badge || item.locked || item.next);
+    });
+    if (isRich) {
+      trigger.classList.add("is-rich");
+      list.classList.add("is-rich");
+    }
     trigger.type = "button";
     trigger.setAttribute("aria-haspopup", "listbox");
     trigger.setAttribute("aria-expanded", "false");
     list.setAttribute("role", "listbox");
     trigger.appendChild(triggerLabel);
     trigger.appendChild(icon("chevron-down"));
+
+    function buildRichNode(item, forTrigger) {
+      var main = node("span", "bws-select-item-main");
+      if (item.image || item.locked) {
+        var thumb = node("span", "bws-select-thumb");
+        if (item.image) {
+          var img = node("img");
+          img.src = item.image;
+          img.alt = "";
+          thumb.appendChild(img);
+        } else if (item.locked && !forTrigger) {
+          thumb.appendChild(icon("lock"));
+        } else {
+          thumb.appendChild(icon("leaf"));
+        }
+        main.appendChild(thumb);
+      }
+      var copy = node("span", "bws-select-copy");
+      copy.appendChild(node("b", "", item.label));
+      main.appendChild(copy);
+      return main;
+    }
+
     function paint(selected) {
       var match = options.find(function (item) { return String(item.value) === String(selected); }) || options[0] || {label: ""};
-      triggerLabel.textContent = match.label;
+      triggerLabel.innerHTML = "";
+      if (isRich) {
+        triggerLabel.className = "bws-select-item-main";
+        triggerLabel.appendChild(buildRichNode(match, true));
+      } else {
+        triggerLabel.textContent = match.label;
+      }
       Array.from(list.children).forEach(function (button) {
         var active = String(button.dataset.value) === String(selected);
         button.classList.toggle("is-active", active);
         button.setAttribute("aria-selected", String(active));
-        var old = button.querySelector("svg");
-        if (old) old.remove();
-        if (active) button.appendChild(icon("check"));
+        var oldCheck = button.querySelector(".bws-select-check");
+        if (oldCheck) oldCheck.remove();
+        if (active && !button.classList.contains("is-locked")) {
+          var checkWrap = node("span", "bws-select-check");
+          checkWrap.appendChild(icon("check"));
+          button.appendChild(checkWrap);
+        }
       });
     }
     options.forEach(function (item) {
-      var button = node("button", "bws-select-option", item.label);
+      var button = node("button", "bws-select-option" + (isRich ? " is-rich" : "") + (item.locked ? " is-locked" : "") + (item.next ? " is-next" : ""));
       button.type = "button";
       button.dataset.value = String(item.value);
       button.setAttribute("role", "option");
-      button.onclick = function (event) {
-        event.stopPropagation();
-        paint(item.value);
-        closeSelects();
-        queue(field.path, item.value, false);
-      };
+      if (isRich) {
+        button.appendChild(buildRichNode(item, false));
+      } else {
+        button.textContent = item.label;
+      }
+      if (item.locked) {
+        button.setAttribute("aria-disabled", "true");
+        button.onclick = function (event) {
+          event.stopPropagation();
+        };
+      } else {
+        button.onclick = function (event) {
+          event.stopPropagation();
+          paint(item.value);
+          closeSelects();
+          queue(field.path, item.value, false);
+        };
+      }
       list.appendChild(button);
     });
     paint(values[field.path]);
+    menu._repaintSelect = paint;
+    menu.dataset.selectPath = field.path;
     trigger.onclick = function (event) {
       event.stopPropagation();
       var opening = !menu.classList.contains("is-open");
@@ -313,13 +370,20 @@
     var slider = node("div", "bws-slider");
     var track = node("div", "bws-slider-track");
     var fill = node("div", "bws-slider-fill");
+    var ticksWrap = node("div", "bws-slider-ticks");
     var thumb = node("div", "bws-slider-thumb");
     var output = node("span", "bws-value");
     var min = Number(field.min == null ? 0 : field.min);
     var max = Number(field.max == null ? 100 : field.max);
     var step = Number(field.step || 1);
+    var tickCount = Number(field.ticks == null ? 9 : field.ticks);
     var value = Number(values[field.path] == null ? min : values[field.path]);
     var lastHapticValue = value;
+    for (var ti = 0; ti < tickCount; ti++) {
+      var tick = node("div", "bws-slider-tick");
+      tick.style.left = (((ti + 1) / (tickCount + 1)) * 100) + "%";
+      ticksWrap.appendChild(tick);
+    }
     slider.tabIndex = 0;
     slider.setAttribute("role", "slider");
     slider.setAttribute("aria-valuemin", String(min));
@@ -336,6 +400,7 @@
       thumb.style.left = "max(6px, min(calc(" + percent + "% - 10px), calc(100% - 11px)))";
       output.textContent = value + (field.unit || "");
       slider.setAttribute("aria-valuenow", String(value));
+      slider.setAttribute("aria-valuetext", value + (field.unit || ""));
       if (save) queue(field.path, value, delayed);
     }
     function fromPointer(event) {
@@ -370,16 +435,328 @@
       var change = 0;
       if (event.key === "ArrowLeft" || event.key === "ArrowDown") change = -step;
       if (event.key === "ArrowRight" || event.key === "ArrowUp") change = step;
-      if (event.key === window.onigiriText("Home")) { event.preventDefault(); paint(min, true, false); }
+      if (event.key === "Home" || event.key === window.onigiriText("Home")) { event.preventDefault(); paint(min, true, false); }
       else if (event.key === "End") { event.preventDefault(); paint(max, true, false); }
       else if (change) { event.preventDefault(); paint(value + change, true, false); }
     };
     track.appendChild(fill);
+    if (tickCount > 0) track.appendChild(ticksWrap);
     track.appendChild(thumb);
     slider.appendChild(output);
     slider.appendChild(track);
     paint(value, false, false);
     return slider;
+  }
+
+  function clampNum(v, a, b) {
+    if (typeof v !== "number" || !isFinite(v)) return a;
+    return Math.min(b, Math.max(a, v));
+  }
+
+  /* ══ 8-Position Interactive Draggable Reviewer Mini-Preview ══════
+     3 positions on top (top-left, top-center, top-right),
+     3 positions on bottom (bottom-left, bottom-center, bottom-right),
+     3 positions on left (top-left, center-left, bottom-left),
+     3 positions on right (top-right, center-right, bottom-right)
+     = 8 total perimeter positions. */
+  var POSITION_SLOTS = [
+    {id: "top-left", label: "Top left", x: 0.14, y: 0.18, col: 0, row: 0},
+    {id: "top-center", label: "Top center", x: 0.50, y: 0.18, col: 1, row: 0},
+    {id: "top-right", label: "Top right", x: 0.86, y: 0.18, col: 2, row: 0},
+    {id: "center-left", label: "Middle left", x: 0.14, y: 0.50, col: 0, row: 1},
+    {id: "center-right", label: "Middle right", x: 0.86, y: 0.50, col: 2, row: 1},
+    {id: "bottom-left", label: "Bottom left", x: 0.14, y: 0.82, col: 0, row: 2},
+    {id: "bottom-center", label: "Bottom center", x: 0.50, y: 0.82, col: 1, row: 2},
+    {id: "bottom-right", label: "Bottom right", x: 0.86, y: 0.82, col: 2, row: 2}
+  ];
+
+  function positionGridControl(field) {
+    var stage = node("div", "bws-pos-stage");
+    var screen = node("div", "bws-pos-screen");
+    var cardHint = node("div", "bws-pos-card-hint");
+    var liveRegion = node("div", "bws-visually-hidden");
+    liveRegion.setAttribute("aria-live", "polite");
+    screen.appendChild(cardHint);
+
+    var currentId = String(values[field.path] || field.default || "top-right");
+    if (currentId === "middle-left") currentId = "center-left";
+    if (currentId === "middle-right") currentId = "center-right";
+
+    var slotButtons = {};
+    POSITION_SLOTS.forEach(function (slot) {
+      var btn = node("button", "bws-pos-slot");
+      btn.type = "button";
+      btn.dataset.posId = slot.id;
+      btn.title = slot.label;
+      btn.setAttribute("aria-label", slot.label);
+      btn.style.left = (slot.x * 100) + "%";
+      btn.style.top = (slot.y * 100) + "%";
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        selectSlot(slot.id, true);
+      };
+      slotButtons[slot.id] = btn;
+      screen.appendChild(btn);
+    });
+
+    var puck = node("button", "bws-pos-puck");
+    puck.type = "button";
+    puck.setAttribute(
+      "aria-label",
+      "Reviewer widget position handle. Drag to any of the 8 screen edges or use arrow keys."
+    );
+    puck.appendChild(node("span", "bws-pos-puck-dot"));
+    puck.appendChild(node("span", "bws-pos-puck-bar"));
+    screen.appendChild(puck);
+
+    function findSlot(id) {
+      return POSITION_SLOTS.find(function (s) { return s.id === id; }) || POSITION_SLOTS[2];
+    }
+
+    function nearestSlot(normX, normY) {
+      var best = POSITION_SLOTS[0];
+      var bestDist = Infinity;
+      POSITION_SLOTS.forEach(function (slot) {
+        var dx = normX - slot.x;
+        var dy = normY - slot.y;
+        var d = dx * dx + dy * dy;
+        if (d < bestDist) {
+          bestDist = d;
+          best = slot;
+        }
+      });
+      return best;
+    }
+
+    function highlightSlots(activeId, nearestId) {
+      POSITION_SLOTS.forEach(function (slot) {
+        var btn = slotButtons[slot.id];
+        if (!btn) return;
+        btn.classList.toggle("is-active", slot.id === activeId);
+        btn.classList.toggle("is-nearest", Boolean(nearestId && slot.id === nearestId));
+      });
+    }
+
+    function selectSlot(id, save) {
+      var slot = findSlot(id);
+      currentId = slot.id;
+      puck.style.left = (slot.x * 100) + "%";
+      puck.style.top = (slot.y * 100) + "%";
+      puck.title = slot.label;
+      highlightSlots(slot.id, null);
+      if (save) {
+        liveRegion.textContent = "Reviewer widget moved to " + slot.label;
+        send("haptic", "2");
+        queue(field.path, slot.id, false);
+      }
+    }
+
+    var offsetX = 0;
+    var offsetY = 0;
+    var hoverSlot = null;
+
+    puck.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var rect = puck.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      puck.setPointerCapture(e.pointerId);
+      puck.classList.add("dragging");
+      hoverSlot = findSlot(currentId);
+    });
+
+    puck.addEventListener("pointermove", function (e) {
+      if (!puck.hasPointerCapture(e.pointerId)) return;
+      var screenRect = screen.getBoundingClientRect();
+      if (screenRect.width <= 0 || screenRect.height <= 0) return;
+      var puckW = puck.offsetWidth || 42;
+      var puckH = puck.offsetHeight || 24;
+      var leftPx = e.clientX - screenRect.left - offsetX;
+      var topPx = e.clientY - screenRect.top - offsetY;
+      var centerX = clampNum(leftPx + puckW / 2, puckW / 2 + 4, screenRect.width - puckW / 2 - 4);
+      var centerY = clampNum(topPx + puckH / 2, puckH / 2 + 4, screenRect.height - puckH / 2 - 4);
+      var normX = centerX / screenRect.width;
+      var normY = centerY / screenRect.height;
+      puck.style.left = (normX * 100) + "%";
+      puck.style.top = (normY * 100) + "%";
+      var cand = nearestSlot(normX, normY);
+      if (!hoverSlot || cand.id !== hoverSlot.id) {
+        hoverSlot = cand;
+        send("haptic", "2");
+      }
+      highlightSlots(currentId, hoverSlot.id);
+    });
+
+    function endDrag(e) {
+      if (!puck.classList.contains("dragging")) return;
+      if (e && e.pointerId != null && puck.hasPointerCapture(e.pointerId)) {
+        try { puck.releasePointerCapture(e.pointerId); } catch (_err) { /* ignore */ }
+      }
+      puck.classList.remove("dragging");
+      var target = hoverSlot || findSlot(currentId);
+      hoverSlot = null;
+      selectSlot(target.id, true);
+    }
+
+    puck.addEventListener("pointerup", endDrag);
+    puck.addEventListener("lostpointercapture", endDrag);
+
+    puck.addEventListener("keydown", function (e) {
+      var cur = findSlot(currentId);
+      var dc = 0, dr = 0;
+      if (e.key === "ArrowLeft") dc = -1;
+      else if (e.key === "ArrowRight") dc = 1;
+      else if (e.key === "ArrowUp") dr = -1;
+      else if (e.key === "ArrowDown") dr = 1;
+      else return;
+      e.preventDefault();
+      var tc = clampNum(cur.col + dc, 0, 2);
+      var tr = clampNum(cur.row + dr, 0, 2);
+      if (tc === 1 && tr === 1) {
+        if (dc !== 0) tc = clampNum(tc + dc, 0, 2);
+        if (dr !== 0) tr = clampNum(tr + dr, 0, 2);
+      }
+      var match = POSITION_SLOTS.find(function (s) { return s.col === tc && s.row === tr; });
+      if (match) selectSlot(match.id, true);
+    });
+
+    selectSlot(currentId, false);
+    stage.appendChild(screen);
+    stage.appendChild(liveRegion);
+    return stage;
+  }
+
+  function teaGardenControl(field) {
+    var wrap = node("div", "bws-tea-garden");
+    var level = Number(field.level || 1);
+    var xp = Number(field.xp || 0);
+    var nextLevelXp = Number(field.nextLevelXp || (level * 100));
+    var totalBrews = Number(field.totalBrews || 0);
+    var xpPercent = nextLevelXp > 0 ? Math.min(100, Math.max(0, (xp / nextLevelXp) * 100)) : 0;
+    var teas = field.teas || field.options || [];
+    var nextTea = teas.find(function (t) { return Boolean(t.next); }) || teas.find(function (t) { return Boolean(t.locked); });
+
+    /* Hero Card: Level, Total Brews, XP Bar, and Next Tea to Unlock */
+    var hero = node("div", "bws-tea-hero");
+    var heroTop = node("div", "bws-tea-hero-top");
+    heroTop.appendChild(node("span", "bws-tea-level-badge", "Level " + level));
+    heroTop.appendChild(node("span", "bws-tea-brews", totalBrews + " Total Brew" + (totalBrews === 1 ? "" : "s")));
+    hero.appendChild(heroTop);
+
+    var xpRow = node("div", "bws-tea-xp-row");
+    xpRow.appendChild(node("span", "", xp + " / " + nextLevelXp + " XP"));
+    xpRow.appendChild(node("span", "", "Next: Level " + (level + 1)));
+    hero.appendChild(xpRow);
+
+    var xpTrack = node("div", "bws-tea-xp-track");
+    var xpFill = node("div", "bws-tea-xp-fill");
+    xpFill.style.width = xpPercent + "%";
+    xpTrack.appendChild(xpFill);
+    hero.appendChild(xpTrack);
+
+    if (nextTea) {
+      var nextCard = node("div", "bws-tea-next-card");
+      var nextThumb = node("div", "bws-tea-next-thumb");
+      if (nextTea.image) {
+        var nextImg = node("img");
+        nextImg.src = nextTea.image;
+        nextImg.alt = nextTea.label;
+        nextThumb.appendChild(nextImg);
+      } else {
+        nextThumb.appendChild(icon("leaf"));
+      }
+      var nextCopy = node("div", "bws-tea-next-copy");
+      var levelsLeft = Math.max(1, Number(nextTea.unlockLevel || 5) - level);
+      nextCopy.appendChild(node("span", "", "Next Tea Unlock · Level " + nextTea.unlockLevel + " (" + levelsLeft + " level" + (levelsLeft === 1 ? "" : "s") + " to go)"));
+      nextCopy.appendChild(node("b", "", nextTea.label));
+      if (nextTea.description || nextTea.subtitle) {
+        nextCopy.appendChild(node("small", "", nextTea.description || nextTea.subtitle));
+      }
+      nextCard.appendChild(nextThumb);
+      nextCard.appendChild(nextCopy);
+      hero.appendChild(nextCard);
+    } else {
+      var allCard = node("div", "bws-tea-next-card");
+      var allCopy = node("div", "bws-tea-next-copy");
+      allCopy.appendChild(node("span", "", "Grand Tea Master"));
+      allCopy.appendChild(node("b", "", "All 15 teas unlocked"));
+      allCard.appendChild(allCopy);
+      hero.appendChild(allCard);
+    }
+    wrap.appendChild(hero);
+
+    /* 2-Column Grid of all 15 Teas */
+    var grid = node("div", "bws-tea-grid");
+    function paintGrid(selectedId) {
+      Array.from(grid.children).forEach(function (card) {
+        var tid = card.dataset.teaId;
+        var locked = card.dataset.locked === "true";
+        var isNext = card.dataset.next === "true";
+        var unlockLvl = card.dataset.unlockLevel;
+        var equipped = !locked && String(tid) === String(selectedId);
+        card.classList.toggle("is-equipped", equipped);
+        var statusNode = card.querySelector(".bws-tea-card-status");
+        if (!statusNode) return;
+        statusNode.innerHTML = "";
+        if (equipped) {
+          statusNode.appendChild(icon("check"));
+          statusNode.appendChild(node("span", "", "Equipped"));
+        } else if (!locked) {
+          statusNode.appendChild(node("span", "", "Unlocked · Click to equip"));
+        } else if (isNext) {
+          statusNode.appendChild(icon("lock"));
+          statusNode.appendChild(node("span", "", "Up Next · Lvl " + unlockLvl));
+        } else {
+          statusNode.appendChild(icon("lock"));
+          statusNode.appendChild(node("span", "", "Unlocks at Lvl " + unlockLvl));
+        }
+      });
+    }
+
+    teas.forEach(function (tea, index) {
+      var isFull = tea.value === "keemun" || (index === teas.length - 1 && teas.length % 2 === 1);
+      var card = node("button", "bws-tea-card" + (tea.locked ? " is-locked" : "") + (tea.next ? " is-next" : "") + (isFull ? " is-full" : ""));
+      card.type = "button";
+      card.dataset.teaId = String(tea.value);
+      card.dataset.locked = String(Boolean(tea.locked));
+      card.dataset.next = String(Boolean(tea.next));
+      card.dataset.unlockLevel = String(tea.unlockLevel || 1);
+
+      var thumb = node("div", "bws-tea-card-thumb");
+      if (tea.image) {
+        var img = node("img");
+        img.src = tea.image;
+        img.alt = tea.label;
+        thumb.appendChild(img);
+      } else {
+        thumb.appendChild(icon("leaf"));
+      }
+      card.appendChild(thumb);
+      card.appendChild(node("div", "bws-tea-card-title", tea.label));
+      if (tea.description || tea.subtitle) {
+        card.appendChild(node("div", "bws-tea-card-desc", tea.description || tea.subtitle));
+      }
+      card.appendChild(node("div", "bws-tea-card-status"));
+
+      if (!tea.locked) {
+        card.onclick = function () {
+          paintGrid(tea.value);
+          document.querySelectorAll(".bws-select-menu").forEach(function (m) {
+            if (m.dataset.selectPath === field.path && typeof m._repaintSelect === "function") {
+              m._repaintSelect(tea.value);
+            }
+          });
+          queue(field.path, tea.value, false);
+        };
+      }
+      grid.appendChild(card);
+    });
+
+    paintGrid(values[field.path] || field.default || "sencha");
+    wrap.appendChild(grid);
+    return wrap;
   }
   function normalHex(input, fallback) {
     var raw = String(input || "").trim();
@@ -564,7 +941,10 @@
       wrap.appendChild(input);
       return wrap;
     }
-    if (field.type === window.onigiriText("select")) { wrap.appendChild(selectControl(field)); return wrap; }
+    if (field.type === "select" || field.type === window.onigiriText("select")) { wrap.appendChild(selectControl(field)); return wrap; }
+    if (field.type === "tea_garden") { wrap.appendChild(teaGardenControl(field)); return wrap; }
+    if (field.type === "position_grid") { wrap.appendChild(positionGridControl(field)); return wrap; }
+    if (field.type === "heatmap_scrubber" || (field.type === "range" && field.heatmap)) { wrap.appendChild(sliderControl(field)); return wrap; }
     if (field.type === "textarea") {
       input = node("textarea", "bws-textarea"); input.rows = field.rows || 4; input.placeholder = field.placeholder || ""; input.value = values[field.path] || "";
       input.oninput = function () { queue(field.path, input.value, true); };
@@ -586,12 +966,16 @@
     return wrap;
   }
   function fieldRow(field) {
-    var row = node("div", "bws-field");
-    var copy = node("div", "bws-field-copy");
+    var isStacked = Boolean(field.stacked || field.type === "tea_garden");
+    var row = node("div", "bws-field" + (isStacked ? " is-stacked" : ""));
     row.dataset.path = field.path;
-    copy.appendChild(node("b", "", field.label));
-    if (field.description) copy.appendChild(node("small", "", field.description));
-    row.appendChild(copy); row.appendChild(control(field));
+    if (!field.hideLabel && (field.label || field.description)) {
+      var copy = node("div", "bws-field-copy");
+      if (field.label) copy.appendChild(node("b", "", field.label));
+      if (field.description) copy.appendChild(node("small", "", field.description));
+      row.appendChild(copy);
+    }
+    row.appendChild(control(field));
     return row;
   }
   function segmentButton(label, active, iconName) {
@@ -618,9 +1002,10 @@
       var previewHead = node("div", "bws-preview-head");
       previewHead.appendChild(node("strong", "", window.onigiriText("Real preview")));
       if ((C.previewVariants || []).length > 1) {
-        var variants = node("div", "bws-segments");
+        var variants = node("div", "bws-segments bws-preview-variants");
         (C.previewVariants || []).forEach(function (option) {
           var button = segmentButton(option.label, String(option.value) === String(C.previewVariant));
+          button.dataset.variant = String(option.value);
           button.onclick = function () {
             C.previewVariant = option.value; previewRequest();
             Array.from(variants.children).forEach(function (item) { item.classList.toggle("is-active", item === button); });
@@ -645,12 +1030,42 @@
       previewCard.appendChild(previewHead);
       var stage = node("div", "bws-preview-stage");
       var frame = node("iframe");
-      frame.id = "bwsPreview"; frame.setAttribute("sandbox", "allow-scripts"); frame.srcdoc = C.preview || ""; frame.dataset.source = C.preview || "";
+      frame.id = "bwsPreview"; frame.setAttribute("sandbox", "allow-scripts");
+      if (C.preview && page.showPreview !== false) {
+        frame.srcdoc = C.preview;
+        frame.dataset.source = C.preview;
+      } else {
+        frame.dataset.source = "";
+      }
       stage.appendChild(frame); previewCard.appendChild(stage); host.appendChild(previewCard);
     }
+    var wasHidden = Boolean(previewCard.hidden);
     /* Informational pages can own the full page without pretending their
        content is another state of the widget preview. */
     previewCard.hidden = page.showPreview === false;
+    var variantChanged = false;
+    if (page.previewVariant && String(C.previewVariant) !== String(page.previewVariant)) {
+      C.previewVariant = page.previewVariant;
+      variantChanged = true;
+      var variantWrap = previewCard.querySelector(".bws-preview-variants");
+      if (variantWrap) {
+        Array.from(variantWrap.children).forEach(function (btn) {
+          btn.classList.toggle("is-active", String(btn.dataset.variant) === String(C.previewVariant));
+        });
+      }
+    }
+    if (!previewCard.hidden) {
+      var activePreview = $("bwsPreview");
+      if (variantChanged || wasHidden || !activePreview || !activePreview.dataset.source) {
+        previewRequest();
+      }
+      requestAnimationFrame(function () {
+        var activeFrame = $("bwsPreview");
+        if (activeFrame && activeFrame.contentWindow) {
+          try { activeFrame.contentWindow.dispatchEvent(new Event("resize")); } catch (_e) { /* ignore */ }
+        }
+      });
+    }
     (page.sections || []).forEach(function (group) {
       var card = node("section", "bws-section");
       var head = node("div", "bws-section-head");
@@ -752,28 +1167,37 @@
     })();
   }
   function init() {
-    setTokens(); readValues();
-    $("bwsTitle").textContent = C.title || "Bento";
-    $("bwsBrandMark").textContent = (C.title || "B")[0].toUpperCase();
-    if (C.logo) {
-      $("bwsBrandLogo").src = C.logo;
-      $("bwsBrandLogo").alt = (C.title || "Bento") + " logo";
-      document.querySelector(".bws-brand").classList.add("has-logo");
+    try {
+      setTokens(); readValues();
+      $("bwsTitle").textContent = C.title || "Bento";
+      $("bwsBrandMark").textContent = (C.title || "B")[0].toUpperCase();
+      if (C.logo) {
+        $("bwsBrandLogo").src = C.logo;
+        $("bwsBrandLogo").alt = (C.title || "Bento") + " logo";
+        document.querySelector(".bws-brand").classList.add("has-logo");
+      }
+      if (C.miniLogo) {
+        $("bwsBrandMiniLogo").src = C.miniLogo;
+        $("bwsBrandMiniLogo").alt = (C.title || "Bento") + " compact logo";
+        document.querySelector(".bws-brand").classList.add("has-mini-logo");
+      }
+      $("bwsDonate").hidden = !C.hasDonate;
+      $("bwsBugs").hidden = !C.hasBugs;
+      $("bwsDonate").onclick = function () { send("donate", ""); };
+      $("bwsBugs").onclick = function () { send("bugs", ""); };
+      $("bwsDone").onclick = finish;
+      document.addEventListener("click", function () { closeSelects(); });
+      document.addEventListener("keydown", function (event) { if (event.key === "Escape") { closeSelects(); closeColorPicker(); } });
+      installIcons(document); renderBridgeStatus(); nav(); render(); status("idle");
+    } catch (err) {
+      var errHost = $("bwsPage");
+      if (errHost) {
+        errHost.innerHTML = "";
+        errHost.appendChild(node("div", "bws-section", String(err && err.stack ? err.stack : err)));
+      }
+    } finally {
+      document.documentElement.classList.remove("bws-booting");
     }
-    if (C.miniLogo) {
-      $("bwsBrandMiniLogo").src = C.miniLogo;
-      $("bwsBrandMiniLogo").alt = (C.title || "Bento") + " compact logo";
-      document.querySelector(".bws-brand").classList.add("has-mini-logo");
-    }
-    $("bwsDonate").hidden = !C.hasDonate;
-    $("bwsBugs").hidden = !C.hasBugs;
-    $("bwsDonate").onclick = function () { send("donate", ""); };
-    $("bwsBugs").onclick = function () { send("bugs", ""); };
-    $("bwsDone").onclick = finish;
-    document.addEventListener("click", function () { closeSelects(); });
-    document.addEventListener("keydown", function (event) { if (event.key === "Escape") { closeSelects(); closeColorPicker(); } });
-    installIcons(document); renderBridgeStatus(); nav(); render(); status("idle");
-    document.documentElement.classList.remove("bws-booting");
     send("ready", "");
   }
 

@@ -16,7 +16,8 @@ from aqt import mw
 from aqt.qt import QDesktopServices, QDialog, QUrl, QVBoxLayout
 from aqt.webview import AnkiWebView
 
-from ..core.translations import tr
+from ..core import config
+from ..core.translations import current_language, tr
 from . import redeem_net
 from .haptics import trigger as trigger_haptic
 from .onigimon import (
@@ -96,8 +97,9 @@ def _status_detail(key: str, companion: Dict[str, Any], needs: Dict[str, Any]) -
 def onigimon_payload() -> Dict[str, Any]:
     raw = manager.widget_payload(refresh_bridge=True)
     companion = raw.get("companion")
+    color_mode = "dark" if config.effective_night_mode() else "light"
     if not companion:
-        return {"companion": None}
+        return {"companion": None, "colorMode": color_mode}
     scene_config = manager.config()
     try:
         scene_blur = max(
@@ -122,9 +124,14 @@ def onigimon_payload() -> Dict[str, Any]:
             {"key": item_key, "label": _label(item_key), "count": int(inventory.get(item_key, 0) or 0), "icon": _item_asset_url(ITEMS.get(item_key, {})), "status": _item_status(item_key)}
             for item_key in definition["items"] if int(inventory.get(item_key, 0) or 0) > 0
         ]
+        status_label = tr(f"onigimon_status_{key}", key.title())
         statuses.append({
             "id": key,
-            "label": tr(f"onigimon_status_{key}", key.title()),
+            "label": status_label,
+            "backpackLabel": {
+                "health": tr("onigimon_item_medicine"),
+                "hunger": tr("onigimon_category_food"),
+            }.get(key, status_label),
             "value": max(0, min(100, int(needs.get(key, 0) or 0))),
             "detail": _status_detail(key, companion, needs),
             "color": definition["color"],
@@ -152,6 +159,18 @@ def onigimon_payload() -> Dict[str, Any]:
     gift = raw.get("lastGift") or None
     is_study_reward = raw.get("lastAction") == "study_reward"
     return {
+        "colorMode": color_mode,
+        "language": current_language(),
+        "speechLines": [
+            tr("onigimon_speech_see_you"),
+            tr("onigimon_speech_boop"),
+            tr("onigimon_speech_tickles"),
+            tr("onigimon_speech_hello"),
+            tr("onigimon_speech_enough"),
+            tr("onigimon_speech_watching"),
+            tr("onigimon_speech_again"),
+            tr("onigimon_speech_found"),
+        ],
         "companion": {**companion, "name": manager.companion_display_name(companion), "spriteUrls": manager.sprite_urls_for_companion(companion)},
         "needs": statuses, "backpack": backpack, "market": market, "wallet": raw.get("wallet") or {},
         "marketGiftReady": bool(raw.get("marketGiftReady")),
@@ -181,7 +200,6 @@ def onigimon_payload() -> Dict[str, Any]:
             "backgroundBlur": scene_blur,
             "backgroundOpacity": scene_opacity,
             "mart": _addon_asset_url("system_files/gamification_images/Mart.webp"),
-            "backpack": _addon_asset_url("system_files/pokesprite/items/key-item-travel-trunk.png"),
             "heart": _addon_asset_url("system_files/system_icons/available_for_users/heart.svg"),
             "star": _addon_asset_url("system_files/system_icons/unavailable_for_users/star_outline.svg"),
             "comet": _item_asset_url(ITEMS.get("valuable_comet_shard", {})),
@@ -194,6 +212,8 @@ def onigimon_payload() -> Dict[str, Any]:
             "alreadyHaveCode": tr("already_have_code"),
             "pasteCode": tr("paste_code_short"),
             "backpack": tr("onigimon_backpack"),
+            "back": tr("back"),
+            "useItem": tr("onigimon_use_care_item"),
             "market": tr("onigimon_daily_market"),
             "dailyGift": tr("onigimon_daily_gift"),
             "giftOpened": tr("onigimon_gift_opened"),
@@ -264,7 +284,11 @@ class OnigimonWebDialog(QDialog):
                 f"purchase_modal.css?v={asset_version}",
             ],
             js=[f"{asset_root}/onigimon.js?v={asset_version}"],
-            head=f"<script>window.ONIGIRI_ONIGIMON_DATA={payload};</script>",
+            head=(
+                f"<script>window.ONIGIRI_ONIGIMON_DATA={payload};"
+                "document.documentElement.dataset.onigimonTheme="
+                "window.ONIGIRI_ONIGIMON_DATA.colorMode;</script>"
+            ),
             context=self,
         )
 

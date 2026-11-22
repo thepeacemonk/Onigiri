@@ -610,7 +610,7 @@ def _onigimon_page():
         "title": "Onigimon",
         "icon": "pokeball.svg",
         "group": "games",
-        "post_save": ["gamification"],
+        "post_save": ["gamification", "onigimon_hud"],
         "sections": [
             {
                 "id": "onigimon_hero",
@@ -670,8 +670,11 @@ def _onigimon_page():
                 "head_to_deck": True,
                 "icon_colors_inline": False,
                 "dynamic_keys": [],
-                "sync_toggle_id": "",
-                "sync_hidden_fields": [],
+                "sync_toggle_id": "g_onigimon_sync_widget_colors",
+                "sync_hidden_fields": [
+                    "g_onigimon_scene_color",
+                    "g_onigimon_bottom_color",
+                ],
                 "description": tr(
                     "onigimon_scene_desc",
                     "Everything below styles the deck-browser widget shown here.",
@@ -693,6 +696,12 @@ def _onigimon_page():
                             {"value": "preset", "label": tr("onigimon_scenarios", "Scenario")},
                         ],
                     },
+                    _toggle(
+                        "g_onigimon_sync_widget_colors",
+                        tr("sync_with_widgets", "Sync with widgets"),
+                        ("onigimon", "sync_widget_colors"),
+                        False,
+                    ),
                     {
                         "id": "g_onigimon_scene_preset",
                         "type": "scenario_picker",
@@ -767,6 +776,129 @@ def _onigimon_page():
                             {"value": "gif", "label": tr("onigimon_sprite_animated", "Animated")},
                         ],
                     },
+                ],
+            },
+            {
+                "id": "onigimon_reviewer_hud",
+                "title": tr(
+                    "onigimon_reviewer_hud_title",
+                    "Reviewer HUD",
+                ),
+                "layout": "designer_preview",
+                "preview_kind": "onigimon_hud",
+                "stage_side": False,
+                "head_to_deck": True,
+                "icon_colors_inline": False,
+                "dynamic_keys": [],
+                "description": tr(
+                    "onigimon_reviewer_hud_desc",
+                    "Replace Ankimon's reviewer HUD and battle popups with a minimal "
+                    "Onigimon bar and Onigiri-aligned notifications. Turn off to restore "
+                    "Ankimon's default HUD.",
+                ),
+                "fields": [
+                    _toggle(
+                        "g_onigimon_reviewer_hud",
+                        tr(
+                            "onigimon_reviewer_hud_enabled",
+                            "Use Onigimon HUD instead of Ankimon's",
+                        ),
+                        ("onigimon", "reviewer_hud_enabled"),
+                        True,
+                        desc=tr(
+                            "onigimon_reviewer_hud_desc",
+                            "Replace Ankimon's reviewer HUD and battle popups with a minimal "
+                            "Onigimon bar and Onigiri-aligned notifications. Turn off to restore "
+                            "Ankimon's default HUD.",
+                        ),
+                    ),
+                    {
+                        "id": "g_onigimon_hud_mode",
+                        "type": "choice",
+                        "label": tr("onigimon_hud_mode_label", "HUD mode"),
+                        "desc": tr(
+                            "onigimon_hud_mode_desc",
+                            "Minimal keeps only sprites and HP bars. Battle adds HP numbers, XP, status, and quick items. War adds types, combat stats, and round telemetry.",
+                        ),
+                        "bind": _conf_path("onigimon", "reviewer_hud_mode"),
+                        "default": "battle",
+                        "options": [
+                            {"value": "minimal", "label": tr("onigimon_hud_mode_minimal", "Minimal")},
+                            {"value": "battle", "label": tr("onigimon_hud_mode_battle", "Battle")},
+                            {"value": "war", "label": tr("onigimon_hud_mode_war", "War")},
+                        ],
+                        "show_when": {"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    },
+                    {
+                        "id": "g_onigimon_hud_motion",
+                        "type": "choice",
+                        "label": tr("onigimon_hud_motion_label", "HUD animation"),
+                        "bind": _conf_path("onigimon", "reviewer_hud_motion"),
+                        "default": "animated",
+                        "options": [
+                            {"value": "animated", "label": tr("onigimon_sprite_animated", "Animated")},
+                            {"value": "static", "label": tr("onigimon_sprite_static", "Static")},
+                        ],
+                        "show_when": {"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    },
+                    {
+                        "id": "g_onigimon_hud_scale",
+                        "type": "slider",
+                        "label": tr("onigimon_hud_size_label", "HUD size"),
+                        "bind": _conf_path("onigimon", "reviewer_hud_scale"),
+                        "default": 100,
+                        "min": 75,
+                        "max": 135,
+                        "step": 5,
+                        "suffix": "%",
+                        "show_when": {"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    },
+                    {
+                        "id": "g_onigimon_hud_opacity",
+                        "type": "slider",
+                        "label": tr("onigimon_hud_opacity_label", "HUD opacity"),
+                        "bind": _conf_path("onigimon", "reviewer_hud_opacity"),
+                        "default": 88,
+                        "min": 0,
+                        "max": 100,
+                        "step": 5,
+                        "suffix": "%",
+                        "show_when": {"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    },
+                    {
+                        "id": "g_onigimon_hud_bg_color",
+                        "type": "color_pair",
+                        "label": tr("background_color", "Background Color"),
+                        "bind": _conf_path("onigimon", "reviewer_hud_bg_color_light"),
+                        "default": "#ffffff",
+                        "light_field": "g_onigimon_hud_bg_color_light",
+                        "dark_field": "g_onigimon_hud_bg_color_dark",
+                        "always_split": True,
+                        "static_fallback": {"light": "#ffffff", "dark": "#202124"},
+                        "show_when": {"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    },
+                    _hidden("g_onigimon_hud_bg_color_light", ("onigimon", "reviewer_hud_bg_color_light"), "#ffffff"),
+                    _hidden("g_onigimon_hud_bg_color_dark", ("onigimon", "reviewer_hud_bg_color_dark"), "#202124"),
+                    _toggle(
+                        "g_onigimon_hud_shadow",
+                        tr("onigimon_hud_shadow_label", "HUD shadow"),
+                        ("onigimon", "reviewer_hud_shadow"),
+                        True,
+                        show_when={"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    ),
+                    _action(
+                        "g_onigimon_hud_reset_position",
+                        tr("onigimon_hud_position_label", "HUD position"),
+                        tr("onigimon_hud_reset_position", "Reset position"),
+                        "onigimon_hud_reset_position",
+                        neutral=True,
+                        button_icon="reset",
+                        desc=tr(
+                            "onigimon_hud_position_desc",
+                            "Drag the HUD anywhere on the reviewer screen. Reset returns it to bottom-center.",
+                        ),
+                        show_when={"field": "g_onigimon_reviewer_hud", "values": [True]},
+                    ),
                 ],
             },
             {

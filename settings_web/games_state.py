@@ -460,6 +460,12 @@ def run_action(name, parent=None, arg=""):
         _info(tr("purchases_reset_info", ""))
         return {"ok": True}
 
+    if name == "onigimon_hud_reset_position":
+        from ..gamification import onigimon_hud
+
+        onigimon_hud.reset_position()
+        return {"ok": True}
+
     if name == "hexagon_open":
         _hexagon().open_hexagon_land_dialog()
         return {"ok": True}
@@ -473,6 +479,7 @@ def run_action(name, parent=None, arg=""):
         return {"ok": True, "hexagon": hexagon_context()}
 
     if name == "bento_settings" or name == "bento_open":
+        from aqt.qt import QTimer
         from ..api import bento as bento_api
 
         game = bento_api.get_game_widgets().get(str(arg or ""))
@@ -480,7 +487,7 @@ def run_action(name, parent=None, arg=""):
             "settings_callback" if name == "bento_settings" else "open_callback"
         )
         if callable(callback):
-            callback()
+            QTimer.singleShot(0, callback)
         return {"ok": True}
 
     return {"ok": False, "error": f"unknown action {name!r}"}

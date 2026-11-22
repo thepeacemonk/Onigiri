@@ -13,9 +13,9 @@
   margin: 0;
   padding: 0;
   text-align: left;
-  /* Learning needs room for its full label, not just a two-digit count.
-     Share the count tracks so the header and all deck rows stay aligned. */
-  --ad-count-cols: 48px 88px 48px;
+  /* Learning and Due need room for full translated labels, not just two-digit
+     counts. Share the count tracks so the header and all deck rows stay aligned. */
+  --ad-count-cols: 48px 88px 80px;
   --ad-cols: 24px minmax(0, 1fr) 112px var(--ad-count-cols) 28px;
   --ad-row-cols: minmax(0, 1fr) 112px var(--ad-count-cols) 28px;
 }
@@ -32,9 +32,7 @@
   margin-bottom: 2px;
 }
 .ad-list-header-cell {
-  font: 600 10px/1.25 var(--rf-sans);
-  min-width: 0;
-  overflow-wrap: anywhere;
+  font: 600 10px/1 var(--rf-sans);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--rf-ink-faint);

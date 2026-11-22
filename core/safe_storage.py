@@ -294,17 +294,22 @@ def atomic_write_json(path, data, mirror=True):
         _snapshot(path)
         mirror_file(path)
     # A queued older save must never overwrite an explicit, immediate save.
-    _PENDING_WRITES.pop(path, None)
+    _PENDING_WRITES.pop(_pending_key(path), None)
     return True
 
 
-# Writes queued by schedule_write_json(), keyed by path: the newest payload for
-# a file wins. Answering a card used to fsync and copy game-state files three
-# times per review; coalescing those into one write a moment later keeps the
-# reviewer responsive without giving up the atomic write itself.
+# Writes queued by schedule_write_json(), keyed by normalized path: the newest
+# payload for a file wins. Answering a card used to fsync and copy game-state
+# files three times per review; coalescing those into one write a moment later
+# keeps the reviewer responsive without giving up the atomic write itself.
 _PENDING_WRITES = {}
 _SCHEDULED_PATHS = set()
 _DEFAULT_WRITE_DELAY_MS = 1500
+
+
+def _pending_key(path):
+    """Canonical key so callers with different path spellings hit the same queue entry."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(str(path))))
 
 
 def schedule_write_json(path, data, delay_ms=_DEFAULT_WRITE_DELAY_MS):
@@ -315,14 +320,15 @@ def schedule_write_json(path, data, delay_ms=_DEFAULT_WRITE_DELAY_MS):
     lost. Callers that must see the file on disk immediately (or that are about
     to hand the file to another process) should call atomic_write_json().
     """
-    _PENDING_WRITES[path] = copy.deepcopy(data)
+    key = _pending_key(path)
+    _PENDING_WRITES[key] = (path, copy.deepcopy(data))
 
-    if path in _SCHEDULED_PATHS:
+    if key in _SCHEDULED_PATHS:
         return True
-    _SCHEDULED_PATHS.add(path)
+    _SCHEDULED_PATHS.add(key)
 
     def run():
-        _SCHEDULED_PATHS.discard(path)
+        _SCHEDULED_PATHS.discard(key)
         flush_pending(path)
 
     try:
@@ -331,24 +337,26 @@ def schedule_write_json(path, data, delay_ms=_DEFAULT_WRITE_DELAY_MS):
         mw.progress.single_shot(int(delay_ms), run, False)
     except Exception:
         # No Qt loop (tests, headless tools): fall back to writing right away.
-        _SCHEDULED_PATHS.discard(path)
+        _SCHEDULED_PATHS.discard(key)
         return flush_pending(path)
     return True
 
 
 def pending_payload(path):
     """The queued-but-unwritten payload for ``path``, or None."""
-    return _PENDING_WRITES.get(path)
+    entry = _PENDING_WRITES.get(_pending_key(path))
+    return entry[1] if entry is not None else None
 
 
 def flush_pending(path=None):
     """Write queued payloads. Without ``path``, flushes every pending file."""
-    paths = [path] if path is not None else list(_PENDING_WRITES.keys())
+    keys = [_pending_key(path)] if path is not None else list(_PENDING_WRITES.keys())
     success = True
-    for target in paths:
-        data = _PENDING_WRITES.get(target)
-        if data is None:
+    for key in keys:
+        entry = _PENDING_WRITES.get(key)
+        if entry is None:
             continue
+        target, data = entry
         if not atomic_write_json(target, data):
             success = False
     return success
@@ -394,7 +402,7 @@ def read_json(path, default=None, label=None, validator=None):
             return False
 
     # A write queued by schedule_write_json() is newer than anything on disk.
-    queued = _PENDING_WRITES.get(path)
+    queued = pending_payload(path)
     if queued is not None and valid(queued):
         try:
             return json.loads(json.dumps(queued))

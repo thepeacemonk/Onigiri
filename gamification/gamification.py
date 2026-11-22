@@ -51,6 +51,7 @@ class RestaurantLevelData:
     show_profile_page_progress: Optional[bool] = None
     # Migration State
     migrated: bool = False
+    xp_multiplier: Optional[int] = None
     
     def __post_init__(self):
         if self.owned_items is None:
@@ -85,6 +86,24 @@ class GamificationData:
         os.makedirs(user_files, exist_ok=True)
         return os.path.join(user_files, f'gamification_{self._profile_name}.json')
 
+    @staticmethod
+    def _safe_int(value: Any, default: int = 0) -> int:
+        if value is None or isinstance(value, bool):
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _has_existing_or_backup(data_path: str) -> bool:
+        if os.path.exists(data_path) or safe_storage.pending_payload(data_path) is not None:
+            return True
+        if os.path.exists(data_path + '.bak') or safe_storage._snapshots_for(data_path):
+            return True
+        mirrored = safe_storage._mirror_path_for(data_path)
+        return bool(mirrored and os.path.exists(mirrored))
+
     def _load(self) -> None:
         """Load data from JSON file if it exists."""
         safe_storage.backup_before_upgrade()
@@ -93,9 +112,10 @@ class GamificationData:
         self.restaurant_data = RestaurantLevelData(daily_special={})
         data_path = self._get_data_path()
         
-        # Migration: Check for legacy file
+        # Migration: Check for legacy file only when this profile has neither
+        # a primary save nor any recoverable backup/mirror.
         legacy_path = os.path.join(os.path.dirname(data_path), 'gamification.json')
-        if os.path.exists(legacy_path) and not os.path.exists(data_path):
+        if os.path.exists(legacy_path) and not self._has_existing_or_backup(data_path):
             try:
                 shutil.copy2(legacy_path, data_path)
                 print(f"Migrated gamification data to {data_path}")
@@ -106,51 +126,65 @@ class GamificationData:
             data = safe_storage.read_json(
                 data_path, default={}, label="Your Onigiri progress"
             )
-            if not data:
+            if not isinstance(data, dict) or not data:
                 return
-
-            # Load achievements
-            self.achievements = {
-                ach['id']: safe_storage.dataclass_from_dict(AchievementData, ach)
-                for ach in data.get('achievements', [])
-            }
-            
-            # Load daily specials
-            self.daily_specials = [
-                safe_storage.dataclass_from_dict(DailySpecialData, special)
-                for special in data.get('daily_specials', [])
-            ]
-            
-            # Load restaurant level data
-            r_data = data.get('restaurant_level', {})
-            # Ensure fallback defaults if file has partial data
-            self.restaurant_data = RestaurantLevelData(
-                daily_special=r_data.get('daily_special', {}),
-                taiyaki_coins=r_data.get('taiyaki_coins', 0),
-                owned_items=r_data.get('owned_items', ["default"]),
-                current_theme_id=r_data.get('current_theme_id', "default"),
-
-                last_updated=r_data.get('last_updated', ""),
-                level=r_data.get('level', 0),
-                total_xp=r_data.get('total_xp', 0),
-                name=r_data.get('name', "Nook Level"),
-                enabled=r_data.get('enabled', None),
-                notifications_enabled=r_data.get('notifications_enabled', None),
-                show_profile_bar_progress=r_data.get('show_profile_bar_progress', None),
-                show_profile_page_progress=r_data.get('show_profile_page_progress', None),
-                migrated=r_data.get('migrated', False)
-            )
-            
-            self.last_updated = data.get('last_updated', self.last_updated)
-            
         except Exception as e:
             print(f"Error loading gamification data: {e}")
-            self.achievements = {}
-            self.daily_specials = []
+            return
+
+        # Load restaurant level data independently so a malformed achievement
+        # or daily special entry can never zero out coins, level, or XP.
+        raw_restaurant = data.get('restaurant_level')
+        r_data = raw_restaurant if isinstance(raw_restaurant, dict) else {}
+        raw_daily_special = r_data.get('daily_special')
+        raw_owned = r_data.get('owned_items')
+        owned_items = list(raw_owned) if isinstance(raw_owned, list) else ["default"]
+        self.restaurant_data = RestaurantLevelData(
+            daily_special=dict(raw_daily_special) if isinstance(raw_daily_special, dict) else {},
+            taiyaki_coins=self._safe_int(r_data.get('taiyaki_coins'), 0),
+            owned_items=owned_items,
+            current_theme_id=r_data.get('current_theme_id') or "default",
+
+            last_updated=r_data.get('last_updated') or "",
+            level=self._safe_int(r_data.get('level'), 0),
+            total_xp=self._safe_int(r_data.get('total_xp'), 0),
+            name=r_data.get('name') or "Nook Level",
+            enabled=r_data.get('enabled', None),
+            notifications_enabled=r_data.get('notifications_enabled', None),
+            show_profile_bar_progress=r_data.get('show_profile_bar_progress', None),
+            show_profile_page_progress=r_data.get('show_profile_page_progress', None),
+            migrated=bool(r_data.get('migrated', False)),
+            xp_multiplier=r_data.get('xp_multiplier'),
+        )
+
+        # Load achievements (skip only individual malformed entries)
+        raw_achievements = data.get('achievements')
+        if isinstance(raw_achievements, list):
+            for ach in raw_achievements:
+                if not isinstance(ach, dict) or not ach.get('id'):
+                    continue
+                try:
+                    self.achievements[ach['id']] = safe_storage.dataclass_from_dict(AchievementData, ach)
+                except Exception as e:
+                    print(f"Error loading achievement entry: {e}")
+
+        # Load daily specials (skip only individual malformed entries)
+        raw_specials = data.get('daily_specials')
+        if isinstance(raw_specials, list):
+            for special in raw_specials:
+                if not isinstance(special, dict):
+                    continue
+                try:
+                    self.daily_specials.append(safe_storage.dataclass_from_dict(DailySpecialData, special))
+                except Exception as e:
+                    print(f"Error loading daily special entry: {e}")
+
+        if data.get('last_updated'):
+            self.last_updated = data['last_updated']
     def reload(self) -> None:
         """Reload data from disk."""
         self._load()
-    def save(self, immediate: bool = False) -> None:
+    def save(self, immediate: bool = False) -> bool:
         """Save data to JSON file.
 
         Every answered card updates XP and Nook Rush progress, so writing
@@ -169,6 +203,11 @@ class GamificationData:
             'last_updated': self.last_updated
         }
         
+        # Untouched legacy files keep their original shape until progression
+        # is initialized by the Nook manager.
+        if new_data['restaurant_level']['xp_multiplier'] is None:
+            new_data['restaurant_level'].pop('xp_multiplier')
+
         data_path = self._get_data_path()
         final_data = {}
         
@@ -185,13 +224,13 @@ class GamificationData:
             ) or {}
 
         # Preserve legacy nested metadata as well as top-level extension keys.
-        # The old shop stored its coin integrity token inside restaurant_level.
+        # Keep the legacy coin integrity token synchronized whenever present so
+        # older releases or synced devices can never treat a valid balance as stale.
         previous_restaurant = final_data.get('restaurant_level', {})
         if isinstance(previous_restaurant, dict):
             merged_restaurant = dict(previous_restaurant)
             merged_restaurant.update(new_data['restaurant_level'])
-            if ('_security_token' in previous_restaurant
-                    and previous_restaurant.get('taiyaki_coins') != merged_restaurant['taiyaki_coins']):
+            if '_security_token' in merged_restaurant:
                 import hashlib
                 merged_restaurant['_security_token'] = hashlib.sha256(
                     f"{merged_restaurant['taiyaki_coins']}:onigiri_secret_salt_2024".encode()
@@ -202,9 +241,12 @@ class GamificationData:
         final_data.update(new_data)
 
         if immediate:
-            safe_storage.atomic_write_json(data_path, final_data)
-        else:
-            safe_storage.schedule_write_json(data_path, final_data)
+            if safe_storage.atomic_write_json(data_path, final_data):
+                return True
+            # Transient file lock (e.g. antivirus/cloud sync): queue a retry so
+            # redeemed/earned coins are never silently dropped on disk.
+            return safe_storage.schedule_write_json(data_path, final_data)
+        return safe_storage.schedule_write_json(data_path, final_data)
 
     def update_achievement(
         self, 
@@ -296,6 +338,31 @@ class GamificationData:
         """Return restaurant data as a dictionary."""
         return asdict(self.restaurant_data)
 
+    def progression_backups(self):
+        """Read this profile's recovery evidence without restoring whole files."""
+        path = self._get_data_path()
+        sources = [path + '.bak', *safe_storage._snapshots_for(path)]
+        mirrored = safe_storage._mirror_path_for(path)
+        if mirrored:
+            sources.append(mirrored)
+        for source in sources:
+            try:
+                with open(source, encoding='utf-8') as handle:
+                    data = json.load(handle)
+                if isinstance(data, dict) and isinstance(data.get('restaurant_level'), dict):
+                    yield data['restaurant_level']
+            except (OSError, ValueError):
+                continue
+        import zipfile
+        archive_path = os.path.join(safe_storage.external_backup_dir(), 'before_progress_upgrade_v2.zip')
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                data = json.loads(archive.read('user_files/' + os.path.basename(path)))
+                if isinstance(data, dict) and isinstance(data.get('restaurant_level'), dict):
+                    yield data['restaurant_level']
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+            pass
+
 # Singleton instance
 _gamification_data = None
 
@@ -311,8 +378,15 @@ except:
     pass
 
 def get_gamification_manager() -> GamificationData:
-    """Get the singleton instance of GamificationData."""
+    """Get the singleton instance of GamificationData for the active profile."""
     global _gamification_data
+    current_profile = GamificationData._resolve_profile_name()
+    if _gamification_data is not None and _gamification_data._profile_name != current_profile:
+        try:
+            safe_storage.flush_pending(_gamification_data._get_data_path())
+        except Exception:
+            pass
+        _gamification_data = None
     if _gamification_data is None:
         # Calculate addon_path dynamically
         current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -17,6 +17,7 @@ from aqt.theme import theme_manager
 from ..core import config
 from ..rendering.theme_palette import chrome_palette
 from ..ui_kit.fonts import FONTS, get_all_fonts, poppins_font_face_css
+from ..ui_kit.system_icons import pickable_system_icons
 from ..core.translations import TRANSLATIONS, current_language, localized_default, tr, web_localization_script, literal_strings
 from . import gallery, schema, theme_store
 
@@ -68,7 +69,11 @@ def addon_package():
 
 
 def addon_uri(rel_from_root):
-    return f"/_addons/{addon_package()}/{rel_from_root.lstrip('/')}"
+    from urllib.parse import quote
+
+    clean = str(rel_from_root or "").replace("\\", "/").lstrip("/")
+    encoded = "/".join(quote(part, safe="") for part in clean.split("/") if part)
+    return f"/_addons/{addon_package()}/{encoded}"
 
 
 def read_web_asset(name):
@@ -286,6 +291,7 @@ def _strings():
     out["view_year"] = tr("view_year", "Year")
     out["view_month"] = tr("view_month", "Month")
     out["view_week"] = tr("view_week", "Week")
+    out["heatmap_terrain_help"] = tr("heatmap_terrain_help")
     # Image field + gallery popover.
     out["gallery_choose"] = tr("settings_web_gallery_choose", "Choose image")
     out["gallery_change"] = tr("settings_web_gallery_change", "Change")
@@ -404,6 +410,12 @@ def _strings():
     out["message_remove"] = tr("settings_web_message_remove", "Remove")
     out["mochi_font_sample"] = tr("mochi_font_sample", "Keep going!")
     out["mochi_title_placeholder"] = tr("mochi_title_placeholder", "Mochi says…")
+    out["onigimon_hud_items"] = tr("onigimon_hud_items", "Items")
+    out["onigimon_hud_round"] = tr("onigimon_hud_round", "Round")
+    out["onigimon_hud_preview_disabled"] = tr(
+        "onigimon_hud_preview_disabled",
+        "Using Ankimon's default HUD",
+    )
     return out
 
 
@@ -942,17 +954,10 @@ def pickable_icons_context():
     "everything a stored value might resolve to" (which also has to cover
     unavailable_for_users, in case an old value still points at one).
 
-    Only available_for_users is user-facing here — same rule patcher.py's own
-    users_only icon listing applies — plus every icon the user has uploaded."""
+    Offer the public bundled catalog plus every icon the user has uploaded."""
     out = []
     avail_dir = os.path.join(ADDON_ROOT, "system_files", "system_icons", "available_for_users")
-    try:
-        names = sorted(os.listdir(avail_dir))
-    except OSError:
-        names = []
-    for name in names:
-        if not name.lower().endswith(".svg"):
-            continue
+    for name in pickable_system_icons(avail_dir):
         uri = icon_data_uri(name)
         if uri:
             out.append({"name": f"system:{name}", "url": uri, "system": True})
@@ -1086,6 +1091,7 @@ def build_context(store, pages, initial_page=None):
                     # Sub-caption under a section's own title (the Games pages
                     # explain what a card does before its controls).
                     "description": section.get("description", ""),
+                    "descriptionInTab": bool(section.get("description_in_tab")),
                     # Only used by tabbed pages: the icon-only fallback the
                     # sub-menu strip switches to when it runs out of width.
                     "icon": icon_svg(section.get("icon")),
@@ -1094,7 +1100,6 @@ def build_context(store, pages, initial_page=None):
                     "layout": section.get("layout", ""),
                     "role_key": section.get("role_key", ""),
                     "fontRoles": section.get("font_roles", []),
-                    "headerCustomization": bool(section.get("header_customization")),
                     "fontMenuLabel": section.get("font_menu_label", ""),
                     # Compact element-group picker used by dense palettes such
                     # as the Reviewer bottom-bar button colors.
@@ -1228,7 +1233,7 @@ def _serialize_field(store, field):
         "head", "head_label", "show_when", "control_style",
         # Icon picker categories used to keep deck-list header, action-button,
         # and Ready To Go icons visibly distinct in the designer card.
-        "icon_group", "icon_group_title",
+        "icon_group", "icon_group_title", "default_icon", "icon_tint",
         # Declarative placement for a field that must stay near a related
         # control instead of joining the generic type-based deck group.
         "deck_placement", "deck_icon_tile",
@@ -1318,7 +1323,7 @@ def render(store, pages, initial_page=None):
     template = read_web_asset("settings.html")
     if not template:
         return "<html><body>" + tr("settings_assets_missing") + "</body></html>"
-    css = (read_web_asset("settings.css") + "\n" + read_web_asset("reviewer_header_shared.css")) + "\n" + read_web_asset("reviewer_buttons_shared.css")
+    css = read_web_asset("settings.css") + "\n" + read_web_asset("reviewer_buttons_shared.css")
     js = read_web_asset("settings.js")
     heatmap_js = read_web_asset("Particles.js") + "\n" + read_web_asset("heatmap.js")
     notifications_js = read_web_asset("notifications.js")

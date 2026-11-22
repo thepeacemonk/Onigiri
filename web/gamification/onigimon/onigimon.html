@@ -3,46 +3,41 @@
     <div class="companion-stage">
       <div class="hero-background" data-bind="background" aria-hidden="true"></div>
       <div class="fx-layer" aria-hidden="true"></div>
-      <div class="companion-display">
+      <button class="companion-display" type="button" data-action="pet" data-i18n-alabel="pet" aria-label="Pet companion">
         <img class="companion-sprite" data-bind="sprite" alt="">
+      </button>
+      <div class="companion-speech" data-bind="speech" aria-hidden="true">
+        <span class="speech-size"></span>
+        <span class="speech-typed"></span>
       </div>
+      <span class="speech-announcement" data-bind="speech-announcement" role="status" aria-atomic="true"></span>
       <p class="live-status" data-bind="message"></p>
     </div>
     <aside class="care-panel">
-      <div class="companion-meta"><strong data-bind="name" data-i18n-text="companion">Companion</strong><span data-bind="level">Level 1</span></div>
-      <div class="status-list" data-bind="statuses"></div>
+      <div data-bind="care-overview">
+        <div class="companion-meta"><strong data-bind="name" data-i18n-text="companion">Companion</strong><span data-bind="level">Level 1</span></div>
+        <div class="status-list" data-bind="statuses"></div>
+      </div>
+      <section id="care-backpack" class="backpack-category-view" data-bind="backpack-category-view" aria-labelledby="care-backpack-title" hidden>
+        <header class="backpack-category-heading">
+          <button class="backpack-return" type="button" data-action="close-category"
+            data-i18n-alabel="back" aria-label="Back" aria-describedby="care-backpack-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <h2 id="care-backpack-title">
+            <span class="backpack-section-label" data-i18n-text="backpack">Backpack</span>
+            <span data-bind="backpack-category"></span>
+          </h2>
+          <span class="category-dock-icon" aria-hidden="true"></span>
+        </header>
+        <div class="backpack-item-grid" data-bind="backpack-items"></div>
+      </section>
     </aside>
   </section>
-  <section class="content-grid">
-    <article class="market-panel">
-      <header class="market-head"><div class="market-identity"><img data-bind="mart" alt=""><div><p class="market-kicker">CARE SUPPLIES</p><h1 data-bind="market-title">Daily Market</h1><p class="market-lead">Fresh items for your companion, restocked every day.</p></div></div><div class="market-actions"><div class="wallet"><span><img data-bind="comet" alt=""><b data-bind="comets">0</b></span><span><img data-bind="star-piece" alt=""><b data-bind="stars">0</b></span></div><button class="redeem-btn" data-action="open-redeem">Redeem</button></div></header>
-      <button class="gift-btn" data-action="gift"></button>
-      <div class="market-grid" data-bind="market"></div>
-    </article>
-    <aside class="backpack-panel">
-      <header><div><img data-bind="backpack-icon" alt=""><h2 data-bind="backpack-title">Backpack</h2></div><span class="backpack-category" data-bind="backpack-category">All items</span></header>
-      <div class="backpack-body">
-        <div class="wallet-display">
-          <div class="item-wallet" tabindex="0" role="listbox" aria-label="Wallet cards. Use the up and down arrow keys to navigate between cards, then press Enter to open one.">
-            <div class="item-wallet-back" aria-hidden="true"></div>
-            <div class="wallet-card-stack" data-bind="backpack"></div>
-            <div class="item-wallet-pocket" aria-hidden="true">
-              <svg viewBox="0 0 280 160" fill="none" preserveAspectRatio="none">
-                <path d="M 0 20 C 0 10, 5 10, 10 10 C 20 10, 25 25, 40 25 L 240 25 C 255 25, 260 10, 270 10 C 275 10, 280 10, 280 20 L 280 120 C 280 155, 260 160, 240 160 L 40 160 C 20 160, 0 155, 0 120 Z" class="wallet-pocket-fill"></path>
-                <path d="M 8 22 C 8 16, 12 16, 15 16 C 23 16, 27 29, 40 29 L 240 29 C 253 29, 257 16, 265 16 C 268 16, 272 16, 272 22 L 272 120 C 272 150, 255 152, 240 152 L 40 152 C 25 152, 8 152, 8 120 Z" class="wallet-stitches"></path>
-              </svg>
-              <div class="onigimon-wallet-logo"><span class="onigimon-wallet-ball"></span><strong>ONIGIMON</strong><small>CARE WALLET</small></div>
-            </div>
-          </div>
-          <p class="wallet-hint"><span>Select the wallet, then use <kbd>↑</kbd> <kbd>↓</kbd> to navigate cards</span></p>
-        </div>
-        <section class="backpack-category-view" data-bind="backpack-category-view" aria-hidden="true">
-          <button class="backpack-return" type="button" data-action="close-category"><span aria-hidden="true">←</span> All categories</button>
-          <div class="backpack-category-dock" data-bind="backpack-category-dock"></div>
-          <div class="backpack-item-grid" data-bind="backpack-items"></div>
-        </section>
-      </div>
-    </aside>
+  <section class="market-panel">
+    <header class="market-head"><div class="market-identity"><img data-bind="mart" alt=""><div><p class="market-kicker">CARE SUPPLIES</p><h1 data-bind="market-title">Daily Market</h1><p class="market-lead">Fresh items for your companion, restocked every day.</p></div></div><div class="market-actions"><div class="wallet"><span><img data-bind="comet" alt=""><b data-bind="comets">0</b></span><span><img data-bind="star-piece" alt=""><b data-bind="stars">0</b></span></div><button class="redeem-btn" data-action="open-redeem">Redeem</button></div></header>
+    <button class="gift-btn" data-action="gift"></button>
+    <div class="market-grid" data-bind="market"></div>
   </section>
   <!-- Purchase codes and redeem them in the same layout as Hexagon Land. -->
   <div class="modal purchase-modal" data-bind="redeem-modal" aria-hidden="true">

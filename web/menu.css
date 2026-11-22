@@ -59,13 +59,8 @@ body {
     transition: opacity 0.25s ease, filter 0.25s ease !important;
 }
 
-body.is-card-editing .container.modern-main-menu,
-body.is-card-editing #deck-list-container,
-body.is-card-editing .sidebar-left,
-body.is-card-editing .main-content,
-.container.modern-main-menu.is-card-editing {
-    pointer-events: none !important;
-}
+/* Card editors are modeless. Their dim state must never disable navigation
+   in the main window, including when Anki retains a hidden editor instance. */
 
 .container.modern-main-menu.onigiri-sidebar-right {
     flex-direction: row-reverse;
@@ -219,6 +214,8 @@ body.is-card-editing .main-content,
     width: 24px;
     height: 24px;
     border-radius: 999px;
+    border: 1px solid var(--border, currentColor);
+    box-sizing: border-box;
     background: var(--onigiri-sidebar-bg, var(--bg, #fff));
     box-shadow: none;
     opacity: 0;
@@ -2073,6 +2070,8 @@ tr.deck.drag-over-nest {
    would otherwise force the label colour back to --font-small-title-color.  */
 
 .stat-card.onigiri-stat-card {
+    container-type: inline-size;
+    container-name: onigiri-stat;
     background-color: var(--swidget-box-bg, var(--canvas-inset));
     border: var(--swidget-box-stroke, 1px) solid var(--swidget-box-border, var(--border));
     border-radius: var(--swidget-box-radius, 15px);
@@ -2107,6 +2106,7 @@ tr.deck.drag-over-nest {
 .stat-card.onigiri-stat-card .stat-value {
     margin: 0;
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: 0.28em;
     color: var(--swidget-value-color, var(--fg));
@@ -2291,7 +2291,15 @@ tr.deck.drag-over-nest {
 }
 
 .stat-card.onigiri-stat-card.is-expressive .stat-value {
-    white-space: nowrap;
+    white-space: normal;
+}
+
+@container onigiri-stat (max-width: 180px) {
+    .stat-card.onigiri-stat-card h3 {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        letter-spacing: 0.02em;
+    }
 }
 
 .stat-spark-fill {
@@ -3618,6 +3626,8 @@ td.count {
     height: 30px;
     color: var(--onigiri-edge-icon-color, var(--fg-subtle, #777));
     background: var(--onigiri-sidebar-bg, var(--bg, #fff)) !important;
+    outline: 1px solid var(--border, currentColor);
+    outline-offset: -1px;
 }
 
 .sidebar-edge-toggle-zone {

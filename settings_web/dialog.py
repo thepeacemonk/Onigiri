@@ -77,7 +77,8 @@ _dialog = None
 
 class SettingsWebDialog(QDialog):
     def __init__(self, parent=None, addon_path=None, initial_page=None):
-        super().__init__(parent or mw)
+        # Keep Settings above Anki while autosave redraws the main window.
+        super().__init__(parent or mw, Qt.WindowType.Tool)
         self.addon_path = addon_path or render.ADDON_ROOT
         self.store = Store()
         self.store.register(

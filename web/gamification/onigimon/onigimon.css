@@ -15,6 +15,7 @@
 :root {
   --paper: #f7f7f6;
   --card: #ffffff;
+  --tile: #fbfbfa;
   --surface: #f0f0ef;
   --scene: #e8f1e7;
   --ink: #202124;
@@ -23,10 +24,40 @@
   --accent: #2f6948;
   --accent-ink: #ffffff;
   --accent-soft: #e7f1e9;
+  --accent-line: #b7d1be;
   --gift: #f3d46a;
   --danger: #9d3d3d;
-  --market-blue: #3e75b9;
+  --market-blue: #3769a8;
+  --empty-line: #c58a00;
+  --empty-paper: #fff9df;
+  --empty-ink: #765800;
+  --overlay: #20212480;
   color-scheme: light;
+}
+
+:root[data-onigimon-theme="light"] { color-scheme: light; }
+
+/* Use the same neutral dark surfaces as Nook, with Onigimon's care accents. */
+:root[data-onigimon-theme="dark"] {
+  --paper: #1a1a1a;
+  --card: #242424;
+  --tile: #292929;
+  --surface: #303030;
+  --scene: #29372e;
+  --ink: #f1f1f1;
+  --muted: #b0b0b0;
+  --line: #414141;
+  --accent: #a5d6b5;
+  --accent-ink: #1a3022;
+  --accent-soft: #293d31;
+  --accent-line: #527960;
+  --danger: #f0b3ac;
+  --market-blue: #a8c8f0;
+  --empty-line: #8b7445;
+  --empty-paper: #373024;
+  --empty-ink: #eed69e;
+  --overlay: #0009;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +90,7 @@ p { margin: 0; }
   -webkit-appearance: none;
 }
 .onigimon-app button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent) !important;
   outline-offset: 3px;
 }
 .onigimon-app button:disabled { cursor: default; }
@@ -115,29 +146,28 @@ p { margin: 0; }
   transform: scale(1.04);
   transition: background-image .18s ease, opacity .18s ease, filter .18s ease;
 }
-.companion-display {
+.onigimon-app .companion-display {
   position: relative;
   z-index: 2;
-  display: grid !important;
+  display: grid;
   place-items: center;
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: visible;
+  width: min(60%, 250px);
+  max-height: 245px;
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: 14px;
   background: transparent;
+  transition: scale 320ms cubic-bezier(.24, 1.34, .38, 1);
 }
+.companion-display:active { scale: .96; transition-duration: 120ms; }
 .companion-sprite {
   display: block;
-  width: min(60%, 285px);
-  height: auto;
-  max-width: 60%;
-  max-height: 66%;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   object-fit: contain;
-  object-position: center;
   image-rendering: pixelated;
 }
 .companion-sprite.is-animated { animation: sprite-bop .55s ease; }
@@ -157,12 +187,61 @@ p { margin: 0; }
   translate: -50% 0;
 }
 
+/* Bencho's balloon points its square corner back toward the companion.
+   The invisible full line holds the balloon's size while the text appears. */
+.companion-speech {
+  position: absolute;
+  z-index: 6;
+  top: 62%;
+  left: 53%;
+  display: grid;
+  grid-template-columns: minmax(0, auto);
+  max-width: calc(47% - 12px);
+  padding: 8px 12px;
+  border-radius: 4px 14px 14px;
+  background: #334bc3;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  scale: .85;
+  pointer-events: none;
+  transform-origin: top left;
+  transition: opacity 160ms, scale 220ms cubic-bezier(.24, 1.34, .38, 1), background-color 220ms;
+}
+.companion-speech[data-tint="1"] { background: #11703d; }
+.companion-speech[data-tint="2"] { background: #a72363; }
+.companion-speech[data-speaking] { opacity: 1; scale: 1; }
+.speech-size, .speech-typed { grid-area: 1 / 1; }
+.speech-size { visibility: hidden; padding-inline-end: 5px; }
+.companion-speech[data-typing] .speech-typed::after {
+  display: inline-block;
+  width: 2px;
+  height: .9em;
+  margin-inline-start: 3px;
+  border-radius: 1px;
+  background: currentColor;
+  vertical-align: -.08em;
+  animation: speech-caret 1s steps(1) infinite;
+  content: '';
+}
+@keyframes speech-caret { 50% { opacity: 0; } }
+.speech-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .care-panel {
   position: relative;
-  align-self: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
   margin: 24px;
-  padding: 0;
-  background: var(--card);
 }
 .companion-meta {
   display: flex;
@@ -184,24 +263,18 @@ p { margin: 0; }
   font-weight: 700;
 }
 .status-list { display: grid; }
-.status-row {
+.onigimon-app .status-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 5px 10px;
   width: 100%;
+  margin: 0;
   padding: 12px 0;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
   color: var(--ink);
   text-align: left;
-  box-shadow: none !important;
-}
-.status-row:hover,
-.status-row.is-selected {
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
   box-shadow: none !important;
 }
 .status-row > span {
@@ -216,16 +289,13 @@ p { margin: 0; }
   flex: 0 0 18px;
   width: 18px;
   height: 18px;
-  background: var(--ink);
-  -webkit-mask: var(--status-icon) center / contain no-repeat;
-  mask: var(--status-icon) center / contain no-repeat;
   transform-origin: center;
 }
 .status-row:hover .status-icon {
   animation: status-pump .42s ease;
 }
-.status-row.is-selected .status-icon {
-  background: var(--status);
+.status-row:is(:hover, :focus-visible) .status-icon {
+  color: var(--status);
 }
 @keyframes status-pump {
   0%, 100% { transform: scale(1); }
@@ -251,34 +321,17 @@ p { margin: 0; }
   transition: width .3s ease;
 }
 
-/* Market and backpack use the same simple bordered panels as Nook. */
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 18px;
+/* The market spans the full row below the companion and its care menu. */
+.market-panel {
   margin-top: 18px;
-}
-.market-panel,
-.backpack-panel {
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--card);
 }
-.backpack-panel {
-  display: flex;
-  flex-direction: column;
-  align-self: start;
-  width: 100%;
-  height: 540px;
-  min-height: 540px;
-  max-height: 540px;
-  overflow: hidden;
-}
 .market-head,
 .market-head > div,
-.wallet,
-.backpack-panel header {
+.wallet {
   display: flex;
   align-items: center;
 }
@@ -306,8 +359,7 @@ p { margin: 0; }
   color: var(--muted);
   font-size: 11px;
 }
-.market-head h1,
-.backpack-panel h2 {
+.market-head h1 {
   font-size: 17px;
   line-height: 1.3;
 }
@@ -344,12 +396,12 @@ p { margin: 0; }
   font-size: 11px;
   font-weight: 700;
 }
-.redeem-btn {
+.onigimon-app .redeem-btn {
   min-height: 38px;
   padding: 7px 12px;
   background: var(--market-blue);
 }
-.gift-btn {
+.onigimon-app .gift-btn {
   width: 100%;
   min-height: 42px;
   margin: 18px 0 14px;
@@ -361,7 +413,7 @@ p { margin: 0; }
   font-size: 11px;
   font-weight: 700;
 }
-.gift-btn:disabled {
+.onigimon-app .gift-btn:disabled {
   border-color: var(--line);
   background: var(--surface);
   color: var(--muted);
@@ -378,19 +430,28 @@ p { margin: 0; }
   align-content: center;
   gap: 8px;
   min-width: 0;
-  min-height: 166px;
-  padding: 16px 10px 14px;
+  min-height: 178px;
+  margin: 0;
+  padding: 36px 10px 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fbfbfa;
+  background: var(--tile);
   color: var(--ink);
   box-shadow: none !important;
 }
 .market-card:hover:not(:disabled) {
-  border-color: #b7d1be;
+  border-color: var(--accent-line);
   background: var(--accent-soft);
 }
-.market-card:disabled { opacity: .62; }
+.market-card:disabled { opacity: .65; }
+.onigimon-app .market-card.is-bought {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--ink);
+  opacity: 1;
+}
+.market-card.is-bought .market-art { background: var(--card); }
+.market-card.is-bought .market-card-meta { border-color: var(--accent-line); }
 .market-art {
   display: grid !important;
   place-items: center;
@@ -408,7 +469,7 @@ p { margin: 0; }
 .market-card strong {
   max-width: 100%;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
   text-align: center;
   text-overflow: ellipsis;
@@ -433,391 +494,128 @@ p { margin: 0; }
 .purchased-label {
   position: absolute;
   top: 8px;
-  right: 8px;
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 8px;
-  font-weight: 700;
-}
-
-.backpack-panel header {
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
-}
-.backpack-panel header > div {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.backpack-category {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-}
-.backpack-panel.is-open { border-color: #b7d1be; }
-.backpack-panel header img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-.backpack-body {
-  display: grid;
-  flex: 1;
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 0;
-  overflow: hidden;
-}
-.wallet-display {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  grid-area: 1 / 1;
-  justify-content: center;
-  min-height: 0;
-  padding: 140px 0 32px;
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  visibility: visible;
-  transition: opacity .24s ease, transform .42s cubic-bezier(.2, .8, .2, 1), visibility 0s;
-}
-.item-wallet {
-  position: relative;
-  width: min(100%, 280px);
-  height: 276px;
-  margin: 0 auto;
-  perspective: 1000px;
-  transition: translate .3s ease;
-}
-.item-wallet:focus { outline: none; }
-.item-wallet:focus-visible + .wallet-hint {
-  color: #a87600;
-}
-.wallet-display:hover .item-wallet { translate: 0 -3px; }
-.item-wallet-back {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  height: 238px;
-  border: 1px solid #c58a00;
-  border-radius: 22px 22px 54px 54px;
-  background: #f4c644;
-}
-.wallet-card-stack {
-  position: absolute;
-  z-index: 10;
-  inset: -102px 8px 3px;
-  padding: 0;
-  overflow: visible;
-  cursor: pointer;
-}
-.wallet-item-card {
-  position: absolute;
-  bottom: var(--card-pocket-offset);
-  left: 5px;
-  z-index: var(--card-order);
-  display: flex;
-  flex: 0 0 132px;
-  flex-direction: column;
-  justify-content: space-between;
-  width: calc(100% - 14px);
-  height: 132px;
-  min-height: 132px;
-  padding: 15px;
-  border: 1px solid color-mix(in srgb, var(--item-accent) 78%, black 22%);
-  border-radius: 15px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--item-accent) 88%, white 12%), var(--item-accent));
-  color: #fff;
-  text-align: left;
-  transform-origin: center bottom;
-  rotate: 0deg;
-  pointer-events: none;
-  transition: left .34s cubic-bezier(.2, .8, .2, 1), translate .34s cubic-bezier(.2, .8, .2, 1), rotate .34s cubic-bezier(.2, .8, .2, 1), border-color .2s ease;
-  animation: wallet-card-entry .55s cubic-bezier(.2, .8, .2, 1) var(--card-delay) backwards;
-}
-.onigimon-app .wallet-item-card,
-.onigimon-app .wallet-item-card:hover,
-.onigimon-app .wallet-item-card:focus,
-.onigimon-app .wallet-item-card:active {
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .26), 0 -4px 12px rgba(32, 33, 36, .2), 0 5px 8px rgba(32, 33, 36, .1) !important;
-}
-.item-wallet.is-wallet-hovered .wallet-item-card:not(.is-wallet-preview) {
-  left: calc(5px + var(--card-offset-x));
-  rotate: var(--card-tilt);
-  translate: 0 var(--card-hover-lift);
-}
-.wallet-item-card.is-wallet-preview,
-.wallet-item-card:focus-visible {
-  z-index: 120;
-  border-color: rgba(255, 255, 255, .9);
-  rotate: 0deg;
-  translate: 0 calc(var(--card-reveal) * -1);
-}
-.wallet-category-card { cursor: pointer; }
-.wallet-item-top,
-.wallet-item-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.wallet-item-top > span:first-child {
-  overflow: hidden;
-  color: #fff;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.wallet-item-chip {
-  display: grid;
-  flex: 0 0 38px;
-  width: 38px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.wallet-item-chip img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-.wallet-category-icon,
-.category-dock-icon {
-  display: block;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  background: #fff;
-  -webkit-mask: var(--category-icon) center / contain no-repeat;
-  mask: var(--category-icon) center / contain no-repeat;
-}
-.wallet-category-card.is-wallet-preview .wallet-category-icon,
-.wallet-category-card:focus-visible .wallet-category-icon { animation: status-pump .42s ease; }
-.wallet-item-bottom strong {
-  overflow: hidden;
-  font-size: 11px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wallet-item-bottom b {
-  flex: 0 0 auto;
-  color: rgba(255, 255, 255, .78);
-  font-size: 10px;
-}
-.item-wallet-pocket {
-  position: absolute;
-  z-index: 40;
-  bottom: 0;
-  width: 100%;
-  height: 160px;
-  pointer-events: none;
-}
-.item-wallet-pocket svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-.wallet-pocket-fill { fill: #dfa916; }
-.wallet-stitches {
-  fill: none;
-  stroke: #a87600;
-  stroke-width: 2;
-  stroke-dasharray: 7 5;
-}
-.onigimon-wallet-logo {
-  position: absolute;
-  top: 61px;
   left: 50%;
-  display: grid;
-  grid-template-columns: auto auto;
+  display: flex;
   align-items: center;
-  column-gap: 7px;
-  color: #5d4300;
+  gap: 4px;
+  max-width: calc(100% - 12px);
+  padding: 2px 7px;
+  border: 1px solid var(--accent-line);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
   translate: -50% 0;
 }
-.onigimon-wallet-logo strong {
-  font-size: 13px;
-  letter-spacing: .08em;
+.purchased-label svg {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.onigimon-wallet-logo small {
-  grid-column: 1 / -1;
-  margin-top: 2px;
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: .16em;
-  text-align: center;
-}
-.onigimon-wallet-ball {
-  position: relative;
-  display: block;
-  width: 21px;
-  height: 21px;
-  overflow: hidden;
-  border: 2px solid currentColor;
-  border-radius: 50%;
-}
-.onigimon-wallet-ball::before {
-  content: '';
-  position: absolute;
-  top: 8px;
-  left: 0;
-  width: 100%;
-  border-top: 2px solid currentColor;
-}
-.onigimon-wallet-ball::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  left: 6px;
-  width: 5px;
-  height: 5px;
-  border: 2px solid currentColor;
-  border-radius: 50%;
-  background: #dfa916;
-}
-.wallet-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
-  max-width: calc(100% - 20px);
-  margin: 11px auto 0;
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 8.5px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-align: center;
-  box-shadow: 0 2px 7px rgba(32, 33, 36, .07);
-}
-.wallet-hint kbd {
-  display: inline-grid;
-  min-width: 17px;
-  height: 17px;
-  margin: 0 1px;
-  padding: 0 3px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, black 18%);
-  border-radius: 4px;
-  background: var(--card);
-  color: var(--ink);
-  font: inherit;
-  font-size: 9px;
-  line-height: 1;
-  box-shadow: 0 1px 0 rgba(32, 33, 36, .14);
-}
-@keyframes wallet-card-entry {
-  from { opacity: 0; translate: 0 -65px; }
-  to { opacity: 1; translate: 0 0; }
-}
+
 .backpack-category-view {
-  display: flex;
+  margin-block: 0 auto;
   min-width: 0;
-  min-height: 0;
-  padding-top: 16px;
-  flex-direction: column;
-  grid-area: 1 / 1;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(32px);
-  visibility: hidden;
-  transition: opacity .22s ease, transform .38s cubic-bezier(.2, .8, .2, 1), visibility 0s .4s;
 }
-.backpack-panel.is-category-open .wallet-display {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(70px) scale(.92);
-  visibility: hidden;
-  transition: opacity .2s ease, transform .38s cubic-bezier(.4, 0, 1, 1), visibility 0s .38s;
-}
-.backpack-panel.is-category-open .backpack-category-view {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-  visibility: visible;
-  transition-delay: .16s, .12s, 0s;
-}
-.backpack-return {
-  align-self: flex-start;
-  padding: 5px 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: var(--muted) !important;
-  font-size: 9px;
-  font-weight: 700;
-}
-.backpack-return:hover { color: var(--accent) !important; }
-.backpack-return span { margin-right: 4px; font-size: 13px; }
-.backpack-category-dock {
-  display: flex;
+.backpack-category-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  margin: 6px 0 13px;
-  padding: 13px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: var(--card);
-  animation: category-card-dock .48s cubic-bezier(.2, .8, .2, 1) both;
+  margin-bottom: 12px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--line);
 }
-.backpack-category-dock > span:last-child {
+.onigimon-app .backpack-return {
   display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.onigimon-app .backpack-return:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.backpack-category-heading h2 {
+  display: grid;
+  gap: 2px;
   min-width: 0;
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
-.backpack-category-dock small {
-  color: var(--item-accent);
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: .1em;
-}
-.backpack-category-dock strong { font-size: 14px; line-height: 1.25; }
-.backpack-category-dock em {
+.backpack-section-label {
   color: var(--muted);
-  font-size: 8px;
-  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
 }
-.category-dock-icon { width: 34px; height: 34px; }
+.category-dock-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--surface);
+  background: color-mix(in srgb, var(--item-accent) 13%, var(--surface));
+  color: var(--ink);
+  color: color-mix(in srgb, var(--ink) 58%, var(--item-accent));
+}
+.status-icon svg,
+.backpack-return svg,
+.category-dock-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.category-dock-icon svg {
+  width: 22px;
+  height: 22px;
+}
 .backpack-item-grid {
   display: grid;
-  flex: 1;
-  min-height: 0;
-  padding: 2px 2px 8px;
+  max-height: 264px;
+  padding: 4px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: #c8cacd transparent;
+  scrollbar-color: var(--line) transparent;
   scrollbar-width: thin;
 }
 .backpack-item-card {
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: 126px;
+  min-height: 112px;
+  margin: 0;
   padding: 12px 8px 10px;
   border: 1px solid var(--line) !important;
   border-radius: 12px !important;
-  background: #fbfbfa !important;
+  background: var(--tile) !important;
   color: var(--ink) !important;
   justify-items: center;
   align-content: center;
   gap: 6px;
-  animation: category-item-in .36s cubic-bezier(.2, .8, .2, 1) var(--item-delay) backwards;
   transition: border-color .18s ease, transform .18s ease;
 }
 .backpack-item-card:hover {
@@ -841,14 +639,14 @@ p { margin: 0; }
 .backpack-item-card strong {
   width: 100%;
   overflow: hidden;
-  font-size: 9px;
+  font-size: 10px;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .backpack-item-card small {
-  color: var(--item-accent);
-  font-size: 7px;
+  color: var(--accent);
+  font-size: 9px;
   font-weight: 700;
 }
 .backpack-item-count {
@@ -859,23 +657,14 @@ p { margin: 0; }
   font-size: 8px;
   font-weight: 700;
 }
-@keyframes category-card-dock {
-  from { opacity: 0; transform: translateY(100px) scale(.94); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes category-item-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 .empty-bag {
-  position: relative;
-  z-index: 20;
-  margin: 16px 6px;
+  grid-column: 1 / -1;
+  margin: 0;
   padding: 22px 12px;
-  border: 1px dashed #c58a00;
+  border: 1px dashed var(--empty-line);
   border-radius: 13px;
-  background: #fff9df;
-  color: #765800;
+  background: var(--empty-paper);
+  color: var(--empty-ink);
   font-size: 10px;
   text-align: center;
 }
@@ -969,7 +758,7 @@ p { margin: 0; }
   display: none;
   place-items: center;
   padding: 20px;
-  background: #20212480;
+  background: var(--overlay);
 }
 .modal.is-open { display: grid; }
 .modal-card {
@@ -1120,13 +909,25 @@ p { margin: 0; }
 
 @media (max-width: 760px) {
   .onigimon-app { padding: 12px; }
-  .hero,
-  .content-grid { grid-template-columns: 1fr; }
-  .companion-stage { margin: 12px; min-height: 330px; }
-  .companion-display { height: 100%; }
-  .companion-sprite { width: min(63%, 255px); max-width: 63%; }
+  .hero { grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); }
+  .care-panel { margin-inline: 18px; }
+}
+
+@media (max-width: 680px) {
+  .hero { grid-template-columns: 1fr; }
+  .companion-stage { margin: 12px; min-height: 310px; }
+  .onigimon-app .companion-display { max-width: 200px; }
   .care-panel { margin: 12px 22px 24px; }
-  .market-head { align-items: flex-start; }
-  .wallet { flex-wrap: wrap; justify-content: flex-end; }
   .market-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+  .market-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onigimon-app .companion-display { transition: none; }
+  .companion-display:active { scale: 1; }
+  .companion-speech { scale: 1; transition: none; }
+  .status-row:hover .status-icon { animation: none; }
 }

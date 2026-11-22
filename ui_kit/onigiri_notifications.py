@@ -156,7 +156,7 @@ def _silent_mode() -> bool:
     try:
         from ..core import config
 
-        return bool(config.get_config().get("onigiri_reviewer_silent_notifications", False))
+        return bool(config.get_config_readonly().get("onigiri_reviewer_silent_notifications", False))
     except Exception:
         return False
 
@@ -164,7 +164,7 @@ def _silent_mode() -> bool:
 def _configured_duration(fallback: int = 4200) -> int:
     try:
         from ..core import config
-        duration = int(config.get_config().get("onigiri_notification_duration_ms", fallback))
+        duration = int(config.get_config_readonly().get("onigiri_notification_duration_ms", fallback))
     except Exception:
         duration = fallback
     return max(1000, min(30000, duration))

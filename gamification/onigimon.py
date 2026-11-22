@@ -441,6 +441,8 @@ class AnkimonBridge:
         self.addon_path = ""
         self._collection_cache: List[Dict[str, Any]] = []
         self._collection_cache_time = 0.0
+        self._main_pokemon_raw_cache: Dict[str, Any] = {}
+        self._main_pokemon_raw_cache_time = 0.0
         self._detect_result: Optional[bool] = None
         self._detect_time = 0.0
 
@@ -553,6 +555,8 @@ class AnkimonBridge:
     def clear_cache(self) -> None:
         self._collection_cache = []
         self._collection_cache_time = 0.0
+        self._main_pokemon_raw_cache = {}
+        self._main_pokemon_raw_cache_time = 0.0
         self._detect_result = None
         self._detect_time = 0.0
 
@@ -635,20 +639,29 @@ class AnkimonBridge:
         if not self.detect():
             return {}
 
-        # Fetch raw data from DB (used for all fields except hp / max_hp)
-        raw: Dict[str, Any] = {}
-        db = getattr(mw, "ankimon_db", None)
-        if db and hasattr(db, "get_main_pokemon"):
-            try:
-                main = db.get_main_pokemon()
-                if isinstance(main, dict):
-                    raw = {**main, "is_main": 1}
-            except Exception:
-                pass
-        if not raw:
-            raw = self._read_main_pokemon_raw()
-        if not raw:
-            return {}
+        # Fetch raw data from DB (used for all fields except hp / max_hp).
+        # Memoised for 10s (matching get_collection) so answering cards does not
+        # re-query ankimon.db from disk on every review; live HP is still read
+        # fresh from memory right below.
+        now = time.time()
+        if self._main_pokemon_raw_cache and (now - self._main_pokemon_raw_cache_time) < 10:
+            raw: Dict[str, Any] = dict(self._main_pokemon_raw_cache)
+        else:
+            raw = {}
+            db = getattr(mw, "ankimon_db", None)
+            if db and hasattr(db, "get_main_pokemon"):
+                try:
+                    main = db.get_main_pokemon()
+                    if isinstance(main, dict):
+                        raw = {**main, "is_main": 1}
+                except Exception:
+                    pass
+            if not raw:
+                raw = self._read_main_pokemon_raw()
+            if not raw:
+                return {}
+            self._main_pokemon_raw_cache = dict(raw)
+            self._main_pokemon_raw_cache_time = now
 
         # Inject authoritative HP values from the live runtime object.
         # This ensures current_hp reflects in-battle damage not yet saved to DB,
@@ -669,7 +682,10 @@ class AnkimonBridge:
         Falls back to computing max_hp from the DB formula when runtime is absent.
         """
         try:
-            singletons = sys.modules.get("Ankimon.singletons")
+            singletons = (
+                sys.modules.get(f"{self.addon_id}.singletons")
+                or sys.modules.get("Ankimon.singletons")
+            )
             if singletons is not None:
                 main = getattr(singletons, "main_pokemon", None)
                 if main is not None:
@@ -707,7 +723,10 @@ class AnkimonBridge:
         if not isinstance(pokemon_data, dict):
             return
         try:
-            ankimon_singletons = sys.modules.get("Ankimon.singletons")
+            ankimon_singletons = (
+                sys.modules.get(f"{self.addon_id}.singletons")
+                or sys.modules.get("Ankimon.singletons")
+            )
             if ankimon_singletons is None:
                 return
             main_pokemon = getattr(ankimon_singletons, "main_pokemon", None)
@@ -734,6 +753,27 @@ class AnkimonBridge:
             # Recompute max_hp from canonical base_stats (Ankimon’s own formula).
             if hasattr(main_pokemon, "calculate_max_hp"):
                 main_pokemon.max_hp = main_pokemon.calculate_max_hp()
+            if hasattr(main_pokemon, "_update_battle_stats"):
+                main_pokemon._update_battle_stats()
+
+            # An ongoing turn reuses poke-engine's cached state. Keep its user
+            # stats in sync too, or the next turn restores pre-care HP/stats.
+            battle_loop = (
+                sys.modules.get(f"{self.addon_id}.battle_loop")
+                or sys.modules.get("Ankimon.battle_loop")
+            )
+            battle_state = getattr(battle_loop, "_state", None)
+            engine_state = getattr(battle_state, "new_state", None)
+            if engine_state is not None and hasattr(main_pokemon, "to_poke_engine_Pokemon"):
+                engine_main = engine_state.user.active
+                fresh_main = main_pokemon.to_poke_engine_Pokemon()
+                if engine_main.id == fresh_main.id:
+                    # Preserve the current opponent, statuses, stat boosts and field.
+                    for attr in (
+                        "hp", "maxhp", "attack", "defense", "special_attack",
+                        "special_defense", "speed",
+                    ):
+                        setattr(engine_main, attr, getattr(fresh_main, attr))
 
             tracker = getattr(ankimon_singletons, "ankimon_tracker_obj", None)
             if tracker and hasattr(tracker, "update_gui"):
@@ -967,7 +1007,7 @@ class AnkimonBridge:
         selected_motion = str(
             motion
             if motion is not None
-            else config.get_config().get("onigimon", {}).get("sprite_motion", "static")
+            else config.get_config_readonly().get("onigimon", {}).get("sprite_motion", "static")
         )
         animated_first = selected_motion == "gif"
         candidates: List[tuple[str, str]] = []
@@ -1367,22 +1407,28 @@ class OnigimonManager:
         state.last_decay_processed_day = today
         self.save()
 
-    def active_companion(self) -> Optional[OnigimonCompanion]:
-        self.sync_active_companion_from_ankimon()
+    def active_companion(self, refresh_from_ankimon: bool = True) -> Optional[OnigimonCompanion]:
+        if refresh_from_ankimon:
+            self.sync_active_companion_from_ankimon()
         state = self.load()
         self.decay_needs_if_missed_days(state)
         if not state.active_companion_id:
+            if not refresh_from_ankimon:
+                return self.active_companion(refresh_from_ankimon=True)
             return None
         data = state.companions.get(state.active_companion_id)
         if not data:
+            if not refresh_from_ankimon:
+                return self.active_companion(refresh_from_ankimon=True)
             return None
-        refreshed = self._refreshed_companion_data(state.active_companion_id)
-        if refreshed:
-            updated = {**data, **refreshed}
-            if updated != data:
-                data = updated
-                state.companions[state.active_companion_id] = data
-                self.save()
+        if refresh_from_ankimon:
+            refreshed = self._refreshed_companion_data(state.active_companion_id)
+            if refreshed:
+                updated = {**data, **refreshed}
+                if updated != data:
+                    data = updated
+                    state.companions[state.active_companion_id] = data
+                    self.save()
         return OnigimonCompanion(**data)
 
     def sync_active_companion_from_ankimon(self) -> bool:
@@ -1461,7 +1507,7 @@ class OnigimonManager:
                 if hasattr(sprite_module, "get_sprite_path"):
                     try:
                         from ..core import config as oni_config
-                        oni_conf = oni_config.get_config().get("onigimon", {})
+                        oni_conf = oni_config.get_config_readonly().get("onigimon", {})
                         sprite_motion = str(
                             motion
                             if motion is not None
@@ -1558,7 +1604,7 @@ class OnigimonManager:
             return
         if self.status() != "ready":
             return
-        companion = self.active_companion()
+        companion = self.active_companion(refresh_from_ankimon=False)
         if companion is None:
             return
 
@@ -1949,7 +1995,7 @@ class OnigimonManager:
             "attack": "attack", "atk": "attack",
             "defense": "defense", "def": "defense",
             "speed": "speed", "spe": "speed",
-            "hp": "hp", "xp": "xp"
+            "hp": "hp", "xp": "xp", "exp": "xp", "experience": "xp"
         }
         for stat, val in updates.items():
             key = stat_aliases.get(str(stat).lower(), str(stat).lower())
@@ -2243,6 +2289,8 @@ def render_widget_html(
     except (TypeError, ValueError):
         col_span = 1
     span_class = f"onigimon-span-{row_span}x{col_span}"
+    sync_colors = _onigimon_sync_widget_colors()
+    sync_class = " onigimon-sync-widgets" if sync_colors else ""
 
     if companion and row_span <= 1:
         name = escape(manager.companion_display_name(companion))
@@ -2258,8 +2306,8 @@ def render_widget_html(
                 </div>
             """
         return f"""
-        <div class="onigimon-card onigimon-card-compact {span_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
-            <div class="onigimon-main onigimon-scene onigimon-scene-compact" {_onigimon_scene_style_attr()}>
+        <div class="onigimon-card onigimon-card-compact {span_class}{sync_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+            <div class="onigimon-main onigimon-scene onigimon-scene-compact" {_onigimon_scene_style_attr(sync_colors=sync_colors)}>
                 {_onigimon_scene_background_layer("onigimon-scene-bg")}
                 <div class="onigimon-sprite">{img}</div>
                 {info_html}
@@ -2367,7 +2415,7 @@ def render_widget_html(
         if row_span >= 4:
             card_class += " onigimon-card-extra-tall"
         body = f"""
-        <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr()}>
+        <div class="onigimon-top onigimon-scene" {_onigimon_scene_style_attr(sync_colors=sync_colors)}>
             {_onigimon_scene_background_layer("onigimon-scene-bg")}
             <div class="onigimon-sprite">{img}</div>
         </div>
@@ -2383,7 +2431,7 @@ def render_widget_html(
 
     root_class = card_class if companion else "onigimon-card onigimon-card-disabled"
     return f"""
-    <div class="{root_class} {span_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
+    <div class="{root_class} {span_class}{sync_class}" style="{grid_style}" role="button" tabindex="0" onclick="pycmd('openOnigimonCare')" onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('openOnigimonCare');}}">
         {body}
     </div>
     """
@@ -2505,7 +2553,11 @@ def _onigimon_scene_image_url() -> str:
     return _addon_asset_url(rel_path)
 
 
-def _onigimon_scene_style_attr() -> str:
+def _onigimon_sync_widget_colors() -> bool:
+    return bool(manager.config().get("sync_widget_colors", False))
+
+
+def _onigimon_scene_style_attr(sync_colors: bool = False) -> str:
     color = _normalize_scene_color(manager.config().get("scene_background_color", "#6ea96a"))
     image_url = _onigimon_scene_image_url()
     try:
@@ -2517,12 +2569,13 @@ def _onigimon_scene_style_attr() -> str:
     except Exception:
         opacity = 0.9
     parts = [
-        f"background-color: {color}",
-        f"--onigimon-color: {color}",
+        "background-color: transparent" if sync_colors else f"background-color: {color}",
         "--onigimon-scene-image: none",
         f"--onigimon-scene-blur: {blur}px",
         f"--onigimon-scene-opacity: {opacity:.2f}",
     ]
+    if not sync_colors:
+        parts.insert(1, f"--onigimon-color: {color}")
     if image_url:
         parts.extend([
             f"--onigimon-scene-image: url('{escape(image_url)}')",
@@ -2533,6 +2586,8 @@ def _onigimon_scene_style_attr() -> str:
 def _onigimon_bottom_style_attr() -> str:
     """Inline background for `.onigimon-bottom` when the user picked a stats
     panel colour in Gamification Settings; empty config = the CSS default."""
+    if _onigimon_sync_widget_colors():
+        return ""
     color = str(manager.config().get("scene_bottom_color", "") or "").strip()
     if not re.match(r"^#[0-9a-fA-F]{6}$", color):
         return ""
@@ -2798,6 +2853,12 @@ manager = OnigimonManager()
 
 def register_hooks() -> None:
     gui_hooks.reviewer_did_answer_card.append(manager.on_answer)
+    try:
+        from . import onigimon_hud
+
+        onigimon_hud.register_hooks()
+    except Exception as exc:
+        print(f"Onigimon: Could not register HUD hooks: {exc}")
 
 
 register_hooks()

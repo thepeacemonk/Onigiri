@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import time
 from aqt import mw
 
 from . import safe_storage
@@ -197,6 +198,8 @@ DEFAULTS = {
     # Shima renders only a centered deck island over the shared main background.
     "onigiri_ui_theme": "classic",
     "onigiriThemeMode": "system",
+    # Empty slots use Onigiri's flag icon; keys are Anki's seven flag numbers.
+    "onigiri_reviewer_flag_icons": {},
     "things_theme": {
         # Kome keeps one calm, fixed spacing system. Its small settings
         # surface only exposes visibility and the Active Cards palette.
@@ -382,6 +385,9 @@ DEFAULTS = {
         "scene_background_opacity": 90,
         # Empty = use the widget's own light/dark stats-panel shade.
         "scene_bottom_color": "",
+        # Sync the widget's surface, stats panel, and border colors with Main
+        # Menu Widgets instead of using the standalone scene/stats colors above.
+        "sync_widget_colors": False,
         "allow_ankimon_updates": True,
         # How gently Onigimon words its notifications: "lillipup" (kind),
         # "herdier" (serious) or "stoutland" (blunt). See gamification/onigimon.py.
@@ -389,6 +395,17 @@ DEFAULTS = {
         # Keep Onigimon's rewards and streak notices out of the Reviewer
         # without muting notifications from the other games.
         "reviewer_notifications_enabled": True,
+        # Replace Ankimon's Reviewer HUD and floating tooltips with Onigimon's
+        # minimal, Onigiri-aligned HUD and notifications by default.
+        "reviewer_hud_enabled": True,
+        "reviewer_hud_mode": "battle",  # "minimal", "battle", "war"
+        "reviewer_hud_motion": "animated",  # "animated", "static"
+        "reviewer_hud_scale": 100,  # 75..135 (%)
+        "reviewer_hud_opacity": 88,  # 0..100 (%)
+        "reviewer_hud_bg_color_light": "#ffffff",
+        "reviewer_hud_bg_color_dark": "#202124",
+        "reviewer_hud_shadow": True,
+        "reviewer_hud_position": None,  # None = bottom-center, or {"x": pct, "y": pct}
     },
     "hexagon_land": {
         "enabled": False,
@@ -400,11 +417,11 @@ DEFAULTS = {
     "heatmapStreakIconColor": "#ff6b35",
     "heatmapStreakIconZeroColor": "#8f8f8f",
     "heatmapShowStreak": True,
-    "heatmapMinimalist": False,
     "heatmapShowMonths": True,
     "heatmapShowWeekdays": True,
     "heatmapShowWeekHeader": True,
     "heatmapParticlesAnimation": False,
+    "heatmapTerrainEnabled": False,
     "heatmapDefaultView": "year",
     "heatmapWeekStart": "monday",
     "markerColors": {
@@ -480,6 +497,14 @@ DEFAULTS = {
     "onigiri_reviewer_bg_opacity": 100,
     "onigiri_reviewer_slideshow_images": [],
     "onigiri_reviewer_slideshow_interval": 10,
+    # --- Reviewer Header Dock ---
+    "onigiri_reviewer_dock_mode": "static",  # "static", "minimal", "island"
+    "onigiri_reviewer_dock_icons": {},
+    "onigiri_reviewer_dock_icon_colors_light": {},
+    "onigiri_reviewer_dock_icon_colors_dark": {},
+    "onigiri_reviewer_dock_goo_color_light": "#17181a",
+    "onigiri_reviewer_dock_goo_color_dark": "#ffffff",
+    "onigiri_web_rdock_goo_theme_mode": "separate",
     # --- Reviewer Notification Position ---
     "onigiri_reviewer_notification_mode": "classic",  # "classic" or "mini"
     "onigiri_reviewer_notification_position": "top-center", # top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
@@ -519,25 +544,6 @@ DEFAULTS = {
     "onigiri_reviewer_btn_height": 40, # px (button height)
     "onigiri_reviewer_bar_height": 60, # px (default height)
 
-    # Header buttons retain their shared widget appearance until customized.
-    "onigiri_reviewer_header_mode": "widgets",
-    "onigiri_reviewer_header_radius": 12,
-    "onigiri_reviewer_header_border_size": 0,
-    "onigiri_reviewer_header_padding": 5,
-    "onigiri_reviewer_header_height": 0,
-    "onigiri_reviewer_header_gap": 8,
-    "onigiri_reviewer_header_opacity": 100,
-    "onigiri_reviewer_header_blur": 0,
-    "onigiri_reviewer_header_bg_light": "#ffffff",
-    "onigiri_reviewer_header_bg_dark": "#3a3a3a",
-    "onigiri_reviewer_header_text_light": "#2c2c2c",
-    "onigiri_reviewer_header_text_dark": "#e0e0e0",
-    "onigiri_reviewer_header_hover_bg_light": "#2c2c2c",
-    "onigiri_reviewer_header_hover_bg_dark": "#e0e0e0",
-    "onigiri_reviewer_header_hover_text_light": "#f0f0f0",
-    "onigiri_reviewer_header_hover_text_dark": "#3a3a3a",
-    "onigiri_reviewer_header_border_light": "#DBDBDB",
-    "onigiri_reviewer_header_border_dark": "#444444",
     # --- Reviewer header progress bar ---
     # The "end of the tunnel" gauge in the reviewer header. `left` mirrors the
     # bottom bar's new/learning/review counts; `done` is either this session's
@@ -841,7 +847,6 @@ DEFAULTS = {
     # colors default to Anki's own Card Counts palette so an untouched install
     # matches the native graph.
     "deck_stats_style": {
-        "minimalist": False,
         # "minimal" keeps the In Progress / Mastered grouping; "full" drops it
         # and charts every card category on its own.
         "chart_type": "minimal",
@@ -1300,13 +1305,16 @@ def _get_settings_path() -> str:
 # changes on disk (or write_config()/invalidate_config_cache() clears it).
 _CONFIG_CACHE = None
 _CONFIG_CACHE_KEY = None
+_CONFIG_STAT_CHECKED_AT = 0.0
+_CONFIG_STAT_TTL = 0.25
 
 
 def invalidate_config_cache():
     """Drops the memoised config so the next read rebuilds it from disk."""
-    global _CONFIG_CACHE, _CONFIG_CACHE_KEY
+    global _CONFIG_CACHE, _CONFIG_CACHE_KEY, _CONFIG_STAT_CHECKED_AT
     _CONFIG_CACHE = None
     _CONFIG_CACHE_KEY = None
+    _CONFIG_STAT_CHECKED_AT = 0.0
 
 
 def _config_cache_key():
@@ -1321,8 +1329,12 @@ def _config_cache_key():
 
 def _cached_config():
     """The shared, merged config. Never hand this out to a caller that mutates."""
-    global _CONFIG_CACHE, _CONFIG_CACHE_KEY
+    global _CONFIG_CACHE, _CONFIG_CACHE_KEY, _CONFIG_STAT_CHECKED_AT
+    now = time.monotonic()
+    if _CONFIG_CACHE is not None and (now - _CONFIG_STAT_CHECKED_AT) < _CONFIG_STAT_TTL:
+        return _CONFIG_CACHE
     key = _config_cache_key()
+    _CONFIG_STAT_CHECKED_AT = now
     if _CONFIG_CACHE is None or key != _CONFIG_CACHE_KEY:
         _CONFIG_CACHE = _build_config()
         _CONFIG_CACHE_KEY = key
@@ -1398,6 +1410,10 @@ def _build_config():
     # Merge user settings into defaults.
     if user_config:
         merge_config(clean_config, user_config)
+    if clean_config["heatmapDefaultView"] == "terrain":
+        if "heatmapTerrainEnabled" not in user_config:
+            clean_config["heatmapTerrainEnabled"] = True
+        clean_config["heatmapDefaultView"] = "year"
     # Middle synced the whole data folder. Preserve that opt-in scope when
     # introducing category controls, including its saved widget placement.
     if user_config.get("ankiweb_sync_enabled"):

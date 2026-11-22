@@ -23,7 +23,7 @@ from typing import Callable, Dict, Iterable, List, Optional
 
 from aqt import mw
 from ..core.translations import tr, web_localization_script, render_html_strings
-from aqt.qt import QColor, QDialog, QTimer, Qt, QVBoxLayout
+from aqt.qt import QColor, QDialog, QLabel, QTimer, Qt, QVBoxLayout
 from aqt.theme import theme_manager
 from aqt.utils import openLink
 from aqt.webview import AnkiWebView
@@ -48,6 +48,9 @@ def safe_json(value) -> str:
     return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
 
 
+_IMAGE_URI_CACHE: Dict[tuple, str] = {}
+
+
 def image_data_uri(path: str) -> str:
     """Inline a Bento logo so the WebUI never depends on web-export order."""
     if not path or not os.path.isfile(path):
@@ -60,11 +63,18 @@ def image_data_uri(path: str) -> str:
     if not mime:
         return ""
     try:
+        st = os.stat(path)
+        cache_key = (os.path.abspath(path), st.st_mtime_ns, st.st_size)
+        cached = _IMAGE_URI_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         with open(path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("ascii")
+        uri = f"data:{mime};base64,{encoded}"
+        _IMAGE_URI_CACHE[cache_key] = uri
+        return uri
     except OSError:
         return ""
-    return f"data:{mime};base64,{encoded}"
 
 
 def get_path(config: dict, path: str, default=None):
@@ -119,23 +129,44 @@ def palette(dark: bool) -> dict:
     }
 
 
+def _resolve_wallpaper_url(url: str) -> str:
+    """Inline local /_addons/... wallpaper paths as data URIs for srcdoc iframes."""
+    raw = str(url or "").strip()
+    if not raw or raw.startswith("data:"):
+        return raw
+    prefix = "/_addons/"
+    if raw.startswith(prefix):
+        rel = urllib.parse.unquote(raw[len(prefix):].split("?", 1)[0])
+        addons_root = os.path.dirname(ADDON_ROOT)
+        candidate = os.path.normpath(os.path.join(addons_root, rel))
+        if candidate.startswith(addons_root) and os.path.isfile(candidate):
+            data_uri = image_data_uri(candidate)
+            if data_uri:
+                return data_uri
+    elif os.path.isfile(raw):
+        data_uri = image_data_uri(raw)
+        if data_uri:
+            return data_uri
+    return raw.replace("'", "%27")
+
+
 def wallpaper_css(wallpaper: Optional[dict], dark: bool = False) -> str:
     """Translate the Bento bridge wallpaper descriptor to preview CSS."""
-    fallback = "#181818" if dark else "#f7f7f7"
+    fallback = "#171717" if dark else "#ffffff"
     if not isinstance(wallpaper, dict):
         return f"background:{fallback};"
     color = wallpaper.get("color") or fallback
     if wallpaper.get("kind") != "image" or not wallpaper.get("url"):
         return f"background:{color};"
-    url = str(wallpaper["url"]).replace("'", "%27")
+    url = _resolve_wallpaper_url(str(wallpaper["url"]))
     opacity_value = wallpaper.get("opacity", 1)
-    opacity = float(1 if opacity_value is None else opacity_value)
-    blur = float(wallpaper.get("blur_px", 0) or 0)
+    opacity = max(0.0, min(1.0, float(1 if opacity_value is None else opacity_value)))
+    blur = max(0.0, float(wallpaper.get("blur_px", 0) or 0))
+    blur_css = f"filter:blur({blur:.2f}px);" if blur > 0 else ""
     return (
-        f"background-color:{color};background-image:linear-gradient("
-        f"rgba(0,0,0,{1-opacity:.3f}),rgba(0,0,0,{1-opacity:.3f})),"
-        f"url('{url}');background-size:cover;background-position:center;"
-        f"filter:blur({blur}px);"
+        f"background-color:{color};background-image:url('{url}');"
+        f"background-size:cover;background-position:center;background-repeat:no-repeat;"
+        f"opacity:{opacity:.3f};{blur_css}"
     )
 
 
@@ -153,14 +184,17 @@ def preview_document(
     the integration's real renderer.  The wrapper only supplies the same kind
     of wallpaper stage used by Onigiri and scales the result to the iframe.
     """
+    fallback = "#171717" if dark else "#ffffff"
+    base_color = (wallpaper.get("color") if isinstance(wallpaper, dict) else None) or fallback
     stage_css = wallpaper_css(wallpaper, dark)
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><style>
-html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}}
-body{{display:grid;place-items:center;position:relative}}
+html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:{base_color}}}
+body{{display:flex;align-items:center;justify-content:center;position:relative}}
 #bws-wallpaper{{position:absolute;inset:-24px;{stage_css}}}
-#bws-safe{{position:absolute;inset:18px;display:grid;place-items:center;overflow:hidden}}
-#bws-fit{{position:relative;transform-origin:center center;will-change:transform}}
+#bws-safe{{position:absolute;inset:18px;display:flex;align-items:center;justify-content:center;overflow:hidden}}
+#bws-fit{{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 auto;transform-origin:center center;will-change:transform}}
+body.bws-stage-fill #bws-fit{{width:100%;height:100%}}
 {css}
 </style></head><body class="{body_class}">
 <div id="bws-wallpaper"></div><div id="bws-safe"><div id="bws-fit">{content}</div></div>
@@ -170,6 +204,7 @@ body{{display:grid;place-items:center;position:relative}}
     var safe=document.getElementById('bws-safe'), node=document.getElementById('bws-fit');
     if(!safe||!node)return;
     node.style.transform='none';
+    if(document.body.classList.contains('bws-stage-fill'))return;
     var r=node.getBoundingClientRect(), w=Math.max(node.scrollWidth,r.width,1), h=Math.max(node.scrollHeight,r.height,1);
     var s=Math.min(1,(safe.clientWidth-12)/w,(safe.clientHeight-12)/h);
     node.style.transform='scale('+Math.max(.1,s)+')';
@@ -205,6 +240,7 @@ def field(
     show_if: Optional[dict] = None,
     rows: int = 4,
     button_label: str = "",
+    **extra,
 ) -> dict:
     """Small schema helper used by Bento integrations."""
     out = {
@@ -223,6 +259,8 @@ def field(
         out["step"] = step
     if show_if:
         out["showIf"] = show_if
+    if extra:
+        out.update(extra)
     return out
 
 
@@ -237,12 +275,16 @@ def page(
     description: str = "",
     icon: str = "",
     show_preview: bool = True,
+    preview_variant: Optional[str] = None,
 ) -> dict:
-    return {
+    out = {
         "id": page_id, "title": title, "description": description,
         "icon": icon or title[:1].upper(), "sections": sections,
         "showPreview": bool(show_preview),
     }
+    if preview_variant is not None:
+        out["previewVariant"] = str(preview_variant)
+    return out
 
 
 class BentoSettingsDialog(QDialog):
@@ -316,18 +358,62 @@ class BentoSettingsDialog(QDialog):
 
         self.setWindowTitle(f"{title} Settings")
         self._apply_size()
+        try:
+            self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
+        except Exception:
+            pass
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self.web = AnkiWebView(self)
+        try:
+            self.web.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
+        except Exception:
+            pass
         layout.addWidget(self.web, 1)
         try:
             self.web.page().setBackgroundColor(QColor(palette(theme_manager.night_mode)["outer"]))
         except Exception:
             pass
         self.web.set_bridge_command(self._on_bridge, self)
+        try:
+            self.web.loadFinished.connect(self._on_load_finished)
+        except Exception:
+            pass
         self.web.stdHtml(self._render())
         self.finished.connect(self._cleanup)
+
+    def _on_load_finished(self, ok: bool) -> None:
+        if self._closed:
+            return
+        try:
+            url = self.web.url().toString()
+        except Exception:
+            url = ""
+        if not url or url == "about:blank":
+            return
+        if not ok:
+            self._show_load_error(f"WebView failed to load ({url}).")
+            return
+        try:
+            self.web.page().runJavaScript(
+                "document.documentElement.classList.remove('bws-booting');"
+            )
+        except Exception:
+            pass
+
+    def _show_load_error(self, detail: str) -> None:
+        if self._closed:
+            return
+        self.web.hide()
+        pal = palette(bool(theme_manager.night_mode))
+        msg = QLabel(f"Could not render {self.title} Settings.\n{detail}", self)
+        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        msg.setWordWrap(True)
+        msg.setStyleSheet(
+            f"background:{pal['outer']};color:{pal['fg']};padding:24px;font-size:13px;"
+        )
+        self.layout().addWidget(msg, 1)
 
     def _apply_size(self) -> None:
         screen = (self.screen() if hasattr(self, "screen") else None) or (
@@ -354,7 +440,7 @@ class BentoSettingsDialog(QDialog):
                 for spec in group.get("fields", []):
                     raw = get_path(self.config, spec["path"], spec.get("default"))
                     scale = spec.get("scale") or 1
-                    if spec.get("type") in ("number", "range") and scale != 1:
+                    if spec.get("type") in ("number", "range", "heatmap_scrubber") and scale != 1:
                         try:
                             raw = float(raw) / float(scale)
                         except (TypeError, ValueError, ZeroDivisionError):
@@ -383,6 +469,10 @@ class BentoSettingsDialog(QDialog):
 
     def _render(self) -> str:
         template = render_html_strings(_read_asset("bento_settings.html"))
+        initial_shows_preview = next(
+            (bool(p.get("showPreview", True)) for p in self.pages if p.get("id") == self.initial_page),
+            True,
+        )
         context = {
             "title": self.title,
             "subtitle": self.subtitle,
@@ -392,7 +482,7 @@ class BentoSettingsDialog(QDialog):
             "palette": palette(bool(theme_manager.night_mode)),
             "pages": self._schema_context(),
             "initialPage": self.initial_page,
-            "preview": self._render_preview(),
+            "preview": self._render_preview() if initial_shows_preview else "",
             "previewVariant": self.preview_variant,
             "previewTheme": self.preview_theme,
             "previewVariants": self.preview_variants,
@@ -443,7 +533,7 @@ class BentoSettingsDialog(QDialog):
             kind = spec.get("type", "text")
             if kind == "bool":
                 value = bool(value)
-            elif kind in ("range", "number"):
+            elif kind in ("range", "number", "heatmap_scrubber"):
                 try:
                     value = float(value)
                     if spec.get("step", 1) == 1:

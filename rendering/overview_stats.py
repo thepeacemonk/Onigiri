@@ -64,7 +64,12 @@ def _selected_deck_ids(col: Any) -> List[int]:
     deck_id = int(col.decks.current()["id"])
     deck_ids = [deck_id]
     try:
-        deck_ids.extend(int(child_id) for child_id in col.decks.child_ids(deck_id))
+        if hasattr(col.decks, "children"):
+            for child in col.decks.children(deck_id):
+                cid = child[1] if isinstance(child, (tuple, list)) and len(child) >= 2 else child
+                deck_ids.append(int(cid))
+        elif hasattr(col.decks, "child_ids"):
+            deck_ids.extend(int(child_id) for child_id in col.decks.child_ids(deck_id))
     except Exception:
         # Keep the selected deck useful on Anki versions where the child-deck
         # helper has moved or an add-on has wrapped it incompatibly.

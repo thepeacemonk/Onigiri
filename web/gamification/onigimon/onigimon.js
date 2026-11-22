@@ -1,5 +1,7 @@
 (() => {
   let data = window.ONIGIRI_ONIGIMON_DATA || {}, selected = null, busy = false, toastTimer = 0;
+  let speechTimer = 0, lastSpeech = -1, spriteTimer = 0;
+  let careTransition;
   const $ = s => document.querySelector(s), esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const text = (s, v) => { const n = $(s); if (n) n.textContent = v ?? ''; };
   const image = (s, url) => { const n = $(s); if (n) n.src = url || ''; };
@@ -13,7 +15,7 @@
     return '';
   }
   function backpackItems() {
-    if (Array.isArray(data.backpack) && data.backpack.length) return data.backpack;
+    if (Array.isArray(data.backpack)) return data.backpack;
     const seen = new Set();
     const categorized = (data.needs || []).flatMap(group => (group.items || []).map(item => ({...item, status: group.id}))).filter(item => !seen.has(item.key) && seen.add(item.key));
     if (categorized.length) return categorized;
@@ -29,113 +31,6 @@
   function categoryItems(group, allItems = backpackItems()) {
     if (!group) return [];
     return allItems.filter(item => item.status === group.id || (group.items || []).some(groupItem => groupItem.key === item.key));
-  }
-  function bindWalletPreview(stack) {
-    const cards = [...stack.querySelectorAll('[data-category]')];
-    const wallet = stack.closest('.item-wallet');
-    let previewIndex = -1;
-    let pendingPreview = 0;
-    let pendingIndex = -1;
-    const clear = () => {
-      window.clearTimeout(pendingPreview);
-      pendingIndex = -1;
-      stack.removeAttribute('data-preview-category');
-      wallet?.removeAttribute('aria-activedescendant');
-      cards.forEach(card => {
-        card.classList.remove('is-wallet-preview');
-        card.setAttribute('aria-selected', 'false');
-      });
-      previewIndex = -1;
-    };
-    const preview = (card, index = cards.indexOf(card)) => {
-      if (!card || index === previewIndex) return;
-      cards.forEach(candidate => candidate.classList.toggle('is-wallet-preview', candidate === card));
-      cards.forEach(candidate => candidate.setAttribute('aria-selected', String(candidate === card)));
-      stack.dataset.previewCategory = card.dataset.category;
-      wallet?.setAttribute('aria-activedescendant', card.id);
-      previewIndex = index;
-    };
-    const previewAtPointer = event => {
-      if (!cards.length) return;
-      const pocket = stack.parentElement?.querySelector('.item-wallet-pocket');
-      const pocketTop = pocket?.getBoundingClientRect().top ?? Infinity;
-      if (event.clientY >= pocketTop) { clear(); return; }
-      // Read the cards where they are actually painted after their hover
-      // translations. Using offsetTop here selected a different card from the
-      // one under the cursor because offsetTop ignores visual transforms.
-      const hitOrder = [...cards].reverse();
-      if (previewIndex >= 0) {
-        hitOrder.splice(hitOrder.indexOf(cards[previewIndex]), 1);
-        hitOrder.unshift(cards[previewIndex]);
-      }
-      const active = hitOrder.find(card => {
-        const rect = card.getBoundingClientRect();
-        return event.clientX >= rect.left && event.clientX <= rect.right
-          && event.clientY >= rect.top && event.clientY <= Math.min(rect.bottom, pocketTop);
-      });
-      if (!active) { clear(); return; }
-      const nextIndex = cards.indexOf(active);
-      if (nextIndex === previewIndex || nextIndex === pendingIndex) return;
-      window.clearTimeout(pendingPreview);
-      // A tiny dwell makes the movement feel intentional without adding lag.
-      pendingIndex = nextIndex;
-      pendingPreview = window.setTimeout(() => {
-        pendingIndex = -1;
-        preview(cards[nextIndex], nextIndex);
-      }, 70);
-    };
-    const enterWallet = () => wallet?.classList.add('is-wallet-hovered');
-    const leaveWallet = () => {
-      wallet?.classList.remove('is-wallet-hovered');
-      if (!wallet?.matches(':focus-within')) clear();
-    };
-    const moveWithKeyboard = event => {
-      if (!['ArrowUp', 'ArrowDown'].includes(event.key) || !cards.length) return;
-      event.preventDefault();
-      const direction = event.key === 'ArrowDown' ? 1 : -1;
-      const start = previewIndex >= 0 ? previewIndex : (direction > 0 ? -1 : cards.length);
-      const nextIndex = Math.max(0, Math.min(cards.length - 1, start + direction));
-      preview(cards[nextIndex], nextIndex);
-    };
-    cards.forEach((card, index) => {
-      card.id = `onigimon-wallet-card-${index}`;
-      card.tabIndex = -1;
-      card.setAttribute('role', 'option');
-      card.setAttribute('aria-selected', 'false');
-    });
-    if (wallet._onigimonKeyHandler) {
-      document.removeEventListener('keydown', wallet._onigimonKeyHandler, true);
-    }
-    wallet._onigimonKeyHandler = event => {
-      if (document.activeElement !== wallet) return;
-      if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        moveWithKeyboard(event);
-        return;
-      }
-      if (!['Enter', ' '].includes(event.key)) return;
-      const category = stack.dataset.previewCategory;
-      if (!category) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      openCategory(category);
-    };
-    document.addEventListener('keydown', wallet._onigimonKeyHandler, true);
-    // The wallet, rather than the exposed card strips, owns the hover state.
-    wallet.onpointerenter = enterWallet;
-    wallet.onpointermove = previewAtPointer;
-    wallet.onpointerleave = leaveWallet;
-    wallet.onfocus = null;
-    wallet.onblur = () => {
-      wallet.classList.remove('is-wallet-hovered');
-      clear();
-    };
-    wallet.onkeydown = null;
-    wallet.onclick = () => {
-      const category = stack.dataset.previewCategory;
-      if (category) openCategory(category);
-    };
   }
   function toast(notice) { if (!notice.message) return; const node = $('.toast'); if (!node) return; const icon = notice.icon ? `<img src="${esc(notice.icon)}" alt="">` : '', message = String(notice.message), sentence = message.charAt(0).toUpperCase() + message.slice(1); clearTimeout(toastTimer); node.innerHTML = `${icon}<strong>${esc(sentence)}</strong>`; node.className = `toast is-visible ${notice.kind || ''} ${notice.icon ? 'has-item' : ''}`; toastTimer = setTimeout(() => node.classList.remove('is-visible'), 3600); }
   function setModal(name, open) { const node = $(`[data-bind="${name}-modal"]`); if (node) { node.classList.toggle('is-open', open); node.setAttribute('aria-hidden', String(!open)); } }
@@ -158,57 +53,84 @@
     layer.style.opacity = imageUrl ? String(opacity) : '0';
     layer.dataset.backgroundType = String(assets.backgroundMode || 'color');
   }
-  function renderStatuses() { const box = $('[data-bind="statuses"]'); if (!box) return; box.innerHTML = (data.needs || []).map(item => `<button class="status-row ${item.id === selected ? 'is-selected' : ''}" data-status="${esc(item.id)}" style="--status:${esc(item.color)}" aria-pressed="${item.id === selected}"><span><span class="status-icon" style="--status-icon:url(&quot;${esc(item.icon)}&quot;)" aria-hidden="true"></span>${esc(item.label)}</span><b>${esc(item.detail)}</b><i class="status-track"><em style="width:${Math.max(0, Math.min(100, item.value))}%"></em></i></button>`).join(''); }
-  function renderBackpack() {
-    const box = $('[data-bind="backpack"]');
-    const panel = $('.backpack-panel');
-    const view = $('[data-bind="backpack-category-view"]');
-    const dock = $('[data-bind="backpack-category-dock"]');
-    const itemGrid = $('[data-bind="backpack-items"]');
-    const group = selected ? (data.needs || []).find(item => item.id === selected) : null;
-    const allItems = backpackItems();
+  // Lucide 0.468.0. The SVGs keep their original square viewBox and strokes.
+  // See ../../vendor/lucide/LICENSE.
+  const careIcons = {
+    health: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />',
+    happiness: '<circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" x2="9.01" y1="9" y2="9" /><line x1="15" x2="15.01" y1="9" y2="9" />',
+    hygiene: '<path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z" /><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97" />',
+    training: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />',
+    hunger: '<path d="m2.37 11.223 8.372-6.777a2 2 0 0 1 2.516 0l8.371 6.777" /><path d="M21 15a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-5.25" /><path d="M3 15a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h9" /><path d="m6.67 15 6.13 4.6a2 2 0 0 0 2.8-.4l3.15-4.2" /><rect width="20" height="4" x="2" y="11" rx="1" />',
+  };
+  function careIcon(category) {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true">${careIcons[category] || ''}</svg>`;
+  }
+  function renderStatuses() {
+    const box = $('[data-bind="statuses"]');
     if (!box) return;
-    const categories = data.needs || [];
-    text('[data-bind="backpack-category"]', group?.label || `${categories.length} categories`);
-    panel?.classList.toggle('is-category-open', Boolean(group));
-    view?.setAttribute('aria-hidden', String(!group));
-    box.innerHTML = categories.map((category, index) => {
-      const items = categoryItems(category, allItems);
-      const quantity = items.reduce((total, item) => total + Number(item.count || 0), 0);
-      const pocketOffset = 42 + (categories.length - index - 1) * 25;
-      // Keep the top card within the backpack panel while preserving the
-      // staggered upward fan from the reference animation.
-      const hoverLift = -(12 + (categories.length - index - 1) * 16);
-      const reveal = Math.max(56, Math.abs(hoverLift) - 18);
-      const tilts = [-3, 2, -1.5, 1.5, -0.75];
-      const offsets = [-4, 2, -2, 2, 0];
-      const tilt = tilts[index % tilts.length];
-      const offset = offsets[index % offsets.length];
-      return `<button class="wallet-item-card wallet-category-card" data-category="${esc(category.id)}" aria-label="Open ${esc(category.label)} items" style="--card-order:${index + 1};--card-delay:${index * 45}ms;--card-reveal:${reveal}px;--card-pocket-offset:${pocketOffset}px;--card-hover-lift:${hoverLift}px;--card-tilt:${tilt}deg;--card-offset-x:${offset}px;--item-accent:${esc(category.color)}"><span class="wallet-item-top"><span>${esc(category.label)}</span><span class="wallet-category-icon" style="--category-icon:url(&quot;${esc(category.icon)}&quot;)" aria-hidden="true"></span></span><span class="wallet-item-bottom"><strong>${items.length} item type${items.length === 1 ? '' : 's'}</strong><b>×${quantity}</b></span></button>`;
-    }).join('');
-    bindWalletPreview(box);
-    if (!group || !dock || !itemGrid) return;
-    const items = categoryItems(group, allItems);
-    const quantity = items.reduce((total, item) => total + Number(item.count || 0), 0);
-    dock.style.setProperty('--item-accent', group.color);
-    dock.innerHTML = `<span class="category-dock-icon" style="--category-icon:url(&quot;${esc(group.icon)}&quot;);--item-accent:${esc(group.color)}" aria-hidden="true"></span><span><small>CARE CATEGORY</small><strong>${esc(group.label)}</strong><em>${items.length} item type${items.length === 1 ? '' : 's'} · ${quantity} available</em></span>`;
-    itemGrid.scrollTop = 0;
-    itemGrid.innerHTML = items.length ? items.map((item, index) => `<button class="backpack-item-card" data-item="${esc(item.key)}" aria-label="Use ${esc(item.label)}" style="--item-accent:${esc(group.color)};--item-delay:${index * 35 + 170}ms"><span class="backpack-item-art"><img src="${esc(item.icon)}" alt=""></span><strong>${esc(item.label)}</strong><span class="backpack-item-count">×${item.count}</span><small>Use item</small></button>`).join('') : `<p class="empty-bag">${esc(group.empty || data.labels?.empty || 'No items in this category yet.')}</p>`;
+    box.innerHTML = (data.needs || []).map(item => `
+      <button type="button" class="status-row" data-status="${esc(item.id)}" aria-controls="care-backpack"
+        style="--status:${esc(item.color)}">
+        <span><span class="status-icon" aria-hidden="true">${careIcon(item.id)}</span>${esc(item.label)}</span>
+        <b>${esc(item.detail)}</b>
+        <i class="status-track" aria-hidden="true"><em style="width:${Math.max(0, Math.min(100, item.value))}%"></em></i>
+      </button>`).join('');
+  }
+  function renderBackpack() {
+    const overview = $('[data-bind="care-overview"]');
+    const view = $('[data-bind="backpack-category-view"]');
+    const group = (data.needs || []).find(item => item.id === selected);
+    overview.hidden = Boolean(group);
+    view.hidden = !group;
+    if (!group) return;
+
+    text('[data-bind="backpack-category"]', group.backpackLabel || group.label);
+    view.style.setProperty('--item-accent', group.color);
+    view.querySelector('.category-dock-icon').innerHTML = careIcon(group.id);
+
+    const itemGrid = $('[data-bind="backpack-items"]');
+    const items = categoryItems(group);
+    itemGrid.innerHTML = items.length ? items.map(item => `
+      <button type="button" class="backpack-item-card" data-item="${esc(item.key)}">
+        <span class="backpack-item-art"><img src="${esc(item.icon)}" alt=""></span>
+        <strong>${esc(item.label)}</strong><span class="backpack-item-count">×${item.count}</span>
+        <small>${esc(labels().useItem || 'Use item')}</small>
+      </button>`).join('') : `<p class="empty-bag">${esc(group.empty || labels().empty || 'No items in this category yet.')}</p>`;
+  }
+  function animateCareView(view, offset) {
+    careTransition?.cancel();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    careTransition = view.animate([
+      {opacity: .35, transform: `translateX(${offset}px)`},
+      {opacity: 1, transform: 'translateX(0)'},
+    ], {duration: 220, easing: 'cubic-bezier(.2, .75, .25, 1)'});
   }
   function openCategory(category) {
-    if (!(data.needs || []).some(item => item.id === category)) return;
     selected = category;
-    renderStatuses();
     renderBackpack();
-    $('.backpack-panel')?.classList.add('is-open');
+    $('[data-bind="backpack-items"]').scrollTop = 0;
+    $('[data-action="close-category"]').focus({preventScroll: true});
+    animateCareView($('[data-bind="backpack-category-view"]'), 12);
   }
   function closeCategory() {
+    const previous = selected;
     selected = null;
-    renderStatuses();
     renderBackpack();
-    $('.backpack-panel')?.classList.remove('is-open');
+    [...document.querySelectorAll('[data-status]')]
+      .find(button => button.dataset.status === previous)?.focus({preventScroll: true});
+    animateCareView($('[data-bind="care-overview"]'), -12);
   }
-  function renderMarket() { const box = $('[data-bind="market"]'); if (!box) return; box.innerHTML = (data.market || []).map(item => `<button class="market-card ${item.purchased ? 'is-bought' : ''}" data-buy="${esc(item.slot)}" ${item.purchased ? 'disabled' : ''}><span class="market-art"><img src="${esc(item.icon)}" alt="${esc(item.label)}"></span><strong>${esc(item.label)}</strong><span class="market-card-meta"><small>×${item.amount}</small><span class="market-price"><img src="${esc(item.currencyIcon)}" alt="">${item.price}</span></span>${item.purchased ? '<span class="purchased-label">Purchased</span>' : ''}</button>`).join(''); }
+  function renderMarket() {
+    const box = $('[data-bind="market"]');
+    if (!box) return;
+    box.innerHTML = (data.market || []).map(item => `
+      <button type="button" class="market-card ${item.purchased ? 'is-bought' : ''}" data-buy="${esc(item.slot)}" ${item.purchased ? 'disabled' : ''}>
+        <span class="market-art"><img src="${esc(item.icon)}" alt=""></span>
+        <strong>${esc(item.label)}</strong>
+        <span class="market-card-meta"><small>×${item.amount}</small><span class="market-price"><img src="${esc(item.currencyIcon)}" alt="">${item.price}</span></span>
+        ${item.purchased ? `<span class="purchased-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Purchased</span>` : ''}
+      </button>`).join('');
+  }
   function showGift(gift) {
     if (!gift) return;
     image('[data-bind="gift-icon"]', gift.icon);
@@ -229,20 +151,71 @@
     root.querySelectorAll('[data-i18n-text]').forEach(el => { const v = L[el.dataset.i18nText]; if (v) el.textContent = v; });
     root.querySelectorAll('[data-i18n-alabel]').forEach(el => { const v = L[el.dataset.i18nAlabel]; if (v) el.setAttribute('aria-label', v); });
   }
-  function render() { if (!data.companion) { $('.onigimon-app').innerHTML = `<p class="no-companion">${(data.labels || {}).noCompanion || 'No Onigimon companion selected.'}</p>`; return; } const c = data.companion, a = data.assets || {}, l = data.labels || {}; applyI18n(document); text('[data-bind="name"]', c.name); text('[data-bind="level"]', `${l.level || 'Level'} ${c.level || 1}`); text('[data-bind="message"]', data.message); image('[data-bind="mart"]', a.mart); image('[data-bind="backpack-icon"]', a.backpack); image('[data-bind="comet"]', a.comet); image('[data-bind="redeem-icon"]', a.comet); image('[data-bind="star-piece"]', a.starPiece); text('[data-bind="comets"]', data.wallet?.comet_shards || 0); text('[data-bind="stars"]', data.wallet?.star_pieces || 0); text('[data-bind="market-title"]', l.market); text('[data-bind="backpack-title"]', l.backpack); text('[data-bind="redeem-title"]', l.redeemTitle); text('[data-bind="redeem-hint"]', l.redeemHint); $('[data-bind="redeem-code"]').placeholder = l.pasteCode || 'Paste code here'; $('.redeem-submit').textContent = l.redeem; const gift = $('[data-action="gift"]'); if (gift) { gift.textContent = data.marketGiftReady ? l.dailyGift : l.giftOpened; gift.disabled = !data.marketGiftReady; } setSprite(c); paintScene(a); renderStatuses(); renderBackpack(); renderMarket(); showGift(data.gift); }
+  function syncTheme() {
+    const mode = data.colorMode === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.onigimonTheme = mode;
+    if (data.language) document.documentElement.lang = data.language;
+    document.body.dataset.theme = mode;
+  }
+  function render() { syncTheme(); if (!data.companion) { $('.onigimon-app').innerHTML = `<p class="no-companion">${(data.labels || {}).noCompanion || 'No Onigimon companion selected.'}</p>`; return; } const c = data.companion, a = data.assets || {}, l = data.labels || {}; applyI18n(document); text('[data-bind="name"]', c.name); text('[data-bind="level"]', `${l.level || 'Level'} ${c.level || 1}`); text('[data-bind="message"]', data.message); image('[data-bind="mart"]', a.mart); image('[data-bind="comet"]', a.comet); image('[data-bind="redeem-icon"]', a.comet); image('[data-bind="star-piece"]', a.starPiece); text('[data-bind="comets"]', data.wallet?.comet_shards || 0); text('[data-bind="stars"]', data.wallet?.star_pieces || 0); text('[data-bind="market-title"]', l.market); text('[data-bind="redeem-title"]', l.redeemTitle); text('[data-bind="redeem-hint"]', l.redeemHint); $('[data-bind="redeem-code"]').placeholder = l.pasteCode || 'Paste code here'; $('.redeem-submit').textContent = l.redeem; const gift = $('[data-action="gift"]'); if (gift) { gift.textContent = data.marketGiftReady ? l.dailyGift : l.giftOpened; gift.disabled = !data.marketGiftReady; } setSprite(c); paintScene(a); renderStatuses(); renderBackpack(); renderMarket(); showGift(data.gift); }
   function sound(effect) { try { const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx(), now = ctx.currentTime; const f = {feed:[620,820],play:[820,1080],clean:[360,660],train:[480,940],heal:[523,784]}[effect] || [800,1050]; f.forEach((hz, i) => { const o=ctx.createOscillator(), g=ctx.createGain(); o.frequency.setValueAtTime(hz, now+i*.07); g.gain.setValueAtTime(.0001, now+i*.07); g.gain.exponentialRampToValueAtTime(.075,now+i*.07+.02); g.gain.exponentialRampToValueAtTime(.0001,now+i*.07+.3); o.connect(g).connect(ctx.destination); o.start(now+i*.07); o.stop(now+i*.07+.31); }); setTimeout(()=>ctx.close(),600); } catch (_) {} }
+  function bopSprite() {
+    const sprite = $('.companion-sprite');
+    if (!sprite || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    clearTimeout(spriteTimer);
+    sprite.classList.remove('is-animated');
+    void sprite.offsetWidth;
+    sprite.classList.add('is-animated');
+    spriteTimer = setTimeout(() => sprite.classList.remove('is-animated'), 550);
+  }
+
+  /* Speech adapted from Bencho's Eye Tracker (MIT, ../../vendor/bencho/LICENSE).
+     A poke picks a fresh line, types it, holds it long enough to read, then
+     folds the balloon away. A new poke replaces the whole pending turn. */
+  function speak() {
+    const lines = data.speechLines || [];
+    if (!lines.length) return;
+    const bubble = $('[data-bind="speech"]');
+    const choices = lines.map((_, index) => index).filter(index => index !== lastSpeech);
+    lastSpeech = choices[Math.floor(Math.random() * choices.length)] ?? 0;
+    const line = lines[lastSpeech];
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const typed = bubble.querySelector('.speech-typed');
+    const segments = typeof Intl.Segmenter === 'function'
+      ? Array.from(new Intl.Segmenter(data.language, {granularity: 'grapheme'}).segment(line), entry => entry.segment)
+      : Array.from(line);
+
+    clearTimeout(speechTimer);
+    bubble.querySelector('.speech-size').textContent = line;
+    typed.textContent = '';
+    bubble.dataset.tint = String(Math.floor(Math.random() * 3));
+    bubble.toggleAttribute('data-typing', !still);
+    bubble.setAttribute('data-speaking', '');
+    text('[data-bind="speech-announcement"]', line);
+    bopSprite();
+
+    let at = 0;
+    function typeNext() {
+      typed.textContent += segments[at++];
+      if (at < segments.length) speechTimer = setTimeout(typeNext, 38 + Math.random() * 30);
+      else holdLine();
+    }
+    function holdLine() {
+      bubble.removeAttribute('data-typing');
+      speechTimer = setTimeout(() => bubble.removeAttribute('data-speaking'), 2100);
+    }
+    if (still) {
+      typed.textContent = line;
+      holdLine();
+    } else {
+      speechTimer = setTimeout(typeNext, 38);
+    }
+  }
+
   function animate(effect, itemIcon='') {
     const layer = $('.fx-layer'), sprite = $('.companion-sprite');
     if (!layer) return;
     sound(effect);
-    const bop = (delay = 0) => setTimeout(() => {
-      if (!sprite) return;
-      sprite.classList.remove('is-animated');
-      void sprite.offsetWidth;
-      sprite.classList.add('is-animated');
-      setTimeout(() => sprite.classList.remove('is-animated'), 700);
-    }, delay);
-
     if (effect === 'feed' && itemIcon) {
       const layerBox = layer.getBoundingClientRect();
       const spriteBox = sprite?.getBoundingClientRect();
@@ -265,11 +238,11 @@
       food.style.offsetPath = `path("M ${startCenterX} ${startCenterY} C ${startCenterX} ${controlOneY}, ${controlTwoX} ${endCenterY}, ${endCenterX} ${endCenterY}")`;
       layer.appendChild(food);
       food.addEventListener('animationend', () => food.remove());
-      bop(520);
+      setTimeout(bopSprite, 520);
       return;
     }
 
-    bop();
+    bopSprite();
 
     if (effect === 'clean') {
       for (let i = 0; i < 11; i++) {
@@ -327,7 +300,7 @@
   }
   function useItem(btn) { if (busy) return; const item = backpackItems().find(i => i.key === btn.dataset.item); if (!item) return; const effect = effectFor(selected || item.status); busy=true; btn.disabled=true; animate(effect, item.icon); setTimeout(()=>pycmd(`onigimon:use:${item.key}`), effect === 'feed' ? 700 : 650); }
   const haptic = (pattern = 1) => pycmd(`haptic:${pattern}`);
-  document.addEventListener('click', event => { const target=event.target.closest('button, [data-status], [data-category], [data-item]'); if(target&&!target.disabled)haptic(); const s=event.target.closest('[data-status]'); if(s){openCategory(s.dataset.status);return;} const category=event.target.closest('[data-category]');if(category){openCategory(category.dataset.category);return;} if(event.target.closest('[data-action="close-category"]')){closeCategory();return;} const item=event.target.closest('[data-item]');if(item){useItem(item);return;} const buy=event.target.closest('[data-buy]');if(buy&&!buy.disabled){busy=true;buy.disabled=true;animate('sparkle');setTimeout(()=>pycmd(`onigimon:market-buy:${buy.dataset.buy}`),450);return;} if(event.target.closest('[data-action="gift"]')){busy=true;animate('gift');setTimeout(()=>pycmd('onigimon:market-gift'),450);return;} if(event.target.closest('[data-action="open-store"]')){pycmd('onigimon:open-store');return;} if(event.target.closest('[data-action="open-redeem"]'))setModal('redeem',true); if(event.target.closest('[data-action="close-redeem"]'))setModal('redeem',false); if(event.target.closest('[data-action="close-gift"]'))setModal('gift',false); });
+  document.addEventListener('click', event => { const target=event.target.closest('button'); if(target&&!target.disabled)haptic(); const s=event.target.closest('[data-status]'); if(s){openCategory(s.dataset.status);return;} if(event.target.closest('[data-action="pet"]')){speak();return;} if(event.target.closest('[data-action="close-category"]')){closeCategory();return;} const item=event.target.closest('[data-item]');if(item){useItem(item);return;} const buy=event.target.closest('[data-buy]');if(buy&&!buy.disabled){busy=true;buy.disabled=true;animate('sparkle');setTimeout(()=>pycmd(`onigimon:market-buy:${buy.dataset.buy}`),450);return;} if(event.target.closest('[data-action="gift"]')){busy=true;animate('gift');setTimeout(()=>pycmd('onigimon:market-gift'),450);return;} if(event.target.closest('[data-action="open-store"]')){pycmd('onigimon:open-store');return;} if(event.target.closest('[data-action="open-redeem"]'))setModal('redeem',true); if(event.target.closest('[data-action="close-redeem"]'))setModal('redeem',false); if(event.target.closest('[data-action="close-gift"]'))setModal('gift',false); });
   document.addEventListener('submit', event => { if(!event.target.matches('[data-action="redeem-form"]'))return;event.preventDefault();const input=$('[data-bind="redeem-code"]'),code=input?.value.trim();if(code){setModal('redeem',false);pycmd(`onigimon:redeem:${code}`);} });
   document.addEventListener('keydown', event => { if(event.key==='Escape'){setModal('redeem',false);setModal('gift',false);if(selected)closeCategory();} });
   window.onOnigimonData = (payload, notice={}) => { data=payload||{};busy=false;render();toast(notice); };

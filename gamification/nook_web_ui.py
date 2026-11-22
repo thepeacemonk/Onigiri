@@ -115,6 +115,7 @@ _STORE_STRING_KEYS = (
     "store_redeem_lead", "store_earn_title", "store_earn_desc",
     "store_support_title", "store_support_desc", "store_more_coins_title",
     "store_more_coins_desc", "store_buy_coins", "store_already_have_code",
+    "store_lost_coins_note",
     "redeem_code", "store_code_aria", "store_redeem_aria", "store_nook_details",
     "store_thank_you", "store_coins_added_desc", "store_contribution_note",
     "awesome", "close", "store_mascot_alt", "store_equip", "store_equipped",

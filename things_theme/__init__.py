@@ -246,6 +246,15 @@ def _is_internal_ready_deck(name: Any) -> bool:
         return False
 
 
+def _ready_to_go_enabled() -> bool:
+    try:
+        from ..study_tools import ready_to_go
+
+        return ready_to_go.is_enabled()
+    except Exception:
+        return True
+
+
 def _hero_mode(cfg: Optional[Dict[str, Any]] = None) -> bool:
     """True when the home page should show the single-deck hero: the user
     has exactly one top-level deck AND hasn't switched the hero off."""
@@ -315,6 +324,7 @@ def _js_opts(cfg: Dict[str, Any]) -> Dict[str, Any]:
             "heroStat": cfg.get("sidebar_hero_stat", "due")
                 if cfg.get("sidebar_hero_stat") in ("due", "new", "learn")
                 else "due",
+            "ready": _ready_to_go_enabled(),
             "donut": bool(cfg.get("sidebar_donut", True)),
             "tasks": bool(cfg.get("sidebar_tasks", True)),
             "progress": bool(cfg.get("sidebar_progress", True)),
@@ -1691,6 +1701,8 @@ def _on_js_message(handled, message, context):
                     except Exception:
                         if db is not None:
                             db._options(did)  # type: ignore[attr-defined]
+                elif action == "addon-actions" and db is not None:
+                    db._showOptions(str(did))
                 elif action == "export":
                     # Anki's deck-browser exporter dispatches on did.
                     try:
@@ -2492,9 +2504,11 @@ def _finished_deck_stats(did: int) -> Dict[str, Any]:
 
 
 def _studied_today_by_deck() -> Dict[int, int]:
-    """{did: cards reviewed today}, own-deck cards only (not descendants —
-    the tree already lists each deck as its own row). Feeds the deck
-    list's per-row progress bar: done / (done + due)."""
+    """Return today's review count for each card's own deck.
+
+    The deck tree aggregates these counts for parent rows, alongside the
+    scheduler's aggregated remaining counts.
+    """
     out: Dict[int, int] = {}
     try:
         shift = _day_shift_seconds()
@@ -2662,7 +2676,12 @@ def _full_deck_tree_payload() -> list:
                 "new": n,
                 "learn": l,
                 "review": r,
-                "done": studied.get(did, 0),
+                # Direct children already include their descendants. Add only
+                # those rows so each review is counted once in the parent.
+                "done": studied.get(did, 0) + sum(
+                    child["done"] for child in kid_rows
+                    if child["depth"] == depth + 1
+                ),
                 "current": did == current_did,
                 "filtered": is_filtered(did),
                 # Anki's persisted collapse flag (the one its own deck list

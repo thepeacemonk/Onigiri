@@ -182,7 +182,8 @@ class ProgressUpgradeTests(unittest.TestCase):
             writes.append(immediate)
             state.update(changes)
         manager = types.SimpleNamespace(_get_gamification_state=lambda: state,
-                    _update_gamification_data=update, _collapse_xp=lambda xp: (5, 1, 10))
+                    _update_gamification_data=update, _collapse_xp=lambda xp: (5, 1, 10),
+                    _ensure_progression_curve=lambda current: current)
         namespace['get_progress'](manager)
         self.assertEqual(state['total_xp'], 1000)
         self.assertEqual(state['owned_items'], ['default', 'sushi'])

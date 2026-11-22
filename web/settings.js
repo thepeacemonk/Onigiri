@@ -934,10 +934,13 @@
     // nothing the glyph does not tell them faster.
     const chip = el("button", "osw-chip osw-icon-chip");
     chip.type = "button";
+    chip.setAttribute("aria-label", field.label);
+    chip.title = field.label;
     const preview = el("span", "osw-icon-chip-preview");
+    if (field.iconTint) preview.style.backgroundColor = field.iconTint;
     function paintPreview() {
       // Empty means "the bundled default", not "no icon" — see iconValue().
-      const raw = String(iconValue(field.id) || "");
+      const raw = String(iconValue(field.id) || field.defaultIcon || "");
       preview.innerHTML = "";
       preview.classList.remove("is-emoji", "is-empty");
       if (raw.indexOf("emoji:") === 0) {
@@ -1524,24 +1527,9 @@
   }
 
   function applySimpleProfileDefaults() {
-    if (!simpleProfileModeActive()) {
-      syncSimpleProfileControls();
-      return;
-    }
-
-    Object.keys(SIMPLE_PROFILE_VALUES).forEach(function (id) {
-      setValue(id, SIMPLE_PROFILE_VALUES[id], { silent: true, keepDom: true });
-    });
-    PROFILE_DYNAMIC_KEYS.forEach(function (id) {
-      setValue(id, true, { silent: true, keepDom: true });
-    });
-    syncProfileLevelDynamicMode(true);
-    Array.prototype.forEach.call(
-      document.querySelectorAll(".osw-profile-page-wrap"),
-      function (profileWrap) {
-        if (profileWrap.__syncProfileTabs) profileWrap.__syncProfileTabs("ring");
-      }
-    );
+    // Switching between Simple and Advanced is a UI complexity view toggle:
+    // update control visibility without overwriting the user's saved Profile
+    // settings.
     syncSimpleProfileControls();
   }
 
@@ -1559,10 +1547,8 @@
   };
 
   function applySimpleSyncDefaults() {
-    if (settingsComplexity !== "simple") return;
-    Object.keys(SIMPLE_SYNC_VALUES).forEach(function (id) {
-      setValue(id, SIMPLE_SYNC_VALUES[id], { silent: true });
-    });
+    // Never clobber saved Advanced sync selections just by toggling Simple mode.
+    return;
   }
 
   function profileDynamicOn() {
@@ -3674,18 +3660,6 @@
           sample.style.background = (bgKey && values[bgKey]) || (CTX.dark ? "#3a3a3a" : "#f0f0f0");
           sample.style.color = (textKey && values[textKey]) || (CTX.dark ? "#f0f0f0" : "#2c2c2c");
           sample.style.borderColor = (borderKey && values[borderKey]) || "";
-          if (previewKind === "reviewer_progress") {
-            const holder = el("div", "osw-preview-rprog-header");
-            sample.classList.add("onigiri-reviewer-button");
-            sample.setAttribute("data-header-button", "");
-            holder.appendChild(sample);
-            reviewerHeaderStyle(holder, values, CTX.dark);
-            // Gallery swatches use the same variables and chrome as the stage.
-            ["background", "color", "borderColor"].forEach(function (key) { sample.style[key] = ""; });
-            option.insertBefore(sample, caption);
-            option.classList.add("osw-header-color-option", "onigiri-header-customization");
-            option.style.cssText = holder.style.cssText;
-          }
           if (previewKind === "reviewer_bottom_bar") {
             bbarButtonBorder(sample, values, role.id.replace("bbar_colors_", ""), suffix, true);
           }
@@ -3790,7 +3764,6 @@
       if (compactFontMenuEl && compactFontMenuEl.__anchor === button) {
         closeCompactFontMenu();
       } else {
-        if (section.headerCustomization && values.rheader_mode !== "custom") setValue("rheader_mode", "custom");
         openCompactFontMenu(
           button,
           section.colorGroups || [],
@@ -4679,6 +4652,10 @@
     ];
   });
 
+  ["decks", "add", "browse", "stats", "sync", "hashi_notes", "pomodoro"].forEach(function (key) {
+    ICON_POPUP_COMPANIONS["rdock_icon_" + key] = ["rdock_icon_color_" + key];
+  });
+
   let iconPicker = null; // null when closed
   let userIcons = (CTX.iconPicker || []).filter(function (i) { return !i.system; });
   const systemIcons = (CTX.iconPicker || []).filter(function (i) { return i.system; });
@@ -4763,7 +4740,7 @@
        follow it (retintIconGrid below). An unset tint resolves to the colour it
        inherits, which is what the icon is actually painted with. */
     function currentTint() {
-      if (!companionIds.length) return "";
+      if (!companionIds.length) return field.iconTint || "";
       const primary = fieldById[companionIds[0]];
       if (!primary) return "";
       if (primary.type === "color_pair") {
@@ -4855,8 +4832,18 @@
     function buildNoneTile() {
       const none = el("button", "onigiri-icon-cell onigiri-icon-cell-none");
       none.type = "button";
-      none.title = str("gallery_none", "None");
-      none.innerHTML = ICON_CLOSE;
+      none.title = field.defaultIcon ? str("use_default", "Use Default") : str("gallery_none", "None");
+      none.setAttribute("aria-label", none.title);
+      if (field.defaultIcon) {
+        const thumb = el("span", "onigiri-icon-mask");
+        const url = resolveIconAssetUrl(field.defaultIcon);
+        thumb.style.webkitMaskImage = "url('" + url + "')";
+        thumb.style.maskImage = "url('" + url + "')";
+        thumb.style.backgroundColor = currentTint();
+        none.appendChild(thumb);
+      } else {
+        none.innerHTML = ICON_CLOSE;
+      }
       none.classList.toggle("selected", !values[field.id]);
       none.addEventListener("click", function () { assign(""); });
       return none;
@@ -5246,6 +5233,7 @@
   function paintDesignerPreview(card) {
     if (!card || !card.__stage) return;
     if (card.__syncPreviewTheme) card.__syncPreviewTheme();
+    if (card.__syncDockNoticeBtn) card.__syncDockNoticeBtn();
     const section = card.__section;
     const painter = PREVIEW_PAINTERS[section.preview_kind];
     if (painter) {
@@ -5361,7 +5349,7 @@
     const btn = el("button", "osw-sq-switch-btn");
     btn.type = "button";
     btn.setAttribute("data-field", field.id);
-    btn.setAttribute("aria-label", field.headLabel || field.label || "");
+    btn.setAttribute("aria-label", field.label || field.headLabel || field.id);
     btn.setAttribute("aria-pressed", values[field.id] ? "true" : "false");
     const track = el("div", "osw-sq-switch" + (values[field.id] ? " is-on" : ""));
     btn.appendChild(track);
@@ -5456,32 +5444,14 @@
     return (section.sync_hidden_fields || []).indexOf(fieldId) !== -1;
   }
 
-  function deckFieldNode(card, id) {
-    const selector = '[data-field-host="' + id + '"]';
-    // Rebalancing can temporarily detach an empty column. Its controls must
-    // still be found when their visibility changes back to Custom.
-    return (card.__fieldsHost && card.__fieldsHost.querySelector(selector)) ||
-      (card.__controlsCol && card.__controlsCol.querySelector(selector)) ||
-      (card.__slotsCol && card.__slotsCol.querySelector(selector));
-  }
-
   function applyDeckVisibility(card) {
     const host = card.__fieldsHost;
     if (!host) return;
-    const section = card.__section || {};
-    const headerCustom = settingsComplexity === "advanced" && values.rheader_mode === "custom";
-    if (section.headerCustomization) {
-      const menus = host.querySelector(".osw-designer-compact-menus");
-      if (menus) menus.classList.toggle("is-hidden", !headerCustom);
-      if (!headerCustom && compactFontMenuEl && host.contains(compactFontMenuEl.__anchor)) closeCompactFontMenu();
-    }
-    (section.fields || []).forEach(function (field) {
-      const headerField = section.headerCustomization && !field.id.startsWith("rprog_");
-      if (!headerField && !field.showWhen) return;
-      const node = deckFieldNode(card, field.id);
+    ((card.__section || {}).fields || []).forEach(function (field) {
+      if (!field.showWhen) return;
+      const node = host.querySelector('[data-field-host="' + field.id + '"]');
       if (!node) return;
-      const hidden = (headerField && field.id !== "rheader_mode" && !headerCustom) ||
-        !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id);
+      const hidden = !showWhenMatches(field.showWhen) || isSyncHidden(card, field.id);
       node.classList.toggle(
         "is-hidden", hidden
       );
@@ -5493,11 +5463,10 @@
       }
     });
     // Background Color is the base beneath both a bundled scene and a custom
-    // image, so it remains useful at every opacity. Keep it visible even for
-    // an already-open settings window whose schema predates that rule.
+    // image, so it remains useful at every opacity unless Sync with widgets is on.
     if ((card.__section || {}).id === "onigimon_scene") {
       const sceneColor = host.querySelector('[data-field-host="g_onigimon_scene_color"]');
-      if (sceneColor) sceneColor.classList.remove("is-hidden");
+      if (sceneColor) sceneColor.classList.toggle("is-hidden", isSyncHidden(card, "g_onigimon_scene_color"));
     }
     // Header-mounted controls (STYLE/CHART/… segments, Sync/Dynamic switches)
     // live outside __fieldsHost, in the card's own head row.
@@ -5522,15 +5491,36 @@
   function collapseEmptyDeckGroups(card) {
     const host = card.__fieldsHost;
     if (!host) return;
-    // Designer subsections are nested inside the two deck columns. Hide a
-    // heading when all of its conditional rows disappear (for example, Box
-    // Appearance while Sync is enabled), instead of leaving an empty label.
+    // Designer subsections are nested inside the two deck columns (or a top
+    // band). Hide a heading when all of its conditional rows disappear (for
+    // example, Box Appearance while Sync is enabled, or Floating Island in
+    // Static/Minimal dock mode), instead of leaving an empty label.
     Array.prototype.forEach.call(host.querySelectorAll(".osw-deck-subsection"), function (subsection) {
       const rows = subsection.querySelectorAll("[data-field-host]");
       const anyVisible = Array.prototype.some.call(rows, function (row) {
         return !row.classList.contains("is-hidden");
       });
       subsection.classList.toggle("is-empty", !anyVisible);
+    });
+    Array.prototype.forEach.call(host.querySelectorAll(".osw-deck-band"), function (band) {
+      const subs = band.querySelectorAll(":scope > .osw-deck-subsection");
+      if (subs.length) {
+        let visibleAny = 0;
+        let visibleCols = 0;
+        Array.prototype.forEach.call(subs, function (sub) {
+          if (sub.classList.contains("is-empty")) return;
+          visibleAny += 1;
+          if (!sub.classList.contains("is-full-width")) visibleCols += 1;
+        });
+        band.classList.toggle("is-empty", visibleAny === 0);
+        band.classList.toggle("is-single-col", visibleCols <= 1);
+      } else {
+        const rows = band.querySelectorAll("[data-field-host]");
+        const anyVisible = Array.prototype.some.call(rows, function (row) {
+          return !row.classList.contains("is-hidden");
+        });
+        band.classList.toggle("is-empty", !anyVisible);
+      }
     });
     Array.prototype.forEach.call(host.children, function (group) {
       const rows = group.querySelectorAll(":scope > [data-field-host]");
@@ -5556,6 +5546,12 @@
       return !group.classList.contains("is-empty");
     });
     host.classList.toggle("is-empty", !anyVisible);
+    if ((card.__section || {}).id === "onigimon_scene" && card.__controlsCol && card.__slotsCol) {
+      card.__controlsCol.classList.toggle(
+        "osw-deck-full-width",
+        card.__slotsCol.classList.contains("is-empty")
+      );
+    }
   }
 
   /* Which rows are visible shifts a lot on this card (Minimal vs Expressive,
@@ -5627,7 +5623,11 @@
         // actions stay together in the left column, while colour pairs stay
         // together in the right. Rebalancing it by estimated height moves
         // later sliders underneath the palette, separating related controls.
-        (card.__section || {}).id === "overview_style") return;
+        (card.__section || {}).id === "overview_style" ||
+        // Reviewer Dock uses explicit declarative subsections to separate
+        // shared Reviewer & Overview dock/island/icon controls from
+        // Reviewer-only progress bar controls.
+        (card.__section || {}).id === "reviewer_dock") return;
 
     // "hidden" fields (the light/dark storage keys behind a color_pair, a
     // theme_mode flag, ...) render no row at all — left in, they break up a
@@ -5642,7 +5642,7 @@
       });
     const visibleIds = [];
     fields.forEach(function (field) {
-      const node = deckFieldNode(card, field.id);
+      const node = host.querySelector('[data-field-host="' + field.id + '"]');
       if (node && !node.classList.contains("is-hidden")) visibleIds.push(field.id);
     });
     const signature = visibleIds.join(",");
@@ -5668,7 +5668,7 @@
       if (block.group === "icons") return;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return;
-        const node = deckFieldNode(card, field.id);
+        const node = host.querySelector('[data-field-host="' + field.id + '"]');
         if (node && !node.classList.contains("is-hidden")) totalNonIconH += DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
       });
     });
@@ -5687,7 +5687,7 @@
         const target = singleColumn || block.group === "pinned-left" ? controlsCol : slotsCol;
         let blockH = 0;
         block.fields.forEach(function (field) {
-          const node = deckFieldNode(card, field.id);
+          const node = host.querySelector('[data-field-host="' + field.id + '"]');
           if (node) pinnedNodes.push({ node: node, target: target });
           if (node && !node.classList.contains("is-hidden")) {
             blockH += field.deckIconTile ? DECK_ICON_TILE_HEIGHT : (DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46);
@@ -5787,7 +5787,7 @@
         // height, which is what actually shows up as a gap under one column.
         const heights = block.fields.map(function (field) {
           if (deckSkipField(field.id)) return 0;
-          const node = deckFieldNode(card, field.id);
+          const node = host.querySelector('[data-field-host="' + field.id + '"]');
           if (!node || node.classList.contains("is-hidden")) return 0;
           return DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
         });
@@ -5804,7 +5804,7 @@
         let secondH = 0;
         block.fields.forEach(function (field, index) {
           if (deckSkipField(field.id)) return;
-          const node = deckFieldNode(card, field.id);
+          const node = host.querySelector('[data-field-host="' + field.id + '"]');
           const target = index < mid ? firstCol : secondCol;
           if (node && node.parentElement !== target) target.appendChild(node);
           if (node && !node.classList.contains("is-hidden")) {
@@ -5819,13 +5819,13 @@
       let blockH = 0;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return; // counted via its pair anchor
-        const node = deckFieldNode(card, field.id);
+        const node = host.querySelector('[data-field-host="' + field.id + '"]');
         if (node && !node.classList.contains("is-hidden")) blockH += DECK_ROW_HEIGHT_ESTIMATE[field.type] || 46;
       });
       const target = singleColumn || leftH <= rightH ? controlsCol : slotsCol;
       block.fields.forEach(function (field) {
         if (deckSkipField(field.id)) return; // fused into its pair anchor's row, moves with it
-        const node = deckFieldNode(card, field.id);
+        const node = host.querySelector('[data-field-host="' + field.id + '"]');
         if (node && node.parentElement !== target) target.appendChild(node);
       });
       if (target === controlsCol) leftH += blockH; else rightH += blockH;
@@ -5947,15 +5947,7 @@
       else if (field.type === "number") headControls.appendChild(renderHeadNumber(field));
     });
 
-    if (section.headerCustomization) {
-      headControls.appendChild(renderLocalHeadChoice(
-        str("customize", "Customize"),
-        [{value: "buttons", label: str("header_buttons", "Header Buttons")},
-         {value: "progress", label: str("progress_bar_section_title", "Header Progress Bar")}],
-        function () { return reviewerHeaderPane; },
-        function (value) { reviewerHeaderPane = value; showPage(currentPage); }
-      ));
-    } else if (section.preview_kind === "reviewer_bottom_bar") {
+    if (section.preview_kind === "reviewer_bottom_bar") {
       headControls.appendChild(renderLocalHeadChoice(
         str("preview", "Preview"),
         [["answer", str("answer_buttons", "Answer Buttons")], ["pre_answer", str("show_answer", "Show Answer")]].map(function (pair) {
@@ -6000,6 +5992,21 @@
           paintDesignerPreview(card);
         }
       ));
+    } else if (section.preview_kind === "reviewer_dock") {
+      const notifyBtn = el("button", "osw-btn osw-rdock-notify-test-btn", str("test_notification", "Test Notification"));
+      notifyBtn.type = "button";
+      notifyBtn.addEventListener("click", function () {
+        bridge("osw:haptic:1");
+        if (card.__stage && typeof card.__stage._triggerDockNotice === "function") {
+          card.__stage._triggerDockNotice();
+        }
+      });
+      function syncDockNoticeBtn() {
+        notifyBtn.classList.toggle("is-hidden", (values["reviewer_dock_mode"] || "static") !== "island");
+      }
+      syncDockNoticeBtn();
+      card.__syncDockNoticeBtn = syncDockNoticeBtn;
+      headControls.appendChild(notifyBtn);
     }
 
     const dynamicKeys = section.dynamic_keys || [];
@@ -6089,11 +6096,7 @@
     card.appendChild(stage);
 
     card.__stage = stage;
-    const editButtons = !section.headerCustomization || reviewerHeaderPane === "buttons";
-    const visibleFields = (section.fields || []).filter(function (field) {
-      return !section.headerCustomization || field.id.startsWith("rprog_") !== editButtons;
-    });
-    card.__section = section.headerCustomization ? Object.assign({}, section, {fields: visibleFields}) : section;
+    card.__section = section;
     card.__getMode = function () { return previewMode; };
 
     /* Below the stage: sliders and switches on the left, picture/colour slots
@@ -6127,28 +6130,33 @@
     const compactMenuCol = (section.colorGroups || []).length
       ? el("div", "osw-designer-compact-menus osw-deck-full-width")
       : null;
-    if (editButtons && (section.headerCustomization || section.modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
+    if ((section.modeParity || SETTINGS_MODE_PARITY || settingsComplexity === "advanced") && (section.fontRoles || []).length) {
       const fontMenuRow = el("div", "osw-designer-font-menu-row");
       fontMenuRow.appendChild(compactFontMenuButton(section));
       (compactMenuCol || controlsCol).appendChild(fontMenuRow);
     }
-    if (editButtons && (section.colorGroups || []).length) {
+    if ((section.colorGroups || []).length) {
       const colorMenuRow = el("div", "osw-designer-font-menu-row osw-designer-color-menu-row");
       colorMenuRow.appendChild(compactColorMenuButton(section));
       compactMenuCol.appendChild(colorMenuRow);
     }
     const subsectionByField = {};
+    let hasTopBand = false;
     (section.subsections || []).forEach(function (subsection) {
+      if (subsection.band === "top") hasTopBand = true;
       (subsection.fields || []).forEach(function (fieldId) {
         subsectionByField[fieldId] = subsection;
       });
     });
+    const topBand = hasTopBand ? el("div", "osw-deck-band osw-deck-band-top") : null;
     function appendDeckNode(target, field, node) {
       const subsection = subsectionByField[field.id];
-      // A designer can pin a whole labelled group to a column. Overview Style
-      // uses this after its colors move into the compact gallery, placing
-      // Notifications and Body in the newly available right-hand space.
-      if (!section.stage_side && subsection && subsection.column === "left") {
+      // A designer can pin a whole labelled group to a column or to a full-width
+      // top band above the two lower columns (used by Reviewer Dock to keep
+      // shared Reviewer & Overview controls above Reviewer-only Progress Bar controls).
+      if (subsection && subsection.band === "top" && topBand) {
+        target = topBand;
+      } else if (!section.stage_side && subsection && subsection.column === "left") {
         target = controlsCol;
       } else if (!section.stage_side && subsection && subsection.column === "right") {
         target = slotsCol;
@@ -6162,11 +6170,31 @@
       if (!group) {
         group = el("div", "osw-deck-subsection");
         group.setAttribute("data-subsection", subsection.id);
-        group.appendChild(el("div", "osw-deck-subsection-title", subsection.title || ""));
+        if (subsection.column === "full") group.classList.add("is-full-width");
+        if (subsection.badge || subsection.desc) {
+          const headRow = el("div", "osw-deck-subsection-head");
+          headRow.appendChild(el("div", "osw-deck-subsection-title", subsection.title || ""));
+          if (subsection.badge) {
+            const badgeCls = "osw-deck-subsection-badge" +
+              (subsection.badge_tone ? " is-" + subsection.badge_tone : "");
+            headRow.appendChild(el("span", badgeCls, subsection.badge));
+          }
+          group.appendChild(headRow);
+          if (subsection.desc) {
+            group.appendChild(el("div", "osw-deck-subsection-desc", subsection.desc));
+          }
+        } else {
+          group.appendChild(el("div", "osw-deck-subsection-title", subsection.title || ""));
+        }
+        if (subsection.icon_grid) {
+          const grid = el("div", "osw-deck-icon-grid");
+          group.appendChild(grid);
+          group.__itemsHost = grid;
+        }
         target.__subsections[subsection.id] = group;
         target.appendChild(group);
       }
-      group.appendChild(node);
+      (group.__itemsHost || group).appendChild(node);
     }
     // Deck Stats has a large palette, while Hashi Notes has a compact palette
     // that otherwise leaves half its designer deck unused. Both use a
@@ -6174,7 +6202,7 @@
     const isDeckStats = section.id === "mainmenu_deck_stats";
     const useFullWidthColorGrid = isDeckStats || !!section.full_width_color_grid;
     const colorGridCol = useFullWidthColorGrid ? el("div", "osw-deck-color-grid") : null;
-    visibleFields.forEach(function (field) {
+    (section.fields || []).forEach(function (field) {
       if (field.head && !section.head_to_deck) return;
       if (compactFontFieldIds[field.id]) return;
       if (compactColorFieldIds[field.id]) return;
@@ -6240,8 +6268,19 @@
     if (isDeckStats) controlsCol.classList.add("osw-deck-full-width");
     if (onigimonModeCol && onigimonModeCol.childNodes.length) fields.appendChild(onigimonModeCol);
     if (compactMenuCol && compactMenuCol.childNodes.length) fields.appendChild(compactMenuCol);
-    if (controlsCol.childNodes.length) fields.appendChild(controlsCol);
-    if (slotsCol.childNodes.length) fields.appendChild(slotsCol);
+    if (topBand && topBand.childNodes.length) {
+      fields.classList.add("osw-deck-split");
+      fields.appendChild(topBand);
+      if (controlsCol.childNodes.length || slotsCol.childNodes.length) {
+        const mainBand = el("div", "osw-deck-band osw-deck-band-main");
+        if (controlsCol.childNodes.length) mainBand.appendChild(controlsCol);
+        if (slotsCol.childNodes.length) mainBand.appendChild(slotsCol);
+        fields.appendChild(mainBand);
+      }
+    } else {
+      if (controlsCol.childNodes.length) fields.appendChild(controlsCol);
+      if (slotsCol.childNodes.length) fields.appendChild(slotsCol);
+    }
     if (onigimonScenarioCol && onigimonScenarioCol.childNodes.length) fields.appendChild(onigimonScenarioCol);
     if (colorGridCol && colorGridCol.childNodes.length) fields.appendChild(colorGridCol);
     wrap.appendChild(fields);
@@ -6785,13 +6824,21 @@
     const fontField = fieldById["pomodoro_font"] || {};
     const font = (fontField.options || []).filter(function (option) { return option.value === vals["pomodoro_font"]; })[0];
 
-    // Use the floating timer's real state. When it is running, advance the
-    // captured remainder locally so the preview stays in lockstep without a
-    // bridge round-trip every second.
+    // Use the floating timer's real state when running; when idle, reflect the
+    // currently edited routine/duration settings immediately so choosing a
+    // Quick Setup preset updates the preview clock and cycle dots live.
     const source = CTX.pomodoroState || {};
     const phase = ["focus", "short_break", "long_break"].indexOf(source.phase) >= 0
       ? source.phase : "focus";
-    const total = Math.max(1, Number(source.total) || 1);
+    const configuredMinutes = {
+      focus: Math.max(1, Number(vals["pomodoro_focus"]) || 25),
+      short_break: Math.max(1, Number(vals["pomodoro_short_break"]) || 5),
+      long_break: Math.max(1, Number(vals["pomodoro_long_break"]) || 15)
+    };
+    const configuredTotal = configuredMinutes[phase] * 60;
+    const total = source.running
+      ? Math.max(1, Number(source.total) || configuredTotal)
+      : configuredTotal;
     const elapsed = source.running
       ? Math.max(0, Math.floor((Date.now() - Number(source.capturedAtMs || Date.now())) / 1000))
       : 0;
@@ -6799,9 +6846,11 @@
     // to the next phase). Treat a zero captured during that transition as the
     // freshly prepared phase, matching the native view on its next paint.
     const capturedRemaining = Number(source.remaining);
-    const baselineRemaining = capturedRemaining > 0 ? capturedRemaining : total;
+    const baselineRemaining = source.running
+      ? (capturedRemaining > 0 ? capturedRemaining : total)
+      : total;
     const remaining = Math.max(0, Math.min(total, baselineRemaining - elapsed));
-    const cycleTotal = Math.max(1, Number(source.cycleTotal) || 4);
+    const cycleTotal = Math.max(1, Number(vals["pomodoro_cycle"]) || Number(source.cycleTotal) || 4);
     const focusCount = Math.max(0, Number(source.focusCount) || 0);
     function phaseName(value) {
       return {
@@ -7631,7 +7680,7 @@
     const wrap = el("div", "osw-preview-dstats-wrap");
     if (isDark) wrap.classList.add("night-mode");
     wrap.innerHTML =
-      '<div class="learner-stats-widget" data-minimalist="' + (vals["dstats_minimalist"] === true) + '" data-active-view="' + dstatsActiveView + '" data-chart-type="' + (isFull ? "full" : "minimal") + '" style="' + widgetStyle + '">' +
+      '<div class="learner-stats-widget" data-active-view="' + dstatsActiveView + '" data-chart-type="' + (isFull ? "full" : "minimal") + '" style="' + widgetStyle + '">' +
         '<div class="learner-stats-header"><div class="learner-stats-header-row onigiri-widget-head">' +
           "<h3>" + str("lstats_title", "Stats") + "</h3>" +
           '<div class="learner-stats-header-controls">' + dstatsSwitcherHtml() +
@@ -7838,11 +7887,11 @@
       heatmapStreakIconColor: vals["heatmapStreakIconColor"] || "#ff6b35",
       heatmapStreakIconZeroColor: vals["heatmapStreakIconZeroColor"] || "#8f8f8f",
       heatmapShowStreak: vals["heatmapShowStreak"] !== false,
-      heatmapMinimalist: vals["heatmapMinimalist"] === true,
       heatmapShowMonths: vals["heatmapShowMonths"] !== false,
       heatmapShowWeekdays: vals["heatmapShowWeekdays"] !== false,
       heatmapShowWeekHeader: vals["heatmapShowWeekHeader"] !== false,
       heatmapParticlesAnimation: vals["heatmapParticlesAnimation"] === true,
+      heatmapTerrainEnabled: vals["heatmapTerrainEnabled"] === true,
       heatmapDefaultView: vals["heatmapDefaultView"] || "year",
       heatmapWeekStart: vals["heatmapWeekStart"] || "monday",
       locale: CTX.heatmapLocale || undefined,
@@ -7851,6 +7900,7 @@
         year: str("view_year", "Year"),
         month: str("view_month", "Month"),
         week: str("view_week", "Week"),
+        terrain_help: str("heatmap_terrain_help", "Activity terrain. Use the arrow keys to explore dates and Enter to browse cards."),
         day_streak: str("heatmap_day_streak", "day streak"),
         browse: str("browse", "Browse")
       }
@@ -8021,6 +8071,7 @@
       ".month-weekdays-header", ".month-weekdays-header .weekday-label",
       ".week-days-header", ".week-days-header .weekday-label", ".week-days-header .day-label"
     ].join(", "), labelsRole);
+    container.querySelector(".terrain-view")?.refreshTerrain?.(shapeMask);
   }
 
   PREVIEW_PAINTERS.heatmap = function (stage, vals, isDark) {
@@ -8040,10 +8091,9 @@
     }
     const previewConfig = heatmapPreviewConfig(vals);
     const structKey = [
-      previewConfig.heatmapDefaultView, previewConfig.heatmapWeekStart,
+      previewConfig.heatmapDefaultView, previewConfig.heatmapTerrainEnabled, previewConfig.heatmapWeekStart,
       previewConfig.heatmapShowMonths, previewConfig.heatmapShowWeekdays,
       previewConfig.heatmapShowWeekHeader, previewConfig.heatmapShowStreak,
-      previewConfig.heatmapMinimalist,
       previewConfig.heatmapParticlesAnimation,
       vals["heatmapStreakIcon"] || "system:fire.svg", isDark
     ].join("|");
@@ -8427,7 +8477,6 @@
   // Which of the bar's two states is showing — local UI state, not a
   // persisted setting, same as Deck Stats' Bars/Donut/Grouped switcher.
   let bbarActiveMode = "answer";
-  let reviewerHeaderPane = "buttons";
 
   function bbarStatTextMode(vals) {
     const mode = vals["bbar_stattxt_mode"] || "hover";
@@ -8734,7 +8783,7 @@
       (isDark ? "#e8e8e8" : "#2c2c2c");
     const fill = rprogFillImage(vals, isDark);
 
-    const chip = el("div", "osw-preview-rprog-chip onigiri-reviewer-progress is-" + style);
+    const chip = el("div", "osw-preview-rprog-chip is-" + style);
     if (vals["rprog_chrome"] === false) chip.classList.add("is-bare");
     chip.style.color = text;
 
@@ -8806,51 +8855,6 @@
     return chip;
   }
 
-  function reviewerHeaderBackground(color, opacity) {
-    if (color === "transparent") return color;
-    const parsed = String(color).match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
-    return parsed ? "rgba(" + parsed[1] + ", " + parsed[2] + ", " + parsed[3] + ", " +
-      (opacity * (parsed[4] == null ? 1 : Number(parsed[4]))) + ")" : rgba(color, opacity);
-  }
-
-  function reviewerHeaderStyle(header, vals, isDark) {
-    header.classList.add("onigiri-header-customization");
-    const custom = vals.rheader_mode === "custom";
-    header.classList.toggle("is-custom-header", custom);
-    const font = designerFontRole(vals, "reviewer_header", isDark, "main", true);
-    header.style.setProperty("--rh-font-family", font.family);
-    header.style.setProperty("--rh-font-size", Math.max(8, Math.min(72, font.size)) + "px");
-    if (custom) {
-      const n = function (name, fallback, max) { return Math.max(0, Math.min(max, designerNum(vals["rheader_" + name], fallback))); };
-      [["radius", 12, 100], ["stroke", 0, 10], ["height", 0, 200], ["gap", 8, 40]].forEach(function (spec) {
-        const key = spec[0] === "stroke" ? "border_size" : spec[0];
-        header.style.setProperty("--rh-" + spec[0], n(key, spec[1], spec[2]) + "px");
-      });
-      header.style.setProperty("--rh-padding", n("padding", 5, 100) + "px");
-      header.style.setProperty("--rh-padding-x", (n("padding", 5, 100) + 7) + "px");
-      header.style.setProperty("--rh-blur", (n("blur", 0, 100) / 5) + "px");
-      const opacity = n("opacity", 100, 100) / 100;
-      ["bg", "text", "hover_bg", "hover_text", "border"].forEach(function (suffix) {
-        const prefix = "rheader_" + suffix;
-        const color = designerPairValue(vals, prefix + "_light", prefix + "_dark", prefix + "_theme_mode", isDark);
-        if (!color) return;
-        header.style.setProperty("--rh-" + suffix.replace(/_/g, "-"),
-          suffix === "bg" || suffix === "hover_bg" ? reviewerHeaderBackground(color, opacity) : color);
-      });
-    } else {
-      const box = designerPairValue(vals, "widget_box_color_light", "widget_box_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark) || (isDark ? "#2c2c2c" : "#ffffff");
-      const border = designerPairValue(vals, "widget_border_color_light", "widget_border_color_dark", "onigiri_canvas_inset_color_theme_mode", isDark) || (isDark ? "#3a3a3a" : "#d9d9d9");
-      const glass = designerGlassCardStyle(vals, isDark, "onigiri_canvas_inset_effect_opacity", "onigiri_canvas_inset_effect_blur", "onigiri_canvas_inset_border_radius", "onigiri_canvas_inset_border_width", box, border);
-      header.style.setProperty("--onigiri-box-effect-bg", glass.background);
-      header.style.setProperty("--onigiri-box-effect-border", border);
-      header.style.setProperty("--onigiri-box-effect-fg", designerFontRole(vals, "main", isDark).color);
-      header.style.setProperty("--onigiri-box-effect-radius", (vals.onigiri_canvas_inset_border_radius == null ? 20 : vals.onigiri_canvas_inset_border_radius) + "px");
-      header.style.setProperty("--onigiri-box-effect-stroke", (vals.onigiri_canvas_inset_border_width == null ? 1 : vals.onigiri_canvas_inset_border_width) + "px");
-      header.style.setProperty("--onigiri-box-effect-blur", (designerNum(vals.onigiri_canvas_inset_effect_blur, 0) / 5) + "px");
-    }
-    if (font.customColor) header.style.setProperty("--rh-text", font.customColor);
-  }
-
   PREVIEW_PAINTERS.reviewer_progress = function (stage, vals, isDark) {
     stage.innerHTML = "";
     stage.style.padding = "0";
@@ -8864,30 +8868,462 @@
     const enabled = vals["rprog_enabled"] !== false;
     const chip = enabled ? rprogChip(vals, isDark, data) : null;
     if (chip && (vals["rprog_position"] || "right") === "left") header.appendChild(chip);
-    [["decks", "Decks"], ["add", "Add"], ["browse", "Browse"], ["stats", "Stats"], ["sync", "Sync"]].forEach(function (spec) {
-      const button = el("a", "osw-preview-rprog-btn onigiri-reviewer-button", str(spec[0], spec[1]));
-      button.setAttribute("data-header-button", spec[0]);
-      button.href = "#";
-      button.addEventListener("click", function (event) { event.preventDefault(); });
-      header.appendChild(button);
-    });
-    [["hashi", "hashi_show_header", "hashi_notes_title", "Hashi Notes"],
-     ["pomodoro", "pomodoro_show_header", "pomodoro_title", "Pomodoro"]].forEach(function (spec) {
-      if (!vals[spec[1]]) return;
-      if (vals[spec[0] === "hashi" ? "hashi_notes_visible" : "pomodoro_visible"] === false) return;
-      const button = el("a", "osw-preview-rprog-btn onigiri-reviewer-button", str(spec[2], spec[3]));
-      button.setAttribute("data-header-button", spec[0]);
-      button.href = "#";
-      button.addEventListener("click", function (event) { event.preventDefault(); });
-      header.appendChild(button);
+    ["Decks", "Add", "Browse", "Stats", "Sync"].forEach(function (label) {
+      header.appendChild(el("span", "osw-preview-rprog-btn", label));
     });
     if (chip && (vals["rprog_position"] || "right") !== "left") header.appendChild(chip);
 
-    reviewerHeaderStyle(header, vals, isDark);
     wrap.appendChild(header);
-    wrap.appendChild(el("div", "osw-preview-rprog-card", str("question", "Question")));
+    wrap.appendChild(el("div", "osw-preview-rprog-card", "Question"));
 
     stage.appendChild(wrap);
+  };
+
+  const RDOCK_PREVIEW_BUTTONS = [
+    { id: "decks", labelKey: "decks", fallback: "Decks", defIcon: "system:deck.svg" },
+    { id: "add", labelKey: "add", fallback: "Add", defIcon: "system:add.svg" },
+    { id: "browse", labelKey: "browse", fallback: "Browse", defIcon: "system:browse.svg" },
+    { id: "stats", labelKey: "stats", fallback: "Stats", defIcon: "system:stats.svg" },
+    { id: "sync", labelKey: "sync", fallback: "Sync", defIcon: "system:sync.svg" },
+    { id: "hashi_notes", labelKey: "hashi_notes_title", fallback: "Hashi Notes", defIcon: "system:hashi_notes.svg" },
+    { id: "pomodoro", labelKey: "pomodoro_title", fallback: "Pomodoro", defIcon: "system:pomodoro.svg" }
+  ];
+
+  function rdockNormalizeHex(val, fallback) {
+    const raw = String(val || "").trim();
+    if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw)) return fallback;
+    if (raw.length === 4) {
+      return ("#" + raw[1] + raw[1] + raw[2] + raw[2] + raw[3] + raw[3]).toLowerCase();
+    }
+    return raw.toLowerCase();
+  }
+
+  function rdockContrastInk(hex) {
+    const c = rdockNormalizeHex(hex, "#17181a").slice(1);
+    const ch = [0, 2, 4].map(function (i) {
+      const v = parseInt(c.slice(i, i + 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+    return lum > 0.36 ? "#0e0f11" : "#ffffff";
+  }
+
+  function rdockLevelChip(vals, isDark, isIsland) {
+    const bare = !isIsland && vals["rprog_enabled"] !== false && vals["rprog_chrome"] === false;
+    const chip = el("div", "osw-preview-rdock-level" + (isIsland ? " is-island" : "") + (bare ? " is-bare" : ""));
+    chip.appendChild(el("span", "osw-preview-rdock-level-text", "Lv 8"));
+    const track = el("span", "osw-preview-rdock-level-track");
+    track.appendChild(el("span", "osw-preview-rdock-level-fill"));
+    chip.appendChild(track);
+    return chip;
+  }
+
+  function rdockCreateSprings(initialValues, onFrame, isAlive) {
+    const axes = initialValues.map(function (x) {
+      return { x: x, v: 0, target: x, k: 300, d: 24, done: true };
+    });
+    let rafId = null;
+    let lastTs = 0;
+
+    function deriv(x, v, t, k, d) {
+      return [v, -k * (x - t) - d * v];
+    }
+
+    function stepAxis(a, h) {
+      const k1 = deriv(a.x, a.v, a.target, a.k, a.d);
+      const k2 = deriv(a.x + k1[0] * h * 0.5, a.v + k1[1] * h * 0.5, a.target, a.k, a.d);
+      const k3 = deriv(a.x + k2[0] * h * 0.5, a.v + k2[1] * h * 0.5, a.target, a.k, a.d);
+      const k4 = deriv(a.x + k3[0] * h, a.v + k3[1] * h, a.target, a.k, a.d);
+      a.x += (h / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      a.v += (h / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+    }
+
+    function tick(now) {
+      if (!isAlive()) {
+        rafId = null;
+        return;
+      }
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
+      lastTs = now;
+      const steps = Math.max(1, Math.ceil(dt / (1 / 120)));
+      const h = dt / steps;
+      let active = false;
+      axes.forEach(function (a) {
+        if (a.done) return;
+        for (let i = 0; i < steps; i++) stepAxis(a, h);
+        if (Math.abs(a.x - a.target) < 0.02 && Math.abs(a.v) < 0.08) {
+          a.x = a.target;
+          a.v = 0;
+          a.done = true;
+        } else {
+          active = true;
+        }
+      });
+      onFrame(axes);
+      if (active) rafId = window.requestAnimationFrame(tick);
+      else rafId = null;
+    }
+
+    return {
+      axes: axes,
+      move: function (targets, springs, immediate) {
+        let moving = false;
+        targets.forEach(function (t, i) {
+          const a = axes[i];
+          if (!a) return;
+          a.target = t;
+          if (springs && springs[i]) {
+            a.k = springs[i][0];
+            a.d = springs[i][1];
+          }
+          if (immediate) {
+            a.x = t;
+            a.v = 0;
+            a.done = true;
+          } else {
+            a.done = false;
+            moving = true;
+          }
+        });
+        if (immediate) onFrame(axes);
+        if (moving && rafId === null) {
+          lastTs = performance.now();
+          rafId = window.requestAnimationFrame(tick);
+        }
+      },
+      destroy: function () {
+        if (rafId !== null) window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+  }
+
+  PREVIEW_PAINTERS.reviewer_dock = function (stage, vals, isDark) {
+    if (stage._rdockCleanup) {
+      stage._rdockCleanup();
+      stage._rdockCleanup = null;
+    }
+    stage._triggerDockNotice = null;
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    paintResolvedBackdropState(stage, designerBgSourceState(vals, isDark, REVIEWER_BG_KEYS));
+
+    const mode = vals["reviewer_dock_mode"] || "static";
+    const wrap = el("div", "osw-preview-rprog-wrap osw-preview-rdock-wrap" + (isDark ? " is-dark" : ""));
+    const data = rprogSample();
+    const progEnabled = vals["rprog_enabled"] !== false;
+    const progPos = vals["rprog_position"] || "right";
+    const progChip = progEnabled ? rprogChip(vals, isDark, data) : null;
+    const levelChip = rdockLevelChip(vals, isDark, mode === "island");
+
+    if (mode !== "island") {
+      const header = el("div", "osw-preview-rprog-header" + (mode === "minimal" ? " is-minimal" : ""));
+      if (progChip && progPos === "left") header.appendChild(progChip);
+      RDOCK_PREVIEW_BUTTONS.forEach(function (spec) {
+        const label = str(spec.labelKey, spec.fallback);
+        if (mode === "minimal") {
+          const btn = el("button", "osw-preview-rdock-minbtn");
+          btn.type = "button";
+          btn.setAttribute("aria-label", label);
+          btn.setAttribute("data-tip", label);
+          const iconVal = vals["rdock_icon_" + spec.id] || spec.defIcon;
+          const iconColor = vals["rdock_icon_color_" + spec.id + (isDark ? "_dark" : "_light")] ||
+            (isDark ? "#ffffff" : "#17181a");
+          btn.appendChild(designerIconGlyph(iconVal, iconColor, 14));
+          header.appendChild(btn);
+        } else {
+          header.appendChild(el("span", "osw-preview-rprog-btn", label));
+        }
+      });
+      header.appendChild(levelChip);
+      if (progChip && progPos !== "left") header.appendChild(progChip);
+      wrap.appendChild(header);
+      wrap.appendChild(el("div", "osw-preview-rprog-card", "Question"));
+      stage.appendChild(wrap);
+      return;
+    }
+
+    // Island mode: interactive Rubber Dock + downward animated notification preview.
+    const gooColor = rdockNormalizeHex(
+      designerPairValue(vals, "rdock_goo_color_light", "rdock_goo_color_dark", "rdock_goo_color_theme_mode", isDark),
+      isDark ? "#ffffff" : "#17181a"
+    );
+    const gooInk = rdockContrastInk(gooColor);
+
+    const header = el("div", "osw-preview-rdock-island-host");
+    const island = el("div", "osw-preview-rdock-island" + (isDark ? " is-dark" : ""));
+    const surface = el("span", "osw-preview-rdock-surface");
+    const bar = el("div", "osw-preview-rdock-bar");
+    const strip = el("div", "osw-preview-rdock-strip");
+    const indicator = el("span", "osw-preview-rdock-indicator");
+    indicator.style.background = gooColor;
+    const ink = el("div", "osw-preview-rdock-ink");
+    const tip = el("span", "osw-preview-rdock-tip");
+    tip.style.background = gooColor;
+    tip.style.color = gooInk;
+
+    strip.appendChild(indicator);
+    const buttons = [];
+    const baseGlyphs = [];
+    const inkClones = [];
+
+    RDOCK_PREVIEW_BUTTONS.forEach(function (spec) {
+      const label = str(spec.labelKey, spec.fallback);
+      const btn = el("button", "osw-preview-rdock-item");
+      btn.type = "button";
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("data-tip", label);
+      const iconVal = vals["rdock_icon_" + spec.id] || spec.defIcon;
+      const iconColor = vals["rdock_icon_color_" + spec.id + (isDark ? "_dark" : "_light")] ||
+        (isDark ? "#ffffff" : "#17181a");
+      const glyph = designerIconGlyph(iconVal, iconColor, 14);
+      btn.appendChild(glyph);
+      strip.appendChild(btn);
+
+      const clone = glyph.cloneNode(true);
+      clone.classList.add("osw-preview-rdock-ink-icon");
+      if (clone.classList.contains("is-emoji")) clone.style.color = gooInk;
+      else clone.style.background = gooInk;
+      ink.appendChild(clone);
+
+      buttons.push(btn);
+      baseGlyphs.push(glyph);
+      inkClones.push(clone);
+    });
+
+    strip.appendChild(ink);
+    strip.appendChild(tip);
+    bar.appendChild(strip);
+
+    const divider = el("span", "osw-preview-rdock-divider");
+    const info = el("div", "osw-preview-rdock-info");
+    if (progChip && progPos === "left") {
+      progChip.classList.add("is-island");
+      info.appendChild(progChip);
+    }
+    info.appendChild(levelChip);
+    if (progChip && progPos !== "left") {
+      progChip.classList.add("is-island");
+      info.appendChild(progChip);
+    }
+    bar.appendChild(divider);
+    bar.appendChild(info);
+
+    const notice = el("div", "osw-preview-rdock-notice");
+    const noticeInner = el("div", "osw-preview-rdock-notice-inner");
+    notice.appendChild(noticeInner);
+
+    island.appendChild(surface);
+    island.appendChild(bar);
+    island.appendChild(notice);
+    header.appendChild(island);
+
+    wrap.appendChild(header);
+    wrap.appendChild(el("div", "osw-preview-rprog-card", "Question"));
+    stage.appendChild(wrap);
+
+    // Measure & wire interactive Rubber Dock + downward expansion springs.
+    let stripMetrics = [];
+    let stripW = 0;
+    let stripH = 28;
+    let barW = 0;
+    let barH = 34;
+    let activeIdx = -1;
+    let prevCenterX = 0;
+    let leaveTimer = null;
+    let noticeTimer = null;
+    let noticeOpen = false;
+    let alive = true;
+    const isAlive = function () { return alive && stage.isConnected; };
+
+    const pillSpring = rdockCreateSprings([0, 28], function (axes) {
+      const left = axes[0].x;
+      const right = axes[1].x;
+      const minW = 18;
+      const width = Math.max(minW, right - left);
+      const center = (left + right) / 2;
+      const x = center - width / 2;
+      const itemSize = 28;
+      const height = itemSize * Math.max(0.7, Math.min(1.08, Math.sqrt(itemSize / Math.max(1, width))));
+      const top = (stripH - height) / 2;
+      indicator.style.left = x.toFixed(1) + "px";
+      indicator.style.width = width.toFixed(1) + "px";
+      indicator.style.top = top.toFixed(1) + "px";
+      indicator.style.height = height.toFixed(1) + "px";
+      indicator.style.borderRadius = (height / 2).toFixed(1) + "px";
+      if (stripW > 0 && stripH > 0) {
+        const rightInset = Math.max(0, stripW - x - width);
+        const bottomInset = Math.max(0, stripH - top - height);
+        ink.style.clipPath =
+          "inset(" + [Math.max(0, top), rightInset, bottomInset, Math.max(0, x)]
+            .map(function (n) { return n.toFixed(1) + "px"; }).join(" ") + " round 999px)";
+      }
+    }, isAlive);
+
+    const popSprings = buttons.map(function (_, idx) {
+      return rdockCreateSprings([1], function (axes) {
+        const tf = "scale(" + axes[0].x.toFixed(3) + ")";
+        baseGlyphs[idx].style.transform = tf;
+        inkClones[idx].style.transform = tf;
+      }, isAlive);
+    });
+
+    const surfaceSpring = rdockCreateSprings([0, 34, 999], function (axes) {
+      const w = Math.max(40, axes[0].x);
+      const h = Math.max(34, axes[1].x);
+      const r = Math.min(h / 2, Math.max(16, axes[2].x));
+      surface.style.width = w.toFixed(1) + "px";
+      surface.style.height = h.toFixed(1) + "px";
+      surface.style.borderRadius = r.toFixed(1) + "px";
+      island.style.setProperty("--island-height", h.toFixed(1) + "px");
+      notice.style.setProperty("--notice-room", Math.max(0, h - barH).toFixed(1) + "px");
+    }, isAlive);
+
+    function measureDock(snapSurface) {
+      const sRect = strip.getBoundingClientRect();
+      const bRect = bar.getBoundingClientRect();
+      if (!sRect.width || !bRect.width) return;
+      stripW = sRect.width;
+      stripH = sRect.height || 28;
+      barW = bRect.width;
+      barH = bRect.height || 34;
+      stripMetrics = buttons.map(function (btn, idx) {
+        const r = btn.getBoundingClientRect();
+        const l = r.left - sRect.left;
+        const w = r.width || 28;
+        const t = r.top - sRect.top;
+        const h = r.height || 28;
+        const clone = inkClones[idx];
+        clone.style.left = (l + (w - 14) / 2).toFixed(1) + "px";
+        clone.style.top = (t + (h - 14) / 2).toFixed(1) + "px";
+        return { left: l, right: l + w, cx: l + w / 2 };
+      });
+      if (snapSurface && !noticeOpen) {
+        surfaceSpring.move([barW, barH, barH / 2], null, true);
+      }
+      if (activeIdx >= 0 && stripMetrics[activeIdx]) {
+        const m = stripMetrics[activeIdx];
+        pillSpring.move([m.left, m.right], null, true);
+        strip.style.setProperty("--tip-x", m.cx.toFixed(1) + "px");
+      }
+    }
+
+    function selectDockItem(idx, immediate) {
+      if (!stripMetrics.length) measureDock(true);
+      const m = stripMetrics[idx];
+      if (!m) return;
+      activeIdx = idx;
+      strip.classList.add("has-selection");
+      tip.textContent = buttons[idx].getAttribute("data-tip") || "";
+      tip.classList.add("visible");
+      strip.style.setProperty("--tip-x", m.cx.toFixed(1) + "px");
+      if (immediate) {
+        pillSpring.move([m.left, m.right], null, true);
+        prevCenterX = m.cx;
+        return;
+      }
+      const dir = m.cx >= prevCenterX ? 1 : -1;
+      prevCenterX = m.cx;
+      const lead = [640, 38];
+      const trail = [150, 16];
+      pillSpring.move([m.left, m.right], dir > 0 ? [trail, lead] : [lead, trail], false);
+      if (popSprings[idx]) {
+        popSprings[idx].axes[0].v += 2.2;
+        popSprings[idx].move([1], [[520, 16]], false);
+      }
+    }
+
+    function hideDockNotice() {
+      noticeOpen = false;
+      window.clearTimeout(noticeTimer);
+      island.classList.remove("island-notice");
+      notice.classList.remove("has-message");
+      noticeInner.innerHTML = "";
+      if (barW > 0) surfaceSpring.move([barW, barH, barH / 2], [[340, 26], [300, 25], [300, 24]], false);
+    }
+
+    function showDockNotice() {
+      measureDock(false);
+      window.clearTimeout(noticeTimer);
+      noticeOpen = true;
+      noticeInner.innerHTML = "";
+      const row = el("div", "osw-preview-rdock-notice-row");
+      const meta = el("div", "osw-preview-rdock-notice-meta");
+      meta.appendChild(el("span", "osw-preview-rdock-notice-pill", str("notification", "Notification")));
+      const msgCol = el("div", "osw-preview-rdock-notice-copy");
+      msgCol.appendChild(el("div", "osw-preview-rdock-notice-title", str("dock_notice_preview_title", "Sync Complete")));
+      msgCol.appendChild(el("div", "osw-preview-rdock-notice-sub", str("dock_notice_preview_body", "Collection synchronized")));
+      meta.appendChild(msgCol);
+      row.appendChild(meta);
+      const closeBtn = el("button", "osw-preview-rdock-notice-close", "×");
+      closeBtn.type = "button";
+      closeBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        hideDockNotice();
+      });
+      row.appendChild(closeBtn);
+      noticeInner.appendChild(row);
+      const progressTrack = el("div", "osw-preview-rdock-notice-track");
+      progressTrack.appendChild(el("div", "osw-preview-rdock-notice-fill"));
+      noticeInner.appendChild(progressTrack);
+
+      notice.classList.add("has-message");
+      island.classList.add("island-notice");
+
+      const targetW = Math.max(barW || 240, 256);
+      const nHeight = Math.max(54, notice.scrollHeight || 58);
+      surfaceSpring.move([targetW, barH + nHeight, 20], [[380, 24], [300, 22], [300, 22]], false);
+      noticeTimer = window.setTimeout(hideDockNotice, 2600);
+    }
+
+    stage._triggerDockNotice = showDockNotice;
+
+    buttons.forEach(function (btn, idx) {
+      btn.addEventListener("pointerenter", function () {
+        window.clearTimeout(leaveTimer);
+        selectDockItem(idx, !strip.classList.contains("has-selection"));
+      });
+      btn.addEventListener("click", function () {
+        selectDockItem(idx, false);
+        if (popSprings[idx]) {
+          popSprings[idx].axes[0].v -= 2.8;
+          popSprings[idx].move([1], [[520, 16]], false);
+        }
+      });
+    });
+
+    info.addEventListener("click", function () {
+      if (noticeOpen) hideDockNotice();
+      else showDockNotice();
+    });
+
+    strip.addEventListener("pointerleave", function () {
+      leaveTimer = window.setTimeout(function () {
+        activeIdx = -1;
+        strip.classList.remove("has-selection");
+        tip.classList.remove("visible");
+      }, 90);
+    });
+
+    const ro = window.ResizeObserver ? new ResizeObserver(function () {
+      measureDock(!noticeOpen);
+    }) : null;
+    if (ro) ro.observe(island);
+
+    window.requestAnimationFrame(function () {
+      if (!isAlive()) return;
+      measureDock(true);
+    });
+
+    stage._rdockCleanup = function () {
+      alive = false;
+      window.clearTimeout(leaveTimer);
+      window.clearTimeout(noticeTimer);
+      if (ro) ro.disconnect();
+      pillSpring.destroy();
+      surfaceSpring.destroy();
+      popSprings.forEach(function (s) { s.destroy(); });
+    };
   };
 
   // ── Sidebar previews (Background / Action Buttons / Deck Icons) ───────────
@@ -8949,7 +9385,7 @@
     const type = vals["modern_menu_sidebar_bg_type"] || "color";
     const bgMode = vals["modern_menu_sidebar_bg_mode"] || "custom";
     const matchesWidgets = bgMode === "custom";
-    const sync = matchesWidgets || !!vals["modern_menu_sidebar_sync_box_effect"];
+    const sync = matchesWidgets || (bgMode === "independent" && !!vals["modern_menu_sidebar_sync_box_effect"]);
     let color;
     let blur;
     let opacity;
@@ -8980,7 +9416,7 @@
     if (!matchesWidgets && type === "accent") color = CTX.accent || color;
 
     let image = "";
-    if (type === "image_color") {
+    if (type === "image" || type === "image_color") {
       image = designerPairValue(vals, "modern_menu_sidebar_bg_image_light",
                                 "modern_menu_sidebar_bg_image_dark",
                                 "modern_menu_sidebar_bg_image_theme_mode", isDark,
@@ -8992,6 +9428,7 @@
     }
 
     if (matchesWidgets) image = "";
+    if (bgMode === "independent" && type === "image") color = "transparent";
 
     // Custom: the main background shows through the frame and only
     // an overlay sits on top of it — either a translucent white/black wash with
@@ -9114,9 +9551,9 @@
     fitSidebar();
 
     const fill = el("div", "osw-sbprev-fill");
-    fill.style.background = spec.bgMode === "custom"
+    fill.style.background = spec.color === "transparent" ? "transparent" : spec.bgMode === "custom" || spec.bgMode === "independent"
       ? rgba(spec.color, Math.max(0, Math.min(100, spec.opacity)) / 100) : spec.color;
-    const fillBlur = spec.bgMode === "custom" ? spec.blur * 0.2 : spec.backdropBlur;
+    const fillBlur = spec.bgMode === "custom" || spec.bgMode === "independent" ? spec.blur * 0.2 : spec.backdropBlur;
     if (fillBlur) {
       fill.style.backdropFilter = "blur(" + fillBlur.toFixed(1) + "px)";
       fill.style.webkitBackdropFilter = fill.style.backdropFilter;
@@ -9127,7 +9564,8 @@
     if (url) {
       const img = el("div", "osw-sbprev-fill osw-sbprev-image");
       img.style.backgroundImage = "url(\"" + url.replace(/"/g, "") + "\")";
-      img.style.filter = spec.blur > 0 ? "blur(" + spec.blur.toFixed(1) + "px)" : "";
+      const imageBlur = spec.bgMode === "independent" ? spec.blur * 0.2 : spec.blur;
+      img.style.filter = imageBlur > 0 ? "blur(" + imageBlur.toFixed(1) + "px)" : "";
       img.style.opacity = String(Math.max(0, Math.min(100, spec.opacity)) / 100);
       frame.appendChild(img);
     }
@@ -9213,7 +9651,7 @@
     // always present in the real deck header.
     appendTool("modern_menu_icon_header_search", str("search", "Search"));
     appendTool("modern_menu_icon_header_sort", str("sort", "Sort"));
-    if ((vals["modern_menu_ready_layout_mode"] || "list") === "hidden") {
+    if (vals["modern_menu_ready_enabled"] !== false && (vals["modern_menu_ready_layout_mode"] || "list") === "hidden") {
       appendTool(
         "modern_menu_icon_ready_section",
         vals["modern_menu_ready_title"] || str("ready_to_go", "Ready to go")
@@ -9283,6 +9721,7 @@
   /* Ready to Go uses the real sidebar's vertical button geometry and reads
      the same icon, tint, spacing, radius and surface fields as ready_to_go.py. */
   function designerSidebarReady(host, vals, spec, isDark) {
+    if (vals["modern_menu_ready_enabled"] === false) return;
     const layoutMode = vals["modern_menu_ready_layout_mode"] || "list";
     if (layoutMode === "hidden") return;
     const collapsed = layoutMode === "collapsed";
@@ -12117,6 +12556,46 @@
      gamification/onigimon.py's `.onigimon-card` and onigiri_renderer.py's
      `.onigimon-top` / `.onigimon-bottom` rules. */
   PREVIEW_PAINTERS.onigimon_scene = function (stage, vals, isDark) {
+    const synced = !!vals.g_onigimon_sync_widget_colors;
+    const widgetBoxColor = designerPairValue(
+      vals, "widget_box_color_light", "widget_box_color_dark",
+      "onigiri_canvas_inset_color_theme_mode", isDark
+    ) || (isDark ? "#2c2c2c" : "#ffffff");
+    const widgetBorderColor = designerPairValue(
+      vals, "widget_border_color_light", "widget_border_color_dark",
+      "onigiri_canvas_inset_color_theme_mode", isDark
+    ) || (isDark ? "#424242" : "#e0e0e0");
+    const widgetRadius = Math.max(
+      0,
+      Math.min(
+        60,
+        vals.onigiri_canvas_inset_border_radius == null || vals.onigiri_canvas_inset_border_radius === ""
+          ? 20
+          : designerNum(vals.onigiri_canvas_inset_border_radius, 20)
+      )
+    );
+    const widgetStroke = Math.max(
+      0,
+      Math.min(
+        10,
+        vals.onigiri_canvas_inset_border_width == null || vals.onigiri_canvas_inset_border_width === ""
+          ? 1
+          : designerNum(vals.onigiri_canvas_inset_border_width, 1)
+      )
+    );
+    const widgetBlur = Math.max(0, Math.min(100, designerNum(vals.onigiri_canvas_inset_effect_blur, 0)));
+    const widgetOpacity = Math.max(
+      0,
+      Math.min(
+        100,
+        vals.onigiri_canvas_inset_effect_opacity == null || vals.onigiri_canvas_inset_effect_opacity === ""
+          ? 100
+          : designerNum(vals.onigiri_canvas_inset_effect_opacity, 100)
+      )
+    );
+    const widgetAlpha = Math.min(widgetOpacity / 100, widgetBlur > 0 ? 0.62 : 1);
+    const syncedFg = designerFontRole(vals, "main", isDark).color || readableTextColor(widgetBoxColor);
+
     const color = /^#[0-9a-f]{6}$/i.test(String(vals.g_onigimon_scene_color || ""))
       ? vals.g_onigimon_scene_color
       : "#6ea96a";
@@ -12148,17 +12627,28 @@
     card.classList.toggle("is-wide", wide);
     card.classList.toggle("is-tall", tall);
     card.classList.toggle("is-extra-tall", extraTall);
+    card.classList.toggle("is-synced", synced);
     // Use the same grid footprint as the deck browser (230px columns, 120px
     // rows, 20px gaps), capped by the preview stage on narrow dialogs.
     card.style.width = (columns * 230 + (columns - 1) * 20) + "px";
     card.style.height = (rows * 120 + (rows - 1) * 20) + "px";
+    card.style.borderRadius = widgetRadius + "px";
+    if (synced) {
+      card.style.background = rgba(widgetBoxColor, widgetAlpha);
+      card.style.border = widgetStroke + "px solid " + widgetBorderColor;
+      const blurFilter = widgetBlur > 0 ? "blur(" + ((widgetBlur / 100) * 20).toFixed(1) + "px)" : "";
+      card.style.backdropFilter = blurFilter;
+      card.style.webkitBackdropFilter = blurFilter;
+    }
 
     const top = el("div", "osw-onistage-top");
     // The live widget's radial wash — lighter towards the top-left, darker at
     // the far corner — computed here because this webview has no color-mix().
-    top.style.background = "radial-gradient(circle at 22% 32%, " +
-      mix(color, "#ffffff", 0.92) + " 0%, " + color + " 70%, " +
-      mix(color, "#000000", 0.90) + " 100%)";
+    top.style.background = synced
+      ? "transparent"
+      : ("radial-gradient(circle at 22% 32%, " +
+          mix(color, "#ffffff", 0.92) + " 0%, " + color + " 70%, " +
+          mix(color, "#000000", 0.90) + " 100%)");
 
     const sceneMode = vals.g_onigimon_scene_mode || "preset";
     const scenePath = sceneMode === "custom"
@@ -12213,8 +12703,8 @@
     // The real 1-row widget is its compact scene: 1 column shows only the
     // companion, while 2 columns has enough room for name and level.
     if (compact) {
-      name.style.color = isDark ? "#ffffff" : "#000000";
-      level.style.color = isDark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.68)";
+      name.style.color = synced ? syncedFg : (isDark ? "#ffffff" : "#000000");
+      level.style.color = synced ? rgba(syncedFg, 0.72) : (isDark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.68)");
       top.appendChild(info);
       info.classList.toggle("is-hidden", columns === 1);
       stage.appendChild(card);
@@ -12222,8 +12712,8 @@
     }
 
     const panel = el("div", "osw-onistage-bottom");
-    panel.style.background = bottom;
-    const meterFg = readableTextColor(bottom);
+    panel.style.background = synced ? "transparent" : bottom;
+    const meterFg = synced ? syncedFg : readableTextColor(bottom);
     panel.style.color = meterFg;
     name.style.color = meterFg;
     level.style.color = rgba(meterFg, 0.68);
@@ -12300,6 +12790,330 @@
     }
     card.appendChild(panel);
     stage.appendChild(card);
+  };
+
+  /* Live Reviewer preview for the Onigimon HUD — sits on the user's configured
+     Reviewer background and mirrors mode, animation, scale, opacity, light/dark
+     surface color, shadow, and the allied-side quick items popover. */
+  PREVIEW_PAINTERS.onigimon_hud = function (stage, vals, isDark) {
+    const enabled = vals.g_onigimon_reviewer_hud !== false;
+    const mode = vals.g_onigimon_hud_mode === "minimal" || vals.g_onigimon_hud_mode === "war"
+      ? vals.g_onigimon_hud_mode
+      : "battle";
+    const isMinimal = mode === "minimal";
+    const isWar = mode === "war";
+    const isStatic = vals.g_onigimon_hud_motion === "static";
+    const scalePct = Math.max(75, Math.min(135, Number(vals.g_onigimon_hud_scale) || 100));
+    const rawOpacity = vals.g_onigimon_hud_opacity;
+    const opacityPct = Math.max(
+      0,
+      Math.min(
+        100,
+        rawOpacity === undefined || rawOpacity === null || rawOpacity === ""
+          ? 88
+          : Number(rawOpacity)
+      )
+    );
+    const shadowOn = vals.g_onigimon_hud_shadow !== false;
+
+    const bgState = designerBgSourceState(vals, isDark, REVIEWER_BG_KEYS);
+    const stageInkLight = bgState && bgState.color ? (readableTextColor(bgState.color) === "#ffffff") : !!isDark;
+
+    const rawBg = isDark
+      ? (vals.g_onigimon_hud_bg_color_dark || "#202124")
+      : (vals.g_onigimon_hud_bg_color_light || "#ffffff");
+    const bgHex = /^#[0-9a-f]{6}$/i.test(String(rawBg || "").trim())
+      ? String(rawBg).trim()
+      : (isDark ? "#202124" : "#ffffff");
+    const alpha = +(opacityPct / 100).toFixed(3);
+    const blurPx = alpha <= 0.01 || alpha >= 0.99 ? 0 : Math.round(Math.sin(alpha * Math.PI) * 14);
+    const blurValue = blurPx > 0 ? ("blur(" + blurPx + "px) saturate(135%)") : "none";
+    const isLightSurface = opacityPct >= 40
+      ? (readableTextColor(bgHex) !== "#ffffff")
+      : !stageInkLight;
+    const borderRgb = isLightSurface ? "17, 24, 39" : "255, 255, 255";
+    const borderAlpha = +(0.12 * alpha).toFixed(3);
+    const subtleAlpha = +((isLightSurface ? 0.065 : 0.085) * alpha).toFixed(3);
+    const dividerAlpha = +(0.11 * alpha).toFixed(3);
+    const shadowValue = !shadowOn || alpha <= 0.01
+      ? "none"
+      : (isLightSurface
+        ? ("0 10px 26px rgba(15, 23, 42, " + (0.12 * alpha).toFixed(3) + "), 0 1px 3px rgba(15, 23, 42, " + (0.07 * alpha).toFixed(3) + ")")
+        : ("0 12px 28px rgba(0, 0, 0, " + (0.38 * alpha).toFixed(3) + "), 0 1px 3px rgba(0, 0, 0, " + (0.26 * alpha).toFixed(3) + ")"));
+
+    const companion = gamesCtx.companionPreview || {};
+    const allyName = companion.name || "Pikachu";
+    const allyLevel = companion.level || 18;
+    const addonBase = CTX.addonBase || "";
+    const fallbackAlly = addonBase + "system_files/gamification_images/onigimon/pikachu_pixel.webp";
+    const enemySprite = addonBase + "system_files/gamification_images/onigimon/bulbasaur_pixel.webp";
+
+    const wantsAnimated = !isStatic;
+    let allyCandidates = wantsAnimated ? companion.animatedSprites : companion.staticSprites;
+    if (!Array.isArray(allyCandidates) || !allyCandidates.length) {
+      allyCandidates = companion.sprite ? [companion.sprite] : [];
+    }
+    allyCandidates = allyCandidates.filter(Boolean);
+    if (allyCandidates.indexOf(fallbackAlly) === -1) allyCandidates.push(fallbackAlly);
+
+    const bagOpen = Boolean(stage.__onigimonHudPreviewBagOpen) && enabled;
+
+    stage.innerHTML = "";
+    stage.style.padding = "0";
+    stage.classList.add("osw-onihud-stage");
+    stage.classList.toggle("is-dark", !!isDark);
+    paintResolvedBackdropState(stage, bgState);
+
+    const frame = el("div", "osw-onihud-reviewer");
+    frame.classList.toggle("is-dark", stageInkLight);
+
+    // Subtle top reviewer dock skeleton
+    const topMock = el("div", "osw-onihud-mock-top");
+    ["", "", "", ""].forEach(function () {
+      topMock.appendChild(el("span", "osw-onihud-mock-dot"));
+    });
+    frame.appendChild(topMock);
+
+    // Subtle flashcard mock
+    const cardMock = el("div", "osw-onihud-mock-card");
+    cardMock.appendChild(el("div", "osw-onihud-mock-word", "おにぎり"));
+    cardMock.appendChild(el("div", "osw-onihud-mock-line"));
+    cardMock.appendChild(el("div", "osw-onihud-mock-sub", "rice ball · onigiri"));
+    frame.appendChild(cardMock);
+
+    // HUD mount area (reserves scale-aware clearance so HUD never overlaps mock card or bottom bar)
+    const hudArea = el("div", "osw-onihud-mount");
+    hudArea.style.setProperty("--oh-p-scale", String(scalePct / 100));
+
+    if (!enabled) {
+      hudArea.appendChild(
+        el("div", "osw-onihud-disabled-pill", str("onigimon_hud_preview_disabled", "Using Ankimon's default HUD"))
+      );
+    } else {
+      const hudWrap = el("div", "osw-onihud-wrap");
+      hudWrap.setAttribute("data-mode", mode);
+      hudWrap.classList.toggle("is-static", isStatic);
+      hudWrap.classList.toggle("has-no-shadow", !shadowOn || alpha <= 0.01);
+      hudWrap.classList.toggle("is-light-surface", isLightSurface);
+      hudWrap.style.setProperty("--oh-p-scale", String(scalePct / 100));
+      hudWrap.style.setProperty("--oh-p-surface", rgba(bgHex, alpha));
+      hudWrap.style.setProperty("--oh-p-surface-hover", rgba(bgHex, Math.min(1, alpha + 0.08 * Math.max(0.25, alpha))));
+      hudWrap.style.setProperty("--oh-p-blur", blurValue);
+      hudWrap.style.setProperty("--oh-p-bar-border", "rgba(" + borderRgb + ", " + borderAlpha + ")");
+      hudWrap.style.setProperty("--oh-p-border", "rgba(" + borderRgb + ", " + borderAlpha + ")");
+      hudWrap.style.setProperty("--oh-p-subtle", "rgba(" + borderRgb + ", " + subtleAlpha + ")");
+      hudWrap.style.setProperty("--oh-p-divider", "rgba(" + borderRgb + ", " + dividerAlpha + ")");
+      hudWrap.style.setProperty("--oh-p-shadow", shadowValue);
+
+      const bar = el("div", "osw-onihud-bar");
+      const mainRow = el("div", "osw-onihud-row");
+
+      // Drag grip
+      const grip = el("span", "osw-onihud-grip");
+      grip.innerHTML =
+        '<svg viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">' +
+        '<circle cx="2.5" cy="3" r="1.2"/><circle cx="7.5" cy="3" r="1.2"/>' +
+        '<circle cx="2.5" cy="8" r="1.2"/><circle cx="7.5" cy="8" r="1.2"/>' +
+        '<circle cx="2.5" cy="13" r="1.2"/><circle cx="7.5" cy="13" r="1.2"/></svg>';
+      mainRow.appendChild(grip);
+
+      // Allied-side Item Bag button (inline in Battle & War)
+      if (!isMinimal) {
+        const bagBtn = el("button", "osw-onihud-bag-btn" + (bagOpen ? " is-active" : ""));
+        bagBtn.type = "button";
+        bagBtn.title = str("onigimon_hud_items", "Items");
+        bagBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M6 8h12l1 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L6 8Z"/>' +
+          '<path d="M9 8V6a3 3 0 0 1 6 0v2"/><path d="M9 13h6"/></svg>';
+        bagBtn.appendChild(el("span", "osw-onihud-bag-count", String(companion.itemCount || 6)));
+        bagBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          stage.__onigimonHudPreviewBagOpen = !stage.__onigimonHudPreviewBagOpen;
+          PREVIEW_PAINTERS.onigimon_hud(stage, vals, isDark);
+        });
+        mainRow.appendChild(bagBtn);
+      }
+
+      function makeSpriteImg(urls) {
+        const img = document.createElement("img");
+        img.className = "osw-onihud-sprite";
+        img.alt = "";
+        let idx = 0;
+        img.src = urls[0] || "";
+        img.addEventListener("error", function () {
+          idx += 1;
+          if (idx < urls.length) img.src = urls[idx];
+        });
+        return img;
+      }
+
+      function buildFighter(spec) {
+        const fighter = el("div", "osw-onihud-fighter osw-onihud-fighter--" + spec.side);
+        const sWrap = el("div", "osw-onihud-sprite-wrap");
+        sWrap.appendChild(makeSpriteImg(spec.sprites));
+        fighter.appendChild(sWrap);
+
+        const info = el("div", "osw-onihud-info");
+        const head = el("div", "osw-onihud-head");
+        if (spec.owned) {
+          const own = el("span", "osw-onihud-owned");
+          own.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+            '<circle cx="12" cy="12" r="9"/><path d="M3 12h6.2M14.8 12H21"/><circle cx="12" cy="12" r="2.8"/></svg>';
+          head.appendChild(own);
+        }
+        if (isWar && spec.idTag) head.appendChild(el("span", "osw-onihud-muted", spec.idTag));
+        head.appendChild(el("span", "osw-onihud-name", spec.name));
+        if (isWar && spec.genTag) head.appendChild(el("span", "osw-onihud-muted", spec.genTag));
+        head.appendChild(el("span", "osw-onihud-lvl", "Lv." + spec.level));
+        if (!isMinimal && spec.badge) {
+          head.appendChild(el("span", "osw-onihud-badge" + (spec.badgeClass ? " " + spec.badgeClass : ""), spec.badge));
+        }
+        info.appendChild(head);
+
+        if (isWar && spec.types && spec.types.length) {
+          const typesRow = el("div", "osw-onihud-types");
+          spec.types.forEach(function (t) {
+            const chip = el("span", "osw-onihud-type", t.label);
+            chip.style.setProperty("--oh-p-type-bg", t.bg);
+            chip.style.setProperty("--oh-p-type-fg", t.fg);
+            typesRow.appendChild(chip);
+          });
+          info.appendChild(typesRow);
+        }
+
+        const hpRow = el("div", "osw-onihud-hp-row");
+        const hpBar = document.createElement("progress");
+        hpBar.className = "osw-onihud-progress";
+        hpBar.max = spec.maxHp;
+        hpBar.value = spec.hp;
+        hpBar.setAttribute("data-level", spec.hpLevel);
+        hpBar.setAttribute("aria-label", spec.name + " HP");
+        hpRow.appendChild(hpBar);
+        if (!isMinimal) {
+          const pct = Math.round((spec.hp / spec.maxHp) * 100);
+          hpRow.appendChild(el("span", "osw-onihud-hp-text", isWar ? (spec.hp + "/" + spec.maxHp + " · " + pct + "%") : (spec.hp + "/" + spec.maxHp)));
+        }
+        info.appendChild(hpRow);
+
+        if (spec.side === "main" && !isMinimal) {
+          const xpRow = el("div", "osw-onihud-xp-row");
+          const xpBar = document.createElement("progress");
+          xpBar.className = "osw-onihud-progress osw-onihud-progress--xp";
+          xpBar.max = 250;
+          xpBar.value = 165;
+          xpBar.setAttribute("aria-label", "XP");
+          xpRow.appendChild(xpBar);
+          if (isWar) {
+            xpRow.appendChild(el("span", "osw-onihud-xp-text", "XP 165/250"));
+          }
+          info.appendChild(xpRow);
+        }
+
+        fighter.appendChild(info);
+        return fighter;
+      }
+
+      mainRow.appendChild(buildFighter({
+        side: "main",
+        name: allyName,
+        level: allyLevel,
+        idTag: "#25",
+        genTag: "G1",
+        hp: 38,
+        maxHp: 48,
+        hpLevel: "high",
+        badge: "ATK ×1.5",
+        badgeClass: "is-boost",
+        types: [{ label: "electric", bg: "rgba(207,160,29,0.16)", fg: "#cfa01d" }],
+        sprites: allyCandidates,
+      }));
+
+      mainRow.appendChild(el("div", "osw-onihud-divider"));
+
+      mainRow.appendChild(buildFighter({
+        side: "enemy",
+        name: "Bulbasaur",
+        level: 14,
+        idTag: "#1",
+        genTag: "G1",
+        owned: true,
+        hp: 14,
+        maxHp: 32,
+        hpLevel: "mid",
+        badge: "BRN",
+        badgeClass: "is-burn",
+        types: [
+          { label: "grass", bg: "rgba(78,157,89,0.16)", fg: "#4e9d59" },
+          { label: "poison", bg: "rgba(150,84,168,0.16)", fg: "#9654a8" },
+        ],
+        sprites: [enemySprite],
+      }));
+
+      bar.appendChild(mainRow);
+
+      if (isWar) {
+        const warStrip = el("div", "osw-onihud-war-strip");
+        const leftG = el("div", "osw-onihud-war-group");
+        leftG.appendChild(el("span", "osw-onihud-war-pill", str("onigimon_hud_round", "Round") + " 1/2"));
+        leftG.appendChild(el("span", "osw-onihud-war-pill", "×1.5"));
+        [["ATK", "42"], ["DEF", "31"], ["SPE", "58"]].forEach(function (pair) {
+          const stat = el("span", "osw-onihud-war-stat");
+          stat.appendChild(document.createTextNode(pair[0] + " "));
+          stat.appendChild(el("b", "", pair[1]));
+          leftG.appendChild(stat);
+        });
+        const rightG = el("div", "osw-onihud-war-group");
+        rightG.appendChild(el("span", "osw-onihud-war-pill", "Overgrow"));
+        warStrip.appendChild(leftG);
+        warStrip.appendChild(rightG);
+        bar.appendChild(warStrip);
+      }
+
+      if (bagOpen && !isMinimal) {
+        const pop = el("div", "osw-onihud-bag-pop");
+        const popHead = el("div", "osw-onihud-bag-head");
+        popHead.appendChild(el("span", "osw-onihud-bag-title", str("onigimon_hud_items", "Items")));
+        const cur = el("span", "osw-onihud-bag-cur");
+        const shardImg = document.createElement("img");
+        shardImg.src = addonBase + "system_files/pokesprite/items/valuable-item-comet-shard.png";
+        shardImg.alt = "";
+        cur.appendChild(shardImg);
+        cur.appendChild(document.createTextNode("120"));
+        popHead.appendChild(cur);
+        pop.appendChild(popHead);
+
+        const popGrid = el("div", "osw-onihud-bag-grid");
+        [
+          { name: "Oran Berry", qty: "×4", img: "berry-oran.png" },
+          { name: "Potion", qty: "×2", img: "medicine-potion.png" },
+        ].forEach(function (item) {
+          const row = el("div", "osw-onihud-bag-item");
+          const im = document.createElement("img");
+          im.src = addonBase + "system_files/pokesprite/items/" + item.img;
+          im.alt = "";
+          row.appendChild(im);
+          row.appendChild(el("span", "osw-onihud-bag-item-name", item.name));
+          row.appendChild(el("span", "osw-onihud-bag-item-qty", item.qty));
+          popGrid.appendChild(row);
+        });
+        pop.appendChild(popGrid);
+        bar.appendChild(pop);
+      }
+
+      hudWrap.appendChild(bar);
+      hudArea.appendChild(hudWrap);
+    }
+
+    frame.appendChild(hudArea);
+
+    // Subtle bottom bar mock
+    const bottomMock = el("div", "osw-onihud-mock-bottom");
+    bottomMock.appendChild(el("span", "osw-onihud-mock-cta", str("show_answer", "Show Answer")));
+    frame.appendChild(bottomMock);
+
+    stage.appendChild(frame);
   };
 
   /* Mochi uses the same payload shape as MochiMessenger._dispatch_notification
@@ -13984,6 +14798,7 @@
 
   function renderWidgetLayoutControls(section) {
     const layoutField = fieldById["modern_menu_widget_layout"];
+    const gapModeField = fieldById["modern_menu_sidebar_widget_gap_mode"];
     const gapField = fieldById["modern_menu_sidebar_widget_gap"];
     const edgeIds = [
       "modern_menu_widget_margin_top",
@@ -13992,7 +14807,7 @@
       "modern_menu_widget_margin_left"
     ];
     const edgeFields = edgeIds.map(function (id) { return fieldById[id]; });
-    if (!layoutField || !gapField || edgeFields.some(function (field) { return !field; })) return null;
+    if (!layoutField || !gapModeField || !gapField || edgeFields.some(function (field) { return !field; })) return null;
 
     const root = el("div", "osw-widget-layout-compact osw-designer-deck");
     const layoutNode = renderDeckField(layoutField);
@@ -14005,6 +14820,12 @@
     });
     root.appendChild(customGrid);
 
+    const gapModeNode = renderDeckField(gapModeField);
+    if (gapModeNode) {
+      gapModeNode.classList.add("osw-widget-layout-gap-mode");
+      root.appendChild(gapModeNode);
+    }
+
     const gapNode = renderDeckField(gapField);
     if (gapNode) {
       gapNode.classList.add("osw-widget-layout-gap");
@@ -14012,8 +14833,9 @@
     }
 
     // Center stacks the widgets below the menu, so the horizontal sidebar
-    // offset is inactive. Keep its stored value for a return to Left/Right.
-    root.__section = { fields: [gapField] };
+    // gap controls are inactive. Keep stored values for a return to Left/Right,
+    // and only expose the manual slider when Manual is selected.
+    root.__section = { fields: [gapModeField, gapField] };
     root.__fieldsHost = root;
     applyPlainVisibility(root);
     conditionalBlocks.push(root);
@@ -14177,7 +14999,7 @@
     if (section.modeParity) block.setAttribute("data-mode-parity", "true");
     block.__section = section;
     if (withTitle && section.title) block.appendChild(el("div", "osw-section-title", section.title || ""));
-    if (withTitle && section.description && !SECTION_RENDERERS[section.layout]) {
+    if ((withTitle || section.descriptionInTab) && section.description && !SECTION_RENDERERS[section.layout]) {
       block.appendChild(el("div", "osw-section-desc", section.description));
     }
     const sectionRenderer = SECTION_RENDERERS[section.layout];

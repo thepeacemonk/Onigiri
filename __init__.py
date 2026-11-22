@@ -1,6 +1,11 @@
+
+# Onigiri version controls (retained across release switches)
+from .version_manager import setup as _setup_version_controls
+_setup_version_controls(__file__)
 import os
 import sys
 import json
+import re
 import signal
 sys.dont_write_bytecode = True
 
@@ -199,16 +204,27 @@ def quiet_state_change_css() -> str:
     </style>
     """
 
+_WEB_ASSET_VERSION_CACHE = {}
+_WEB_ASSET_STAT_TTL = 2.0
+
+
 def versioned_web_asset(filename: str) -> str:
-    """URL for a file in web/, cache-busted by its mtime."""
+    """URL for a file in web/, cache-busted by its mtime (stat throttled)."""
+    import time as _time
+    now = _time.monotonic()
+    cached = _WEB_ASSET_VERSION_CACHE.get(filename)
+    if cached is not None and (now - cached[0]) < _WEB_ASSET_STAT_TTL:
+        return cached[1]
     try:
         # Keep sub-second precision: several quick CSS/JS edits can otherwise
         # share the same integer-second URL and Chromium will reuse the stale
         # stylesheet, making a freshly applied visual fix appear ineffective.
         version = os.stat(os.path.join(addon_path, "web", filename)).st_mtime_ns
-        return f"{web_assets_root}/{filename}?v={version}"
+        url = f"{web_assets_root}/{filename}?v={version}"
     except OSError:
-        return f"{web_assets_root}/{filename}"
+        url = f"{web_assets_root}/{filename}"
+    _WEB_ASSET_VERSION_CACHE[filename] = (now, url)
+    return url
 
 
 def stylesheet_link(filename: str) -> str:
@@ -476,16 +492,21 @@ def inject_menu_files(web_content, context):
                 pass
         
     elif is_reviewer:
+        from .rendering import reviewer_dock, reviewer_flags, reviewer_more_menu
+
+        web_content.head += '<script>' + reviewer_flags.settings_script(conf, addon_path, addon_package) + '</script>'
+        web_content.head += stylesheet_link("reviewer_flags.css")
+        web_content.head += f'<script src="{versioned_web_asset("reviewer_flags.js")}"></script>'
+        web_content.head += reviewer_more_menu.reviewer_head_assets(addon_package, conf)
+        web_content.head += f'<script src="{versioned_web_asset("reviewer_more_menu.js")}"></script>'
         silent_notifs = "true" if conf.get("onigiri_reviewer_silent_notifications", False) else "false"
         patcher.set_main_webview_background_color(patcher._reviewer_base_bg_color(conf))
         web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_reviewer_background_css(addon_path)
-        # Font faces must also live in the document stylesheet; shadow styles
-        # isolate header rules but do not register document font faces.
-        web_content.head += patcher.generate_scoped_main_font_css(
-            addon_package, "#onigiri-reviewer-header", role="reviewer_header"
+        dock_mode = reviewer_dock.dock_mode(conf)
+        top_bar_html, top_bar_css = reviewer_dock.generate_top_bar_html_and_css(
+            conf, include_overview_class=False
         )
-        top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css(include_overview_class=False)
         reviewer_shadow_css = (
             patcher.generate_scoped_main_font_css(addon_package, "#onigiri-reviewer-header")
             + patcher.generate_box_effect_button_vars_css(
@@ -498,12 +519,23 @@ def inject_menu_files(web_content, context):
         reviewer_shadow_css = reviewer_shadow_css.replace(
             ".night_mode #onigiri-reviewer-header",
             ":host(.night-mode) #onigiri-reviewer-header",
+        ).replace(
+            ".night_mode .onigiri-island-shell",
+            ":host(.night-mode) .onigiri-island-shell",
         )
+        # Chromium resolves document fonts for the shadow header, but ignores
+        # @font-face declarations inside the shadow tree. Register faces in
+        # the head while keeping typography selectors isolated in the shadow.
+        font_faces = re.findall(r"@font-face\s*\{[^{}]*\}", reviewer_shadow_css)
+        if font_faces:
+            web_content.head += '<style id="onigiri-reviewer-font-faces">' + "\n".join(font_faces) + '</style>'
+            reviewer_shadow_css = re.sub(r"@font-face\s*\{[^{}]*\}", "", reviewer_shadow_css)
         notification_css_text = ""
         try:
-            with open(os.path.join(addon_path, "web", "notifications.css"), "r", encoding="utf-8") as f:
-                notification_css_text = f.read()
-        except FileNotFoundError:
+            notification_css_text = patcher._read_cached_text_file(
+                os.path.join(addon_path, "web", "notifications.css")
+            )
+        except Exception:
             pass
             
         reviewer_shadow_css += f"\n<style id=\"onigiri-notification-shadow-css\">\n{notification_css_text}\n</style>"
@@ -511,6 +543,7 @@ def inject_menu_files(web_content, context):
         js_injector = f"""
         <script>
             window.onigiriIsReviewerCardWebview = true;
+            window.onigiriReviewerDockMode = {json.dumps(dock_mode)};
             window.onigiriSilentNotifications = {silent_notifs};
             window.onigiriNotificationCssText = {json.dumps(notification_css_text)};
             window.onigiriNotificationPositionCssText = {json.dumps(generate_notification_position_css_text(conf))};
@@ -581,6 +614,9 @@ def inject_menu_files(web_content, context):
                             ${{topBarHtml}}
                         `;
                         headerEl = shadow.getElementById('onigiri-reviewer-header');
+                        if (window.OnigiriReviewerDock && typeof window.OnigiriReviewerDock.mount === 'function') {{
+                            window.OnigiriReviewerDock.mount(shadow);
+                        }}
                     }}
                     return headerEl;
                 }};
@@ -660,23 +696,43 @@ def inject_menu_files(web_content, context):
         </script>
         """
         web_content.head += js_injector
+        web_content.head += f'<script src="{versioned_web_asset("reviewer_dock.js")}"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
+        try:
+            from .gamification import onigimon_hud
+
+            if onigimon_hud.should_inject_reviewer_assets(conf):
+                if onigimon_hud.is_hud_enabled(conf):
+                    onigimon_hud.ensure_ankimon_hooks()
+                web_content.head += onigimon_hud.reviewer_head_assets(addon_package, conf)
+        except Exception as exc:
+            print(f"Onigiri: Error initializing Onigimon Reviewer HUD assets: {exc}")
     elif is_overview:
+        from .rendering import reviewer_dock
+
         patcher.set_main_webview_background_color(patcher._overview_base_bg_color(conf))
         web_content.head += f'<link rel="stylesheet" href="{web_assets_root}/notifications.css">'
         web_content.head += notification_duration_script(conf)
         web_content.head += patcher.generate_overview_background_css(addon_path)
-        _top_bar_html, top_bar_css = patcher.generate_reviewer_top_bar_html_and_css()
+        dock_mode = reviewer_dock.dock_mode(conf)
+        _top_bar_html, top_bar_css = reviewer_dock.generate_top_bar_html_and_css(
+            conf, include_overview_class=True
+        )
         web_content.head += top_bar_css
         web_content.head += stylesheet_link("overview.css")
         web_content.head += stylesheet_link("overview_stats.css")
+        web_content.head += f"<script>window.onigiriReviewerDockMode = {json.dumps(dock_mode)};</script>"
+        web_content.head += f'<script src="{versioned_web_asset("reviewer_dock.js")}"></script>'
         web_content.head += f'<script src="{web_assets_root}/notifications.js"></script>'
         web_content.head += mac_titlebar.inset_css("page")
     if is_reviewer_bottom_bar:
+        from .rendering import reviewer_more_menu
+
         patcher.apply_reviewer_bottom_bar_height(conf)
         web_content.head += patcher.generate_reviewer_bottom_bar_background_css(addon_path)
         web_content.head += patcher.generate_reviewer_buttons_css(conf)
         web_content.head += patcher.generate_reviewer_font_css(addon_package)
+        web_content.head += reviewer_more_menu.bottom_bar_assets()
     elif (is_top_toolbar or is_bottom_toolbar):
         if not should_hide:
             web_content.head += patcher.generate_toolbar_background_css(addon_path)
@@ -755,7 +811,7 @@ def verify_coin_integrity():
             ) or {}
             if data:
                 restaurant_data = data.setdefault('restaurant_level', {})
-                coins = int(restaurant_data.get('taiyaki_coins', 0))
+                coins = int(restaurant_data.get('taiyaki_coins') or 0)
                 security_token = restaurant_data.get('_security_token')
                 
                 if security_token is None:
@@ -801,18 +857,28 @@ def verify_coin_integrity():
 
 
 def apply_full_hide_mode():
-    """Hide the menu bar on Windows and Linux if Full Hide Mode is enabled"""
+    """Hide the menu bar on Windows and Linux if Full Hide Mode is enabled.
+
+    Uses Anki's own ``hide_menubar()``/``show_menubar()`` (which collapses the
+    menubar height rather than calling ``menuBar().hide()``) so Qt keeps
+    menubar QAction shortcuts such as Ctrl+Z (Undo) active.
+    """
     import platform
     conf = config.get_config_readonly()
     full_hide = conf.get("fullHideMode", False)
-    
+
     # Only hide menu bar on Windows and Linux, not macOS
     system = platform.system()
     if full_hide and system in ["Windows", "Linux"]:
-        if hasattr(mw, 'menuBar') and mw.menuBar():
-            mw.menuBar().hide()
+        if hasattr(mw, "hide_menubar"):
+            mw.hide_menubar()
+        elif hasattr(mw, "menuBar") and mw.menuBar():
+            mw.menuBar().setFixedHeight(0)
     else:
-        if hasattr(mw, 'menuBar') and mw.menuBar():
+        if hasattr(mw, "show_menubar"):
+            mw.show_menubar()
+        elif hasattr(mw, "menuBar") and mw.menuBar():
+            mw.menuBar().setMaximumHeight(16777215)
             mw.menuBar().show()
 
 
@@ -827,6 +893,10 @@ def setup_global_hooks():
     patcher.install_main_webview_resize_repaint_guard()
     bento_api.register_api()
     bento_api.ensure_bento_shortcut()
+    from .core.settings_shortcut import install_settings_shortcut
+    install_settings_shortcut()
+    from .rendering import reviewer_more_menu
+    reviewer_more_menu.install_reviewer_more_menu_override()
     menu_buttons.setup_onigiri_menu(addon_path)
     
     # Install the toolbar bridge AFTER other addons have loaded their hooks
@@ -1173,7 +1243,7 @@ def _is_card_editing_active() -> bool:
         for name in ("AddCards", "EditCurrent"):
             if name in dialogs._dialogs:
                 inst = dialogs._dialogs[name][1]
-                if inst is not None:
+                if inst is not None and inst.isVisible():
                     return True
     except Exception:
         pass
@@ -1182,7 +1252,7 @@ def _is_card_editing_active() -> bool:
     valid = set()
     for win in list(_active_card_editors):
         try:
-            if win:
+            if win and win.isVisible():
                 valid.add(win)
         except Exception:
             pass

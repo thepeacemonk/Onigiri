@@ -1,0 +1,1102 @@
+/* Onigimon Reviewer HUD — minimal, battle, and war modes with free positioning and quick items */
+
+:host {
+  --oh-font: 'Poppins', ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --oh-surface: rgba(255, 255, 255, 0.88);
+  --oh-surface-solid: #ffffff;
+  --oh-surface-hover: rgba(255, 255, 255, 0.96);
+  --oh-surface-subtle: rgba(17, 24, 39, 0.055);
+  --oh-border: rgba(17, 24, 39, 0.09);
+  --oh-border-strong: rgba(17, 24, 39, 0.18);
+  --oh-ink: #1e2022;
+  --oh-muted: #686b70;
+  --oh-faint: #8c9097;
+  --oh-shadow: 0 10px 28px rgba(15, 23, 42, 0.11), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --oh-track: rgba(17, 24, 39, 0.09);
+  --oh-hp-high: #439a68;
+  --oh-hp-mid: #d49635;
+  --oh-hp-low: #cf554c;
+  --oh-xp: #5b8dee;
+  --oh-accent: #2f6948;
+  --oh-accent-soft: rgba(47, 105, 72, 0.12);
+  --oh-danger-soft: rgba(207, 85, 76, 0.13);
+  --oh-damage-bg: rgba(207, 85, 76, 0.94);
+  --oh-heal-bg: rgba(67, 154, 104, 0.94);
+  --oh-delta-ink: #ffffff;
+  --oh-divider: rgba(17, 24, 39, 0.09);
+  --oh-focus: #5b8dee;
+  --oh-scale: 1;
+  all: initial;
+  position: fixed !important;
+  inset: 0 !important;
+  display: block !important;
+  z-index: 2147482900 !important;
+  pointer-events: none !important;
+  contain: layout style paint !important;
+  color-scheme: light;
+}
+
+:host(.night-mode) {
+  --oh-surface: rgba(32, 33, 36, 0.88);
+  --oh-surface-solid: #202124;
+  --oh-surface-hover: rgba(42, 44, 48, 0.96);
+  --oh-surface-subtle: rgba(255, 255, 255, 0.075);
+  --oh-border: rgba(255, 255, 255, 0.10);
+  --oh-border-strong: rgba(255, 255, 255, 0.19);
+  --oh-ink: #f1f2f4;
+  --oh-muted: #a2a6ae;
+  --oh-faint: #7d828b;
+  --oh-shadow: 0 14px 34px rgba(0, 0, 0, 0.44), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --oh-track: rgba(255, 255, 255, 0.12);
+  --oh-hp-high: #63c18a;
+  --oh-hp-mid: #e0aa50;
+  --oh-hp-low: #e37168;
+  --oh-xp: #7ca6f7;
+  --oh-accent: #7ecaa0;
+  --oh-accent-soft: rgba(126, 202, 160, 0.16);
+  --oh-danger-soft: rgba(227, 113, 104, 0.17);
+  --oh-damage-bg: rgba(227, 113, 104, 0.94);
+  --oh-heal-bg: rgba(99, 193, 138, 0.94);
+  --oh-delta-ink: #121417;
+  --oh-divider: rgba(255, 255, 255, 0.10);
+  --oh-focus: #7ca6f7;
+  color-scheme: dark;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Explicit hidden guard: flex/grid rules below must never defeat [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
+.oh-shell {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translate3d(-50%, 0, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: calc(100vw - 16px);
+  font-family: var(--oh-font);
+  color: var(--oh-ink);
+  pointer-events: none;
+  opacity: 1;
+}
+
+.oh-shell.is-hidden {
+  display: none !important;
+}
+
+.oh-shell.is-collapsed:not(.is-positioned) {
+  left: auto;
+  right: 16px;
+  transform: none;
+}
+
+.oh-shell.is-positioned {
+  bottom: auto;
+  right: auto;
+  transform: none;
+}
+
+.oh-shell.has-no-shadow {
+  --oh-shadow: none;
+}
+
+.oh-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: scale(var(--oh-scale, 1));
+  transform-origin: center bottom;
+  pointer-events: none;
+}
+
+.oh-shell.is-positioned .oh-stage {
+  transform-origin: top left;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oh-shell:not(.is-static):not(.is-dragging) .oh-bar {
+    transition:
+      opacity 180ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 160ms ease,
+      border-color 160ms ease;
+  }
+}
+
+/* ── Main Floating Pill Bar ────────────────────────────────────────────────── */
+.oh-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 18px;
+  border: 1px solid var(--oh-bar-border, var(--oh-border));
+  background: var(--oh-surface);
+  backdrop-filter: var(--oh-blur, blur(14px) saturate(135%));
+  -webkit-backdrop-filter: var(--oh-blur, blur(14px) saturate(135%));
+  box-shadow: var(--oh-shadow);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.oh-shell.is-dragging .oh-bar,
+.oh-shell.is-dragging .oh-collapsed-pill {
+  cursor: grabbing;
+}
+
+.oh-bar:hover {
+  border-color: var(--oh-border-strong);
+}
+
+.oh-main-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+/* Minimal mode */
+.oh-shell[data-mode="minimal"] .oh-bar {
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-main-row {
+  gap: 9px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-sprite-wrap {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-sprite {
+  width: 28px;
+  height: 28px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-info {
+  min-width: 108px;
+  max-width: 165px;
+  gap: 3px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-name {
+  font-size: 12px;
+}
+
+.oh-shell[data-mode="minimal"] .oh-progress {
+  height: 4px;
+}
+
+/* War mode */
+.oh-shell[data-mode="war"] .oh-bar {
+  padding: 9px 15px 8px;
+  border-radius: 20px;
+}
+
+.oh-shell[data-mode="war"] .oh-main-row {
+  gap: 13px;
+}
+
+.oh-shell[data-mode="war"] .oh-sprite-wrap {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+}
+
+.oh-shell[data-mode="war"] .oh-sprite {
+  width: 42px;
+  height: 42px;
+}
+
+.oh-shell[data-mode="war"] .oh-info {
+  min-width: 170px;
+  max-width: 255px;
+  gap: 4px;
+}
+
+/* Subtle drag grip */
+.oh-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 22px;
+  color: var(--oh-faint);
+  opacity: 0.45;
+  flex: 0 0 auto;
+  cursor: grab;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.oh-bar:hover .oh-grip {
+  opacity: 0.85;
+}
+
+.oh-grip svg {
+  width: 10px;
+  height: 16px;
+  display: block;
+}
+
+/* ── Fighter Columns ───────────────────────────────────────────────────────── */
+.oh-fighter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.oh-fighter--enemy {
+  flex-direction: row-reverse;
+}
+
+.oh-fighter.is-fainted .oh-sprite-wrap {
+  opacity: 0.45;
+  filter: grayscale(0.75);
+}
+
+.oh-sprite-wrap {
+  position: relative;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--oh-surface-subtle);
+  overflow: visible;
+}
+
+.oh-sprite {
+  display: block;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  -webkit-user-drag: none;
+  transform: scaleX(var(--oh-sprite-flip, 1));
+  will-change: transform;
+}
+
+.oh-fighter.is-fainted .oh-sprite {
+  transform: scaleX(var(--oh-sprite-flip, 1)) rotate(14deg) translateY(3px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oh-shell:not(.is-static) .oh-sprite.is-shaking {
+    animation: oh-hit-shake 360ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+}
+
+@keyframes oh-hit-shake {
+  0%, 100% { transform: scaleX(var(--oh-sprite-flip, 1)) translate3d(0, 0, 0); }
+  20%      { transform: scaleX(var(--oh-sprite-flip, 1)) translate3d(-4px, -1px, 0); }
+  45%      { transform: scaleX(var(--oh-sprite-flip, 1)) translate3d(4px, 1px, 0); }
+  70%      { transform: scaleX(var(--oh-sprite-flip, 1)) translate3d(-2px, 0, 0); }
+}
+
+.oh-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 146px;
+  max-width: 230px;
+  flex: 1 1 auto;
+}
+
+.oh-fighter--enemy .oh-info {
+  align-items: flex-end;
+}
+
+.oh-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.oh-fighter--enemy .oh-header {
+  flex-direction: row-reverse;
+}
+
+.oh-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--oh-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.oh-meta-muted {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--oh-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.oh-level {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--oh-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.oh-shiny {
+  font-size: 11px;
+  line-height: 1;
+  color: #e5a928;
+  flex: 0 0 auto;
+}
+
+.oh-owned {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: var(--oh-accent);
+  opacity: 0.9;
+}
+
+.oh-owned svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.oh-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.oh-types {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.oh-fighter--enemy .oh-types {
+  justify-content: flex-end;
+}
+
+.oh-type-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  background: var(--oh-type-bg, var(--oh-surface-subtle));
+  color: var(--oh-type-fg, var(--oh-muted));
+}
+
+.oh-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  background: var(--oh-status-bg, var(--oh-surface-subtle));
+  color: var(--oh-status-fg, var(--oh-ink));
+}
+
+.oh-boost-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 4px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  background: var(--oh-accent-soft);
+  color: var(--oh-accent);
+}
+
+.oh-boost-chip.is-down {
+  background: var(--oh-danger-soft);
+  color: var(--oh-hp-low);
+}
+
+/* ── Bars (Native <progress>) ──────────────────────────────────────────────── */
+.oh-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.oh-fighter--enemy .oh-hp-row {
+  flex-direction: row-reverse;
+}
+
+.oh-progress {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  display: block;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--oh-track);
+  flex: 1 1 auto;
+}
+
+.oh-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.oh-progress::-webkit-progress-value {
+  background: var(--oh-bar-fill, var(--oh-hp-high));
+  border-radius: 999px;
+}
+
+.oh-progress::-moz-progress-bar {
+  background: var(--oh-bar-fill, var(--oh-hp-high));
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oh-shell:not(.is-static) .oh-progress::-webkit-progress-value {
+    transition: inline-size 280ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
+  }
+  .oh-shell:not(.is-static) .oh-progress::-moz-progress-bar {
+    transition: inline-size 280ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
+  }
+}
+
+.oh-progress[data-level="high"] { --oh-bar-fill: var(--oh-hp-high); }
+.oh-progress[data-level="mid"]  { --oh-bar-fill: var(--oh-hp-mid); }
+.oh-progress[data-level="low"]  { --oh-bar-fill: var(--oh-hp-low); }
+
+.oh-progress--xp {
+  height: 2.5px;
+  --oh-bar-fill: var(--oh-xp);
+}
+
+.oh-hp-text {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--oh-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.oh-xp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 1px;
+}
+
+.oh-xp-text {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--oh-faint);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ── Center Divider & Contextual Controls ──────────────────────────────────── */
+.oh-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.oh-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--oh-divider);
+  border-radius: 1px;
+}
+
+.oh-action-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--oh-border);
+  background: var(--oh-surface-subtle);
+  color: var(--oh-ink);
+  font-family: var(--oh-font);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.oh-action-btn:hover {
+  border-color: var(--oh-border-strong);
+  background: var(--oh-surface-hover);
+}
+
+.oh-action-btn:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 2px;
+}
+
+.oh-action-btn--catch {
+  background: var(--oh-accent-soft);
+  border-color: transparent;
+  color: var(--oh-accent);
+}
+
+.oh-action-btn--catch:hover {
+  border-color: var(--oh-accent);
+}
+
+.oh-action-btn--defeat {
+  background: var(--oh-danger-soft);
+  border-color: transparent;
+  color: var(--oh-hp-low);
+}
+
+.oh-action-btn--defeat:hover {
+  border-color: var(--oh-hp-low);
+}
+
+.oh-kbd {
+  font-size: 9.5px;
+  font-weight: 600;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.oh-override-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--oh-accent-soft);
+  color: var(--oh-accent);
+  white-space: nowrap;
+}
+
+/* Inline Bag button (shown in Battle & War) */
+.oh-inline-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--oh-border);
+  background: var(--oh-surface-subtle);
+  color: var(--oh-muted);
+  font-family: var(--oh-font);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: color 130ms ease, border-color 130ms ease, background-color 130ms ease;
+}
+
+.oh-inline-btn:hover,
+.oh-inline-btn.is-active {
+  color: var(--oh-ink);
+  border-color: var(--oh-border-strong);
+  background: var(--oh-surface-hover);
+}
+
+.oh-inline-btn:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 2px;
+}
+
+.oh-inline-btn svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+.oh-bag-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── War Mode Tactical Telemetry Footer ────────────────────────────────────── */
+.oh-war-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--oh-divider);
+  font-size: 10px;
+  color: var(--oh-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.oh-war-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.oh-war-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.oh-war-stat b {
+  color: var(--oh-ink);
+  font-weight: 600;
+}
+
+.oh-war-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--oh-surface-subtle);
+  color: var(--oh-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Hover Utility Pill (Items / Switch / Minimize) ────────────────────────── */
+.oh-tools {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.oh-bar:hover .oh-tools,
+.oh-bar:focus-within .oh-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.oh-tool-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--oh-border);
+  background: var(--oh-surface-hover);
+  color: var(--oh-muted);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.oh-tool-btn:hover {
+  color: var(--oh-ink);
+  border-color: var(--oh-border-strong);
+}
+
+.oh-tool-btn:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 2px;
+}
+
+.oh-tool-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+/* ── Collapsed Pill (only visible when minimized) ──────────────────────────── */
+.oh-collapsed-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--oh-bar-border, var(--oh-border));
+  background: var(--oh-surface);
+  backdrop-filter: var(--oh-blur, blur(14px) saturate(135%));
+  -webkit-backdrop-filter: var(--oh-blur, blur(14px) saturate(135%));
+  box-shadow: var(--oh-shadow);
+  color: var(--oh-ink);
+  font-family: var(--oh-font);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.oh-collapsed-pill:hover {
+  border-color: var(--oh-border-strong);
+}
+
+.oh-collapsed-pill:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 2px;
+}
+
+.oh-collapsed-pill svg {
+  width: 14px;
+  height: 14px;
+  color: var(--oh-accent);
+  flex: 0 0 auto;
+}
+
+.oh-collapsed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--oh-hp-high);
+  flex: 0 0 auto;
+}
+
+.oh-collapsed-dot[data-level="mid"] { background: var(--oh-hp-mid); }
+.oh-collapsed-dot[data-level="low"] { background: var(--oh-hp-low); }
+
+/* ── Quick Onigimon Items Popover ──────────────────────────────────────────── */
+.oh-bag-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--oh-border);
+  background: var(--oh-surface);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  box-shadow: var(--oh-shadow);
+  color: var(--oh-ink);
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.oh-shell.is-bag-below .oh-bag-panel {
+  bottom: auto;
+  top: calc(100% + 10px);
+}
+
+.oh-shell.is-bag-align-right .oh-bag-panel {
+  left: auto;
+  right: 0;
+}
+
+.oh-bag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.oh-bag-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--oh-ink);
+  letter-spacing: -0.01em;
+}
+
+.oh-bag-currencies {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.oh-currency-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--oh-surface-subtle);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--oh-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.oh-currency-pill img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.oh-bag-close {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--oh-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.oh-bag-close:hover {
+  background: var(--oh-surface-subtle);
+  color: var(--oh-ink);
+}
+
+.oh-bag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 204px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.oh-bag-item {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 11px;
+  border: 1px solid var(--oh-border);
+  background: var(--oh-surface-subtle);
+  color: var(--oh-ink);
+  font-family: var(--oh-font);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 130ms ease, background-color 130ms ease;
+}
+
+.oh-bag-item:hover:not(:disabled) {
+  border-color: var(--oh-border-strong);
+  background: var(--oh-surface-hover);
+}
+
+.oh-bag-item:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.oh-bag-item:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 2px;
+}
+
+.oh-bag-item img {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.oh-bag-item-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.oh-bag-item-name {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oh-bag-item-effect {
+  font-size: 9.5px;
+  color: var(--oh-muted);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oh-bag-item-qty {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--oh-accent);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.oh-bag-empty {
+  padding: 14px 8px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--oh-muted);
+}
+
+/* ── Floating HP Damage / Heal Badges ──────────────────────────────────────── */
+.oh-delta-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.oh-delta {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--oh-delta-ink);
+  background: var(--oh-damage-bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.oh-delta.is-heal {
+  background: var(--oh-heal-bg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oh-shell:not(.is-static) .oh-delta {
+    animation: oh-delta-float 1150ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+.oh-shell.is-static .oh-delta {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oh-delta {
+    opacity: 1;
+  }
+}
+
+@keyframes oh-delta-float {
+  0%   { opacity: 0; transform: translate3d(-50%, 6px, 0) scale(0.92); }
+  16%  { opacity: 1; transform: translate3d(-50%, -2px, 0) scale(1); }
+  75%  { opacity: 1; transform: translate3d(-50%, -12px, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, -18px, 0) scale(0.96); }
+}
+
+/* Screen-reader live region */
+.oh-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Compact screens */
+@media (max-width: 520px) {
+  .oh-bar {
+    padding: 6px 10px;
+    border-radius: 14px;
+  }
+  .oh-main-row {
+    gap: 8px;
+  }
+  .oh-info {
+    min-width: 102px;
+  }
+  .oh-sprite-wrap {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+  }
+  .oh-sprite {
+    width: 30px;
+    height: 30px;
+  }
+}

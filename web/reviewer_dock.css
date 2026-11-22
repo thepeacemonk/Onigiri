@@ -1,0 +1,604 @@
+/* Reviewer Dock Styles — Minimal (separate icon buttons) & Island (Garden-style Rubber Dock + Downward Notification Island) */
+
+/* ── Minimal Mode (separate icon-only buttons) ─────────────────────────────── */
+#onigiri-reviewer-header.is-minimal {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+#onigiri-reviewer-header.is-minimal .onigiri-reviewer-header-buttons {
+  gap: 6px;
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only {
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  box-sizing: border-box !important;
+  color: var(--rd-icon-color-light, #17181a) !important;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1) !important;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only,
+.night_mode #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only,
+.nightMode #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only {
+  color: var(--rd-icon-color-dark, #ffffff) !important;
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only:hover {
+  transform: translateY(-1px);
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only:active {
+  transform: scale(0.94);
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only svg,
+#onigiri-reviewer-header .onigiri-dock-glyph {
+  width: 17px;
+  height: 17px;
+  display: inline-block;
+  pointer-events: none;
+  flex: none;
+}
+
+#onigiri-reviewer-header .onigiri-dock-glyph:not(.is-emoji) {
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+#onigiri-reviewer-header .onigiri-dock-glyph.is-emoji {
+  width: auto;
+  height: auto;
+  background-color: transparent;
+  -webkit-mask-image: none;
+  mask-image: none;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translate(-50%, -3px);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  background: #17181a;
+  color: #f4f3f1;
+  transition: opacity 130ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 20;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only[data-tip]::after,
+.night_mode #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only[data-tip]::after,
+.nightMode #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only[data-tip]::after {
+  background: #f5f5f7;
+  color: #141417;
+}
+
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only:hover::after,
+#onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#onigiri-reviewer-header.is-minimal .restaurant-level-chip,
+#onigiri-reviewer-header.is-minimal .onigiri-reviewer-progress {
+  height: 34px;
+  box-sizing: border-box;
+  border-radius: 999px !important;
+  background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(247, 247, 247, 0.92))) !important;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-minimal .restaurant-level-chip,
+:host(.night-mode) #onigiri-reviewer-header.is-minimal .onigiri-reviewer-progress,
+.night_mode #onigiri-reviewer-header.is-minimal .restaurant-level-chip,
+.night_mode #onigiri-reviewer-header.is-minimal .onigiri-reviewer-progress,
+.nightMode #onigiri-reviewer-header.is-minimal .restaurant-level-chip,
+.nightMode #onigiri-reviewer-header.is-minimal .onigiri-reviewer-progress {
+  background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(42, 42, 42, 0.92))) !important;
+}
+
+#onigiri-reviewer-header.is-minimal .onigiri-reviewer-progress.is-bare,
+#onigiri-reviewer-header.is-minimal:has(.onigiri-reviewer-progress.is-bare) .restaurant-level-chip {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ── Island Mode (Single Unified Rubber Dock + Downward Notification Morph) ── */
+#onigiri-reviewer-header.is-island {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  min-height: 0;
+  max-height: none !important;
+  height: auto;
+  margin: 6px 0 10px 0;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent !important;
+  border: 0 !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 2000;
+}
+
+.onigiri-island-shell {
+  --rd-surface: rgba(255, 255, 255, 0.91);
+  --rd-stroke: rgba(23, 24, 26, 0.12);
+  --rd-ink: #17181a;
+  --rd-on-ink: #f4f3f1;
+  --rd-muted: #5c5b56;
+  --rd-fill: rgba(23, 24, 26, 0.055);
+  --rd-fill-hover: rgba(23, 24, 26, 0.10);
+  --rd-divider: rgba(23, 24, 26, 0.12);
+  --rd-track: rgba(23, 24, 26, 0.12);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  font-family: var(--font-main, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  color: var(--rd-ink);
+}
+
+:host(.night-mode) .onigiri-island-shell,
+.night_mode .onigiri-island-shell,
+.nightMode .onigiri-island-shell {
+  --rd-surface: rgba(28, 28, 31, 0.91);
+  --rd-stroke: rgba(255, 255, 255, 0.13);
+  --rd-ink: #ffffff;
+  --rd-on-ink: #0e0f11;
+  --rd-muted: rgba(235, 235, 245, 0.62);
+  --rd-fill: rgba(255, 255, 255, 0.08);
+  --rd-fill-hover: rgba(255, 255, 255, 0.14);
+  --rd-divider: rgba(255, 255, 255, 0.12);
+  --rd-track: rgba(255, 255, 255, 0.16);
+}
+
+.onigiri-island-surface {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 0;
+  box-sizing: border-box;
+  border-radius: 22px;
+  border: 1px solid var(--rd-stroke);
+  background: var(--rd-surface);
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  pointer-events: none;
+  will-change: width, height, border-radius;
+}
+
+.onigiri-island-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  min-height: 42px;
+  box-sizing: border-box;
+}
+
+#onigiri-reviewer-header.is-island .onigiri-reviewer-header-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+/* Rubber Dock Strip */
+.onigiri-rubber-dock {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.onigiri-rubber-dock[data-dragging] {
+  cursor: grabbing;
+}
+
+.onigiri-dock-item {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--rd-icon-color-light, var(--rd-muted)) !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 130ms ease;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-island .onigiri-dock-item,
+.night_mode #onigiri-reviewer-header.is-island .onigiri-dock-item,
+.nightMode #onigiri-reviewer-header.is-island .onigiri-dock-item {
+  color: var(--rd-icon-color-dark, var(--rd-muted)) !important;
+}
+
+.onigiri-dock-item:focus-visible {
+  box-shadow: 0 0 0 2px var(--rd-ink);
+}
+
+.onigiri-dock-item svg,
+.onigiri-dock-item .onigiri-dock-glyph {
+  width: 17px;
+  height: 17px;
+  display: block;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.onigiri-dock-indicator {
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  top: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--rd-goo-light, var(--rd-ink));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  will-change: left, top, width, height, border-radius;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-island .onigiri-dock-indicator,
+.night_mode #onigiri-reviewer-header.is-island .onigiri-dock-indicator,
+.nightMode #onigiri-reviewer-header.is-island .onigiri-dock-indicator {
+  background: var(--rd-goo-dark, var(--rd-ink));
+}
+
+.onigiri-dock-ink {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  color: var(--rd-goo-ink-light, var(--rd-on-ink)) !important;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  overflow: hidden;
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-island .onigiri-dock-ink,
+.night_mode #onigiri-reviewer-header.is-island .onigiri-dock-ink,
+.nightMode #onigiri-reviewer-header.is-island .onigiri-dock-ink {
+  color: var(--rd-goo-ink-dark, var(--rd-on-ink)) !important;
+}
+
+.onigiri-dock-ink .onigiri-dock-ink-icon {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  display: block;
+  color: inherit !important;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.onigiri-rubber-dock.has-selection .onigiri-dock-indicator,
+.onigiri-rubber-dock.has-selection .onigiri-dock-ink,
+.onigiri-rubber-dock[data-dragging] .onigiri-dock-indicator,
+.onigiri-rubber-dock[data-dragging] .onigiri-dock-ink {
+  opacity: 1;
+}
+
+.onigiri-dock-tip {
+  position: absolute;
+  z-index: 4;
+  left: var(--tip-x, 50%);
+  top: calc(100% + 9px);
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--rd-goo-ink-light, var(--rd-on-ink));
+  background: var(--rd-goo-light, var(--rd-ink));
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.2;
+  transform: translate(-50%, -3px);
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 140ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:host(.night-mode) #onigiri-reviewer-header.is-island .onigiri-dock-tip,
+.night_mode #onigiri-reviewer-header.is-island .onigiri-dock-tip,
+.nightMode #onigiri-reviewer-header.is-island .onigiri-dock-tip {
+  color: var(--rd-goo-ink-dark, var(--rd-on-ink));
+  background: var(--rd-goo-dark, var(--rd-ink));
+}
+
+.onigiri-dock-tip.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.onigiri-island-shell.island-notice .onigiri-dock-tip {
+  top: calc(var(--island-height, 42px) + 6px);
+}
+
+/* Integrated Divider + Info inside the Single Island */
+.onigiri-dock-divider {
+  align-self: center;
+  flex: 0 0 1px;
+  height: 16px;
+  margin-inline: 2px;
+  background: var(--rd-divider);
+}
+
+.onigiri-island-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-inline-end: 2px;
+}
+
+.onigiri-island-info:empty {
+  display: none;
+}
+
+#onigiri-reviewer-header.is-island .restaurant-level-chip {
+  height: 30px !important;
+  padding: 3px 10px !important;
+  gap: 8px !important;
+  border-radius: 999px !important;
+  background: var(--rd-fill) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: var(--rd-ink) !important;
+  font-size: 12px !important;
+  transform: none !important;
+}
+
+#onigiri-reviewer-header.is-island .restaurant-level-chip:hover {
+  background: var(--rd-fill-hover) !important;
+  transform: none !important;
+}
+
+#onigiri-reviewer-header.is-island .restaurant-level-chip .rl-chip-progress {
+  width: 56px !important;
+  height: 5px !important;
+  background: var(--rd-track) !important;
+  box-shadow: none !important;
+}
+
+#onigiri-reviewer-header.is-island .onigiri-reviewer-progress,
+#onigiri-reviewer-header.is-island .onigiri-reviewer-progress.is-bare {
+  height: 30px !important;
+  padding: 3px 10px !important;
+  gap: 7px !important;
+  border-radius: 999px !important;
+  background: var(--rd-fill) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: var(--rd-ink) !important;
+}
+
+#onigiri-reviewer-header.is-island .onigiri-reviewer-progress .orp-text {
+  color: var(--rd-ink) !important;
+  font-size: 12px !important;
+}
+
+/* ── Island Downward Notification Expansion ────────────────────────────────── */
+.onigiri-island-notice {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--island-notice-width, 320px);
+  max-width: calc(100vw - 24px);
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.onigiri-island-notice:not(.has-message) {
+  display: none;
+}
+
+.onigiri-island-notice.has-message {
+  pointer-events: auto;
+  clip-path: inset(0 0 max(0px, calc(100% - var(--notice-room, 100%))) 0);
+}
+
+.onigiri-island-notice-inner {
+  border-top: 1px solid var(--rd-divider);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.onigiri-island-notice.has-message:not(.is-retracting) .onigiri-island-notice-inner {
+  animation: onigiri-island-notice-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.onigiri-island-notice.is-retracting {
+  clip-path: inset(0 0 max(0px, calc(100% - var(--notice-room, 100%))) 0);
+}
+
+.onigiri-island-notice.is-retracting .onigiri-island-notice-inner {
+  opacity: var(--notice-visibility, 1);
+  transform: translateY(calc(-12px * (1 - var(--notice-visibility, 1))));
+}
+
+@keyframes onigiri-island-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.onigiri-island-notice-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: start;
+}
+
+.onigiri-island-notice-item.has-no-icon {
+  grid-template-columns: 1fr;
+}
+
+.onigiri-island-notice-item.is-centered {
+  text-align: center;
+}
+
+.onigiri-island-notice-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--rd-fill);
+  font-size: 18px;
+  line-height: 1;
+  overflow: hidden;
+  flex: none;
+}
+
+.onigiri-island-notice-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.onigiri-island-notice-item[data-variant="mochi"] .onigiri-island-notice-icon {
+  background: transparent;
+}
+
+.onigiri-island-notice-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.onigiri-island-notice-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--rd-ink);
+}
+
+.onigiri-island-notice-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--rd-muted);
+}
+
+.onigiri-island-notice-item.has-no-title .onigiri-island-notice-desc {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rd-ink);
+}
+
+.onigiri-island-notice-rewards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.onigiri-island-notice-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rd-ink);
+}
+
+.onigiri-island-notice-reward img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only,
+  #onigiri-reviewer-header.is-minimal a.onigiri-reviewer-button.is-icon-only[data-tip]::after,
+  .onigiri-dock-indicator,
+  .onigiri-dock-ink,
+  .onigiri-dock-tip,
+  .onigiri-island-notice.has-message:not(.is-retracting) .onigiri-island-notice-inner {
+    transition: none !important;
+    animation: none !important;
+  }
+}

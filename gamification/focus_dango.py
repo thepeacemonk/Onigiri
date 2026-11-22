@@ -116,7 +116,7 @@ class PinDigitBoxes(QWidget):
 
 
 def _focus_dango_config():
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     achievements_conf = conf.get("achievements", {})
     focus_dango_conf = achievements_conf.get("focusDango", {})
     if not isinstance(focus_dango_conf, dict):
@@ -146,11 +146,24 @@ def set_focus_dango_enabled(enabled):
         _exit_attempt_count = 0
         remove_event_filter()
 
+def _resume_navigation():
+    global _navigation_is_suspended
+    _navigation_is_suspended = False
+
+
 def _should_allow_light_mode_exit():
-    global _exit_attempt_count
+    global _exit_attempt_count, _navigation_is_suspended
     _exit_attempt_count += 1
     if _exit_attempt_count >= _LIGHT_MODE_ATTEMPTS_TO_UNLOCK:
         _exit_attempt_count = 0
+        # Briefly suspend re-interception for the current event tick so the
+        # unlocked navigation action (e.g. wrapped mw.onAddCard / mw.onBrowse /
+        # mw.onDeckBrowser) completes instead of getting re-blocked immediately.
+        _navigation_is_suspended = True
+        try:
+            QtCore.QTimer.singleShot(0, _resume_navigation)
+        except Exception:
+            _navigation_is_suspended = False
         return True
     return False
 
@@ -353,7 +366,7 @@ def show_dango_dialog(command=None, on_confirm=None):
     _dialog_is_showing = True 
     trigger_haptic(1)
     
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     achievements_conf = conf.get("achievements", {})
     focus_dango_conf = achievements_conf.get("focusDango", {})
     
@@ -563,10 +576,34 @@ def show_dango_dialog(command=None, on_confirm=None):
 
 def create_blocking_wrapper(original_method, method_name):
     """Create a wrapper that blocks navigation when Focus Dango is enabled."""
+    import functools
+    import inspect
+
+    max_positional = None
+    try:
+        sig = inspect.signature(original_method)
+        params = list(sig.parameters.values())
+        if not any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params):
+            max_positional = sum(
+                1
+                for p in params
+                if p.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            )
+    except (TypeError, ValueError):
+        max_positional = None
+
+    @functools.wraps(original_method)
     def wrapper(*args, **kwargs):
         if check_and_block_navigation(method_name):
-
             return None
+        # Qt signals (e.g. QAction.triggered(bool), QPushButton.clicked(bool))
+        # forward a `checked` bool when connected to a `*args` wrapper, which
+        # raises TypeError on 0-arg methods like AnkiQt.onAddCard(self).
+        if max_positional is not None and len(args) > max_positional:
+            args = args[:max_positional]
         return original_method(*args, **kwargs)
     return wrapper
 

@@ -110,7 +110,6 @@ ADVANCED_FONT_ROLES = (
     ("congrats_title", "congrats_title", "Congratulations title", "subtle"),
     ("congrats_text", "congrats_text", "Congratulations text", "main"),
     ("reviewer_controls", "reviewer_controls", "Reviewer controls", "main"),
-    ("reviewer_header", "header_buttons", "Header Buttons", "main"),
     ("notifications", "notifications", "Notifications", "main"),
 )
 
@@ -1386,6 +1385,13 @@ def _things_theme_section():
                 "type": "toggle",
                 "label": tr("things_show_due", "Due today"),
                 "bind": path("sidebar_hero"),
+                "default": True,
+            },
+            {
+                "id": "things_show_ready_to_go",
+                "type": "toggle",
+                "label": tr("ready_to_go", "Ready to go"),
+                "bind": {"kind": "col", "key": "modern_menu_ready_enabled"},
                 "default": True,
             },
             {
@@ -3150,72 +3156,8 @@ def _reviewer_bottom_bar_section():
     return section
 
 
-def _reviewer_header_fields():
-    """Independent reviewer button styling, using the bottom-bar editing flow."""
-    custom = {"field": "rheader_mode", "values": ["custom"]}
-    fields = [{
-        "id": "rheader_mode", "type": "choice",
-        "label": tr("header_button_style", "Button Style"),
-        "bind": {"kind": "config", "key": "onigiri_reviewer_header_mode"},
-        "default": "widgets",
-        "options": [{"value": "widgets", "label": tr("header_match_widgets", "Match widgets")},
-                    {"value": "custom", "label": tr("custom", "Custom")}],
-    }]
-    for suffix, label, default, maximum in (
-        ("radius", tr("border_radius_label", "Border Radius"), 12, 100),
-        ("border_size", tr("button_border", "Button border"), 0, 10),
-        ("padding", tr("button_padding_label", "Button Padding"), 5, 100),
-        ("height", tr("min_height_label", "Min Height"), 0, 200),
-        ("gap", tr("header_button_gap", "Button Spacing"), 8, 40),
-        ("opacity", tr("header_background_opacity", "Background Opacity"), 100, 100),
-        ("blur", tr("blur_intensity", "Blur Intensity"), 0, 100),
-    ):
-        fields.append({"id": "rheader_" + suffix, "type": "slider", "label": label,
-                       "bind": {"kind": "config", "key": "onigiri_reviewer_header_" + suffix},
-                       "default": default, "min": 0, "max": maximum, "step": 1,
-                       "suffix": "%" if suffix in ("opacity", "blur") else "px",
-                       "show_when": custom})
-    dynamic = []
-    ids = []
-    for suffix, label, light, dark in (
-        ("bg", tr("bbar_show_answer_button", "Button Background"), "#ffffff", "#3a3a3a"),
-        ("text", tr("bbar_show_answer_text", "Button Text"), "#2c2c2c", "#e0e0e0"),
-        ("hover_bg", tr("bbar_other_hover_bg", "Hover Background"), "#2c2c2c", "#e0e0e0"),
-        ("hover_text", tr("bbar_other_hover_text", "Hover Text"), "#f0f0f0", "#3a3a3a"),
-        ("border", tr("border_color", "Border Color"), "#DBDBDB", "#444444"),
-    ):
-        id = "rheader_" + suffix
-        ids.append(id)
-        fields.append(_color_pair_field(id, label, id + "_light", id + "_dark", None,
-                                        show_when=custom))
-        fields.append(_hidden_config_field(id + "_theme_mode", ["onigiri_web_" + id + "_theme_mode"], "separate"))
-        dynamic.append(id + "_theme_mode")
-        for mode, default in (("light", light), ("dark", dark)):
-            fields.append(_hidden_config_field(id + "_" + mode,
-                ["onigiri_reviewer_header_" + suffix + "_" + mode], default))
-    title = tr("header_all_buttons", "All Buttons")
-    groups = [{"id": "rheader_colors_all", "title": title,
-               "description": tr("header_colors_desc", "The same colors apply to every header button. Opacity affects backgrounds only; text stays readable."),
-               "preview_label": title, "preview_bg": "rheader_bg",
-               "preview_text": "rheader_text", "preview_border": "rheader_border",
-               "field_ids": ids}]
-    return fields, groups, dynamic
-
-
-def _reviewer_progress_section():
-    """The reviewer header's progress gauge (patcher.py's
-    `_reviewer_progress_*` family).
-
-    `left` is the scheduler's own new/learning/review counts — the same numbers
-    Anki's bottom bar draws — and `done` is either this session's answers or
-    today's whole revlog for the deck; the preview says which, because "12/40"
-    means two different things under the two scopes.
-
-    Segment colours default to *following* the count bubbles rather than owning
-    their own values: the segmented gauge is a re-drawing of the bottom bar's
-    counts, so two places to set "what colour is a review card" would be one
-    place too many. Switching Segment Colors to Custom breaks that link and
-    reveals this section's own three pairs."""
+def _reviewer_progress_fields():
+    """The reviewer header's progress gauge fields (merged under Dock)."""
     IS_BAR = {"field": "rprog_style", "values": ["bar", "segments"]}
     IS_RING = {"field": "rprog_style", "values": ["ring"]}
     NOT_TEXT = {"not": {"field": "rprog_style", "values": ["text"]}}
@@ -3223,9 +3165,9 @@ def _reviewer_progress_section():
     fields = [
         {
             "id": "rprog_enabled", "type": "toggle",
-            "head": False,
+            "head": True,
+            "head_label": tr("progress_bar", "Progress Bar"),
             "label": tr("progress_enable", "Show progress bar"),
-            "desc": tr("progress_enable_desc", "Show or hide the study progress indicator beside the header buttons."),
             "bind": {"kind": "config", "key": "onigiri_reviewer_progress_enabled"},
             "default": True,
         },
@@ -3397,36 +3339,233 @@ def _reviewer_progress_section():
     fields += color("seg_review", "onigiri_reviewer_progress_seg_review", tr("review_count_label", "Review Count"),
                     "#19c96b", "#12b765", show_when=SEG_CUSTOM)
 
-    header_fields, header_colors, header_dynamic = _reviewer_header_fields()
-    for tool_id, title, field_id in (
-        ("hashi_notes", tr("hashi_notes_title", "Hashi Notes"), "hashi_show_header"),
-        ("pomodoro", tr("pomodoro_title", "Pomodoro"), "pomodoro_show_header"),
-    ):
-        # Both settings pages edit the same persisted visibility preference.
-        field = _tool_visibility_section(tool_id, title, field_id)["fields"][1]
-        field["label"] = tr("header_show_tool_button", "Show {tool} button").format(tool=title)
-        field["head"] = False
-        field.pop("show_when", None)
-        header_fields.append(field)
-    section = _designer_preview_section(
-        "reviewer_progress",
-        "reviewer_progress",
-        title=tr("header_customization", "Header Customization"),
-        icon="lucide-chart-columns.svg",
-        dynamic_keys=[
-            "rprog_fill_theme_mode", "rprog_fill_end_theme_mode", "rprog_track_theme_mode",
-            "rprog_text_theme_mode", "rprog_seg_new_theme_mode", "rprog_seg_learn_theme_mode",
-            "rprog_seg_review_theme_mode",
-        ] + header_dynamic,
-        head_to_deck=True,
-        fields=header_fields + fields,
+    return fields, [
+        "rprog_fill_theme_mode", "rprog_fill_end_theme_mode", "rprog_track_theme_mode",
+        "rprog_text_theme_mode", "rprog_seg_new_theme_mode", "rprog_seg_learn_theme_mode",
+        "rprog_seg_review_theme_mode",
+    ]
+
+
+def _reviewer_flags_section():
+    colors = (
+        ("red", "Red", "#ff6666"),
+        ("orange", "Orange", "#f5aa53"),
+        ("green", "Green", "#77cc77"),
+        ("blue", "Blue", "#77aaff"),
+        ("pink", "Pink", "#ff77dd"),
+        ("turquoise", "Turquoise", "#55cccc"),
+        ("purple", "Purple", "#aa88ff"),
     )
-    section["header_customization"] = True
-    section["mode_parity"] = True
-    section["color_menu_label"] = tr("header_button_colors", "Button Colors")
-    section["color_groups"] = header_colors
-    return _attach_compact_font_roles(
-        section, ("reviewer_header",), tr("header_fonts", "Header Fonts"), advanced_only=False,
+    return {
+        "id": "reviewer_flags",
+        "title": tr("reviewer_flags", "Flags"),
+        "icon": "flag.svg",
+        "description_in_tab": True,
+        "description": tr(
+            "reviewer_flags_desc",
+            "Choose an icon for each flag in the reviewer. Icons keep the flag's color. Use Default restores Onigiri's flag icon.",
+        ),
+        "fields": [
+            {
+                "id": f"reviewer_flag_icon_{number}",
+                "type": "icon",
+                "label": tr(f"reviewer_flag_{name}", label),
+                "bind": {"kind": "config", "path": ["onigiri_reviewer_flag_icons", str(number)]},
+                "default": "",
+                "default_icon": "system:flag.svg",
+                "icon_tint": tint,
+                "advanced": False,
+            }
+            for number, (name, label, tint) in enumerate(colors, 1)
+        ],
+    }
+
+
+_DOCK_BUTTON_SPECS = (
+    ("decks", "decks", "Decks", "system:deck.svg"),
+    ("add", "add", "Add", "system:add.svg"),
+    ("browse", "browse", "Browse", "system:browse.svg"),
+    ("stats", "stats", "Stats", "system:stats.svg"),
+    ("sync", "sync", "Sync", "system:sync.svg"),
+    ("hashi_notes", "hashi_notes_title", "Hashi Notes", "system:hashi_notes.svg"),
+    ("pomodoro", "pomodoro_title", "Pomodoro", "system:pomodoro.svg"),
+)
+
+
+def _dock_icon_tint_fields(button_id):
+    """Independent light/dark icon tint slots backed by addon config maps."""
+    light_id = f"rdock_icon_color_{button_id}_light"
+    dark_id = f"rdock_icon_color_{button_id}_dark"
+    return [
+        _color_pair_field(
+            f"rdock_icon_color_{button_id}",
+            tr("icon_color", "Icon Color"),
+            light_id,
+            dark_id,
+            None,
+            always_split=True,
+            static_fallback={"light": "#17181a", "dark": "#ffffff"},
+            show_when={"field": "reviewer_dock_mode", "values": ["minimal", "island"]},
+        ),
+        _hidden_config_field(
+            light_id,
+            ["onigiri_reviewer_dock_icon_colors_light", button_id],
+            "",
+        ),
+        _hidden_config_field(
+            dark_id,
+            ["onigiri_reviewer_dock_icon_colors_dark", button_id],
+            "",
+        ),
+    ]
+
+
+def _reviewer_dock_section():
+    """Reviewer top dock layout, icons/colors, goo palette, and Header Progress Bar."""
+    IS_DOCK_STYLED = {"field": "reviewer_dock_mode", "values": ["minimal", "island"]}
+    IS_ISLAND = {"field": "reviewer_dock_mode", "values": ["island"]}
+    progress_fields, progress_dynamic_keys = _reviewer_progress_fields()
+
+    fields = [
+        {
+            "id": "reviewer_dock_mode",
+            "type": "choice",
+            "label": tr("reviewer_dock_mode", "Dock Style"),
+            "bind": {"kind": "config", "key": "onigiri_reviewer_dock_mode"},
+            "default": "static",
+            "advanced": False,
+            "options": [
+                {"value": "static", "label": tr("reviewer_dock_static", "Static")},
+                {"value": "minimal", "label": tr("reviewer_dock_minimal", "Minimal")},
+                {"value": "island", "label": tr("reviewer_dock_island", "Island")},
+            ],
+        },
+        _color_pair_field(
+            "rdock_goo_color",
+            tr("dock_goo_color", "Animated Goo Color"),
+            "rdock_goo_color_light",
+            "rdock_goo_color_dark",
+            None,
+            static_fallback={"light": "#17181a", "dark": "#ffffff"},
+            show_when=IS_ISLAND,
+            advanced=False,
+        ),
+        _hidden_config_field("rdock_goo_color_theme_mode", ["onigiri_web_rdock_goo_theme_mode"], "separate"),
+        _hidden_config_field("rdock_goo_color_light", ["onigiri_reviewer_dock_goo_color_light"], "#17181a"),
+        _hidden_config_field("rdock_goo_color_dark", ["onigiri_reviewer_dock_goo_color_dark"], "#ffffff"),
+    ]
+
+    # Icons must form one contiguous run so rebalanceDeck groups them into one grid,
+    # followed by their companion color pairs.
+    for button_id, label_key, fallback_label, default_icon in _DOCK_BUTTON_SPECS:
+        fields.append({
+            "id": f"rdock_icon_{button_id}",
+            "type": "icon",
+            "label": tr(label_key, fallback_label),
+            "bind": {"kind": "config", "path": ["onigiri_reviewer_dock_icons", button_id]},
+            "default": "",
+            "default_icon": default_icon,
+            "icon_group": "dock_icons",
+            "icon_group_title": tr("dock_icons", "Dock Icons"),
+            "advanced": False,
+            "show_when": IS_DOCK_STYLED,
+        })
+    for button_id, _label_key, _fallback_label, _default_icon in _DOCK_BUTTON_SPECS:
+        fields.extend(_dock_icon_tint_fields(button_id))
+
+    fields.extend(progress_fields)
+
+    dock_icon_ids = [f"rdock_icon_{button_id}" for button_id, *_ in _DOCK_BUTTON_SPECS]
+    shared_badge = tr("dock_scope_shared", "Reviewer & Overview")
+    reviewer_badge = tr("dock_scope_reviewer", "Reviewer only")
+
+    return _designer_preview_section(
+        "reviewer_dock",
+        "reviewer_dock",
+        title=tr("reviewer_dock", "Dock"),
+        icon="top_bar.svg",
+        icon_colors_inline=True,
+        head_to_deck=True,
+        dynamic_keys=["rdock_goo_color_theme_mode", *progress_dynamic_keys],
+        subsections=[
+            {
+                "id": "dock_style",
+                "title": tr("reviewer_dock", "Dock"),
+                "badge": shared_badge,
+                "badge_tone": "shared",
+                "band": "top",
+                "column": "left",
+                "fields": ["reviewer_dock_mode"],
+            },
+            {
+                "id": "dock_island",
+                "title": tr("dock_island_group", "Floating Island"),
+                "badge": shared_badge,
+                "badge_tone": "shared",
+                "band": "top",
+                "column": "right",
+                "fields": ["rdock_goo_color"],
+            },
+            {
+                "id": "dock_icons",
+                "title": tr("dock_icons", "Dock Icons"),
+                "badge": shared_badge,
+                "badge_tone": "shared",
+                "band": "top",
+                "column": "full",
+                "icon_grid": True,
+                "fields": dock_icon_ids,
+            },
+            {
+                "id": "progress_bar",
+                "title": tr("dock_progress_group", "Progress Bar"),
+                "badge": reviewer_badge,
+                "badge_tone": "reviewer",
+                "column": "left",
+                "fields": [
+                    "rprog_enabled",
+                    "rprog_style",
+                    "rprog_label",
+                    "rprog_scope",
+                    "rprog_position",
+                    "rprog_animate",
+                    "rprog_hide_when_done",
+                ],
+            },
+            {
+                "id": "progress_bar_shape",
+                "title": tr("dock_progress_shape_group", "Progress Bar Shape"),
+                "badge": reviewer_badge,
+                "badge_tone": "reviewer",
+                "column": "right",
+                "fields": [
+                    "rprog_width",
+                    "rprog_ring_size",
+                    "rprog_thickness",
+                    "rprog_radius",
+                    "rprog_chrome",
+                ],
+            },
+            {
+                "id": "progress_bar_colors",
+                "title": tr("dock_progress_colors_group", "Progress Bar Colors"),
+                "badge": reviewer_badge,
+                "badge_tone": "reviewer",
+                "column": "right",
+                "fields": [
+                    "rprog_gradient",
+                    "rprog_fill",
+                    "rprog_fill_end",
+                    "rprog_track",
+                    "rprog_text",
+                    "rprog_segment_source",
+                    "rprog_seg_new",
+                    "rprog_seg_learn",
+                    "rprog_seg_review",
+                ],
+            },
+        ],
+        fields=fields,
     )
 
 
@@ -3446,10 +3585,11 @@ def _reviewer_page():
         "tabbed": True,
         "sections": [
             _reviewer_background_section(),
+            _reviewer_dock_section(),
             _reviewer_bottom_bar_section(),
-            _reviewer_progress_section(),
+            _reviewer_flags_section(),
         ],
-        "post_save": ["reviewer_progress", "study_tool_visibility"],
+        "post_save": ["reviewer_progress", "reviewer_flags", "reviewer_dock"],
     }
 
 
@@ -3885,11 +4025,6 @@ def _mainmenu_deck_stats_section():
             ],
         },
         {
-            "id": "dstats_minimalist", "type": "toggle",
-            "label": tr("widget_minimalist", "Minimalist"),
-            "bind": path("minimalist"), "default": False,
-        },
-        {
             "id": "dstats_sync_box_effect", "type": "toggle",
             "head": True, "head_label": tr("sync_with_widgets", "Sync with widgets"),
             "label": tr("sync_with_widgets", "Sync with widgets"),
@@ -3981,20 +4116,22 @@ def _mainmenu_heatmap_section():
                 ],
             },
             {
+                "id": "heatmapTerrainEnabled", "type": "toggle",
+                "head": True, "head_label": tr("view_terrain", "Terrain"),
+                "label": tr("view_terrain", "Terrain"),
+                "bind": {"kind": "config", "key": "heatmapTerrainEnabled"}, "default": False,
+            },
+            {
                 "id": "heatmapDefaultView", "type": "choice",
                 "head": True, "head_label": tr("view", "View"),
                 "label": tr("default_view", "Default View"),
+                "show_when": {"field": "heatmapTerrainEnabled", "values": [False]},
                 "bind": {"kind": "config", "key": "heatmapDefaultView"}, "default": "year",
                 "options": [
                     {"value": "year", "label": tr("view_year", "Year"), "short": tr("view_year_short", "Y")},
                     {"value": "month", "label": tr("view_month", "Month"), "short": tr("view_month_short", "M")},
                     {"value": "week", "label": tr("view_week", "Week"), "short": tr("view_week_short", "W")},
                 ],
-            },
-            {
-                "id": "heatmapMinimalist", "type": "toggle",
-                "label": tr("widget_minimalist", "Minimalist"),
-                "bind": {"kind": "config", "key": "heatmapMinimalist"}, "default": False,
             },
             {
                 "id": "heatmap_sync_box_effect", "type": "toggle",
@@ -4299,27 +4436,55 @@ def _mainmenu_organize_section():
                 for edge in ("top", "right", "bottom", "left")
             ],
             {
-                # Unlike flexbox's `gap`, this is a signed offset.  Negative
-                # values can close unused space left by a wide sidebar; positive
-                # values deliberately add breathing room.
+                # Automatic keeps the distance between the widget grid and the
+                # sidebar equal to the distance to the outer window border.
+                # Manual restores the explicit distance slider below.
+                "id": "modern_menu_sidebar_widget_gap_mode",
+                "type": "choice",
+                "advanced": True,
+                "label": tr("sidebar_gap", "Sidebar Gap"),
+                "desc": tr(
+                    "sidebar_gap_mode_desc",
+                    "Keep the spacing between the sidebar and the window border equal automatically, or set a manual gap.",
+                ),
+                "bind": {"kind": "col", "key": "modern_menu_sidebar_widget_gap_mode"},
+                "default": "auto",
+                "options": [
+                    {"value": "auto", "label": tr("sidebar_gap_auto", "Automatic")},
+                    {"value": "manual", "label": tr("sidebar_gap_manual", "Manual")},
+                ],
+                "show_when": {
+                    "field": "modern_menu_sidebar_position",
+                    "values": ["left", "right"],
+                },
+            },
+            {
+                # Manual pixel offset added between the sidebar and widgets when
+                # the user switches Sidebar Gap from Automatic to Manual.
                 "id": "modern_menu_sidebar_widget_gap",
                 "type": "slider",
                 "advanced": True,
-                "label": tr("sidebar_gap", "Sidebar Gap"),
+                "label": tr("sidebar_gap_manual_label", "Manual Gap"),
                 "desc": tr(
                     "sidebar_gap_desc",
                     "Move widgets nearer to or farther from the sidebar.",
                 ),
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_widget_gap"},
                 "default": 0,
-                "min": -240,
+                "min": 0,
                 "max": 240,
                 "step": 1,
                 "suffix": "px",
-                "show_when": {
-                    "field": "modern_menu_sidebar_position",
-                    "values": ["left", "right"],
-                },
+                "show_when": {"all": [
+                    {
+                        "field": "modern_menu_sidebar_position",
+                        "values": ["left", "right"],
+                    },
+                    {
+                        "field": "modern_menu_sidebar_widget_gap_mode",
+                        "values": ["manual"],
+                    },
+                ]},
             },
         ] + _widget_effect_fields() + [
             {
@@ -4517,7 +4682,7 @@ def _icon_tint_fields(field_id, fallback_light, fallback_dark):
 # colour/picture/effect) or the main menu's background seen through a tint. Every
 # row belongs to exactly one of them, so both conditions are named once here
 # rather than repeated inline a dozen times.
-_SIDEBAR_CUSTOM = {"field": "modern_menu_sidebar_bg_mode", "values": ["custom"]}
+_SIDEBAR_CUSTOM = {"field": "modern_menu_sidebar_bg_mode", "values": ["independent"]}
 _SIDEBAR_MAIN = {"field": "modern_menu_sidebar_bg_mode", "values": ["main"]}
 
 
@@ -4638,12 +4803,11 @@ def _sidebar_background_section():
             {
                 # `modern_menu_sidebar_bg_mode` and `modern_menu_sidebar_bg_type`
                 # are two different keys in the collection config: the first
-                # decides *where* the sidebar's fill comes from (its own custom
-                # background, or the main menu's, tinted), the second decides
-                # what that custom background is. The legacy page expressed the
-                # first as a "Sync with Main Background" toggle
-                # (settings/_page_sidebar.py:1719-1721); a two-value choice says
-                # the same thing without hiding half the card behind a switch.
+                # decides where the fill comes from; the second describes an
+                # independent fill. Preserve the stored "custom" value as
+                # Match Widgets and "main" as Match Main Menu. The new
+                # "independent" value restores custom images without changing
+                # the appearance of existing saved selections.
                 "id": "modern_menu_sidebar_bg_mode",
                 "type": "choice",
                 "label": tr("sidebar_bg_source", "Background Source"),
@@ -4651,7 +4815,8 @@ def _sidebar_background_section():
                 "default": "custom",
                 "options": [
                     {"value": "custom", "label": tr("match_widgets", "Match Widgets")},
-                    {"value": "main", "label": tr("custom", "Custom")},
+                    {"value": "main", "label": tr("match_main_menu", "Match Main Menu")},
+                    {"value": "independent", "label": tr("custom", "Custom")},
                 ],
             },
             {
@@ -4662,7 +4827,8 @@ def _sidebar_background_section():
                 "default": "color",
                 "show_when": _SIDEBAR_CUSTOM,
                 "options": [
-                    {"value": "image_color", "label": tr("image", "Image")},
+                    {"value": "image", "label": tr("image", "Image")},
+                    {"value": "image_color", "label": tr("image", "Image") + " + " + tr("color", "Color")},
                     {"value": "color", "label": tr("color_only", "Color only")},
                     {"value": "accent", "label": tr("accent_color", "Accent")},
                 ],
@@ -4705,7 +4871,7 @@ def _sidebar_background_section():
                 empty_label=tr("none_default", "Default"),
                 show_when={"all": [_SIDEBAR_CUSTOM,
                                    {"field": "modern_menu_sidebar_bg_type",
-                                    "values": ["image_color"]}]},
+                                    "values": ["image", "image_color"]}]},
             ),
             _hidden_field("modern_menu_sidebar_bg_image_light"),
             _hidden_field("modern_menu_sidebar_bg_image_dark"),
@@ -4773,7 +4939,7 @@ def _sidebar_background_section():
                 # of these only inside its `sidebar_mode == 'custom'` branch.
                 "show_when": {"all": [_SIDEBAR_CUSTOM,
                                       {"field": "modern_menu_sidebar_bg_type",
-                                       "values": ["image_color"]}]},
+                                       "values": ["image", "image_color"]}]},
                 "bind": {"kind": "col", "key": "modern_menu_sidebar_bg_blur"},
                 "default": 0, "min": 0, "max": 100, "step": 1, "suffix": "%",
             },
@@ -5121,14 +5287,33 @@ def _sidebar_actions_section():
 
 def _sidebar_ready_section():
     """Appearance controls for Classic's collection-wide study shortcuts."""
+    ready_enabled_cond = {
+        "field": "modern_menu_ready_enabled",
+        "values": [True],
+    }
     fields = [
+        {
+            "id": "modern_menu_ready_enabled",
+            "type": "toggle",
+            "label": tr("enable_ready_to_go", "Enable Ready to Go"),
+            "desc": tr(
+                "enable_ready_to_go_desc",
+                "Turn Ready to Go on or off completely (removes the sidebar section, header icon, and widget).",
+            ),
+            "bind": {
+                "kind": "col",
+                "key": "modern_menu_ready_enabled",
+            },
+            "default": True,
+            "advanced": False,
+        },
         {
             "id": "modern_menu_ready_layout_mode",
             "type": "choice",
             "label": tr("ready_layout", "Ready to Go Layout"),
             "desc": tr(
                 "ready_layout_desc",
-                "Show labeled actions, four compact icons, or hide the sidebar section.",
+                "Show labeled actions, four compact icons, or hide the sidebar section behind a header icon.",
             ),
             "bind": {
                 "kind": "col",
@@ -5256,6 +5441,14 @@ def _sidebar_ready_section():
             f"modern_menu_icon_color_ready_{key}",
             "sb_icon_color_light", "sb_icon_color_dark",
         ))
+    for field in fields:
+        if field.get("id") == "modern_menu_ready_enabled":
+            continue
+        existing_cond = field.get("show_when")
+        if existing_cond:
+            field["show_when"] = {"all": [ready_enabled_cond, existing_cond]}
+        else:
+            field["show_when"] = ready_enabled_cond
     section = _designer_preview_section(
         "sidebar_ready",
         "sidebar_ready",

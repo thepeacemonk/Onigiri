@@ -92,6 +92,7 @@ window.OnigiriEngine = {
     _profileResizeTimer: null,
 
     init: function () {
+        this.initResponsiveWidgets();
         this.deckListContainer = document.getElementById('deck-list-container');
         if (!this.deckListContainer) {
             return;
@@ -106,6 +107,83 @@ window.OnigiriEngine = {
         // Initial processing of already loaded nodes
         this.processNewNodes(document.querySelectorAll('tr.deck, a.collapse'));
         this.restoreScrollPosition();
+    },
+
+    initResponsiveWidgets: function () {
+        document.querySelectorAll('.unified-grid[data-grid-columns]').forEach(grid => {
+            if (grid._onigiriResizeObserver) return;
+            const reflow = () => this.reflowWidgetGrid(grid);
+            reflow();
+            if (window.ResizeObserver) {
+                grid._onigiriResizeObserver = new ResizeObserver(reflow);
+                grid._onigiriResizeObserver.observe(grid);
+            } else {
+                window.addEventListener('resize', reflow, { passive: true });
+            }
+        });
+    },
+
+    reflowWidgetGrid: function (grid) {
+        const savedColumns = Number(grid.dataset.gridColumns) || 1;
+        // Permit a little compression, then reflow instead of reducing a card
+        // to a sliver. Measure the panel, so sidebar resizing works as well.
+        const minColumn = Math.max(200, (Number(grid.dataset.gridColumnWidth) || 250) * 0.8);
+        const columns = Math.max(1, Math.min(savedColumns,
+            Math.floor((grid.clientWidth + 15) / (minColumn + 15))));
+        if (!grid.clientWidth || grid.dataset.activeColumns === String(columns)) return;
+        grid.dataset.activeColumns = String(columns);
+        if (!grid._onigiriSavedTiles) {
+            grid._onigiriSavedTiles = Array.from(grid.children)
+                .filter(element => element.style.gridArea)
+                .map(element => {
+                    const area = element.style.gridArea;
+                    const parts = area.match(/\d+/g) || [];
+                    return {
+                        element, area,
+                        row: Number(parts[0]) || 1, col: Number(parts[1]) || 1,
+                        rows: Number(parts[2]) || 1, cols: Number(parts[3]) || 1,
+                        title: !!element.querySelector?.('.onigiri-widget-title'),
+                    };
+                }).sort((a, b) => a.row - b.row || a.col - b.col);
+        }
+        if (columns === savedColumns) {
+            grid.style.gridTemplateColumns = '';
+            grid.style.gridTemplateRows = '';
+            grid._onigiriSavedTiles.forEach(tile => { tile.element.style.gridArea = tile.area; });
+            return;
+        }
+        grid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+        const occupied = new Set();
+        const titleRows = new Set();
+        let cursor = 0;
+        grid._onigiriSavedTiles.forEach(tile => {
+            const span = Math.min(columns, tile.cols);
+            let row, col;
+            // Scan forward in reading order. Never backfill holes ahead of an
+            // earlier widget; wide/tall cards keep their relative order.
+            for (;; cursor++) {
+                row = Math.floor(cursor / columns);
+                col = cursor % columns;
+                if (col + span > columns) continue;
+                let free = true;
+                for (let r = row; r < row + tile.rows && free; r++) {
+                    for (let c = col; c < col + span; c++) {
+                        if (occupied.has(`${r}:${c}`)) { free = false; break; }
+                    }
+                }
+                if (free) break;
+            }
+            for (let r = row; r < row + tile.rows; r++) {
+                for (let c = col; c < col + span; c++) occupied.add(`${r}:${c}`);
+            }
+            tile.element.style.gridArea = `${row + 1} / ${col + 1} / span ${tile.rows} / span ${span}`;
+            if (tile.title && span === columns && tile.rows === 1) titleRows.add(row);
+            cursor++;
+        });
+        const rowHeight = Number(grid.dataset.gridRowHeight) || 150;
+        const lastTitle = titleRows.size ? Math.max(...titleRows) : -1;
+        grid.style.gridTemplateRows = lastTitle < 0 ? 'none' :
+            Array.from({ length: lastTitle + 1 }, (_, row) => titleRows.has(row) ? 'min-content' : `${rowHeight}px`).join(' ');
     },
 
     openDeck: function (event, deckId) {
@@ -610,6 +688,8 @@ window.OnigiriEngine = {
         }, true);
 
         this.deckListContainer.addEventListener('mousemove', (event) => {
+            if (event.target === this._lastMouseTarget) return;
+            this._lastMouseTarget = event.target;
             const deckRow = event.target.closest('tr.deck');
             if (deckRow === this.currentHoveredRow) return;
             if (this.currentHoveredRow) {
@@ -617,9 +697,10 @@ window.OnigiriEngine = {
             }
             this.currentHoveredRow = deckRow || null;
             if (deckRow) deckRow.classList.add('is-hovered');
-        });
+        }, { passive: true });
 
         this.deckListContainer.addEventListener('mouseleave', () => {
+            this._lastMouseTarget = null;
             if (this.currentHoveredRow) {
                 this.currentHoveredRow.classList.remove('is-hovered');
                 this.currentHoveredRow = null;
@@ -1008,14 +1089,24 @@ window.OnigiriEngine = {
 
     /** Watches for changes in the deck list and processes ONLY new elements. */
     observeMutations: function () {
+        let layoutRaf = 0;
         const observer = new MutationObserver((mutations) => {
+            let needsLayout = false;
             mutations.forEach(mutation => {
-                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                    this.processNewNodes(mutation.addedNodes);
+                if (mutation.type === 'childList') {
+                    if (mutation.addedNodes.length > 0) {
+                        this.processNewNodes(mutation.addedNodes);
+                        needsLayout = true;
+                    } else if (mutation.removedNodes.length > 0) {
+                        needsLayout = true;
+                    }
                 }
             });
-            if (typeof window.updateDeckLayouts === 'function') {
-                window.updateDeckLayouts();
+            if (needsLayout && !layoutRaf && typeof window.updateDeckLayouts === 'function') {
+                layoutRaf = requestAnimationFrame(() => {
+                    layoutRaf = 0;
+                    window.updateDeckLayouts();
+                });
             }
         });
 
@@ -1301,6 +1392,7 @@ window.OnigiriEngine = {
             });
         }
         deckActions.push(
+            { label: ONIGIRI_T('ctx_addon_actions', 'Add-on actions') + '…', icon: 'options', command: `onigiri_ctx_addon_actions:${did}` },
             { label: ONIGIRI_T('ctx_deck_options', 'Deck Options'), icon: 'options', command: `onigiri_ctx_options:${did}` },
             { label: ONIGIRI_T('ctx_export_deck', 'Export Deck'), icon: 'export-deck', command: `onigiri_ctx_export:${did}` },
             { label: ONIGIRI_T('ctx_copy_deck_id', 'Copy Deck ID'), icon: 'copy_id', command: `onigiri_ctx_copy_id:${did}` },

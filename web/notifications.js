@@ -390,6 +390,13 @@
     }
 
     function renderNotification(data) {
+        if (window.onigiriIsReviewerCardWebview &&
+            window.onigiriReviewerDockMode === "island" &&
+            window.OnigiriReviewerIsland &&
+            typeof window.OnigiriReviewerIsland.notify === "function") {
+            window.OnigiriReviewerIsland.notify(data);
+            return;
+        }
         if (window.onigiriNotificationMode === "mini") {
             let headerBtnContainer = null;
             if (window.onigiriIsReviewerCardWebview) {
@@ -440,6 +447,9 @@
             });
         },
         clear() {
+            if (window.OnigiriReviewerIsland && typeof window.OnigiriReviewerIsland.clear === "function") {
+                window.OnigiriReviewerIsland.clear();
+            }
             const stack = findStack();
             if (stack) {
                 stack.remove();

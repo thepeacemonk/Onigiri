@@ -25,6 +25,7 @@ READY_ACTIONS = {
         "query": "is:new -is:suspended",
         "deck_name": "Onigiri Ready — Inbox",
         "icon": "lucide-inbox.svg",
+        "respect_daily_new_limit": True,
     },
     "warm_up": {
         "label": "Warm up",
@@ -125,6 +126,13 @@ def _setting(key: str, default: Any = None) -> Any:
         return default
 
 
+def is_enabled() -> bool:
+    """Return whether Ready to Go is enabled."""
+    if not bool(_setting("modern_menu_ready_enabled", True)):
+        return False
+    return str(_setting("modern_menu_ready_layout_mode", "list")) != "off"
+
+
 def _number_setting(key: str, default: int, minimum: int, maximum: int) -> int:
     try:
         return max(minimum, min(maximum, int(float(_setting(key, default)))))
@@ -202,6 +210,8 @@ def _buttons_html(class_name: str, circles: bool = False) -> str:
 
 def render_sidebar_html() -> str:
     """Classic sidebar section, placed between actions and the deck list."""
+    if not is_enabled():
+        return ""
     title = html.escape(localized_default(str(_setting("modern_menu_ready_title", "Ready to go")), ("ready_to_go",)))
     layout_mode = str(_setting("modern_menu_ready_layout_mode", "list"))
     if layout_mode == "hidden":
@@ -224,6 +234,8 @@ def render_sidebar_html() -> str:
 
 def render_widget_html(design: str = "squares") -> str:
     """Classic dashboard widget added through Organize Widgets."""
+    if not is_enabled():
+        return ""
     title = html.escape(localized_default(str(_setting("modern_menu_ready_title", "Ready to go")), ("ready_to_go",)))
     heading = (
         f'<div class="onigiri-widget-head"><h3>{title}</h3></div>'
@@ -245,6 +257,8 @@ def render_widget_html(design: str = "squares") -> str:
 
 def handle_command(command: str) -> bool:
     """Build the requested filtered deck then take the user into Reviewer."""
+    if not is_enabled():
+        return False
     action = READY_ACTIONS.get(command)
     if action is None:
         return False
@@ -273,7 +287,78 @@ def study_tag(tag: str) -> bool:
     return True
 
 
-def _build_and_study(action: dict[str, str]) -> None:
+def _scheduled_new_inbox_spec(col: Any) -> tuple[str, int]:
+    """Compute today's scheduled new-card search and limit from Anki's due tree.
+
+    Prevents Ready-to-Go Inbox from dumping all unseen new cards in the
+    collection (e.g. 10,000+) into the filtered deck; instead, it caps to the
+    exact daily new-card budget scheduled across decks with ``new_count > 0``.
+    """
+    try:
+        tree = col.sched.deck_due_tree()
+    except Exception:
+        return ("is:new -is:suspended", 9999)
+
+    total_new = 0
+    eligible_decks: list[str] = []
+    excluded_decks: list[str] = []
+
+    def walk(node: Any, prefix: str = "") -> None:
+        nonlocal total_new
+        for child in getattr(node, "children", ()) or ():
+            leaf_name = str(getattr(child, "name", "") or "")
+            full_name = f"{prefix}::{leaf_name}" if prefix else leaf_name
+            if is_internal_deck_name(full_name) or is_internal_deck_name(leaf_name):
+                continue
+            new_cnt = max(0, int(getattr(child, "new_count", 0) or 0))
+            if not prefix:
+                total_new += new_cnt
+            sub_children = getattr(child, "children", ()) or ()
+            if new_cnt > 0:
+                if not sub_children:
+                    eligible_decks.append(full_name)
+                else:
+                    children_sum = sum(
+                        max(0, int(getattr(sc, "new_count", 0) or 0))
+                        for sc in sub_children
+                        if not is_internal_deck_name(
+                            f"{full_name}::{getattr(sc, 'name', '')}"
+                        )
+                    )
+                    if children_sum < new_cnt:
+                        eligible_decks.append(full_name)
+                        for sc in sub_children:
+                            sc_name = f"{full_name}::{getattr(sc, 'name', '')}"
+                            if (
+                                not is_internal_deck_name(sc_name)
+                                and max(0, int(getattr(sc, "new_count", 0) or 0)) == 0
+                            ):
+                                excluded_decks.append(sc_name)
+                    else:
+                        before = len(eligible_decks)
+                        walk(child, full_name)
+                        if len(eligible_decks) == before:
+                            eligible_decks.append(full_name)
+
+    walk(tree)
+    if total_new <= 0:
+        return ("", 0)
+
+    if eligible_decks:
+        import json as _json
+
+        deck_clauses = " OR ".join(
+            f"deck:{_json.dumps(name, ensure_ascii=False)}" for name in eligible_decks
+        )
+        excl_clauses = " ".join(
+            f"-deck:{_json.dumps(name, ensure_ascii=False)}" for name in excluded_decks
+        )
+        suffix = f" {excl_clauses}" if excl_clauses else ""
+        return (f"({deck_clauses}){suffix} is:new -is:suspended", total_new)
+    return ("is:new -is:suspended", total_new)
+
+
+def _build_and_study(action: dict[str, Any]) -> None:
     """Use Anki's current asynchronous filtered-deck operations.
 
     Anki 25.07+ returns a mutable ``FilteredDeckForUpdate`` through the query
@@ -288,6 +373,12 @@ def _build_and_study(action: dict[str, str]) -> None:
         # A different Ready action may still contain unfinished cards. Empty
         # every working deck first so this query always spans the collection.
         restore_internal_cards(col)
+        query = str(action["query"])
+        limit = 9999
+        if action.get("respect_daily_new_limit"):
+            query, limit = _scheduled_new_inbox_spec(col)
+            if limit <= 0:
+                return (None, query, 0)
         deck_id = DeckId(0)
         try:
             existing_id = col.decks.id_for_name(action["deck_name"])
@@ -296,9 +387,16 @@ def _build_and_study(action: dict[str, str]) -> None:
                 deck_id = DeckId(existing_id)
         except Exception:
             pass
-        return col.sched.get_or_create_filtered_deck(deck_id=deck_id)
+        return (col.sched.get_or_create_filtered_deck(deck_id=deck_id), query, limit)
 
-    def save_deck(deck: Any) -> None:
+    def save_deck(result: Any) -> None:
+        deck, query, limit = result
+        if deck is None or limit <= 0:
+            try:
+                tooltip(tr("ready_inbox_none_scheduled", "No new cards scheduled for today."), parent=mw)
+            except Exception:
+                pass
+            return
         deck.name = action["deck_name"]
         deck.allow_empty = True
         terms = deck.config.search_terms
@@ -306,7 +404,7 @@ def _build_and_study(action: dict[str, str]) -> None:
         # Random order interleaves matching cards from every deck.
         terms.append(
             FilteredDeckConfig.SearchTerm(
-                search=action["query"], limit=9999, order=1
+                search=query, limit=limit, order=1
             )
         )
         add_or_update_filtered_deck(parent=mw, deck=deck).success(

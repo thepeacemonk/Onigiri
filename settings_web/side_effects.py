@@ -107,7 +107,7 @@ def _pomodoro(_store):
 
     settings = pomodoro.get_settings()
     pomodoro.save_settings(settings)
-    pomodoro.get_timer().settings = settings
+    pomodoro.get_timer().apply_settings(settings)
     pomodoro.reload_open_widget()
 
 
@@ -133,12 +133,14 @@ def _gamification(store):
     Each game installs its Anki hooks at import time, and the classic dialog
     imported them after saving for exactly this reason."""
     from . import games_state
+    from ..gamification import onigimon_hud
 
     flags = _enabled_flags(store.config)
     if _GAME_STATE["enabled"] == flags:
         return
     _GAME_STATE["enabled"] = flags
     games_state.initialize_enabled_hooks(store.config)
+    onigimon_hud.refresh_live_hud(store.config)
 
 
 def _nook_level(store):
@@ -183,7 +185,25 @@ def _reviewer_progress(_store):
 
     patcher.invalidate_reviewer_progress_settings()
     patcher.update_reviewer_progress()
-    patcher.refresh_reviewer_header_style(_store.config)
+
+
+def _reviewer_flags(store):
+    from ..rendering import reviewer_flags
+
+    reviewer_flags.refresh(store.config)
+
+
+def _reviewer_dock(store):
+    from ..rendering import patcher, reviewer_dock
+
+    patcher.invalidate_reviewer_progress_settings()
+    reviewer_dock.refresh_live_dock(store.config)
+
+
+def _onigimon_hud(store):
+    from ..gamification import onigimon_hud
+
+    onigimon_hud.refresh_live_hud(store.config)
 
 
 def _hexagon_land(store):
@@ -204,10 +224,13 @@ HOOKS = {
     "pomodoro": _pomodoro,
     "study_tool_visibility": _study_tool_visibility,
     "gamification": _gamification,
+    "onigimon_hud": _onigimon_hud,
     "nook_level": _nook_level,
     "mochi_messages": _mochi_messages,
     "hexagon_land": _hexagon_land,
     "reviewer_progress": _reviewer_progress,
+    "reviewer_flags": _reviewer_flags,
+    "reviewer_dock": _reviewer_dock,
 }
 
 

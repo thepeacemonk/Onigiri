@@ -60,12 +60,29 @@ def _selected_deck_ids(col):
     deck_id = int(col.decks.current()["id"])
     deck_ids = [deck_id]
     try:
-        deck_ids.extend(int(child_id) for child_id in col.decks.child_ids(deck_id))
+        if hasattr(col.decks, "children"):
+            for child in col.decks.children(deck_id):
+                cid = child[1] if isinstance(child, (tuple, list)) and len(child) >= 2 else child
+                deck_ids.append(int(cid))
+        elif hasattr(col.decks, "child_ids"):
+            deck_ids.extend(int(child_id) for child_id in col.decks.child_ids(deck_id))
     except Exception:
         # A parent deck should still get a working notice on Anki versions
         # where the child-deck helper has changed.
         pass
     return list(dict.fromkeys(deck_ids))
+
+
+def _addon_media_url(addon_name: str, subdir: str, filename: str) -> str:
+    """Build a URL-encoded /_addons/<addon>/user_files/<subdir>/<filename> URL."""
+    from urllib.parse import quote
+
+    clean_sub = str(subdir or "").replace("\\", "/").strip("/")
+    clean_name = str(filename or "").replace("\\", "/").lstrip("/")
+    encoded_path = "/".join(quote(part, safe="") for part in clean_name.split("/") if part)
+    if clean_sub:
+        return f"/_addons/{addon_name}/user_files/{clean_sub}/{encoded_path}"
+    return f"/_addons/{addon_name}/user_files/{encoded_path}"
 
 
 def _ready_learning_card_ids(col):
@@ -285,9 +302,12 @@ def _hexagon_land():
 
 
 def _focus_dango():
-    from ..gamification import focus_dango
-
-    return focus_dango
+    try:
+        from ..gamification import focus_dango
+        return focus_dango
+    except Exception as e:
+        print(f"Onigiri: could not import focus_dango: {e}")
+        return None
 
 # --- Menu Styling ---
 def apply_menu_styling():
@@ -851,8 +871,8 @@ def _synapsepro_overview_background_priority_css(addon_path: str) -> str:
                 background-color: transparent !important;
                 background-attachment: scroll !important;
             }}
-            .night-mode html,
-            .nightMode html {{
+            html.night-mode,
+            html.nightMode {{
                 background-color: {dark_color} !important;
                 background-image: none !important;
             }}
@@ -887,9 +907,9 @@ def _synapsepro_overview_background_priority_css(addon_path: str) -> str:
             background-color: {light_color} !important;
             background-attachment: scroll !important;
         }}
-        .night-mode html,
+        html.night-mode,
         .night-mode body,
-        .nightMode html,
+        html.nightMode,
         .nightMode body,
         body.nightMode.overview,
         body.nightMode.onigiri-overview,
@@ -1167,7 +1187,7 @@ def _get_profile_pic_html(user_name: str, addon_package: str, css_class: str = "
         profile_pic_filename = mw.col.conf.get("modern_menu_profile_picture", "")
 
     if profile_pic_filename and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile", profile_pic_filename)):
-        pic_url = f"/_addons/{addon_package}/user_files/profile/{profile_pic_filename}"
+        pic_url = _addon_media_url(addon_package, "profile", profile_pic_filename)
     else:
         default_pic = "onigiri-san.png"
         pic_url = f"/_addons/{addon_package}/system_files/profile_default/{default_pic}"
@@ -1213,10 +1233,11 @@ def _render_background_css(selector, mode, light_color, dark_color, light_image_
 	def get_img_url(image_path):
 		if not image_path:
 			return None
-		if image_path.startswith("user_files/"):
-			return f"/_addons/{addon_name}/{image_path}"
-		else:
-			return f"/_addons/{addon_name}/user_files/{image_path}"
+		normalized = str(image_path).replace("\\", "/")
+		if normalized.startswith("user_files/"):
+			rel = normalized[len("user_files/"):]
+			return _addon_media_url(addon_name, "", rel)
+		return _addon_media_url(addon_name, "", normalized)
 
 	if mode == "accent":
 		return f"""<style id="{style_id}">{selector} {{ background: var(--accent-color) !important; }}</style>"""
@@ -1373,8 +1394,8 @@ def _render_body_slideshow_background_css(style_id, image_urls, interval_seconds
                 background-color: {light_color} !important;
                 background-image: none !important;
             }}
-            .night-mode html, .night-mode body,
-            .nightMode html, .nightMode body {{
+            html.night-mode, .night-mode body,
+            html.nightMode, .nightMode body {{
                 background-color: {dark_color} !important;
             }}
             body::before,
@@ -1694,7 +1715,7 @@ def _get_backgrounds_html(addon_package):
         )
             
         if main_img_file:
-            main_img_path = f"/_addons/{addon_package}/user_files/main_bg/{main_img_file}"
+            main_img_path = _addon_media_url(addon_package, "main_bg", main_img_file)
             main_bg_style = f"background-image: url('{main_img_path}');"
         else:
             main_bg_style = "" # Use default card color
@@ -1733,7 +1754,7 @@ def _get_backgrounds_html(addon_package):
                 dynamic_key="modern_menu_sidebar_bg_image_theme_mode",
             )
             if sidebar_img_file:
-                sidebar_img_path = f"/_addons/{addon_package}/user_files/sidebar_bg/{sidebar_img_file}"
+                sidebar_img_path = _addon_media_url(addon_package, "sidebar_bg", sidebar_img_file)
                 sidebar_bg_style = f"background-image: url('{sidebar_img_path}');"
             else:
                 sidebar_bg_style = ""
@@ -1742,7 +1763,7 @@ def _get_backgrounds_html(addon_package):
         elif sidebar_type == "slideshow":
             slideshow_images = mw.col.conf.get("modern_menu_sidebar_slideshow_images", [])
             if slideshow_images:
-                sidebar_img_path = f"/_addons/{addon_package}/user_files/sidebar_bg/{slideshow_images[0]}"
+                sidebar_img_path = _addon_media_url(addon_package, "sidebar_bg", slideshow_images[0])
                 sidebar_bg_style = f"background-image: url('{sidebar_img_path}');"
             else:
                 sidebar_bg_style = ""
@@ -1985,7 +2006,7 @@ def _profile_background_render_parts(addon_package, include_default_image=True):
     if bg_mode == "image":
         bg_image_file = _profile_bg_image_name()
         if bg_image_file and os.path.exists(os.path.join(mw.addonManager.addonsFolder(addon_package), "user_files", "profile_bg", bg_image_file)):
-            bg_url = f"/_addons/{addon_package}/user_files/profile_bg/{bg_image_file}"
+            bg_url = _addon_media_url(addon_package, "profile_bg", bg_image_file)
         elif include_default_image:
             # Use default background image when none is selected or file doesn't exist
             bg_url = f"/_addons/{addon_package}/system_files/profile_default/onigiri-bg.png"
@@ -2027,14 +2048,6 @@ def on_webview_js_message(handled, message, context):
         pomodoro.toggle_widget(mw)
         return (True, None)
 
-    if isinstance(context, Reviewer):
-        focus_dango = _focus_dango()
-        if focus_dango.is_focus_dango_enabled():
-            exit_commands = ["decks", "add", "browse", "stats", "sync"]
-            if message in exit_commands:
-                if focus_dango.intercept_exit_attempt(message):
-                    focus_dango.show_dango_dialog(message)
-                    return (True, None)
     if message in ("restaurant_level", "openRestaurantLevel"):
         open_nook_level_dialog()
         return (True, None)
@@ -2246,7 +2259,7 @@ def on_webview_js_message(handled, message, context):
         exit_commands = ["decks", "add", "browse", "stats", "sync"]
         if cmd in exit_commands:
             focus_dango = _focus_dango()
-            if focus_dango.is_focus_dango_enabled():
+            if focus_dango is not None and focus_dango.is_focus_dango_enabled():
                 if focus_dango.intercept_exit_attempt(cmd):
                     focus_dango.show_dango_dialog(cmd)
                     return (True, None)
@@ -2300,12 +2313,27 @@ def patch_overview():
 			f'href="/_addons/{addon_package}/web/{filename}?v={version}">'
 		)
 
+	from . import reviewer_dock
+	overview_dock_mode = reviewer_dock.dock_mode(conf)
+	overview_dock_html, overview_dock_css = reviewer_dock.generate_top_bar_html_and_css(
+		conf, include_overview_class=True
+	)
+	def overview_script_tag(filename):
+		path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", filename)
+		try:
+			version = os.stat(path).st_mtime_ns
+		except OSError:
+			version = 0
+		return f'<script src="/_addons/{addon_package}/web/{filename}?v={version}"></script>'
+
 	overview_component_css = (
 		overview_asset_link("overview.css")
 		+ overview_asset_link("overview_stats.css")
 		+ generate_dynamic_css(conf)
 		+ generate_box_effect_button_vars_css(conf)
-		+ generate_reviewer_top_bar_html_and_css()[1]
+		+ overview_dock_css
+		+ f"<script>window.onigiriReviewerDockMode = {json.dumps(overview_dock_mode)};</script>"
+		+ overview_script_tag("reviewer_dock.js")
 	)
 
 	mini_css = ""
@@ -2569,19 +2597,7 @@ def patch_overview():
 
 	Overview._table = new_table
 	
-	header_html = ""
-	if show_toolbar_replacements and not flow_mode:
-		header_html = f"""
-    <div id="onigiri-overview-header" class="overview-header">
-        <div class="onigiri-reviewer-header-buttons">
-            <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
-            <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
-            <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
-            <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
-            <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
-        </div>
-    </div>
-"""
+	header_html = overview_dock_html if (show_toolbar_replacements and not flow_mode) else ""
 
 	reveal_label_js = json.dumps(tr_at("click_to_reveal"))
 	hide_label_js = json.dumps(tr_at("click_to_hide"))
@@ -2621,7 +2637,7 @@ def patch_overview():
         
         // Collect all external content (anything not Onigiri)
         const container = document.querySelector('.overview-center-container');
-        const onigiriHeader = document.getElementById('onigiri-overview-header');
+        const onigiriHeader = document.getElementById('onigiri-reviewer-header') || document.getElementById('onigiri-overview-header');
         const onigiriTitle = document.querySelector('.overview-title');
         const onigiriContainer = document.querySelector('.overview-container');
         const revealBtn = document.getElementById('onigiri-reveal-btn');
@@ -2637,6 +2653,7 @@ def patch_overview():
                     child !== onigiriTitle && 
                     child !== onigiriContainer && 
                     child !== revealBtn && 
+                    child.id !== 'onigiri-reviewer-header' &&
                     child.id !== 'onigiri-overview-header' &&
                     child.id !== 'onigiri-reveal-btn' &&
                     !child.classList.contains('overview-header') &&
@@ -2740,7 +2757,7 @@ def patch_overview():
         .descfont.descmid.description.dyn {
             display: none !important;
         }
-        .overview-center-container.onigiri-mask-external > *:not(#onigiri-overview-header):not(.overview-profile-bar):not(.overview-title):not(.overview-container):not(#onigiri-reveal-btn):not(style):not(script) {
+        .overview-center-container.onigiri-mask-external > *:not(#onigiri-reviewer-header):not(#onigiri-overview-header):not(.overview-profile-bar):not(.overview-title):not(.overview-container):not(#onigiri-reveal-btn):not(style):not(script) {
             opacity: 0 !important;
             pointer-events: none !important;
         }
@@ -2780,19 +2797,15 @@ def patch_congrats_page():
         max_hide = conf.get("maxHide", False)
         flow_mode = conf.get("flowMode", False)
 
-        header_html = ""
-        if show_toolbar_replacements and not flow_mode:
-            header_html = f"""
-            <div class="overview-header">
-                <div class="onigiri-reviewer-header-buttons">
-                    <a href="#" onclick="pycmd('decks'); return false;" class="onigiri-reviewer-button">{tr_at("decks")}</a>
-                    <a href="#" onclick="pycmd('add'); return false;" class="onigiri-reviewer-button">{tr_at("add")}</a>
-                    <a href="#" onclick="pycmd('browse'); return false;" class="onigiri-reviewer-button">{tr_at("browse")}</a>
-                    <a href="#" onclick="pycmd('stats'); return false;" class="onigiri-reviewer-button">{tr_at("stats")}</a>
-                    <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
-                </div>
-            </div>
-            """
+        from . import reviewer_dock
+
+        dock_mode = reviewer_dock.dock_mode(conf)
+        header_html, dock_css = reviewer_dock.generate_top_bar_html_and_css(
+            conf, include_overview_class=True
+        )
+        if not (show_toolbar_replacements and not flow_mode):
+            header_html = ""
+            dock_css = ""
 
         # 1. Build Profile Bar HTML (if enabled)
         profile_bar_html = ""
@@ -2877,8 +2890,16 @@ def patch_congrats_page():
         
         # 5. Generate Head Content (CSS)
         head_html = generate_dynamic_css(conf)
+        head_html += generate_box_effect_button_vars_css(conf)
         head_html += generate_overview_background_css(addon_path)
-        
+        head_html += dock_css
+        head_html += f"<script>window.onigiriReviewerDockMode = {json.dumps(dock_mode)};</script>"
+        dock_js_path = os.path.join(addon_path, "web", "reviewer_dock.js")
+        try:
+            dock_js_ver = os.stat(dock_js_path).st_mtime_ns
+        except OSError:
+            dock_js_ver = 0
+
         # 6. Render the page
         self.web.stdHtml(
             body_html,
@@ -2886,7 +2907,7 @@ def patch_congrats_page():
                 f"/_addons/{addon_package}/web/congrats.css",
                 f"/_addons/{addon_package}/web/overview_stats.css",
             ],
-            js=[], # JS messages are handled by the hook, no need to inject a file
+            js=[f"/_addons/{addon_package}/web/reviewer_dock.js?v={dock_js_ver}"],
             head=head_html,
             context=self,
         )
@@ -2898,6 +2919,13 @@ def patch_congrats_page():
                 document.body.prepend(bgDiv);
             }
         """)
+        # Redraw Overview's bottom bar so Reviewer answer buttons don't linger
+        # in the shared mw.bottomWeb after finishing a deck.
+        if hasattr(self, "_renderBottom"):
+            try:
+                self._renderBottom()
+            except Exception as e:
+                print(f"Onigiri: Error drawing congrats bottom bar: {e}")
 
     # patch_overview() re-runs on every settings save, so the wrapper must not
     # stack: each extra layer is one more nested call on the congrats screen.
@@ -2931,7 +2959,7 @@ def generate_deck_browser_backgrounds(addon_path):
         
         if slideshow_images:
             addon_name = os.path.basename(addon_path)
-            image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in slideshow_images]
+            image_urls = [_addon_media_url(addon_name, "main_bg", img) for img in slideshow_images]
             
             blur_px = main_blur * 0.2
             scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
@@ -3084,7 +3112,7 @@ def generate_deck_browser_backgrounds(addon_path):
 
     sidebar_mode = mw.col.conf.get("modern_menu_sidebar_bg_mode", "main")
     sidebar_css = ""
-    if sidebar_mode == 'custom':
+    if sidebar_mode in ('custom', 'independent'):
         side_mode = mw.col.conf.get("modern_menu_sidebar_bg_type", "color")
         side_light_color = mw.col.conf.get(
             "modern_menu_sidebar_bg_color_light",
@@ -3098,7 +3126,6 @@ def generate_deck_browser_backgrounds(addon_path):
             side_blur = float(mw.col.conf.get("modern_menu_sidebar_bg_blur", 0) or 0)
         except (TypeError, ValueError):
             side_blur = 0.0
-        side_image_mode = mw.col.conf.get("modern_menu_sidebar_bg_image_theme_mode", "separate")
         side_opacity = mw.col.conf.get("modern_menu_sidebar_bg_opacity", 100)
         try:
             side_opacity_percent = max(0.0, min(100.0, float(side_opacity)))
@@ -3132,7 +3159,8 @@ def generate_deck_browser_backgrounds(addon_path):
             except (TypeError, ValueError):
                 pass
             side_opacity_alpha = side_opacity_percent / 100.0
-            side_mode = "color"
+            if sidebar_mode == "custom":
+                side_mode = "color"
 
         if side_mode == "color" or side_mode == "accent":
             alpha = side_opacity_alpha
@@ -3170,20 +3198,22 @@ def generate_deck_browser_backgrounds(addon_path):
                     .night-mode .sidebar-left {{ background-color: {dark_rgba} !important; }}
                 </style>"""
 
-        elif side_mode == "image_color":
-            if side_image_mode == "separate":
-                side_light_img_filename = mw.col.conf.get("modern_menu_sidebar_bg_image_light", "")
-                side_dark_img_filename = mw.col.conf.get("modern_menu_sidebar_bg_image_dark", "")
-            else:
-                side_light_img_filename = mw.col.conf.get("modern_menu_sidebar_bg_image", "")
-                side_dark_img_filename = side_light_img_filename
+        elif side_mode in ("image", "image_color"):
+            side_light_img_filename = config.themed_asset(
+                config.get_collection_config, "modern_menu_sidebar_bg_image", False,
+                dynamic_key="modern_menu_sidebar_bg_image_theme_mode",
+            )
+            side_dark_img_filename = config.themed_asset(
+                config.get_collection_config, "modern_menu_sidebar_bg_image", True,
+                dynamic_key="modern_menu_sidebar_bg_image_theme_mode",
+            )
 
             side_light_img = f"user_files/sidebar_bg/{side_light_img_filename}" if side_light_img_filename else ""
             side_dark_img = f"user_files/sidebar_bg/{side_dark_img_filename}" if side_dark_img_filename else ""
             side_light_color_render = _hex_to_rgba(side_light_color, side_opacity_alpha)
             side_dark_color_render = _hex_to_rgba(side_dark_color, side_opacity_alpha)
             sidebar_css = _render_background_css(
-                ".sidebar-left", "image_color", side_light_color_render, side_dark_color_render,
+                ".sidebar-left", side_mode, side_light_color_render, side_dark_color_render,
                 side_light_img, side_dark_img, side_blur, addon_path,
                 "modern-menu-sidebar-background-style", side_opacity_percent
             )
@@ -3198,7 +3228,7 @@ def generate_deck_browser_backgrounds(addon_path):
             slideshow_images = mw.col.conf.get("modern_menu_sidebar_slideshow_images", [])
             slideshow_interval = mw.col.conf.get("modern_menu_sidebar_slideshow_interval", 10)
             if slideshow_images:
-                image_urls = [f"/_addons/{addon_name}/user_files/sidebar_bg/{img}" for img in slideshow_images]
+                image_urls = [_addon_media_url(addon_name, "sidebar_bg", img) for img in slideshow_images]
                 blur_px = side_blur * 0.2
                 scale = 1.0 + (blur_px / 50.0) if blur_px > 0 else 1.0
                 opacity_float = side_opacity_alpha
@@ -3345,10 +3375,10 @@ def generate_deck_browser_backgrounds(addon_path):
             </style>
             """
         
-    if sidebar_mode == 'custom' and side_mode == 'accent':
+    if sidebar_mode in ('custom', 'independent') and side_mode == 'accent':
         ring_light_color = ring_dark_color = "var(--accent-color)"
         menu_light_color, menu_dark_color = ring_light_color, ring_dark_color
-    elif sidebar_mode == 'custom':
+    elif sidebar_mode in ('custom', 'independent'):
         ring_light_color, ring_dark_color = side_light_color, side_dark_color
         menu_light_color, menu_dark_color = ring_light_color, ring_dark_color
     else:
@@ -3411,8 +3441,14 @@ def generate_deck_browser_backgrounds(addon_path):
     widget_margin_values = [
         _sidebar_int_setting(key, 0) for key in widget_margin_keys
     ]
-    sidebar_widget_gap = _sidebar_offset_setting(
+    sidebar_widget_gap_mode = str(
+        mw.col.conf.get("modern_menu_sidebar_widget_gap_mode", "auto") or "auto"
+    ).strip().lower()
+    sidebar_widget_gap = max(0, _sidebar_offset_setting(
         "modern_menu_sidebar_widget_gap", 0
+    ))
+    sidebar_widget_gap_css = _build_sidebar_widget_gap_css(
+        sidebar_margin, sidebar_widget_gap_mode, sidebar_widget_gap
     )
     item_margin_css = ""
     if any(mw.col.conf.get(key) is not None for key in item_margin_keys):
@@ -3453,28 +3489,84 @@ def generate_deck_browser_backgrounds(addon_path):
         .sidebar-left::after {{
             border-radius: inherit;
         }}
-        /* A signed margin, rather than flexbox's non-negative `gap`, lets
-           users reclaim the otherwise unused area after resizing the sidebar. */
-        .container.modern-main-menu:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) {{
-            gap: 0 !important;
-        }}
-        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .main-content {{
-            margin-left: {sidebar_widget_gap}px !important;
-        }}
-        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .main-content {{
-            margin-right: {sidebar_widget_gap}px !important;
-        }}
-        .container.modern-main-menu.onigiri-cycle-stacked .main-content,
-        .container.modern-main-menu.onigiri-sidebar-center .main-content {{
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-        }}
+        {sidebar_widget_gap_css}
         {item_margin_css}
         {widget_margin_css}
     </style>
     """
 
     return main_container_css + sidebar_css + sidebar_frame_css + ring_color_css + quick_menu_css
+
+
+def _build_sidebar_widget_gap_css(sidebar_margin, sidebar_widget_gap_mode="auto", sidebar_widget_gap=0):
+    """Build Main Menu CSS controlling horizontal spacing between sidebar, widgets, and window edge.
+
+    In automatic mode (default), widgets stay centered in the space beside the
+    sidebar and the outer padding of ``.main-content`` mirrors ``.sidebar-left``'s
+    inner margin while the sidebar is expanded, keeping the visual distance to
+    the sidebar equal to the distance to the window border.
+    In manual mode, the widgets anchor beside the sidebar using the user's
+    explicit pixel offset.
+    """
+    try:
+        margin_px = max(0, int(float(sidebar_margin)))
+    except (TypeError, ValueError):
+        margin_px = 10
+    mode = str(sidebar_widget_gap_mode or "auto").strip().lower()
+    if mode not in {"auto", "manual"}:
+        mode = "auto"
+    try:
+        gap_px = max(0, min(240, int(float(sidebar_widget_gap))))
+    except (TypeError, ValueError):
+        gap_px = 0
+
+    if mode == "manual":
+        mode_css = f"""
+        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content {{
+            margin-left: {gap_px}px !important;
+            align-items: flex-start;
+        }}
+        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content {{
+            margin-right: {gap_px}px !important;
+            align-items: flex-end;
+        }}
+        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content .injected-stats-block {{
+            align-items: flex-start;
+        }}
+        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content .unified-grid {{
+            justify-content: start;
+        }}
+        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content .injected-stats-block {{
+            align-items: flex-end;
+        }}
+        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content .unified-grid {{
+            justify-content: end;
+        }}"""
+    else:
+        mode_css = f"""
+        .container.modern-main-menu:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .main-content {{
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            align-items: center;
+            align-items: safe center;
+        }}
+        .container.modern-main-menu:not(.onigiri-sidebar-right):not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content {{
+            padding-right: calc(15px + {margin_px}px) !important;
+        }}
+        .container.modern-main-menu.onigiri-sidebar-right:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) .sidebar-left:not(.sidebar-collapsed) ~ .main-content {{
+            padding-left: calc(15px + {margin_px}px) !important;
+        }}"""
+
+    return f"""/* Keep the gutter independent of the grid's column count. Negative
+           legacy offsets must not let cards overlap the sidebar. */
+        .container.modern-main-menu:not(.onigiri-cycle-stacked):not(.onigiri-sidebar-center) {{
+            gap: 0 !important;
+        }}{mode_css}
+        .container.modern-main-menu.onigiri-cycle-stacked .main-content,
+        .container.modern-main-menu.onigiri-sidebar-center .main-content {{
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }}"""
 
 
 def _resolve_night_mode():
@@ -3555,15 +3647,21 @@ def set_main_webview_background_color(color):
     """
     try:
         from aqt.qt import QColor
-        qcolor = QColor(color) if color else QColor()
+        qcolor = QColor(color) if isinstance(color, str) and color.strip() else QColor()
         if not qcolor.isValid():
             # A blank/invalid stored color must not become an invalid QColor,
             # which Qt paints as black - the very flash we are trying to avoid.
             qcolor = QColor("#2C2C2C") if _resolve_night_mode() else QColor("#F5F5F5")
+        # Always force full opacity: a translucent base color on QWebEnginePage
+        # can trigger a Chromium CHECK crash (0x80000003) on Windows Qt 6.
+        if qcolor.alpha() < 255:
+            qcolor.setAlpha(255)
         web = getattr(mw, "web", None)
         page = web.page() if web is not None else None
         if page is not None:
-            page.setBackgroundColor(qcolor)
+            current = page.backgroundColor() if hasattr(page, "backgroundColor") else None
+            if current != qcolor:
+                page.setBackgroundColor(qcolor)
     except Exception as e:
         print(f"Onigiri: could not set main webview background color: {e}")
 
@@ -3700,7 +3798,7 @@ def generate_reviewer_background_css(addon_path):
         blur_val = conf.get("onigiri_reviewer_bg_blur", 0)
         opacity_val = conf.get("onigiri_reviewer_bg_opacity", 100)
         images = conf.get("onigiri_reviewer_slideshow_images", []) or []
-        image_urls = [f"/_addons/{addon_name}/user_files/reviewer_bg/{img}" for img in images]
+        image_urls = [_addon_media_url(addon_name, "reviewer_bg", img) for img in images]
         return _render_body_slideshow_background_css(
             "onigiri-reviewer-background-style",
             image_urls,
@@ -3728,7 +3826,7 @@ def generate_reviewer_background_css(addon_path):
         
         if mode == "slideshow":
             images = config.get_collection_config("modern_menu_slideshow_images", []) or []
-            image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in images]
+            image_urls = [_addon_media_url(addon_name, "main_bg", img) for img in images]
             return _render_body_slideshow_background_css(
                 "onigiri-reviewer-background-style",
                 image_urls,
@@ -3779,8 +3877,8 @@ def generate_reviewer_background_css(addon_path):
             dynamic_key=main_dynamic_key,
         )
 
-        light_img_url = f"/_addons/{addon_name}/user_files/main_bg/{light_img_file}" if light_img_file else "none"
-        dark_img_url = f"/_addons/{addon_name}/user_files/main_bg/{dark_img_file}" if dark_img_file else "none"
+        light_img_url = _addon_media_url(addon_name, "main_bg", light_img_file) if light_img_file else "none"
+        dark_img_url = _addon_media_url(addon_name, "main_bg", dark_img_file) if dark_img_file else "none"
         
     elif reviewer_mode == "color":
         # Solid color only
@@ -3806,8 +3904,8 @@ def generate_reviewer_background_css(addon_path):
         light_img_file = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", False, dynamic_key=dynamic_key)
         dark_img_file = config.themed_asset(conf.get, "onigiri_reviewer_bg_image", True, dynamic_key=dynamic_key)
 
-        light_img_url = f"/_addons/{addon_name}/user_files/reviewer_bg/{light_img_file}" if light_img_file else "none"
-        dark_img_url = f"/_addons/{addon_name}/user_files/reviewer_bg/{dark_img_file}" if dark_img_file else "none"
+        light_img_url = _addon_media_url(addon_name, "reviewer_bg", light_img_file) if light_img_file else "none"
+        dark_img_url = _addon_media_url(addon_name, "reviewer_bg", dark_img_file) if dark_img_file else "none"
 
     # EXACT COPY of overview CSS generation
     blur_px = blur_val * 0.2
@@ -3941,7 +4039,7 @@ def generate_overview_background_css(addon_path):
     if overview_mode == "main" and mw.col.conf.get("modern_menu_background_mode", "color") == "slideshow":
         addon_name = os.path.basename(addon_path)
         images = config.get_collection_config("modern_menu_slideshow_images", []) or []
-        image_urls = [f"/_addons/{addon_name}/user_files/main_bg/{img}" for img in images]
+        image_urls = [_addon_media_url(addon_name, "main_bg", img) for img in images]
         return _render_body_slideshow_background_css(
             "onigiri-overview-background-style",
             image_urls,
@@ -3960,9 +4058,9 @@ def generate_overview_background_css(addon_path):
                 background-color: {light_color} !important;
                 background-image: none !important;
             }}
-            .night-mode html,
+            html.night-mode,
             .night-mode body,
-            .nightMode html,
+            html.nightMode,
             .nightMode body {{
                 background-color: {dark_color} !important;
             }}
@@ -3997,8 +4095,8 @@ def generate_overview_background_css(addon_path):
         </style>"""
 
     addon_name = os.path.basename(addon_path)
-    light_img_url = f"/_addons/{addon_name}/user_files/main_bg/{light_img_file}" if light_img_file else "none"
-    dark_img_url = f"/_addons/{addon_name}/user_files/main_bg/{dark_img_file}" if dark_img_file else "none"
+    light_img_url = _addon_media_url(addon_name, "main_bg", light_img_file) if light_img_file else "none"
+    dark_img_url = _addon_media_url(addon_name, "main_bg", dark_img_file) if dark_img_file else "none"
 
     blur_px = blur_val * 0.2
     opacity_float = opacity_val / 100.0
@@ -4017,8 +4115,8 @@ def generate_overview_background_css(addon_path):
             background-image: none !important;
             background-color: transparent !important;
         }}
-        .night-mode html,
-        .nightMode html {{
+        html.night-mode,
+        html.nightMode {{
             background-color: {dark_color} !important;
             background-image: none !important;
         }}
@@ -4731,12 +4829,15 @@ def update_reviewer_card_type(card):
 
 
 def _on_reviewer_progress_state_change(new_state, old_state):
+    global _last_reviewer_chip_html
     if new_state == "review":
         # Deck switches and re-entries both land here; the key check inside
         # keeps a mid-session state bounce from zeroing the counter.
+        _last_reviewer_chip_html = None
         invalidate_reviewer_progress_settings()
         reset_reviewer_progress_session()
     elif old_state == "review":
+        _last_reviewer_chip_html = None
         _progress_session["key"] = None
 
 
@@ -4759,12 +4860,12 @@ def _study_tool_header_buttons(conf):
 
     hashi_notes_button_html = (
         '<a href="#" onclick="pycmd(\'openHashiNotes:reviewer\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-hashi-notes-button" data-header-button="hashi">{tr_at("hashi_notes_title")}</a>'
+        f'class="onigiri-reviewer-button onigiri-hashi-notes-button">{tr_at("hashi_notes_title")}</a>'
         if show_hashi_notes_button else ""
     )
     pomodoro_button_html = (
         '<a href="#" onclick="pycmd(\'togglePomodoro\'); return false;" '
-        f'class="onigiri-reviewer-button onigiri-pomodoro-button" data-header-button="pomodoro">{tr_at("pomodoro_title")}</a>'
+        f'class="onigiri-reviewer-button onigiri-pomodoro-button">{tr_at("pomodoro_title")}</a>'
         if show_pomodoro_button else ""
     )
 
@@ -4778,10 +4879,7 @@ def refresh_study_tool_reviewer_buttons(conf=None):
     buttons_html = "".join(_study_tool_header_buttons(conf))
     script = """
     (() => {
-        const roots = [document];
-        const host = document.getElementById('onigiri-reviewer-ui-host');
-        if (host && host.shadowRoot) roots.push(host.shadowRoot);
-        roots.flatMap(root => Array.from(root.querySelectorAll('.onigiri-reviewer-header-buttons'))).forEach(header => {
+        document.querySelectorAll('.onigiri-reviewer-header-buttons').forEach(header => {
             const existing = header.querySelectorAll('.onigiri-hashi-notes-button, .onigiri-pomodoro-button');
             const anchor = document.createComment('study-tools');
             if (existing.length) existing[0].before(anchor);
@@ -4798,107 +4896,17 @@ def refresh_study_tool_reviewer_buttons(conf=None):
         });
     })();
     """.replace("BUTTONS_HTML", json.dumps(buttons_html))
+    from . import reviewer_dock
+    if reviewer_dock.dock_mode(conf) != "static":
+        reviewer_dock.refresh_live_dock(conf)
+        overview_web = getattr(getattr(mw, "overview", None), "web", None)
+        if overview_web is not None:
+            overview_web.eval(script)
+        return
     for surface in (getattr(mw, "reviewer", None), getattr(mw, "overview", None)):
         web = getattr(surface, "web", None)
         if web is not None:
             web.eval(script)
-
-
-def generate_reviewer_header_css(conf=None):
-    """Reviewer-only variables; overview headers continue to use widget chrome."""
-    if conf is None:
-        conf = config.get_config_readonly()
-    custom = conf.get("onigiri_reviewer_header_mode", "widgets") == "custom"
-    selector = "#onigiri-reviewer-header.onigiri-header-customization"
-    rules = []
-    def number(name, default, maximum):
-        return max(0, min(maximum, _onigiri_int_style_value(conf.get("onigiri_reviewer_header_" + name), default)))
-    opacity = number("opacity", 100, 100) / 100
-    def color(suffix, mode):
-        theme = conf.get("onigiri_web_rheader_" + suffix + "_theme_mode", "separate")
-        mode = "light" if theme == "single" else mode
-        defaults = {"bg": ("#ffffff", "#3a3a3a"), "text": ("#2c2c2c", "#e0e0e0"),
-                    "hover_bg": ("#2c2c2c", "#e0e0e0"), "hover_text": ("#f0f0f0", "#3a3a3a"),
-                    "border": ("#DBDBDB", "#444444")}
-        fallback = defaults[suffix][mode == "dark"]
-        value = str(conf.get("onigiri_reviewer_header_" + suffix + "_" + mode, fallback) or "").strip()
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}|rgba?\(\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)?\s*\)|transparent", value):
-            return ""
-        if suffix in ("bg", "hover_bg"):
-            if value.startswith("rgba"):
-                original_alpha = float(value[value.rfind(",") + 1:value.rfind(")")].strip())
-                return _onigiri_css_color_with_alpha(value, opacity * original_alpha)
-            return _onigiri_css_color_with_alpha(value, opacity)
-        return value
-    if custom:
-        padding = number("padding", 5, 100)
-        rules.append(f"{selector} {{ --rh-radius: {number('radius', 12, 100)}px; "
-                     f"--rh-stroke: {number('border_size', 0, 10)}px; --rh-padding: {padding}px; "
-                     f"--rh-padding-x: {padding + 7}px; --rh-height: {number('height', 0, 200)}px; "
-                     f"--rh-blur: {number('blur', 0, 100) / 5:.2f}px; }}")
-        rules.append(f"{selector} .onigiri-reviewer-header-buttons {{ gap: {number('gap', 8, 40)}px !important; }}")
-        for mode, scope in (("light", selector), ("dark", ".night_mode " + selector)):
-            variables = []
-            for suffix in ("bg", "text", "hover_bg", "hover_text", "border"):
-                value = color(suffix, mode)
-                if value:
-                    variables.append("--rh-" + suffix.replace("_", "-") + ": " + value + ";")
-            rules.append(scope + " { " + " ".join(variables) + " }")
-    for mode, scope in (("light", selector), ("dark", ".night_mode " + selector)):
-        ink = str(config.get_collection_config("onigiri_font_reviewer_header_color_" + mode, "") or "")
-        if re.fullmatch(r"#[0-9a-fA-F]{6}", ink):
-            rules.append(scope + " { --rh-text: " + ink + "; }")
-    package = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
-    font_css = generate_scoped_main_font_css(package, selector, role="reviewer_header")
-    shared_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "reviewer_header_shared.css")
-    with open(shared_path, encoding="utf-8") as handle:
-        shared = handle.read()
-    return font_css + '<style id="onigiri-reviewer-header-customization">' + "\n".join(rules) + shared + '</style>'
-
-
-def refresh_reviewer_header_style(conf=None):
-    """Replace styling without reloading the active review card or progress counts."""
-    web = getattr(getattr(mw, "reviewer", None), "web", None)
-    if getattr(mw, "state", None) != "review" or web is None:
-        return
-    settings = _reviewer_progress_settings(conf, force=True)
-    css = (generate_reviewer_header_css(conf) + _reviewer_progress_css(settings)).replace(".night_mode #onigiri-reviewer-header", ":host(.night-mode) #onigiri-reviewer-header")
-    progress_html = _reviewer_progress_html(settings) if settings["enabled"] else ""
-    web.eval("""(() => {
-        const host = document.getElementById('onigiri-reviewer-ui-host');
-        const root = host && host.shadowRoot;
-        const header = root && root.getElementById('onigiri-reviewer-header');
-        if (!header) return;
-        header.classList.add('onigiri-header-customization');
-        header.classList.toggle('is-custom-header', HEADER_CUSTOM);
-        root.querySelectorAll('#onigiri-scoped-reviewer_header-font, #onigiri-reviewer-header-customization, #onigiri-reviewer-progress-style').forEach(node => node.remove());
-        const template = document.createElement('template');
-        template.innerHTML = CSS;
-        const fontSource = template.content.querySelector('#onigiri-scoped-reviewer_header-font');
-        if (fontSource) {
-            const previousFont = document.getElementById('onigiri-reviewer-header-font-document');
-            if (previousFont) previousFont.remove();
-            const fontStyle = fontSource.cloneNode(true);
-            fontStyle.id = 'onigiri-reviewer-header-font-document';
-            document.head.appendChild(fontStyle);
-        }
-        root.appendChild(template.content);
-        let chip = root.getElementById('onigiri-reviewer-progress');
-        const progressHtml = PROGRESS_HTML;
-        if (!progressHtml) { if (chip) chip.remove(); }
-        else {
-            const progress = document.createElement('template');
-            progress.innerHTML = progressHtml;
-            const fresh = progress.content.firstElementChild;
-            if (!chip) chip = fresh;
-            else { chip.className = fresh.className; chip.innerHTML = fresh.innerHTML; }
-            const buttons = header.querySelector('.onigiri-reviewer-header-buttons');
-            if (PROGRESS_LEFT) buttons.prepend(chip); else buttons.append(chip);
-        }
-        window.dispatchEvent(new Event('resize'));
-    })();""".replace("CSS", json.dumps(css)).replace("PROGRESS_HTML", json.dumps(progress_html))
-        .replace("PROGRESS_LEFT", json.dumps(settings["position"] == "left"))
-        .replace("HEADER_CUSTOM", json.dumps((conf or config.get_config_readonly()).get("onigiri_reviewer_header_mode") == "custom")))
 
 
 def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
@@ -4922,7 +4930,8 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         achievements_conf = conf.get("achievements", {})
         restaurant_conf = achievements_conf.get("restaurant_level", {})
     
-    if (restaurant_conf.get("enabled", False) and
+    if (not include_overview_class and
+        restaurant_conf.get("enabled", False) and
         restaurant_conf.get("show_reviewer_header", False)):
         restaurant_chip_html = _get_reviewer_nook_level_chip_html()
         show_restaurant_chip = bool(restaurant_chip_html.strip())
@@ -4935,6 +4944,8 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
 
     # Build the HTML with the restaurant chip if enabled
     hashi_notes_button_html, pomodoro_button_html = _study_tool_header_buttons(conf)
+    from ..api.sidebar import render_reviewer_toolbar_entries
+    external_buttons_html = "" if include_overview_class else render_reviewer_toolbar_entries()
 
     # The header gauge only makes sense over a live queue, so it is built for
     # the reviewer webview and left out of the overview's copy of this header.
@@ -4958,6 +4969,7 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         <a href="#" onclick="pycmd('sync'); return false;" class="onigiri-reviewer-button">{tr_at("sync")}</a>
         {hashi_notes_button_html}
         {pomodoro_button_html}
+        <span id="onigiri-reviewer-external-actions" style="display: contents">{external_buttons_html}</span>
         {restaurant_chip_html if show_restaurant_chip else ""}
         {progress_html if progress_settings["position"] == "right" else ""}
     </div>
@@ -4968,13 +4980,6 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
         {header_buttons}
     </div>
     """
-
-    if not include_overview_class:
-        custom_class = ' is-custom-header' if conf.get('onigiri_reviewer_header_mode') == 'custom' else ''
-        html = html.replace('class="header"', f'class="header onigiri-header-customization{custom_class}"')
-        for action in ("decks", "add", "browse", "stats", "sync"):
-            html = html.replace(f"pycmd('{action}'); return false;\" class=\"onigiri-reviewer-button\"",
-                                f"pycmd('{action}'); return false;\" class=\"onigiri-reviewer-button\" data-header-button=\"{action}\"")
 
     css = """
     <style id="onigiri-reviewer-top-bar-structure">
@@ -5081,27 +5086,34 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
             margin-left: 0;
             padding: 4px 10px;
             border-radius: 999px;
-            /* Same chrome tokens as a.onigiri-reviewer-button so the chip reads
-               as one of the header buttons; only the pill radius differs. */
-            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(247, 247, 247, 0.92)));
-            backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
-            -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px));
+            /* Same chrome tokens as a.onigiri-reviewer-button and .onigiri-reviewer-progress so the pills share an identical background. */
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(247, 247, 247, 0.92))) !important;
+            backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px)) !important;
+            -webkit-backdrop-filter: blur(var(--onigiri-box-effect-blur, 0px)) !important;
             color: var(--onigiri-box-effect-fg, var(--fg));
             font-family: var(--font-main), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             font-size: var(--font-size-main, 13px);
             transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
             position: relative;
             overflow: hidden;
-            border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2));
+            border: var(--onigiri-box-effect-stroke, 1px) solid var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2)) !important;
             cursor: pointer;
             flex: 0 0 auto;
         }
 
         .night_mode #onigiri-reviewer-header .restaurant-level-chip,
+        :host(.night-mode) #onigiri-reviewer-header .restaurant-level-chip,
         .night_mode #onigiri-overview-header .restaurant-level-chip,
         .night_mode .overview-header .restaurant-level-chip {
-            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(42, 42, 42, 0.92)));
-            border-color: var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2));
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, rgba(42, 42, 42, 0.92))) !important;
+            border-color: var(--onigiri-box-effect-border, rgba(128, 128, 128, 0.2)) !important;
+        }
+
+        #onigiri-reviewer-header:not(.is-island):has(.onigiri-reviewer-progress.is-bare) .restaurant-level-chip {
+            background: transparent !important;
+            border-color: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
         }
         
         #onigiri-reviewer-header .restaurant-level-chip .rl-chip-level,
@@ -5193,8 +5205,6 @@ def generate_reviewer_top_bar_html_and_css(include_overview_class=True):
     """
     
     css += progress_css
-    if not include_overview_class:
-        css += generate_reviewer_header_css(conf)
 
     return html, css
 
@@ -5403,10 +5413,10 @@ def _generate_outer_background_css(mode, light_color, dark_color, light_img_path
         def get_img_url(img_path):
             if not img_path:
                 return None
-            if img_path.startswith("user_files/"):
-                return f"/_addons/{addon_name}/{img_path}"
-            else:
-                return f"/_addons/{addon_name}/user_files/{img_path}"
+            clean = str(img_path).replace("\\", "/").lstrip("/")
+            if clean.startswith("user_files/"):
+                clean = clean[len("user_files/"):]
+            return _addon_media_url(addon_name, "", clean)
         
         light_img_url = get_img_url(light_img_path)
         dark_img_url = get_img_url(dark_img_path)
@@ -6608,9 +6618,6 @@ def generate_font_css(addon_package):
 
     # "sync" is a mode, not a font, so it never takes part in font lookups.
     extra_font_keys = {profile_name_font_key, "silkscreen"}
-    reviewer_header_font_key = col_get("onigiri_font_reviewer_header", "sync") or "sync"
-    if reviewer_header_font_key != "sync":
-        extra_font_keys.add(reviewer_header_font_key)
     if profile_level_font_key != "sync":
         extra_font_keys.add(profile_level_font_key)
     if stats_title_font_key != "sync":
@@ -7142,21 +7149,13 @@ def generate_box_effect_button_vars_css(conf=None, selector=":root", night_selec
     """
 
 
-def generate_scoped_main_font_css(addon_package, selector, role=None):
-	main_font_key = mw.col.conf.get("onigiri_font_main", "system")
-	main_font_size = mw.col.conf.get("onigiri_font_size_main", 14)
-	if role:
-		chosen = mw.col.conf.get("onigiri_font_" + role, "sync")
-		if chosen and chosen != "sync":
-			main_font_key = chosen
-		main_font_size = mw.col.conf.get("onigiri_font_size_" + role, main_font_size)
-	main_font_size = max(8, min(72, _onigiri_int_style_value(main_font_size, 14)))
+def generate_scoped_main_font_css(addon_package, selector):
+	main_font_key = config.get_collection_config("onigiri_font_main", "system")
+	main_font_size = config.get_collection_config("onigiri_font_size_main", 14)
 	from ..ui_kit.fonts import FONTS, get_all_fonts
 
 	all_fonts = FONTS if main_font_key in FONTS else get_all_fonts(os.path.dirname(os.path.dirname(__file__)))
 	main_font_info = all_fonts.get(main_font_key)
-	if not main_font_info and role:
-		main_font_info = all_fonts.get(mw.col.conf.get("onigiri_font_main", "system")) or FONTS.get("system")
 	if not main_font_info:
 		return ""
 
@@ -7169,7 +7168,7 @@ def generate_scoped_main_font_css(addon_package, selector, role=None):
 			font_url = f"/_addons/{addon_package}/user_files/fonts/{main_font_info['file']}"
 		else:
 			font_url = f"/_addons/{addon_package}/system_files/fonts/system_fonts/{main_font_info['file']}"
-		font_face = f"""
+		font_face += f"""
         @font-face {{
             font-family: '{main_font_info['family']}';
             src: url('{font_url}');
@@ -7177,12 +7176,11 @@ def generate_scoped_main_font_css(addon_package, selector, role=None):
         """
 
 	return f"""
-    <style id="onigiri-scoped-{role or 'main'}-font">
+    <style id="onigiri-scoped-main-font">
         {font_face}
         {selector} {{
             --font-main: {main_font_info['family']};
             --font-size-main: {int(main_font_size)}px;
-            {f"--rh-font-family: {main_font_info['family']}; --rh-font-size: {main_font_size}px;" if role else ""}
         }}
     </style>
     """
@@ -8137,8 +8135,12 @@ def _update_toolbar_visibility(new_state: str, _old_state: str) -> None:
         _set_web_visible(mw.toolbar.web, True)
         _set_web_visible(mw.bottomWeb, True)
 
+_last_reviewer_chip_html = None
+
+
 def update_reviewer_chip():
     """Update the Restaurant Level chip in Onigiri's reviewer shadow header."""
+    global _last_reviewer_chip_html
     try:
         if getattr(mw, "state", None) != "review":
             return
@@ -8149,6 +8151,12 @@ def update_reviewer_chip():
             return
 
         chip_html = _get_reviewer_nook_level_chip_html()
+        # Skip the JS bridge eval and DOM mutation entirely when the rendered
+        # chip hasn't changed (e.g. Restaurant Level disabled or same markup).
+        if chip_html == _last_reviewer_chip_html:
+            return
+        _last_reviewer_chip_html = chip_html
+
         script = f"""
         (function() {{
             const chipHtml = {json.dumps(chip_html)};
@@ -8160,9 +8168,13 @@ def update_reviewer_chip():
             const buttons = header && header.querySelector('.onigiri-reviewer-header-buttons');
             const existing = header && header.querySelector('.restaurant-level-chip');
             const trimmed = chipHtml.trim();
+            let layoutChanged = false;
 
             if (!trimmed) {{
-                if (existing) existing.remove();
+                if (existing) {{
+                    existing.remove();
+                    layoutChanged = true;
+                }}
             }} else {{
                 const template = document.createElement('template');
                 template.innerHTML = trimmed;
@@ -8171,10 +8183,11 @@ def update_reviewer_chip():
                     existing.replaceWith(nextChip);
                 }} else if (nextChip && buttons) {{
                     buttons.appendChild(nextChip);
+                    layoutChanged = true;
                 }}
             }}
 
-            if (typeof window.onigiriRefreshReviewerHeaderOffset === 'function') {{
+            if (layoutChanged && typeof window.onigiriRefreshReviewerHeaderOffset === 'function') {{
                 window.onigiriRefreshReviewerHeaderOffset();
             }}
         }})();
@@ -8524,16 +8537,16 @@ def apply_patches():
 
 def generate_reviewer_font_css(addon_package):
     """Return Reviewer-page typography for Anki's separate bottom webview."""
-    base_key = mw.col.conf.get("onigiri_font_main", "system") or "system"
-    base_size = mw.col.conf.get("onigiri_font_size_main", 14)
+    base_key = config.get_collection_config("onigiri_font_main", "system") or "system"
+    base_size = config.get_collection_config("onigiri_font_size_main", 14)
     font_key = base_key
     font_size = base_size
-    advanced_key = mw.col.conf.get(
+    advanced_key = config.get_collection_config(
         "onigiri_font_reviewer_controls", "sync"
     ) or "sync"
     if advanced_key != "sync":
         font_key = advanced_key
-    font_size = mw.col.conf.get(
+    font_size = config.get_collection_config(
         "onigiri_font_size_reviewer_controls", base_size
     )
 
@@ -9810,34 +9823,6 @@ def generate_reviewer_buttons_css(conf):
             let lastPrimary = null;
             let renderDepth = 0;
 
-            function reserveSpeedFocusSpace() {
-                const outer = document.getElementById('outer');
-                if (!outer) return;
-                const control = outer.querySelector('#spdfControls');
-                const visible = !!control && !!control.getClientRects().length;
-                outer.classList.toggle('onigiri-bbar-speed-focus', visible);
-                if (!visible) {
-                    outer.style.removeProperty('--onigiri-bbar-side-space');
-                    return;
-                }
-                // Include utility margins and cell padding, plus the primary
-                // button's margins and nested cell's 10px side padding.
-                // Measure natural controls rather than the flexible cells,
-                // whose widths include spare space.
-                let space = 30;
-                outer.querySelectorAll(':scope > table > tbody > tr > td:not(#middle)').forEach(cell => {
-                    const style = getComputedStyle(cell);
-                    space += (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-                    cell.querySelectorAll('button').forEach(button => {
-                        if (!button.getClientRects().length) return;
-                        const buttonStyle = getComputedStyle(button);
-                        space += button.getBoundingClientRect().width
-                            + (parseFloat(buttonStyle.marginLeft) || 0) + (parseFloat(buttonStyle.marginRight) || 0);
-                    });
-                });
-                outer.style.setProperty('--onigiri-bbar-side-space', Math.max(280, Math.ceil(space)) + 'px');
-            }
-
             function classifyButtons() {
                 stripBottomBarTooltips(document);
                 renderOnigiriCardTypeIndicator();
@@ -9867,7 +9852,6 @@ def generate_reviewer_buttons_css(conf):
                 answerButtons.forEach((item, index) => prepareAnswerButton(item.btn, item.ease, nativeNumbers[index] || null));
                 collapseNativeNumberHosts();
                 prepareShowAnswerCounts(buttons);
-                reserveSpeedFocusSpace();
                 renderOnigiriCardTypeIndicator();
                 const primary = answerButtons.length
                     ? answerButtons[0].btn.closest('.onigiri-fixed-answer-row')
@@ -9966,53 +9950,6 @@ def generate_reviewer_buttons_css(conf):
             border: {border_size}px solid var(--onigiri-bbar-border, {conf.get('onigiri_reviewer_btn_border_color_light', '#DBDBDB')}) !important;
         }}
         #outer button.onigiri-show-answer-btn:hover {{ transform: none !important; }}
-        /* Speed Focus inherits Anki's absolute .stattxt position above its
-           button. Keep both lines inside the button and the clipped WebView;
-           leave its node, click handler and countdown updates intact. */
-        #outer #spdfControls {{
-            width: auto !important;
-        }}
-        #outer #spdfControls[style*="display: none"] {{
-            display: none !important;
-        }}
-        #outer #spdfControls button {{
-            --onigiri-speed-focus-height: {btn_height}px;
-            display: inline-flex !important;
-            flex: 0 0 auto !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 2px !important;
-            min-width: max-content !important;
-            padding-block: 4px !important;
-            line-height: 1.1 !important;
-            font-size: min(var(--onigiri-bbar-font-size), calc((var(--onigiri-speed-focus-height) - {2 * border_size + 10}px) / 1.925)) !important;
-            transform: none !important;
-        }}
-        #outer.onigiri-bbar-fixed-question #spdfControls button {{
-            --onigiri-speed-focus-height: var(--onigiri-bbar-fixed-height);
-        }}
-        #outer #spdfControls #spdfTime {{
-            position: static !important;
-            inset: auto !important;
-            transform: none !important;
-            display: block !important;
-            min-height: 1.1em !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: .75em !important;
-            line-height: 1.1 !important;
-            font-weight: normal !important;
-            font-variant-numeric: tabular-nums !important;
-            color: inherit !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-            white-space: nowrap !important;
-        }}
-        #outer #spdfControls button > br {{ display: none !important; }}
-        #outer.onigiri-bbar-speed-focus button.onigiri-show-answer-btn.onigiri-has-pre-answer-counts:not(.is-fixed) {{
-            width: min(360px, calc(100cqw - var(--onigiri-bbar-side-space))) !important;
-        }}
         """)
         border_selectors = {
             "show_answer": "#outer button.onigiri-show-answer-btn",
@@ -10028,9 +9965,26 @@ def generate_reviewer_buttons_css(conf):
             for mode, prefix, fallback in (("light", "", "#DBDBDB"), ("dark", ".nightMode ", "#444444")):
                 color = conf.get(f"onigiri_reviewer_{family}_border_{mode}") or conf.get(f"onigiri_reviewer_btn_border_color_{mode}", fallback)
                 css.append(f"{prefix}{selector} {{ --onigiri-bbar-border: {color}; }}")
-        with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "reviewer_buttons_shared.css"), encoding="utf-8") as handle:
-            css.append(handle.read())
+        shared_css_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "reviewer_buttons_shared.css")
+        css.append(_read_cached_text_file(shared_css_path))
     return "<style>" + "\n".join(css) + "</style>" + "\n".join(scripts)
+
+
+_CACHED_TEXT_FILES = {}
+
+
+def _read_cached_text_file(path: str) -> str:
+    try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError:
+        return ""
+    cached = _CACHED_TEXT_FILES.get(path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    _CACHED_TEXT_FILES[path] = (mtime, text)
+    return text
 def _onigiri_render_deck_tree(self, *args, **kwargs):
     """
     Patched version of DeckBrowser._render_deck_tree to pre-fetch enhanced stats.

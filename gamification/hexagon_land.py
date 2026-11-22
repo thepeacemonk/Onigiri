@@ -1467,14 +1467,13 @@ class HexagonLandManager:
         self._last_session_notification_signature: Optional[Tuple[Any, ...]] = None
 
     def config(self) -> Dict[str, Any]:
-        conf = config.get_config()
+        conf = config.get_config_readonly()
         land_conf = conf.get("hexagon_land")
         if not isinstance(land_conf, dict):
             land_conf = conf.get("hexagon_world", {})
         return land_conf if isinstance(land_conf, dict) else {}
 
     def is_enabled(self) -> bool:
-        conf = config.get_config()
         return bool(self.config().get("enabled", False))
 
     def _anki_today_review_count(self) -> Optional[int]:
@@ -1616,16 +1615,21 @@ class HexagonLandManager:
         path = os.path.join(user_files, f"hexagon_land_{_profile_name()}.json")
         return path
 
-    def load(self) -> HexagonLandState:
+    def _load_live(self) -> HexagonLandState:
+        """Return the cached in-memory state without deep-copying.
+
+        Only internal hot paths (like ``on_answer``) should mutate this object
+        directly and immediately persist it via ``save(..., immediate=False)``.
+        """
         path = self.data_path()
         if self._state_cache is not None and self._data_path_cache == path:
-            return copy.deepcopy(self._state_cache)
+            return self._state_cache
         try:
             safe_storage.backup_before_upgrade()
             raw = safe_storage.read_json(path, default={}, label="Your Hexagon Land island")
             state = safe_storage.dataclass_from_dict(HexagonLandState, raw)
             if not raw:
-                self.save(state)
+                self.save(state, immediate=True)
             today = _anki_today()
             if state.last_study_day:
                 last_day = date.fromisoformat(state.last_study_day)
@@ -1653,23 +1657,34 @@ class HexagonLandManager:
                     state.last_study_day = (today - timedelta(days=1)).isoformat()
                     state.current_streak = 0
                     # We save without using the cache so it persists immediately
-                    self.save(state)
+                    self.save(state, immediate=True)
         except Exception as exc:
             print(f"Onigiri: Error loading Hexagon Land data: {exc}")
             state = HexagonLandState()
         self._state_cache = state
         self._data_path_cache = path
-        return copy.deepcopy(state)
+        return state
 
-    def save(self, state: HexagonLandState) -> None:
+    def load(self) -> HexagonLandState:
+        return copy.deepcopy(self._load_live())
+
+    def save(self, state: HexagonLandState, immediate: bool = False) -> None:
         state.updated_at = datetime.now().isoformat()
         path = self.data_path()
-        safe_storage.atomic_write_json(path, safe_storage.dataclass_payload(state))
-        self._state_cache = copy.deepcopy(state)
+        payload = safe_storage.dataclass_payload(state)
+        if immediate:
+            safe_storage.atomic_write_json(path, payload)
+        else:
+            # Queued write: avoids synchronous fsync + .bak file copies on the
+            # reviewer's critical path. safe_storage flushes on screen change,
+            # sync, and profile close.
+            safe_storage.schedule_write_json(path, payload)
+        if state is not self._state_cache:
+            self._state_cache = copy.deepcopy(state)
         self._data_path_cache = path
 
     def reset(self) -> None:
-        self.save(HexagonLandState(last_message=tr("hexland_reset_message")))
+        self.save(HexagonLandState(last_message=tr("hexland_reset_message")), immediate=True)
 
     def island_display_name(self, state: Optional[HexagonLandState] = None) -> str:
         state = state or self.load()
@@ -1701,7 +1716,7 @@ class HexagonLandManager:
     def on_answer(self, reviewer=None, card=None, ease: int = 0) -> None:
         if not self.is_enabled():
             return
-        state = self.load()
+        state = self._load_live()
         anki_today = _anki_today()
         self._prepare_study_day(state, anki_today)
         state.today_reviews += 1

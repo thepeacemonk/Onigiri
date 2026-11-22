@@ -14,7 +14,7 @@
     --hm-radius-pill-inner: 6px;
     --hm-header-gap: 10px;
 
-    /* Lets the header drop the streak chip on narrow widgets */
+    /* Lets the header compact and wrap its controls on narrow widgets. */
     container-type: inline-size;
     container-name: onigiri-heatmap;
 
@@ -80,12 +80,6 @@
     min-width: 0;
 }
 
-/* Keep the calendar and its title; hide all header pills together. */
-[data-minimalist="true"] .onigiri-heatmap-header .header-right,
-[data-minimalist="true"] .heatmap-header-skeleton .header-right-skeleton {
-    display: none;
-}
-
 /* --- Streak Counter (Matching learner-stats-deck-trigger structure & design) --- */
 .streak-counter {
     font-family: inherit;
@@ -145,13 +139,16 @@
     }
 }
 
-@container onigiri-heatmap (max-width: 460px) {
+@container onigiri-heatmap (max-width: 480px) {
     .streak-counter {
-        display: none;
+        display: none !important;
     }
 }
 
 @container onigiri-heatmap (max-width: 420px) {
+    .year-view .heatmap-cells {
+        gap: 1px;
+    }
     .onigiri-heatmap-header {
         flex-wrap: wrap;
         gap: 8px;
@@ -164,18 +161,12 @@
     .onigiri-heatmap-header .header-right {
         flex: 1 0 100%;
         justify-content: space-between;
-    }
-}
-
-@container onigiri-heatmap (max-width: 300px) {
-    .onigiri-heatmap-header .header-right {
         flex-wrap: wrap;
         row-gap: 6px;
     }
 
-    .heatmap-nav,
     .heatmap-filters {
-        flex: 1 1 100%;
+        flex: 1 1 auto;
     }
 
     .heatmap-filters .filter-btn {
@@ -250,7 +241,7 @@
     border-radius: 6px;
     background-color: color-mix(in srgb, var(--highlight-bg, #eeeeee) 90%, var(--fg, #222222) 10%);
     pointer-events: none;
-    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), width 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: left center;
     z-index: 0;
 }
 
@@ -312,6 +303,17 @@
     background: transparent !important;
     color: var(--fg, #222222) !important;
     box-shadow: none !important;
+}
+
+.heatmap-filters .filter-btn:focus-visible {
+    outline: 2px solid var(--accent-color, currentColor) !important;
+    outline-offset: -2px !important;
+}
+
+@container onigiri-heatmap (max-width: 540px) {
+    .heatmap-filters .filter-btn {
+        padding-inline: 6px !important;
+    }
 }
 
 /* --- Navigation Buttons & Title (Matching learner-stats-switcher-btn & deck trigger font/sizes) --- */
@@ -457,6 +459,58 @@
     margin: auto;
     min-width: 0;
     min-height: 0;
+}
+
+.heatmap-grid.terrain-view {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 90px;
+    width: 100%;
+    margin: 0;
+}
+
+.heatmap-terrain-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--hm-radius);
+    touch-action: manipulation;
+}
+
+.heatmap-terrain-canvas.is-browsable {
+    cursor: pointer;
+}
+
+.heatmap-terrain-canvas:focus-visible {
+    outline: 2px solid var(--accent-color, currentColor);
+    outline-offset: -2px;
+}
+
+.heatmap-terrain-tip {
+    position: absolute;
+    z-index: 1;
+    max-width: calc(100% - 8px);
+    box-sizing: border-box;
+    transform: translateX(-50%);
+    padding: 5px 10px;
+    border: 1px solid var(--onigiri-tooltip-border, var(--border));
+    border-radius: 6px;
+    background: var(--onigiri-tooltip-bg, var(--canvas-inset, #333));
+    color: var(--onigiri-tooltip-fg, var(--fg, #fff));
+    font: 12px/1.4 'Poppins', system-ui, sans-serif;
+    pointer-events: none;
+}
+
+.heatmap-terrain-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .heatmap-day-cell {
@@ -739,7 +793,7 @@
 .year-view .heatmap-months {
     grid-area: months;
     display: grid;
-    grid-template-columns: repeat(53, 1fr);
+    grid-template-columns: repeat(var(--hm-weeks, 53), minmax(0, 1fr));
     font-size: 9px;
     line-height: 1;
     letter-spacing: 0.02em;
@@ -754,6 +808,7 @@
 .year-view .month-label {
     text-align: left;
     white-space: nowrap;
+    min-width: 0;
 }
 
 /* One label row per cell row, so M/T/W line up with the days they name

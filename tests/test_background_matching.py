@@ -221,5 +221,72 @@ class WallpaperThemeIsolationTests(unittest.TestCase):
                             self.assertIn('#654321', css)
 
 
+class OverviewBackgroundRenderTests(unittest.TestCase):
+    """Check the real CSS cascade using Anki's browser engine, without a profile."""
+
+    @classmethod
+    def setUpClass(cls):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        try:
+            from PyQt6 import sip
+            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtWebEngineCore import QWebEnginePage
+            from PyQt6.QtCore import QEventLoop, QTimer
+        except ImportError:
+            raise unittest.SkipTest('PyQt6 WebEngine is required for rendered CSS checks')
+        cls.app = QApplication.instance() or QApplication(['onigiri-background-tests'])
+        cls.Page, cls.Loop, cls.Timer = QWebEnginePage, QEventLoop, QTimer
+        cls.delete_page = staticmethod(sip.delete)
+
+    def computed_backgrounds(self, css, theme_class):
+        page = self.Page()
+        loop = self.Loop()
+        result = []
+        timer = self.Timer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(loop.quit)
+
+        def loaded(ok):
+            if not ok:
+                loop.quit()
+                return
+            page.runJavaScript('''[
+                getComputedStyle(document.documentElement).backgroundColor,
+                getComputedStyle(document.body).backgroundColor
+            ]''', lambda colors: (result.extend(colors), loop.quit()))
+
+        page.loadFinished.connect(loaded)
+        page.setHtml(f'''<!doctype html><html class="{theme_class}"><head>{css}</head>
+            <body><div class="overview-center-container">Overview</div></body></html>''')
+        timer.start(10000)
+        loop.exec()
+        timer.stop()
+        self.delete_page(page)
+        self.assertEqual(len(result), 2, 'WebEngine failed to return computed backgrounds')
+        return result
+
+    def test_matched_overview_uses_current_theme_on_the_html_root(self):
+        fixture = BackgroundMatchingTests()
+        fixture.setUp()
+        load_functions('rendering/patcher.py', {'_synapsepro_overview_background_priority_css'}, fixture.env)
+        for mode, images in (('color', []), ('image_color', []),
+                             ('slideshow', []), ('slideshow', ['one.png'])):
+            fixture.main.update(modern_menu_background_mode=mode, modern_menu_slideshow_images=images)
+            for guard in (False, True):
+                css = fixture.render('overview')
+                if guard:
+                    css += fixture.env['_synapsepro_overview_background_priority_css'](str(ROOT))
+                for theme, expected in (('', 'rgb(18, 52, 86)'),
+                                        ('night-mode', 'rgb(101, 67, 33)'),
+                                        ('nightMode', 'rgb(101, 67, 33)')):
+                    with self.subTest(mode=mode, images=images, guard=guard, theme=theme):
+                        root, body = self.computed_backgrounds(css, theme)
+                        # A transparent root is valid when the body paints the page.
+                        visible = body if body != 'rgba(0, 0, 0, 0)' else root
+                        self.assertEqual(visible, expected)
+                        if root != 'rgba(0, 0, 0, 0)':
+                            self.assertEqual(root, expected)
+
+
 if __name__ == '__main__':
     unittest.main()

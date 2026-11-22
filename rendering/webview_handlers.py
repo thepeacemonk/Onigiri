@@ -9,6 +9,7 @@ from ..decks import tree_updater as deck_tree_updater
 from ..decks import drag_drop as deck_drag_drop
 from ..decks import move as move_deck
 from ..ui_kit.onigiri_notifications import notify as tooltip
+from ..ui_kit.system_icons import pickable_system_icons
 from aqt import mw
 from aqt.qt import QApplication, QFileDialog, QInputDialog, QWidget, Qt
 from aqt.utils import askUser
@@ -37,7 +38,7 @@ _WEBVIEW_STRING_KEYS = (
     "ctx_copy_deck_id", "ctx_delete_deck", "ctx_favorite_selected",
     "ctx_remove_favorite", "ctx_remove_favorites", "delete_selected", "marker_red", "marker_blue",
     "marker_green", "marker_yellow", "get_shared", "create_deck", "import_file",
-    "rebuild",
+    "rebuild", "ctx_addon_actions",
     "hashi_notes_title", "sort_default_order", "sort_a_to_z", "sort_z_to_a",
     "sort_most_due", "sort_most_new", "sort_most_reviews",
     "sort_favorites_first", "sort_custom_order",
@@ -290,22 +291,17 @@ def _icon_payload(deck_id: str) -> dict:
                         "system": False,
                     })
 
-    if os.path.isdir(system_dir):
-        system_files = [
-            name for name in os.listdir(system_dir)
-            if name.lower().endswith(".svg")
-        ]
-        priority = {name: index for index, name in enumerate(_ICON_PRIORITY)}
-        for name in sorted(
-            system_files,
-            key=lambda item: (priority.get(item, 999), item.lower()),
-        ):
-            icons.append({
-                "name": f"system:{name}",
-                "label": _icon_label(name),
-                "url": f"/_addons/{addon_package}/system_files/system_icons/available_for_users/{name}",
-                "system": True,
-            })
+    priority = {name: index for index, name in enumerate(_ICON_PRIORITY)}
+    for name in sorted(
+        pickable_system_icons(system_dir),
+        key=lambda item: (priority.get(item, 999), item.lower()),
+    ):
+        icons.append({
+            "name": f"system:{name}",
+            "label": _icon_label(name),
+            "url": f"/_addons/{addon_package}/system_files/system_icons/available_for_users/{name}",
+            "system": True,
+        })
 
     images = []
     seen_image_names = set()
@@ -525,6 +521,12 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
     if parent and callable(parent) and type(parent()).__name__ == "OnigimonWebDialog":
         return handled
 
+    if cmd.startswith("onigiri_more_menu:"):
+        from . import reviewer_more_menu
+
+        if reviewer_more_menu.handle_command(cmd):
+            return (True, None)
+
     if cmd.startswith("onigiri_ready:"):
         from ..study_tools import ready_to_go
 
@@ -534,7 +536,6 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
 
     if cmd == "onigiri_welcome_dismissed":
         try:
-            from ..core import config
             conf = config.get_config()
             conf["showWelcomePopup"] = False
             config.write_config(conf)
@@ -696,6 +697,27 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
             return (True, None)
         except Exception as e:
             print(f"Onigiri: Error claiming Onigimon gift: {e}")
+            return (True, None)
+
+    if cmd.startswith("onigimon_hud:"):
+        try:
+            from ..gamification import onigimon_hud
+
+            payload = cmd.split(":", 1)[1].strip()
+            if payload.startswith("set_position:"):
+                coords = payload.split(":", 1)[1].split(":")
+                if len(coords) == 2:
+                    onigimon_hud.set_position(float(coords[0]), float(coords[1]))
+            elif payload == "reset_position":
+                onigimon_hud.reset_position()
+            elif payload.startswith("use_item:"):
+                item_key = unquote(payload.split(":", 1)[1]).strip()
+                onigimon_hud.use_hud_item(item_key)
+            else:
+                onigimon_hud.trigger_action(payload)
+            return (True, None)
+        except Exception as e:
+            print(f"Onigiri: Error handling Onigimon HUD action: {e}")
             return (True, None)
 
     if cmd.startswith("onigimon_rename:"):
@@ -1093,6 +1115,17 @@ def handle_webview_cmd(handled: Tuple[bool, Any], cmd: str, context) -> Tuple[bo
                     % json.dumps(f"Create deck failed: {e}")
                 )
             return (True, None)
+
+    if cmd.startswith("onigiri_ctx_addon_actions:"):
+        try:
+            deck_id = int(cmd.split(":", 1)[1])
+            db = context if isinstance(context, DeckBrowser) else mw.deckBrowser
+            # The native menu calls every deck-menu hook, including FSRS
+            # Helper's Delay Overdue action, with this exact deck ID.
+            db._showOptions(str(deck_id))
+        except Exception as e:
+            print(f"Onigiri: Error opening add-on deck actions: {e}")
+        return (True, None)
 
     if cmd.startswith("onigiri_ctx_options:"):
         try:

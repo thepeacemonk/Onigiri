@@ -29,6 +29,7 @@ from PyQt6.QtCore import QLocale
 from ..core import config
 from ..core import safe_storage
 from ..rendering.theme_palette import utility_chrome_palette
+from ..ui_kit.system_icons import pickable_system_icons
 from .prep_station_math import (
     DEFAULT_DESIRED_RETENTION,
     DEFAULT_FSRS_PARAMETERS,
@@ -672,13 +673,13 @@ def _handle_delete_plan(plan_id: str) -> None:
 def _is_dark_mode() -> bool:
     try:
         from ..core.config import effective_night_mode
-        return effective_night_mode(config.get_config())
+        return effective_night_mode(config.get_config_readonly())
     except Exception:
         return False
 
 
 def _accent_color() -> str:
-    conf = config.get_config()
+    conf = config.get_config_readonly()
     mode = "dark" if _is_dark_mode() else "light"
     try:
         default = config.DEFAULTS["colors"][mode]["--accent-color"]
@@ -756,14 +757,17 @@ def _web_icon_catalog() -> tuple[list, list, dict]:
         except Exception:
             names = []
         if index == 0:
-            system_icons = names
+            system_icons = pickable_system_icons(folder)
+            # Older plans can reference a bundled icon by its bare filename.
+            for name in set(names).difference(system_icons):
+                icon_paths[name] = _addon_uri("/".join((*rel, name)))
             continue
         for name in names:
             # The deck browser checks custom_deck_icons first, so keep its
             # image in a same-name collision.
-            if name not in icon_paths:
-                icon_paths[name] = _addon_uri("/".join((*rel, name)))
+            if name not in user_icons:
                 user_icons.append(name)
+                icon_paths.setdefault(name, _addon_uri("/".join((*rel, name))))
     return system_icons, user_icons, icon_paths
 
 

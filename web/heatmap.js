@@ -1,7 +1,7 @@
 /*
     Onigiri Heatmap Renderer
     This script is responsible for drawing the heatmap graph based on review data,
-    with different views for Year, Month, and Week.
+    with Year, Month, Week, and Terrain views.
 */
 
 // Ensure the OnigiriHeatmap object exists
@@ -10,14 +10,8 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 (function (exports) {
     "use strict";
 
-    // --- STATE MANAGEMENT & CACHE ---
-    let state = {
-        view: 'year', // 'year', 'month', 'week'
-        targetDate: new Date(),
-        // Earliest year with review history; bounds the year dropdown so it
-        // doesn't offer years the collection has no data for.
-        firstYear: new Date().getFullYear(),
-    };
+    const views = ['year', 'month', 'week'];
+    const containerStates = new WeakMap();
 
 
     // --- DATA PREPARATION ---
@@ -32,7 +26,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         const duesByDay = new Map(Object.entries(rawData.due_calendar || {}));
 
         // Get today's date key from Python
-        const todayKey = rawData.today_date_key;
+        const todayKey = rawData.today_date_key || getLocalDateKey(new Date());
 
         // Get daily average for relative scaling
         const dailyAverage = rawData.daily_average || 0;
@@ -124,14 +118,20 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
     // --- VIEW RENDERERS ---
 
-    function drawYearView(gridContainer, preparedData, config) {
+    function yearDays(year, config) {
+        const firstDay = new Date(year, 0, 1);
+        const offset = getWeekStartOffset(firstDay, config);
+        const days = new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
+        const slots = Math.ceil((offset + days) / 7) * 7;
+        return Array.from({ length: slots }, (_, i) =>
+            new Date(year, 0, 1 - offset + i)
+        );
+    }
+
+    function drawYearView(gridContainer, preparedData, config, year) {
         gridContainer.className = 'heatmap-grid year-view';
         gridContainer.dataset.monthsHidden = !config.heatmapShowMonths;
         gridContainer.dataset.weekdaysHidden = !config.heatmapShowWeekdays;
-
-        const target = state.targetDate;
-        const year = target.getFullYear();
-        const firstDayOfYear = new Date(year, 0, 1);
 
         let html = `
             <div class="heatmap-months"></div>
@@ -144,11 +144,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         const monthsContainer = gridContainer.querySelector('.heatmap-months');
         let currentMonth = -1;
 
-        for (let i = 0; i < 371; i++) {
-            const dayOfWeek = getWeekStartOffset(firstDayOfYear, config);
-            const date = new Date(firstDayOfYear);
-            date.setDate(firstDayOfYear.getDate() - dayOfWeek + i);
-
+        const dates = yearDays(year, config);
+        gridContainer.style.setProperty('--hm-weeks', dates.length / 7);
+        for (const [i, date] of dates.entries()) {
             if (date.getFullYear() !== year) {
                 const emptyCell = document.createElement('div');
                 emptyCell.className = 'heatmap-day-cell empty';
@@ -161,9 +159,11 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 const monthLabel = document.createElement('div');
                 monthLabel.className = 'month-label';
                 monthLabel.textContent = date.toLocaleString(config.locale || undefined, { month: 'short' });
+                monthLabel.title = date.toLocaleString(config.locale || undefined, { month: 'long' });
                 // Span the month's own weeks, so a label can't drift over the
                 // next month's columns when the widget is narrow.
-                monthLabel.style.gridColumn = `${Math.floor(i / 7) + 1} / span 4`;
+                const monthColumn = Math.floor(i / 7);
+                monthLabel.style.gridColumn = `${monthColumn + 1} / span ${Math.min(4, dates.length / 7 - monthColumn)}`;
                 monthsContainer.appendChild(monthLabel);
             }
 
@@ -175,16 +175,15 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
     }
 
-    function drawMonthView(gridContainer, preparedData, config) {
+    function drawMonthView(gridContainer, preparedData, config, target) {
         gridContainer.className = 'heatmap-grid month-view';
         gridContainer.dataset.weekdaysHidden = !config.heatmapShowWeekdays;
-        const target = state.targetDate;
         const year = target.getFullYear();
         const month = target.getMonth();
         const firstDayOfMonth = new Date(year, month, 1);
 
         let html = `
-            <div class="month-weekdays-header">${orderedWeekdayLabels(config, true).map(label => `<div>${label}</div>`).join('')}</div>
+            <div class="month-weekdays-header">${orderedWeekdayLabels(config, true).map((label, index) => `<div data-full-label="${escapeAttr(label)}" data-short-label="${escapeAttr(orderedWeekdayLabels(config, false)[index])}" title="${escapeAttr(label)}">${label}</div>`).join('')}</div>
             <div class="month-cells-grid"></div>
         `;
         gridContainer.innerHTML = html;
@@ -208,10 +207,9 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
     }
 
-    function drawWeekView(gridContainer, preparedData, config) {
+    function drawWeekView(gridContainer, preparedData, config, target) {
         gridContainer.className = 'heatmap-grid week-view';
         gridContainer.dataset.headerHidden = !config.heatmapShowWeekHeader;
-        const target = state.targetDate;
         const startDate = new Date(target);
         const startDayOfWeek = getWeekStartOffset(target, config);
         startDate.setDate(startDate.getDate() - startDayOfWeek);
@@ -231,7 +229,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
             const header = document.createElement('div');
             header.innerHTML = `
-                <div class="weekday-label">${date.toLocaleString(config.locale || undefined, { weekday: 'short' })}</div>
+                <div class="weekday-label" data-full-label="${escapeAttr(date.toLocaleString(config.locale || undefined, { weekday: 'short' }))}" data-short-label="${escapeAttr(date.toLocaleString(config.locale || undefined, { weekday: 'narrow' }))}">${date.toLocaleString(config.locale || undefined, { weekday: 'short' })}</div>
                 <div class="day-label">${date.getDate()}</div>
             `;
             headerContainer.appendChild(header);
@@ -244,38 +242,31 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         }
     }
 
+    function describeDay(date, reviewCount, dueCount, config, todayKey, dailyAverage) {
+        const dateKey = getLocalDateKey(date);
+        const future = dateKey > todayKey;
+        const today = dateKey === todayKey;
+        const count = future ? dueCount : reviewCount;
+        const level = future ? getDueIntensityLevel(count, dailyAverage) : getIntensityLevel(count, dailyAverage);
+        const dateText = date.toLocaleDateString(config.locale || undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const reviews = `${count} review${count !== 1 ? 's' : ''}`;
+        const tooltipText = today ? `${reviews} done today` : `${reviews}${future ? ' due' : ''} on ${dateText}`;
+        return { dateKey, future, today, count, level, tooltipText };
+    }
+
     function createCell(date, reviewCount, dueCount, config, todayKey, dailyAverage) {
         const cell = document.createElement('div');
         cell.className = 'heatmap-day-cell';
-
-        const dateKey = getLocalDateKey(date); // FIX: Use local date key
-        let tooltipText;
-        const dateText = date.toLocaleDateString(config.locale || undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-        if (dateKey === todayKey) {
-            // --- TODAY ---
-            // Mark today's cell with a special class
-            cell.classList.add('today');
-
-            // Set review count and level for proper coloring
-            cell.dataset.reviewCount = reviewCount;
-            cell.dataset.level = getIntensityLevel(reviewCount, dailyAverage);
-
-            // Build tooltip with reviews done today
-            tooltipText = `${reviewCount} review${reviewCount !== 1 ? 's' : ''} done today`;
-        } else if (dateKey < todayKey) {
-            // --- PAST ---
-            cell.dataset.reviewCount = reviewCount;
-            cell.dataset.level = getIntensityLevel(reviewCount, dailyAverage);
-            tooltipText = `${reviewCount} review${reviewCount !== 1 ? 's' : ''} on ${dateText}`;
-        } else {
-            // --- FUTURE ---
+        const { dateKey, future, today, count, level, tooltipText } =
+            describeDay(date, reviewCount, dueCount, config, todayKey, dailyAverage);
+        if (today) cell.classList.add('today');
+        if (future) {
             cell.classList.add('future-day');
-            cell.dataset.dueCount = dueCount;
-            cell.dataset.dueLevel = getDueIntensityLevel(dueCount, dailyAverage);
-
-            const dueText = `${dueCount} review${dueCount !== 1 ? 's' : ''} due`;
-            tooltipText = `${dueText} on ${dateText}`;
+            cell.dataset.dueCount = count;
+            cell.dataset.dueLevel = level;
+        } else {
+            cell.dataset.reviewCount = count;
+            cell.dataset.level = level;
         }
 
         const shapeDiv = document.createElement('div');
@@ -293,8 +284,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         // actionable. Past/today cells open review history; future cells open
         // the due forecast. The Python bridge decides which exact Anki search
         // to use from this canonical date key.
-        const browsableCount = dateKey > todayKey ? dueCount : reviewCount;
-        if (browsableCount > 0) {
+        if (count > 0) {
             const browseLabel = (config.i18n && config.i18n.browse) || 'Browse';
             cell.classList.add('browsable');
             cell.dataset.dateKey = dateKey;
@@ -305,28 +295,427 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         return cell;
     }
 
-    function openCellInBrowser(cell) {
-        if (!cell || !cell.dataset.dateKey || typeof pycmd !== 'function') return;
-        pycmd(`onigiri_heatmap_browse:${cell.dataset.dateKey}`);
+    function openDateInBrowser(dateKey) {
+        if (!dateKey || typeof pycmd !== 'function') return;
+        pycmd(`onigiri_heatmap_browse:${dateKey}`);
     }
 
     function bindCellInteractions(gridContainer) {
         gridContainer.addEventListener('click', (event) => {
-            openCellInBrowser(event.target.closest('.heatmap-day-cell.browsable'));
+            openDateInBrowser(event.target.closest('.heatmap-day-cell.browsable')?.dataset.dateKey);
         });
         gridContainer.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             const cell = event.target.closest('.heatmap-day-cell.browsable');
             if (!cell) return;
             event.preventDefault();
-            openCellInBrowser(cell);
+            openDateInBrowser(cell.dataset.dateKey);
         });
     }
 
-    // `animate: false` places the pill without the slide. Every redraw rebuilds
-    // the header, so the fresh pill starts at width 0 — animating that would
-    // flash the active view as unselected for a frame.
-    function updateFilterPill(container, animate) {
+    const squareFootprint = [[[0, 0], [1, 0], [1, 1], [0, 1]]];
+    const terrainFootprints = new Map();
+
+    function terrainFootprint(url) {
+        if (!url) return Promise.resolve(squareFootprint);
+        if (terrainFootprints.has(url)) return terrainFootprints.get(url);
+
+        const footprint = new Promise((resolve) => {
+            const image = new Image();
+            image.onerror = () => resolve(squareFootprint);
+            image.onload = () => {
+                try {
+                    resolve(traceIcon(image));
+                } catch {
+                    resolve(squareFootprint);
+                }
+            };
+            image.src = url;
+        });
+        if (terrainFootprints.size >= 24) terrainFootprints.delete(terrainFootprints.keys().next().value);
+        terrainFootprints.set(url, footprint);
+        return footprint;
+    }
+
+    function traceIcon(image) {
+        const size = 80;
+        const raster = document.createElement('canvas');
+        raster.width = raster.height = size;
+        const ctx = raster.getContext('2d');
+        const fit = size / Math.max(image.naturalWidth, image.naturalHeight);
+        const w = image.naturalWidth * fit, h = image.naturalHeight * fit;
+        ctx.drawImage(image, (size - w) / 2, (size - h) / 2, w, h);
+        const { data } = ctx.getImageData(0, 0, size, size);
+        const filled = (x, y) => x >= 0 && y >= 0 && x < size && y < size &&
+            data[(y * size + x) * 4 + 3] >= 110;
+        const stride = size + 1;
+        const edges = new Map();
+        const addEdge = (start, end) => {
+            if (!edges.has(start)) edges.set(start, []);
+            edges.get(start).push(end);
+        };
+
+        // Walk the mask boundaries clockwise around filled pixels. Inner
+        // contours wind the opposite way, preserving holes in the column.
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                if (!filled(x, y)) continue;
+                const nw = y * stride + x;
+                const ne = nw + 1, sw = nw + stride, se = sw + 1;
+                if (!filled(x, y - 1)) addEdge(nw, ne);
+                if (!filled(x + 1, y)) addEdge(ne, se);
+                if (!filled(x, y + 1)) addEdge(se, sw);
+                if (!filled(x - 1, y)) addEdge(sw, nw);
+            }
+        }
+
+        const contours = [];
+        while (edges.size) {
+            const start = edges.keys().next().value;
+            const points = [];
+            let point = start;
+            do {
+                points.push([point % stride, Math.floor(point / stride)]);
+                const next = edges.get(point);
+                const end = next.pop();
+                if (!next.length) edges.delete(point);
+                point = end;
+            } while (point !== start);
+            // Discard single-pixel specks and simplify stair steps before
+            // projecting the silhouette at the much smaller cell size.
+            if (points.length > 4) {
+                const outline = simplifyContour(points);
+                if (outline.length > 2) contours.push(outline.map(([x, y]) => [x / size, y / size]));
+            }
+        }
+        return contours.length ? contours : squareFootprint;
+    }
+
+    function simplifyContour(points) {
+        const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+        let split = 1;
+        for (let i = 2; i < points.length; i++) {
+            if (distance(points[0], points[i]) > distance(points[0], points[split])) split = i;
+        }
+        const closed = [...points, points[0]];
+        const result = [];
+        function simplify(start, end) {
+            const [ax, ay] = closed[start], [bx, by] = closed[end];
+            const dx = bx - ax, dy = by - ay;
+            const lengthSquared = dx * dx + dy * dy;
+            let furthest = start;
+            let threshold = 0.8;
+            for (let i = start + 1; i < end; i++) {
+                const [x, y] = closed[i];
+                const t = lengthSquared ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSquared)) : 0;
+                const error = Math.hypot(x - ax - t * dx, y - ay - t * dy);
+                if (error > threshold) {
+                    furthest = i;
+                    threshold = error;
+                }
+            }
+            if (furthest === start) {
+                result.push(closed[start]);
+                return;
+            }
+            simplify(start, furthest);
+            simplify(furthest, end);
+        }
+        simplify(0, split);
+        simplify(split, points.length);
+        return result;
+    }
+
+    // Orthographic columns inspired by Kokonut UI's Activity Terrain.
+    function drawTerrainView(grid, preparedData, config, year, shapeUrl) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            drawYearView(grid, preparedData, config, year);
+            return;
+        }
+
+        const dates = yearDays(year, config);
+        const weeks = dates.length / 7;
+        const days = new Map();
+        let max = 1;
+        for (const [slot, date] of dates.entries()) {
+            if (date.getFullYear() !== year) continue;
+            const key = getLocalDateKey(date);
+            const day = describeDay(date, preparedData.reviewsByDay.get(key) || 0,
+                preparedData.duesByDay.get(key) || 0, config, preparedData.todayKey, preparedData.dailyAverage);
+            days.set(slot, { ...day, slot, col: Math.floor(slot / 7), row: slot % 7 });
+            max = Math.max(max, day.count);
+        }
+        const tiles = [...days.values()];
+        for (const day of tiles) day.height = 0.07 + 4.1 * (day.count / max) ** 0.75;
+
+        grid.className = 'heatmap-grid terrain-view';
+        canvas.className = 'heatmap-terrain-canvas';
+        canvas.tabIndex = 0;
+        canvas.setAttribute('aria-label', config.i18n?.terrain_help ||
+            'Activity terrain. Use the arrow keys to explore dates and Enter to browse cards.');
+        const tip = document.createElement('div');
+        tip.className = 'heatmap-terrain-tip';
+        tip.hidden = true;
+        tip.setAttribute('aria-hidden', 'true');
+        const status = document.createElement('span');
+        status.className = 'heatmap-terrain-status';
+        status.setAttribute('role', 'status');
+        grid.append(canvas, tip, status);
+
+        const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let intro;
+        let frame = 0;
+        let press = null;
+        let pointed = null;
+        let keyboardDay = null;
+        let active = null;
+        let columns = [];
+        let palette;
+        let footprint;
+        let maskUrl;
+        let projectionKey = '';
+
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const trace = (path, points) => {
+            path.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) path.lineTo(points[i].x, points[i].y);
+            path.closePath();
+        };
+
+        function displayTooltip(day, width, height) {
+            const column = day && columns.find(entry => entry.day === day);
+            tip.hidden = !column;
+            if (!column) return;
+            tip.textContent = day.tooltipText;
+            const { anchor } = column;
+            const half = tip.offsetWidth / 2;
+            tip.style.left = clamp(anchor.x, half, width - half) + 'px';
+            const above = anchor.y - tip.offsetHeight - 6;
+            tip.style.top = clamp(above >= 0 ? above : anchor.y + 12, 0, height - tip.offsetHeight) + 'px';
+        }
+
+        function projectColumns(width, height, lift) {
+            const turn = 14 * Math.PI / 180;
+            const tilt = 54 * Math.PI / 180;
+            const sin = Math.sin(turn);
+            const cos = Math.cos(turn);
+            const sinTilt = Math.sin(tilt);
+            const cosTilt = Math.cos(tilt);
+            const depth = (x, z) => x * sin + z * cos;
+            const boardDepth = weeks * Math.abs(sin) + 7 * cos;
+            const relief = 4.2 * lift * sinTilt;
+            const scale = Math.min(Math.max(1, width - 18) / (weeks * cos + 7 * Math.abs(sin)),
+                Math.max(1, height - 18) / (boardDepth * cosTilt + relief));
+            const project = (x, z, y) => {
+                x -= weeks / 2;
+                z -= 3.5;
+                return {
+                    x: width / 2 + scale * (x * cos - z * sin),
+                    y: height / 2 + scale * (depth(x, z) * cosTilt - y * sinTilt + relief / 2)
+                };
+            };
+
+            const ordered = tiles.slice().sort((a, b) => depth(a.col, a.row) - depth(b.col, b.row));
+            const outlines = footprint.map((outline) => {
+                // Join consecutive visible edges into a single wall so
+                // antialiasing does not leave seams between short segments.
+                const strips = [];
+                let strip;
+                for (let i = 0; i < outline.length; i++) {
+                    const j = (i + 1) % outline.length;
+                    const dx = outline[j][0] - outline[i][0], dz = outline[j][1] - outline[i][1];
+                    if (depth(dz, -dx) <= 0) {
+                        strip = null;
+                        continue;
+                    }
+                    if (!strip) {
+                        strip = [i];
+                        strips.push(strip);
+                    }
+                    strip.push(j);
+                }
+                const first = strips[0], last = strips[strips.length - 1];
+                if (strips.length > 1 && first[0] === 0 && last[last.length - 1] === 0) {
+                    strips[0] = [...last.slice(0, -1), ...first];
+                    strips.pop();
+                }
+                return { outline, strips };
+            });
+            return ordered.map((day) => {
+                const top = new Path2D();
+                const sides = new Path2D();
+                const rise = day.height * lift;
+                for (const { outline, strips } of outlines) {
+                    const floor = outline.map(([x, z]) => project(day.col + 0.08 + x * 0.84, day.row + 0.08 + z * 0.84, 0));
+                    const ceiling = floor.map(({ x, y }) => ({ x, y: y - scale * rise * sinTilt }));
+                    trace(top, ceiling);
+                    for (const indices of strips) {
+                        const upper = indices.map(i => ceiling[i]);
+                        const lower = indices.map(i => floor[i]).reverse();
+                        trace(sides, [...upper, ...lower]);
+                    }
+                }
+                const anchor = project(day.col + 0.5, day.row + 0.5, rise);
+                const halfWidth = scale * (cos + sin) / 2;
+                const halfDepth = halfWidth * cosTilt;
+                const bounds = [anchor.x - halfWidth, anchor.y - halfDepth,
+                    anchor.x + halfWidth, anchor.y + halfDepth + scale * rise * sinTilt];
+                const shade = ctx.createLinearGradient(bounds[0], 0, bounds[2], 0);
+                shade.addColorStop(0, 'rgba(0, 0, 0, 0.10)');
+                shade.addColorStop(1, 'rgba(0, 0, 0, 0.38)');
+                return { day, top, sides, shade, anchor, bounds };
+            });
+        }
+
+        function paint(now) {
+            frame = 0;
+            if (!canvas.isConnected || !footprint) return;
+            const rect = canvas.getBoundingClientRect();
+            const { width, height } = rect;
+            if (width <= 0 || height <= 0) return;
+            const dpr = Math.min(2, window.devicePixelRatio || 1);
+            const backingWidth = Math.max(1, Math.round(width * dpr));
+            const backingHeight = Math.max(1, Math.round(height * dpr));
+            if (canvas.width !== backingWidth) canvas.width = backingWidth;
+            if (canvas.height !== backingHeight) canvas.height = backingHeight;
+            ctx.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
+            ctx.clearRect(0, 0, width, height);
+
+            let lift = 1;
+            if (intro === undefined) intro = motion.matches ? null : now;
+            if (intro !== null) {
+                const progress = clamp((now - intro) / 260, 0, 1);
+                lift = motion.matches ? 1 : 1 - (1 - progress) ** 3;
+                if (lift === 1) intro = null;
+            }
+            const key = `${width}:${height}:${backingWidth}:${backingHeight}:${lift}`;
+            if (projectionKey !== key) {
+                columns = projectColumns(width, height, lift);
+                projectionKey = key;
+            }
+
+            if (!palette) {
+                const style = window.getComputedStyle(grid);
+                const read = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+                const ramp = (prefix, fallback) => Array.from({ length: 9 }, (_, level) =>
+                    read(prefix + level, level === 0 ? '#b0b0b0' : fallback));
+                palette = {
+                    reviews: ramp('--heatmap-level-', '#0077c8'),
+                    due: ramp('--heatmap-future-', '#777'),
+                    highlight: read('--fg', '#222')
+                };
+            }
+
+            active = pointed ? hit(pointed, rect) : keyboardDay;
+            canvas.classList.toggle('is-browsable', Boolean(active?.count));
+            for (const { day, top, sides, shade } of columns) {
+                const color = (day.future ? palette.due : palette.reviews)[day.level];
+                ctx.fillStyle = color;
+                ctx.fill(sides);
+                ctx.fillStyle = shade;
+                ctx.fill(sides);
+                ctx.fillStyle = color;
+                ctx.fill(top, 'evenodd');
+                if (day === active || day.today) {
+                    ctx.strokeStyle = palette.highlight;
+                    ctx.lineWidth = day === active ? 1.25 : 0.8;
+                    ctx.stroke(top);
+                }
+            }
+            displayTooltip(active, width, height);
+            if (intro !== null) schedule();
+        }
+
+        function schedule() {
+            if (!frame) frame = requestAnimationFrame(paint);
+        }
+
+        // Test the visible columns first. Path hit testing respects both
+        // the outer silhouette and holes in the original icon.
+        function hit(event, rect = canvas.getBoundingClientRect()) {
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const pixelX = x * canvas.width / rect.width, pixelY = y * canvas.height / rect.height;
+            for (let i = columns.length - 1; i >= 0; i--) {
+                const { day, top, sides, bounds: [left, topEdge, right, bottom] } = columns[i];
+                if (x < left || x > right || y < topEdge || y > bottom) continue;
+                if (ctx.isPointInPath(top, pixelX, pixelY, 'evenodd') ||
+                    ctx.isPointInPath(sides, pixelX, pixelY)) return day;
+            }
+            return null;
+        }
+
+        const initialDay = tiles.find(day => day.today) || [...tiles].reverse().find(day => day.count) || tiles[0];
+        canvas.addEventListener('keydown', (event) => {
+            const step = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
+            if (!step && event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            const current = keyboardDay || active || initialDay;
+            pointed = null;
+            if (step) {
+                const next = days.get(current.slot + step);
+                keyboardDay = next && (Math.abs(step) === 7 || current.col === next.col) ? next : current;
+            } else {
+                keyboardDay = current;
+                if (current.count) openDateInBrowser(current.dateKey);
+            }
+            status.textContent = keyboardDay.tooltipText;
+            schedule();
+        });
+        canvas.addEventListener('blur', () => {
+            keyboardDay = null;
+            status.textContent = '';
+            schedule();
+        });
+        canvas.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0 || press) return;
+            press = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+            canvas.setPointerCapture(event.pointerId);
+        });
+        canvas.addEventListener('pointermove', (event) => {
+            if (press?.id === event.pointerId) {
+                press.moved ||= Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 5;
+            }
+            pointed = press ? null : event;
+            schedule();
+        });
+        const release = (event) => {
+            if (event.pointerId !== press?.id) return;
+            if (event.type === 'pointerup' && !press.moved &&
+                Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) {
+                const day = hit(event);
+                if (day?.count) openDateInBrowser(day.dateKey);
+            }
+            press = null;
+            pointed = event.type === 'pointerup' && event.pointerType === 'mouse' &&
+                document.elementFromPoint(event.clientX, event.clientY) === canvas ? event : null;
+            schedule();
+        };
+        canvas.addEventListener('pointerup', release);
+        canvas.addEventListener('lostpointercapture', release);
+        canvas.addEventListener('pointercancel', release);
+        canvas.addEventListener('pointerleave', () => { pointed = null; schedule(); });
+
+        grid.refreshTerrain = (nextUrl = maskUrl) => {
+            palette = null;
+            if (nextUrl === maskUrl) {
+                schedule();
+                return;
+            }
+            maskUrl = nextUrl;
+            terrainFootprint(nextUrl).then((contours) => {
+                if (maskUrl !== nextUrl) return;
+                footprint = contours;
+                projectionKey = '';
+                schedule();
+            });
+        };
+        grid.refreshTerrain(shapeUrl);
+    }
+
+    function updateFilterPill(container) {
         const filters = container.querySelector('.heatmap-filters');
         const pill = filters ? filters.querySelector('.heatmap-filter-pill') : null;
         const active = filters ? filters.querySelector('.filter-btn.active') : null;
@@ -336,17 +725,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         // `left: 0` resolves against the track's padding box, whose edge is the
         // inside of the border — the padding is not an origin offset, so the
         // button's distance from the border box is the whole translation.
-        if (animate === false) {
-            pill.style.transition = 'none';
-        }
+        const x = activeRect.left - filterRect.left;
         pill.style.width = `${activeRect.width}px`;
-        pill.style.transform = `translateX(${activeRect.left - filterRect.left}px)`;
-        if (animate === false) {
-            // Flush the transition-less placement before restoring the
-            // transition, otherwise the browser coalesces both and animates.
-            void pill.offsetWidth;
-            pill.style.transition = '';
-        }
+        pill.style.transform = `translateX(${x}px)`;
+        return { pill, x, width: activeRect.width };
     }
 
     // Keeps the calendar inside the widget box instead of letting it spill past
@@ -369,27 +751,69 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         if (!(room > 0)) return;
 
         const isYear = gridContainer.classList.contains('year-view');
+        if (!isYear) {
+            const style = window.getComputedStyle(gridContainer);
+            const baseCell = parseFloat(style.getPropertyValue('--hm-cell')) || 30;
+            const gap = parseFloat(style.getPropertyValue('--hm-cell-gap')) || 0;
+            const width = container.clientWidth
+                - parseFloat(containerStyle.paddingLeft || 0)
+                - parseFloat(containerStyle.paddingRight || 0);
+            gridContainer.style.setProperty('--hm-cell', Math.max(1,
+                Math.min(baseCell, (width - 6 * gap) / 7)) + 'px');
+        }
         // The month/week labels and the year view's month row don't scale with
         // the cells, so one division under-shoots; a few passes converge.
         for (let pass = 0; pass < 4; pass++) {
             const need = gridContainer.offsetHeight;
-            if (need <= room + 0.5) return;
+            if (need <= room + 0.5) break;
             const factor = room / need;
             if (isYear) {
                 // Year cells are 1fr columns, so their height follows the
                 // grid's width — narrowing the grid is what shortens it.
                 const width = gridContainer.getBoundingClientRect().width;
                 const nextWidth = Math.max(120, Math.floor(width * factor));
-                if (nextWidth >= width) return;
+                if (nextWidth >= width) break;
                 gridContainer.style.maxWidth = nextWidth + 'px';
             } else {
                 const cell = parseFloat(
                     window.getComputedStyle(gridContainer).getPropertyValue('--hm-cell')
                 ) || 30;
                 const nextCell = Math.max(12, Math.floor(cell * factor));
-                if (nextCell >= cell) return;
+                if (nextCell >= cell) break;
                 gridContainer.style.setProperty('--hm-cell', nextCell + 'px');
             }
+        }
+        if (isYear) {
+            // Keep the user's label font readable. Show fewer month labels
+            // when their measured text no longer fits the calendar's columns.
+            const labels = Array.from(gridContainer.querySelectorAll('.month-label'));
+            labels.forEach(label => { label.style.visibility = ''; });
+            const range = document.createRange();
+            const labelBounds = labels.map(label => {
+                range.selectNodeContents(label);
+                return range.getBoundingClientRect();
+            });
+            const gridRight = gridContainer.getBoundingClientRect().right;
+            for (const stride of [1, 2, 3, 6, 12]) {
+                let right = -Infinity;
+                const fits = labelBounds.every((rect, index) => {
+                    if (index % stride) return true;
+                    const free = rect.left >= right + 6
+                        && rect.right <= gridRight + 1;
+                    right = rect.right;
+                    return free;
+                });
+                if (!fits && stride !== 12) continue;
+                labels.forEach((label, index) => {
+                    label.style.visibility = index % stride ? 'hidden' : '';
+                });
+                break;
+            }
+        } else {
+            const cell = parseFloat(window.getComputedStyle(gridContainer).getPropertyValue('--hm-cell')) || 30;
+            gridContainer.querySelectorAll('[data-short-label]').forEach(label => {
+                label.textContent = cell < 24 ? label.dataset.shortLabel : label.dataset.fullLabel;
+            });
         }
     }
 
@@ -400,29 +824,25 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         // resolved mask URL lets the preview use this same renderer without a
         // second, lookalike cell implementation. The menu continues to pass
         // raw SVG content, as before.
-        if (config.heatmapShapeMaskUrl) {
-            const safeUrl = String(config.heatmapShapeMaskUrl).replace(/"/g, '%22');
-            container.style.setProperty('--heatmap-shape-mask', `url("${safeUrl}")`);
-            return;
+        let url = String(config.heatmapShapeMaskUrl || '');
+        if (!url && config.heatmapSvgContent) {
+            url = `data:image/svg+xml,${encodeURIComponent(config.heatmapSvgContent)}`;
         }
         // One mask resource for the whole grid instead of one per day cell.
-        if (!config.heatmapSvgContent) {
+        if (url) {
+            container.style.setProperty('--heatmap-shape-mask', `url("${url.replace(/"/g, '%22')}")`);
+        } else {
             container.style.removeProperty('--heatmap-shape-mask');
-            return;
         }
-        const encodedSvg = encodeURIComponent(config.heatmapSvgContent);
-        container.style.setProperty(
-            '--heatmap-shape-mask',
-            `url("data:image/svg+xml,${encodedSvg}")`
-        );
+        return url;
     }
 
     // Year picker shown in place of the static year title, listing every year
     // from the current one back to the collection's first year with reviews.
-    function buildYearSelect() {
-        const currentYear = state.targetDate.getFullYear();
+    function buildYearSelect({ targetDate, firstYear: earliestYear }) {
+        const currentYear = targetDate.getFullYear();
         const thisYear = new Date().getFullYear();
-        const firstYear = Math.min(state.firstYear || thisYear, thisYear);
+        const firstYear = Math.min(earliestYear || thisYear, thisYear);
         let items = '';
         for (let y = thisYear; y >= firstYear; y--) {
             items += `<div class="year-dropdown-item${y === currentYear ? ' selected' : ''}" data-year="${y}">${y}</div>`;
@@ -446,19 +866,18 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
         if (!container) return;
 
         container.dataset.particlesAnimation = String(!!config.heatmapParticlesAnimation);
-        container.dataset.minimalist = String(config.heatmapMinimalist === true);
-        setShapeMaskVariable(container, config);
+        const shapeUrl = setShapeMaskVariable(container, config);
 
         const preparedData = prepareData(data);
 
-        if (typeof data.firstYear === 'number') {
-            state.firstYear = data.firstYear;
+        const flatView = views.includes(config.heatmapDefaultView) ? config.heatmapDefaultView : 'year';
+        const defaultView = config.heatmapTerrainEnabled === true ? 'terrain' : flatView;
+        let state = containerStates.get(container);
+        if (!state || state.defaultView !== defaultView) {
+            state = { defaultView, view: defaultView, targetDate: new Date() };
+            containerStates.set(container, state);
         }
-
-        // Initialize view from config if available (defaulting to 'year' is handled by config.py/heatmap.py logic, but fallback here too)
-        if (config.heatmapDefaultView) {
-            state.view = config.heatmapDefaultView;
-        }
+        state.firstYear = data.firstYear;
 
         function draw() {
             if (container.__particles) {
@@ -488,10 +907,12 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 : '';
 
             let navHTML = '';
-            if (state.view === 'year') {
+            const terrain = state.view === 'terrain';
+            const yearly = state.view === 'year' || terrain;
+            if (yearly) {
                 navHTML = `
                     <button class="nav-btn" data-nav="-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M201.4 297.4C188.9 309.9 188.9 330.2 201.4 342.7L361.4 502.7C373.9 515.2 394.2 515.2 406.7 502.7C419.2 490.2 419.2 469.9 406.7 457.4L269.3 320L406.6 182.6C419.1 170.1 419.1 149.8 406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3L201.3 297.3z"/></svg></button>
-                    ${buildYearSelect()}
+                    ${buildYearSelect(state)}
                     <button class="nav-btn" data-nav="1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M439.1 297.4C451.6 309.9 451.6 330.2 439.1 342.7L279.1 502.7C266.6 515.2 246.3 515.2 233.8 502.7C221.3 490.2 221.3 469.9 233.8 457.4L371.2 320L233.9 182.6C221.4 170.1 221.4 149.8 233.9 137.3C246.4 124.8 266.7 124.8 279.2 137.3L439.2 297.3z"/></svg></button>
                 `;
             } else if (state.view === 'month') {
@@ -513,12 +934,18 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             }
 
             const previousPill = container.querySelector('.heatmap-filter-pill');
+            const previousRect = previousPill?.getBoundingClientRect();
             const carriedPill = previousPill
-                ? { width: previousPill.style.width, transform: previousPill.style.transform }
+                ? { width: previousRect.width, x: previousRect.left - previousPill.parentElement.getBoundingClientRect().left }
                 : null;
+            const viewLabels = { year: 'Year', month: 'Month', week: 'Week' };
+            const viewButtons = terrain ? '' : views.map((view) => {
+                const selected = view === state.view;
+                return `<button type="button" class="filter-btn${selected ? ' active' : ''}" data-view="${view}" aria-pressed="${selected}">${escapeAttr(i18n[view] || viewLabels[view])}</button>`;
+            }).join('');
 
-            // Title alone on the left; the three pills — streak, date stepper,
-            // view switcher — are one group on the right, read left to right.
+            // A Terrain user still needs the year picker. The flat view
+            // switcher is only available with Terrain turned off in Settings.
             container.innerHTML = `
                 <div class="onigiri-heatmap-header">
                     <div class="header-left">
@@ -527,12 +954,10 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                     <div class="header-right">
                         ${streakHTML}
                         <div class="heatmap-nav">${navHTML}</div>
-                        <div class="heatmap-filters">
+                        ${viewButtons ? `<div class="heatmap-filters">
                             <span class="heatmap-filter-pill"></span>
-                            <button class="filter-btn ${state.view === 'year' ? 'active' : ''}" data-view="year">${i18n.year || 'Year'}</button>
-                            <button class="filter-btn ${state.view === 'month' ? 'active' : ''}" data-view="month">${i18n.month || 'Month'}</button>
-                            <button class="filter-btn ${state.view === 'week' ? 'active' : ''}" data-view="week">${i18n.week || 'Week'}</button>
-                        </div>
+                            ${viewButtons}
+                        </div>` : ''}
                     </div>
                 </div>
                 <div class="heatmap-grid"></div>
@@ -540,44 +965,42 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
 
             const gridContainer = container.querySelector('.heatmap-grid');
             if (state.view === 'year') {
-                drawYearView(gridContainer, preparedData, config);
+                drawYearView(gridContainer, preparedData, config, state.targetDate.getFullYear());
             } else if (state.view === 'month') {
-                drawMonthView(gridContainer, preparedData, config);
+                drawMonthView(gridContainer, preparedData, config, state.targetDate);
             } else if (state.view === 'week') {
-                drawWeekView(gridContainer, preparedData, config);
+                drawWeekView(gridContainer, preparedData, config, state.targetDate);
+            } else {
+                drawTerrainView(gridContainer, preparedData, config, state.targetDate.getFullYear(), shapeUrl);
             }
-            bindCellInteractions(gridContainer);
-            if (config.heatmapParticlesAnimation && window.OnigiriParticles) {
-                container.__particles = new window.OnigiriParticles.Particles(gridContainer);
+            if (!gridContainer.refreshTerrain) {
+                bindCellInteractions(gridContainer);
+                if (config.heatmapParticlesAnimation && window.OnigiriParticles) {
+                    container.__particles = new window.OnigiriParticles.Particles(gridContainer);
+                }
             }
-            // Placed synchronously, before this frame paints — a deferred
-            // placement leaves one frame with no pill under the active view.
-            // When a pill was already on screen its geometry is carried across
-            // the rebuild, so switching views slides from the old position
-            // instead of growing out of nothing.
-            const pill = container.querySelector('.heatmap-filter-pill');
-            updateFilterPill(container, false);
-
-            // Animated *away from* the previous position rather than towards
-            // the new one: the pill already holds its final geometry, so a
-            // frame that never arrives leaves it correct instead of parked
-            // under the wrong view. Stepping the date carries the geometry it
-            // ends on, so only a real view switch moves anything.
-            if (pill && carriedPill && carriedPill.width
-                && typeof pill.animate === 'function'
-                && (carriedPill.width !== pill.style.width
-                    || carriedPill.transform !== pill.style.transform)) {
-                pill.animate(
-                    [
-                        { width: carriedPill.width, transform: carriedPill.transform },
-                        { width: pill.style.width, transform: pill.style.transform }
-                    ],
-                    { duration: 180, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
-                );
+            // Set the final width before painting. Scale from the previous
+            // visible width so the slide only interpolates the transform.
+            const placement = updateFilterPill(container);
+            if (placement?.width && carriedPill?.width
+                && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                const { pill, x, width } = placement;
+                if (typeof pill.animate === 'function'
+                    && (Math.abs(carriedPill.x - x) > 0.5 || Math.abs(carriedPill.width - width) > 0.5)) {
+                    pill.animate(
+                        [
+                            { transform: `translateX(${carriedPill.x}px) scaleX(${carriedPill.width / width})` },
+                            { transform: `translateX(${x}px) scaleX(1)` }
+                        ],
+                        { duration: 180, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+                    );
+                }
             }
 
-            gridContainer.classList.add('is-entering');
-            window.setTimeout(() => gridContainer.classList.remove('is-entering'), 180);
+            if (!gridContainer.refreshTerrain) {
+                gridContainer.classList.add('is-entering');
+                window.setTimeout(() => gridContainer.classList.remove('is-entering'), 180);
+            }
 
             // Re-measures the pill and the calendar against the box they
             // actually got. Both depend on text metrics, so the first frame
@@ -585,16 +1008,18 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
             const reflow = () => {
                 updateFilterPill(container);
                 const grid = container.querySelector('.heatmap-grid');
-                if (grid) fitGridToContainer(container, grid);
+                if (grid?.refreshTerrain) grid.refreshTerrain();
+                else if (grid) fitGridToContainer(container, grid);
             };
             requestAnimationFrame(reflow);
 
-            container.querySelector('.heatmap-filters').addEventListener('click', (e) => {
-                if (e.target.classList.contains('filter-btn')) {
-                    state.view = e.target.dataset.view;
-                    state.targetDate = new Date();
-                    draw();
-                }
+            container.querySelector('.heatmap-filters')?.addEventListener('click', (e) => {
+                const button = e.target.closest('.filter-btn');
+                if (!button || !views.includes(button.dataset.view) || button.dataset.view === state.view) return;
+                state.view = button.dataset.view;
+                state.targetDate = new Date();
+                draw();
+                if (e.detail === 0) container.querySelector('.filter-btn.active').focus();
             });
 
             container.querySelector('.heatmap-nav').addEventListener('click', (e) => {
@@ -604,7 +1029,7 @@ window.OnigiriHeatmap = window.OnigiriHeatmap || {};
                 const navBtn = e.target.closest('.nav-btn[data-nav]');
                 if (navBtn) {
                     const navAmount = parseInt(navBtn.dataset.nav, 10);
-                    if (state.view === 'year') {
+                    if (yearly) {
                         state.targetDate.setFullYear(state.targetDate.getFullYear() + navAmount);
                     } else if (state.view === 'month') {
                         state.targetDate.setMonth(state.targetDate.getMonth() + navAmount);

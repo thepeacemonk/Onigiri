@@ -667,29 +667,23 @@ def apply_reward(data: Dict[str, Any]) -> str:
 
 
 def _add_taiyaki_coins(amount: int) -> None:
-    path = os.path.join(_addon_path(), "user_files", f"gamification_{_profile_name()}.json")
-    # This reads the file directly, so any write still queued by the manager
-    # has to land first or the coins would be added to a stale balance.
-    try:
-        from ..core import safe_storage
+    amount = int(amount)
+    if amount <= 0:
+        return
+    from ..core import safe_storage
+    from .gamification import get_gamification_manager
 
-        safe_storage.flush_pending(path)
-    except Exception:
-        pass
-    data: Dict[str, Any] = {}
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    restaurant = data.setdefault("restaurant_level", {})
-    restaurant["taiyaki_coins"] = int(restaurant.get("taiyaki_coins", 0) or 0) + amount
-    restaurant.pop("_security_token", None)
-    _atomic_write_json(path, data)
-    try:
-        from .nook_level import manager
-
-        manager.refresh_state()
-    except Exception:
-        pass
+    gamification = get_gamification_manager()
+    # Flush any queued review save before reloading so redeemed coins are added
+    # on top of the latest balance and persisted through the single atomic,
+    # mirrored writer (updating .bak, snapshots, external mirror, and token).
+    safe_storage.flush_pending(gamification._get_data_path())
+    gamification.reload()
+    current_coins = max(0, int(gamification.restaurant_data.taiyaki_coins or 0))
+    gamification.update_restaurant_data(
+        {"taiyaki_coins": current_coins + amount},
+        immediate=True,
+    )
 
 
 def _refresh_visible_surfaces(parent: Optional[QObject] = None) -> None:

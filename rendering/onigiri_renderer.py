@@ -479,6 +479,8 @@ def _sidebar_header_icon_markup(field_id: str, fallback: str, css_class: str,
 
 def _build_hidden_ready_marker(addon_package: str) -> str:
     """Show one Ready to Go marker in the deck header when its sidebar is hidden."""
+    if not _ready_to_go().is_enabled():
+        return ""
     if _col_conf_get("modern_menu_ready_layout_mode", "list") != "hidden":
         return ""
 
@@ -1715,13 +1717,25 @@ def _stats_widget_icon_url(widget_id: str) -> str:
     if not path or not os.path.exists(path):
         return ""
     try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError:
+        return ""
+    cached = _STATS_WIDGET_ICON_CACHE.get(path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
         import base64
 
         with open(path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("ascii")
-        return f"data:image/svg+xml;base64,{encoded}"
+        data_uri = f"data:image/svg+xml;base64,{encoded}"
+        _STATS_WIDGET_ICON_CACHE[path] = (mtime, data_uri)
+        return data_uri
     except Exception:
         return ""
+
+
+_STATS_WIDGET_ICON_CACHE = {}
 
 
 def _stats_widget_icon_html(widget_id: str) -> str:
@@ -1973,9 +1987,8 @@ def _get_onigiri_retention_html(row_span: int = 1, col_span: int = 1) -> str:
 
 def _get_onigiri_heatmap_html() -> str:
     skeleton_cells = "".join(["<div class='skeleton-cell'></div>" for _ in range(371)])
-    minimalist = config.get_config_readonly().get("heatmapMinimalist", False) is True
     return f"""
-    <div id='onigiri-heatmap-container' data-minimalist='{str(minimalist).lower()}'>
+    <div id='onigiri-heatmap-container'>
         <div class="heatmap-header-skeleton"><div class="header-left-skeleton"><div class="skeleton-title"></div></div><div class="header-right-skeleton"><div class="skeleton-streak"></div><div class="skeleton-nav"></div><div class="skeleton-filters"></div></div></div>
         <div class="heatmap-grid-skeleton">{skeleton_cells}</div>
     </div>"""
@@ -2823,6 +2836,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         .onigiri-widget-container, .external-widget-container {{
             width: 100%;
             height: 100%;
+            min-width: 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -3328,7 +3343,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 100%;
             box-sizing: border-box;
             min-height: 0;
-            border-radius: 12px;
+            border-radius: var(--onigiri-widget-border-radius, var(--onigiri-box-effect-radius, 20px));
             overflow: hidden;
             border: 1px solid var(--border, #e0e0e0);
             cursor: pointer;
@@ -3807,6 +3822,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             height: 100%;
             min-height: 0;
             justify-content: center;
+            border-radius: max(0px, calc(var(--onigiri-widget-border-radius, var(--onigiri-box-effect-radius, 20px)) - 8px));
         }}
 
         .onigimon-scene-compact .onigimon-sprite {{
@@ -3965,6 +3981,43 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
             text-align: center;
         }}
 
+        /* Optional Main Menu Widgets color sync: card surface, border, and text
+           follow Onigiri's shared widget variables while keeping any configured
+           scenario or custom image above the synced backdrop. */
+        .onigimon-card.onigimon-sync-widgets {{
+            background: var(--onigiri-box-effect-bg, var(--canvas-inset, #ffffff));
+            border: var(--onigiri-widget-border-width, var(--onigiri-box-effect-stroke, 1px)) solid var(--onigiri-box-effect-border, var(--border, #e0e0e0));
+            color: var(--onigiri-box-effect-fg, var(--fg, #222));
+            backdrop-filter: blur(var(--onigiri-widget-blur, var(--onigiri-box-effect-blur, 0px)));
+            -webkit-backdrop-filter: blur(var(--onigiri-widget-blur, var(--onigiri-box-effect-blur, 0px)));
+        }}
+
+        .onigimon-card.onigimon-sync-widgets .onigimon-top.onigimon-scene,
+        .onigimon-card.onigimon-sync-widgets .onigimon-scene-compact {{
+            background: transparent !important;
+            border: none;
+        }}
+
+        .onigimon-card.onigimon-sync-widgets .onigimon-scene::after {{
+            display: none;
+        }}
+
+        .onigimon-card.onigimon-sync-widgets .onigimon-bottom,
+        .night-mode .onigimon-card.onigimon-sync-widgets .onigimon-bottom {{
+            background: transparent !important;
+            color: var(--onigiri-box-effect-fg, var(--fg, #222));
+        }}
+
+        .onigimon-card.onigimon-sync-widgets.onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong,
+        .night-mode .onigimon-card.onigimon-sync-widgets.onigimon-span-1x2 .onigimon-scene-compact .onigimon-info strong {{
+            color: var(--onigiri-box-effect-fg, var(--fg, #222));
+        }}
+
+        .onigimon-card.onigimon-sync-widgets.onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span,
+        .night-mode .onigimon-card.onigimon-sync-widgets.onigimon-span-1x2 .onigimon-scene-compact .onigimon-info span {{
+            color: color-mix(in srgb, var(--onigiri-box-effect-fg, var(--fg, #222)) 72%, transparent);
+        }}
+
         /* Restaurant Level Widget Styles */
         .onigiri-restaurant-level-widget {{
             display: flex;
@@ -4046,8 +4099,8 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
 
         .main-content {{
-            /* Dynamic Padding based on col_count. Top padding is explicitly 10px to align with sidebar top */
-            padding: 10px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px {24 if col_count == 4 else (14 if col_count > 4 else 32)}px !important;
+            /* Fixed gutters keep widgets aligned with the sidebar at every column count. */
+            padding: 10px 15px 24px !important;
             box-sizing: border-box !important;
             /* Sidebar Only Mode: Hide main content if cols=0 or rows=0 */
             display: {'none' if (col_count == 0 or conf.get('unifiedGridRows', 6) == 0) else 'flex'} !important;
@@ -4300,7 +4353,7 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         }}
     </style>
     {deckline_compat_html}
-    <div class="unified-grid">{unified_grid_html}</div>
+    <div class="unified-grid" data-grid-columns="{col_count}" data-grid-column-width="{grid_column_width}" data-grid-row-height="{grid_row_height}">{unified_grid_html}</div>
     """
 
     # --- Part 4: Manually Build the Deck Tree HTML ---
@@ -4785,6 +4838,16 @@ def render_onigiri_deck_browser(self: DeckBrowser, reuse: bool = False) -> None:
         js=["js/vendor/jquery.min.js", "js/vendor/jquery-ui.min.js", "js/deckbrowser.js"],
         context=self,
     )
+
+    # Stock DeckBrowser._renderPage() redraws the shared bottom bar here.
+    # Without this call, returning from Reviewer leaves the reviewer answer
+    # buttons (Again/Hard/Good/Easy) stuck in mw.bottomWeb when native bars
+    # are visible.
+    if hasattr(self, "_drawButtons"):
+        try:
+            self._drawButtons()
+        except Exception as e:
+            print(f"Onigiri: Error drawing deck browser bottom buttons: {e}")
 
     from aqt import gui_hooks
     gui_hooks.deck_browser_did_render(self)
